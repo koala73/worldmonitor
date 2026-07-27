@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { SectionHeading } from './SectionHeading';
 
 export const FAQ = () => {
-  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
+  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => ({
     q: t(`welcome.faq.q${n}`),
     a: t(`welcome.faq.a${n}`),
     open: n === 1,

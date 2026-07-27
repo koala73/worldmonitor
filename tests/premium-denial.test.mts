@@ -29,6 +29,7 @@ import {
   PRO_TIER,
   type ClientEntitlementBelief,
 } from '@/services/premium-denial';
+import { classifyBillingVerification } from '../server/_shared/entitlement-check.ts';
 
 /** No entitlement snapshot has arrived and the session carries no Pro role. */
 const UNKNOWN: ClientEntitlementBelief = { entitlementTier: null, authRole: null };
@@ -418,10 +419,28 @@ describe('premium panels route their denials through the classifier', () => {
   });
 
   it("ChatAnalystPanel no longer hardcodes the upsell as its only 403 copy", () => {
-    const source = readSource('src/components/ChatAnalystPanel.ts');
-    const upsells = [...source.matchAll(/'Pro subscription required\.'/g)];
+    // The decision moved to src/services/analyst-denial.ts (a zero-runtime-import
+    // leaf) so it is reachable from tsx --test — ChatAnalystPanel imports
+    // DOMPurify at module scope and cannot be loaded there. The copy itself is
+    // now pinned by EXECUTION in tests/analyst-denial.test.mts rather than by
+    // this regex, which is strictly stronger: a swapped branch fails there and
+    // would not have failed here.
+    const panel = readSource('src/components/ChatAnalystPanel.ts');
+    assert.equal(
+      [...panel.matchAll(/'Pro subscription required\.'/g)].length,
+      0,
+      'the panel must not re-inline the upsell copy it delegates',
+    );
+    assert.match(
+      panel,
+      /analystDenialMessage\(res\.status, verdict\)/,
+      'the panel must route its denial copy through the extracted decision',
+    );
+
+    const leaf = readSource('src/services/analyst-denial.ts');
+    const upsells = [...leaf.matchAll(/'Pro subscription required\.'/g)];
     assert.equal(upsells.length, 1, 'exactly one upsell string, in the verdict switch');
-    const preceding = source.slice(Math.max(0, upsells[0].index - 200), upsells[0].index);
+    const preceding = leaf.slice(Math.max(0, upsells[0].index - 200), upsells[0].index);
     assert.match(
       preceding,
       /case 'upgrade_required':/,
@@ -467,6 +486,15 @@ const KNOWN_NON_ENTITLEMENT_CODES = new Set([
 
 /**
  * Pull every `error: '<literal>'` whose OWN response carries a 401/403.
+ *
+ * Scope note (#5622): this covers hand-written response literals only. The
+ * billing-verification strings are NOT reachable this way any more — they moved
+ * behind `classifyBillingVerification`, which returns `{ message, status }` for a
+ * renderer to map onto the wire `error` field. Widening the pattern to `message:`
+ * is the wrong fix: it also scrapes prose fields like api/latest-brief.ts's
+ * `message: 'The Brief is available on the Pro plan.'`, which is copy, not a code.
+ * Those strings are covered by executing the classifier instead — see the
+ * describe block below this one.
  *
  * Pairing matters: a proximity window would attribute the 401 a few lines
  * below `{ error: 'Method not allowed' }, 405` to that 405, so scan forward to
@@ -528,6 +556,73 @@ describe('classifier vocabulary matches what the servers actually emit', () => {
       classifyPremiumDenial({ status: 403, errorCode: 'Pro subscription required', belief: PRO }),
       'entitlement_desync',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Billing-verification vocabulary — executed, not scraped
+// ---------------------------------------------------------------------------
+
+/**
+ * The billing strings used to be hand-written `error: '...'` literals that
+ * `extractDenialStrings` above could scrape. #5622 moved them behind
+ * `classifyBillingVerification`, which returns `{ message, status }` for a
+ * renderer to map onto the wire `error` field — so the regex silently stopped
+ * covering them (it kept passing on the file's other literals).
+ *
+ * Widening the regex to `message:` is the wrong repair: it also scrapes prose
+ * fields like api/latest-brief.ts's `message: 'The Brief is available on the Pro
+ * plan.'`, which is copy rather than a code. Instead, CALL the classifier and
+ * assert the client agrees with every string it can actually emit. Exact by
+ * construction, and it cannot drift — a new billing status shows up here the
+ * moment the classifier can return it.
+ */
+describe('the client classifies every string classifyBillingVerification can emit', () => {
+  const BILLING_INPUTS = [
+    { label: 'transient lookup failure', input: { verificationUnavailable: true as const } },
+    { label: 'confirmed lapse', input: { billingStatus: 'subscription_lapsed' as const } },
+    { label: 'renewal pending', input: { billingStatus: 'renewal_verification_pending' as const } },
+    { label: 'renewal failed', input: { billingStatus: 'renewal_verification_failed' as const } },
+  ];
+
+  for (const { label, input } of BILLING_INPUTS) {
+    it(`${label}: its wire string is accounted for at its own status`, () => {
+      const denial = classifyBillingVerification(input);
+      assert.ok(denial, `${label} must produce a denial`);
+
+      const verdict = classifyPremiumDenial({
+        status: denial.status,
+        errorCode: denial.message,
+        belief: PRO,
+      });
+
+      if (denial.retryable) {
+        // A retryable denial rides a 503, which this classifier deliberately does
+        // not own (the caller retries on status). What matters is that it is never
+        // an upsell.
+        assert.notEqual(
+          verdict,
+          'upgrade_required',
+          `${label} is transient and must never render as "buy Pro"`,
+        );
+      } else {
+        // The one terminal member. It must upsell even for a client convinced it
+        // is Pro, or a lapsed subscriber retries forever with no way back.
+        assert.equal(
+          verdict,
+          'upgrade_required',
+          `${label} is provider-confirmed and must route to the upgrade CTA`,
+        );
+      }
+    });
+  }
+
+  it('the terminal member is the only one that upsells', () => {
+    const terminal = BILLING_INPUTS.filter(
+      ({ input }) => classifyBillingVerification(input)?.retryable === false,
+    );
+    assert.equal(terminal.length, 1, 'exactly one billing state may be terminal');
+    assert.equal(classifyBillingVerification(terminal[0].input)?.code, 'subscription_lapsed');
   });
 });
 

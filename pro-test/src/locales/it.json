@@ -439,7 +439,9 @@
       "pricing": "Prezzi",
       "faq": "Domande frequenti",
       "docs": "Documentazione",
-      "launch": "Avvia dashboard"
+      "launch": "Avvia dashboard",
+      "blog": "Blog",
+      "menu": "Menu"
     },
     "hero": {
       "eyebrow": "Dashboard di intelligence globale gratuita · live adesso",
@@ -661,7 +663,9 @@
       "q8": "Ho bisogno di un account?",
       "a8": "No. La dashboard funziona istantaneamente senza iscrizione. Un account è importante solo quando esegui l'upgrade a Pro o desideri sincronizzare le impostazioni tra i dispositivi.",
       "q9": "È open source?",
-      "a9": "Sì — open source sotto AGPL-3.0 su GitHub: leggi il codice, auto-ospitalo o sviluppalo. Sono disponibili anche app desktop native per Windows, macOS e Linux, più un'app Android TV per i display murali."
+      "a9": "Sì — open source sotto AGPL-3.0 su GitHub: leggi il codice, auto-ospitalo o sviluppalo. Sono disponibili anche app desktop native per Windows, macOS e Linux, più un'app Android TV per i display murali.",
+      "q10": "Perché World Monitor non è Palantir?",
+      "a10": "Palantir rende operativi i dati di un'istituzione all'interno di quella stessa istituzione. World Monitor parte dall'altro capo: assembla, normalizza, correla e monitora i dati del mondo pubblico, quindi pubblica questo livello di intelligence attraverso una dashboard gratuita e codice open-source. Compiti diversi, prodotti diversi."
     },
     "cta": {
       "title": "La mappa mondiale non ti aspetta.",

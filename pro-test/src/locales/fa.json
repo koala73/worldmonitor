@@ -438,6 +438,8 @@
       "depth": "Depth",
       "pricing": "Pricing",
       "faq": "FAQ",
+      "blog": "وبلاگ",
+      "menu": "منو",
       "docs": "Docs",
       "launch": "Launch Dashboard"
     },
@@ -661,7 +663,9 @@
       "q8": "Do I need an account?",
       "a8": "No. The dashboard works instantly with no signup. An account only matters when you upgrade to Pro or want settings synced across devices.",
       "q9": "Is it open source?",
-      "a9": "Yes — open source under AGPL-3.0 on GitHub: read the code, self-host it, or build on it. Native desktop apps for Windows, macOS and Linux are available too, plus an Android TV app for wall displays."
+      "a9": "Yes — open source under AGPL-3.0 on GitHub: read the code, self-host it, or build on it. Native desktop apps for Windows, macOS and Linux are available too, plus an Android TV app for wall displays.",
+      "q10": "چرا World Monitor مثل Palantir نیست؟",
+      "a10": "Palantir داده‌های داخلی یک مؤسسه را در آن مؤسسه عملیاتی می‌کند. World Monitor از سوی دیگر شروع می‌کند: داده‌های عمومی را جمع‌آوری، نرمال‌سازی، مرتبط‌سازی و نظارت می‌کند، سپس این لایه اطلاعاتی را از طریق یک داشبورد رایگان و کد متن‌باز منتشر می‌کند. کار متفاوت، محصول متفاوت."
     },
     "cta": {
       "title": "The world map doesn't wait for you.",

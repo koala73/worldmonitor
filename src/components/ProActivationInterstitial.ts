@@ -153,6 +153,7 @@ let overlay: HTMLElement | null = null;
 let lastFocusedElement: HTMLElement | null = null;
 let docKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
 let flowAccountUnsubscribe: (() => void) | null = null;
+let flowAbortController: AbortController | null = null;
 
 interface StepFrameCopy {
   heading: string;
@@ -789,6 +790,8 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
 }
 
 export function closeProActivationInterstitial(): void {
+  flowAbortController?.abort();
+  flowAbortController = null;
   flowAccountUnsubscribe?.();
   flowAccountUnsubscribe = null;
   if (docKeydownHandler) {
@@ -1014,17 +1017,27 @@ export function activationContextFromChannelsData(
   };
 }
 
-async function readActivationContextStrict(expectedUserId: string): Promise<ActivationContext> {
+async function readActivationContextStrict(
+  expectedUserId: string,
+  signal?: AbortSignal,
+): Promise<ActivationContext> {
   const controller = new AbortController();
-  const data = await withTimeout(
-    getChannelsData(expectedUserId, controller.signal),
-    ACTIVATION_CONTEXT_TIMEOUT_MS,
-    'activation-context-read',
-    () => controller.abort(),
-  );
-  const context = activationContextFromChannelsData(data, readActivationCapabilities());
-  context.config.hasUsedPowerFeature = hasUsedPowerFeatureStrict();
-  return context;
+  const abortFromParent = (): void => controller.abort(signal?.reason);
+  if (signal?.aborted) abortFromParent();
+  else signal?.addEventListener('abort', abortFromParent, { once: true });
+  try {
+    const data = await withTimeout(
+      getChannelsData(expectedUserId, controller.signal),
+      ACTIVATION_CONTEXT_TIMEOUT_MS,
+      'activation-context-read',
+      () => controller.abort(),
+    );
+    const context = activationContextFromChannelsData(data, readActivationCapabilities());
+    context.config.hasUsedPowerFeature = hasUsedPowerFeatureStrict();
+    return context;
+  } finally {
+    signal?.removeEventListener('abort', abortFromParent);
+  }
 }
 
 export async function readActivationContext(expectedUserId?: string): Promise<ActivationContext> {
@@ -1311,16 +1324,17 @@ function reportActivationStepFailure(
 async function confirmBrief(
   options: ProActivationFlowOptions,
   hourRef: DigestHourRef,
+  signal?: AbortSignal,
 ): Promise<'verified' | 'failed'> {
   // Prefer the ref (survives the in-flight re-render that resets the select to
   // DEFAULT); fall back to the live select / DEFAULT when the user never picked.
   const selectedHour = hourRef.hour ?? readSelectedDigestHour();
   try {
-    await setEmailChannel(options.accountEmail, options.accountUserId);
+    await setEmailChannel(options.accountEmail, options.accountUserId, signal);
     // Channel registration and rule attachment are separate server mutations.
     // Never infer the second from a failed/stale read: refresh after the row
     // exists, then build the delta from the authoritative current-variant rule.
-    const fresh = await readActivationContextStrict(options.accountUserId);
+    const fresh = await readActivationContextStrict(options.accountUserId, signal);
     const payload = buildBriefDigestPayload(fresh.config, selectedHour, browserTimezone());
     if (!payload) return 'verified';
     const channels = fresh.channels.includes('email')
@@ -1330,7 +1344,7 @@ async function confirmBrief(
       variant: SITE_VARIANT,
       ...payload,
       channels: channels as ChannelType[],
-    }, options.accountUserId);
+    }, options.accountUserId, signal);
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] brief confirm failed', err);
@@ -1342,6 +1356,7 @@ async function confirmBrief(
 /** Alerts confirm: request+subscribe push, then ensure a rule delivers to it. */
 async function confirmAlerts(
   options: ProActivationFlowOptions,
+  signal?: AbortSignal,
 ): Promise<ActivationConfirmResult> {
   try {
     // Requests permission, subscribes, and registers the web_push channel.
@@ -1373,7 +1388,7 @@ async function confirmAlerts(
   try {
     // A registered push row is not delivery until the current-variant rule
     // includes it. If the authoritative read fails, leave the step retryable.
-    fresh = await readActivationContextStrict(options.accountUserId);
+    fresh = await readActivationContextStrict(options.accountUserId, signal);
   } catch (err) {
     console.warn('[pro-activation] alerts config refresh failed', err);
     reportActivationStepFailure(options, 'alerts', 'alerts-config-refresh', err);
@@ -1386,7 +1401,7 @@ async function confirmAlerts(
       enabled: payload.enabled,
       ...(payload.sensitivity ? { sensitivity: payload.sensitivity } : {}),
       channels: payload.channels as ChannelType[],
-    }, options.accountUserId);
+    }, options.accountUserId, signal);
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] alerts rule write failed', err);
@@ -1674,6 +1689,13 @@ export async function openProActivationFlow(
     );
   };
 
+  // Notification writes can pause for Retry-After. Tie that delay to this
+  // interstitial's lifetime so an account switch, replacement flow, or close
+  // cannot wake up later and issue a second mutation from a stale wizard.
+  flowAbortController?.abort();
+  flowAbortController = null;
+  const activationController = new AbortController();
+
   dependencies.openInterstitial({
     steps,
     accountEmail: options.accountEmail,
@@ -1686,9 +1708,9 @@ export async function openProActivationFlow(
       try {
         const result =
           stepId === 'brief'
-            ? await confirmBrief(options, selectedHourRef)
+            ? await confirmBrief(options, selectedHourRef, activationController.signal)
             : stepId === 'alerts'
-              ? await confirmAlerts(options)
+              ? await confirmAlerts(options, activationController.signal)
               : 'verified';
         // Attempt-level outcome: one event per real confirm, so a step the
         // user retries is visible as N failures rather than a single terminal
@@ -1721,6 +1743,8 @@ export async function openProActivationFlow(
     onBlockStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepBlocked, stepId),
     onProgress: (results) => persistOutcome(results, false),
     onExit: (results) => {
+      activationController.abort();
+      if (flowAbortController === activationController) flowAbortController = null;
       options.onEvent?.(ACTIVATION_EVENTS.exit, undefined, summarizeActivationExit(results));
       // Freeze the latest durable snapshot. Progress was already recorded as
       // steps resolved, so a tab close before this best-effort write cannot
@@ -1733,6 +1757,9 @@ export async function openProActivationFlow(
         .catch((err) => console.warn('[pro-activation] finish-setup chip failed to load', err));
     },
   });
+  if (!activationController.signal.aborted) {
+    flowAbortController = activationController;
+  }
   flowAccountUnsubscribe = subscribeAuthState(() => {
     if (isFlowAccountCurrent(options)) return;
     // subscribeAuthState emits synchronously before returning its unsubscribe.

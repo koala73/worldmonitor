@@ -439,7 +439,9 @@
       "pricing": "Giá cả",
       "faq": "Câu hỏi thường gặp",
       "docs": "Tài liệu",
-      "launch": "Khởi chạy bảng điều khiển"
+      "launch": "Khởi chạy bảng điều khiển",
+      "blog": "Blog",
+      "menu": "Menu"
     },
     "hero": {
       "eyebrow": "Bảng điều khiển tình báo toàn cầu miễn phí · đang hoạt động",
@@ -661,7 +663,9 @@
       "q8": "Tôi có cần một tài khoản không?",
       "a8": "Không. Bảng điều khiển hoạt động ngay lập tức mà không cần đăng ký. Một tài khoản chỉ quan trọng khi bạn nâng cấp lên Pro hoặc muốn cài đặt được đồng bộ hóa trên các thiết bị.",
       "q9": "Nó có mã nguồn mở không?",
-      "a9": "Có — mã nguồn mở theo AGPL-3.0 trên GitHub: đọc mã, tự lưu trữ hoặc xây dựng dựa trên nó. Các ứng dụng máy tính để bàn gốc cho Windows, macOS và Linux cũng có sẵn, cùng với ứng dụng Android TV cho hiển thị tường."
+      "a9": "Có — mã nguồn mở theo AGPL-3.0 trên GitHub: đọc mã, tự lưu trữ hoặc xây dựng dựa trên nó. Các ứng dụng máy tính để bàn gốc cho Windows, macOS và Linux cũng có sẵn, cùng với ứng dụng Android TV cho hiển thị tường.",
+      "q10": "Tại sao World Monitor không phải là Palantir?",
+      "a10": "Palantir làm cho dữ liệu riêng của một tổ chức hoạt động bên trong tổ chức đó. World Monitor bắt đầu từ phía khác: nó sắp xếp, chuẩn hóa, tương quan và giám sát dữ liệu công cộng trên thế giới, sau đó công bố lớp tình báo đó thông qua một bảng điều khiển miễn phí và mã nguồn mở. Công việc khác nhau, sản phẩm khác nhau."
     },
     "cta": {
       "title": "Bản đồ thế giới không chờ bạn.",

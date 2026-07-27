@@ -26,7 +26,11 @@ import {
   checkFailClosedScopedIpRateLimit,
   hasEndpointRatePolicy,
 } from './_shared/rate-limit';
-import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
+import {
+  drainResponseHeaders,
+  drainRetryableResponse,
+  drainSuccessStatusOverride,
+} from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
 import {
@@ -1843,6 +1847,7 @@ export function createDomainGateway(
         mergedHeaders.set(key, value);
       }
     }
+    const retryableResponse = drainRetryableResponse(request);
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // Handler side-channel status override (setSuccessStatusOverride): applied
@@ -1982,7 +1987,14 @@ export function createDomainGateway(
       // record rather than a lingering 'processing' lock → 409. store() is
       // best-effort/fail-open, so a Redis blip degrades to a re-executable
       // retry, never a failed response.
-      await idempotency.store(finalStatus, bodyBytes, response.headers.get('content-type'));
+      // Generated response-envelope RPCs can report a retryable ServiceError
+      // inside HTTP 200. Feed store() a retryable status only for its
+      // persist-vs-release decision; the client still receives finalStatus.
+      await idempotency.store(
+        retryableResponse ? 503 : finalStatus,
+        bodyBytes,
+        response.headers.get('content-type'),
+      );
       emitRequest(finalStatus, 'ok', resolvedCacheTier, bodyBytes.byteLength);
       maybeAttachDevHealthHeader(mergedHeaders);
       return new Response(bodyBytes, {

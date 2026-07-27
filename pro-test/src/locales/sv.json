@@ -439,7 +439,9 @@
       "pricing": "Prissättning",
       "faq": "Vanliga frågor",
       "docs": "Dokumentation",
-      "launch": "Starta instrumentpanel"
+      "launch": "Starta instrumentpanel",
+      "blog": "Blogg",
+      "menu": "Meny"
     },
     "hero": {
       "eyebrow": "Gratis global underrättelseinstrumentpanel · live nu",
@@ -661,7 +663,9 @@
       "q8": "Behöver jag ett konto?",
       "a8": "Nej. Instrumentbrädan fungerar omedelbar utan registrering. Ett konto spelar endast roll när du uppgraderar till Pro eller vill synkronisera inställningar mellan enheter.",
       "q9": "Är det öppen källkod?",
-      "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host den, eller bygg vidare på den. Interna skrivbordsprogram för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplajer."
+      "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host den, eller bygg vidare på den. Interna skrivbordsprogram för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplajer.",
+      "q10": "Varför är World Monitor inte Palantir?",
+      "a10": "Palantir gör en institutions egna data operationell inom den institutionen. World Monitor börjar från andra änden: det samlar, normaliserar, korrelerar och övervakar offentlig världsdata, och publicerar sedan det intelligensskiktet genom en gratis instrumentpanel och öppen källkod. Olika uppgift, olika produkt."
     },
     "cta": {
       "title": "Världskartan väntar inte på dig.",

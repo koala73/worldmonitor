@@ -10,7 +10,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 </Tip>
 
 <Info>
-**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 401。
+**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 `403 INSUFFICIENT_TIER`。
 </Info>
 
 所有付费套餐共享同一个 MCP 服务器和同样的 42 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
@@ -101,6 +101,10 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，7 天 refresh）。
 
+<Note>
+如果登录步骤提示无法校验你的订阅 —— 一个 `503` 页面，或来自 grant 端点的 `503 TIER_VERIFICATION_UNAVAILABLE` —— 那是暂时性的，并不代表你的订阅有任何问题。请等待响应中标注的 `Retry-After`，然后从你的客户端重新发起连接；该授权会话是一次性的，因此需要重新发起而不是刷新页面。已确认的非 Pro 账户会收到 `403 INSUFFICIENT_TIER`，而已失效的订阅会收到带 `X-Billing-Verification: subscription_lapsed` 的 `403`。参见[错误处理](/zh/usage-errors)。
+</Note>
+
 如果你更愿意粘贴 API key（Starter+ / 脚本化客户端），可在授权页展开 "Use API key instead" 并提交你的 `wm_` 用户 key 或由运营方颁发的企业 key —— 该路径保持不变。
 
 ### 每日额度（Pro 套餐）
@@ -126,7 +130,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 | 套餐 | MCP 访问 | 认证模式 | MCP 每日预留 | 备注 |
 |------|------------|------------|-----------------------|-------|
-| **Free** | ❌ 否 | — | — | OAuth 流程返回 401 `INSUFFICIENT_TIER`。请在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级。 |
+| **Free** | ❌ 否 | — | — | OAuth 流程返回 `403 INSUFFICIENT_TIER`。请在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级。 |
 | **Pro** | ✅ 是 | 仅 OAuth | **50 次消耗配额的调用 / UTC 日** | 经由 apex Clerk 登录跳转。无需或存储 `wm_…` key。 |
 | **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 上下文使用 Pro 计数器；`wm_…` MCP 调用**无 MCP 每日预留** | 标准开发者层 REST/API 访问。 |
 | **API Business** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 上下文使用 Pro 计数器；`wm_…` MCP 调用**无 MCP 每日预留** | 更高的 REST/API 吞吐量。 |

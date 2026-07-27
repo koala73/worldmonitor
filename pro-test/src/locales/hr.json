@@ -439,7 +439,9 @@
       "pricing": "Cijene",
       "faq": "Često postavljana pitanja",
       "docs": "Dokumentacija",
-      "launch": "Pokreni nadzornu ploču"
+      "launch": "Pokreni nadzornu ploču",
+      "blog": "Blog",
+      "menu": "Izbornik"
     },
     "hero": {
       "eyebrow": "Besplatna nadzorna ploča globalne obavještajne službe · sada dostupna",
@@ -661,7 +663,9 @@
       "q8": "Trebam li račun?",
       "a8": "Ne. Dashboard radi odmah bez prijave. Račun je bitan samo kada nadogradiš na Pro ili želiš sinkronizirati postavke na više uređaja.",
       "q9": "Je li to open source?",
-      "a9": "Da — open source pod AGPL-3.0 na GitHubu: čitaj kod, samodostavi ili izgradi na njemu. Izvorne desktop aplikacije za Windows, macOS i Linux dostupne su, plus Android TV aplikacija za zidne zaslone."
+      "a9": "Da — open source pod AGPL-3.0 na GitHubu: čitaj kod, samodostavi ili izgradi na njemu. Izvorne desktop aplikacije za Windows, macOS i Linux dostupne su, plus Android TV aplikacija za zidne zaslone.",
+      "q10": "Zašto World Monitor nije Palantir?",
+      "a10": "Palantir čini podatke institucije operativnima unutar te institucije. World Monitor počinje s druge strane: skuplja, normalizira, korelira i prati javne podatke svijeta, a zatim objavljuje taj sloj obavještajnih podataka kroz besplatnu nadzornu ploču i kod otvorenog koda. Drugi zadatak, drugi proizvod."
     },
     "cta": {
       "title": "Mapa svijeta ne čeka za tebe.",

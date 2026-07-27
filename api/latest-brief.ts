@@ -34,7 +34,7 @@ import { readRawJsonFromUpstash } from './_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
-import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { checkProEntitlement } from '../server/_shared/pro-entitlement';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 
@@ -45,7 +45,7 @@ const ISSUE_SLOT_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 // Per-attempt timeouts for the cache-read retry helper. Worst-case wall
 // time = FIRST_ATTEMPT_MS + RETRY_ATTEMPT_MS per read × 2 reads = 18s,
 // which leaves headroom under Vercel Edge's ~25s initial-response cap
-// after `validateBearerToken` + `getEntitlements` preflight. Retry uses
+// after `validateBearerToken` + `checkProEntitlement` preflight. Retry uses
 // a shorter budget on the theory that a transient blip clears in <3s; a
 // real Upstash outage will time out the retry quickly and fall through
 // to the 503 fallback before the platform kills the function.
@@ -194,8 +194,8 @@ export default async function handler(
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
 
-  const ent = await getEntitlements(session.userId);
-  if (!ent || ent.features.tier < 1) {
+  const proAccess = await checkProEntitlement(session.userId, session.role, cors);
+  if (!proAccess.allowed) {
     // #5600: an entitlement the backend could not VERIFY is not a confirmed
     // free user. This is the endpoint the live repro caught rendering "Pro
     // required. Upgrade to unlock" to a customer who had paid 90 seconds
@@ -204,7 +204,7 @@ export default async function handler(
     // and renewal verification only; the day-0 poisoned-marker cohort arrives
     // as a plain tier-0 answer and is bounded by
     // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead.
-    const billingDenial = getBillingVerificationDenial(ent, cors, 1);
+    const { billingDenial } = proAccess;
     if (billingDenial) return billingDenial;
     return jsonResponse(
       {

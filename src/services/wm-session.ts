@@ -14,6 +14,7 @@
 
 import { getCanonicalApiOrigin, toApiUrl } from './runtime';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
+import { hasPremiumIntent } from './premium-intent';
 import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
@@ -56,7 +57,49 @@ export function isWmSessionDead(): boolean {
   return true;
 }
 
-function markWmSessionDead(reason: WmSessionDeadReason): void {
+// Sentry caps tag values at 200 chars. Our own API pathnames are far shorter,
+// so this only bounds a pathological/attacker-shaped URL rather than truncating
+// anything real.
+const ROUTE_TAG_MAX_LENGTH = 120;
+
+// A path segment that is an identifier rather than a route name: a pure number,
+// a UUID, or a long token carrying a digit.
+//
+// Why this is needed at all: PREMIUM_RPC_PATHS is an EXACT-match set, so a
+// dynamic route like `/api/v2/shipping/webhooks/<subscriberId>` does NOT match
+// its parent entry and can therefore reach this tag — putting a subscriber id
+// into an indexed Sentry tag and giving the tag unbounded cardinality.
+//
+// Deliberately narrow, because over-matching destroys the diagnostic value the
+// tag exists for: our own route names are kebab-case words with no digits
+// (`summarize-article`, `list-market-quotes`), so requiring a digit keeps every
+// real segment intact while still catching ids. Version prefixes (`v1`, `v2`)
+// carry a digit but sit far under the length floor.
+const UUID_SEGMENT_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const OPAQUE_MIN_LENGTH = 12;
+
+function isOpaqueSegment(segment: string): boolean {
+  if (/^\d+$/.test(segment)) return true;
+  if (UUID_SEGMENT_RE.test(segment)) return true;
+  return segment.length >= OPAQUE_MIN_LENGTH && /\d/.test(segment);
+}
+
+// Bound an already-extracted pathname for use as the `route` tag. Callers pass
+// a pathname, never a full URL: the query string carries per-user parameters
+// (symbols, coordinates, langs) that would explode tag cardinality and defeat
+// the aggregation this tag exists to enable.
+function boundRouteTag(path: string): string {
+  const normalized = path
+    .split('/')
+    .map((segment) => (isOpaqueSegment(segment) ? ':id' : segment))
+    .join('/');
+  return normalized.length > ROUTE_TAG_MAX_LENGTH
+    ? normalized.slice(0, ROUTE_TAG_MAX_LENGTH)
+    : normalized;
+}
+
+function markWmSessionDead(reason: WmSessionDeadReason, route: string): void {
   const alreadyDead = isWmSessionDead();
   sessionDeadUntil = Date.now() + SESSION_DEAD_COOLDOWN_MS;
   cached = null;
@@ -66,13 +109,56 @@ function markWmSessionDead(reason: WmSessionDeadReason): void {
   // One warning per degraded episode — reportServerError (premium-fetch.ts)
   // deliberately skips the synthetic X-Wm-Session-Degraded 503s, so this is
   // the only remote signal that anonymous browsing is degraded (#5245).
+  //
+  // The `route` tag (#5674) identifies which endpoint's retry 401'd. Without
+  // it the capture carried only kind + reason, so a surviving
+  // fresh-mint-then-401 path could not be aggregated and the offending
+  // endpoint was undiagnosable from Sentry alone — the blocker that made
+  // #5674 take a full production probe to find.
+  //
   // Guarded: a telemetry throw must never skip the degraded-event dispatch
   // below, nor turn the interceptor's recovery return into a rejection.
   try {
-    sentryEnqueue((s) => s.captureMessage(
-      'wm-session dead: anonymous API calls suppressed',
-      { level: 'warning', tags: { kind: 'wm_session_dead', reason } },
-    ));
+    sentryEnqueue((s) => {
+      // Record the failure explicitly: the 401 that caused it is invisible to
+      // Sentry's automatic fetch instrumentation for TWO compounding reasons,
+      // both verified against WORLDMONITOR-WG events.
+      //
+      //   1. The interceptor's own mint and replay go through `original` — the
+      //      window.fetch captured at install time, before the deferred
+      //      Sentry.init (scheduleSentryInit, src/main.ts) wrapped it. Those
+      //      requests never reach the SDK's wrapper at all.
+      //   2. This capture runs BEFORE the interceptor returns the 401 to the
+      //      outer (Sentry-wrapped) call, so that request's breadcrumb is
+      //      appended after the event has already been built.
+      //
+      // The net effect is a trap for whoever reads these events next: the only
+      // 401s that DO appear are the ones that correctly stepped aside from
+      // recovery and are therefore harmless, which makes an innocent route
+      // look like the culprit. Trust the `route` tag below, not the
+      // breadcrumbs.
+      // Its own try/catch, INSIDE the outer one: the breadcrumb is a
+      // nice-to-have, the capture is the only remote signal that anonymous
+      // browsing is degraded (#5245). Sharing one try would let a throwing
+      // addBreadcrumb (an extension patching window state, a malformed value,
+      // an SDK bug) skip the captureMessage below and silently drop the
+      // episode entirely.
+      try {
+        s.addBreadcrumb?.({
+          category: 'wm-session',
+          level: 'warning',
+          message: `session recovery failed (${reason})`,
+          // The 401 that triggered recovery — not necessarily the last status
+          // seen, since `mint_failed` means the remint itself never returned a
+          // usable session.
+          data: { route, triggeringStatus: 401 },
+        });
+      } catch { /* breadcrumb is best-effort; the capture below is not */ }
+      s.captureMessage(
+        'wm-session dead: anonymous API calls suppressed',
+        { level: 'warning', tags: { kind: 'wm_session_dead', reason, route } },
+      );
+    });
   } catch { /* best-effort telemetry */ }
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
     window.dispatchEvent(new Event(WM_SESSION_DEGRADED_EVENT));
@@ -381,6 +467,25 @@ export function installWmSessionFetchInterceptor(): void {
     // wms_ token is irrelevant there.
     if (resp.status !== 401) return resp;
 
+    // #5674 — premiumFetch marked this as a premium call it could not
+    // authenticate, so the 401 is the expected auth denial, not a rejected
+    // cookie. Hand it back untouched: reminting and replaying would produce the
+    // identical 401 and then suppress every anonymous API call for 15 minutes.
+    //
+    // This is the SECOND of the two bypasses in this function, and the only one
+    // that can fire here — path-listed premium routes already returned far
+    // above, before any session work. The two are not interchangeable:
+    //
+    //   - PREMIUM_RPC_PATHS steps aside entirely (a dedicated auth-injection
+    //     layer owns those credentials; PR #3557 review).
+    //   - This one suppresses ONLY the recovery. The request must already have
+    //     minted a session and travelled with credentials, because
+    //     `forcePremium` also covers routes anonymous callers legitimately use
+    //     — the market-quote tape via proFreshRpcFetch — which 401 when no
+    //     cookie is sent at all. premiumFetch keeps that tape unmarked for the
+    //     same reason.
+    if (hasPremiumIntent(init)) return resp;
+
     // A slower initial request can report the old cookie after another caller
     // already recovered it. Replay with the newer cookie instead of clearing
     // that success and spending another mint.
@@ -402,12 +507,12 @@ export function installWmSessionFetchInterceptor(): void {
       const recovery = (async (): Promise<Response | null> => {
         const fresh = await ensureWmSession().catch(() => false);
         if (!fresh) {
-          markWmSessionDead('mint_failed');
+          markWmSessionDead('mint_failed', boundRouteTag(path));
           return null;
         }
         const retryResp = await sendWith(new Headers(headers), requestClone ?? input);
         if (retryResp.status === 401) {
-          markWmSessionDead('retry_401');
+          markWmSessionDead('retry_401', boundRouteTag(path));
           return null;
         }
         return retryResp;

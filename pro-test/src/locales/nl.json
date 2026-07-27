@@ -439,7 +439,9 @@
       "pricing": "Prijzen",
       "faq": "Veelgestelde vragen",
       "docs": "Documentatie",
-      "launch": "Dashboard starten"
+      "launch": "Dashboard starten",
+      "blog": "Blog",
+      "menu": "Menu"
     },
     "hero": {
       "eyebrow": "Gratis dashboard voor wereldwijd inlichtingen · nu live",
@@ -661,7 +663,9 @@
       "q8": "Heb ik een account nodig?",
       "a8": "Nee. Het dashboard werkt direct zonder registratie. Een account is alleen belangrijk wanneer je upgradet naar Pro of instellingen wilt synchroniseren op meerdere apparaten.",
       "q9": "Is het open source?",
-      "a9": "Ja — open source onder AGPL-3.0 op GitHub: lees de code, host het zelf, of bouw erop voort. Native desktop-apps voor Windows, macOS en Linux zijn ook beschikbaar, plus een Android TV-app voor wanddisplays."
+      "a9": "Ja — open source onder AGPL-3.0 op GitHub: lees de code, host het zelf, of bouw erop voort. Native desktop-apps voor Windows, macOS en Linux zijn ook beschikbaar, plus een Android TV-app voor wanddisplays.",
+      "q10": "Waarom is World Monitor niet Palantir?",
+      "a10": "Palantir maakt de eigen data van een organisatie operationeel binnen die organisatie. World Monitor begint vanaf het andere uiteinde: het verzamelt, normaliseert, correleert en monitort openbare data, en publiceert die intelligentielaag via een gratis dashboard en open-source code. Ander doel, ander product."
     },
     "cta": {
       "title": "De wereldkaart wacht niet op je.",

@@ -439,7 +439,9 @@
       "pricing": "Fiyatlandırma",
       "faq": "SSS",
       "docs": "Belgeler",
-      "launch": "Panoyu Başlat"
+      "launch": "Panoyu Başlat",
+      "blog": "Blog",
+      "menu": "Menü"
     },
     "hero": {
       "eyebrow": "Ücretsiz global istihbarat panosu · şimdi canlı",
@@ -661,7 +663,9 @@
       "q8": "Hesaba ihtiyacım var mı?",
       "a8": "Hayır. Pano kaydolmadan anında çalışır. Bir hesap yalnızca Pro'ya yükselttikten sonra veya cihazlar arasında ayarları senkronize etmek istediğinizde önemlidir.",
       "q9": "Açık kaynaklı mı?",
-      "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynaklı: kodu okuyun, kendi sunucunuzda barındırın veya üzerine kurun. Windows, macOS ve Linux için yerel masaüstü uygulamaları ve duvar ekranları için Android TV uygulaması da mevcuttur."
+      "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynaklı: kodu okuyun, kendi sunucunuzda barındırın veya üzerine kurun. Windows, macOS ve Linux için yerel masaüstü uygulamaları ve duvar ekranları için Android TV uygulaması da mevcuttur.",
+      "q10": "World Monitor neden Palantir değil?",
+      "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün."
     },
     "cta": {
       "title": "Dünya haritası sizi beklemez.",

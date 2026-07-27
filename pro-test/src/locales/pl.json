@@ -439,7 +439,9 @@
       "pricing": "Cennik",
       "faq": "FAQ",
       "docs": "Dokumentacja",
-      "launch": "Uruchom pulpit"
+      "launch": "Uruchom pulpit",
+      "blog": "Blog",
+      "menu": "Menu"
     },
     "hero": {
       "eyebrow": "Darmowy globalny pulpit inteligencji · dostępny teraz",
@@ -661,7 +663,9 @@
       "q8": "Czy potrzebuję konta?",
       "a8": "Nie. Pulpit nawigacyjny działa natychmiast bez rejestracji. Konto ma znaczenie tylko gdy uaktualnisz do Pro lub chcesz synchronizować ustawienia na różnych urządzeniach.",
       "q9": "Czy to open source?",
-      "a9": "Tak — open source na AGPL-3.0 na GitHub: przeczytaj kod, samodzielnie go hostuj, lub na nim buduj. Natywne aplikacje desktopowe dla Windows, macOS i Linux są również dostępne, a także aplikacja Android TV do wyświetlaczy ściennych."
+      "a9": "Tak — open source na AGPL-3.0 na GitHub: przeczytaj kod, samodzielnie go hostuj, lub na nim buduj. Natywne aplikacje desktopowe dla Windows, macOS i Linux są również dostępne, a także aplikacja Android TV do wyświetlaczy ściennych.",
+      "q10": "Dlaczego World Monitor nie jest Palantir?",
+      "a10": "Palantir sprawia, że własne dane instytucji stają się operacyjne w ramach tej instytucji. World Monitor zaczyna od drugiej strony: zbiera, normalizuje, koreluje i monitoruje dane z publicznej domeny, następnie publikuje tę warstwę analizy poprzez bezpłatny dashboard i kod open-source. Inne zadanie, inny produkt."
     },
     "cta": {
       "title": "Mapa świata nie czeka na Ciebie.",

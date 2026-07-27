@@ -3,7 +3,12 @@ import { validateApiKey } from '../../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../../api/_crypto.js';
 import { validateBearerToken } from '../auth-session';
-import { getEntitlements } from './entitlement-check';
+import {
+  classifyBillingVerification,
+  getEntitlements,
+  type BillingVerificationDenial,
+  type BillingVerificationInput,
+} from './entitlement-check';
 import {
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
@@ -15,7 +20,132 @@ export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
   | { isPremium: true; userId: string; kind: 'user-api-key' | 'bearer'; quotaExempt: false }
   | { isPremium: true; userId: null; kind: 'enterprise'; quotaExempt: true }
-  | { isPremium: false; userId: null; kind: null; quotaExempt: false };
+  | {
+    isPremium: false;
+    userId: null;
+    kind: null;
+    quotaExempt: false;
+    /**
+     * The billing-verification classification behind this denial, when the
+     * denial rests on something OTHER than a confirmed non-premium answer
+     * (#5622) — a lookup that failed, a renewal re-check in flight, or a
+     * provider-confirmed lapse. Absent for a genuine free/unauthenticated
+     * caller.
+     *
+     * The field is additive and optional on purpose: `isPremium: false` keeps
+     * its exact meaning ("do not grant premium"), so all ~25 existing callers
+     * — including every `isCallerPremium()` boolean consumer — are unaffected.
+     * A caller that wants the retryable posture opts in by reading this and
+     * rendering it via renderBillingVerificationDenial instead of a terminal 403.
+     *
+     * It carries the whole classification rather than a boolean because there
+     * are FOUR of these states, not one. An earlier version of this field was
+     * `verificationUnavailable?: true`, which silently dropped
+     * `renewal_verification_pending` / `renewal_verification_failed` — states
+     * convex/http.ts really does emit — back onto the terminal upsell, i.e. the
+     * exact #5600 failure mode this field exists to remove.
+     */
+    billingDenial?: BillingVerificationDenial;
+  };
+
+/** The deny arm of the union, named so `{ ...DENIED, billingDenial }` stays in it. */
+type DeniedIdentity = Extract<PremiumCallerIdentity, { isPremium: false }>;
+
+/**
+ * Deny with no information about WHY — a confirmed non-premium caller.
+ *
+ * Frozen because this is now ONE shared object returned by reference from
+ * several deny arms, where the pre-#5622 code built a fresh literal at each
+ * site. A caller that stamped a field onto a returned identity would otherwise
+ * poison every subsequent denial in the isolate. `denyFor`'s
+ * `{ ...DENIED, billingDenial }` spread still produces a fresh mutable copy.
+ */
+const DENIED: DeniedIdentity = Object.freeze({
+  isPremium: false,
+  userId: null,
+  kind: null,
+  quotaExempt: false,
+});
+
+/**
+ * A deny-side entitlement answer, tagged with its billing classification when
+ * the row carries one.
+ *
+ * Same authorization outcome either way — nothing is granted. The tag only lets
+ * a caller choose retryable-vs-terminal wording.
+ */
+function denyFor(entitlements: BillingVerificationInput | null): DeniedIdentity {
+  const billingDenial = classifyBillingVerification(entitlements);
+  return billingDenial ? { ...DENIED, billingDenial } : DENIED;
+}
+
+type RpcApiErrorLike = Error & {
+  statusCode: number;
+  body: string;
+  retryAfter?: number;
+  exposeMessage?: boolean;
+};
+
+type RpcApiErrorConstructor<T extends RpcApiErrorLike> =
+  new (statusCode: number, message: string, body: string) => T;
+
+type PremiumRpcBillingApiError<T extends RpcApiErrorLike> = T & {
+  billingVerificationCode: BillingVerificationDenial['code'];
+};
+
+/**
+ * RPC billing denials have two transport shapes:
+ * - response-envelope RPCs use `ServiceError` for retryable verification
+ *   states and `AuthError` for the provider-confirmed terminal lapse;
+ * - exception-style RPCs throw their generated service's own `ApiError`.
+ *
+ * Both put the stable billing code in `statusDetail`/`ApiError.body`. Confirmed
+ * free and unauthenticated callers have no billing denial and keep the
+ * handler's existing Pro-required rendering.
+ */
+export function getPremiumRpcBillingErrorType(
+  denial: BillingVerificationDenial,
+): 'AuthError' | 'ServiceError' {
+  return denial.retryable ? 'ServiceError' : 'AuthError';
+}
+
+function createPremiumRpcBillingDenialError<T extends RpcApiErrorLike>(
+  identity: PremiumCallerIdentity,
+  ApiErrorConstructor: RpcApiErrorConstructor<T>,
+): PremiumRpcBillingApiError<T> | null {
+  if (identity.isPremium || !identity.billingDenial) return null;
+  const denial = identity.billingDenial;
+
+  const error = new ApiErrorConstructor(
+    denial.status,
+    denial.message,
+    denial.code,
+  ) as PremiumRpcBillingApiError<T>;
+  error.billingVerificationCode = denial.code;
+  if (denial.status === 503) {
+    error.retryAfter = denial.retryAfterSeconds;
+    error.exposeMessage = true;
+  }
+  return error;
+}
+
+/**
+ * Enforces a hard-denying premium RPC gate while preserving why verification
+ * failed. The generated constructor keeps `instanceof ApiError` service-local;
+ * the fallback message preserves each endpoint's existing `PRO`/`Pro` copy.
+ */
+export async function requirePremiumRpcAccess<T extends RpcApiErrorLike>(
+  request: Request,
+  ApiErrorConstructor: RpcApiErrorConstructor<T>,
+  fallbackMessage: string,
+): Promise<void> {
+  const identity = await resolvePremiumCallerIdentity(request);
+  if (identity.isPremium) return;
+
+  const billingError = createPremiumRpcBillingDenialError(identity, ApiErrorConstructor);
+  if (billingError) throw billingError;
+  throw new ApiErrorConstructor(403, fallbackMessage, '');
+}
 
 /**
  * Resolves premium status and the user-bound identity for spend controls.
@@ -63,7 +193,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       ) {
         return { isPremium: true, userId: trustedUserId, kind: 'internal-mcp', quotaExempt: true };
       }
-      return { isPremium: false, userId: null, kind: null, quotaExempt: false };
+      return denyFor(ent);
     }
     // Marker present but nonce mismatch: do NOT short-circuit. Fall
     // through to the normal auth flow — an attacker spoofing the marker
@@ -92,7 +222,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       if (ent && ent.features.apiAccess === true) {
         return { isPremium: true, userId: userKey.userId, kind: 'user-api-key', quotaExempt: false };
       }
-      return { isPremium: false, userId: null, kind: null, quotaExempt: false };
+      return denyFor(ent);
     }
   }
 
@@ -106,7 +236,9 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const session = await validateBearerToken(authHeader.slice(7));
-    if (!session.valid) return { isPremium: false, userId: null, kind: null, quotaExempt: false };
+    // An invalid token is a confirmed answer about the CREDENTIAL, not a failed
+    // entitlement lookup — it stays a plain deny.
+    if (!session.valid) return DENIED;
     if (session.role === 'pro' && session.userId) {
       return { isPremium: true, userId: session.userId, kind: 'bearer', quotaExempt: false };
     }
@@ -117,15 +249,42 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       if (ent && ent.features.tier >= 1) {
         return { isPremium: true, userId: session.userId, kind: 'bearer', quotaExempt: false };
       }
+      return denyFor(ent);
     }
   }
-  return { isPremium: false, userId: null, kind: null, quotaExempt: false };
+  return DENIED;
 }
 
 /**
  * Returns true when the caller has a valid API key OR a PRO bearer token.
  * Used by handlers where the RPC endpoint is public but certain fields
  * (e.g. framework/systemAppend) should only be honored for premium callers.
+ *
+ * DELIBERATELY LOSSY (#5622): a boolean cannot express "we could not verify".
+ * That is acceptable for this function's actual job — the majority of its ~25
+ * callers use it to decide whether to *enrich* a public response (honor
+ * `framework`, return populated vs empty arrays), where the worst case of a
+ * transient failure is a degraded payload rather than a wrong verdict about the
+ * user's plan.
+ *
+ * It is NOT acceptable for a caller that turns `false` into a terminal
+ * "Pro subscription required" 403 — that flattens a backend blip into a
+ * misleading upsell for a paying customer. Those callers must use
+ * `resolvePremiumCallerIdentity()` and render `identity.billingDenial` via
+ * `getBillingVerificationDenial` instead (see api/chat-analyst.ts). Threading
+ * the signal through this boolean would mean changing its return type and every
+ * caller, which is why the identity API carries it instead.
+ *
+ * Known remaining hard-deniers on this boolean, tracked in #5652: the RPC
+ * surfaces under server/worldmonitor/. They share this flattening, but NOT one
+ * response shape — the #5652 fix has to handle both:
+ *   - an in-body `errorType: 'AuthError'` (only summarize-article.ts does this)
+ *   - a thrown `ApiError(403, ...)`, which server/error-mapper.ts renders as a
+ *     plain `{ message }` with no `errorType` at all (run-scenario.ts,
+ *     trigger-simulation.ts, get-scenario-status.ts, route-intelligence.ts,
+ *     shipping/v2/{list-webhooks,register-webhook}.ts)
+ * Neither envelope has an HTTP status of its own, so the fix is a different
+ * shape than the two edge routes and is deliberately not bundled here.
  */
 export async function isCallerPremium(request: Request): Promise<boolean> {
   return (await resolvePremiumCallerIdentity(request)).isPremium;

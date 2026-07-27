@@ -7,7 +7,7 @@ WorldMonitor exposes 42 live tools — markets, conflict events, maritime chokep
 
 ## 1. Pick a tier and grab credentials
 
-Free accounts can't reach the MCP server — the OAuth flow returns `401 INSUFFICIENT_TIER`. You need one of:
+Free accounts can't reach the MCP server — the OAuth flow returns `403 INSUFFICIENT_TIER`. You need one of:
 
 - **Pro** — sign in with your WorldMonitor account, no key to manage. 50 quota-consuming calls per UTC day.
 - **API Starter / Business / Enterprise** — paste a user-issued `wm_…` key in your client, or use the same OAuth flow as Pro. `wm_…` MCP calls are throttled at 60 requests/minute/key in this handler; REST/API plan allowances are separate from the Pro/OAuth MCP daily counter.

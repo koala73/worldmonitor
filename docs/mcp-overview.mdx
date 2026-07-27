@@ -10,7 +10,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 </Tip>
 
 <Info>
-**Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
+**Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a `403 INSUFFICIENT_TIER` at the OAuth step.
 </Info>
 
 All paid tiers share the same MCP server and the same 42 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
@@ -101,6 +101,10 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
 
 3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, 7 d refresh).
 
+<Note>
+If the sign-in step reports that your subscription could not be verified — a `503` page, or `503 TIER_VERIFICATION_UNAVAILABLE` from the grant endpoints — that is transient and says nothing about your subscription. Wait the advertised `Retry-After` and start the connection again from your client; the authorization session is single-use, so restart it rather than reloading the page. A confirmed non-Pro account gets `403 INSUFFICIENT_TIER` instead, and a lapsed subscription gets `403` with `X-Billing-Verification: subscription_lapsed`. See [Error handling](/usage-errors).
+</Note>
+
 If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API key instead" on the consent page and submit your `wm_` user key or operator-issued enterprise key — that path is unchanged.
 
 ### Daily limit (Pro tier)
@@ -126,7 +130,7 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 
 | Plan | MCP access | Auth modes | MCP daily reservation | Notes |
 |------|------------|------------|-----------------------|-------|
-| **Free** | ❌ No | — | — | OAuth flow returns 401 `INSUFFICIENT_TIER`. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). |
+| **Free** | ❌ No | — | — | OAuth flow returns `403 INSUFFICIENT_TIER`. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). |
 | **Pro** | ✅ Yes | OAuth only | **50 quota-consuming calls / UTC day** | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
 | **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | OAuth contexts use the Pro counter; `wm_…` MCP calls have **no MCP daily reservation** | Standard developer-tier REST/API access. |
 | **API Business** | ✅ Yes | OAuth **or** `wm_…` key | OAuth contexts use the Pro counter; `wm_…` MCP calls have **no MCP daily reservation** | Higher REST/API throughput. |

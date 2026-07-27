@@ -14,7 +14,14 @@ import {
 import { CHROME_UA } from '../../../_shared/constants';
 import { isProviderAvailable } from '../../../_shared/llm-health';
 import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
-import { isCallerPremium } from '../../../_shared/premium-check';
+import {
+  getPremiumRpcBillingErrorType,
+  resolvePremiumCallerIdentity,
+} from '../../../_shared/premium-check';
+import {
+  markRetryableResponse,
+  setResponseHeader,
+} from '../../../_shared/response-headers';
 import { stripThinkingTags } from '../../../_shared/llm';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
 
@@ -64,7 +71,8 @@ export async function summarizeArticle(
   ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const isPremium = await isCallerPremium(ctx.request);
+  const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
+  const isPremium = premiumIdentity.isPremium;
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
@@ -100,6 +108,25 @@ export async function summarizeArticle(
   });
 
   if (requiresPremium && !isPremium) {
+    const billingDenial = premiumIdentity.billingDenial;
+    if (billingDenial) {
+      if (billingDenial.retryable) {
+        markRetryableResponse(ctx.request);
+        setResponseHeader(ctx.request, 'Retry-After', String(billingDenial.retryAfterSeconds));
+        setResponseHeader(ctx.request, 'X-Billing-Verification', billingDenial.code);
+      }
+      return {
+        summary: '',
+        model: '',
+        provider,
+        tokens: 0,
+        fallback: true,
+        error: billingDenial.message,
+        errorType: getPremiumRpcBillingErrorType(billingDenial),
+        status: 'SUMMARIZE_STATUS_ERROR',
+        statusDetail: billingDenial.code,
+      };
+    }
     return {
       summary: '',
       model: '',

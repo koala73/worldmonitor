@@ -1082,11 +1082,13 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
       stage: 'brief-confirm',
       activation_path: 'day0',
     });
-    // Assert the message this harness actually produces. It fails at
-    // assertExpectedAccount (src/services/notification-channels.ts:55) — no Clerk
+    // Assert the message this harness actually produces. It fails in
+    // `assertExpectedAccount` (src/services/notification-channels.ts) — no Clerk
     // user in the harness — so there is no HTTP status to carry here; the
     // `set email channel: <status>` shape lives on the post-auth path. A bare
     // length check passed on literally any string, including an empty-ish one.
+    // Matched on the thrown message rather than a line number so the reference
+    // survives edits to that module (#5622 moved the function).
     expect(briefCapture?.message).toContain('Authenticated account changed during notification setup');
   });
 

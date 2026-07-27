@@ -439,7 +439,9 @@
       "pricing": "Prețuri",
       "faq": "Întrebări frecvente",
       "docs": "Documente",
-      "launch": "Lansați tabloul de bord"
+      "launch": "Lansați tabloul de bord",
+      "blog": "Blog",
+      "menu": "Meniu"
     },
     "hero": {
       "eyebrow": "Tabloul de bord gratuit de inteligență globală · live acum",
@@ -661,7 +663,9 @@
       "q8": "Am nevoie de un cont?",
       "a8": "Nu. Tabloul de bord funcționează instant fără înregistrare. Un cont este important doar atunci când te actualizezi la Pro sau când vrei ca setările să se sincronizeze pe mai multe dispozitive.",
       "q9": "Este open source?",
-      "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, auto-găzduiește-l sau construiește pe baza lui. Aplicații desktop native pentru Windows, macOS și Linux sunt disponibile, plus o aplicație Android TV pentru afișaje pe perete."
+      "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, auto-găzduiește-l sau construiește pe baza lui. Aplicații desktop native pentru Windows, macOS și Linux sunt disponibile, plus o aplicație Android TV pentru afișaje pe perete.",
+      "q10": "De ce World Monitor nu este Palantir?",
+      "a10": "Palantir face datele proprii ale unei instituții operaționale în cadrul acesteia. World Monitor pornește de la celălalt capăt: adună, normalizează, corelează și monitorizează datele din domeniul public, apoi publică acel strat de inteligență printr-un tablou de bord gratuit și cod open-source. Sarcini diferite, produse diferite."
     },
     "cta": {
       "title": "Harta mondială nu te așteaptă.",

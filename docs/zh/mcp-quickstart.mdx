@@ -7,7 +7,7 @@ WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) �
 
 ## 1. 选择一个套餐并获取凭证
 
-免费账户无法访问 MCP 服务器——OAuth 流程会返回 `401 INSUFFICIENT_TIER`。你需要以下其中之一：
+免费账户无法访问 MCP 服务器——OAuth 流程会返回 `403 INSUFFICIENT_TIER`。你需要以下其中之一：
 
 - **Pro**——使用你的 WorldMonitor 账户登录，无需管理密钥。每个 UTC 日 50 次配额消耗调用。
 - **API Starter / Business / Enterprise**——在你的客户端中粘贴用户签发的 `wm_…` 密钥，或使用与 Pro 相同的 OAuth 流程。`wm_…` MCP 调用在此 handler 中以 60 次请求 / 分钟 / 密钥限流；REST/API 套餐额度与 Pro/OAuth MCP 每日计数器相互独立。

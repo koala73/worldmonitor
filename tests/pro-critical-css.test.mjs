@@ -157,8 +157,9 @@ describe('pro built HTML critical CSS contract', () => {
     it(`${label} re-shows responsive nav/hero reveals so unlayered .hidden can't hide them at all widths`, () => {
       // Regression guard for #4603: the inline critical CSS is UNLAYERED and beats
       // the @layer-wrapped Tailwind sheet, so `nav .hidden{display:none}` /
-      // `main .hidden{display:none}` permanently hide `hidden md:flex` desktop nav
-      // rows and `hidden sm:block` unless the breakpoint reveal is ALSO inlined here.
+      // `main .hidden{display:none}` permanently hide `hidden lg:flex` desktop nav,
+      // `hidden md:block` tablet nav, and `hidden sm:block` unless each breakpoint
+      // reveal is ALSO inlined here.
       const html = builtSrc(relPath);
       const criticalCss = inlineStyleTags(html)
         .filter((tag) => html.indexOf(tag) < html.indexOf(deferredStylePreloadTags(html)[0]))
@@ -168,18 +169,26 @@ describe('pro built HTML critical CSS contract', () => {
       const mainHideIdx = criticalCss.indexOf('main .hidden{display:none}');
       const sm640Idx = criticalCss.indexOf('@media (min-width:640px){');
       const md768Idx = criticalCss.indexOf('@media (min-width:768px){');
-      const navRevealIdx = criticalCss.indexOf('nav [class~="md:flex"]{display:flex}');
+      const lg1024Idx = criticalCss.indexOf('@media (min-width:1024px){');
+      const tabletNavRevealIdx = criticalCss.indexOf('nav [class~="md:block"]{display:block}');
+      const desktopNavRevealIdx = criticalCss.indexOf('nav [class~="lg:flex"]{display:flex}');
+      const tabletNavHideIdx = criticalCss.indexOf('nav [class~="lg:hidden"]{display:none}');
       const smBlockRevealIdx = criticalCss.indexOf('main [class~="sm:block"]{display:block}');
 
       assert.notEqual(navHideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
       assert.notEqual(mainHideIdx, -1, `${relPath} critical CSS should hide plain .hidden main elements`);
-      assert.notEqual(navRevealIdx, -1, `${relPath} critical CSS must re-show hidden md:flex nav rows at >=768px`);
+      assert.notEqual(tabletNavRevealIdx, -1, `${relPath} critical CSS must re-show hidden md:block tablet nav at >=768px`);
+      assert.notEqual(desktopNavRevealIdx, -1, `${relPath} critical CSS must re-show hidden lg:flex desktop nav at >=1024px`);
+      assert.notEqual(tabletNavHideIdx, -1, `${relPath} critical CSS must hide lg:hidden tablet nav at >=1024px`);
       assert.notEqual(smBlockRevealIdx, -1, `${relPath} critical CSS must re-show hidden sm:block at >=640px`);
       // Equal-specificity rules: each reveal must come AFTER its unlayered hide to win the cascade.
-      assert.ok(navRevealIdx > navHideIdx, `${relPath} nav md:flex reveal must follow nav .hidden to win the cascade`);
+      assert.ok(tabletNavRevealIdx > navHideIdx, `${relPath} nav md:block reveal must follow nav .hidden to win the cascade`);
+      assert.ok(desktopNavRevealIdx > navHideIdx, `${relPath} nav lg:flex reveal must follow nav .hidden to win the cascade`);
       assert.ok(smBlockRevealIdx > mainHideIdx, `${relPath} main sm:block reveal must follow main .hidden to win the cascade`);
-      // The nav reveal must sit inside the >=768px block (gated to desktop, not applied at all widths).
-      assert.ok(md768Idx !== -1 && navRevealIdx > md768Idx, `${relPath} nav md:flex reveal must be inside the min-width:768px media block`);
+      // Tablet nav appears in the 768–1023px band; the desktop row replaces it at 1024px.
+      assert.ok(md768Idx !== -1 && tabletNavRevealIdx > md768Idx && tabletNavRevealIdx < lg1024Idx, `${relPath} nav md:block reveal must be inside the min-width:768px media block`);
+      assert.ok(lg1024Idx !== -1 && desktopNavRevealIdx > lg1024Idx, `${relPath} nav lg:flex reveal must be inside the min-width:1024px media block`);
+      assert.ok(tabletNavHideIdx > lg1024Idx, `${relPath} nav lg:hidden hide must be inside the min-width:1024px media block`);
       // The sm:block reveal must sit inside the >=640px block (between the 640 and 768 media opens).
       assert.ok(sm640Idx !== -1 && smBlockRevealIdx > sm640Idx && smBlockRevealIdx < md768Idx, `${relPath} sm:block reveal must be inside the min-width:640px media block`);
     });

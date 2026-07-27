@@ -439,7 +439,9 @@
       "pricing": "Tarification",
       "faq": "FAQ",
       "docs": "Documentation",
-      "launch": "Lancer le tableau de bord"
+      "launch": "Lancer le tableau de bord",
+      "blog": "Blog",
+      "menu": "Menu"
     },
     "hero": {
       "eyebrow": "Tableau de bord d'intelligence mondiale gratuit · en direct maintenant",
@@ -661,7 +663,9 @@
       "q8": "Ai-je besoin d'un compte ?",
       "a8": "Non. Le tableau de bord fonctionne instantanément sans inscription. Un compte n'importe que si vous montez en grade vers Pro ou voulez synchroniser les paramètres sur les appareils.",
       "q9": "Est-ce open source ?",
-      "a9": "Oui — open source sous AGPL-3.0 sur GitHub : lisez le code, auto-hébergez-le, ou construisez dessus. Des applications de bureau natives pour Windows, macOS et Linux sont également disponibles, plus une application Android TV pour les affichages muraux."
+      "a9": "Oui — open source sous AGPL-3.0 sur GitHub : lisez le code, auto-hébergez-le, ou construisez dessus. Des applications de bureau natives pour Windows, macOS et Linux sont également disponibles, plus une application Android TV pour les affichages muraux.",
+      "q10": "Pourquoi World Monitor n'est-il pas Palantir ?",
+      "a10": "Palantir rend opérationnelles les données propres d'une institution au sein de cette institution. World Monitor part de l'autre côté : il assemble, normalise, met en corrélation et surveille les données du domaine public, puis publie cette couche de renseignement via un tableau de bord gratuit et du code open-source. Missions différentes, produits différents."
     },
     "cta": {
       "title": "La carte du monde ne vous attend pas.",

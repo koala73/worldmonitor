@@ -439,7 +439,9 @@
       "pricing": "Ceny",
       "faq": "Často kladené otázky",
       "docs": "Dokumentace",
-      "launch": "Otevřít dashboard"
+      "launch": "Otevřít dashboard",
+      "blog": "Blog",
+      "menu": "Menu"
     },
     "hero": {
       "eyebrow": "Bezplatný dashboard globální zpravodajské služby · live nyní",
@@ -661,7 +663,9 @@
       "a8": "Ne. Dashboard funguje okamžitě bez registrace. Účet je důležitý pouze pokud upgradujete na Pro nebo chcete synchronizovat nastavení mezi zařízeními.",
       "q9": "Je to open source?",
       "a9": "Ano — open source pod AGPL-3.0 na GitHubu: čtěte kód, hostujte jej sami nebo na něm stavějte. Nativní desktopové aplikace pro Windows, macOS a Linux jsou také dostupné, plus Android TV aplikace pro nástěnné displeje.",
-      "q6": "Proč bych měl důvěřovat upozornění?"
+      "q6": "Proč bych měl důvěřovat upozornění?",
+      "q10": "Proč není World Monitor Palantir?",
+      "a10": "Palantir zprovozňuje vlastní data instituce uvnitř té instituce. World Monitor začíná z druhé strany: shromažďuje, normalizuje, koreluje a monitoruje data veřejného světa, poté publikuje tuto inteligenční vrstvu přes bezplatný dashboard a open-source kód. Jiná úloha, jiný produkt."
     },
     "cta": {
       "title": "Světová mapa na tebe nečeká.",

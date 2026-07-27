@@ -439,7 +439,9 @@
       "pricing": "Díjszabás",
       "faq": "GYIK",
       "docs": "Dokumentáció",
-      "launch": "Irányítópult indítása"
+      "launch": "Irányítópult indítása",
+      "blog": "Blog",
+      "menu": "Menü"
     },
     "hero": {
       "eyebrow": "Ingyenes globális hírszerzési irányítópult · most élő",
@@ -661,7 +663,9 @@
       "q8": "Szükségem van fiókra?",
       "a8": "Nem. Az irányítópult azonnal működik regisztráció nélkül. A fiók csak akkor számít, ha a Pro verzióra frissítesz vagy beállításokat szeretnél szinkronizálni az eszközök között.",
       "q9": "Nyílt forráskódú?",
-      "a9": "Igen — nyílt forráskód az AGPL-3.0 alatt a GitHubon: olvasd el a kódot, hostold saját magad, vagy építs rá. Natív asztali alkalmazások Windows, macOS és Linux rendszerre érhetők el, valamint Android TV-alkalmazás falra szerelt kijelzőkhöz."
+      "a9": "Igen — nyílt forráskód az AGPL-3.0 alatt a GitHubon: olvasd el a kódot, hostold saját magad, vagy építs rá. Natív asztali alkalmazások Windows, macOS és Linux rendszerre érhetők el, valamint Android TV-alkalmazás falra szerelt kijelzőkhöz.",
+      "q10": "Miért nem a World Monitor a Palantir?",
+      "a10": "A Palantir egy intézmény saját adatait működteti az adott intézményen belül. A World Monitor az ellenkező végről indul: összegyűjt, normalizál, korrelál és nyomon követ nyilvános adatokat, majd ezt az intelligencia réteget egy ingyenes irányítópulton és nyílt forráskódú kódok révén közzéteszi. Más feladat, más termék."
     },
     "cta": {
       "title": "A világtérkép nem vár rád.",
