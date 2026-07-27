@@ -1,7 +1,14 @@
+import { createRequire } from 'node:module';
+
 import {
   CHINA_CORPORATE_DISCLOSURE_TYPES,
   CHINA_DISCLOSURE_DOCUMENT_HOSTS,
 } from '../shared/china-corporate-disclosure-policy.js';
+
+const {
+  parseProxyConfig,
+  proxyFetch,
+} = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 export const CHINA_CORPORATE_DISCLOSURE_KEY = 'market:china:corporate-disclosures:v1';
 
@@ -67,7 +74,15 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://www.szse.cn/api/disc/announcement/annList',
     metadataHost: 'www.szse.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SZSE,
-    maxRequestsPerRun: 1,
+    maxRequestsPerRun: 2,
+    maxDirectRequestsPerRun: 1,
+    maxProxyRequestsPerRun: 1,
+    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
+    // Railway registers PROXY_URL as required config for this service: without
+    // it the source still runs direct-only (no hard failure), but it loses
+    // the one capability this contract exists to provide, so an unset
+    // PROXY_URL in production is a deployment gap worth alerting on.
+    proxyEnvironmentVariable: 'PROXY_URL',
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
@@ -145,6 +160,12 @@ const MAX_UNCLASSIFIED_REVISIONS = 100;
 const SSE_PAGE_SIZE = 100;
 const SSE_REQUEST_TIMEOUT_MS = 30_000;
 const SZSE_PAGE_SIZE = 50;
+// Worst case (direct attempt times out, then the proxy retry also times out)
+// this source can take up to SZSE_DIRECT_TIMEOUT_MS + SZSE_PROXY_TIMEOUT_MS
+// (~35s) before the bundle moves on. Keep this comfortably inside the
+// per-section timeoutMs configured for it in seed-bundle-market-backup.mjs.
+const SZSE_DIRECT_TIMEOUT_MS = 15_000;
+const SZSE_PROXY_TIMEOUT_MS = 20_000;
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
   Object.freeze(['szse', fetchSzseAnnouncements]),
@@ -423,6 +444,58 @@ function errorCodeFor(error) {
   return 'FETCH_FAILED';
 }
 
+function transportFailureReason(error) {
+  const causeCode = String(error?.cause?.code ?? '');
+  return /^[A-Z][A-Z0-9_]+$/u.test(causeCode)
+    ? causeCode
+    : errorCodeFor(error);
+}
+
+function shouldProxySzseFailure(error) {
+  const code = errorCodeFor(error);
+  if (code === 'FETCH_FAILED' || code === 'TIMEOUT') return true;
+  const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
+  return status === 403
+    || status === 408
+    || status === 425
+    || status === 429
+    || status >= 500;
+}
+
+async function fetchViaConfiguredProxy(input, init, {
+  proxyUrl,
+  maxBytes,
+  proxyRequestFn,
+}) {
+  const proxyConfig = parseProxyConfig(proxyUrl);
+  if (!proxyConfig) throw sourceError('PROXY_NOT_CONFIGURED');
+  // init.headers carries the same Referer/User-Agent/Content-Type the direct
+  // request used (requestInit() below), deliberately: we're routing the exact
+  // same declared client through a different egress point, not masquerading
+  // as a browser, which matches the source's terms-of-use posture.
+  const result = await proxyRequestFn(String(input), proxyConfig, {
+    accept: 'application/json',
+    headers: init?.headers,
+    method: init?.method,
+    body: init?.body,
+    maxResponseBytes: maxBytes,
+    // signal already enforces requestInit()'s timeoutMs; timeoutMs here is a
+    // second, independent backstop inside proxyFetch's own socket/tunnel
+    // handling in case the AbortSignal doesn't propagate through a stalled
+    // CONNECT tunnel. Both are pinned to SZSE_PROXY_TIMEOUT_MS on purpose.
+    timeoutMs: SZSE_PROXY_TIMEOUT_MS,
+    signal: init?.signal,
+  });
+  if (result.buffer.byteLength > maxBytes) throw sourceError('RESPONSE_TOO_LARGE');
+  return new Response(result.buffer, {
+    status: result.status,
+    headers: {
+      'Content-Length': String(result.buffer.byteLength),
+      'Content-Type': result.contentType || 'application/octet-stream',
+    },
+  });
+}
+
 async function fetchSseAnnouncements(fetchFn, now) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse;
   const issuers = REVIEWED_DISCLOSURE_ISSUERS.filter((issuer) => issuer.exchange === 'SSE');
@@ -496,14 +569,23 @@ async function fetchSseAnnouncements(fetchFn, now) {
   };
 }
 
-async function fetchSzseAnnouncements(fetchFn, now) {
+async function fetchSzseAnnouncements(fetchFn, now, {
+  proxyFetchFn = null,
+} = {}) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse;
   const { begin, end } = dateWindow(now);
   const retrievedAt = new Date(now).toISOString();
   const issuers = REVIEWED_DISCLOSURE_ISSUERS.filter((issuer) => issuer.exchange === 'SZSE');
   const url = new URL(contract.metadataEndpoint);
   url.searchParams.set('random', '0.5');
-  const response = await fetchFn(url, {
+  const body = JSON.stringify({
+    seDate: [begin, end],
+    channelCode: ['listedNotice_disc'],
+    stock: issuers.map((issuer) => issuer.securityCode),
+    pageSize: SZSE_PAGE_SIZE,
+    pageNum: 1,
+  });
+  const requestInit = (timeoutMs) => ({
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -511,28 +593,54 @@ async function fetchSzseAnnouncements(fetchFn, now) {
       'Content-Type': 'application/json',
       'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
     },
-    body: JSON.stringify({
-      seDate: [begin, end],
-      channelCode: ['listedNotice_disc'],
-      stock: issuers.map((issuer) => issuer.securityCode),
-      pageSize: SZSE_PAGE_SIZE,
-      pageNum: 1,
-    }),
+    body,
     redirect: contract.redirectPolicy,
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
-  assertMetadataResponse(response, contract);
-  const payload = await readBoundedJsonResponse(response, contract.maxResponseBytes);
-  const announcements = normalizeSzseAnnouncements(payload, { retrievedAt });
-  const contentTruncated = Number(payload.announceCount) > SZSE_PAGE_SIZE;
+  const request = async (requestFn, timeoutMs) => {
+    const response = await requestFn(url, requestInit(timeoutMs));
+    assertMetadataResponse(response, contract);
+    const payload = await readBoundedJsonResponse(response, contract.maxResponseBytes);
+    return {
+      payload,
+      announcements: normalizeSzseAnnouncements(payload, { retrievedAt }),
+    };
+  };
+
+  let fetched;
+  let requestCount = 1;
+  let transportPath = 'direct';
+  let fallbackReason = null;
+  try {
+    fetched = await request(fetchFn, SZSE_DIRECT_TIMEOUT_MS);
+  } catch (directError) {
+    fallbackReason = transportFailureReason(directError);
+    if (!proxyFetchFn || !shouldProxySzseFailure(directError)) throw directError;
+    requestCount += 1;
+    transportPath = 'proxy';
+    try {
+      fetched = await request(proxyFetchFn, SZSE_PROXY_TIMEOUT_MS);
+    } catch (proxyError) {
+      const failure = sourceError(errorCodeFor(proxyError), proxyError);
+      failure.requestCount = requestCount;
+      failure.transportPath = transportPath;
+      failure.fallbackReason = fallbackReason;
+      failure.proxyFailureReason = transportFailureReason(proxyError);
+      throw failure;
+    }
+  }
+
+  const contentTruncated = Number(fetched.payload.announceCount) > SZSE_PAGE_SIZE;
   return {
     sourceId: 'szse',
     ok: !contentTruncated,
     partial: contentTruncated,
     transportOk: true,
-    requestCount: 1,
-    announcements,
+    requestCount,
+    announcements: fetched.announcements,
     errorCode: contentTruncated ? 'PAGE_LIMIT_REACHED' : null,
+    transportPath,
+    ...(fallbackReason ? { fallbackReason } : {}),
   };
 }
 
@@ -620,6 +728,7 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         checkedAt: generatedAt,
         lastSuccessAt: null,
         requestCount: 0,
+        transportPath: 'not_applicable',
         emptyResultCount: 0,
         errorCode: contract.blockedReason,
       };
@@ -638,6 +747,8 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         checkedAt: generatedAt,
         lastSuccessAt: generatedAt,
         requestCount: outcome.requestCount,
+        transportPath: outcome.transportPath ?? 'direct',
+        ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
         emptyResultCount,
         errorCode: coverageGap ? 'COVERAGE_GAP' : null,
       };
@@ -653,6 +764,8 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         checkedAt: generatedAt,
         lastSuccessAt: transportSucceeded ? generatedAt : previous?.lastSuccessAt ?? null,
         requestCount: outcome.requestCount,
+        transportPath: outcome.transportPath ?? 'direct',
+        ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
         emptyResultCount,
         errorCode: outcome.errorCode ?? (coverageGap ? 'COVERAGE_GAP' : 'PARTIAL_FETCH'),
       };
@@ -666,6 +779,11 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
       checkedAt: generatedAt,
       lastSuccessAt: previous?.lastSuccessAt ?? null,
       requestCount: outcome?.requestCount ?? 0,
+      transportPath: outcome?.transportPath ?? 'direct',
+      ...(outcome?.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+      ...(outcome?.proxyFailureReason
+        ? { proxyFailureReason: outcome.proxyFailureReason }
+        : {}),
       emptyResultCount,
       errorCode: outcome?.errorCode ?? 'NOT_ATTEMPTED',
     };
@@ -1018,9 +1136,19 @@ export function buildChinaCorporateDisclosureSnapshot({
       metadataEndpoint: contract.metadataEndpoint,
       documentHosts: contract.documentHosts,
       maxRequestsPerRun: contract.maxRequestsPerRun,
+      ...(contract.maxDirectRequestsPerRun
+        ? { maxDirectRequestsPerRun: contract.maxDirectRequestsPerRun }
+        : {}),
+      ...(contract.maxProxyRequestsPerRun
+        ? { maxProxyRequestsPerRun: contract.maxProxyRequestsPerRun }
+        : {}),
       maxResponseBytes: contract.maxResponseBytes,
       redirectPolicy: contract.redirectPolicy,
       documentRetrieval: contract.documentRetrieval,
+      ...(contract.fallbackPolicy ? { fallbackPolicy: contract.fallbackPolicy } : {}),
+      ...(contract.proxyEnvironmentVariable
+        ? { proxyEnvironmentVariable: contract.proxyEnvironmentVariable }
+        : {}),
       ...(contract.paginationPolicy ? { paginationPolicy: contract.paginationPolicy } : {}),
       ...(contract.saturationBehavior ? { saturationBehavior: contract.saturationBehavior } : {}),
       ...(contract.emptyResultPolicy ? { emptyResultPolicy: contract.emptyResultPolicy } : {}),
@@ -1033,10 +1161,19 @@ export function buildChinaCorporateDisclosureSnapshot({
 
 export async function fetchChinaCorporateDisclosureSnapshot({
   fetchFn = globalThis.fetch,
+  proxyUrl = process.env.PROXY_URL ?? '',
+  proxyRequestFn = proxyFetch,
   now = Date.now(),
   previousSnapshot = null,
   onDecision = (entry) => console.log(JSON.stringify({ event: 'china_corporate_disclosure_source', ...entry })),
 } = {}) {
+  const resolvedProxyFetchFn = proxyUrl
+    ? (input, init) => fetchViaConfiguredProxy(input, init, {
+        proxyUrl,
+        maxBytes: OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
+        proxyRequestFn,
+      })
+    : null;
   const outcomes = [];
   for (const [sourceId, fetchSource] of LAUNCHED_SOURCE_FETCHERS) {
     let requestCount = 0;
@@ -1044,14 +1181,21 @@ export async function fetchChinaCorporateDisclosureSnapshot({
       const outcome = await fetchSource(async (input, init) => {
         requestCount += 1;
         return fetchFn(input, init);
-      }, now);
+      }, now, {
+        proxyFetchFn: sourceId === 'szse' ? resolvedProxyFetchFn : null,
+      });
       outcomes.push(outcome);
     } catch (error) {
       const outcome = {
         sourceId,
         ok: false,
-        requestCount,
+        requestCount: error?.requestCount ?? requestCount,
         errorCode: errorCodeFor(error),
+        transportPath: error?.transportPath ?? 'direct',
+        ...(error?.fallbackReason ? { fallbackReason: error.fallbackReason } : {}),
+        ...(error?.proxyFailureReason
+          ? { proxyFailureReason: error.proxyFailureReason }
+          : {}),
       };
       outcomes.push(outcome);
     }
@@ -1073,6 +1217,11 @@ export async function fetchChinaCorporateDisclosureSnapshot({
       ...(source.errorCode ? { reason: source.errorCode } : {}),
       ...(source.launchStatus === 'launched'
         ? { emptyResultCount: source.emptyResultCount }
+        : {}),
+      ...(source.transportPath ? { transportPath: source.transportPath } : {}),
+      ...(source.fallbackReason ? { fallbackReason: source.fallbackReason } : {}),
+      ...(source.proxyFailureReason
+        ? { proxyFailureReason: source.proxyFailureReason }
         : {}),
       checkedAt: source.checkedAt,
     });

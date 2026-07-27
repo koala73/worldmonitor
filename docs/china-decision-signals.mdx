@@ -90,20 +90,43 @@ publishes the canonical key, and then writes
 canonical publication. Failed deliveries remain in a durable deduplicated
 outbox for the next seed run; they never roll back the published snapshot.
 
-Run the repository parity audit before release:
+The audit has two halves, and each one is enforced somewhere different.
+
+The **static half** runs on every pull request through
+`tests/china-decision-parity-audit.test.mjs` under `npm run test:data`. It
+confirms the six-domain composition is still registered across the API, MCP,
+bootstrap, health, alert, Railway, and documentation surfaces. Most of those
+registrations are checked by token presence, which proves a surface was not
+deleted or renamed. For the surfaces where a silent unwiring costs the most —
+gateway cache tier, anonymous gateway reachability, and the three access tiers —
+the audit instead reads the real container and asks whether the value is a
+member of it, so a commented-out entry or a dead duplicate reads as a failure
+rather than a pass. The access-tier gate is additionally proven by executing the
+published-snapshot validator against downgraded tiers.
+
+Run it locally before release:
 
 ```bash
 node scripts/audit-china-decision-parity.mjs
 ```
 
-After staging is deployed, add only the public base URL:
+The **live half** runs against a deployment, so no pull request can exercise it.
+It is enforced by the `china-decision-parity-live.yml` workflow, which probes
+production every six hours, on pushes to `main` that touch the audit, and on
+demand. Run it manually against a freshly deployed staging environment with the
+public base URL:
 
 ```bash
-node scripts/audit-china-decision-parity.mjs --url https://api-staging.example
+node scripts/audit-china-decision-parity.mjs --require-live --url https://api-staging.example
 ```
 
-The live probe validates both the composition RPC and the public
-`chinaDecisionSignals` bootstrap projection, including a one-hour maximum
-canonical age. It prints only route status, latency, generation time, and group
-states. It never prints environment variables, API keys, Redis values, source
-documents, or detailed trade records.
+`--require-live` makes the command fail when no URL reaches the probe, so an
+automated caller cannot report a staging audit it never performed. The base URL
+must be `https` on a public host — loopback, link-local, and private ranges are
+rejected, because the probe reports reachability and latency for whatever it is
+pointed at. The live probe validates both the composition RPC and the public
+`chinaDecisionSignals`
+bootstrap projection, including a one-hour maximum canonical age. It prints only
+route status, latency, generation time, and group states. It never prints
+environment variables, API keys, Redis values, source documents, or detailed
+trade records.

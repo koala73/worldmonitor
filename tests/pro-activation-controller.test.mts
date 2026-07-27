@@ -545,11 +545,13 @@ describe('ProActivationController power-step surface wiring', () => {
   ): Promise<{
     options: Record<string, unknown>;
     settingsOpens: string[];
+    searchOpens: string[];
   }> {
     installBrowserState();
     installEligibleMarkerlessAccount(userId, features);
     const { ProActivationController } = await loadController();
     const settingsOpens: string[] = [];
+    const searchOpens: string[] = [];
     const ctx = {
       isDestroyed: false,
       isDesktopApp: false,
@@ -559,6 +561,7 @@ describe('ProActivationController power-step surface wiring', () => {
     const controller = new ProActivationController(ctx as never, {
       reloadPending: false,
       openAiAnalyst() {},
+      openSearch: () => searchOpens.push('search'),
     });
     try {
       controller.init();
@@ -569,12 +572,23 @@ describe('ProActivationController power-step surface wiring', () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       assert.equal(captured.length, 1, 'the eligible Pro account must mount the flow exactly once');
-      return { options: captured[0] as Record<string, unknown>, settingsOpens };
+      return { options: captured[0] as Record<string, unknown>, settingsOpens, searchOpens };
     } finally {
       ctx.isDestroyed = true;
       controller.destroy();
     }
   }
+
+  it('wires the power step to the app-owned command search', async () => {
+    const { options, searchOpens } = await captureFlowOptions('user-search-pointer', {
+      apiAccess: false,
+      mcpAccess: true,
+    });
+
+    assert.equal(typeof options.openSearch, 'function');
+    (options.openSearch as () => void)();
+    assert.deepEqual(searchOpens, ['search']);
+  });
 
   it('deep-links the power step to MCP Clients — the capability Pro actually has (#5607)', async () => {
     const { options, settingsOpens } = await captureFlowOptions('user-mcp-pointer', {

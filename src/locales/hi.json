@@ -2324,6 +2324,7 @@
           "summaryVerified": "अनलॉक और तैयार, जब आप हों।",
           "channelsNote": "Telegram, Slack, Discord या वेबहुक पसंद करेंगे?",
           "pointers": {
+            "search": "पूरे डैशबोर्ड में खोजें",
             "widgets": "एक कस्टम विजेट बनाएं",
             "analyst": "AI विश्लेषक से पूछें",
             "mcpClients": "MCP सेट करें",
@@ -2571,6 +2572,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {

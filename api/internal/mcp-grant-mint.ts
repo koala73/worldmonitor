@@ -31,9 +31,17 @@
  *   - INVALID_NONCE                400  Redis nonce miss / expired
  *   - UNKNOWN_CLIENT               400  Redis client miss
  *   - INVALID_REDIRECT_URI         400  client redirect_uri no longer allowlisted
- *   - INSUFFICIENT_TIER            403  user tier < 1 or expired
+ *   - INSUFFICIENT_TIER            403  user tier < 1, no mcpAccess, expired,
+ *                                       or a provider-CONFIRMED lapse (which
+ *                                       additionally sets X-Billing-Verification)
  *   - NONCE_CLAIMED_BY_OTHER_USER  403  nonce already claimed by a different
  *                                       Clerk userId (anti-hijack — see F2)
+ *   - TIER_VERIFICATION_UNAVAILABLE 503 entitlement could not be VERIFIED, or a
+ *                                       renewal re-check is in flight. Retryable:
+ *                                       carries Retry-After +
+ *                                       X-Billing-Verification (#5622). Distinct
+ *                                       from INSUFFICIENT_TIER on purpose —
+ *                                       flattening the two is #5600.
  *   - SERVICE_UNAVAILABLE          503  Redis SETEX failure
  *   - CONFIGURATION_ERROR          500  MCP_PRO_GRANT_HMAC_SECRET unset
  *
@@ -55,6 +63,11 @@ export const config = { runtime: 'edge' };
 
 import { resolveClerkSession } from '../../server/_shared/auth-session';
 import { getEntitlements } from '../../server/_shared/entitlement-check';
+import {
+  checkProMcpAccess,
+  proMcpGateDenialResponse,
+  type ProMcpEntitlement,
+} from '../../server/_shared/pro-mcp-gate';
 // @ts-expect-error — JS module, no declaration file
 import { isAllowedRedirectUri } from '../oauth/register.js';
 import { GrantConfigError, signGrant } from '../_mcp-grant-hmac';
@@ -170,8 +183,12 @@ export interface MintDeps {
    * transport failure. Caller decides whether to GET-and-compare or 503.
    */
   redisSetNxEx: (key: string, value: unknown, ttlSeconds: number) => Promise<boolean>;
-  /** Returns Pro entitlement info or null. */
-  getEntitlements: (userId: string) => Promise<{ features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
+  /**
+   * Returns Pro entitlement info or null. Includes the billing-verification
+   * fields, which the gate classifies (#5622) — a stub omitting them would
+   * type-check while only ever exercising the terminal branch.
+   */
+  getEntitlements: (userId: string) => Promise<ProMcpEntitlement | null>;
   /** Same allowlist DCR uses. */
   isAllowedRedirectUri: (uri: string) => boolean;
   /** Signs the wire-format grant token. Throws GrantConfigError if env unset. */
@@ -235,17 +252,14 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
 
   const ent = await deps.getEntitlements(userId);
   const now = deps.now();
-  // Mirror downstream MCP-edge gate: both tier ≥ 1 AND mcpAccess === true
-  // are required. Reviewer round-2 P2 — gating on tier alone here lets a
-  // tier-1 user without mcpAccess get a token row, then 401 every call.
-  if (
-    !ent ||
-    ent.features.tier < 1 ||
-    ent.features.mcpAccess !== true ||
-    ent.validUntil < now
-  ) {
-    return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403);
-  }
+  // Shared with mcp-grant-context.ts and oauth/authorize-pro.ts
+  // (server/_shared/pro-mcp-gate.ts): both tier >= 1 AND mcpAccess === true are
+  // required — gating on tier alone lets a tier-1 user without mcpAccess get a
+  // token row, then 401 every call — and an entitlement that could not be
+  // VERIFIED answers the retryable 503 rather than the terminal
+  // INSUFFICIENT_TIER (#5622).
+  const gate = checkProMcpAccess(ent, now);
+  if (gate) return proMcpGateDenialResponse(gate);
 
   // Mint the signed grant first (cheaper to fail before the Redis write).
   const exp = now + GRANT_TTL_MS;

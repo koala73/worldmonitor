@@ -29,6 +29,32 @@ description: "Design principles, intelligence tradecraft, and algorithmic decisi
 | **No framework overhead**           | Vanilla TypeScript with direct DOM manipulation, event delegation, and custom `Panel`/`VirtualList` classes. No virtual DOM diffing, no framework runtime, no adapter libraries. The entire application shell weighs less than React's runtime. Browser standards (Web Workers, IndexedDB, Intersection Observer, ResizeObserver, CustomEvent) serve as the reactivity and component model.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | **Type-safe data flow**             | Discriminated union markers (`_kind` field), proto-generated typed clients/servers, and exhaustive `switch` matching ensure compile-time safety across 15+ marker types, 35 service domains, and 56 map layers. Adding a new data type produces compiler errors at every unhandled site.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
+## Internationalization and Search Indexing
+
+World Monitor currently uses **application localization**, not separate localized
+search documents. A `?lang=` parameter remains supported as shareable user
+preference state: the client loads the requested interface dictionary, updates
+the rendered document language and direction, and preserves the base page
+canonical. Raw apex, dashboard, and Pro HTML is English, so those documents
+advertise only `x-default` and `en`, both pointing at the self-canonical URL.
+Query-string locale URLs do not belong in hreflang, robots, or sitemap output.
+
+Publishing any non-English hreflang entry requires a separately reviewed
+locale-prefixed static or server-rendered architecture, such as `/fr/` and
+`/fr/dashboard`. Every advertised page must meet the complete localized-page
+contract:
+
+- translated visible main content and metadata;
+- a correct `<html lang>` declaration;
+- a stable crawlable URL that returns HTTP 200 and remains indexable;
+- a self-referencing canonical;
+- self-referencing and reciprocal hreflang entries across the cluster; and
+- sitemap inclusion for the localized canonical URL.
+
+Genuinely localized pages must not canonicalize back to English. Until that
+architecture exists, adding a client translation or a supported locale code
+does not authorize publishing a new indexable alternate.
+
 ### Intelligence Analysis Tradecraft
 
 The dashboard's design draws from established intelligence analysis methodology, adapted for automated open-source intelligence:

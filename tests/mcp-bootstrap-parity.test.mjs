@@ -238,7 +238,7 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future resilience tool. Companion data to fossil-electricity-share (already exposed via get_energy_intelligence).'],
   ['resilience:power-losses:v1',
     'deferred to a future resilience tool. Companion data to the resilience v2 energy bundle.'],
-  ['product-catalog:v2',
+  ['product-catalog:v3',
     'deferred to a future product-catalog tool. Used by the dashboard to render product metadata, not a queryable data slice.'],
   ['climate:zone-normals:v1',
     'deferred to a future climate-baseline tool. Reference data (30-year WMO normals) used as a denominator for climate:anomalies:v2 (already exposed via get_climate_data).'],

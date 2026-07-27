@@ -183,6 +183,28 @@ jobs:
       - run: npm ci
       - run: npm run test:convex
 
+  # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
+  # the components under test import `@/services/i18n`, which uses
+  # `import.meta.glob` and therefore needs a Vite pipeline, and `test:data`
+  # already runs ~390 files in one tsx process.
+  dom-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      # `npm run typecheck` only covers src/, so these files would otherwise
+      # never be type-checked — the first run of this config caught four real
+      # type errors in them.
+      - run: npm run typecheck:dom-tests
+      - run: npm run test:dom
+
   variant-smoke-full:
     needs: changes
     if: needs.changes.outputs.code == 'true'

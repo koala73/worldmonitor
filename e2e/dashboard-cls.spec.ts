@@ -285,9 +285,7 @@ const assertDashboardCls = async (page: Page): Promise<void> => {
   const cls = await page.evaluate(() => {
     const entries = (window.__wmDashboardClsEntries ?? []).filter((entry) => !entry.hadRecentInput);
     const total = entries.reduce((sum, entry) => sum + entry.value, 0);
-    const seoPrerenderSelectors = new Set(['#seo-prerender', 'h1', 'h2', 'p', 'ul', 'li', 'nav']);
     const dashboardEntries = entries.filter((entry) => {
-      if (entry.sourceSelectors.some((selector) => seoPrerenderSelectors.has(selector))) return false;
       return entry.sourceSelectors.some((selector) => (
         selector === '.header'
         || selector === '#panelTabsMount'

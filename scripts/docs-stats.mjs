@@ -144,36 +144,49 @@ function parseJsonLdBlocks(html) {
     .map((m) => JSON.parse(m[1]));
 }
 
-function validateIndexLanguageMetadata(stats, html = read('index.html')) {
+function validateIndexLanguageMetadata(_stats, html = read('index.html')) {
   const failures = [];
-  const expected = stats.localeCodes;
 
   const alternateLinks = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)"\s*\/>/g)]
     .map((m) => ({ code: m[1], href: m[2] }));
+  const canonicalHref = html.match(/<link\s+rel="canonical"\s+href="([^"]+)"\s*\/>/)?.[1] ?? null;
+  if (!canonicalHref) {
+    failures.push('index.html: canonical link not found');
+  }
+
   const defaultLink = alternateLinks.find((l) => l.code === 'x-default');
   if (!defaultLink) {
     failures.push('index.html: x-default hreflang link not found');
   } else {
-    const params = hrefSearchParams(defaultLink.href);
-    if (!params) {
+    let parsed;
+    try {
+      parsed = new URL(defaultLink.href);
+    } catch {
       failures.push('index.html: x-default hreflang href is not a valid URL');
-    } else if (params.has('lang')) {
+    }
+    if (parsed?.searchParams.has('lang')) {
       failures.push('index.html: x-default hreflang href must not set ?lang');
     }
   }
 
-  const localeLinks = alternateLinks.filter((l) => l.code !== 'x-default');
-  const hreflangCodes = localeLinks.map((l) => l.code);
-  if (!sameStringSet(hreflangCodes, expected)) {
-    failures.push(`index.html: hreflang locale set does not match src/locales (${describeSetDelta(hreflangCodes, expected)})`);
+  const hreflangCodes = alternateLinks.map((link) => link.code);
+  const expectedDiscoveryCodes = ['x-default', 'en'];
+  if (!sameStringSet(hreflangCodes, expectedDiscoveryCodes)) {
+    failures.push(`index.html: hreflang set must contain only x-default and en (${describeSetDelta(hreflangCodes, expectedDiscoveryCodes)})`);
   }
 
-  for (const code of expected.filter((c) => c !== 'en')) {
-    const link = localeLinks.find((l) => l.code === code);
-    if (!link) continue;
-    const lang = hrefSearchParams(link.href)?.get('lang');
-    if (lang !== code) {
-      failures.push(`index.html: hreflang ${code} href must use ?lang=${code}`);
+  for (const link of alternateLinks) {
+    let parsed;
+    try {
+      parsed = new URL(link.href);
+    } catch {
+      failures.push(`index.html: ${link.code} hreflang href must be an absolute URL`);
+    }
+    if (parsed?.searchParams.has('lang')) {
+      failures.push(`index.html: query-string locale URLs must not be advertised (${link.code})`);
+    }
+    if (canonicalHref && link.href !== canonicalHref) {
+      failures.push(`index.html: ${link.code} hreflang href must equal the canonical URL`);
     }
   }
 
@@ -190,8 +203,8 @@ function validateIndexLanguageMetadata(stats, html = read('index.html')) {
     failures.push('index.html: WebSite JSON-LD block not found');
   } else {
     const inLanguage = Array.isArray(webSite.inLanguage) ? webSite.inLanguage : [webSite.inLanguage].filter(Boolean);
-    if (!sameStringSet(inLanguage, expected)) {
-      failures.push(`index.html: WebSite inLanguage does not match src/locales (${describeSetDelta(inLanguage, expected)})`);
+    if (!sameStringSet(inLanguage, ['en'])) {
+      failures.push(`index.html: WebSite inLanguage must describe the raw English document (${describeSetDelta(inLanguage, ['en'])})`);
     }
   }
 
@@ -202,22 +215,11 @@ function validateIndexLanguageMetadata(stats, html = read('index.html')) {
   return failures;
 }
 
-// Parse a URL's query params tolerantly. A base URL is supplied so a relative
-// hreflang href (e.g. `/dashboard?lang=fa`) parses instead of throwing and
-// crashing the whole gate. Returns null only when the value is not a URL at all.
-function hrefSearchParams(href) {
-  try {
-    return new URL(href, 'https://www.worldmonitor.app').searchParams;
-  } catch {
-    return null;
-  }
-}
-
 // Cross-check the runtime i18next allow-list (SUPPORTED_LANGUAGES in
 // src/services/i18n.ts) against the filesystem locale set. index.html now
-// advertises an hreflang `?lang=<code>` for every locale on disk; if a code is
-// present on disk but missing from SUPPORTED_LANGUAGES, i18next silently falls
-// back to English for that `?lang=`, making the advertised URL a dead end.
+// accepts `?lang=<code>` as user-facing application state; if a code is present
+// on disk but missing from SUPPORTED_LANGUAGES, shared links silently fall back
+// to English even though the translation exists.
 function parseSupportedLanguages(i18nSource) {
   const block = i18nSource.match(/const\s+SUPPORTED_LANGUAGES\s*=\s*\[([\s\S]*?)\]\s*as const/);
   if (!block) return null;
@@ -447,7 +449,6 @@ function claims(s) {
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
     { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
     { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
-    { file: 'index.html', re: /multilingual \((\d+)\s+locales\)/, value: s.locales },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },

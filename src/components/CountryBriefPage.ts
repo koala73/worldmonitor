@@ -18,7 +18,9 @@ import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { getAuthState } from '@/services/auth-state';
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { evaluateExportGate, exportLockToGateReason, hasPremiumAccess } from '@/services/panel-gating';
+import { primeExportGateActivation } from '@/services/export-gate';
+import { exportGateCopy } from '@/components/ExportGateControl';
 import { trackGateHit } from '@/services/analytics';
 
 
@@ -139,7 +141,9 @@ export class CountryBriefPage implements CountryBriefPanel {
           }
         } else if (format === 'pdf') {
           this.exportPdf();
-        } else if (format === 'json' || format === 'csv' || format === 'evidence-md') {
+        } else if (format === 'json' || format === 'csv') {
+          if (this.canExportStructuredData()) this.exportBrief(format);
+        } else if (format === 'evidence-md') {
           this.exportBrief(format);
         }
         const exportMenu = this.overlay.querySelector('.cb-export-menu');
@@ -741,6 +745,23 @@ export class CountryBriefPage implements CountryBriefPanel {
     if (format === 'evidence-md') exportCountryEvidenceMarkdown(data);
     else if (format === 'json') exportCountryBriefJSON(data);
     else exportCountryBriefCSV(data);
+  }
+
+  /**
+   * U5: the structured-data exports (JSON/CSV) share the dashboard export
+   * gate. The print button, the image export and the print-based PDF stay
+   * free — they carry no machine-readable payload — and the evidence bundle
+   * keeps its own Pro gate below.
+   */
+  private canExportStructuredData(): boolean {
+    const verdict = evaluateExportGate(getAuthState());
+    if (!verdict.locked) {
+      if (verdict.pendingActivation) void primeExportGateActivation();
+      return true;
+    }
+    trackGateHit('export');
+    showToast(exportGateCopy(exportLockToGateReason(verdict.reason)).desc);
+    return false;
   }
 
   private canExportEvidenceBundle(): boolean {

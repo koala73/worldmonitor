@@ -142,6 +142,8 @@ export interface ProActivationControllerOptions {
   reloadPending: boolean;
   /** Panel-owned surface opener that cannot be implemented outside the layout. */
   openAiAnalyst: () => void;
+  /** App-owned global command-search opener. */
+  openSearch?: () => void;
 }
 
 type ChipDecision = 'show' | 'wait' | 'hide';
@@ -615,6 +617,7 @@ export class ProActivationController implements AppModule {
       openWidgetBuilder: () =>
         ctx.container.dispatchEvent(new CustomEvent('wm:open-widget-creator', { detail: {} })),
       openAiAnalyst: this.options.openAiAnalyst,
+      openSearch: this.options.openSearch,
       onEvent: (event, stepId, exit) =>
         trackProActivation(event, {
           planKey: getEntitlementState()?.planKey ?? null,

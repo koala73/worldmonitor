@@ -20,7 +20,17 @@ describe('cross-Strait activity production registration (#5575)', () => {
   it('schedules the bounded seeder and registers bootstrap, China coverage, and health', () => {
     assert.equal(BOOTSTRAP_CACHE_KEYS.crossStraitActivity, 'military:cross-strait-activity-bootstrap:v1');
     assert.equal(BOOTSTRAP_TIERS.crossStraitActivity, 'slow');
-    assert.match(read('scripts/seed-bundle-derived-signals.mjs'), /seed-cross-strait-activity\.mjs/);
+    assert.match(
+      read('scripts/seed-bundle-derived-signals.mjs'),
+      /label:\s*'Cross-Strait-Activity'[\s\S]*?seed-cross-strait-activity\.mjs[\s\S]*?requiredEnv:\s*\['PROXY_URL'\]/,
+    );
+    const railwayServices = JSON.parse(
+      read('scripts/railway-services.json'),
+    ) as Array<{ service: string; requiredEnv?: string[] }>;
+    assert.deepEqual(
+      railwayServices.find((entry) => entry.service === 'seed-bundle-derived-signals')?.requiredEnv,
+      ['PROXY_URL'],
+    );
     assert.match(
       read('scripts/china-coverage-manifest.mjs'),
       /id:\s*'military\.cross-strait-activity'[\s\S]*?ownerIssue:\s*5575[\s\S]*?launchStatus:\s*'launched'/,

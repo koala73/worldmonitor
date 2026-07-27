@@ -17,6 +17,7 @@
  * the reportable logic free of that import so it builds and is unit-tested
  * without the package present.
  */
+import { getGlobeMarkerExtra } from '@/bootstrap/globe-marker-probe';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import {
   getWebVitalsFormFactor,
@@ -50,6 +51,7 @@ export function reportInpMetric(
   metric: InpMetricLike,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
   keep: () => boolean = shouldSampleWebVital,
+  globeExtra: typeof getGlobeMarkerExtra = getGlobeMarkerExtra,
 ): void {
   // Volume trim (#4565): skip 'good' (<200ms) INP — ~70% of field events, low
   // diagnostic value. Report needs-improvement / poor / unknown only, so the
@@ -60,6 +62,10 @@ export function reportInpMetric(
   if (!keep()) return;
   const a = metric.attribution ?? {};
   const formFactor = getWebVitalsFormFactor();
+  // #5368: when the 3D globe is mounted, how many DOM markers it is carrying is
+  // the dominant term in its frame cost — and therefore in presentationDelay.
+  // Null (and absent from the event) whenever the globe is not mounted.
+  const globe = globeExtra();
   enqueue((s) => {
     s.captureMessage('web-vital: INP', {
       level: 'info',
@@ -77,6 +83,7 @@ export function reportInpMetric(
         processingDuration: roundMs(a.processingDuration),
         presentationDelay: roundMs(a.presentationDelay),
         loadState: a.loadState,
+        ...(globe ?? {}),
       },
     });
   });

@@ -739,6 +739,30 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
 let _checkoutInFlight = false;
 
 /**
+ * True when the checkout being blocked was for a Pro Business product — the
+ * one duplicate-subscription 409 that needs guided upgrade copy instead of the
+ * billing-portal line (Pro and Pro Business are separate Dodo products, so the
+ * portal cannot perform the change).
+ *
+ * The product ids arrive via a DYNAMIC import on purpose: this module sits in
+ * the eager dashboard graph (panel-layout imports it statically) and
+ * tests/dashboard-eager-chunks.test.mjs requires the `products` chunk to stay
+ * off that graph — the same reason every other client consumer lazy-loads it.
+ * A failed load falls back to the generic copy rather than blocking the dialog.
+ */
+async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return (
+      productId === DODO_PRODUCTS.PRO_BUSINESS_MONTHLY ||
+      productId === DODO_PRODUCTS.PRO_BUSINESS_ANNUAL
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * High-level checkout entry point for UI code.
  *
  * Creates a checkout session via the /api/create-checkout edge endpoint
@@ -868,6 +892,9 @@ export async function startCheckout(
         const planDisplayName = resolvePlanDisplayName(planKey);
         showDuplicateSubscriptionDialog({
           planDisplayName,
+          // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
+          // pairing; every other pairing keeps the portal line.
+          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress

@@ -65,9 +65,10 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
           }),
         };
       }
-      // The China decision-signal seed declares one record per non-unavailable
-      // group and requires all six groups for a healthy aggregate.
-      return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 6 }) };
+      // This fixture isolates the PortWatch entry. Keep every unrelated
+      // coverage-gated feed above its floor so a new minRecordCount contract
+      // cannot turn the aggregate warning for an unrelated reason.
+      return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
     });
     return new Response(JSON.stringify(results), {
       status: 200,

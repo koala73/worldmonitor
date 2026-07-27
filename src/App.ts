@@ -77,7 +77,7 @@ import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
-import { trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
+import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
@@ -1012,6 +1012,10 @@ export class App {
           showToast('Country brief failed to open. Please try again.');
         });
       },
+      openSearch: () => {
+        track('search-open', { source: 'pro-onboarding' });
+        void this.openSearch();
+      },
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
@@ -1275,8 +1279,8 @@ export class App {
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
-    // sr-only <h1> are baked in English so search crawlers see something
-    // before JS runs; once i18n is ready we swap them to the user's locale.
+    // the accessible <h1> are baked in English before the app boots; once i18n
+    // is ready we swap them to the user's locale.
     document.title = t('shell.documentTitle');
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);

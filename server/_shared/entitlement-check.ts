@@ -15,6 +15,12 @@
  * A null means the backend is unconfigured or returned no usable entitlement.
  * The user-key gateway fails closed on null when the backend is configured and
  * retains a logged fail-open exception only when lookup is wholly unconfigured.
+ *
+ * classifyBillingVerification() is the single decision point for that denial;
+ * getBillingVerificationDenial() renders it as JSON, and the HTML / OAuth-grant
+ * / boolean-premium surfaces render the same decision in their own vocabulary
+ * (#5622). A transient answer is negative-cached in-process for a few seconds so
+ * a backend outage costs one lookup per user per window, not one per request.
  */
 
 import { getCachedJson, setCachedJson } from './redis';
@@ -57,6 +63,30 @@ export interface CachedEntitlements {
      * that reason (forcing a re-fetch would contradict fail-open).
      */
     apiDailyAllowance?: number;
+    /**
+     * Data-export entitlement (plan 2026-07-25-001) — the enforcement field
+     * for CSV/JSON/PDF export. Like `apiDailyAllowance` and unlike
+     * `mcpAccess`, consumers treat `undefined` on a `tier >= 2` row as
+     * **entitled (fail-OPEN)**, and deliberately NOT added to the
+     * cache-staleness gate below — which is exactly why that fail-open is
+     * permanent rather than a migration window.
+     */
+    dataExport?: boolean;
+    /**
+     * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
+     * (convex/config/productCatalog.ts). Optional because legacy rows predate
+     * it and because the Convex read path only merges what the catalog holds.
+     * `null` on a member means **unlimited**; a MISSING member (or a missing
+     * `planLimits` altogether) means unknown, and consumers resolve unknown
+     * toward cost protection — never toward the higher allowance. The MCP
+     * daily quota (plan 2026-07-25-001 U3) is the first consumer.
+     */
+    planLimits?: {
+      apiRequestsPerDay?: number | null;
+      apiBurstRequestsPerMinute?: number | null;
+      mcpCallsPerDay?: number | null;
+      mcpBurstRequestsPerMinute?: number | null;
+    };
   };
   validUntil: number;
   billingStatus?: BillingVerificationStatus;
@@ -71,8 +101,11 @@ export interface CachedEntitlements {
   // deny-side value that getBillingVerificationDenial turns into the retryable
   // entitlement_verification_unavailable 503 instead of a hard "upgrade
   // required"/401. Never originates from Convex and is never written to the
-  // Redis cache. A null return now means the backend is unconfigured or gave a
-  // confirmed/malformed answer — callers keep their fail-closed posture there.
+  // Redis cache (it IS held for a few seconds in the in-process negative cache
+  // below, which bounds outage amplification without making the state durable
+  // or visible to another isolate). A null return now means the backend is
+  // unconfigured or gave a confirmed/malformed answer — callers keep their
+  // fail-closed posture there.
   verificationUnavailable?: true;
 }
 
@@ -159,6 +192,84 @@ function getConvexSiteUrl(): string {
 // ---------------------------------------------------------------------------
 
 const _inFlight = new Map<string, Promise<CachedEntitlements | null>>();
+
+// ---------------------------------------------------------------------------
+// Transient-failure negative cache (#5622)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a synthesized verificationUnavailable answer is reused for the same
+ * user without re-attempting the backend.
+ *
+ * The problem this bounds: a transient answer was never cached anywhere.
+ * `unavailableEntitlements()` is synthesized in-process and deliberately never
+ * written to Redis, so during a Convex outage EVERY request re-ran the lookup
+ * and paid the full 3s fetch budget before producing the identical denial.
+ * Request coalescing (`_inFlight` above) only collapses *concurrent* requests;
+ * a client politely retrying in sequence amplified the outage instead. Bounding
+ * the tier-0 marker to 60s in #5600 made this path more reachable.
+ *
+ * The value is load-bearing, not arbitrary: it MUST stay strictly below the
+ * `Retry-After` that getBillingVerificationDenial advertises for this state
+ * (clampRetryAfterSeconds's 5s default, since the synthesized marker carries no
+ * retryAfterSeconds). Otherwise a client that correctly honors `Retry-After`
+ * would land back inside the window and be served the cached failure — turning
+ * a bounded outage into one that outlives it. The negative-cache test pins that
+ * inequality so raising this constant past the advertised delay fails.
+ */
+const UNAVAILABLE_NEGATIVE_CACHE_TTL_MS = 3_000;
+
+/**
+ * Cap on distinct users held in the negative cache. A fleet-wide Convex outage
+ * would otherwise grow this map with one entry per active user for the life of
+ * the isolate; entries are ~40 bytes, so the cap is about memory hygiene rather
+ * than a real ceiling. Eviction drops expired entries first, then the oldest
+ * insertions (Map preserves insertion order), so overflow degrades to the
+ * pre-#5622 behavior (an extra lookup) rather than to unbounded growth.
+ */
+const UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES = 1_000;
+
+/** userId -> epoch ms after which the cached transient failure expires. */
+const _unavailableUntil = new Map<string, number>();
+
+function rememberVerificationUnavailable(userId: string): void {
+  const now = Date.now();
+  if (_unavailableUntil.size >= UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES) {
+    for (const [key, expiresAt] of _unavailableUntil) {
+      if (expiresAt <= now) _unavailableUntil.delete(key);
+    }
+    while (_unavailableUntil.size >= UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES) {
+      const oldest = _unavailableUntil.keys().next();
+      if (oldest.done) break;
+      _unavailableUntil.delete(oldest.value);
+    }
+  }
+  _unavailableUntil.set(userId, now + UNAVAILABLE_NEGATIVE_CACHE_TTL_MS);
+}
+
+/**
+ * Module state is per-isolate and survives between tests in the same file.
+ * Exposed so a test can assert the negative cache both hits AND expires without
+ * depending on which userIds earlier tests happened to poison.
+ */
+export function __resetEntitlementNegativeCacheForTests(): void {
+  _unavailableUntil.clear();
+}
+
+/** Test-only view of the advertised-retry invariant the TTL above depends on. */
+export const __negativeCacheTtlMsForTests = UNAVAILABLE_NEGATIVE_CACHE_TTL_MS;
+
+/**
+ * Test-only view of the cap and the live entry count, so the eviction branch can
+ * be driven past its threshold and asserted bounded. Without these the cap is
+ * unreachable from a test — the branch only fires above 1000 distinct
+ * concurrently-failing users, which is exactly the fleet-wide-outage case whose
+ * memory behavior the cap exists to bound.
+ */
+export const __negativeCacheMaxEntriesForTests = UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES;
+export function __negativeCacheSizeForTests(): number {
+  return _unavailableUntil.size;
+}
 
 // ---------------------------------------------------------------------------
 // Environment-aware Redis key prefix (P2-3)
@@ -282,6 +393,20 @@ export function getRequiredTier(pathname: string): number | null {
 }
 
 /**
+ * Every tier-gated pathname, as a set.
+ *
+ * Exported so tests/premium-paths-guard.test.mts can enforce that this map
+ * stays a subset of PREMIUM_RPC_PATHS — an invariant src/services/premium-fetch.ts
+ * documents and depends on, but which nothing checked before #5674. The gateway
+ * sets `forceKey` on tier-gated routes, and forceKey rejects a valid anonymous
+ * wms_ token with 401, so a route added here but not there 401s every anonymous
+ * browser call and drives the wm-session interceptor into its mint→replay→
+ * 15-minute-blackout loop. The map itself stays private so it keeps its single
+ * point of edit.
+ */
+export const TIER_GATED_PATHS: ReadonlySet<string> = new Set(Object.keys(ENDPOINT_ENTITLEMENTS));
+
+/**
  * Fetches entitlements for a user. Tries Redis cache first (raw key),
  * then falls back to ConvexHttpClient query on cache miss.
  *
@@ -291,13 +416,25 @@ export function getRequiredTier(pathname: string): number | null {
  * the same userId share a single in-flight promise.
  */
 export async function getEntitlements(userId: string): Promise<CachedEntitlements | null> {
+  // Negative cache first: a transient failure recorded moments ago is reused
+  // rather than re-paying the backend's 3s budget. Only the synthesized
+  // verificationUnavailable answer is cached here — never a confirmed row and
+  // never a fail-closed null, both of which have their own (Redis) cache policy.
+  const unavailableUntil = _unavailableUntil.get(userId);
+  if (unavailableUntil !== undefined) {
+    if (unavailableUntil > Date.now()) return unavailableEntitlements();
+    _unavailableUntil.delete(userId);
+  }
+
   const existing = _inFlight.get(userId);
   if (existing) return existing;
 
   const promise = _getEntitlementsImpl(userId);
   _inFlight.set(userId, promise);
   try {
-    return await promise;
+    const result = await promise;
+    if (result?.verificationUnavailable) rememberVerificationUnavailable(userId);
+    return result;
   } finally {
     _inFlight.delete(userId);
   }
@@ -424,72 +561,151 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
   }
 }
 
+/** Entitlement fields the billing-verification decision reads. */
+export type BillingVerificationInput = Pick<
+  CachedEntitlements,
+  'billingStatus' | 'retryAfterSeconds' | 'verificationUnavailable'
+>;
+
+/** Wire code for a billing-verification denial, mirrored into `X-Billing-Verification`. */
+export type BillingVerificationCode =
+  | BillingVerificationStatus
+  | 'entitlement_verification_unavailable';
+
+export function isBillingVerificationCode(
+  value: unknown,
+): value is BillingVerificationCode {
+  return value === 'entitlement_verification_unavailable'
+    || isBillingVerificationStatus(value);
+}
+
+export interface BillingVerificationDenial {
+  /**
+   * False ONLY for a lapse the provider confirmed. Everything else in this
+   * union is a statement about the *verification*, not the subscription, so a
+   * caller that renders it as terminal reproduces #5600.
+   */
+  retryable: boolean;
+  code: BillingVerificationCode;
+  /** Seconds to wait before retrying. 0 for a terminal denial. */
+  retryAfterSeconds: number;
+  /** Wire `error` string for JSON surfaces. */
+  message: string;
+  /** HTTP status the JSON surfaces use: 503 when retryable, 403 when terminal. */
+  status: 403 | 503;
+}
+
 /**
- * Turns Convex's billing-verification metadata into the shared gateway denial
- * contract. Callers use this before their ordinary tier/feature checks so a
- * provider outage is never flattened into a misleading "upgrade required".
+ * The billing-verification decision, as a pure predicate over an entitlement
+ * row — no Response, no headers, no transport.
+ *
+ * Extracted from getBillingVerificationDenial (#5622) because three consumers
+ * cannot use a `Response`: `api/oauth/authorize-pro.ts` renders HTML,
+ * `api/internal/mcp-grant-{mint,context}.ts` own an `INSUFFICIENT_TIER`-style
+ * vocabulary inside an OAuth handshake, and `server/_shared/premium-check.ts`
+ * answers with a boolean/identity. Before this existed each of them flattened
+ * an *unverifiable* entitlement into a hard denial, which is exactly the #5600
+ * failure mode the shared contract was built to remove.
+ *
+ * Keep this the single decision point: getBillingVerificationDenial below is a
+ * thin renderer over it, so a new status cannot reach the JSON surfaces and
+ * silently miss the HTML/handshake ones.
  */
-export function getBillingVerificationDenial(
-  entitlements: Pick<CachedEntitlements, 'billingStatus' | 'retryAfterSeconds' | 'verificationUnavailable'> | null | undefined,
-  corsHeaders: Record<string, string>,
-  requiredTier?: number,
-): Response | null {
+export function classifyBillingVerification(
+  entitlements: BillingVerificationInput | null | undefined,
+): BillingVerificationDenial | null {
   if (entitlements?.verificationUnavailable) {
     // Transient lookup failure: same wire contract as server/gateway.ts's
     // wm_-key null-entitlement branch (docs/usage-errors.mdx).
-    return new Response(
-      JSON.stringify({
-        error: 'Unable to verify API access',
-        code: 'entitlement_verification_unavailable',
-        ...(requiredTier == null ? {} : { requiredTier }),
-      }),
-      {
-        status: 503,
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-          'X-Billing-Verification': 'entitlement_verification_unavailable',
-          'Retry-After': String(clampRetryAfterSeconds(entitlements.retryAfterSeconds)),
-          ...corsHeaders,
-        },
-      },
-    );
+    return {
+      retryable: true,
+      code: 'entitlement_verification_unavailable',
+      retryAfterSeconds: clampRetryAfterSeconds(entitlements.retryAfterSeconds),
+      message: 'Unable to verify API access',
+      status: 503,
+    };
   }
 
   const status = entitlements?.billingStatus;
   if (!isBillingVerificationStatus(status)) return null;
 
-  const commonHeaders = {
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-store',
-    'X-Billing-Verification': status,
-    ...corsHeaders,
-  };
-  const requiredTierBody = requiredTier == null ? {} : { requiredTier };
-
   if (status === 'subscription_lapsed') {
-    return new Response(
-      JSON.stringify({
-        error: 'Subscription lapsed',
-        code: status,
-        ...requiredTierBody,
-      }),
-      { status: 403, headers: commonHeaders },
-    );
+    // The ONLY terminal member: the provider confirmed coverage ended, so
+    // retrying cannot flip it (tests/premium-denial.test.mts pins the same
+    // reading on the client side).
+    return {
+      retryable: false,
+      code: status,
+      retryAfterSeconds: 0,
+      message: 'Subscription lapsed',
+      status: 403,
+    };
   }
 
-  const retryAfter = clampRetryAfterSeconds(entitlements?.retryAfterSeconds);
+  return {
+    retryable: true,
+    code: status,
+    retryAfterSeconds: clampRetryAfterSeconds(entitlements?.retryAfterSeconds),
+    message: status === 'renewal_verification_pending'
+      ? 'Renewal verification pending'
+      : 'Renewal verification failed',
+    status: 503,
+  };
+}
+
+/**
+ * Turns Convex's billing-verification metadata into the shared gateway denial
+ * contract. Callers use this before their ordinary tier/feature checks so a
+ * provider outage is never flattened into a misleading "upgrade required".
+ *
+ * JSON surfaces only. Non-JSON consumers call classifyBillingVerification()
+ * above and render the decision in their own vocabulary.
+ */
+export function getBillingVerificationDenial(
+  entitlements: BillingVerificationInput | null | undefined,
+  corsHeaders: Record<string, string>,
+  requiredTier?: number,
+): Response | null {
+  const denial = classifyBillingVerification(entitlements);
+  return denial ? renderBillingVerificationDenial(denial, corsHeaders, requiredTier) : null;
+}
+
+/**
+ * Renders an ALREADY-classified denial as the JSON wire contract.
+ *
+ * Split out from getBillingVerificationDenial for callers that classified
+ * earlier and carry the decision with them — `server/_shared/premium-check.ts`
+ * attaches it to the denied identity, and api/chat-analyst.ts renders that.
+ * Before this existed, that route hand-built `{ verificationUnavailable: true }`
+ * to re-enter the classifier, which collapsed all four states into one.
+ */
+export function renderBillingVerificationDenial(
+  denial: BillingVerificationDenial,
+  corsHeaders: Record<string, string>,
+  requiredTier?: number,
+): Response {
   return new Response(
     JSON.stringify({
-      error: status === 'renewal_verification_pending'
-        ? 'Renewal verification pending'
-        : 'Renewal verification failed',
-      code: status,
-      ...requiredTierBody,
+      error: denial.message,
+      code: denial.code,
+      ...(requiredTier == null ? {} : { requiredTier }),
     }),
     {
-      status: 503,
-      headers: { ...commonHeaders, 'Retry-After': String(retryAfter) },
+      status: denial.status,
+      headers: {
+        // corsHeaders FIRST: the contract headers below are this function's own
+        // output and must win. The pre-#5622 version was inconsistent about it
+        // (a corsHeaders map could clobber X-Billing-Verification but not
+        // Retry-After); no cors helper in the repo emits either name, so this is
+        // inert today and pinned by test so it stays that way.
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'X-Billing-Verification': denial.code,
+        // Terminal denials carry no Retry-After — advertising one would invite
+        // a lapsed subscriber into an infinite retry instead of a resubscribe.
+        ...(denial.retryable ? { 'Retry-After': String(denial.retryAfterSeconds) } : {}),
+      },
     },
   );
 }

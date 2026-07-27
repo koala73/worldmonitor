@@ -19,6 +19,8 @@ const PLAN_DISPLAY: Record<string, string> = {
   free: "Free",
   pro_monthly: "Pro (Monthly)",
   pro_annual: "Pro (Annual)",
+  pro_business_monthly: "Pro Business (Monthly)",
+  pro_business_annual: "Pro Business (Annual)",
   api_starter: "API Starter (Monthly)",
   api_starter_annual: "API Starter (Annual)",
   api_business: "API Business",
@@ -30,7 +32,12 @@ const PLAN_DISPLAY: Record<string, string> = {
 // 4-card generic grid — safer than a deny-list that would silently opt-in
 // every new plan key added to PLAN_DISPLAY without a matching update here.
 // See `featureCardsHtml` and `userWelcomeHtml` for the parallel gates.
-const PRO_PLANS = new Set(["pro_monthly", "pro_annual"]);
+const PRO_PLANS = new Set([
+  "pro_monthly",
+  "pro_annual",
+  "pro_business_monthly",
+  "pro_business_annual",
+]);
 
 async function sendEmail(
   apiKey: string,

@@ -60,7 +60,7 @@ const TWO: CountBounds = { min: 2, max: 2 };
 
 // Derive a variant subdomain dashboard page from the built full-variant
 // dashboard.html. Only identity/meta surfaces change: title/description/
-// keywords/subject/classification metas, canonical + hreflang cluster,
+// keywords/subject/classification metas, canonical + English discovery links,
 // og/twitter cards, the WebApplication JSON-LD block, and the visually
 // hidden <h1>. The Organization/WebSite JSON-LD blocks intentionally keep
 // the World Monitor identity (each variant isPartOf World Monitor — same
@@ -104,13 +104,14 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   html = replaceCounted(html, /(<meta property="og:url" content=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'og:url');
   html = replaceCounted(html, /(<meta name="twitter:url" content=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'twitter:url');
 
-  // hreflang cluster: alternates of THIS page live on the same subdomain;
-  // preserve the ?lang= suffix per entry.
+  // Application locales are client-side preferences, not separately indexable
+  // documents. Keep exactly x-default + English on this page's canonical host;
+  // the exact-count guard makes a reintroduced ?lang alternate fail the build.
   html = replaceCounted(
     html,
     /(<link rel="alternate" hreflang="[^"]+" href=")https:\/\/www\.worldmonitor\.app\/dashboard((?:\?[^"]*)?" \/>)/g,
     (_m, a, b) => `${a}${escHtml(meta.url)}${b}`,
-    { min: 1, max: 80 },
+    TWO,
     'hreflang alternates',
   );
 

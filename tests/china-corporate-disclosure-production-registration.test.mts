@@ -44,6 +44,13 @@ describe('China corporate disclosure production registration (#5577)', () => {
     );
     assert.equal(BOOTSTRAP_TIERS.chinaCorporateDisclosures, 'slow');
     assert.match(read('scripts/seed-bundle-market-backup.mjs'), /seed-china-corporate-disclosures\.mjs/);
+    const railwayServices = JSON.parse(
+      read('scripts/railway-services.json'),
+    ) as Array<{ service: string; requiredEnv?: string[] }>;
+    assert.deepEqual(
+      railwayServices.find((entry) => entry.service === 'seed-bundle-market-backup')?.requiredEnv,
+      ['PROXY_URL'],
+    );
     assert.match(
       read('scripts/china-coverage-manifest.mjs'),
       /id:\s*'market\.china-corporate-disclosures'[\s\S]*?ownerIssue:\s*5577[\s\S]*?launchStatus:\s*'launched'/,
