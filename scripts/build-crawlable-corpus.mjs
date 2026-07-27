@@ -526,7 +526,20 @@ function latestDatedChangelogRelease(changelog) {
   return dates[dates.length - 1] || null;
 }
 
-function gitFileLastmod(rootDir, relativePath) {
+function hasCompleteGitHistory(rootDir) {
+  try {
+    return execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+      cwd: rootDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim() === 'false';
+  } catch {
+    return false;
+  }
+}
+
+export function gitFileLastmod(rootDir, relativePath) {
+  if (!hasCompleteGitHistory(rootDir)) return null;
   try {
     const out = execFileSync('git', ['log', '-1', '--format=%cs', '--', relativePath], {
       cwd: rootDir,
