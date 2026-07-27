@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Korai hozzáférés lefoglalása",
     "signIn": "Bejelentkezés",
     "upgradeToPro": "Frissítés Pro verzióra",
     "goToDashboard": "Ugrás az irányítópultra"
@@ -13,11 +12,8 @@
     "noiseWord": "Zaj",
     "signalWord": "Jel",
     "valueProps": "A geopolitikai hírszerzési AI-réteg — kérdezze, iratkozzon fel rá, építsen rá.",
-    "reserveEarlyAccess": "Korai hozzáférés lefoglalása",
     "launchingDate": "Már elérhető",
     "tryFreeDashboard": "Próbálja ki az ingyenes irányítópultot",
-    "emailPlaceholder": "Adja meg az e-mail-címét",
-    "emailAriaLabel": "E-mail-cím a várólistához",
     "choosePlan": "Válasszon csomagot",
     "signIn": "Bejelentkezés",
     "goToDashboard": "Ugrás az irányítópultra"
@@ -37,7 +33,6 @@
     "proF7": "Riasztási szabálymotor — egyéni triggerek, csendes órák, AES-256-tal titkosított csatornák",
     "proF8": "Piaci watchlist, makró és jegybanki követés",
     "proF9": "AI Market Implications és Regional Intelligence (hamarosan: orbitális megfigyelés, prémium térképrétegek, hosszabb előzmények)",
-    "proCta": "Korai hozzáférés lefoglalása",
     "choosePlan": "Válasszon csomagot",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Csapatoknak, amelyeknek közös monitoring, API-hozzáférés, telepítési opciók, TV-alkalmazások és közvetlen támogatás kell.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Kezdje a Pro csomaggal. Skálázzon Enterprise-ra.",
     "subtitle": "Használja tovább ingyen a World Monitort, vagy frissítsen részvénykutatásért, makróanalitikáért és AI-briefekért. Ha szervezetének csapathozzáférésre, TV-appokra vagy API-támogatásra van szüksége, beszéljen velünk.",
-    "getPro": "Korai hozzáférés lefoglalása",
     "talkToSales": "Beszéljen az értékesítéssel"
   },
   "footer": {
-    "beFirstInLine": "Legyen az elsők között.",
     "lookingForEnterprise": "Enterprise-t keres?",
     "contactUs": "Kapcsolat",
     "wiredArticle": "WIRED-cikk"
-  },
-  "form": {
-    "submitting": "Küldés...",
-    "joinWaitlist": "Korai hozzáférés lefoglalása",
-    "tooManyRequests": "Túl sok kérés",
-    "failedTryAgain": "Sikertelen — próbálja újra"
-  },
-  "referral": {
-    "alreadyOnList": "Már rajta van a listán.",
-    "shareHint": "Ossza meg a linkjét, hogy előrébb kerüljön. Minden csatlakozó barát közelebb viszi az elejéhez.",
-    "copied": "Másolva!",
-    "shareOnX": "Megosztás X-en",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Most csatlakoztam a World Monitor Pro várólistához — részvényfigyelés, geopolitikai elemzés és AI napi briefek egy platformon. Csatlakozz hozzám:",
-    "joinWaitlistShare": "Csatlakozzon a World Monitor Pro várólistához:",
-    "youreIn": "Bent van!",
-    "invitedBanner": "Meghívást kapott — csatlakozzon a várólistához"
   },
   "soonBadge": "Hamarosan",
   "meta": {

@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "早期アクセスを予約",
     "signIn": "サインイン",
     "upgradeToPro": "Pro にアップグレード",
     "goToDashboard": "ダッシュボードに移動"
@@ -13,11 +12,8 @@
     "noiseWord": "ノイズ",
     "signalWord": "シグナル",
     "valueProps": "地政学 AI レイヤー — 尋ね、購読し、その上に構築する。",
-    "reserveEarlyAccess": "早期アクセスを予約",
     "launchingDate": "現在ご利用可能",
     "tryFreeDashboard": "無料ダッシュボードを試す",
-    "emailPlaceholder": "メールアドレスを入力",
-    "emailAriaLabel": "ウェイトリスト用メールアドレス",
     "choosePlan": "プランを選ぶ",
     "signIn": "サインイン",
     "goToDashboard": "ダッシュボードに移動"
@@ -37,7 +33,6 @@
     "proF7": "アラートルールエンジン — カスタムトリガー、サイレント時間、AES-256 暗号化チャネル",
     "proF8": "マーケットウォッチリスト、マクロ・中央銀行追跡",
     "proF9": "AI Market Implications と Regional Intelligence(近日公開:軌道監視、プレミアム地図レイヤー、拡張履歴)",
-    "proCta": "早期アクセスを予約",
     "choosePlan": "プランを選ぶ",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "共有モニタリング、API アクセス、デプロイオプション、TV アプリ、直接サポートを必要とするチーム向け。",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Pro で始める。Enterprise までスケールする。",
     "subtitle": "World Monitor を無料で使い続けるか、エクイティリサーチ、マクロアナリティクス、AI ブリーフのためにアップグレードしてください。組織がチームアクセス、TV アプリ、API サポートを必要とする場合はご相談ください。",
-    "getPro": "早期アクセスを予約",
     "talkToSales": "営業に相談する"
   },
   "footer": {
-    "beFirstInLine": "列の先頭に立つ。",
     "lookingForEnterprise": "Enterprise をお探し?",
     "contactUs": "お問い合わせ",
     "wiredArticle": "WIRED 記事"
-  },
-  "form": {
-    "submitting": "送信中...",
-    "joinWaitlist": "早期アクセスを予約",
-    "tooManyRequests": "リクエストが多すぎます",
-    "failedTryAgain": "失敗 — もう一度お試しください"
-  },
-  "referral": {
-    "alreadyOnList": "すでにリストに登録されています。",
-    "shareHint": "リンクをシェアして列を上がりましょう。友人が参加するたびに先頭に近づきます。",
-    "copied": "コピーしました!",
-    "shareOnX": "X でシェア",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "World Monitor Pro のウェイトリストに参加しました — 株式モニタリング、地政学分析、毎日の AI ブリーフを 1 つのプラットフォームに。一緒に:",
-    "joinWaitlistShare": "World Monitor Pro のウェイトリストに参加:",
-    "youreIn": "参加完了!",
-    "invitedBanner": "招待されました — ウェイトリストに参加"
   },
   "soonBadge": "近日公開",
   "meta": {

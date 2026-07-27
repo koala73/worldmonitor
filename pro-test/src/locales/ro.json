@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Rezervă-ți accesul anticipat",
     "signIn": "Autentificare",
     "upgradeToPro": "Upgrade la Pro",
     "goToDashboard": "Accesați tabloul de bord"
@@ -13,11 +12,8 @@
     "noiseWord": "Zgomot",
     "signalWord": "Semnal",
     "valueProps": "Stratul de IA geopolitică — întreabă-l, abonează-te, construiește deasupra.",
-    "reserveEarlyAccess": "Rezervă-ți accesul anticipat",
     "launchingDate": "Disponibil acum",
     "tryFreeDashboard": "Încearcă panoul gratuit",
-    "emailPlaceholder": "Introdu e-mailul",
-    "emailAriaLabel": "Adresă de e-mail pentru lista de așteptare",
     "choosePlan": "Alege planul",
     "signIn": "Autentificare",
     "goToDashboard": "Accesați tabloul de bord"
@@ -37,7 +33,6 @@
     "proF7": "Motor de reguli de alertă — trigeri proprii, ore silențioase, canale criptate AES-256",
     "proF8": "Watchlist de piață, urmărire macro și bănci centrale",
     "proF9": "AI Market Implications și Regional Intelligence (În curând: supraveghere orbitală, straturi premium de hartă, istoric extins)",
-    "proCta": "Rezervă-ți accesul anticipat",
     "choosePlan": "Alege planul",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Pentru echipe care au nevoie de monitoring partajat, acces API, opțiuni de deployment, aplicații TV și suport direct.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Începe cu Pro. Scalează la Enterprise.",
     "subtitle": "Continuă să folosești World Monitor gratuit, sau fă upgrade pentru equity research, analitică macro și briefinguri IA. Dacă organizația ta are nevoie de acces de echipă, aplicații TV sau suport API, vorbește cu noi.",
-    "getPro": "Rezervă-ți accesul anticipat",
     "talkToSales": "Vorbește cu vânzările"
   },
   "footer": {
-    "beFirstInLine": "Fii primul la rând.",
     "lookingForEnterprise": "Cauți Enterprise?",
     "contactUs": "Contactează-ne",
     "wiredArticle": "Articol WIRED"
-  },
-  "form": {
-    "submitting": "Se trimite...",
-    "joinWaitlist": "Rezervă-ți accesul anticipat",
-    "tooManyRequests": "Prea multe cereri",
-    "failedTryAgain": "Eșuat — încearcă din nou"
-  },
-  "referral": {
-    "alreadyOnList": "Ești deja pe listă.",
-    "shareHint": "Distribuie linkul ca să urci în listă. Fiecare prieten care se alătură te apropie de început.",
-    "copied": "Copiat!",
-    "shareOnX": "Distribuie pe X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Tocmai m-am alăturat listei de așteptare World Monitor Pro — monitorizare acțiuni, analiză geopolitică și briefinguri zilnice IA într-o singură platformă. Alătură-te:",
-    "joinWaitlistShare": "Alătură-te listei de așteptare World Monitor Pro:",
-    "youreIn": "Ești înăuntru!",
-    "invitedBanner": "Ai fost invitat — alătură-te listei de așteptare"
   },
   "soonBadge": "În curând",
   "meta": {

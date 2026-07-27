@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Reservera din tidiga åtkomst",
     "signIn": "Logga in",
     "upgradeToPro": "Uppgradera till Pro",
     "goToDashboard": "Gå till instrumentpanel"
@@ -13,11 +12,8 @@
     "noiseWord": "Brus",
     "signalWord": "Signal",
     "valueProps": "Det geopolitiska AI-lagret — fråga det, prenumerera, bygg på det.",
-    "reserveEarlyAccess": "Reservera din tidiga åtkomst",
     "launchingDate": "Tillgänglig nu",
     "tryFreeDashboard": "Prova den kostnadsfria dashboarden",
-    "emailPlaceholder": "Ange din e-post",
-    "emailAriaLabel": "E-postadress för väntelistan",
     "choosePlan": "Välj din plan",
     "signIn": "Logga in",
     "goToDashboard": "Gå till instrumentpanel"
@@ -37,7 +33,6 @@
     "proF7": "Regelmotor för larm — egna triggers, tysta timmar, AES-256-krypterade kanaler",
     "proF8": "Market watchlist, makro- och centralbanksspårning",
     "proF9": "AI Market Implications och Regional Intelligence (Snart: orbital övervakning, premiumkartlager, utökad historik)",
-    "proCta": "Reservera din tidiga åtkomst",
     "choosePlan": "Välj din plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "För team som behöver delad övervakning, API-åtkomst, deployment-alternativ, TV-appar och direkt support.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Börja med Pro. Skala till Enterprise.",
     "subtitle": "Fortsätt använda World Monitor gratis, eller uppgradera för equity research, makroanalys och AI-briefingar. Om din organisation behöver teamåtkomst, TV-appar eller API-support — prata med oss.",
-    "getPro": "Reservera din tidiga åtkomst",
     "talkToSales": "Prata med sälj"
   },
   "footer": {
-    "beFirstInLine": "Var först i kön.",
     "lookingForEnterprise": "Letar du efter Enterprise?",
     "contactUs": "Kontakta oss",
     "wiredArticle": "WIRED-artikel"
-  },
-  "form": {
-    "submitting": "Skickar...",
-    "joinWaitlist": "Reservera din tidiga åtkomst",
-    "tooManyRequests": "För många förfrågningar",
-    "failedTryAgain": "Misslyckades — försök igen"
-  },
-  "referral": {
-    "alreadyOnList": "Du är redan på listan.",
-    "shareHint": "Dela din länk för att klättra i kön. Varje vän som går med tar dig närmare början.",
-    "copied": "Kopierat!",
-    "shareOnX": "Dela på X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Jag gick just med i World Monitor Pro-väntelistan — aktieövervakning, geopolitisk analys och dagliga AI-briefingar på en plattform. Gå med:",
-    "joinWaitlistShare": "Gå med i World Monitor Pro-väntelistan:",
-    "youreIn": "Du är med!",
-    "invitedBanner": "Du har bjudits in — gå med i väntelistan"
   },
   "soonBadge": "Snart",
   "meta": {

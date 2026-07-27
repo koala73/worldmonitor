@@ -93,7 +93,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Reserve Your Early Access",
     "signIn": "Sign In",
     "upgradeToPro": "Upgrade to Pro",
     "goToDashboard": "Go to Dashboard"
@@ -102,11 +101,8 @@
     "noiseWord": "Noise",
     "signalWord": "Signal",
     "valueProps": "The intelligence geopolitical AI layer — ask it, subscribe to it, build on it.",
-    "reserveEarlyAccess": "Reserve Your Early Access",
     "launchingDate": "Live now",
     "tryFreeDashboard": "Try the free dashboard",
-    "emailPlaceholder": "Enter your email",
-    "emailAriaLabel": "Email address for waitlist",
     "choosePlan": "Choose Your Plan",
     "goToDashboard": "Go to Dashboard",
     "signIn": "Sign In"
@@ -126,7 +122,6 @@
     "proF7": "Alert rules engine — custom triggers, quiet hours, AES-256 encrypted channels",
     "proF8": "Market watchlist, macro & central bank tracking",
     "proF9": "AI Market Implications & Regional Intelligence (Soon: orbital surveillance, premium map layers, longer history)",
-    "proCta": "Reserve Your Early Access",
     "choosePlan": "Choose Your Plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "For teams that need shared monitoring, API access, deployment options, TV apps, and direct support.",
@@ -399,33 +394,12 @@
   "finalCta": {
     "title": "Start with Pro. Scale to Enterprise.",
     "subtitle": "Keep using World Monitor for free, or upgrade for equity research, macro analytics, and AI briefings. If your organization needs team access, TV apps, or API support, talk to us.",
-    "getPro": "Reserve Your Early Access",
     "talkToSales": "Talk to Sales"
   },
   "footer": {
-    "beFirstInLine": "Be first in line.",
     "lookingForEnterprise": "Looking for Enterprise?",
     "contactUs": "Contact us",
     "wiredArticle": "WIRED Article"
-  },
-  "form": {
-    "submitting": "Submitting...",
-    "joinWaitlist": "Reserve Your Early Access",
-    "tooManyRequests": "Too many requests",
-    "failedTryAgain": "Failed — try again"
-  },
-  "referral": {
-    "alreadyOnList": "You're already on the list.",
-    "shareHint": "Share your link to move up the line. Each friend who joins bumps you closer to the front.",
-    "copied": "Copied!",
-    "shareOnX": "Share on X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "I just joined the World Monitor Pro waitlist — stock monitoring, geopolitical analysis, and AI daily briefings in one platform. Join me:",
-    "joinWaitlistShare": "Join the World Monitor Pro waitlist:",
-    "youreIn": "You're in!",
-    "invitedBanner": "You've been invited — join the waitlist"
   },
   "soonBadge": "Soon",
   "welcome": {
@@ -584,7 +558,7 @@
       "s10l": "Scored hotspots",
       "s11v": "92",
       "s11l": "Exchanges & assets",
-      "s12v": "39",
+      "s12v": "42",
       "s12l": "MCP tools",
       "s13v": "154",
       "s13l": "⌘K commands",
@@ -612,7 +586,7 @@
       "eyebrow": "For builders & AI agents",
       "title": "Build on live world intelligence — from any stack.",
       "sub": "Everything on the map is also an API. Wire it into Claude over MCP, call the REST endpoints from anywhere, or install a native client for Python, Ruby, Go, or JavaScript — your code researches with live data instead of training-data memories.",
-      "b1": "39 MCP tools — risk scores, chokepoints, conflicts, markets, briefs",
+      "b1": "42 MCP tools — risk scores, chokepoints, conflicts, markets, briefs",
       "b2": "Documented REST API — 193 operations, one OpenAPI 3.1 spec, one key",
       "b3": "Official SDKs on npm, PyPI, RubyGems, and Go — zero-dependency, MCP-first",
       "b4": "JMESPath projection on every call — fetch exactly the fields you need",
@@ -621,7 +595,7 @@
       "termQuery": "Is our Red Sea exposure getting worse this week?",
       "termAnswer": "Transit counts down week-over-week; war-risk tier elevated; two density anomalies in the last 48h.",
       "termDocs": "See the full tool reference →",
-      "promise": "One key. 39 MCP tools. A full REST API. Language-native clients."
+      "promise": "One key. 42 MCP tools. A full REST API. Language-native clients."
     },
     "pricing": {
       "eyebrow": "Access",
@@ -639,7 +613,7 @@
       "proF1": "WM Analyst — chat across 30+ live services, with citations",
       "proF2": "Scenario engine & Route Explorer — game disruptions before they hit",
       "proF3": "Personal AI digest — daily, twice-daily or weekly, to Slack, Telegram or email",
-      "proF4": "MCP, REST API & official SDKs — 39 tools under one key",
+      "proF4": "MCP, REST API & official SDKs — 42 tools under one key",
       "proF5": "Custom widget builder for your own panels",
       "cta": "See plans & pricing",
       "note": "From $39.99/mo · 2 months free when billed annually"
@@ -660,7 +634,7 @@
       "q6": "Why should I trust an alert?",
       "a6": "A breaking banner fires only when independent origin types corroborate — news classification, keyword velocity, hotspot escalation, military surges, official sirens — deduplicated and rate-limited. Fewer alerts, real ones.",
       "q7": "Can AI agents like Claude or GPT use it?",
-      "a7": "Yes. World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need.",
+      "a7": "Yes. World Monitor ships a 42-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need.",
       "q8": "Do I need an account?",
       "a8": "No. The dashboard works instantly with no signup. An account only matters when you upgrade to Pro or want settings synced across devices.",
       "q9": "Is it open source?",

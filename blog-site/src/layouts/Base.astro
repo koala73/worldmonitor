@@ -1,4 +1,6 @@
 ---
+import productFacts from '../../../shared/product-facts.generated.json';
+
 interface Props {
   title: string;
   description: string;
@@ -27,6 +29,8 @@ const resolvedOgImageType = resolvedOgImage.toLowerCase().split(/[?#]/)[0].endsW
 const resolvedOgType = ogType || 'website';
 const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6) : [];
 const resolvedCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
+const proCtaUrl = productFacts.product.pricingUrl;
+const proCtaLabel = productFacts.product.primaryCtaLabel;
 
 function stringifyJsonLd(value: Record<string, unknown>): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
@@ -112,8 +116,8 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
           <li><a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a></li>
           <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         </ul>
-        <a href="https://www.worldmonitor.app/pro#waitlist" class="nav-cta" target="_blank" rel="noopener noreferrer">
-          Get Early Access
+        <a href={proCtaUrl} class="nav-cta" target="_blank" rel="noopener noreferrer">
+          {proCtaLabel}
         </a>
       </nav>
     </header>

@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "얼리 액세스 예약",
     "signIn": "로그인",
     "upgradeToPro": "Pro로 업그레이드",
     "goToDashboard": "대시보드로 이동"
@@ -13,11 +12,8 @@
     "noiseWord": "노이즈",
     "signalWord": "시그널",
     "valueProps": "지정학 AI 레이어 — 질문하고, 구독하고, 그 위에 쌓으세요.",
-    "reserveEarlyAccess": "얼리 액세스 예약",
     "launchingDate": "지금 이용 가능",
     "tryFreeDashboard": "무료 대시보드 체험",
-    "emailPlaceholder": "이메일 입력",
-    "emailAriaLabel": "대기자 명단용 이메일 주소",
     "choosePlan": "플랜 선택",
     "signIn": "로그인",
     "goToDashboard": "대시보드로 이동"
@@ -37,7 +33,6 @@
     "proF7": "알림 규칙 엔진 — 사용자 트리거, 무음 시간, AES-256 암호화 채널",
     "proF8": "시장 관심 목록, 매크로 및 중앙은행 추적",
     "proF9": "AI Market Implications 및 Regional Intelligence (출시 예정: 궤도 감시, 프리미엄 지도 레이어, 확장 이력)",
-    "proCta": "얼리 액세스 예약",
     "choosePlan": "플랜 선택",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "공유 모니터링, API 접근, 배포 옵션, TV 앱, 직접 지원이 필요한 팀을 위한.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Pro로 시작하세요. Enterprise로 확장하세요.",
     "subtitle": "World Monitor를 무료로 계속 사용하거나, Equity research, 매크로 분석, AI 브리핑을 위해 업그레이드하세요. 조직에 팀 액세스, TV 앱, API 지원이 필요하면 저희와 상담하세요.",
-    "getPro": "얼리 액세스 예약",
     "talkToSales": "영업 문의"
   },
   "footer": {
-    "beFirstInLine": "줄의 맨 앞에 서세요.",
     "lookingForEnterprise": "Enterprise 찾으시나요?",
     "contactUs": "문의하기",
     "wiredArticle": "WIRED 기사"
-  },
-  "form": {
-    "submitting": "전송 중...",
-    "joinWaitlist": "얼리 액세스 예약",
-    "tooManyRequests": "요청이 너무 많습니다",
-    "failedTryAgain": "실패 — 다시 시도"
-  },
-  "referral": {
-    "alreadyOnList": "이미 목록에 있습니다.",
-    "shareHint": "링크를 공유해 줄에서 위로 올라가세요. 친구가 참여할 때마다 선두에 가까워집니다.",
-    "copied": "복사됨!",
-    "shareOnX": "X에 공유",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "방금 World Monitor Pro 대기자 명단에 등록했습니다 — 하나의 플랫폼에서 주식 모니터링, 지정학 분석, 일일 AI 브리핑. 함께하세요:",
-    "joinWaitlistShare": "World Monitor Pro 대기자 명단에 참여:",
-    "youreIn": "참여 완료!",
-    "invitedBanner": "초대되었습니다 — 대기자 명단에 참여"
   },
   "soonBadge": "출시 예정",
   "meta": {

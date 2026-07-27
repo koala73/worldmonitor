@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Κρατήστε την πρώιμη πρόσβασή σας",
     "signIn": "Σύνδεση",
     "upgradeToPro": "Αναβάθμιση σε Pro",
     "goToDashboard": "Μεταβείτε στο Dashboard"
@@ -13,11 +12,8 @@
     "noiseWord": "Θόρυβος",
     "signalWord": "Σήμα",
     "valueProps": "Το γεωπολιτικό στρώμα AI — ρωτήστε το, εγγραφείτε, χτίστε πάνω του.",
-    "reserveEarlyAccess": "Κρατήστε την πρώιμη πρόσβασή σας",
     "launchingDate": "Διαθέσιμο τώρα",
     "tryFreeDashboard": "Δοκιμάστε τον δωρεάν πίνακα",
-    "emailPlaceholder": "Εισάγετε το email σας",
-    "emailAriaLabel": "Διεύθυνση email για τη λίστα αναμονής",
     "choosePlan": "Επιλέξτε πλάνο",
     "signIn": "Σύνδεση",
     "goToDashboard": "Μεταβείτε στο Dashboard"
@@ -37,7 +33,6 @@
     "proF7": "Μηχανή κανόνων ειδοποιήσεων — προσαρμοσμένα triggers, ώρες σιωπής, κανάλια κρυπτογραφημένα AES-256",
     "proF8": "Market watchlist, παρακολούθηση macro και κεντρικών τραπεζών",
     "proF9": "AI Market Implications και Regional Intelligence (Σύντομα: τροχιακή επιτήρηση, premium επίπεδα χάρτη, εκτεταμένο ιστορικό)",
-    "proCta": "Κρατήστε την πρώιμη πρόσβασή σας",
     "choosePlan": "Επιλέξτε πλάνο",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Για ομάδες που χρειάζονται κοινόχρηστο monitoring, πρόσβαση API, επιλογές deployment, εφαρμογές TV και άμεση υποστήριξη.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Ξεκινήστε με Pro. Κλιμακωθείτε σε Enterprise.",
     "subtitle": "Συνεχίστε να χρησιμοποιείτε το World Monitor δωρεάν, ή αναβαθμιστείτε για equity research, macro αναλυτική και AI briefings. Αν ο οργανισμός σας χρειάζεται πρόσβαση ομάδας, εφαρμογές TV ή υποστήριξη API, μιλήστε μας.",
-    "getPro": "Κρατήστε την πρώιμη πρόσβασή σας",
     "talkToSales": "Μιλήστε με πωλήσεις"
   },
   "footer": {
-    "beFirstInLine": "Γίνετε πρώτοι στην ουρά.",
     "lookingForEnterprise": "Ψάχνετε για Enterprise;",
     "contactUs": "Επικοινωνήστε μαζί μας",
     "wiredArticle": "Άρθρο WIRED"
-  },
-  "form": {
-    "submitting": "Αποστολή...",
-    "joinWaitlist": "Κρατήστε την πρώιμη πρόσβασή σας",
-    "tooManyRequests": "Πολλά αιτήματα",
-    "failedTryAgain": "Αποτυχία — δοκιμάστε ξανά"
-  },
-  "referral": {
-    "alreadyOnList": "Βρίσκεστε ήδη στη λίστα.",
-    "shareHint": "Μοιραστείτε τον σύνδεσμό σας για να ανέβετε στη λίστα. Κάθε φίλος που εγγράφεται σας φέρνει πιο κοντά στην αρχή.",
-    "copied": "Αντιγράφηκε!",
-    "shareOnX": "Μοιραστείτε στο X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Μόλις μπήκα στη λίστα αναμονής World Monitor Pro — παρακολούθηση μετοχών, γεωπολιτική ανάλυση και καθημερινά AI briefings σε μία πλατφόρμα. Ελάτε μαζί μου:",
-    "joinWaitlistShare": "Εγγραφείτε στη λίστα αναμονής World Monitor Pro:",
-    "youreIn": "Είστε μέσα!",
-    "invitedBanner": "Προσκληθήκατε — εγγραφείτε στη λίστα αναμονής"
   },
   "soonBadge": "Σύντομα",
   "meta": {

@@ -1,6 +1,6 @@
 ---
 title: "Command-Line Client"
-description: "Script country briefs, risk scores, and any of the 39 MCP tools from your shell with the official worldmonitor npm CLI — no API integration to write."
+description: "Script country briefs, risk scores, and any of the 42 MCP tools from your shell with the official worldmonitor npm CLI — no API integration to write."
 ---
 
 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) is the official command-line client for the World Monitor global-intelligence API. It's a thin, **dependency-free** wrapper over the [MCP server](/mcp-overview) (the recommended agent surface) with a REST escape hatch, so you can pull briefs, risk scores, and conflict / cyber / market / news feeds from a shell script or an agent without writing a single line of HTTP plumbing. It ships as ESM and runs on **Node 18+**.
@@ -25,7 +25,7 @@ npx worldmonitor tools
 worldmonitor tools
 ```
 
-You'll get all 39 tool definitions back as JSON. Everything else that returns *data* is a `tools/call` and needs a user API key.
+You'll get all 42 tool definitions back as JSON. Everything else that returns *data* is a `tools/call` and needs a user API key.
 
 ## Authenticate
 
@@ -66,7 +66,7 @@ worldmonitor markets --asset_class crypto            # crypto quotes
 
 ## Any tool, any argument
 
-The curated table stays small on purpose — every one of the 40 tools is reachable via `call`, and any unrecognised `--key value` becomes a tool argument, so nothing needs special wiring:
+The curated table stays small on purpose — every one of the 42 tools is reachable via `call`, and any unrecognised `--key value` becomes a tool argument, so nothing needs special wiring:
 
 ```sh
 worldmonitor call get_cyber_threats --min_severity 7
@@ -137,7 +137,7 @@ const code = await run(['risk', 'IR'], { env: process.env });
 ## Where to go next
 
 - **[MCP Quickstart](/mcp-quickstart)** — connect Claude Desktop and make your first tool call over the Model Context Protocol.
-- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, and examples for all 40 tools.
+- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, and examples for all 42 tools.
 - **[JMESPath guide](/mcp-jmespath)** — projection grammar to shrink responses by 80–95%.
 - **[Authentication](/usage-auth)** — API keys vs. OAuth vs. browser session.
 - **[API Reference](/api-reference)** — the full REST service catalog behind the `get` and `list` commands.

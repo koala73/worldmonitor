@@ -76,21 +76,68 @@
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "World Monitor",
-      "alternateName": ["WorldMonitor", "World Monitor App", "WM Intelligence"],
+      "alternateName": [
+        "WorldMonitor",
+        "World Monitor App",
+        "WM Intelligence"
+      ],
       "url": "https://www.worldmonitor.app/dashboard",
       "description": "Open-source real-time global intelligence dashboard aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries. Featured in WIRED.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Web, Windows, macOS, Linux",
       "offers": [
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 500+ news feeds, 65+ external data sources, 56 map layer types, BYOK AI" },
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Pro (Waitlist)", "url": "https://www.worldmonitor.app/pro" }
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Monthly",
+          "price": "39.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "39.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Annual",
+          "price": "399.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "399.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        }
       ],
       "author": {
         "@type": "Person",
         "name": "Elie Habib",
         "url": "https://x.com/eliehabib",
         "jobTitle": "CEO",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
+        "sameAs": [
+          "https://x.com/eliehabib",
+          "https://github.com/koala73",
+          "https://www.linkedin.com/in/elie-habib-7047b931",
+          "https://www.wikidata.org/wiki/Q121365724",
+          "https://www.crunchbase.com/person/elie-habib-2"
+        ]
       },
       "featureList": [
         "Real-time conflict tracking (ACLED, UCDP)",

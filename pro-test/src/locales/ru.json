@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Забронируйте ранний доступ",
     "signIn": "Войти",
     "upgradeToPro": "Перейти на Pro",
     "goToDashboard": "Перейти на панель управления"
@@ -13,11 +12,8 @@
     "noiseWord": "Шум",
     "signalWord": "Сигнал",
     "valueProps": "Геополитический слой ИИ — спросите его, подпишитесь, стройте поверх.",
-    "reserveEarlyAccess": "Забронируйте ранний доступ",
     "launchingDate": "Доступно сейчас",
     "tryFreeDashboard": "Попробуйте бесплатную панель",
-    "emailPlaceholder": "Введите e-mail",
-    "emailAriaLabel": "Адрес e-mail для списка ожидания",
     "choosePlan": "Выберите план",
     "signIn": "Войти",
     "goToDashboard": "Перейти на панель управления"
@@ -37,7 +33,6 @@
     "proF7": "Движок правил оповещений — свои триггеры, тихие часы, каналы с шифрованием AES-256",
     "proF8": "Watchlist рынка, отслеживание макро и центральных банков",
     "proF9": "AI Market Implications и Regional Intelligence (Скоро: орбитальное наблюдение, премиум-слои карты, расширенная история)",
-    "proCta": "Забронируйте ранний доступ",
     "choosePlan": "Выберите план",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Для команд, которым нужен общий мониторинг, доступ к API, варианты развёртывания, TV-приложения и прямая поддержка.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Начните с Pro. Масштабируйтесь до Enterprise.",
     "subtitle": "Продолжайте пользоваться World Monitor бесплатно или переходите на equity research, макроаналитику и ИИ-брифинги. Если вашей организации нужен командный доступ, TV-приложения или API-поддержка — напишите нам.",
-    "getPro": "Забронируйте ранний доступ",
     "talkToSales": "Связаться с продажами"
   },
   "footer": {
-    "beFirstInLine": "Будьте первыми в очереди.",
     "lookingForEnterprise": "Ищете Enterprise?",
     "contactUs": "Свяжитесь с нами",
     "wiredArticle": "Статья WIRED"
-  },
-  "form": {
-    "submitting": "Отправка...",
-    "joinWaitlist": "Забронируйте ранний доступ",
-    "tooManyRequests": "Слишком много запросов",
-    "failedTryAgain": "Ошибка — попробуйте снова"
-  },
-  "referral": {
-    "alreadyOnList": "Вы уже в списке.",
-    "shareHint": "Поделитесь ссылкой, чтобы подняться в очереди. Каждый друг, который присоединится, приближает вас к началу.",
-    "copied": "Скопировано!",
-    "shareOnX": "Поделиться в X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Только что присоединился к списку ожидания World Monitor Pro — мониторинг акций, геополитический анализ и ежедневные ИИ-брифинги в одной платформе. Присоединяйтесь:",
-    "joinWaitlistShare": "Присоединяйтесь к списку ожидания World Monitor Pro:",
-    "youreIn": "Вы в деле!",
-    "invitedBanner": "Вас пригласили — присоединяйтесь к списку ожидания"
   },
   "soonBadge": "Скоро",
   "meta": {

@@ -12,7 +12,7 @@ Open-source (AGPL-3.0), used by 2M+ people across 190+ countries, as featured in
 - 13 shipping chokepoints with live AIS vessel-transit intelligence
 - Satellite tracking, GPS jamming zones, submarine cables, AI datacenters
 - Daily AI brief, Scenario Engine, custom monitors and breaking alerts
-- 39-tool MCP server so AI agents can query everything above
+- 42-tool MCP server so AI agents can query everything above
 
 ## Live instances
 

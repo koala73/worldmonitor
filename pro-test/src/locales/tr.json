@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Erken erişim için yer ayırtın",
     "signIn": "Giriş yap",
     "upgradeToPro": "Pro'ya yükselt",
     "goToDashboard": "Panoya Git"
@@ -13,11 +12,8 @@
     "noiseWord": "Gürültü",
     "signalWord": "Sinyal",
     "valueProps": "Jeopolitik yapay zekâ katmanı — ona sorun, abone olun, üzerine inşa edin.",
-    "reserveEarlyAccess": "Erken erişim için yer ayırtın",
     "launchingDate": "Şimdi mevcut",
     "tryFreeDashboard": "Ücretsiz kontrol panelini deneyin",
-    "emailPlaceholder": "E-postanızı girin",
-    "emailAriaLabel": "Bekleme listesi için e-posta",
     "choosePlan": "Planınızı seçin",
     "signIn": "Giriş yap",
     "goToDashboard": "Panoya Git"
@@ -37,7 +33,6 @@
     "proF7": "Uyarı kuralı motoru — özel tetikleyiciler, sessiz saatler, AES-256 şifreli kanallar",
     "proF8": "Pazar watchlist'i, makro ve merkez bankası takibi",
     "proF9": "AI Market Implications ve Regional Intelligence (Yakında: yörünge gözetimi, premium harita katmanları, uzatılmış geçmiş)",
-    "proCta": "Erken erişim için yer ayırtın",
     "choosePlan": "Planınızı seçin",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Paylaşılan izleme, API erişimi, deployment seçenekleri, TV uygulamaları ve doğrudan desteğe ihtiyaç duyan ekipler için.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Pro ile başlayın. Enterprise'a ölçeklendirin.",
     "subtitle": "World Monitor'u ücretsiz kullanmaya devam edin veya equity research, makro analitik ve AI brifleri için yükseltin. Organizasyonunuzun ekip erişimine, TV uygulamalarına veya API desteğine ihtiyacı varsa, bizimle konuşun.",
-    "getPro": "Erken erişim için yer ayırtın",
     "talkToSales": "Satışla konuşun"
   },
   "footer": {
-    "beFirstInLine": "Sırada ilk olun.",
     "lookingForEnterprise": "Enterprise mı arıyorsunuz?",
     "contactUs": "Bize ulaşın",
     "wiredArticle": "WIRED makalesi"
-  },
-  "form": {
-    "submitting": "Gönderiliyor...",
-    "joinWaitlist": "Erken erişim için yer ayırtın",
-    "tooManyRequests": "Çok fazla istek",
-    "failedTryAgain": "Başarısız — tekrar deneyin"
-  },
-  "referral": {
-    "alreadyOnList": "Zaten listedesiniz.",
-    "shareHint": "Sıranızı yükseltmek için bağlantınızı paylaşın. Katılan her arkadaş sizi başa yaklaştırır.",
-    "copied": "Kopyalandı!",
-    "shareOnX": "X'te paylaş",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Az önce World Monitor Pro bekleme listesine katıldım — tek bir platformda hisse izleme, jeopolitik analiz ve günlük AI brifleri. Bana katılın:",
-    "joinWaitlistShare": "World Monitor Pro bekleme listesine katılın:",
-    "youreIn": "Katıldınız!",
-    "invitedBanner": "Davet edildiniz — bekleme listesine katılın"
   },
   "soonBadge": "Yakında",
   "meta": {

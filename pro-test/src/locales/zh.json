@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "预订早鸟访问",
     "signIn": "登录",
     "upgradeToPro": "升级到 Pro",
     "goToDashboard": "转到仪表板"
@@ -13,11 +12,8 @@
     "noiseWord": "噪音",
     "signalWord": "信号",
     "valueProps": "地缘政治 AI 层 — 向它提问、订阅它、在其之上构建。",
-    "reserveEarlyAccess": "预订早鸟访问",
     "launchingDate": "现已上线",
     "tryFreeDashboard": "试用免费仪表板",
-    "emailPlaceholder": "输入您的邮箱",
-    "emailAriaLabel": "等候名单邮箱地址",
     "choosePlan": "选择方案",
     "signIn": "登录",
     "goToDashboard": "转到仪表板"
@@ -37,7 +33,6 @@
     "proF7": "告警规则引擎 — 自定义触发器、静音时段、AES-256 加密通道",
     "proF8": "市场观察列表、宏观与央行追踪",
     "proF9": "AI Market Implications 与 Regional Intelligence(即将推出:轨道监视、高级地图图层、更长历史)",
-    "proCta": "预订早鸟访问",
     "choosePlan": "选择方案",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "面向需要共享监测、API 访问、部署选项、TV 应用和直接支持的团队。",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "从 Pro 开始。扩展到 Enterprise。",
     "subtitle": "继续免费使用 World Monitor,或升级以获取股票研究、宏观分析和 AI 简报。若您的组织需要团队访问、TV 应用或 API 支持,请与我们联系。",
-    "getPro": "预订早鸟访问",
     "talkToSales": "联系销售"
   },
   "footer": {
-    "beFirstInLine": "抢占队列第一位。",
     "lookingForEnterprise": "在找 Enterprise?",
     "contactUs": "联系我们",
     "wiredArticle": "WIRED 文章"
-  },
-  "form": {
-    "submitting": "提交中...",
-    "joinWaitlist": "预订早鸟访问",
-    "tooManyRequests": "请求过多",
-    "failedTryAgain": "失败 — 请重试"
-  },
-  "referral": {
-    "alreadyOnList": "您已在名单上。",
-    "shareHint": "分享您的链接以在队列中前移。每位加入的朋友都让您更靠前。",
-    "copied": "已复制!",
-    "shareOnX": "在 X 上分享",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "我刚加入了 World Monitor Pro 等候名单 — 一个平台囊括股票监测、地缘政治分析与每日 AI 简报。一起来:",
-    "joinWaitlistShare": "加入 World Monitor Pro 等候名单:",
-    "youreIn": "您已入列!",
-    "invitedBanner": "您已被邀请 — 加入等候名单"
   },
   "soonBadge": "即将推出",
   "meta": {

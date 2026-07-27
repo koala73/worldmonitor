@@ -174,22 +174,70 @@
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://worldmonitor.app",
       "description": "Free real-time global intelligence dashboard. 500+ news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
-      "sameAs": ["https://github.com/koala73/worldmonitor", "https://www.npmjs.com/package/worldmonitor", "https://x.com/worldmonitorai", "https://discord.gg/re63kWKxaz", "https://www.wired.com/story/world-monitor-elie-habib/"],
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.com/story/world-monitor-elie-habib/"
+      ],
       "author": {
         "@type": "Person",
         "name": "Elie Habib",
         "url": "https://x.com/eliehabib",
         "jobTitle": "CEO",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
+        "sameAs": [
+          "https://x.com/eliehabib",
+          "https://github.com/koala73",
+          "https://www.linkedin.com/in/elie-habib-7047b931",
+          "https://www.wikidata.org/wiki/Q121365724",
+          "https://www.crunchbase.com/person/elie-habib-2"
+        ]
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "datePublished": "2026-01",
       "offers": [
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 500+ news feeds, 65+ external data sources, 56 map layers, six monitor variants, BYOK AI — no signup required" },
-        { "@type": "Offer", "price": "39.99", "priceCurrency": "USD", "name": "Pro Monthly", "description": "WM Analyst chat, Scenario Engine, Route Explorer, AI digest (daily/twice-daily/weekly), custom widget builder, MCP connectors, equity research, macro analytics — 30+ services under one key" },
-        { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" }
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Monthly",
+          "price": "39.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "39.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Annual",
+          "price": "399.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "399.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        }
       ],
-      "featureList": "Real-time global map with 56 data layers, 500+ curated news feeds, Country Instability Index across 196 countries, live conflict tracking, market quotes and sector heatmaps, 13 shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, 39-tool MCP server, desktop apps, Android TV app, 25 language support"
+      "featureList": "Real-time global map with 56 data layers, 500+ curated news feeds, Country Instability Index across 196 countries, live conflict tracking, market quotes and sector heatmaps, 13 shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, 42-tool MCP server, desktop apps, Android TV app, 25 language support"
     }
     </script>
     <script type="application/ld+json">
@@ -252,7 +300,7 @@
         {
           "@type": "Question",
           "name": "Can AI agents like Claude or GPT use it?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. World Monitor ships a 42-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need." }
         },
         {
           "@type": "Question",
@@ -318,7 +366,7 @@
         <ul>
           <li><strong>See</strong> — 56 map layers across a dual 3D-globe/WebGL map: conflicts, vessels, flights, satellites, pipelines, submarine cables, AI datacenters.</li>
           <li><strong>Understand</strong> — daily AI brief, Country Instability Index across 196 countries, cross-source correlation, Scenario Engine.</li>
-          <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, 39-tool MCP server and API for Claude, GPT and custom agents.</li>
+          <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, 42-tool MCP server and API for Claude, GPT and custom agents.</li>
         </ul>
         <p>Upgrade to <a href="https://www.worldmonitor.app/pro" style="color:#4ade80;">World Monitor Pro</a> for the AI analyst, Scenario Engine and Route Explorer, personal intelligence digest, custom widget builder, and MCP/API access — from $39.99/month.</p>
       </div>

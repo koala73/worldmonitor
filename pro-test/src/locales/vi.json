@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Đặt trước quyền truy cập sớm",
     "signIn": "Đăng nhập",
     "upgradeToPro": "Nâng cấp lên Pro",
     "goToDashboard": "Đi tới Bảng điều khiển"
@@ -13,11 +12,8 @@
     "noiseWord": "Nhiễu",
     "signalWord": "Tín hiệu",
     "valueProps": "Lớp AI địa chính trị — hãy hỏi nó, đăng ký, xây dựng trên đó.",
-    "reserveEarlyAccess": "Đặt trước quyền truy cập sớm",
     "launchingDate": "Hiện có sẵn",
     "tryFreeDashboard": "Dùng thử bảng điều khiển miễn phí",
-    "emailPlaceholder": "Nhập email của bạn",
-    "emailAriaLabel": "Địa chỉ email cho danh sách chờ",
     "choosePlan": "Chọn gói",
     "signIn": "Đăng nhập",
     "goToDashboard": "Đi tới Bảng điều khiển"
@@ -37,7 +33,6 @@
     "proF7": "Động cơ quy tắc cảnh báo — trình kích hoạt tùy chỉnh, giờ yên lặng, kênh mã hóa AES-256",
     "proF8": "Watchlist thị trường, theo dõi vĩ mô và ngân hàng trung ương",
     "proF9": "AI Market Implications và Regional Intelligence (Sắp ra mắt: giám sát quỹ đạo, lớp bản đồ cao cấp, lịch sử mở rộng)",
-    "proCta": "Đặt trước quyền truy cập sớm",
     "choosePlan": "Chọn gói",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Dành cho các nhóm cần giám sát chia sẻ, truy cập API, các tùy chọn triển khai, ứng dụng TV và hỗ trợ trực tiếp.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Bắt đầu với Pro. Mở rộng đến Enterprise.",
     "subtitle": "Tiếp tục sử dụng World Monitor miễn phí, hoặc nâng cấp để có Equity research, phân tích vĩ mô và bản tóm tắt AI. Nếu tổ chức của bạn cần truy cập nhóm, ứng dụng TV hoặc hỗ trợ API — hãy trao đổi với chúng tôi.",
-    "getPro": "Đặt trước quyền truy cập sớm",
     "talkToSales": "Liên hệ kinh doanh"
   },
   "footer": {
-    "beFirstInLine": "Là người đầu tiên trong hàng.",
     "lookingForEnterprise": "Đang tìm Enterprise?",
     "contactUs": "Liên hệ chúng tôi",
     "wiredArticle": "Bài viết WIRED"
-  },
-  "form": {
-    "submitting": "Đang gửi...",
-    "joinWaitlist": "Đặt trước quyền truy cập sớm",
-    "tooManyRequests": "Quá nhiều yêu cầu",
-    "failedTryAgain": "Thất bại — thử lại"
-  },
-  "referral": {
-    "alreadyOnList": "Bạn đã có trong danh sách.",
-    "shareHint": "Chia sẻ liên kết của bạn để di chuyển lên trong hàng. Mỗi người bạn tham gia đưa bạn đến gần đầu hàng hơn.",
-    "copied": "Đã sao chép!",
-    "shareOnX": "Chia sẻ trên X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Tôi vừa tham gia danh sách chờ World Monitor Pro — giám sát cổ phiếu, phân tích địa chính trị và bản tóm tắt hàng ngày bằng AI trong một nền tảng. Hãy tham gia cùng tôi:",
-    "joinWaitlistShare": "Tham gia danh sách chờ World Monitor Pro:",
-    "youreIn": "Bạn đã tham gia!",
-    "invitedBanner": "Bạn đã được mời — hãy tham gia danh sách chờ"
   },
   "soonBadge": "Sắp ra mắt",
   "meta": {
