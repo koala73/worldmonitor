@@ -449,7 +449,13 @@ if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/
     echo "ERROR: pro-test build failed"
     exit 1
   }
-  if ! git diff --exit-code src/config/products.generated.ts api/_product-fallback-prices.js pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/; then
+  # Paths must all exist: `git diff` exits 128 on an unknown path, which this
+  # check cannot tell apart from a real diff, so a generated file that is later
+  # deleted silently converts the gate into "always fails". #5672 removed
+  # api/_product-fallback-prices.js and left it listed here, which blocked every
+  # push touching pro-test/ or public/pro/ until it was noticed. Keep this list
+  # in step with what scripts/generate-product-config.mjs actually writes.
+  if ! git diff --exit-code src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/; then
     echo ""
     echo "============================================================"
     echo "ERROR: product catalog, generated config, pro locales, or public/pro/ is stale."
@@ -458,7 +464,7 @@ if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/
     echo "Fix:"
     echo "  npx tsx scripts/generate-product-config.mjs"
     echo "  cd pro-test && npm run build && cd .."
-    echo "  git add src/config/products.generated.ts api/_product-fallback-prices.js pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/"
+    echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/"
     echo "  git commit --amend --no-edit"
     echo "============================================================"
     exit 1
