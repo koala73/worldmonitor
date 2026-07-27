@@ -393,16 +393,26 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     expect(await res.json()).toMatchObject({ code: "renewal_verification_pending" });
   });
 
-  test("null entitlement with UNCONFIGURED backend → fail-open 200 (deploy defect, not billing state)", async () => {
+  test("null entitlement with UNCONFIGURED backend → fail-open stays on shared limiter", async () => {
     entitlement = null;
     entitlementBackendConfigured = false;
+    checkRateLimit.mockResolvedValue(
+      new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 }),
+    );
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
       // Missing CONVEX_SITE_URL / shared secret means NO lookup could ever
       // succeed: 503ing here would turn a config regression into a fleet-wide
-      // outage for every wm_ key. Serve (pre-#4770 posture) and log loudly.
-      expect(res.status).toBe(200);
+      // outage for every wm_ key. Fail open to the shared/global limiter
+      // (pre-#4770 posture), without granting the unverified key its own bucket.
+      expect(res.status).toBe(429);
+      expect(routeHandler).not.toHaveBeenCalled();
+      expect(checkRateLimit).toHaveBeenCalledTimes(1);
+      expect(checkRateLimit).toHaveBeenCalledWith(
+        expect.any(Request),
+        expect.any(Object),
+      );
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("entitlement backend unconfigured"),
       );
