@@ -191,7 +191,9 @@ test('public Escalation Monitor docs publish the current adapter weights and gat
 });
 
 test('public algorithms docs publish current temporal anomaly severities', () => {
-  const temporalCode = readRepo('server/worldmonitor/infrastructure/v1/_shared.ts');
+  // Thresholds moved to the shared client/server module in #5696; the server
+  // _shared.ts re-exports them, so this remains the single source of truth.
+  const temporalCode = readRepo('shared/analysis-temporal-severity.ts');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
 
   assert.match(temporalCode, /export const Z_THRESHOLD_LOW = 1\.5;/);
