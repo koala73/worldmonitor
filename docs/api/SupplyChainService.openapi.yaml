@@ -2587,8 +2587,12 @@ components:
                                             properties:
                                                 id:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 name:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 type:
                                                     type: "string"
                                                     enum:
@@ -2613,12 +2617,57 @@ components:
                                                             properties:
                                                                 sourceName:
                                                                     type: "string"
+                                                                    minLength: 1
+                                                                    pattern: "\\S"
                                                                 sourceType:
                                                                     type: "string"
+                                                                    minLength: 1
+                                                                    pattern: "\\S"
                                                                 propagandaRisk:
                                                                     type: "string"
+                                                                    minLength: 1
+                                                                    pattern: "\\S"
                                                         -
                                                             type: "null"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        type:
+                                                            const: "derived_output"
+                                                        registryReference:
+                                                            type: "null"
+                                                -
+                                                    properties:
+                                                        type:
+                                                            enum:
+                                                                - "official_government"
+                                                                - "state_controlled_media"
+                                                                - "official_exchange"
+                                                                - "independent_observation"
+                                                                - "independent_media"
+                                                                - "wire_service"
+                                                                - "market_publisher"
+                                                                - "unknown"
+                                                        registryReference:
+                                                            type: "object"
+                                                            additionalProperties: false
+                                                            required:
+                                                                - "sourceName"
+                                                                - "sourceType"
+                                                                - "propagandaRisk"
+                                                            properties:
+                                                                sourceName:
+                                                                    type: "string"
+                                                                    minLength: 1
+                                                                    pattern: "\\S"
+                                                                sourceType:
+                                                                    type: "string"
+                                                                    minLength: 1
+                                                                    pattern: "\\S"
+                                                                propagandaRisk:
+                                                                    type: "string"
+                                                                    minLength: 1
+                                                                    pattern: "\\S"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         source_url:
@@ -2636,6 +2685,7 @@ components:
                                         value:
                                             type: "string"
                                             format: "uri"
+                                            pattern: "^https://(?![^/?#]*@)[^/?#\\s]+(?:[/?#]\\S*)?$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         original_reference:
@@ -2667,8 +2717,11 @@ components:
                                                         - "dataset"
                                                 id:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 contentHash:
                                                     type: "string"
+                                                    pattern: "^sha256:[a-f0-9]{64}$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         original_language:
@@ -2685,6 +2738,8 @@ components:
                                             const: "known"
                                         value:
                                             type: "string"
+                                            minLength: 1
+                                            pattern: "\\S"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         translation:
@@ -2714,6 +2769,26 @@ components:
                                                         - "human_reviewed"
                                                 targetLanguage:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "machine_assisted"
+                                                                - "human_reviewed"
+                                                    required:
+                                                        - "targetLanguage"
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "unavailable"
+                                                                - "not_translated"
+                                                    not:
+                                                        required:
+                                                            - "targetLanguage"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         observation_time:
@@ -2740,7 +2815,21 @@ components:
                                                     type: "string"
                                                     const: "observation"
                                                 value:
-                                                    type: "string"
+                                                    oneOf:
+                                                        -
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                        -
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                                 precision:
                                                     type: "string"
                                                     enum:
@@ -2748,6 +2837,37 @@ components:
                                                         - "day"
                                                         - "month"
                                                         - "year"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "instant"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "day"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "month"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "year"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         effective_time:
@@ -2774,7 +2894,21 @@ components:
                                                     type: "string"
                                                     const: "effective"
                                                 value:
-                                                    type: "string"
+                                                    oneOf:
+                                                        -
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                        -
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                                 precision:
                                                     type: "string"
                                                     enum:
@@ -2782,6 +2916,37 @@ components:
                                                         - "day"
                                                         - "month"
                                                         - "year"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "instant"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "day"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "month"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "year"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         publication_time:
@@ -2808,7 +2973,21 @@ components:
                                                     type: "string"
                                                     const: "publication"
                                                 value:
-                                                    type: "string"
+                                                    oneOf:
+                                                        -
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                        -
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                                 precision:
                                                     type: "string"
                                                     enum:
@@ -2816,6 +2995,37 @@ components:
                                                         - "day"
                                                         - "month"
                                                         - "year"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "instant"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "day"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "month"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "year"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         retrieval_time:
@@ -2842,7 +3052,21 @@ components:
                                                     type: "string"
                                                     const: "retrieval"
                                                 value:
-                                                    type: "string"
+                                                    oneOf:
+                                                        -
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                        -
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                                 precision:
                                                     type: "string"
                                                     enum:
@@ -2850,6 +3074,37 @@ components:
                                                         - "day"
                                                         - "month"
                                                         - "year"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "instant"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "day"
+                                                        value:
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "month"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                -
+                                                    properties:
+                                                        precision:
+                                                            const: "year"
+                                                        value:
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         revision:
@@ -2874,6 +3129,8 @@ components:
                                             properties:
                                                 vintageId:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 sequence:
                                                     type: "integer"
                                                     minimum: 1
@@ -2884,6 +3141,24 @@ components:
                                                         - "original"
                                                         - "revised"
                                                         - "corrected"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "preliminary"
+                                                                - "original"
+                                                        sequence:
+                                                            const: 1
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "revised"
+                                                                - "corrected"
+                                                        sequence:
+                                                            type: "integer"
+                                                            minimum: 2
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         supersession:
@@ -2913,8 +3188,39 @@ components:
                                                         - "superseded"
                                                 relatedSignalId:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 reason:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        state:
+                                                            const: "current"
+                                                    not:
+                                                        anyOf:
+                                                            -
+                                                                required:
+                                                                    - "relatedSignalId"
+                                                            -
+                                                                required:
+                                                                    - "reason"
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "corrected"
+                                                                - "superseded"
+                                                    required:
+                                                        - "relatedSignalId"
+                                                -
+                                                    properties:
+                                                        state:
+                                                            const: "cancelled"
+                                                    required:
+                                                        - "reason"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         extraction_confidence:
@@ -2942,6 +3248,8 @@ components:
                                                     maximum: 1
                                                 method:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         classification_confidence:
@@ -2969,6 +3277,8 @@ components:
                                                     maximum: 1
                                                 method:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         corroboration:
@@ -2999,8 +3309,40 @@ components:
                                                         - "contradicted"
                                                 sourceSignalIds:
                                                     type: "array"
+                                                    uniqueItems: true
                                                     items:
                                                         type: "string"
+                                                        minLength: 1
+                                                        pattern: "\\S"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        state:
+                                                            const: "single_source"
+                                                        sourceSignalIds:
+                                                            type: "array"
+                                                            uniqueItems: true
+                                                            items:
+                                                                type: "string"
+                                                                minLength: 1
+                                                                pattern: "\\S"
+                                                            minItems: 1
+                                                            maxItems: 1
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "multi_source"
+                                                                - "independently_corroborated"
+                                                                - "contradicted"
+                                                        sourceSignalIds:
+                                                            type: "array"
+                                                            minItems: 2
+                                                            uniqueItems: true
+                                                            items:
+                                                                type: "string"
+                                                                minLength: 1
+                                                                pattern: "\\S"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         transport_freshness:
@@ -3032,9 +3374,11 @@ components:
                                                 assessedAt:
                                                     type: "string"
                                                     format: "date-time"
+                                                    pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
                                                 lastSuccessAt:
                                                     type: "string"
                                                     format: "date-time"
+                                                    pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         content_freshness:
@@ -3067,8 +3411,45 @@ components:
                                                 assessedAt:
                                                     type: "string"
                                                     format: "date-time"
+                                                    pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
                                                 contentAsOf:
-                                                    type: "string"
+                                                    oneOf:
+                                                        -
+                                                            type: "string"
+                                                            format: "date-time"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
+                                                        -
+                                                            type: "string"
+                                                            format: "date"
+                                                            pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}-(?:0[1-9]|1[0-2])$"
+                                                        -
+                                                            type: "string"
+                                                            pattern: "^\\d{4}$"
+                                            oneOf:
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "current"
+                                                                - "stale"
+                                                    required:
+                                                        - "contentAsOf"
+                                                -
+                                                    properties:
+                                                        state:
+                                                            const: "timestamp_unknown"
+                                                    not:
+                                                        required:
+                                                            - "contentAsOf"
+                                                -
+                                                    properties:
+                                                        state:
+                                                            enum:
+                                                                - "unavailable"
+                                                                - "partial"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
                         derivation:
@@ -3094,15 +3475,24 @@ components:
                                             properties:
                                                 methodId:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 methodVersion:
                                                     type: "string"
+                                                    minLength: 1
+                                                    pattern: "\\S"
                                                 computedAt:
                                                     type: "string"
                                                     format: "date-time"
+                                                    pattern: "^(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$"
                                                 inputSignalIds:
                                                     type: "array"
+                                                    minItems: 1
+                                                    uniqueItems: true
                                                     items:
                                                         type: "string"
+                                                        minLength: 1
+                                                        pattern: "\\S"
                                 -
                                     "$ref": "#/components/schemas/ChinaCorridorProvenanceClaim"
         ChinaCorridorProvenanceClaim:

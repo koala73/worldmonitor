@@ -45,7 +45,9 @@ fi
 echo "Checking PR status for current branch..."
 BRANCH=$(git branch --show-current)
 if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
-  PR_STATE=$(gh pr view "$BRANCH" --json state --jq '.state' 2>&1)
+  PR_INFO=$(gh pr view "$BRANCH" --json state,baseRefName --jq '"\(.state)\t\(.baseRefName)"' 2>&1)
+  PR_STATE=$(printf '%s' "$PR_INFO" | cut -f1)
+  PR_BASE_REF=$(printf '%s' "$PR_INFO" | cut -f2)
   if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ]; then
     echo ""
     echo "============================================================"
@@ -58,15 +60,40 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
   echo "  Branch PR state: ${PR_STATE:-unknown}"
 
   # Guard against branch contamination from a dirty local main.
-  # A feature/fix branch should never have more than 20 commits — if it does,
-  # the branch was likely created from a local main that had unmerged feature branches.
-  COMMIT_COUNT=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+  # A feature/fix branch should never have more than 20 commits past its
+  # actual base — if it does, the branch was likely created from a local
+  # main that had unmerged feature branches.
+  #
+  # The base defaults to origin/main, but a branch deliberately stacked on
+  # another open PR's head (base != main) would trip this against the wrong
+  # ref. Prefer, in order: an explicit WM_BASE_REF override (matching the
+  # WM_ALLOW_FOREIGN_HOOKS convention), the open PR's actual base branch,
+  # then origin/main as the common first-push fallback.
+  BASE_REF="${WM_BASE_REF:-}"
+  if [ -z "$BASE_REF" ] && [ -n "$PR_BASE_REF" ] && [ "$PR_BASE_REF" != "null" ]; then
+    BASE_REF="$PR_BASE_REF"
+  fi
+  BASE_REF="${BASE_REF:-main}"
+  # Refresh the remote-tracking ref before trusting it. A stacked branch's
+  # base may not be fetched locally at all yet, and even origin/main can be
+  # stale in a long-lived worktree — either way, counting against a stale
+  # ref reintroduces the exact false-positive this guard is meant to avoid.
+  # A failed fetch (offline, network hiccup) is not fatal: fall through to
+  # whatever's already cached locally, same as before this change.
+  git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
+  if ! git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
+    echo "  Base ref 'origin/$BASE_REF' not resolvable, falling back to origin/main."
+    BASE_REF="main"
+    git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
+  fi
+  COMMIT_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
   if [ "$COMMIT_COUNT" -gt 20 ]; then
     echo ""
     echo "============================================================"
-    echo "ERROR: Branch '$BRANCH' is $COMMIT_COUNT commits ahead of origin/main."
+    echo "ERROR: Branch '$BRANCH' is $COMMIT_COUNT commits ahead of origin/$BASE_REF."
     echo "This usually means it was branched from a dirty local main."
     echo "Fix: create branches from a worktree or use: git checkout -b <name> origin/main"
+    echo "If this is an intentional stacked branch, set WM_BASE_REF to its base."
     echo "============================================================"
     exit 1
   fi

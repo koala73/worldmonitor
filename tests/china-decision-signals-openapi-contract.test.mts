@@ -12,6 +12,12 @@ import {
   isChinaDecisionSignalSnapshot,
 } from '../shared/china-decision-signals';
 import {
+  CHINA_DECISION_SIGNAL_GROUP_MANIFEST,
+  CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+} from '../shared/china-decision-signal-manifest';
+import {
+  parseChinaDecisionSignalManifest,
+  provenanceValueSchema,
   readChinaDecisionSignalWireContract,
   readDecisionSignalProvenanceContract,
 } from '../scripts/lib/openapi-codegen.mjs';
@@ -121,6 +127,80 @@ function availableSnapshot() {
 }
 
 describe('China decision-signals OpenAPI embedded JSON contract', () => {
+  it('parses harmless manifest formatting changes without weakening validation', () => {
+    const reformattedManifest = `
+      export const CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP = 4
+        as const satisfies number;
+      export const CHINA_DECISION_SIGNAL_GROUP_MANIFEST = [
+        {
+          sourceKey: "economic:china:macro:v2",
+          // Metadata may be added without coupling codegen to its position.
+          metadata: { owner: 'macro' },
+          groupId: "macro",
+          provenanceFamily: "china_macro_official_numeric_observation",
+        },
+      ] as const satisfies readonly unknown[];
+    `;
+    assert.deepEqual(
+      parseChinaDecisionSignalManifest(reformattedManifest),
+      {
+        groupManifest: [{
+          groupId: 'macro',
+          provenanceFamily: 'china_macro_official_numeric_observation',
+          sourceKey: 'economic:china:macro:v2',
+        }],
+        maxItemsPerGroup: 4,
+      },
+    );
+  });
+
+  it('rejects runtime-bearing manifest initializers instead of parsing a literal prefix', () => {
+    const literalEntry = `[
+      {
+        groupId: 'macro',
+        provenanceFamily: 'china_macro_official_numeric_observation',
+        sourceKey: 'economic:china:macro:v2',
+      },
+    ]`;
+
+    assert.throws(
+      () => parseChinaDecisionSignalManifest(`
+        export const CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP = 4 + 1;
+        export const CHINA_DECISION_SIGNAL_GROUP_MANIFEST = ${literalEntry} as const;
+      `),
+      /static literal/,
+    );
+    for (const runtimeSuffix of [
+      '.slice(1)',
+      '.map((entry) => entry)',
+    ]) {
+      assert.throws(
+        () => parseChinaDecisionSignalManifest(`
+          export const CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP = 4 as const;
+          export const CHINA_DECISION_SIGNAL_GROUP_MANIFEST = ${literalEntry}${runtimeSuffix};
+        `),
+        /static literal/,
+      );
+    }
+  });
+
+  it('reads group provenance and item bounds from the shared runtime manifest', () => {
+    assert.deepEqual(
+      wireContract.groupIds,
+      CHINA_DECISION_SIGNAL_GROUP_MANIFEST.map(({ groupId }) => groupId),
+    );
+    assert.deepEqual(
+      wireContract.provenanceFamilyIds,
+      CHINA_DECISION_SIGNAL_GROUP_MANIFEST.map(
+        ({ provenanceFamily }) => provenanceFamily,
+      ),
+    );
+    assert.equal(
+      wireContract.maxItemsPerGroup,
+      CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+    );
+  });
+
   for (const [label, spec] of specs) {
     it(`${label}: documents the anonymous six-group canonical snapshot`, () => {
       const operation = spec.paths[path].get;
@@ -177,6 +257,19 @@ describe('China decision-signals OpenAPI embedded JSON contract', () => {
         [...claims.required].sort(),
         [...provenanceContract.dimensions].sort(),
       );
+      for (const dimension of provenanceContract.dimensions) {
+        const knownValue = claims.properties[dimension].oneOf
+          .find(
+            (candidate: Record<string, any>) =>
+              candidate.properties?.status?.const === 'known',
+          )
+          .properties.value;
+        assert.deepEqual(
+          knownValue,
+          provenanceValueSchema(dimension, provenanceContract),
+          `${dimension} must use the shared provenance value schema`,
+        );
+      }
 
       const access = resolveRef(spec, snapshot.properties.access);
       assert.equal(

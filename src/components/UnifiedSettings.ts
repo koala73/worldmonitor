@@ -16,6 +16,13 @@ import { t } from '@/services/i18n';
 import { createSettingsButton } from '@/components/settings-button';
 import { confirmDialog } from '@/components/confirm-dialog';
 import type { UnifiedSettingsTabId } from '@/components/settings-types';
+import {
+  getPanelToggleA11yState,
+  getSettingsTabNavigationIndex,
+  normalizeSettingsTab,
+  restoreSettingsToggleFocus,
+  updateSettingsTabSelection,
+} from '@/components/unified-settings-interactions';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
 import type { PanelConfig } from '@/types';
@@ -221,15 +228,31 @@ export class UnifiedSettings {
           window.open('/pro', '_blank', 'noopener,noreferrer');
           return;
         }
-        this.toggleDraftPanel(panelItem.dataset.panel);
+        const panelKey = panelItem.dataset.panel;
+        const shouldRestoreFocus = document.activeElement === panelItem;
+        this.toggleDraftPanel(panelKey);
+        restoreSettingsToggleFocus(
+          shouldRestoreFocus,
+          this.overlay.querySelectorAll<HTMLElement>('.panel-toggle-item'),
+          'panel',
+          panelKey,
+        );
         return;
       }
 
       const sourceItem = target.closest<HTMLElement>('.source-toggle-item');
       if (sourceItem?.dataset.source) {
-        this.config.toggleSource(sourceItem.dataset.source);
+        const sourceName = sourceItem.dataset.source;
+        const shouldRestoreFocus = document.activeElement === sourceItem;
+        this.config.toggleSource(sourceName);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        restoreSettingsToggleFocus(
+          shouldRestoreFocus,
+          this.overlay.querySelectorAll<HTMLElement>('.source-toggle-item'),
+          'source',
+          sourceName,
+        );
         return;
       }
 
@@ -353,6 +376,7 @@ export class UnifiedSettings {
     this.overlay.classList.add('active');
     localStorage.setItem('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
+    (this.overlay.querySelector('.unified-settings-tabs') as HTMLElement)?.addEventListener('keydown', (e: KeyboardEvent) => this.handleKeyDown(e));
     track('settings-open', { tab: tab ?? 'default' });
 
     // Re-render API Keys panel when entitlements arrive (cold-load race:
@@ -487,6 +511,24 @@ export class UnifiedSettings {
     this.overlay.remove();
   }
 
+  private handleKeyDown(e: KeyboardEvent): void {
+    if (!(e.target instanceof HTMLElement)) return;
+    const tablist = this.overlay.querySelector('.unified-settings-tabs');
+    if (!tablist || !tablist.contains(e.target)) return;
+    const tabs = Array.from(tablist.querySelectorAll<HTMLButtonElement>('button[role="tab"]'));
+    const currentIndex = tabs.indexOf(e.target.closest('button[role="tab"]') as HTMLButtonElement);
+    const nextIndex = getSettingsTabNavigationIndex(e.key, currentIndex, tabs.length);
+    if (nextIndex === null) return;
+
+    e.preventDefault();
+
+    const nextTab = tabs[nextIndex];
+    const tabId = nextTab?.dataset.tab as TabId | undefined;
+    if (!tabId || !nextTab) return;
+    this.switchTab(tabId);
+    nextTab.focus();
+  }
+
   private render(): void {
     this.prefsCleanup?.();
     this.prefsCleanup = null;
@@ -494,7 +536,6 @@ export class UnifiedSettings {
     this.notifCleanup = null;
     this.pendingNotifs = null;
 
-    const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
     const isSignedIn = !this.config.isDesktopApp && (getAuthState().user !== null);
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
@@ -505,6 +546,17 @@ export class UnifiedSettings {
     const notifs = showNotificationsTab
       ? renderNotificationsSettings({ isSignedIn })
       : null;
+    const showMcpClientsTab = hasFeature('mcpAccess');
+    const availableTabs: TabId[] = [
+      'settings',
+      'panels',
+      'sources',
+      ...(showNotificationsTab ? ['notifications' as const] : []),
+      'api-keys',
+      ...(showMcpClientsTab ? ['mcp-clients' as const] : []),
+    ];
+    this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
+    const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
 
     setTrustedHtml(this.overlay, trustedHtml(`
       <div class="modal unified-settings-modal">
@@ -513,12 +565,12 @@ export class UnifiedSettings {
           <button class="modal-close unified-settings-close" aria-label="Close">\u00d7</button>
         </div>
         <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
-          <button class="${tabClass('settings')}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
-          <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
-          <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
-          ${showNotificationsTab ? `<button class="${tabClass('notifications')}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
-          <button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
-          ${hasFeature('mcpAccess') ? `<button class="${tabClass('mcp-clients')}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
+          <button class="${tabClass('settings')}" tabindex="${this.activeTab === 'settings' ? 0 : -1}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
+          <button class="${tabClass('panels')}" tabindex="${this.activeTab === 'panels' ? 0 : -1}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
+          <button class="${tabClass('sources')}" tabindex="${this.activeTab === 'sources' ? 0 : -1}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
+          ${showNotificationsTab ? `<button class="${tabClass('notifications')}" tabindex="${this.activeTab === 'notifications' ? 0 : -1}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
+          <button class="${tabClass('api-keys')}" tabindex="${this.activeTab === 'api-keys' ? 0 : -1}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
+          ${showMcpClientsTab ? `<button class="${tabClass('mcp-clients')}" tabindex="${this.activeTab === 'mcp-clients' ? 0 : -1}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
@@ -560,7 +612,7 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
           ${this.renderApiKeysContent()}
         </div>
-        ${hasFeature('mcpAccess') ? `
+        ${showMcpClientsTab ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
           ${this.renderMcpClientsContent()}
         </div>
@@ -609,15 +661,11 @@ export class UnifiedSettings {
   private switchTab(tab: TabId): void {
     this.activeTab = tab;
 
-    this.overlay.querySelectorAll('.unified-settings-tab').forEach(el => {
-      const isActive = (el as HTMLElement).dataset.tab === tab;
-      el.classList.toggle('active', isActive);
-      el.setAttribute('aria-selected', String(isActive));
-    });
-
-    this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
-      el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
-    });
+    updateSettingsTabSelection(
+      this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab'),
+      this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab-panel'),
+      tab,
+    );
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();
@@ -865,12 +913,13 @@ export class UnifiedSettings {
       const locked = !entitled;
       const changed = !locked && savedSettings[key]?.enabled !== panel.enabled;
       const displayName = this.config.getLocalizedPanelName(key, resolvedPanel.name ?? panel.name);
+      const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
       return `
-        <div class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" aria-pressed="${panel.enabled && !locked}" ${locked ? 'data-pro-locked="1"' : ''}>
-          <div class="panel-toggle-checkbox">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
+        <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
+          <div  class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
           <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
-          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge">PRO</span>' : ''}
-        </div>
+          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
+        </button>
       `;
     }).join(''), "legacy direct innerHTML migration"));
 
@@ -1040,10 +1089,10 @@ export class UnifiedSettings {
       const isEnabled = !disabled.has(source);
       const escaped = escapeHtml(source);
       return `
-        <div class="source-toggle-item ${isEnabled ? 'active' : ''}" data-source="${escaped}">
-          <div class="source-toggle-checkbox">${isEnabled ? '\u2713' : ''}</div>
+        <button type="button" class="source-toggle-item ${isEnabled ? 'active' : ''}" aria-pressed="${isEnabled}" data-source="${escaped}">
+          <div class="source-toggle-checkbox" aria-hidden="true">${isEnabled ? '\u2713' : ''}</div>
           <span class="source-toggle-label">${escaped}</span>
-        </div>
+        </button>
       `;
     }).join(''), "legacy direct innerHTML migration"));
   }

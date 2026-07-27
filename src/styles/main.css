@@ -8293,6 +8293,12 @@ a.prediction-link:hover {
   background: var(--bg);
   border: 1px solid var(--border);
   cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
 }
 
 .panel-toggle-item:hover {
@@ -8408,7 +8414,13 @@ a.prediction-link:hover {
   background: var(--bg);
   border: 1px solid var(--border);
   cursor: pointer;
-  font-size: 10px;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+  font-size: 10px; 
 }
 
 .source-toggle-item:hover {
@@ -8521,6 +8533,15 @@ a.prediction-link:hover {
   .sources-toggle-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* Accessibility Focus Styles */
+
+.panel-toggle-item:focus-visible,
+.source-toggle-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text-dim);
 }
 
 /* Map Popups */
@@ -19169,6 +19190,13 @@ a.prediction-link:hover {
   border-color: var(--text-dim);
 }
 
+.unified-settings-select:focus-visible,
+.unified-settings-lang-select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text);
+}
+
 /* Responsive grids */
 @media (max-width: 500px) {
 
@@ -19219,6 +19247,11 @@ a.prediction-link:hover {
 
 .wm-pref-group > summary:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.wm-pref-group > summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .wm-pref-group-content {
@@ -19360,6 +19393,11 @@ a.prediction-link:hover {
 .ai-flow-switch input:checked+.ai-flow-slider::before {
   transform: translateX(14px);
   background: #fff;
+}
+
+.ai-flow-switch input:focus-visible + .ai-flow-slider {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 /* Ollama CTA */
