@@ -94,6 +94,16 @@ describe('official China corporate disclosures (#5577)', () => {
     for (const row of fixture('collisions.json') as Array<{ title: string; expected: string | null }>) {
       assert.equal(classifyDisclosureTitle(row.title), row.expected, row.title);
     }
+    assert.equal(
+      classifyDisclosureTitle('董事会秘书工作细则'),
+      null,
+      'routine governance rules are not market-moving disclosure events',
+    );
+    assert.equal(
+      classifyDisclosureTitle('修订公司制度'),
+      null,
+      'routine system revisions remain outside the owned event taxonomy',
+    );
   });
 
   it('normalizes official metadata, rejects unreviewed issuers, and never fetches document bodies', () => {
