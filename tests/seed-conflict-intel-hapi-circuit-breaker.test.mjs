@@ -5,7 +5,8 @@
 // of requests per day. The durable contract is:
 //   - one national-level bulk request for the target countries,
 //   - no new request while the last successful snapshot is fresh,
-//   - a persisted failure backoff after a provider rejection, and
+//   - direct bot-block failures switch to the configured residential proxy,
+//   - quota/identifier throttles persist a failure backoff without proxying,
 //   - last-known-good Redis rows preserved without refreshing their fetchedAt.
 
 import { test } from 'node:test';
@@ -250,33 +251,217 @@ test('HAPI ingestion falls back only for targets missing national rows', async (
   assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
 });
 
-test('HAPI provider rejection persists a backoff and preserves last-known-good rows', async () => {
-  let calls = 0;
-  let backoff;
-  let preserved = 0;
+test('HAPI bot-detection rejection retries the bulk request through the configured proxy', async () => {
+  let directCalls = 0;
+  let proxyCalls = 0;
+  const rows = [{
+    location_code: 'SDN',
+    location_name: 'Sudan',
+    reference_period_start: '2026-07-01',
+    admin_level: 0,
+    event_type: 'political_violence',
+    events: 12,
+    fatalities: 3,
+  }];
   const result = await fetchAllHumanitarianSummaries({
     now: () => NOW,
     countryCodes: ['SD'],
     pace: async () => {},
     loadPreviousMarker: async () => null,
     loadFailureBackoff: async () => null,
-    writeFailureBackoff: async (value) => { backoff = value; },
-    preserveLastGood: async () => { preserved += 1; },
+    writeFailureBackoff: async () => assert.fail('successful proxy recovery must not back off'),
+    writeFailureMeta: async () => assert.fail('successful proxy recovery must not publish SEED_ERROR'),
+    preserveLastGood: async () => assert.fail('successful proxy recovery must not preserve stale rows'),
+    proxyUrl: 'https://user:pass@proxy.example:443',
+    proxyRequestFn: async (url, proxyConfig, options) => {
+      proxyCalls += 1;
+      assert.match(url, /hapi\.humdata\.org/);
+      assert.equal(proxyConfig.host, 'proxy.example');
+      assert.ok(options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
+      return {
+        status: 200,
+        buffer: Buffer.from(JSON.stringify({ data: rows })),
+        contentType: 'application/json',
+      };
+    },
     fetchFn: async () => {
-      calls += 1;
-      return new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 });
+      directCalls += 1;
+      return new Response('Blocked due to bot activity.', { status: 429 });
+    },
+  });
+
+  assert.equal(directCalls, 1);
+  assert.equal(proxyCalls, 1);
+  assert.deepEqual(Object.keys(result), ['SD']);
+});
+
+test('HAPI quota rejection backs off without using the proxy and publishes failure health', async () => {
+  let directCalls = 0;
+  let backoff;
+  let failureMeta;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => ({
+      updatedAt: NOW - 10 * HAPI_REFRESH_INTERVAL_MS,
+      requiredCountriesCovered: 23,
+    }),
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async (value) => { failureMeta = value; },
+    preserveLastGood: async () => { preserved += 1; },
+    proxyUrl: 'https://user:pass@proxy.example:443',
+    proxyRequestFn: async () => assert.fail('quota/identifier 429 must not use the egress proxy'),
+    fetchFn: async () => {
+      directCalls += 1;
+      return new Response(JSON.stringify({ error: 'Too Many Requests' }), { status: 429 });
     },
   });
 
   assert.equal(result, null);
-  assert.equal(calls, 1, 'a blocked bulk request must not fan out into per-country retries');
+  assert.equal(directCalls, 1, 'a quota rejection must not fan out into per-country retries');
   assert.equal(preserved, 1);
   assert.equal(backoff.status, 429);
+  assert.equal(backoff.reasonCode, 'HAPI_RATE_LIMIT');
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+  assert.equal(failureMeta.status, 'error');
+  assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
+  assert.equal(failureMeta.lastSuccessAt, NOW - 10 * HAPI_REFRESH_INTERVAL_MS);
+  assert.equal(failureMeta.recordCount, 23);
+});
+
+test('HAPI dual-leg bot block publishes SEED_ERROR metadata before entering backoff', async () => {
+  let failureMeta;
+  let backoff;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async (value) => { failureMeta = value; },
+    preserveLastGood: async () => {},
+    proxyUrl: 'https://user:pass@proxy.example:443',
+    proxyRequestFn: async () => ({
+      status: 429,
+      buffer: Buffer.from(JSON.stringify({ error: 'Blocked due to bot activity.' })),
+      contentType: 'application/json',
+    }),
+    fetchFn: async () => (
+      new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 })
+    ),
+  });
+
+  assert.equal(result, null);
+  assert.equal(backoff.reasonCode, 'HAPI_PROXY_FALLBACK_FAILED');
+  assert.equal(failureMeta.status, 'error');
+  assert.equal(failureMeta.errorReason, 'HAPI_PROXY_FALLBACK_FAILED');
+  assert.equal(failureMeta.failedAt, NOW);
+});
+
+test('HAPI proxy response limit failure keeps its operator-actionable reason', async () => {
+  let failureMeta;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => {},
+    writeFailureMeta: async (value) => { failureMeta = value; },
+    preserveLastGood: async () => {},
+    proxyUrl: 'https://user:pass@proxy.example:443',
+    proxyRequestFn: async (_url, _proxyConfig, options) => {
+      assert.equal(options.maxResponseBytes, 16 * 1024 * 1024);
+      return {
+        status: 200,
+        buffer: Buffer.alloc(options.maxResponseBytes + 1),
+        contentType: 'application/json',
+      };
+    },
+    fetchFn: async () => (
+      new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 })
+    ),
+  });
+
+  assert.equal(result, null);
+  assert.equal(failureMeta.proxyFailureReason, 'RESPONSE_TOO_LARGE');
+});
+
+test('HAPI sticky proxy failure aborts the cycle without publishing a partial aggregate', async () => {
+  const proxyUrls = [];
+  let directCalls = 0;
+  let failureMeta;
+  let backoff;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD', 'UA', 'IR'],
+    pace: async () => assert.fail('a terminal proxy failure must stop before pacing another fallback'),
+    loadPreviousMarker: async () => ({
+      updatedAt: NOW - 10 * HAPI_REFRESH_INTERVAL_MS,
+      requiredCountriesCovered: 3,
+    }),
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async (value) => { failureMeta = value; },
+    preserveLastGood: async () => { preserved += 1; },
+    proxyUrl: 'https://user:pass@proxy.example:443',
+    proxyRequestFn: async (url) => {
+      const parsed = new URL(url);
+      proxyUrls.push(parsed);
+      if (proxyUrls.length === 1) {
+        assert.equal(parsed.searchParams.has('location_code'), false);
+        return {
+          status: 200,
+          buffer: Buffer.from(JSON.stringify({
+            data: [{
+              location_code: 'SDN',
+              location_name: 'Sudan',
+              reference_period_start: '2026-07-01',
+              admin_level: 0,
+              event_type: 'political_violence',
+              events: 12,
+              fatalities: 3,
+            }],
+          })),
+          contentType: 'application/json',
+        };
+      }
+      assert.equal(parsed.searchParams.get('location_code'), 'UKR');
+      return {
+        status: 407,
+        buffer: Buffer.from('Proxy Authentication Required'),
+        contentType: 'text/plain',
+      };
+    },
+    fetchFn: async () => {
+      directCalls += 1;
+      return new Response('Blocked due to bot activity.', { status: 429 });
+    },
+  });
+
+  assert.equal(result, null, 'a terminal sticky-proxy failure must discard the partial Sudan result');
+  assert.equal(directCalls, 1, 'only the initial direct bulk request should run');
+  assert.equal(proxyUrls.length, 2, 'the failed Ukraine fallback must stop the Iran proxy attempt');
+  assert.equal(preserved, 1);
+  assert.equal(backoff.status, 407);
+  assert.equal(backoff.reasonCode, 'HAPI_PROXY_FALLBACK_FAILED');
+  assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+  assert.equal(failureMeta.status, 'error');
+  assert.equal(failureMeta.errorReason, 'HAPI_PROXY_FALLBACK_FAILED');
+  assert.equal(failureMeta.directFailureReason, 'HAPI_BOT_BLOCK');
+  assert.equal(failureMeta.proxyFailureReason, 'PROXY_AUTH_FAILED');
+  assert.equal(failureMeta.lastSuccessAt, NOW - 10 * HAPI_REFRESH_INTERVAL_MS);
+  assert.equal(failureMeta.recordCount, 3);
 });
 
 test('HAPI backoff records the fallback rejection status when the national sweep is empty', async () => {
   let backoff;
+  let failureMeta;
   let preserved = 0;
   const result = await fetchAllHumanitarianSummaries({
     now: () => NOW,
@@ -285,6 +470,7 @@ test('HAPI backoff records the fallback rejection status when the national sweep
     loadPreviousMarker: async () => null,
     loadFailureBackoff: async () => null,
     writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async (value) => { failureMeta = value; },
     preserveLastGood: async () => { preserved += 1; },
     fetchFn: async (url) => {
       const parsed = new URL(url);
@@ -293,13 +479,14 @@ test('HAPI backoff records the fallback rejection status when the national sweep
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
       }
       // Bounded per-country fallback is the one that gets throttled.
-      return new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 });
+      return new Response(JSON.stringify({ error: 'Too Many Requests' }), { status: 429 });
     },
   });
 
   assert.equal(result, null);
   assert.equal(preserved, 1);
   assert.equal(backoff.status, 429, 'must record the fallback rejection status, not fall back to 0');
+  assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
 });
 

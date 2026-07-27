@@ -128,6 +128,24 @@ test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is p
   assert.equal(entry.records, 1);
 });
 
+test('classifyKey: a permanently blocked humanitarian provider surfaces as SEED_ERROR', () => {
+  const dataKey = STANDALONE_KEYS.humanitarianSummary;
+  const metaKey = SEED_META.humanitarianSummary.key;
+  const entry = classifyKey('humanitarianSummary', dataKey, { allowOnDemand: false },
+    makeCtx({
+      strens: { [dataKey]: 1234 },
+      metaValues: {
+        [metaKey]: seedMeta({
+          status: 'error',
+          errorReason: 'HAPI_PROXY_FALLBACK_FAILED',
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh at 300min → OK', () => {
   // Cadence dropped 1h→3h (ScrapeCreators), so maxStaleMin was raised 180→540.
   // A healthy seed-meta aged 300min (5h, inside 540) must NOT false-alarm.
