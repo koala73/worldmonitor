@@ -91,6 +91,9 @@ describe('project license docs', () => {
     }
     assert.match(terms, /customer-facing product/i);
     assert.match(terms, /standalone database or substantially similar feed/i);
+    assert.match(terms, /Attribution to World Monitor is optional/i);
+    assert.match(terms, /"Source: World Monitor" or "via World Monitor" is sufficient/i);
+    assert.match(terms, /must still preserve any source-specific citation/i);
     assert.match(terms, /source code remains subject to AGPL-3\.0-only/i);
     assert.match(terms, /official thin client packages remain subject to MIT/i);
   });
