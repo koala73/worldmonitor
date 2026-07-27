@@ -1,0 +1,10 @@
+# Shell scripts must stay LF — they are COPYed into Linux images at build
+# time and a CRLF shebang breaks the container entrypoint (built on Windows).
+*.sh text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+
+# This generated helper embeds a literal NUL byte (a template-literal key
+# separator), so git detects it as binary. Keep it binary — forcing text on a
+# NUL-containing file risks corruption under a future renormalization.
+scripts/openapi-dedup-responses.mjs -text

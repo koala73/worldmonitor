@@ -21,6 +21,7 @@ npm install
 echo "RELAY_SHARED_SECRET=$(openssl rand -hex 32)" >> .env
 echo "REDIS_PASSWORD=$(openssl rand -hex 32)"      >> .env
 echo "REDIS_TOKEN=$(openssl rand -hex 32)"         >> .env
+echo "WM_SESSION_SECRET=$(openssl rand -hex 32)"   >> .env
 
 # 3. Start the stack
 docker compose up -d        # or: uvx podman-compose up -d
@@ -43,8 +44,11 @@ These must be set before `docker compose up -d`, or one of the containers will e
 | `RELAY_SHARED_SECRET` | Authenticates every non-public request the dashboard makes to the AIS relay. The relay refuses to start without it. | `openssl rand -hex 32` |
 | `REDIS_PASSWORD` | Redis AUTH password (`--requirepass`). The Redis container refuses to start without it; the REST proxy uses it in its upstream connection string. | `openssl rand -hex 32` |
 | `REDIS_TOKEN` | Bearer token the REST proxy (`redis-rest`) requires on every request, and the value the app sends as `UPSTASH_REDIS_REST_TOKEN`. The proxy and app containers refuse to start without it. | `openssl rand -hex 32` |
+| `WM_SESSION_SECRET` | Signs the anonymous `wm-session` cookies. Without it `/api/wm-session` fails closed (503) and every session-gated data route degrades for anonymous visitors. | `openssl rand -hex 32` |
 
 > Earlier releases shipped `wm-local-token` as a default for the REST token. That default has been removed (#3804) — the proxy was only reachable from `127.0.0.1:8079` so external exposure required a hostile `docker-compose.override.yml`, but any user who flipped that binding to `0.0.0.0` was instantly authenticated by a publicly documented string. Fresh installs and existing clones both need to set `REDIS_TOKEN` and `REDIS_PASSWORD` in `.env` from this release onward.
+
+> **Upgrading an existing deployment:** `WM_SESSION_SECRET` is newly required. Existing clones must add it to `.env` (`echo "WM_SESSION_SECRET=$(openssl rand -hex 32)" >> .env`) before `docker compose up -d`, or Compose fails with `required variable WM_SESSION_SECRET is missing a value`. The value must be at least 32 characters, or `/api/wm-session` returns 503 at runtime even though the stack boots.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
@@ -244,6 +248,72 @@ services:
       - "your-host:192.168.1.100"  # if not DNS-resolvable
 ```
 
+### Claude Code (use your Claude subscription)
+
+If you have a Claude Pro/Max subscription, the bundled shim (`Dockerfile.claude-shim`)
+exposes headless Claude Code as an OpenAI-compatible endpoint, so the dashboard's AI
+features run against your subscription instead of a metered API key. The shim strips
+Claude Code's session context per call (settings, skills, tools), so a request costs
+little more than its own prompt.
+
+1. On a machine with a browser, run `claude setup-token` (any recent Claude Code CLI;
+   the shim container installs the latest) and copy the long-lived OAuth token.
+2. Add the token and a shim key to `.env` — run these in a shell so the `openssl`
+   substitution executes (pasting `$(openssl …)` literally into `.env` would make the
+   key that literal string):
+
+   ```bash
+   echo "CLAUDE_CODE_OAUTH_TOKEN=<token>" >> .env
+   echo "SHIM_API_KEY=$(openssl rand -hex 32)" >> .env   # authenticates the app→shim hop
+   ```
+3. Wire it up in `docker-compose.override.yml`:
+
+```yaml
+# docker-compose.override.yml
+services:
+  claude-shim:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude-shim
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:?}
+      SHIM_API_KEY: ${SHIM_API_KEY:?}
+      SHIM_DAILY_CAP: "300"          # default 300; calls/day then 429 (protects quota)
+      SHIM_MAX_CONCURRENCY: "2"      # default 4; lowered to protect subscription quota
+      SHIM_CACHE_TTL_MS: "900000"    # default 900000; identical NON-STREAMING requests
+                                     # cached 15 min (streamed chat-analyst calls are not
+                                     # cached and always count against SHIM_DAILY_CAP)
+      SHIM_QUEUE_TIMEOUT_MS: "45000" # default 15000; reject queued calls after this. Keep
+                                     # ≥ the caller's patience (LLM_MIN_TIMEOUT_MS below)
+                                     # so a call that will still be awaited isn't rejected.
+      # SHIM_TIMEOUT_MS default 120000 (hard per-call ceiling)
+    restart: unless-stopped
+  worldmonitor:
+    environment:
+      LLM_API_URL: "http://claude-shim:8383/v1/chat/completions"  # full path — used verbatim
+      LLM_API_KEY: ${SHIM_API_KEY:?}   # required, or the generic provider is skipped
+      LLM_MODEL: "claude-haiku"
+      LLM_TOOL_PROVIDER: "generic"      # prefer the shim over groq/openrouter…
+      LLM_TOOL_MODEL: "claude-haiku"    # …for extraction/classification stages
+      LLM_REASONING_PROVIDER: "generic"
+      LLM_REASONING_MODEL: "claude-sonnet"  # briefs + chat analyst
+```
+
+Model names containing `haiku`/`sonnet`/`opus` map to those Claude tiers; anything else
+falls back to `CLAUDE_SHIM_DEFAULT_MODEL` (default `haiku`). Notes:
+
+- `LLM_API_URL` must include the full `/v1/chat/completions` path (it is not appended).
+- Self-hosted backends are slower than hosted APIs — set `LLM_MIN_TIMEOUT_MS: "60000"`
+  on the `worldmonitor` service so long generations (country briefs) aren't cut off by
+  the 25s per-attempt timeout tuned for hosted providers. Applies to any self-hosted
+  LLM (Ollama, vLLM, this shim), not just Claude Code.
+- Leave `GROQ_API_KEY`/`OPENROUTER_API_KEY` unset (or keep the `LLM_*_PROVIDER: generic`
+  pins) — `generic` is last in the fallback chain.
+- The token draws down your personal subscription quota. Keep the daily cap conservative,
+  keep the deployment private, and don't share the endpoint: Anthropic's terms cover
+  personal use of your own subscription through Claude Code.
+- Rotate the token by re-running `claude setup-token` and restarting the shim container.
+
 ## 🐛 Troubleshooting
 
 | Issue | Fix |
@@ -255,3 +325,6 @@ services:
 | 🚢 No vessel data | Set `AISSTREAM_API_KEY` in both `worldmonitor` and `ais-relay` services |
 | 🔥 No wildfire data | Set `NASA_FIRMS_API_KEY` |
 | 🌐 No outage data | Requires `CLOUDFLARE_API_TOKEN` (paid Radar access) |
+| ⚙️ `required variable WM_SESSION_SECRET is missing a value` | Add it to `.env`: `echo "WM_SESSION_SECRET=$(openssl rand -hex 32)" >> .env` |
+| 🔒 `/api/wm-session` 503 despite the var being set | `WM_SESSION_SECRET` must be ≥ 32 chars — regenerate with `openssl rand -hex 32` |
+| 🤖 Claude shim AI features silently fall back | Check `SHIM_DAILY_CAP` isn't hit (`GET /` on the shim shows `today`/`cap`); set `LLM_MIN_TIMEOUT_MS: "60000"` so briefs aren't cut off by the 25s hosted-tuned timeout |

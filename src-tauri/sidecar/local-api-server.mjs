@@ -1904,6 +1904,25 @@ export async function createLocalApiServer(options = {}) {
           );
         }
       }
+      // Docker self-host ONLY: the same containment rationale as the Redis
+      // proxy above applies to the self-hosted LLM endpoint. SELF_HOSTING.md
+      // documents LLM_API_URL/OLLAMA_API_URL pointing at a compose-network or
+      // LAN host (Ollama, vLLM, the Claude Code shim), which the SSRF guard
+      // would otherwise block — llm-health then marks the provider offline and
+      // every AI feature silently skips it.
+      if (context.mode === 'docker') {
+        for (const envKey of ['LLM_API_URL', 'OLLAMA_API_URL']) {
+          const raw = process.env[envKey];
+          if (!raw) continue;
+          try {
+            extraAllowedPrivateOrigins.push(new URL(raw).origin);
+          } catch (err) {
+            context.logger.warn(
+              `[local-api] ${envKey} is not a valid URL; not added to the private-fetch allowlist (LLM calls will be SSRF-blocked): ${err.message}`,
+            );
+          }
+        }
+      }
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
       }

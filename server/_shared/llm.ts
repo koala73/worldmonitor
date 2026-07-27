@@ -411,7 +411,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
         // Per-fetch abort controller merges client signal + per-request timeout
         activeController = new AbortController();
-        const timeoutId = setTimeout(() => activeController?.abort(), timeoutMs);
+        const timeoutId = setTimeout(() => activeController?.abort(), applyTimeoutFloor(providerName as LlmProviderName, timeoutMs));
         if (clientSignal?.aborted) { clearTimeout(timeoutId); break; }
         clientSignal?.addEventListener('abort', () => activeController?.abort(), { once: true });
 
@@ -521,6 +521,36 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
   });
 }
 
+/**
+ * Optional floor for per-attempt LLM timeouts (ms), applied ONLY to
+ * self-hosted providers (`generic`/`ollama`). Self-hosted backends (Ollama on
+ * CPU, llama.cpp, the Claude Code shim) routinely need longer than the 25s
+ * tuned for hosted APIs; callers pass hosted-sized timeouts, so a floor is the
+ * only knob that reaches every call site. Scoped to self-hosted providers so it
+ * does NOT loosen the hosted DeepSeek dead-tail cut (#5246) or hosted callers'
+ * deliberately-short timeouts. Read at call time (matching the rest of this
+ * file's env handling); a non-numeric value warns once and is ignored.
+ * Unset/0 = no-op.
+ */
+let warnedBadTimeoutFloor = false;
+function llmMinTimeoutMs(): number {
+  const raw = process.env.LLM_MIN_TIMEOUT_MS;
+  if (!raw) return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    if (!warnedBadTimeoutFloor) {
+      warnedBadTimeoutFloor = true;
+      console.warn(`[llm] ignoring non-numeric LLM_MIN_TIMEOUT_MS=${JSON.stringify(raw)}`);
+    }
+    return 0;
+  }
+  return n;
+}
+const SELF_HOSTED_PROVIDERS = new Set(['generic', 'ollama']);
+export function applyTimeoutFloor(provider: LlmProviderName, ms: number): number {
+  return SELF_HOSTED_PROVIDERS.has(provider) ? Math.max(ms, llmMinTimeoutMs()) : ms;
+}
+
 export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | null> {
   const {
     messages: rawMessages,
@@ -606,7 +636,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           // #5246: DeepSeek V4 Flash is bimodal — healthy calls finish near 2s,
           // while stalled calls hang to the old 25s clamp. Cut only this model's
           // dead tail so the existing provider chain can reach its fallback.
-          signal: AbortSignal.timeout(getLlmAttemptTimeoutMs(creds.model, timeoutMs)),
+          signal: AbortSignal.timeout(applyTimeoutFloor(providerName as LlmProviderName, getLlmAttemptTimeoutMs(creds.model, timeoutMs))),
         });
 
         if (!resp.ok) {
