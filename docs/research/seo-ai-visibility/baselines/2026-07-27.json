@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "baselineId": "2026-07-27",
   "querySetId": "seo-ai-visibility-v1",
+  "querySetDigest": "sha256:b31f4c299f414d1ffe889d1a3cdbb8614e45bf1f91e79380f89b3f1061de3f39",
   "observedAt": "2026-07-27T17:15:05Z",
   "repositoryRevision": "902b108f8239dce64f5577e366da0858cdaf17db",
   "collectionContext": {

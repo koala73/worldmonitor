@@ -9,8 +9,8 @@ missing source cannot silently become a zero or a site-wide vanity score.
 - `query-set.json` — 25 reviewed decision queries with intent, audience, target
   page, conversion goal, and named comparison/source entities.
 - `baselines/<date>.json` — normalized source availability, search/referral
-  windows, manual AI observations, reproduction context, and the prioritized
-  opportunity queue.
+  windows, manual AI observations, the exact query-contract digest,
+  reproduction context, and the prioritized opportunity queue.
 - `scorecards/<date>.md` — deterministic human report generated from a baseline.
 - `scripts/seo-ai-visibility-scorecard.mjs` — validator, scorecard renderer, and
   monthly comparison.
@@ -43,6 +43,14 @@ node scripts/seo-ai-visibility-scorecard.mjs \
 To generate a later scorecard, copy the prior baseline to a new dated file,
 replace only observations and supported-export values, then omit `--check` and
 point `--output` at the new date. Do not edit an older observation in place.
+The copied `querySetDigest` pins the exact query text, intent, target, conversion,
+and reference-entity contract used by the period.
+
+If any comparison-critical query field changes, assign a new `querySetId` and
+start a new baseline series with the digest computed by
+`computeQuerySetDigest()` in the scorecard module. Existing baselines must keep
+their original ID and digest; the validator rejects silently reinterpreting
+historical observations with a newer query definition.
 
 ## Weekly collection
 
@@ -70,6 +78,7 @@ If the export or indexing view is unavailable, keep every metric `null`, set
 `reason`. An unavailable provider has empty `queryRows` and `pageFamilyRows`.
 A partial provider may retain supported finite values while unavailable metrics
 remain `null`. A zero is valid only when the provider explicitly reported zero.
+Every provider window must end on or before the baseline's `observedAt` date.
 
 ### 2. Bing Webmaster
 
@@ -97,6 +106,10 @@ For each observation record:
 - all visible cited URLs and competitors cited;
 - sentiment and an accuracy judgment;
 - platform limitations, personalization, and any claim that needs correction.
+
+Each observation timestamp must be at or before the baseline's `observedAt`
+snapshot. Move the baseline timestamp forward when later evidence is added
+instead of backdating that evidence into an earlier scorecard.
 
 Do not save account identifiers, precise location, unrelated history, personal
 prompts, or hidden/collapsed data that was not actually inspected. If a platform
@@ -154,15 +167,18 @@ The comparison reports:
   separately, so sparse audit coverage cannot masquerade as citation gain or
   loss;
 - meaningful impression, click, CTR, average-position, and indexed-page changes
-  when both periods have supported provider data;
+  when both periods have supported provider data and the current provider
+  window's start and end dates both advance beyond the previous window;
 - referral/outcome movement when both periods are available;
 - mixed or inaccurate entity answers that need correction;
 - the current evidence-backed experiment queue.
 
-The comparison rejects reversed periods, a changed query-set ID, or a changed
-collection geography, locale, device, or signed-in schedule. Change those
-dimensions by starting a new baseline series instead of presenting incomparable
-audits as month-over-month movement.
+The comparison rejects reversed periods, same/backward provider windows, a
+changed query-set ID or digest, or a changed collection geography, locale,
+device, or signed-in schedule. The report prints the exact previous/current
+provider date ranges beside meaningful deltas. Change comparison dimensions by
+starting a new baseline series instead of presenting incomparable audits as
+month-over-month movement.
 
 Thresholds are diagnostics, not causal claims. A single answer, citation, or
 traffic change never proves uplift.

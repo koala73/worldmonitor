@@ -24,6 +24,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 
 import { isMainModule } from './lib/main-module.mjs';
@@ -137,6 +138,38 @@ function assertIsoUtcDateTime(value, field) {
   );
 }
 
+export function computeQuerySetDigest(querySet) {
+  const queries = [...querySet.queries]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((query) => ({
+      id: query.id,
+      query: query.query,
+      intent: query.intent,
+      targetAudience: query.targetAudience,
+      targetPage: {
+        family: query.targetPage.family,
+        url: query.targetPage.url,
+      },
+      conversionGoal: query.conversionGoal,
+      referenceEntities: [...query.referenceEntities]
+        .sort((left, right) => (
+          `${left.role}:${left.name}:${left.url}`
+            .localeCompare(`${right.role}:${right.name}:${right.url}`)
+        ))
+        .map((entity) => ({
+          role: entity.role,
+          name: entity.name,
+          url: entity.url,
+        })),
+    }));
+  const contract = JSON.stringify({
+    schemaVersion: querySet.schemaVersion,
+    querySetId: querySet.querySetId,
+    queries,
+  });
+  return `sha256:${createHash('sha256').update(contract).digest('hex')}`;
+}
+
 function assertNullableMetrics(metrics, metricNames, label, status) {
   invariant(metrics && typeof metrics === 'object', `${label}.metrics is required`);
   for (const metric of metricNames) {
@@ -172,7 +205,12 @@ function assertNullableMetrics(metrics, metricNames, label, status) {
   }
 }
 
-function validateWindowedSource(source, metricNames, label) {
+function validateWindowedSource(
+  source,
+  metricNames,
+  label,
+  latestEndDate,
+) {
   invariant(source && typeof source === 'object', `${label} is required`);
   invariant(
     source.property === null,
@@ -199,6 +237,12 @@ function validateWindowedSource(source, metricNames, label) {
     const start = Date.parse(window.startDate);
     const end = Date.parse(window.endDate);
     invariant(start <= end, `${windowLabel}.startDate must not be after endDate`);
+    if (latestEndDate !== undefined) {
+      invariant(
+        end <= Date.parse(latestEndDate),
+        `${windowLabel}.endDate must not be after the baseline observation date`,
+      );
+    }
     const numericLabel = /^(\d+)d$/.exec(window.label);
     if (numericLabel) {
       const startDate = new Date(start);
@@ -223,8 +267,8 @@ function validateWindowedSource(source, metricNames, label) {
   }
 }
 
-function validateSearchSource(source, label, queryIds) {
-  validateWindowedSource(source, SEARCH_METRICS, label);
+function validateSearchSource(source, label, queryIds, latestEndDate) {
+  validateWindowedSource(source, SEARCH_METRICS, label, latestEndDate);
   const windowLabels = new Set(source.windows.map(({ label: windowLabel }) => windowLabel));
   const rowContracts = [
     {
@@ -409,7 +453,17 @@ export function validateBaseline(baseline, querySet) {
     baseline.querySetId === querySet.querySetId,
     `baseline querySetId must equal ${querySet.querySetId}`,
   );
+  invariant(
+    baseline.querySetDigest === computeQuerySetDigest(querySet),
+    'baseline querySetDigest must match the supplied query set',
+  );
   assertIsoUtcDateTime(baseline.observedAt, 'observedAt');
+  const baselineObservedAt = Date.parse(baseline.observedAt);
+  const baselineObservationDate = baseline.observedAt.slice(0, 10);
+  invariant(
+    Date.parse(querySet.reviewedAt) <= Date.parse(baselineObservationDate),
+    'query set reviewedAt must not be after baseline.observedAt',
+  );
   invariant(
     isNonEmptyString(baseline.repositoryRevision),
     'repositoryRevision is required',
@@ -441,16 +495,19 @@ export function validateBaseline(baseline, querySet) {
     baseline.search.googleSearchConsole,
     'search.googleSearchConsole',
     queryIds,
+    baselineObservationDate,
   );
   validateSearchSource(
     baseline.search.bingWebmaster,
     'search.bingWebmaster',
     queryIds,
+    baselineObservationDate,
   );
   validateWindowedSource(
     baseline.referrals,
     REFERRAL_METRICS,
     'referrals',
+    baselineObservationDate,
   );
   invariant(
     baseline.referrals.classification
@@ -496,6 +553,10 @@ export function validateBaseline(baseline, querySet) {
     invariant(!observationKeys.has(key), `duplicate AI observation ${key}`);
     observationKeys.add(key);
     assertIsoUtcDateTime(observation.observedAt, `${label}.observedAt`);
+    invariant(
+      Date.parse(observation.observedAt) <= baselineObservedAt,
+      `${label}.observedAt must not be after baseline.observedAt`,
+    );
     invariant(typeof observation.brandMention === 'boolean', `${label}.brandMention is required`);
     invariant(typeof observation.directCitation === 'boolean', `${label}.directCitation is required`);
     invariant(Array.isArray(observation.citedUrls), `${label}.citedUrls must be an array`);
@@ -749,6 +810,7 @@ export function buildScorecard(querySet, baseline) {
     schemaVersion: 1,
     baselineId: baseline.baselineId,
     querySetId: querySet.querySetId,
+    querySetDigest: baseline.querySetDigest,
     generatedAt: baseline.observedAt,
     repositoryRevision: baseline.repositoryRevision,
     collectionContext: structuredClone(baseline.collectionContext),
@@ -816,6 +878,10 @@ function assertComparableScorecards(previous, current) {
     previous.querySetId === current.querySetId,
     'scorecard querySetId must match for comparison',
   );
+  invariant(
+    previous.querySetDigest === current.querySetDigest,
+    'scorecard querySetDigest must match for comparison',
+  );
   assertIsoUtcDateTime(previous.generatedAt, 'previous.generatedAt');
   assertIsoUtcDateTime(current.generatedAt, 'current.generatedAt');
   invariant(
@@ -874,7 +940,7 @@ function metricDelta(previous, current, metric) {
   return { before, after, absolute, relative, meaningful };
 }
 
-function compareWindowedSource(previous, current, metricNames) {
+function compareWindowedSource(previous, current, metricNames, label) {
   if (
     previous?.status === 'unavailable'
     || current?.status === 'unavailable'
@@ -895,8 +961,28 @@ function compareWindowedSource(previous, current, metricNames) {
   const previousWindow = sharedWindows.find(({ label }) => label === '28d')
     ?? sharedWindows[0];
   const currentWindow = currentWindowsByLabel.get(previousWindow.label);
+  for (const [period, window] of [
+    ['previous', previousWindow],
+    ['current', currentWindow],
+  ]) {
+    assertIsoCalendarDate(window.startDate, `${label}.${period}.startDate`);
+    assertIsoCalendarDate(window.endDate, `${label}.${period}.endDate`);
+  }
+  invariant(
+    Date.parse(currentWindow.startDate) > Date.parse(previousWindow.startDate)
+      && Date.parse(currentWindow.endDate) > Date.parse(previousWindow.endDate),
+    `${label} current ${previousWindow.label} window must advance beyond the previous window`,
+  );
   return {
     windowLabel: previousWindow.label,
+    previousPeriod: {
+      startDate: previousWindow.startDate,
+      endDate: previousWindow.endDate,
+    },
+    currentPeriod: {
+      startDate: currentWindow.startDate,
+      endDate: currentWindow.endDate,
+    },
     metrics: Object.fromEntries(
       metricNames.map((metric) => [
         metric,
@@ -946,17 +1032,20 @@ export function compareScorecards(previous, current) {
         previous.search.googleSearchConsole,
         current.search.googleSearchConsole,
         SEARCH_METRICS,
+        'googleSearchConsole',
       ),
       bingWebmaster: compareWindowedSource(
         previous.search.bingWebmaster,
         current.search.bingWebmaster,
         SEARCH_METRICS,
+        'bingWebmaster',
       ),
     },
     referrals: compareWindowedSource(
       previous.referrals,
       current.referrals,
       REFERRAL_METRICS,
+      'referrals',
     ),
     entityAnswerRisks: structuredClone(current.ai.accuracyRisks),
   };
@@ -1040,33 +1129,48 @@ function formatComparison(comparison) {
   );
   const meaningfulSearch = [];
   const indexingRegressions = [];
+  const periodTransition = ({ previousPeriod, currentPeriod }) => (
+    `${previousPeriod.startDate}..${previousPeriod.endDate}`
+    + ` → ${currentPeriod.startDate}..${currentPeriod.endDate}`
+  );
   for (const [provider, windowComparison] of Object.entries(comparison.search)) {
     if (!windowComparison) continue;
     const { windowLabel, metrics } = windowComparison;
     for (const [metric, delta] of Object.entries(metrics)) {
       if (delta?.meaningful) {
         meaningfulSearch.push(
-          `${provider}.${metric} (${windowLabel}): ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute})`,
+          `${provider}.${metric} (${windowLabel}): ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute}); periods ${periodTransition(windowComparison)}`,
         );
       }
     }
     if (metrics.indexedPages?.meaningful && metrics.indexedPages.absolute < 0) {
       indexingRegressions.push(
-        `${provider} (${windowLabel}): ${metrics.indexedPages.before} → ${metrics.indexedPages.after}`,
+        `${provider} (${windowLabel}): ${metrics.indexedPages.before} → ${metrics.indexedPages.after}; periods ${periodTransition(windowComparison)}`,
       );
     }
   }
   const referralComparison = comparison.referrals;
+  const comparedPeriods = [
+    ...Object.entries(comparison.search)
+      .filter(([, windowComparison]) => windowComparison)
+      .map(([provider, windowComparison]) => (
+        `${provider} ${windowComparison.windowLabel}: ${periodTransition(windowComparison)}`
+      )),
+    ...(referralComparison
+      ? [`referrals ${referralComparison.windowLabel}: ${periodTransition(referralComparison)}`]
+      : []),
+  ];
   const meaningfulReferrals = Object.entries(referralComparison?.metrics ?? {})
     .filter(([, delta]) => delta?.meaningful)
     .map(([metric, delta]) => (
-      `${metric} (${referralComparison.windowLabel}): ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute})`
+      `${metric} (${referralComparison.windowLabel}): ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute}); periods ${periodTransition(referralComparison)}`
     ));
   return [
     '## Monthly comparison',
     '',
     `Compared \`${comparison.previousBaselineId}\` with \`${comparison.currentBaselineId}\`.`,
     '',
+    `- Compared provider periods: ${comparedPeriods.length ? comparedPeriods.join('; ') : 'none available'}`,
     `- New citations: ${comparison.newCitations.length ? comparison.newCitations.map(citationLabel).join('; ') : 'none'}`,
     `- Lost citations: ${comparison.lostCitations.length ? comparison.lostCitations.map(citationLabel).join('; ') : 'none'}`,
     `- Newly observed query/platform/context combinations: ${comparison.newlyObserved.length ? comparison.newlyObserved.map(citationLabel).join('; ') : 'none'}`,
@@ -1086,6 +1190,7 @@ export function formatScorecardMarkdown(scorecard) {
     `Generated from repository revision \`${scorecard.repositoryRevision}\` at`,
     `\`${scorecard.generatedAt}\`. Missing provider data is reported as unavailable,`,
     'never coerced to zero.',
+    `Query contract: \`${scorecard.querySetId}\` / \`${scorecard.querySetDigest}\`.`,
     '',
     '## Collection context',
     '',
@@ -1152,10 +1257,10 @@ export function formatScorecardMarkdown(scorecard) {
     `Observed direct-citation rate: ${percent(scorecard.ai.directCitationRate)}.`,
     'These are descriptive observations, not causal or population-level estimates.',
     '',
-    '| Platform | Brand | Citation | Sentiment | Accuracy | Cited URLs |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Query | Platform | Observed at (UTC) | Context | Brand | Citation | Sentiment | Accuracy | Cited URLs |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...scorecard.ai.observations.map((observation) => (
-      `| ${PLATFORM_LABELS[observation.platform]} | ${observation.brandMention ? 'Mention' : 'No mention'} | ${observation.directCitation ? 'Direct citation' : 'No direct citation'} | ${observation.sentiment} | ${observation.accuracy} | ${markdownCell(observation.citedUrls.map(markdownLink).join(', ')) || 'none'} |`
+      `| ${observation.queryId} | ${PLATFORM_LABELS[observation.platform]} | ${observation.observedAt} | ${markdownCell(`${observation.geography} / ${observation.locale} / ${observation.signedInState}`)} | ${observation.brandMention ? 'Mention' : 'No mention'} | ${observation.directCitation ? 'Direct citation' : 'No direct citation'} | ${observation.sentiment} | ${observation.accuracy} | ${markdownCell(observation.citedUrls.map(markdownLink).join(', ')) || 'none'} |`
     )),
     '',
     '### Accuracy and entity risks',

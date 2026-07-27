@@ -242,6 +242,43 @@ describe('SEO and AI visibility baseline', () => {
     );
   });
 
+  it('pins baselines to the exact reviewed query contract', () => {
+    const changedQuerySet = structuredClone(querySet);
+    changedQuerySet.queries[0].query = 'a materially different category query';
+
+    assert.throws(
+      () => validateBaseline(baseline, changedQuerySet),
+      /querySetDigest must match the supplied query set/,
+    );
+  });
+
+  it('rejects evidence recorded after the baseline snapshot', () => {
+    const futureObservation = structuredClone(baseline);
+    futureObservation.aiObservations[0].observedAt = '2026-07-27T18:00:00Z';
+    assert.throws(
+      () => validateBaseline(futureObservation, querySet),
+      /aiObservations\[0\]\.observedAt must not be after baseline\.observedAt/,
+    );
+
+    const futureWindow = structuredClone(baseline);
+    futureWindow.search.googleSearchConsole.windows[0] = {
+      ...futureWindow.search.googleSearchConsole.windows[0],
+      startDate: '2026-07-01',
+      endDate: '2026-07-28',
+    };
+    assert.throws(
+      () => validateBaseline(futureWindow, querySet),
+      /endDate must not be after the baseline observation date/,
+    );
+
+    const futureReview = structuredClone(querySet);
+    futureReview.reviewedAt = '2026-07-28';
+    assert.throws(
+      () => validateBaseline(baseline, futureReview),
+      /reviewedAt must not be after baseline\.observedAt/,
+    );
+  });
+
   it('rejects metrics outside their measurement domains', () => {
     const availableSource = (metrics) => ({
       status: 'available',
@@ -538,8 +575,8 @@ describe('scorecard computation', () => {
       windows: [
         {
           label: '28d',
-          startDate: '2026-07-03',
-          endDate: '2026-07-30',
+          startDate: '2026-06-30',
+          endDate: '2026-07-27',
           metrics: {
             indexedPages: 220,
             impressions: 1000,
@@ -555,6 +592,8 @@ describe('scorecard computation', () => {
       status: 'available',
       windows: [{
         label: '28d',
+        startDate: '2026-06-30',
+        endDate: '2026-07-27',
         metrics: {
           sessions: 20,
           dashboardLaunches: 5,
@@ -571,6 +610,8 @@ describe('scorecard computation', () => {
       status: 'available',
       windows: [{
         label: '28d',
+        startDate: '2026-07-31',
+        endDate: '2026-08-27',
         metrics: {
           sessions: 35,
           dashboardLaunches: 7,
@@ -605,6 +646,10 @@ describe('scorecard computation', () => {
     const markdown = formatScorecardMarkdown(next);
     assert.match(markdown, /Indexing regressions: googleSearchConsole \(28d\): 220 → 210/);
     assert.match(markdown, /Referral\/outcome movement: sessions \(28d\): 20 → 35/);
+    assert.match(
+      markdown,
+      /periods 2026-06-30\.\.2026-07-27 → 2026-07-31\.\.2026-08-27/,
+    );
   });
 
   it('does not turn sparse audit coverage into new or lost citations', () => {
@@ -637,6 +682,8 @@ describe('scorecard computation', () => {
       reason: 'Indexation was not exported.',
       windows: [{
         label: '28d',
+        startDate: '2026-06-30',
+        endDate: '2026-07-27',
         metrics: {
           indexedPages: null,
           impressions: 100,
@@ -651,6 +698,8 @@ describe('scorecard computation', () => {
       reason: 'Indexation was not exported.',
       windows: [{
         label: '28d',
+        startDate: '2026-07-31',
+        endDate: '2026-08-27',
         metrics: {
           indexedPages: null,
           impressions: 250,
@@ -669,8 +718,10 @@ describe('scorecard computation', () => {
 
   it('prefers the 28d window for comparisons regardless of authored window order', () => {
     const [previous, current] = buildComparableScorecards();
-    const searchWindow = (label, impressions) => ({
+    const searchWindow = (label, startDate, endDate, impressions) => ({
       label,
+      startDate,
+      endDate,
       metrics: {
         indexedPages: null,
         impressions,
@@ -682,12 +733,18 @@ describe('scorecard computation', () => {
     previous.search.googleSearchConsole = {
       status: 'partial',
       reason: 'Only aggregate exports were available.',
-      windows: [searchWindow('90d', 900), searchWindow('28d', 100)],
+      windows: [
+        searchWindow('90d', '2026-04-29', '2026-07-27', 900),
+        searchWindow('28d', '2026-06-30', '2026-07-27', 100),
+      ],
     };
     current.search.googleSearchConsole = {
       status: 'partial',
       reason: 'Only aggregate exports were available.',
-      windows: [searchWindow('28d', 250), searchWindow('90d', 2000)],
+      windows: [
+        searchWindow('28d', '2026-07-31', '2026-08-27', 250),
+        searchWindow('90d', '2026-05-30', '2026-08-27', 2000),
+      ],
     };
 
     const comparison = compareScorecards(previous, current);
@@ -704,11 +761,16 @@ describe('scorecard computation', () => {
 
   it('classifies meaningful changes via the relative arm and guards before=0 ratios', () => {
     const [previous, current] = buildComparableScorecards();
-    const referralWindow = (metrics) => ({ label: '28d', metrics });
+    const referralWindow = (startDate, endDate, metrics) => ({
+      label: '28d',
+      startDate,
+      endDate,
+      metrics,
+    });
     previous.referrals = {
       ...previous.referrals,
       status: 'available',
-      windows: [referralWindow({
+      windows: [referralWindow('2026-06-30', '2026-07-27', {
         sessions: 50,
         dashboardLaunches: 5,
         pricingViews: 4,
@@ -721,7 +783,7 @@ describe('scorecard computation', () => {
     current.referrals = {
       ...current.referrals,
       status: 'available',
-      windows: [referralWindow({
+      windows: [referralWindow('2026-07-31', '2026-08-27', {
         sessions: 59,
         dashboardLaunches: 5,
         pricingViews: 4,
@@ -796,6 +858,43 @@ describe('scorecard computation', () => {
     assert.equal(comparison.search.googleSearchConsole, null);
   });
 
+  it('rejects provider comparisons whose reporting windows do not advance', () => {
+    const [previous, current] = buildComparableScorecards();
+    const searchWindow = (startDate, endDate, impressions) => ({
+      label: '28d',
+      startDate,
+      endDate,
+      metrics: {
+        indexedPages: 10,
+        impressions,
+        clicks: 10,
+        ctr: 0.1,
+        averagePosition: 5,
+      },
+    });
+    previous.search.googleSearchConsole = {
+      status: 'available',
+      windows: [searchWindow('2026-06-30', '2026-07-27', 100)],
+    };
+    current.search.googleSearchConsole = {
+      status: 'available',
+      windows: [searchWindow('2026-05-01', '2026-05-28', 200)],
+    };
+
+    assert.throws(
+      () => compareScorecards(previous, current),
+      /googleSearchConsole current 28d window must advance beyond the previous window/,
+    );
+
+    current.search.googleSearchConsole.windows = [
+      searchWindow('2026-06-30', '2026-07-27', 200),
+    ];
+    assert.throws(
+      () => compareScorecards(previous, current),
+      /googleSearchConsole current 28d window must advance beyond the previous window/,
+    );
+  });
+
   it('rejects reversed or incompatible scorecard comparisons', () => {
     const [previous, current] = buildComparableScorecards();
     current.generatedAt = previous.generatedAt;
@@ -816,6 +915,13 @@ describe('scorecard computation', () => {
     assert.throws(
       () => compareScorecards(previous, current),
       /querySetId must match/,
+    );
+
+    current.querySetId = previous.querySetId;
+    current.querySetDigest = 'sha256:changed-query-contract';
+    assert.throws(
+      () => compareScorecards(previous, current),
+      /querySetDigest must match/,
     );
   });
 
@@ -847,6 +953,11 @@ describe('scorecard computation', () => {
     assert.match(markdown, /France/);
     assert.match(markdown, /signed-out/);
     assert.match(markdown, /signed-in/);
+    assert.match(markdown, /\| Query \| Platform \| Observed at \(UTC\) \| Context \|/);
+    assert.match(
+      markdown,
+      /\| q01 \| ChatGPT Search \| 2026-07-27T17:10:00Z \| France \/ en \/ signed-out \|/,
+    );
     assert.match(markdown, /## Top five opportunities/);
     assert.doesNotMatch(markdown, /0 impressions/);
   });
