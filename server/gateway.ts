@@ -1357,6 +1357,9 @@ export function createDomainGateway(
         !!ent &&
         ent.features.tier >= 1 &&
         ent.validUntil >= Date.now();
+      if (hasProFreshCacheAccess) {
+        rateLimitPrincipalUserId = sessionUserId;
+      }
     }
 
     if (keyCheck.required && !keyCheck.valid) {
@@ -1636,9 +1639,10 @@ export function createDomainGateway(
       // Eligible authenticated keys — a valid user key (which carries NO
       // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
       // env key — are governed by a per-account burst + daily meter (enforced
-      // at the sold allowance, #4635) instead of the global per-IP cap. In ENFORCE they bypass
-      // the per-IP fallback below; in SHADOW they only record telemetry and
-      // still fall through to per-IP, so protection never drops below today.
+      // at the sold allowance, #4635) instead of the global fallback. In ENFORCE
+      // they bypass that fallback below; in SHADOW they only record telemetry
+      // and still fall through to it. Validated user keys use their trusted
+      // principal there, while enterprise keys retain IP attribution.
       // Limits are NOT in scope here (checkEntitlement discards `features`), so
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.

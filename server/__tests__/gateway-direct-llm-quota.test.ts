@@ -60,6 +60,7 @@ const CLASSIFY_PATH = "/api/intelligence/v1/classify-event";
 const DEDUCT_PATH = "/api/intelligence/v1/deduct-situation";
 const COUNTRY_BRIEF_PATH = "/api/intelligence/v1/get-country-intel-brief";
 const ANALYZE_PATH = "/api/market/v1/analyze-stock";
+const MARKET_QUOTES_PATH = "/api/market/v1/list-market-quotes";
 const CACHE_PATH = "/api/news/v1/summarize-article-cache";
 
 function json(body: unknown, status = 200) {
@@ -114,6 +115,19 @@ function makeAnalyzeGateway(handlerCalls: { analyze: number }) {
       handler: async () => {
         handlerCalls.analyze += 1;
         return json({ ok: true, route: "analyze" });
+      },
+    },
+  ]);
+}
+
+function makeMarketQuotesGateway(handlerCalls: { quotes: number }) {
+  return createDomainGateway([
+    {
+      method: "GET",
+      path: MARKET_QUOTES_PATH,
+      handler: async () => {
+        handlerCalls.quotes += 1;
+        return json({ ok: true, route: "quotes" });
       },
     },
   ]);
@@ -267,6 +281,32 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(200);
     expect(calls.analyze).toBe(1);
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.any(Object),
+      { principalUserId: "user_pro" },
+    );
+  });
+
+  test("active Pro freshness bearer uses a principal-scoped global fallback bucket", async () => {
+    const calls = { quotes: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
+    getEntitlements.mockResolvedValue({
+      planKey: "pro_monthly",
+      features: { tier: 1 },
+      validUntil: Date.now() + 60_000,
+    });
+
+    const res = await makeMarketQuotesGateway(calls)(
+      req(`${MARKET_QUOTES_PATH}?symbols=AAPL`, {
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls.quotes).toBe(1);
     expect(checkRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
       expect.any(Object),

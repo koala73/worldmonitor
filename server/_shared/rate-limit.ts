@@ -242,12 +242,11 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
-  // inline Upstash INCR. Gateway now enforces the same budget with per-IP
-  // keying in checkEndpointRateLimit.
+  // inline Upstash INCR. Gateway preserves the same budget while using a
+  // trusted paid-user principal when available, otherwise the client IP.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
   // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
-  // Per-IP keying matches run-scenario's production behavior. Pro-identity
-  // primitive deferred (checkScopedRateLimit available if needed).
+  // It follows the same trusted-principal-or-IP attribution contract.
   '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
   // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
