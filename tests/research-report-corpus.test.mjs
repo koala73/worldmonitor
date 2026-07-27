@@ -179,7 +179,7 @@ describe('research report corpus (#5668)', () => {
     assert.match(html, /What this edition does not cover/);
     assert.match(html, /partial/i, 'partial-month figures must be labelled');
     assert.match(html, /AIS/, 'AIS observation limitation must be stated');
-    assert.match(html, /floor on observed traffic/, 'undercount framing must be present');
+    assert.match(html, /lower bound on total transit activity/, 'undercount framing must be present');
     // Distinct analytics targets for the report funnel.
     for (const target of ['download-csv', 'download-json', 'dashboard', 'chokepoint-page', 'developer', 'pricing']) {
       assert.ok(

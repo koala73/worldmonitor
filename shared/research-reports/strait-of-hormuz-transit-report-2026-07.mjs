@@ -114,7 +114,7 @@ export const REPORT = {
       layer: 'observed',
       block: 'context-table',
       paragraphs: [
-        'The Hormuz collapse is not visible in the neighbouring corridors. Bab el-Mandeb and Suez continue at the depressed levels that have persisted since the 2023–24 Red Sea crisis, and Cape of Good Hope diversion traffic remains elevated but flat. Whatever rerouting the Hormuz closure has forced, it does not show up as a level change in these three series during this window.',
+        'The Hormuz collapse is not visible in the neighbouring corridors. Bab el-Mandeb and Suez continue at the depressed levels that have persisted since the 2023–24 Red Sea crisis, and Cape of Good Hope diversion traffic remains elevated but flat. Any rerouting associated with the Hormuz disruption does not appear as a level change in these three series during this window.',
       ],
     },
     {
@@ -140,7 +140,7 @@ export const REPORT = {
       heading: 'Limitations and known gaps',
       layer: 'methodology',
       paragraphs: [
-        'AIS undercount: PortWatch counts AIS-broadcasting passages. In a conflict zone with GPS interference and deliberate transponder shutdowns, physical transits can exceed AIS-observed transits by an unknown margin; an independent tracker counted 99 tankers in the region transmitting no AIS on 2026-07-27. The figures here are a floor on observed traffic, not a measurement of total physical flow.',
+        'AIS undercount: PortWatch counts AIS-broadcasting passages. In a conflict zone with GPS interference and deliberate transponder shutdowns, physical transits can exceed AIS-observed transits by an unknown margin; an independent tracker counted 99 tankers in the region transmitting no AIS on 2026-07-27. The published counts are therefore a lower bound on total transit activity, not a measurement of total physical flow.',
         'Publication lag: the PortWatch series ended at {{m:observationEnd}} when retrieved on {{m:capturedAtDate}} — an eight-day lag. This report does not estimate the missing days. Upstream revisions: PortWatch may revise history; this edition is pinned to its retrieval snapshot and states its retrieval time precisely so revisions are detectable.',
         'July 2026 figures cover 2026-07-01 through {{m:observationEnd}} only and are labelled partial wherever they appear. Official statements and market context are out of scope for this edition, as declared above.',
       ],
