@@ -4,38 +4,94 @@ import { expect, test } from '@playwright/test';
  * MCP Grant Consent Page — DOM-behavioural coverage (#5654).
  *
  * Drives the /mcp-grant consent page with stubbed Clerk auth and stubbed
- * /api/internal/mcp-grant-{context,mint} endpoints. Asserts the four
- * error shapes produce the correct DOM state and that the happy-path
- * renders the consent card then navigates on authorize.
+ * /api/internal/mcp-grant-{context,mint} endpoints, asserting which DOM state
+ * each denial shape produces.
+ *
+ * The assertions that carry this suite are `#retryContextBtn` and `#errorTitle`.
+ * `showErrorView` and `showRetryableContextView` both hide `#consent`, both show
+ * `#errorView`, and both write the same `verdict.message` into `#errorBody` — so
+ * without those two locators a terminal/retryable swap in `routeGrantContextDenial`
+ * passes every assertion in this file, which is exactly the false-passing wiring
+ * guard #5654 asks to close.
  *
  * Stubbing strategy:
  *   - The Clerk service module is intercepted to provide a minimal stub
  *     (signed-in user, no-op sign-in, stable token).
- *   - /api/internal/mcp-grant-context is route-intercepted per test.
- *   - /api/internal/mcp-grant-mint is route-intercepted per test.
+ *   - /api/internal/mcp-grant-{context,mint} are route-intercepted per test.
+ *   - The api.worldmonitor.app redirect target is route-intercepted so the
+ *     success path never performs a live cross-origin navigation out of CI.
+ *     `window.location.assign` CANNOT be patched from page script — Location's
+ *     members are [LegacyUnforgeable], so the assignment silently no-ops and the
+ *     real navigation happens anyway. Intercept the request, not the method.
  */
 
 const GRANT_PAGE = '/mcp-grant?nonce=test-nonce-e2e';
+const GRANT_REDIRECT =
+  'https://api.worldmonitor.app/oauth/authorize-pro?nonce=test-nonce-e2e&grant=signed-token';
+
+/** Redirects the apex page must refuse. Each one defeats a different weakening
+ *  of the `target.origin !== 'https://api.worldmonitor.app'` guard: a bare
+ *  hostname compare, an `endsWith` suffix match, an `includes`/`startsWith`
+ *  substring match, and a missing scheme check. A single evil.example.com case
+ *  is rejected by every one of those weakenings, so it cannot tell a correct
+ *  guard from a broken one. */
+const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
+  ['unrelated host', 'https://evil.example.com/steal?grant=stolen'],
+  ['prefix lookalike', 'https://api.worldmonitor.app.evil.example/oauth/authorize-pro?grant=stolen'],
+  ['userinfo spoof', 'https://api.worldmonitor.app@evil.example/oauth/authorize-pro?grant=stolen'],
+  ['suffix lookalike', 'https://evilworldmonitor.app/oauth/authorize-pro?grant=stolen'],
+  ['scheme downgrade', 'http://api.worldmonitor.app/oauth/authorize-pro?grant=stolen'],
+  ['non-http scheme', 'javascript:alert(document.domain)'],
+];
 
 /**
  * Intercept the Clerk service module to provide a stub that looks like a
  * signed-in Pro user. This avoids needing real Clerk credentials.
+ *
+ * `subscribeClerk` invokes its callback synchronously, matching Clerk's own
+ * addListener, which fires immediately with current state. That makes
+ * `bootstrap()` issue two overlapping context loads and so exercises the
+ * `contextLoadGeneration` staleness guard rather than papering over it — which
+ * is why assertions here must never assume a single request.
  */
-async function stubClerkModule(page: import('@playwright/test').Page): Promise<void> {
+async function stubClerkModule(
+  page: import('@playwright/test').Page,
+  opts: { trackSignIn?: boolean } = {},
+): Promise<void> {
+  const openSignInBody = opts.trackSignIn ? 'window.__openSignInCalled = true;' : '';
   await page.route('**/services/clerk*', async (route) => {
-    const response = `
-      export async function initClerk() {}
-      export function getClerkToken() { return Promise.resolve('stub-jwt-token'); }
-      export function getCurrentClerkUser() { return { email: 'e2e@worldmonitor.app' }; }
-      export function openSignIn() {}
-      export function subscribeClerk(cb) { cb(); }
-    `;
     await route.fulfill({
       status: 200,
       contentType: 'application/javascript',
-      body: response,
+      body: `
+        export async function initClerk() {}
+        export function getClerkToken() { return Promise.resolve('stub-jwt-token'); }
+        export function getCurrentClerkUser() { return { email: 'e2e@worldmonitor.app' }; }
+        export function openSignIn() { ${openSignInBody} }
+        export function subscribeClerk(cb) { cb(); return () => {}; }
+      `,
     });
   });
+}
+
+/**
+ * Intercept the api.worldmonitor.app redirect target. Returns a getter for the
+ * URLs the page actually tried to navigate to, so a test can assert both that
+ * the success path navigates and that a refused redirect navigates nowhere.
+ */
+async function interceptGrantRedirect(
+  page: import('@playwright/test').Page,
+): Promise<() => string[]> {
+  const requested: string[] = [];
+  await page.route('https://api.worldmonitor.app/**', async (route) => {
+    requested.push(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<html><body>stub redirect target</body></html>',
+    });
+  });
+  return () => requested;
 }
 
 function stubContextSuccess(page: import('@playwright/test').Page): Promise<void> {
@@ -52,11 +108,13 @@ function stubContextError(
   page: import('@playwright/test').Page,
   error: string,
   status: number,
+  headers?: Record<string, string>,
 ): Promise<void> {
   return page.route('**/api/internal/mcp-grant-context*', async (route) => {
     await route.fulfill({
       status,
       contentType: 'application/json',
+      headers,
       body: JSON.stringify({ error, error_description: `Test: ${error}` }),
     });
   });
@@ -67,21 +125,23 @@ function stubMintSuccess(page: import('@playwright/test').Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ redirect: 'https://api.worldmonitor.app/oauth/authorize-pro?nonce=test-nonce-e2e&grant=signed-token' }),
+      body: JSON.stringify({ redirect: GRANT_REDIRECT }),
     });
   });
 }
 
 function stubMintError(
   page: import('@playwright/test').Page,
-  error: string,
+  error: string | undefined,
   status: number,
+  headers?: Record<string, string>,
 ): Promise<void> {
   return page.route('**/api/internal/mcp-grant-mint', async (route) => {
     await route.fulfill({
       status,
       contentType: 'application/json',
-      body: JSON.stringify({ error, error_description: `Test: ${error}` }),
+      headers,
+      body: JSON.stringify(error ? { error, error_description: `Test: ${error}` } : {}),
     });
   });
 }
@@ -92,20 +152,46 @@ function stubMintNetworkError(page: import('@playwright/test').Page): Promise<vo
   });
 }
 
+function stubMintRedirect(
+  page: import('@playwright/test').Page,
+  redirect: string,
+): Promise<void> {
+  return page.route('**/api/internal/mcp-grant-mint', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ redirect }),
+    });
+  });
+}
+
 test.describe('MCP grant consent page (#5654)', () => {
   test('missing nonce shows terminal error view', async ({ page }) => {
     await stubClerkModule(page);
     await page.goto('/mcp-grant');
 
     await expect(page.locator('#errorView')).toBeVisible();
+    await expect(page.locator('#errorTitle')).toHaveText('Missing authorization parameter');
     await expect(page.locator('#errorBody')).toContainText('Missing authorization parameter');
+    await expect(page.locator('#retryContextBtn')).toBeHidden();
     await expect(page.locator('#consent')).toBeHidden();
     await expect(page.locator('#loading')).toBeHidden();
   });
 
   test('successful context load shows consent card with client metadata', async ({ page }) => {
     await stubClerkModule(page);
-    await stubContextSuccess(page);
+    const contextAuth: (string | undefined)[] = [];
+    await page.route('**/api/internal/mcp-grant-context*', async (route) => {
+      contextAuth.push(route.request().headers().authorization);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          client_name: 'Claude Desktop',
+          redirect_host: 'api.worldmonitor.app',
+        }),
+      });
+    });
 
     await page.goto(GRANT_PAGE);
 
@@ -116,64 +202,120 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#loading')).toBeHidden();
     await expect(page.locator('#errorView')).toBeHidden();
     await expect(page.locator('#authorizeBtn')).toBeEnabled();
+
+    // authedFetch must attach the Clerk JWT; a regression to a bare fetch()
+    // would fail closed in production but is invisible to a stub that ignores
+    // headers.
+    expect(contextAuth.length).toBeGreaterThan(0);
+    for (const header of contextAuth) expect(header).toBe('Bearer stub-jwt-token');
   });
 
-  test('INVALID_NONCE from context shows terminal error view', async ({ page }) => {
+  // Terminal context denials: consent is replaced, the heading names the actual
+  // failure, and NO manual retry is offered. The `#retryContextBtn` hidden
+  // assertion is what distinguishes these from the retryable case below.
+  const TERMINAL_CONTEXT_CASES: ReadonlyArray<
+    [code: string, status: number, title: string, body: string]
+  > = [
+    ['INVALID_NONCE', 400, 'Authorization request expired', 'expired or is invalid'],
+    ['UNKNOWN_CLIENT', 400, 'Unknown OAuth client', 'no longer registered'],
+    ['INSUFFICIENT_TIER', 403, 'Pro subscription required', 'Pro subscription is required'],
+    [
+      'CONFIGURATION_ERROR',
+      500,
+      'Authorization temporarily unavailable',
+      'MCP authorization is temporarily unavailable',
+    ],
+  ];
+
+  for (const [code, status, title, body] of TERMINAL_CONTEXT_CASES) {
+    test(`${code} from context shows terminal error view without a retry action`, async ({
+      page,
+    }) => {
+      await stubClerkModule(page);
+      await stubContextError(page, code, status);
+
+      await page.goto(GRANT_PAGE);
+
+      await expect(page.locator('#errorView')).toBeVisible();
+      await expect(page.locator('#errorTitle')).toHaveText(title);
+      await expect(page.locator('#errorBody')).toContainText(body);
+      await expect(page.locator('#retryContextBtn')).toBeHidden();
+      await expect(page.locator('#consent')).toBeHidden();
+    });
+  }
+
+  test('SERVICE_UNAVAILABLE from context exhausts its retry then offers a manual retry', async ({
+    page,
+  }) => {
     await stubClerkModule(page);
-    await stubContextError(page, 'INVALID_NONCE', 400);
+    // Retry-After: 1 keeps the in-page auto-retry wait to ~1s. Omitting the
+    // header would fall back to DEFAULT_GRANT_RETRY_SECONDS (5s) of real,
+    // unmocked wall clock. Note Retry-After: 0 does NOT work — it fails
+    // retryableGrantDelayMs's `parsed > 0` guard and falls back to the same 5s.
+    await stubContextError(page, 'SERVICE_UNAVAILABLE', 503, { 'Retry-After': '1' });
 
     await page.goto(GRANT_PAGE);
 
     await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('expired or is invalid');
-    await expect(page.locator('#consent')).toBeHidden();
-  });
-
-  test('UNKNOWN_CLIENT from context shows terminal error view', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextError(page, 'UNKNOWN_CLIENT', 400);
-
-    await page.goto(GRANT_PAGE);
-
-    await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('no longer registered');
-    await expect(page.locator('#consent')).toBeHidden();
-  });
-
-  test('INSUFFICIENT_TIER from context shows Pro subscription required error', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextError(page, 'INSUFFICIENT_TIER', 403);
-
-    await page.goto(GRANT_PAGE);
-
-    await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('Pro subscription is required');
-    await expect(page.locator('#consent')).toBeHidden();
-  });
-
-  test('SERVICE_UNAVAILABLE from context shows temporary error', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextError(page, 'SERVICE_UNAVAILABLE', 503);
-
-    await page.goto(GRANT_PAGE);
-
-    await expect(page.locator('#errorView')).toBeVisible();
+    await expect(page.locator('#errorTitle')).toHaveText('Authorization temporarily unavailable');
     await expect(page.locator('#errorBody')).toContainText('temporarily unavailable');
     await expect(page.locator('#consent')).toBeHidden();
+    // The whole point of the retryable branch: the user gets a way out. This is
+    // the ONLY DOM difference from the terminal CONFIGURATION_ERROR case above,
+    // which renders an identical heading.
+    await expect(page.locator('#retryContextBtn')).toBeVisible();
   });
 
-  test('CONFIGURATION_ERROR from context shows temporarily unavailable message', async ({ page }) => {
+  test('a long Retry-After surfaces the wait instead of blocking on it', async ({ page }) => {
     await stubClerkModule(page);
-    await stubContextError(page, 'CONFIGURATION_ERROR', 500);
+    // Above MAX_INLINE_GRANT_WAIT_MS (10s) the page must NOT hold a spinner; it
+    // names the delay and hands the decision back.
+    await stubContextError(page, 'SERVICE_UNAVAILABLE', 503, { 'Retry-After': '60' });
 
     await page.goto(GRANT_PAGE);
 
     await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('temporarily unavailable');
+    await expect(page.locator('#errorBody')).toContainText('Try again in about 60 seconds');
+    await expect(page.locator('#retryContextBtn')).toBeVisible();
     await expect(page.locator('#consent')).toBeHidden();
   });
 
-  test('network failure on context shows connection error', async ({ page }) => {
+  test('the manual retry button reloads the context and renders consent', async ({ page }) => {
+    await stubClerkModule(page);
+    let failContext = true;
+    await page.route('**/api/internal/mcp-grant-context*', async (route) => {
+      if (failContext) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          headers: { 'Retry-After': '1' },
+          body: JSON.stringify({ error: 'SERVICE_UNAVAILABLE' }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          client_name: 'Claude Desktop',
+          redirect_host: 'api.worldmonitor.app',
+        }),
+      });
+    });
+
+    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#retryContextBtn')).toBeVisible();
+
+    failContext = false;
+    await page.locator('#retryContextBtn').click();
+
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#errorView')).toBeHidden();
+  });
+
+  test('network failure on context shows connection error with a retry action', async ({
+    page,
+  }) => {
     await stubClerkModule(page);
     await page.route('**/api/internal/mcp-grant-context*', async (route) => {
       await route.abort('connectionrefused');
@@ -183,22 +325,26 @@ test.describe('MCP grant consent page (#5654)', () => {
 
     await expect(page.locator('#errorView')).toBeVisible();
     await expect(page.locator('#errorBody')).toContainText('Check your connection');
+    await expect(page.locator('#retryContextBtn')).toBeVisible();
     await expect(page.locator('#consent')).toBeHidden();
   });
 
   test('authorize click disables button and shows authorizing state', async ({ page }) => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
+    const requestedRedirects = await interceptGrantRedirect(page);
 
     // Delay mint response to observe intermediate state
     let resolveMint!: () => void;
-    const mintDelay = new Promise<void>((resolve) => { resolveMint = resolve; });
+    const mintDelay = new Promise<void>((resolve) => {
+      resolveMint = resolve;
+    });
     await page.route('**/api/internal/mcp-grant-mint', async (route) => {
       await mintDelay;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ redirect: 'https://api.worldmonitor.app/oauth/authorize-pro?nonce=test&grant=tok' }),
+        body: JSON.stringify({ redirect: GRANT_REDIRECT }),
       });
     });
 
@@ -209,77 +355,135 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#authorizeBtn')).toBeDisabled();
     await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
 
+    // Release the mint and let the resulting navigation settle INSIDE the test.
+    // Returning here would leave a cross-origin request to the production host
+    // racing page teardown.
     resolveMint();
+    await page.waitForURL(/^https:\/\/api\.worldmonitor\.app\//);
+    expect(requestedRedirects()).toHaveLength(1);
   });
 
-  test('successful mint navigates to api.worldmonitor.app redirect', async ({ page }) => {
+  test('successful mint navigates to the api.worldmonitor.app redirect', async ({ page }) => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
     await stubMintSuccess(page);
+    const requestedRedirects = await interceptGrantRedirect(page);
 
     await page.goto(GRANT_PAGE);
     await expect(page.locator('#consent')).toBeVisible();
 
-    // Intercept window.location.assign to capture the redirect URL without navigating
-    const navigationTarget = page.evaluate(() => {
-      return new Promise<string>((resolve) => {
-        window.location.assign = ((url: string) => { resolve(url); }) as typeof window.location.assign;
-      });
+    await page.locator('#authorizeBtn').click();
+    await page.waitForURL(/^https:\/\/api\.worldmonitor\.app\//);
+
+    // Assert the ORIGIN, not a substring: `toContain` would also be satisfied by
+    // https://api.worldmonitor.app.evil.example/...
+    const target = new URL(page.url());
+    expect(target.origin).toBe('https://api.worldmonitor.app');
+    expect(target.pathname).toBe('/oauth/authorize-pro');
+    expect(target.searchParams.get('grant')).toBe('signed-token');
+    expect(requestedRedirects()).toHaveLength(1);
+  });
+
+  // Terminal mint denials replace the consent card outright.
+  const TERMINAL_MINT_CASES: ReadonlyArray<
+    [label: string, code: string | undefined, status: number, title: string, body: string]
+  > = [
+    [
+      'INVALID_NONCE',
+      'INVALID_NONCE',
+      400,
+      'Authorization request expired',
+      'expired or is invalid',
+    ],
+    [
+      'INSUFFICIENT_TIER',
+      'INSUFFICIENT_TIER',
+      403,
+      'Pro subscription required',
+      'Pro subscription is required',
+    ],
+    // A bare 503 with no readable code is an intermediary talking, not the
+    // handshake — classifyGrantDenial keeps it terminal precisely so an unknown
+    // failure never becomes a retry loop.
+    [
+      'unrecognised failure',
+      undefined,
+      503,
+      'Authorization failed',
+      'could not be completed',
+    ],
+  ];
+
+  for (const [label, code, status, title, body] of TERMINAL_MINT_CASES) {
+    test(`${label} from mint replaces the consent card`, async ({ page }) => {
+      await stubClerkModule(page);
+      await stubContextSuccess(page);
+      await stubMintError(page, code, status);
+
+      await page.goto(GRANT_PAGE);
+      await expect(page.locator('#consent')).toBeVisible();
+
+      await page.locator('#authorizeBtn').click();
+
+      await expect(page.locator('#errorView')).toBeVisible();
+      await expect(page.locator('#errorTitle')).toHaveText(title);
+      await expect(page.locator('#errorBody')).toContainText(body);
+      await expect(page.locator('#consent')).toBeHidden();
     });
+  }
 
-    await page.locator('#authorizeBtn').click();
-    const targetUrl = await navigationTarget;
-
-    expect(targetUrl).toContain('https://api.worldmonitor.app/oauth/authorize-pro');
-  });
-
-  test('INVALID_NONCE from mint shows terminal error (consent card removed)', async ({ page }) => {
+  test('SERVICE_UNAVAILABLE from mint keeps consent and parks Authorize in cooldown', async ({
+    page,
+  }) => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
-    await stubMintError(page, 'INVALID_NONCE', 400);
+    // #5622: a transient entitlement failure must NOT destroy a still-valid
+    // consent card. The nonce is still good and the same click would succeed a
+    // moment later, so the card stays and the button comes back after the delay
+    // the server asked for.
+    // 3s, not 1s: the cooldown assertions below have to land inside the window,
+    // and a 1s budget leaves no headroom on a loaded CI machine.
+    await stubMintError(page, 'SERVICE_UNAVAILABLE', 503, { 'Retry-After': '3' });
 
     await page.goto(GRANT_PAGE);
     await expect(page.locator('#consent')).toBeVisible();
 
     await page.locator('#authorizeBtn').click();
 
-    // Terminal error: consent card replaced with errorView
-    await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('expired or is invalid');
-    await expect(page.locator('#consent')).toBeHidden();
+    await expect(page.locator('#mintError')).toBeVisible();
+    await expect(page.locator('#mintError')).toContainText('temporarily unavailable');
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#errorView')).toBeHidden();
+    await expect(page.locator('#authorizeBtn')).toBeDisabled();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Retry shortly…');
+
+    // ...and the cooldown actually expires rather than stranding the button.
+    await expect(page.locator('#authorizeBtn')).toBeEnabled();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Authorize');
   });
 
-  test('INSUFFICIENT_TIER from mint shows terminal error (consent card removed)', async ({ page }) => {
+  test('a long Retry-After on mint names the wait and hands the button straight back', async ({
+    page,
+  }) => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
-    await stubMintError(page, 'INSUFFICIENT_TIER', 403);
+    await stubMintError(page, 'SERVICE_UNAVAILABLE', 503, { 'Retry-After': '60' });
 
     await page.goto(GRANT_PAGE);
     await expect(page.locator('#consent')).toBeVisible();
 
     await page.locator('#authorizeBtn').click();
 
-    await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('Pro subscription is required');
-    await expect(page.locator('#consent')).toBeHidden();
-  });
-
-  test('SERVICE_UNAVAILABLE from mint shows terminal error view', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextSuccess(page);
-    await stubMintError(page, 'SERVICE_UNAVAILABLE', 503);
-
-    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#mintError')).toContainText('Try again in about 60 seconds');
     await expect(page.locator('#consent')).toBeVisible();
-
-    await page.locator('#authorizeBtn').click();
-
-    await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('temporarily unavailable');
-    await expect(page.locator('#consent')).toBeHidden();
+    await expect(page.locator('#errorView')).toBeHidden();
+    await expect(page.locator('#authorizeBtn')).toBeEnabled();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Authorize');
   });
 
-  test('network failure on mint shows inline retry error (consent card stays)', async ({ page }) => {
+  test('network failure on mint shows inline retry error (consent card stays)', async ({
+    page,
+  }) => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
     await stubMintNetworkError(page);
@@ -298,37 +502,35 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#authorizeBtn')).toHaveText('Authorize');
   });
 
-  test('mint returning invalid redirect host shows terminal error', async ({ page }) => {
-    await stubClerkModule(page);
-    await stubContextSuccess(page);
-    await page.route('**/api/internal/mcp-grant-mint', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ redirect: 'https://evil.example.com/steal?code=abc' }),
-      });
+  for (const [label, redirect] of HOSTILE_REDIRECTS) {
+    test(`mint returning a ${label} redirect is refused and navigates nowhere`, async ({
+      page,
+    }) => {
+      await stubClerkModule(page);
+      await stubContextSuccess(page);
+      await stubMintRedirect(page, redirect);
+      const requestedRedirects = await interceptGrantRedirect(page);
+
+      await page.goto(GRANT_PAGE);
+      await expect(page.locator('#consent')).toBeVisible();
+
+      await page.locator('#authorizeBtn').click();
+
+      await expect(page.locator('#errorView')).toBeVisible();
+      await expect(page.locator('#errorTitle')).toHaveText('Unexpected redirect host');
+      await expect(page.locator('#errorBody')).toContainText('unexpected redirect host');
+      await expect(page.locator('#consent')).toBeHidden();
+      // The grant token rides in the redirect's query string, so "refused" has
+      // to mean no request left the browser.
+      expect(requestedRedirects()).toHaveLength(0);
+      expect(page.url()).toContain('/mcp-grant');
     });
-
-    await page.goto(GRANT_PAGE);
-    await expect(page.locator('#consent')).toBeVisible();
-
-    await page.locator('#authorizeBtn').click();
-
-    await expect(page.locator('#errorView')).toBeVisible();
-    await expect(page.locator('#errorBody')).toContainText('unexpected redirect host');
-    await expect(page.locator('#consent')).toBeHidden();
-  });
+  }
 
   test('mint returning malformed redirect URL shows terminal error', async ({ page }) => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
-    await page.route('**/api/internal/mcp-grant-mint', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ redirect: 'not-a-url' }),
-      });
-    });
+    await stubMintRedirect(page, 'not-a-url');
 
     await page.goto(GRANT_PAGE);
     await expect(page.locator('#consent')).toBeVisible();
@@ -336,6 +538,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     await page.locator('#authorizeBtn').click();
 
     await expect(page.locator('#errorView')).toBeVisible();
+    await expect(page.locator('#errorTitle')).toHaveText('Invalid redirect');
     await expect(page.locator('#errorBody')).toContainText('invalid redirect');
     await expect(page.locator('#consent')).toBeHidden();
   });
@@ -364,47 +567,24 @@ test.describe('MCP grant consent page (#5654)', () => {
   });
 
   test('401 from context triggers sign-in (consent never renders)', async ({ page }) => {
-    // For 401, the page calls openSignIn() — which is stubbed as a no-op.
-    // Neither consent nor errorView should be visible; loading stays.
-    await stubClerkModule(page);
-
-    // Track whether openSignIn was called
     await page.addInitScript(() => {
       (window as unknown as { __openSignInCalled: boolean }).__openSignInCalled = false;
     });
-
-    // Stub Clerk with an openSignIn that records the call
-    await page.route('**/services/clerk*', async (route) => {
-      const response = `
-        export async function initClerk() {}
-        export function getClerkToken() { return Promise.resolve('stub-jwt-token'); }
-        export function getCurrentClerkUser() { return { email: 'e2e@worldmonitor.app' }; }
-        export function openSignIn() { window.__openSignInCalled = true; }
-        export function subscribeClerk(cb) { cb(); }
-      `;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/javascript',
-        body: response,
-      });
-    });
-
-    // Wait for the context request to complete before asserting
-    const contextRequestDone = page.waitForResponse('**/api/internal/mcp-grant-context*');
-    await page.route('**/api/internal/mcp-grant-context*', async (route) => {
-      await route.fulfill({
-        status: 401,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'UNAUTHENTICATED' }),
-      });
-    });
+    await stubClerkModule(page, { trackSignIn: true });
+    await stubContextError(page, 'UNAUTHENTICATED', 401);
 
     await page.goto(GRANT_PAGE);
-    await contextRequestDone;
 
-    // openSignIn was called, neither error view nor consent should appear
-    const signInCalled = await page.evaluate(() => (window as unknown as { __openSignInCalled: boolean }).__openSignInCalled);
-    expect(signInCalled).toBe(true);
+    // Poll rather than read once. `waitForResponse` is NOT a usable sync point
+    // here: bootstrap issues two overlapping context loads, the first of which
+    // is discarded by the generation guard without ever calling openSignIn, and
+    // the surviving one only reaches it after a further body parse.
+    await page.waitForFunction(
+      () => (window as unknown as { __openSignInCalled: boolean }).__openSignInCalled === true,
+    );
+
+    // #consent and #errorView are `hidden` in the static markup, so these two
+    // only mean anything once the assertion above proves the page's JS ran.
     await expect(page.locator('#consent')).toBeHidden();
     await expect(page.locator('#errorView')).toBeHidden();
   });
