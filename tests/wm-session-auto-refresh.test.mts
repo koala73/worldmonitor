@@ -1948,3 +1948,67 @@ describe('wm-session cookie-persistence detection (Layer 3)', () => {
     assert.equal(mod.isWmSessionDead(), false, 'a first-time visitor must not be blacked out');
   });
 });
+
+describe('wm-session cookie-persistence detection — concurrent mints', () => {
+  it('does not accuse the browser when an anonymous mint and a key-session mint overlap', async () => {
+    // The real page-boot shape: widget-store.ts and user-identity.ts both fire
+    // migrateLegacyKeysToHttpOnlySession() fire-and-forget (`void`) at module
+    // init, and establishWmKeySession bypasses ensureWmSession's `inflight`
+    // dedupe — so two mints leave before EITHER response installs a cookie.
+    // Both then honestly report hadSession:false, and reading the second one as
+    // proof of non-persistence would black out a perfectly healthy session.
+    memoryStorage.clear();
+
+    const captures: Array<{ ctx: { tags?: Record<string, string> } }> = [];
+    mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
+      fn({
+        addBreadcrumb: () => {},
+        captureMessage: (_m: string, ctx: { tags?: Record<string, string> }) => { captures.push({ ctx }); },
+      });
+    }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
+
+    const release: Array<() => void> = [];
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        return new Promise((resolve) => {
+          release.push(() => resolve(new Response(
+            JSON.stringify({ exp: FAR_FUTURE, hadSession: false }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )));
+        });
+      }
+      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const anon = mod.ensureWmSession();
+      const keyed = mod.establishWmKeySession({ proKey: 'legacy-pro-key' });
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(release.length, 2, 'both mints must be in flight before either resolves');
+
+      // Harmful ordering: the key-session response lands first and marks a
+      // cookie as issued, so the anonymous response — sent before that cookie
+      // existed — looks like a second mint that came back empty.
+      release[1]();
+      await keyed;
+      release[0]();
+      await anon;
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(
+      mod.isWmSessionDead(),
+      false,
+      'two mints that overlapped in flight are not evidence that the browser dropped a cookie',
+    );
+    assert.equal(
+      captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead').length,
+      0,
+      'an in-flight overlap must not report a dead session',
+    );
+  });
+});

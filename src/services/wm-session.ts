@@ -387,7 +387,7 @@ function saveToStorage(s: StoredSession): void {
  * first deserves a re-mint; the second makes every further mint pointless,
  * because no credentialed route can ever succeed.
  */
-function noteMintCookieEvidence(hadSession: boolean): void {
+function noteMintCookieEvidence(hadSession: boolean, aCookieExistedWhenSent: boolean): void {
   if (hadSession) {
     // The cookie completed a round trip. Any earlier suspicion is void —
     // direct evidence outranks inference, same doctrine as noteRouteSuccess.
@@ -395,19 +395,27 @@ function noteMintCookieEvidence(hadSession: boolean): void {
     cookiePersistenceBroken = false;
     return;
   }
-  if (!cookieIssuedThisSession) {
-    // Every first-time visitor mints without a cookie. Reading that as a
-    // failure would black out the anonymous surface on arrival.
-    cookieIssuedThisSession = true;
-    return;
-  }
-  // We were handed a cookie earlier in this page session and this mint still
-  // arrived without one, so the browser is not storing it (strict cookie
-  // settings, an in-app WebView, partitioned storage, a privacy extension).
+  cookieIssuedThisSession = true;
+  // Only a mint DISPATCHED after some earlier mint had already been answered
+  // can testify. `aCookieExistedWhenSent` is sampled at request time for
+  // exactly that reason: mints overlap in flight at page boot, because
+  // establishWmKeySession bypasses ensureWmSession's `inflight` dedupe and both
+  // migrateLegacyKeysToHttpOnlySession() call sites are fire-and-forget. Two
+  // requests that left before either response installed a cookie BOTH report
+  // hadSession:false honestly — judging that at response time would read the
+  // second one as proof and black out a healthy session.
+  if (!aCookieExistedWhenSent) return;
+  // A cookie was already in hand when this request left, and it still arrived
+  // without one: the browser is not storing it (strict cookie settings, an
+  // in-app WebView, partitioned storage, a privacy extension).
   cookiePersistenceBroken = true;
 }
 
 async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): Promise<StoredSession | null> {
+  // Sampled BEFORE the request leaves, not when it returns: concurrent mints
+  // would otherwise let the first response to land make the others look like
+  // follow-up mints that came back empty. See noteMintCookieEvidence.
+  const aCookieExistedWhenSent = cookieIssuedThisSession;
   try {
     const fetchImpl = nativeSessionFetch ?? globalThis.fetch;
     const resp = await fetchImpl(toApiUrl('/api/wm-session'), {
@@ -422,7 +430,9 @@ async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): 
     if (typeof data?.exp !== 'number') return null;
     // Absent on an older deployment: treat as "no evidence either way" and
     // leave the latch alone rather than accusing a healthy browser.
-    if (typeof data.hadSession === 'boolean') noteMintCookieEvidence(data.hadSession);
+    if (typeof data.hadSession === 'boolean') {
+      noteMintCookieEvidence(data.hadSession, aCookieExistedWhenSent);
+    }
     return { exp: data.exp };
   } catch {
     return null;
