@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
+import { readChinaDecisionSignalWireContract } from '../scripts/lib/openapi-codegen.mjs';
+import { validateChinaDecisionSignalSnapshot } from '../scripts/seed-china-decision-signals.mjs';
 import { CHINA_DECISION_SIGNAL_GROUP_MANIFEST } from '../shared/china-decision-signal-manifest.ts';
 import {
   CHINA_DECISION_PARITY_MANIFEST,
@@ -12,6 +14,7 @@ import {
   CHINA_DECISION_STRUCTURAL_CHECKS,
   auditChinaDecisionAccessGating,
   auditChinaDecisionStaticRegistrations,
+  canonicalAccessSnapshot,
   isMainModule,
   parseChinaParityAuditArgs,
   probeChinaDecisionParity,
@@ -306,6 +309,30 @@ describe('China decision-signal structural wiring checks (#5643)', () => {
 
   it('proves the published-snapshot validator rejects every downgraded access tier', () => {
     assert.deepEqual(auditChinaDecisionAccessGating(), []);
+  });
+
+  it('reports a finding when the validator has not learned a bumped schema version', () => {
+    // Both sides of that truth table used to hardcode 1: the fixture and
+    // validateChinaDecisionSignalSnapshot's own `schemaVersion === 1`. Bumping
+    // CHINA_DECISION_SIGNAL_SCHEMA_VERSION without teaching the validator would
+    // then leave it rejecting every real published snapshot while this audit,
+    // testing a fixture pinned to the old version, still reported a clean
+    // table — a silent production break.
+    //
+    // Today's contract version and the validator's literal are both 1, so
+    // reading the default proves nothing; building the fixture one version
+    // ahead reproduces the post-bump world. This row goes red if the fixture is
+    // ever re-hardcoded, because the stale validator would then accept it.
+    const { schemaVersion } = readChinaDecisionSignalWireContract();
+    assert.ok(Number.isInteger(schemaVersion) && schemaVersion >= 1);
+    assert.equal(canonicalAccessSnapshot().schemaVersion, schemaVersion);
+
+    assert.deepEqual(auditChinaDecisionAccessGating(schemaVersion), []);
+    assert.deepEqual(
+      auditChinaDecisionAccessGating(schemaVersion + 1),
+      ['the published-snapshot validator rejects the canonical access block'],
+      'a contract version the validator does not accept must read as a finding',
+    );
   });
 });
 

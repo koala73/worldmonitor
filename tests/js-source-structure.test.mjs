@@ -229,3 +229,69 @@ describe('arrayLiteralHasStringMember', () => {
     assert.equal(arrayLiteralHasStringMember('  "tab\\there",', 'tab\there'), true);
   });
 });
+
+describe('keyword-preceded regex literals', () => {
+  // `return /x/` ends in an identifier char, so a preceding-character-only
+  // classifier reads the `/` as division and then scans the regex body as code.
+  // A quote in that body is bounded by the newline guard, but a backtick opens
+  // template mode — which has no newline guard — and swallows every container
+  // after it. Both scanners have to agree, because extractDelimitedBlock strips
+  // comments with one and then re-walks the result with the other.
+  // Kept on ONE line with the regex. A stray quote opened by a misread regex is
+  // bounded by the newline guard, so a container on a later line would be found
+  // even with the bug present — the row would pass either way and prove
+  // nothing. Same-line placement is what gives every row below teeth.
+  const container = "const RPC_CACHE_TIER = { '/api/x': 'fast' };";
+
+  for (const [name, guard] of [
+    ['an apostrophe', "function m(s) { return /it's/.test(s); } "],
+    ['a backtick', 'function m(s) { return /a`b/.test(s); } '],
+    ['a double quote', 'function m(s) { return /a"b/.test(s); } '],
+    ['a keyword other than return', 'const t = typeof /a\'b/; '],
+    ['a case label', "switch (x) { case /a'b/.source: break; } "],
+  ]) {
+    it(`finds a same-line container past a regex containing ${name}`, () => {
+      const body = extractDelimitedBlock(guard + container, 'const RPC_CACHE_TIER');
+      assert.notEqual(body, null, 'the container must still be locatable');
+      assert.equal(objectLiteralEntryValue(body, '/api/x'), "'fast'");
+    });
+  }
+
+  it('reads a container whose own body contains a keyword-preceded regex', () => {
+    // The regex sits INSIDE the container, so a misread body desynchronizes the
+    // balanced-delimiter walk itself rather than just the text before it.
+    const source = 'const RPC_CACHE_TIER = {\n'
+      + "  '/api/x': 'fast',\n"
+      + '  match: (s) => { return /a`{/.test(s); },\n'
+      + '};\n';
+    const body = extractDelimitedBlock(source, 'const RPC_CACHE_TIER');
+    assert.notEqual(body, null, 'the container must still close');
+    assert.equal(objectLiteralEntryValue(body, '/api/x'), "'fast'");
+  });
+
+  it('still reads a genuine division as division, not as a regex', () => {
+    // The dangerous direction: misreading division as a regex skips real code,
+    // which could carry the scanner past a closing delimiter.
+    const source = 'const ratio = total / count;\nconst SIZES = {\n  small: 1,\n};\n';
+    const body = extractDelimitedBlock(source, 'const SIZES');
+    assert.notEqual(body, null);
+    assert.equal(objectLiteralEntryValue(body, 'small'), '1');
+  });
+
+  it('treats an unterminated slash as division rather than eating the line', () => {
+    const source = 'const half = value / 2;\nconst SIZES = { small: 1 };\n';
+    const body = extractDelimitedBlock(source, 'const SIZES');
+    assert.equal(objectLiteralEntryValue(body, 'small'), '1');
+  });
+
+  it('does not let a regex body hide a member from the real container', () => {
+    // A commented-out or drifted member must stay invisible even when a regex
+    // earlier in the file contains delimiter-looking text.
+    const source = 'const re = /\\[\'\\/api\\/x\'\\]/;\n'
+      + "export const PUBLIC = [\n  '/api/y',\n];\n";
+    const body = extractDelimitedBlock(source, 'export const PUBLIC', '[', ']');
+    assert.notEqual(body, null);
+    assert.equal(arrayLiteralHasStringMember(body, '/api/y'), true);
+    assert.equal(arrayLiteralHasStringMember(body, '/api/x'), false);
+  });
+});

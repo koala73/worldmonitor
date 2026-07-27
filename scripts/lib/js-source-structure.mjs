@@ -14,6 +14,8 @@
 const QUOTE_MODES = { "'": 'squote', '"': 'dquote' };
 const CLOSING_QUOTE = { squote: "'", dquote: '"' };
 
+const IDENTIFIER_CHAR = /[\w$]/;
+
 // A `/` starts a regex literal (rather than division) when the previous
 // significant character cannot end an expression. Newlines are whitespace here,
 // not a reset: `const x = a\n  / b` is division continued across a line, while
@@ -22,6 +24,60 @@ const CLOSING_QUOTE = { squote: "'", dquote: '"' };
 const REGEX_PRECEDING = new Set([
   '', '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '~', '^', '<', '>',
 ]);
+
+// The character set above cannot see a KEYWORD-preceded regex: `return /x/`
+// ends in `n`, so the `/` reads as division, the regex body is then scanned as
+// code, and any quote or backtick inside it opens a literal that was never
+// there. A stray quote is bounded by the newline guard, but a backtick opens
+// template mode — which has no newline guard — and swallows the rest of the
+// file, so a later container reads as missing.
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'throw', 'case', 'do', 'else', 'yield', 'await',
+]);
+
+/**
+ * Return the identifier immediately before `index`, skipping whitespace (and
+ * therefore blanked comments). Empty when the preceding token is punctuation.
+ */
+function precedingWord(text, index) {
+  let end = index;
+  while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
+  let start = end;
+  while (start > 0 && IDENTIFIER_CHAR.test(text[start - 1])) start -= 1;
+  return text.slice(start, end);
+}
+
+/**
+ * Report whether the `/` at `index` opens a regex literal rather than division.
+ */
+function opensRegex(text, index, prevSignificant) {
+  if (REGEX_PRECEDING.has(prevSignificant)) return true;
+  if (!IDENTIFIER_CHAR.test(prevSignificant)) return false;
+  return REGEX_PRECEDING_KEYWORDS.has(precedingWord(text, index));
+}
+
+/**
+ * Return the index just past the regex literal opening at `index`.
+ *
+ * An unterminated body (a newline before the closing `/`) means the `/` was
+ * division after all, so only the `/` itself is consumed — never the rest of
+ * the line.
+ */
+function skipRegexLiteral(text, index) {
+  let i = index + 1;
+  let inClass = false;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') { i += 2; continue; }
+    if (ch === '\n') return index + 1;
+    if (ch === '[') inClass = true;
+    else if (ch === ']') inClass = false;
+    else if (ch === '/' && !inClass) return i + 1;
+    i += 1;
+  }
+  return index + 1;
+}
 
 /**
  * Replace every comment in `source` with spaces, preserving newlines so the
@@ -86,18 +142,8 @@ export function stripJsComments(source) {
       continue;
     }
 
-    if (ch === '/' && REGEX_PRECEDING.has(prevSignificant)) {
-      i += 1;
-      let inClass = false;
-      while (i < length) {
-        const c = source[i];
-        if (c === '\\') { i += 2; continue; }
-        if (c === '\n') break;
-        if (c === '[') inClass = true;
-        else if (c === ']') inClass = false;
-        else if (c === '/' && !inClass) { i += 1; break; }
-        i += 1;
-      }
+    if (ch === '/' && opensRegex(source, i, prevSignificant)) {
+      i = skipRegexLiteral(source, i);
       prevSignificant = '/';
       continue;
     }
@@ -126,22 +172,37 @@ export function stripJsComments(source) {
 function walkCode(text, start, onCodeChar) {
   const stack = [];
   let i = start;
+  // Seeded from the text before `start` so a walk that begins mid-expression
+  // classifies a leading `/` the same way a walk from 0 would.
+  let prevSignificant = text.slice(0, start).trimEnd().slice(-1);
+
   while (i < text.length) {
     const mode = stack[stack.length - 1];
     const ch = text[i];
 
     if (mode === 'squote' || mode === 'dquote') {
       if (ch === '\\') { i += 2; continue; }
-      if (ch === CLOSING_QUOTE[mode] || ch === '\n') stack.pop();
+      if (ch === CLOSING_QUOTE[mode] || ch === '\n') { stack.pop(); prevSignificant = ch; }
       i += 1;
       continue;
     }
 
     if (mode === 'template') {
       if (ch === '\\') { i += 2; continue; }
-      if (ch === '`') stack.pop();
+      if (ch === '`') { stack.pop(); prevSignificant = ch; }
       else if (ch === '$' && text[i + 1] === '{') { stack.push('interp'); i += 2; continue; }
       i += 1;
+      continue;
+    }
+
+    // Skip regex literals for the same reason stripJsComments does: their
+    // bodies are not code, and a quote or backtick inside one would otherwise
+    // open a literal that does not exist. Without this the two scanners
+    // disagree about the same text — comments are stripped with regex
+    // awareness, then re-walked here without it.
+    if (ch === '/' && opensRegex(text, i, prevSignificant)) {
+      i = skipRegexLiteral(text, i);
+      prevSignificant = '/';
       continue;
     }
 
@@ -154,11 +215,10 @@ function walkCode(text, start, onCodeChar) {
     }
 
     if (onCodeChar(ch, i) === false) return;
+    if (!/\s/.test(ch)) prevSignificant = ch;
     i += 1;
   }
 }
-
-const IDENTIFIER_CHAR = /[\w$]/;
 
 /**
  * Report whether an anchor match at `index` sits on token boundaries, so an

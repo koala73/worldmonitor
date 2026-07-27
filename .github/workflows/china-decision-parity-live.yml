@@ -60,6 +60,14 @@ on:
       # for both the access-gating truth table and the live probe's contract
       # check, so a change there changes what this workflow asserts.
       - 'scripts/seed-china-decision-signals.mjs'
+      # Same rule, one indirection further out: since #5647 the audit derives
+      # CHINA_DECISION_PARITY_MANIFEST — every group id and provenance family it
+      # asserts — from the wire contract rather than a local literal. Editing
+      # either the reader or the manifest it parses silently changes this
+      # workflow's assertions, which is exactly the class of unwatched drift
+      # #5643 exists to close.
+      - 'scripts/lib/openapi-codegen.mjs'
+      - 'shared/china-decision-signal-manifest.ts'
       - '.github/workflows/china-decision-parity-live.yml'
   schedule:
     - cron: '11 */6 * * *'

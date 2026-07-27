@@ -136,9 +136,28 @@ function read(repoRoot, relativePath) {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
 
-function canonicalAccessSnapshot() {
+/**
+ * Build the canonical snapshot the access-gating truth table is anchored on.
+ *
+ * `schemaVersion` defaults to the wire contract rather than a literal. Both
+ * sides of this comparison used to hardcode 1 — the fixture here and
+ * `validateChinaDecisionSignalSnapshot`'s own `schemaVersion === 1` — so a bump
+ * to CHINA_DECISION_SIGNAL_SCHEMA_VERSION would have left the validator
+ * rejecting every *real* published snapshot while this audit, testing a fixture
+ * pinned to the old version, still reported a clean access-gating table.
+ * Deriving it turns that silent production break into a finding at PR time.
+ *
+ * It is a parameter and not a closed-over constant so that mismatch stays
+ * testable: today's contract version and the validator's literal are both 1, so
+ * reading the default cannot tell derivation from a hardcode. Passing a bumped
+ * version reproduces the post-bump world, where the validator must reject.
+ *
+ * @param {number} [schemaVersion] version to stamp; defaults to the contract's
+ * @returns {object} a snapshot the validator is expected to accept
+ */
+export function canonicalAccessSnapshot(schemaVersion = wireContract.schemaVersion) {
   return {
-    schemaVersion: 1,
+    schemaVersion,
     generatedAt: '2026-01-01T00:00:00.000Z',
     groups: CHINA_DECISION_PARITY_MANIFEST.map(({ groupId }) => ({
       id: groupId,
@@ -157,15 +176,16 @@ function canonicalAccessSnapshot() {
  * must be rejected. This is the one access-gating claim the audit can prove by
  * execution rather than by reading source text.
  *
+ * @param {number} [schemaVersion] version to build the fixture at
  * @returns {string[]} one finding per broken row of the truth table
  */
-export function auditChinaDecisionAccessGating() {
+export function auditChinaDecisionAccessGating(schemaVersion = wireContract.schemaVersion) {
   const findings = [];
-  if (!validateChinaDecisionSignalSnapshot(canonicalAccessSnapshot())) {
+  if (!validateChinaDecisionSignalSnapshot(canonicalAccessSnapshot(schemaVersion))) {
     findings.push('the published-snapshot validator rejects the canonical access block');
   }
   for (const [tier] of ACCESS_TIERS) {
-    const mutated = canonicalAccessSnapshot();
+    const mutated = canonicalAccessSnapshot(schemaVersion);
     mutated.access[tier] = 'unrestricted';
     if (validateChinaDecisionSignalSnapshot(mutated)) {
       findings.push(`the published-snapshot validator accepts a downgraded access.${tier}`);
