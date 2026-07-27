@@ -112,10 +112,17 @@ observations are regional augmentation and do not satisfy the Taiwan MND
 content requirement. `/api/health` separately monitors
 `military:cross-strait-activity-bootstrap:v1`; fresh canonical data cannot hide
 a missing compact UI projection. It also exposes dedicated MND and Japan Joint
-Staff transport records; either source reports `SEED_ERROR` immediately when
-its current fetch fails, while the last-good archive remains available. The
-bundle freshness gate advances only after the archive, projection, and both
-source-health records publish successfully.
+Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED` when
+retained reviewed records exist and the current direct and proxy paths both
+prove an external HTTP 403 block. Stale metadata, a missing source record, or
+any other source using the blocked state still fails closed through the
+existing `STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. Other current fetch
+failures report `SEED_ERROR` while the last-good archive remains available.
+The bundle freshness gate advances only after the archive, projection, and
+both source-health records publish successfully. The public bootstrap retains
+the bounded reason codes used for disclosure but omits proxy response
+diagnostics; full sanitized diagnostics remain in the authenticated operator
+source record.
 
 Operators can obtain the same sanitized, read-only audit with
 `node scripts/audit-china-coverage.mjs --json`; add `--strict` to return a

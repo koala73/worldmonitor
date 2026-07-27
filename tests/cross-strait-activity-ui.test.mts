@@ -304,6 +304,28 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     const unavailable = buildCrossStraitActivityPanelModel({ ...snapshot, status: 'unavailable' });
     assert.equal(unavailable.sourceHealth?.state, 'unavailable');
     assert.match(unavailable.sourceHealth?.summary ?? '', /snapshot unavailable/);
+
+    const blocked = buildCrossStraitActivityPanelModel({
+      ...snapshot,
+      status: 'healthy',
+      sources: [
+        snapshot.sources[0],
+        {
+          ...snapshot.sources[1],
+          transportStatus: 'error',
+          blockedReason: 'PROXY_CONNECT_FORBIDDEN',
+          errorCodes: ['HTTP_403', 'PROXY_CONNECT_FORBIDDEN'],
+          lastSuccessAt: '2026-07-24T09:00:00.000Z',
+        },
+      ],
+    });
+    assert.equal(blocked.sourceHealth?.state, 'blocked');
+    assert.match(blocked.sourceHealth?.summary ?? '', /externally blocked/);
+    assert.equal(blocked.sourceHealth?.sources[1]?.blockedReason, 'PROXY_CONNECT_FORBIDDEN');
+    assert.equal(
+      blocked.sourceHealth?.sources[1]?.lastSuccessAt,
+      '2026-07-24T09:00:00.000Z',
+    );
   });
 
   it('rejects malformed nested cache snapshots and soft-fails the supplement model', () => {
