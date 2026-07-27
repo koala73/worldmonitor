@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { validateTranslation } from '../scripts/translate-locales.mjs';
+import { extractUrlTokens, validateTranslation } from '../scripts/translate-locales.mjs';
 
 // validateTranslation rejects a translation that dropped, invented or rewrote an
 // interpolation token, an HTML tag, or a URL/path. The URL arm has to tell a real
@@ -122,6 +122,37 @@ describe('translation validation', () => {
         validateTranslation('Read https://worldmonitor.app/pro now', 'Lisez maintenant https://worldmonitor.app/pro'),
         true,
       );
+    });
+  });
+
+  describe('pathological input', () => {
+    it('does not blow up on a long dotted run', () => {
+      // validateTranslation runs on MODEL output, which is unbounded, so its
+      // patterns have to be linear-ish on adversarial input. A nested quantifier
+      // over an overlapping class made this re-partition every dot boundary:
+      // 4k dots took 616ms and 8k took 6.3s, roughly 10x per doubling.
+      const evil = `a${'.a'.repeat(8000)}`;
+      const started = Date.now();
+      validateTranslation(evil, evil);
+      assert.ok(
+        Date.now() - started < 500,
+        'validateTranslation should stay fast on a long dotted run; it took ' + (Date.now() - started) + 'ms',
+      );
+    });
+
+    it('does not treat slash-separated abbreviations as a path', () => {
+      // Real string from src/locales/de.json. Slashes joining abbreviations in a
+      // German compound are punctuation, not a path — reading "/EU-/UN-..." as a
+      // URL would reject any translation that reorders or rewords the list.
+      const de = 'Länder, denen US-/EU-/UN-Wirtschaftssanktionen unterliegen';
+      assert.deepEqual(extractUrlTokens(de), []);
+      assert.equal(validateTranslation(de, 'Countries under US/EU/UN economic sanctions'), true);
+    });
+
+    it('does not treat a decimal followed by a unit as a URL', () => {
+      // The host arm requires a real TLD-shaped last label, so "1.5/kg" is not a
+      // host-qualified path and a translation may render it however it likes.
+      assert.equal(validateTranslation('Density is 1.5/kg here', 'Dichte ist 1,5 pro kg hier'), true);
     });
   });
 

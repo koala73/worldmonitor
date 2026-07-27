@@ -9,6 +9,8 @@ import {
   flatten,
   getPluralCategories,
   mayAdvanceBaseline,
+  pruneOrphans,
+  translateLocale,
   unresolvedAfterRun,
 } from '../scripts/translate-locales.mjs';
 
@@ -160,6 +162,134 @@ describe('locale staleness classification', () => {
   it('keeps a separate baseline per locale root', () => {
     assert.equal(baselinePathFor(true), 'scripts/locale-baselines/pro-test.json');
     assert.equal(baselinePathFor(false), 'scripts/locale-baselines/app.json');
+  });
+});
+
+describe('orphan pruning', () => {
+  // Orphans are the one class retranslation cannot fix, so detection alone left
+  // the pass permanently blocked behind manual JSON editing — and removing a
+  // single English array element orphans every locale at once. Adopting the app
+  // catalog would start 292 orphans deep.
+
+  it('truncates an array to the length the English defines', () => {
+    const raw = { pricing: { features: ['tA', 'tB', 'tC', 'tD'] } };
+    pruneOrphans(raw, ['pricing.features[2]', 'pricing.features[3]']);
+    assert.deepEqual(raw.pricing.features, ['tA', 'tB']);
+  });
+
+  it('removes an orphaned object key without disturbing its siblings', () => {
+    const raw = { apiSection: { kept: 'ja', gone: 'nein' } };
+    pruneOrphans(raw, ['apiSection.gone']);
+    assert.deepEqual(raw.apiSection, { kept: 'ja' });
+  });
+
+  it('leaves earlier indices untouched when orphans arrive out of order', () => {
+    // Deleting indices one at a time in ascending order would shift the array
+    // under its own feet; truncating to the lowest orphan index cannot.
+    const raw = { f: ['a', 'b', 'c', 'd', 'e'] };
+    pruneOrphans(raw, ['f[4]', 'f[2]', 'f[3]']);
+    assert.deepEqual(raw.f, ['a', 'b']);
+  });
+
+  it('is a no-op when there are no orphans', () => {
+    const raw = { a: { b: ['x'] } };
+    pruneOrphans(raw, []);
+    assert.deepEqual(raw, { a: { b: ['x'] } });
+  });
+
+  it('survives a path that no longer exists', () => {
+    const raw = { a: 'x' };
+    assert.doesNotThrow(() => pruneOrphans(raw, ['nope.deep[3]', 'a.b.c']));
+    assert.deepEqual(raw, { a: 'x' });
+  });
+});
+
+describe('locale translate loop', () => {
+  // Classification is only half the fix; this is the half that acts on it. A
+  // reversed concat or a dropped `refreshed.add` here recreates #5633 while every
+  // classification test stays green, so the wiring is exercised directly.
+  const setup = (overrides = {}) => {
+    const raw = { pricing: { features: ['old A', 'old B'] }, faq: { a1: 'old answer' } };
+    const expected = {
+      'pricing.features[0]': 'A',
+      'pricing.features[1]': 'B',
+      'faq.a1': 'Answer',
+    };
+    const writes = [];
+    return {
+      raw,
+      expected,
+      writes,
+      run: (toTranslate, translate) =>
+        translateLocale({
+          loc: 'de',
+          raw,
+          expected,
+          toTranslate,
+          translate,
+          persist: () => writes.push(JSON.parse(JSON.stringify(raw))),
+          ...overrides,
+        }),
+    };
+  };
+
+  it('writes accepted translations to the right paths and reports them refreshed', async () => {
+    const t = setup();
+    const result = await t.run(
+      ['pricing.features[1]', 'faq.a1'],
+      batch => Object.fromEntries(batch.map(([k, en]) => [k, `de:${en}`])),
+    );
+
+    assert.equal(result.added, 2);
+    assert.deepEqual([...result.refreshed].sort(), ['faq.a1', 'pricing.features[1]']);
+    assert.deepEqual(t.raw.pricing.features, ['old A', 'de:B'], 'index 1 replaced in place, 0 untouched');
+    assert.equal(t.raw.faq.a1, 'de:Answer');
+  });
+
+  it('does not count a key the model omitted as refreshed', async () => {
+    const t = setup();
+    const result = await t.run(['pricing.features[0]', 'faq.a1'], batch =>
+      Object.fromEntries(batch.filter(([k]) => k === 'faq.a1').map(([k, en]) => [k, `de:${en}`])),
+    );
+
+    assert.equal(result.added, 1);
+    assert.ok(!result.refreshed.has('pricing.features[0]'), 'an omitted key must stay outstanding');
+    assert.equal(t.raw.pricing.features[0], 'old A', 'and its old value must survive untouched');
+  });
+
+  it('does not count a rejected translation as refreshed', async () => {
+    const t = setup();
+    // Dropping the interpolation token makes validateTranslation reject it.
+    t.expected['faq.a1'] = 'Hello {{name}}';
+    const result = await t.run(['faq.a1'], () => ({ 'faq.a1': 'Hallo' }));
+
+    assert.equal(result.added, 0);
+    assert.equal(result.rejected, 1);
+    assert.equal(result.refreshed.size, 0);
+    assert.equal(t.raw.faq.a1, 'old answer');
+  });
+
+  it('keeps earlier batches when a later one throws', async () => {
+    const t = setup({ batchSize: 1 });
+    let call = 0;
+    const result = await t.run(['faq.a1', 'pricing.features[0]'], batch => {
+      call += 1;
+      if (call === 2) throw new Error('rate limited');
+      return Object.fromEntries(batch.map(([k, en]) => [k, `de:${en}`]));
+    });
+
+    assert.equal(result.added, 1, 'the batch that succeeded is kept');
+    assert.deepEqual([...result.refreshed], ['faq.a1']);
+    assert.equal(t.raw.pricing.features[0], 'old A', 'the failed batch leaves its key outstanding');
+  });
+
+  it('persists after every batch so an interrupted run keeps its progress', async () => {
+    const t = setup({ batchSize: 1 });
+    await t.run(['faq.a1', 'pricing.features[0]'], batch =>
+      Object.fromEntries(batch.map(([k, en]) => [k, `de:${en}`])),
+    );
+    assert.equal(t.writes.length, 2);
+    assert.equal(t.writes[0].faq.a1, 'de:Answer', 'first write already carries the first batch');
   });
 });
 
