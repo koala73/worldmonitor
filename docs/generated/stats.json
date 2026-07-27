@@ -87,9 +87,9 @@
     "3": 30
   },
   "leaderNames": 16,
-  "populationPriorityCountries": 20,
+  "populationPriorityCountries": 0,
   "sebufVersion": "v0.11.1",
-  "mcpToolCount": 42,
+  "mcpToolCount": 44,
   "mcpApps": {
     "specVersion": "2026-01-26",
     "mimeType": "text/html;profile=mcp-app",

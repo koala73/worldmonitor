@@ -256,11 +256,18 @@ for (const [path, groups] of [
   transform(path, (source) => rewriteApplicationJsonLd(source, groups));
 }
 
+// Every pro-test locale publishes the MCP tool count (guarded by
+// tests/public-product-facts.test.mjs across the full locale sweep), so
+// enumerate the directory instead of hand-listing a subset.
+const proTestLocaleSurfaces = readdirSync(join(ROOT, 'pro-test/src/locales'))
+  .filter((name) => name.endsWith('.json'))
+  .sort()
+  .map((name) => `pro-test/src/locales/${name}`);
+
 const mcpCountSurfaces = [
   'server.json',
   'cli/README.md',
-  'pro-test/src/locales/en.json',
-  'pro-test/src/locales/fa.json',
+  ...proTestLocaleSurfaces,
   'pro-test/prerender.mjs',
   'pro-test/welcome.html',
   'blog-site/src/content/blog/ask-claude-whats-happening-worldmonitor-mcp.md',
@@ -293,13 +300,32 @@ for (const path of mcpCountSurfaces) {
   transform(path, (source) => replaceMcpToolCounts(source, mcpToolCount));
 }
 
-for (const path of [
-  'pro-test/src/locales/en.json',
-  'pro-test/src/locales/fa.json',
-]) {
+// Every locale publishes the MCP tool count in one stat tile and four
+// localized prose claims. The prose phrasings vary per language, so they
+// cannot be matched by replaceMcpToolCounts — instead rewrite any 2+ digit
+// integer inside exactly these keys (verified: the only other number in any
+// locale is a single-digit "1" in ja.json). Guarded by the full-locale sweep
+// in tests/public-product-facts.test.mjs.
+const LOCALE_TOOL_COUNT_PROSE_KEYS = [
+  ['welcome', 'agents', 'b1'],
+  ['welcome', 'agents', 'promise'],
+  ['welcome', 'pricing', 'proF4'],
+  ['welcome', 'faq', 'a7'],
+];
+for (const path of proTestLocaleSurfaces) {
   transform(path, (source) => {
     const locale = JSON.parse(source);
-    locale.welcome.depth.s12v = String(mcpToolCount);
+    if (typeof locale.welcome?.depth?.s12v === 'string') {
+      locale.welcome.depth.s12v = String(mcpToolCount);
+    }
+    for (const keys of LOCALE_TOOL_COUNT_PROSE_KEYS) {
+      let node = locale;
+      for (const key of keys.slice(0, -1)) node = node?.[key];
+      const leaf = keys[keys.length - 1];
+      if (node && typeof node[leaf] === 'string') {
+        node[leaf] = node[leaf].replace(/\b\d{2,}\b/g, String(mcpToolCount));
+      }
+    }
     return json(locale);
   });
 }

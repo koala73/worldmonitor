@@ -757,6 +757,69 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_temporal_anomalies`
+
+时间异常监测：将当前事件计数与按星期和季节划分的基线进行对比，并按 z 分数评定严重度。新闻速度、卫星火点检测等被跟踪的数据流会与按工作日和月份分键的 90 天 Welford 基线比较。每个异常包含观测计数、预期基线计数、z 分数、倍数和严重度等级（medium ≥ 1.5σ、high ≥ 2σ、critical ≥ 3σ）。数据新鲜且异常列表为空，说明活动处于正常范围内 — 这本身就是信号。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `type` | string | 筛选为一个被跟踪的数据流类型（例如 "news"、"satellite_fires"）；响应中的 trackedTypes 列出当前已建立基线的类型。 |
+| `region` | string | 筛选为一个区域标签（不区分大小写的精确匹配）。 |
+| `min_severity` | string: medium / high / critical | 丢弃低于此严重度等级的异常。 |
+| `limit` | number | 将异常列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无（仅 MCP；底层 REST 基线端点为写穿式，已从对等性检查中排除）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**（生产者每小时刷新，并由 infra seeder 保持热度）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_temporal_anomalies","arguments":{"min_severity":"high"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_test_site_seismicity`
+
+核试验场地震监测：对已知核试验场附近的 USGS 地震按扩散风险关注度评分。监测已知核试验场（丰溪里、罗布泊、新地岛、内华达国家安全区、塞米巴拉金斯克及其他历史试验场）100 公里范围内的地震事件，并根据震级、距离和深度给出 0–100 评分。关注度等级：low、moderate、elevated、critical。包含每个试验场的汇总（事件数、最高关注度、最大震级）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `site` | string | 按名称子串筛选为一个试验场（例如 "Punggye"、"Lop Nur"，不区分大小写）。 |
+| `min_concern` | string: low / moderate / elevated / critical | 丢弃低于此关注度等级的事件。 |
+| `limit` | number | 将事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无（仅 MCP；底层地震列表已由 `get_natural_disasters` 覆盖）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_test_site_seismicity","arguments":{"min_concern":"moderate"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_china_decision_signals`
 
 返回国家摘要使用的受限六领域中国决策信号快照。宏观金融、政策与执法、台海活动、

@@ -757,6 +757,69 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_temporal_anomalies`
+
+Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. News velocity, satellite fire detections, and other tracked streams are compared against 90-day Welford baselines keyed by weekday and month. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a severity band (medium ≥ 1.5σ, high ≥ 2σ, critical ≥ 3σ). An empty anomaly list with fresh data means activity is within normal bounds — that is itself signal.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `type` | string | Filter to one tracked stream type (e.g. "news", "satellite_fires"); see trackedTypes in the response for what is currently baselined. |
+| `region` | string | Filter to one region label (case-insensitive exact match). |
+| `min_severity` | string: medium / high / critical | Drop anomalies below this severity band. |
+| `limit` | number | Cap the anomaly list to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** none (MCP-only; the REST baseline endpoints are write-through and excluded from parity).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **45 min** before `stale: true` is flagged (the producer refreshes hourly and is kept warm by the infra seeder).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_temporal_anomalies","arguments":{"min_severity":"high"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_test_site_seismicity`
+
+Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0–100 from magnitude, proximity, and depth. Concern bands: low, moderate, elevated, critical. Includes a per-site rollup with event count, max concern, and max magnitude.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `site` | string | Filter to one test site by name substring (e.g. "Punggye", "Lop Nur", case-insensitive). |
+| `min_concern` | string: low / moderate / elevated / critical | Drop events below this concern band. |
+| `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** none (MCP-only; the underlying earthquake list is covered by `get_natural_disasters`).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_test_site_seismicity","arguments":{"min_concern":"moderate"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_china_decision_signals`
 
 Returns the bounded six-domain China decision-signal snapshot used by the

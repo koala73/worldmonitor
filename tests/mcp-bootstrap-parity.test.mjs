@@ -142,8 +142,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: RPC cache for philanthropy summary; not in v1 brainstorm inventory. Deferred to a future humanitarian/aid tool.'],
   ['military:bases:active',
     'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],
-  ['temporal:anomalies:v1',
-    'on-demand: RPC cache populated only after first user query — deferred to a future temporal-analysis tool.'],
   ['news:threat:summary:v1',
     'on-demand: relay-classify-only, written only when classify produces country matches (matches api/health.js:468 ON_DEMAND_KEYS rationale). Underlying news inputs already exposed via get_news_intelligence.'],
   ['resilience:ranking:v25',

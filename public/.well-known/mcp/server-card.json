@@ -142,6 +142,14 @@
       "description": "Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals."
     },
     {
+      "name": "get_temporal_anomalies",
+      "description": "Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. Surfaces where activity is statistically abnormal right now — news velocity, satellite fire detections, and other tracked streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty anomaly list with fresh data means activity is within normal bounds — that is itself signal."
+    },
+    {
+      "name": "get_test_site_seismicity",
+      "description": "Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0-100 from magnitude, proximity, and depth — shallow events close to a site score highest, since underground tests are shallow by nature. Concern bands: low, moderate, elevated, critical. Includes a per-site rollup (event count, max concern, max magnitude). An empty list with fresh data means no seismicity near any monitored site in the current feed window."
+    },
+    {
       "name": "get_china_decision_signals",
       "description": "Return the bounded six-domain China decision-signal snapshot used by the public country summary. Every item retains canonical provenance, revision, supersession, translation, confidence, corroboration, and freshness claims; unavailable domains remain explicit rather than becoming zero or normal. Detailed bilateral trade rows and operator-only source health are intentionally excluded."
     },
