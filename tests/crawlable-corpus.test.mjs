@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 
 import {
   buildCorpus,
+  gitFileLastmod,
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
@@ -33,6 +35,68 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('does not treat a shallow boundary commit as a source update', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-corpus-shallow-'));
+    const sourceRoot = join(tempRoot, 'source');
+    const shallowRoot = join(tempRoot, 'shallow');
+    const gitEnv = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
+    );
+    try {
+      mkdirSync(sourceRoot);
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync(
+        'git',
+        ['config', 'user.email', 'corpus-test@worldmonitor.app'],
+        { cwd: sourceRoot, env: gitEnv },
+      );
+      execFileSync(
+        'git',
+        ['config', 'user.name', 'Corpus Test'],
+        { cwd: sourceRoot, env: gitEnv },
+      );
+
+      writeFileSync(join(sourceRoot, 'material.txt'), 'material version one\n');
+      execFileSync('git', ['add', 'material.txt'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['commit', '-m', 'add material'], {
+        cwd: sourceRoot,
+        env: {
+          ...gitEnv,
+          GIT_AUTHOR_DATE: '2026-06-01T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-06-01T00:00:00Z',
+        },
+      });
+
+      writeFileSync(join(sourceRoot, 'unrelated.txt'), 'release-only change\n');
+      execFileSync('git', ['add', 'unrelated.txt'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['commit', '-m', 'release change'], {
+        cwd: sourceRoot,
+        env: {
+          ...gitEnv,
+          GIT_AUTHOR_DATE: '2026-07-28T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-07-28T00:00:00Z',
+        },
+      });
+
+      execFileSync(
+        'git',
+        ['clone', '--depth', '1', pathToFileURL(sourceRoot).href, shallowRoot],
+        { env: gitEnv },
+      );
+      assert.equal(
+        execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+          cwd: shallowRoot,
+          encoding: 'utf8',
+          env: gitEnv,
+        }).trim(),
+        'true',
+      );
+      assert.equal(gitFileLastmod(shallowRoot, 'material.txt'), null);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('builds a non-trivial static corpus with canonical raw HTML pages', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
     try {
