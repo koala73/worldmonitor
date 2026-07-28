@@ -57,6 +57,7 @@
     "deploy-worker.yml",
     "docker-publish.yml",
     "feed-validation.yml",
+    "indexnow-submit.yml",
     "lint-code.yml",
     "lint.yml",
     "live-api-cache-auth.yml",
@@ -73,7 +74,7 @@
     "test.yml",
     "typecheck.yml"
   ],
-  "workflowCount": 24,
+  "workflowCount": 25,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 568,
