@@ -852,6 +852,11 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun, 1);
     assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun, 2);
     assert.equal(
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun,
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun
+        + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun,
+    );
+    assert.equal(
       OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.fallbackPolicy,
       'direct_then_proxy_on_transport_failure',
     );
@@ -870,8 +875,24 @@ describe('official China corporate disclosures (#5577)', () => {
   });
 
   it('retries one transient proxy transport failure before degrading SZSE coverage', async () => {
+    const transientProxyErrorCodes = [
+      'EAI_AGAIN',
+      'ECONNABORTED',
+      'ECONNREFUSED',
+      'ECONNRESET',
+      'EHOSTUNREACH',
+      'ENETUNREACH',
+      'ENOTFOUND',
+      'EPIPE',
+      'ERR_SOCKET_CLOSED',
+      'ERR_STREAM_PREMATURE_CLOSE',
+      'ERR_TLS_HANDSHAKE_TIMEOUT',
+      'ETIMEDOUT',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_SOCKET',
+    ];
     const transientProxyErrors = [
-      Object.assign(new Error('proxy tunnel reset'), { code: 'ECONNRESET' }),
+      ...transientProxyErrorCodes.map((code) => Object.assign(new Error(code), { code })),
       Object.assign(new Error('Proxy CONNECT: HTTP/1.1 502 Bad Gateway'), { status: 502 }),
       new Error('CONNECT tunnel timeout'),
       new TypeError('fetch failed'),

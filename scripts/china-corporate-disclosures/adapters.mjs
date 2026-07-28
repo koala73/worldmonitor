@@ -471,6 +471,23 @@ function isRetryableSzseHttpStatus(code) {
     || status >= 500;
 }
 
+const RETRYABLE_SZSE_PROXY_FAILURE_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'EPIPE',
+  'ERR_SOCKET_CLOSED',
+  'ERR_STREAM_PREMATURE_CLOSE',
+  'ERR_TLS_HANDSHAKE_TIMEOUT',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
 function shouldProxySzseFailure(error) {
   const code = errorCodeFor(error);
   if (code === 'FETCH_FAILED' || code === 'TIMEOUT') return true;
@@ -481,7 +498,7 @@ function shouldRetrySzseProxyFailure(error) {
   const reason = transportFailureReason(error);
   return reason === 'FETCH_FAILED'
     || reason === 'TIMEOUT'
-    || /^(?:ECONNRESET|ETIMEDOUT|EPIPE|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/u.test(reason)
+    || RETRYABLE_SZSE_PROXY_FAILURE_CODES.has(reason)
     || isRetryableSzseHttpStatus(reason);
 }
 
