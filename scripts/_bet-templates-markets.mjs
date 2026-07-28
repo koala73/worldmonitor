@@ -18,6 +18,8 @@
 // sorted). Bet ids key on the market slug (stable across runs → the ledger's
 // id@deadline dedup and the seeder's open-window skip work per-market).
 
+import { isGeopoliticalMarket } from './_bet-templates-markets-classify.mjs';
+
 export const MARKET_FEED = 'prediction:markets-bootstrap:v1';
 export const MARKET_SETTLEMENT_FEED = 'prediction:markets-resolution:v1';
 
@@ -44,7 +46,10 @@ export function marketSlugFromUrl(url) {
   return null;
 }
 
-// Eligible markets, volume-sorted, deduped by slug. Pure.
+// Eligible markets, volume-sorted, deduped by slug. Pure. GEOPOLITICAL markets
+// are excluded here — they are owned by the dedicated long-horizon geo family
+// (_bet-templates-markets-geo.mjs), an exhaustive, disjoint partition so no
+// market is bet twice and the `market:<slug>` id namespace never collides.
 export function eligibleMarkets(feed, nowMs) {
   const pools = [feed?.geopolitical, feed?.tech, feed?.finance].filter(Array.isArray);
   const seen = new Set();
@@ -52,6 +57,7 @@ export function eligibleMarkets(feed, nowMs) {
   for (const record of pools.flat()) {
     if (!record || typeof record !== 'object') continue;
     const title = String(record.title || '').trim();
+    if (isGeopoliticalMarket(title)) continue;
     const yesPrice = Number(record.yesPrice);
     const volume = Number(record.volume);
     const endDateMs = Date.parse(record.endDate ?? '');

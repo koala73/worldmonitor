@@ -19,6 +19,7 @@ import { generateBets } from './_bet-templates.mjs';
 import { ENERGY_BET_TEMPLATES, EIA_PETROLEUM_FEED } from './_bet-templates-energy.mjs';
 import { COMMODITY_BET_TEMPLATES, COMMODITY_FEED } from './_bet-templates-commodities.mjs';
 import { MARKET_BET_TEMPLATES, MARKET_FEED } from './_bet-templates-markets.mjs';
+import { MARKET_GEO_BET_TEMPLATES } from './_bet-templates-markets-geo.mjs';
 import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS } from './_bet-templates-macro.mjs';
 import { ensembleProbability } from './_forecast-ensemble.mjs';
 import { baseRateProbability } from './_bet-baserate.mjs';
@@ -46,8 +47,12 @@ const EIA_METRICS = ['inventory', 'production', 'wti', 'brent'];
 // All template families + the feeds they read. Energy (EIA, weekly) has an
 // accumulator-backed base rate; commodities (daily prices) are the fast-
 // resolving lane; prediction-markets are the market-anchored calibration slice
-// and FRED macro the market-free independence slice (#5525 Phase 2).
+// and FRED macro the market-free independence slice (#5525 Phase 2). The
+// geopolitical slice (#5733) is the flagship: it reads the SAME market feed as
+// the general family but on a long horizon, and is listed first so its bets
+// lead the registry (slug partition keeps the two market families disjoint).
 const ALL_BET_TEMPLATES = [
+  ...MARKET_GEO_BET_TEMPLATES,
   ...ENERGY_BET_TEMPLATES,
   ...COMMODITY_BET_TEMPLATES,
   ...MARKET_BET_TEMPLATES,
@@ -72,7 +77,12 @@ const FEED_MAX_GENERATION_AGE_MS = {
 // with base-rate probabilities and proves the new slices resolve (Gate 1.5)
 // before any LLM spend is enabled (Stage B sets FORECAST_BETS_ENSEMBLE=1).
 const ENSEMBLE_ENABLED = process.env.FORECAST_BETS_ENSEMBLE === '1';
-const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', 6);
+// Ensemble breadth. Raised 6→10 with the geo family (#5733): its 6 flagship
+// bets (userValueScore 0.9) would otherwise claim every ensemble slot and
+// starve the fast-resolving general-market / commodity Gate-2 bets. 10 covers
+// the geo bench PLUS the top short-dated lines; the deadline guard still stops
+// the loop at the run budget, so this is a ceiling, not a fixed spend.
+const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', 10);
 const ENSEMBLE_BUDGET_MS = envPositiveInt('FORECAST_BETS_ENSEMBLE_BUDGET_MS', 120_000);
 const RESOLUTIONS_LEDGER_KEY = 'forecast:resolutions:v1';
 
