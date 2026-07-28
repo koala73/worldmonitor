@@ -69,6 +69,10 @@ function replaceMcpToolCounts(source, count) {
     .replace(/\b\d+\+(?=\s+(?:MCP\s+)?tools\b)/g, String(count))
     .replace(/\b\d+(?=\s+\[MCP tools\])/g, String(count))
     .replace(/\b\d+(?=\s+tool definitions\b)/g, String(count))
+    // docs/mcp-quickstart.mdx phrasing — pinned by scripts/docs-stats.mjs
+    // (`receives (\d+) compressed tool descriptions`), so it must be rewritten
+    // here or every count bump reds the docs check.
+    .replace(/\b\d+(?=\s+compressed tool descriptions\b)/g, String(count))
     .replace(/\b\d+(?=\s*个\s*(?:MCP\s*)?(?:实时|压缩的)?工具)/g, String(count));
 }
 
