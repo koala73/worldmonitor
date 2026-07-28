@@ -763,6 +763,68 @@ describe('military-surge seed adapters', () => {
 // ---------------------------------------------------------------------------
 
 describe('wave-2 analysis tools: cache-backed orchestration', () => {
+  const allMissCases = [
+    {
+      tool: 'get_signal_convergence',
+      params: {},
+      keys: ['unrest:events:v1', 'military:flights:v1', 'seismology:earthquakes:v1', 'usni-fleet:sebuf:v1'],
+    },
+    {
+      tool: 'get_focal_points',
+      params: {},
+      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
+    },
+    {
+      tool: 'simulate_infrastructure_cascade',
+      params: {},
+      keys: ['infrastructure:submarine-cables:v1'],
+    },
+    {
+      tool: 'get_military_surge',
+      params: {},
+      keys: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1'],
+    },
+    {
+      tool: 'get_population_exposure',
+      params: { mode: 'events' },
+      keys: ['seismology:earthquakes:v1', 'wildfire:fires:v1', 'conflict:ucdp-events:v1'],
+    },
+    {
+      tool: 'get_alert_digest',
+      params: {},
+      keys: [
+        'risk:scores:sebuf:v8',
+        'military:surges:v1',
+        'cable-health-v1',
+        'infra:outages:v1',
+        'temporal:anomalies:v1',
+        'thermal:escalation:v1',
+        'supply_chain:shipping_stress:v1',
+      ],
+    },
+    {
+      tool: 'get_hotspot_escalation',
+      params: {},
+      keys: [
+        'news:insights:v1',
+        'risk:scores:sebuf:v8',
+        'military:flights:v1',
+        'unrest:events:v1',
+        'seismology:earthquakes:v1',
+      ],
+    },
+  ];
+
+  for (const { tool, params, keys } of allMissCases) {
+    it(`${tool} rejects when every required data cache is missing`, async () => {
+      installUpstashStub(analysisPayloads(), { misses: keys });
+      await assert.rejects(
+        () => findTool(tool)._execute(params, '', {}, {}),
+        /cache_all_null/,
+      );
+    });
+  }
+
   it('executes every hybrid success path against producer-shaped cache payloads', async () => {
     installUpstashStub(analysisPayloads());
 
@@ -811,6 +873,43 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     const hotspot = await findTool('get_hotspot_escalation')._execute({ hotspot_id: 'tehran' }, '', {}, {});
     assert.equal(hotspot.data.hotspots.length, 1);
     assert.equal(hotspot.data.hotspots[0].components.ciiContribution, 88);
+  });
+
+  it('returns the simulatable cascade catalog when source_id is omitted', async () => {
+    installUpstashStub(analysisPayloads());
+    const result = await findTool('simulate_infrastructure_cascade')._execute(
+      {},
+      '',
+      {},
+      {},
+    );
+    const catalogNodes = Object.values(result.data.catalog).flat();
+
+    assert.equal(result.data.cascade, null);
+    assert.ok(result.data.stats.nodes > 0);
+    assert.ok(catalogNodes.some((node) => node.id === 'cable:sea-me-we-5'));
+    assert.ok(catalogNodes.every((node) => !node.id.startsWith('country-')));
+  });
+
+  it('filters convergence alerts by a valid radius', async () => {
+    installUpstashStub(analysisPayloads());
+    const tool = findTool('get_signal_convergence');
+
+    const nearby = await tool._execute(
+      { lat: 32.4, lon: 35.2, radius_km: 100, min_domains: 4 },
+      '',
+      {},
+      {},
+    );
+    const distant = await tool._execute(
+      { lat: -60, lon: 0, radius_km: 100, min_domains: 4 },
+      '',
+      {},
+      {},
+    );
+
+    assert.equal(nearby.data.alerts.length, 1);
+    assert.equal(distant.data.alerts.length, 0);
   });
 
   it('marks a partial HTTP failure stale and names the failed input', async () => {
