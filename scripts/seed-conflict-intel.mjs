@@ -233,6 +233,12 @@ function buildAcledParams({ startDate, endDate, limit, page }) {
   return params;
 }
 
+function stableAcledEventId(event) {
+  if (typeof event?.event_id_cnty !== 'string') return null;
+  const id = event.event_id_cnty.trim();
+  return id || null;
+}
+
 async function fetchAcledPage(token, params) {
   const resp = await fetch(`${ACLED_API_URL}?${params}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
@@ -244,15 +250,24 @@ async function fetchAcledPage(token, params) {
   return Array.isArray(data.data) ? data.data : [];
 }
 
-function normalizeAcledConflictEvents(rawEvents) {
-  return rawEvents
-    .filter(e => {
-      const lat = parseFloat(e.latitude || '');
-      const lon = parseFloat(e.longitude || '');
-      return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
-    })
-    .map(e => ({
-      id: `acled-${e.event_id_cnty}`,
+export function normalizeAcledConflictEvents(rawEvents) {
+  return rawEvents.flatMap((e) => {
+    const eventId = stableAcledEventId(e);
+    const lat = parseFloat(e?.latitude || '');
+    const lon = parseFloat(e?.longitude || '');
+    if (
+      !eventId
+      || !Number.isFinite(lat)
+      || !Number.isFinite(lon)
+      || lat < -90
+      || lat > 90
+      || lon < -180
+      || lon > 180
+    ) {
+      return [];
+    }
+    return [{
+      id: `acled-${eventId}`,
       eventType: e.event_type || '',
       country: e.country || '',
       // event_date ('YYYY-MM-DD') is the field the EMA engine reads
@@ -265,7 +280,17 @@ function normalizeAcledConflictEvents(rawEvents) {
       actors: [e.actor1, e.actor2].filter(Boolean),
       source: e.source || '',
       admin1: e.admin1 || '',
-    }));
+    }];
+  });
+}
+
+export function shouldStopAcledPagination({
+  pageSize,
+  limit,
+  stableEventIdCount,
+  addedEventCount,
+}) {
+  return pageSize < limit || (stableEventIdCount === pageSize && addedEventCount === 0);
 }
 
 async function fetchAcledEvents({
@@ -287,6 +312,7 @@ async function fetchAcledEvents({
   const seen = new Set();
   let pagesFetched = 0;
   let lastPageCount = 0;
+  let missingEventIdCount = 0;
   const pageLimit = paginated ? Math.max(1, maxPages) : 1;
 
   for (let page = 1; page <= pageLimit; page += 1) {
@@ -300,17 +326,39 @@ async function fetchAcledEvents({
     pagesFetched = page;
     lastPageCount = pageEvents.length;
     const before = rawEvents.length;
+    let stableEventIdCount = 0;
     for (const event of pageEvents) {
-      const id = event.event_id_cnty || `${event.event_date}:${event.country}:${event.latitude}:${event.longitude}:${event.notes || event.source || ''}`;
+      // ACLED documents event_id_cnty as the stable identifier that survives
+      // detail updates. A composite fallback changes when notes/source details
+      // are revised and therefore cannot safely key history or retractions.
+      const id = stableAcledEventId(event);
+      if (!id) {
+        missingEventIdCount += 1;
+        continue;
+      }
+      stableEventIdCount += 1;
       if (seen.has(id)) continue;
       seen.add(id);
       rawEvents.push(event);
     }
-    if (!paginated || pageEvents.length < limit || rawEvents.length === before) break;
+    if (
+      !paginated
+      || shouldStopAcledPagination({
+        pageSize: pageEvents.length,
+        limit,
+        stableEventIdCount,
+        addedEventCount: rawEvents.length - before,
+      })
+    ) {
+      break;
+    }
     await sleep(ACLED_PAGE_DELAY_MS);
   }
 
   const events = normalizeAcledConflictEvents(rawEvents);
+  if (missingEventIdCount > 0) {
+    console.warn(`  ${label}: dropped ${missingEventIdCount} event(s) missing stable event_id_cnty`);
+  }
   const pagination = paginated
     ? { lookbackDays, limit, pagesFetched, maxPages, truncated: pagesFetched >= maxPages && lastPageCount >= limit }
     : undefined;
