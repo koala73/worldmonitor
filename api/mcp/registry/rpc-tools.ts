@@ -1421,6 +1421,7 @@ export const RPC_TOOLS: ToolDef[] = [
           },
           required: [],
         },
+        error: { type: 'string', description: 'Present only on a user-input failure; the envelope keys are still returned.' },
       },
       required: ['cached_at', 'stale', 'data'],
     },
@@ -1431,7 +1432,15 @@ export const RPC_TOOLS: ToolDef[] = [
       const radiusKm = typeof params.radius_km === 'number' ? params.radius_km : null;
       const provided = [lat, lon, radiusKm].filter((v) => v !== null).length;
       if (provided > 0 && provided < 3) {
-        return { error: 'lat, lon, and radius_km must be provided together (all three or none).' };
+        // Envelope always present: the declared outputSchema marks cached_at/
+        // stale/data required, so a bare {error} would violate the published
+        // contract a strict MCP client validates against.
+        return {
+          cached_at: null,
+          stale: false,
+          data: { alerts: [], cell_count: 0, min_domains: 0, feeds: {} },
+          error: 'lat, lon, and radius_km must be provided together (all three or none).',
+        };
       }
       const minDomains = Math.min(5, Math.max(2, Math.round(Number(params.min_domains ?? 3)) || 3));
 
@@ -1616,6 +1625,8 @@ export const RPC_TOOLS: ToolDef[] = [
           },
           required: [],
         },
+        error: { type: 'string', description: 'Present only on a user-input failure; the envelope keys are still returned.' },
+        known_id_sample: { type: 'array', items: { type: 'string' }, description: 'Sample of valid node ids; present only alongside an unknown-source_id error.' },
       },
       required: ['cached_at', 'stale', 'data'],
     },
@@ -1650,6 +1661,8 @@ export const RPC_TOOLS: ToolDef[] = [
       if (!graph.nodes.has(sourceId)) {
         const sample = [...graph.nodes.keys()].filter((id) => !id.startsWith('country-')).slice(0, 12);
         return {
+          ...freshness,
+          data: { catalog: null, cascade: null, stats },
           error: `unknown source_id "${sourceId}" — call without source_id for the full catalog`,
           known_id_sample: sample,
         };
@@ -1794,6 +1807,7 @@ export const RPC_TOOLS: ToolDef[] = [
           },
           required: [],
         },
+        error: { type: 'string', description: 'Present only on a user-input failure; the envelope keys are still returned.' },
       },
       required: ['cached_at', 'stale', 'data'],
     },
@@ -1809,7 +1823,12 @@ export const RPC_TOOLS: ToolDef[] = [
         const lat = typeof params.lat === 'number' ? params.lat : null;
         const lon = typeof params.lon === 'number' ? params.lon : null;
         if (lat === null || lon === null) {
-          return { error: 'point mode requires numeric lat and lon.' };
+          return {
+            cached_at: null,
+            stale: false,
+            data: { events: null, exposure: null, countries: null },
+            error: 'point mode requires numeric lat and lon.',
+          };
         }
         const radiusKm = Math.max(1, Number(params.radius_km ?? 50) || 50);
         return {
@@ -2013,11 +2032,29 @@ export const RPC_TOOLS: ToolDef[] = [
           },
           required: [],
         },
+        error: { type: 'string', description: 'Present only on a user-input failure; the envelope keys are still returned.' },
+        known_ids: { type: 'array', items: { type: 'string' }, description: 'All curated hotspot ids; present only alongside an unknown-hotspot_id error.' },
       },
       required: ['cached_at', 'stale', 'data'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
+      // Validated against the static curated list BEFORE any cache read: an
+      // unknown id is knowable without spending five Redis round-trips.
+      const hotspotIdFilter = typeof params.hotspot_id === 'string' ? params.hotspot_id.trim() : '';
+      const targets = hotspotIdFilter
+        ? INTEL_HOTSPOTS.filter((hotspot) => hotspot.id === hotspotIdFilter)
+        : INTEL_HOTSPOTS;
+      if (hotspotIdFilter && targets.length === 0) {
+        return {
+          cached_at: null,
+          stale: false,
+          data: { hotspots: [] },
+          error: `unknown hotspot_id "${hotspotIdFilter}"`,
+          known_ids: INTEL_HOTSPOTS.map((hotspot) => hotspot.id),
+        };
+      }
+
       const keys = ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
@@ -2044,17 +2081,6 @@ export const RPC_TOOLS: ToolDef[] = [
       geoEngine.ingestEvents(unrestEventsToGeoEvents(unrest, { now }), 'protest');
       geoEngine.ingestEvents(militaryFlightsToGeoEvents(flightsPayload, { now }), 'military_flight');
       geoEngine.ingestEvents(earthquakesToGeoEvents(quakes, { now }), 'earthquake');
-
-      const hotspotIdFilter = typeof params.hotspot_id === 'string' ? params.hotspot_id.trim() : '';
-      const targets = hotspotIdFilter
-        ? INTEL_HOTSPOTS.filter((hotspot) => hotspot.id === hotspotIdFilter)
-        : INTEL_HOTSPOTS;
-      if (hotspotIdFilter && targets.length === 0) {
-        return {
-          error: `unknown hotspot_id "${hotspotIdFilter}"`,
-          known_ids: INTEL_HOTSPOTS.map((hotspot) => hotspot.id),
-        };
-      }
 
       const scored = targets.map((hotspot) => {
         const keywords = (hotspot.keywords ?? []).map((keyword) => keyword.toLowerCase());

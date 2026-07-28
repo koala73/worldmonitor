@@ -635,3 +635,48 @@ describe('wave-2a analysis tools registry contract', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Error-path envelope conformance
+//
+// The hybrid tools return whatever `_execute` produces — dispatch injects no
+// envelope — so a result-level `{error}` return must STILL carry the keys the
+// tool's own outputSchema marks required. tests/mcp-tool-output-contracts.test.mjs
+// cannot catch this: it monkey-patches `_execute` for RPC tools, so no error
+// path is ever validated against the schema.
+// ---------------------------------------------------------------------------
+
+describe('wave-2 analysis tools: user-input error returns honour the declared envelope', () => {
+  // Each entry drives a tool down its user-input fault branch WITHOUT any cache
+  // read (every guard short-circuits before Upstash), so these run offline.
+  const errorCases = [
+    ['get_signal_convergence', { lat: 32 }],                       // partial lat/lon/radius triple
+    ['get_population_exposure', { mode: 'point' }],                // point mode without coordinates
+    ['get_hotspot_escalation', { hotspot_id: 'does-not-exist' }],  // unknown curated id
+  ];
+
+  for (const [name, args] of errorCases) {
+    it(`${name} returns cached_at/stale/data alongside error`, async () => {
+      const tool = findTool(name);
+      const result = await tool._execute(args, '', {}, {});
+      assert.equal(typeof result.error, 'string', 'error message present');
+      assert.ok(result.error.length > 0);
+      for (const key of tool.outputSchema.required) {
+        assert.ok(key in result, `${name} error return must include required key "${key}"`);
+      }
+      assert.equal(typeof result.stale, 'boolean');
+      assert.equal(typeof result.data, 'object');
+      assert.notEqual(result.data, null);
+    });
+  }
+
+  it('every analysis tool that can return an error declares it in outputSchema', () => {
+    for (const name of ['get_signal_convergence', 'simulate_infrastructure_cascade', 'get_population_exposure', 'get_hotspot_escalation']) {
+      const tool = findTool(name);
+      assert.ok(
+        tool.outputSchema.properties.error,
+        `${name} returns {error} on user-input faults, so outputSchema must declare it`,
+      );
+    }
+  });
+});
