@@ -93,18 +93,39 @@ function runFixture({ root, fakeHome }, extraEnv = {}) {
  */
 function findCheckoutEscapingEnvPaths(source) {
   const offenders = [];
-  // An absolute path into somebody's home directory, baked into the repo.
+  // An absolute path into somebody's home directory, baked into the repo. This
+  // shape IS reliably regex-detectable — the literal has to appear verbatim.
   for (const match of source.matchAll(/['"`](\/(?:Users|home)\/[^'"`\n]+)['"`]/g)) {
     offenders.push(match[1]);
   }
-  // $HOME (or os.homedir()) joined with a checkout-shaped path — reaches out of
-  // whichever worktree the script actually lives in.
-  for (const match of source.matchAll(
-    /(?:process\.env\.HOME|homedir\(\))\s*,\s*['"`]([^'"`\n]*(?:GitHub|Documents|worldmonitor)[^'"`\n]*)['"`]/g,
-  )) {
-    offenders.push(match[1]);
-  }
   return offenders;
+}
+
+// Every way a script can learn where the user's home directory is. Matching the
+// SOURCE rather than the assembled path is what makes this alias-proof: the
+// earlier version keyed on `join(process.env.HOME, 'Documents/...')` and was
+// trivially evaded by `process.env['HOME']`, a `homedir as getHome` alias, a
+// template literal, or plain concatenation — all five went green against the
+// verbatim #5767 bug. A path still has to come from one of these names.
+const HOME_DIR_SOURCES = [
+  [/\bhomedir\b/, 'os.homedir (including an aliased import)'],
+  [/process\.env\.HOME\b/, 'process.env.HOME'],
+  [/process\.env\[\s*['"`]HOME['"`]\s*\]/, "process.env['HOME']"],
+  [/process\.env\.(?:USERPROFILE|HOMEPATH|HOMEDRIVE)\b/, 'Windows home env var'],
+  [
+    /process\.env\[\s*['"`](?:USERPROFILE|HOMEPATH|HOMEDRIVE)['"`]\s*\]/,
+    'Windows home env var (bracket)',
+  ],
+  [/['"`]~\//, 'a literal ~/ path'],
+];
+
+/**
+ * Pure predicate: does this source reach for the user's home directory at all?
+ * Only meaningful when applied to a file that also parses a `.env` file — a
+ * script may legitimately use homedir() for a cache path.
+ */
+function findHomeDirReferences(source) {
+  return HOME_DIR_SOURCES.filter(([re]) => re.test(source)).map(([, label]) => label);
 }
 
 // Files under scripts/ allowed to parse a .env file into process.env themselves.
@@ -207,6 +228,28 @@ describe('seeder env hermeticity (#5767)', () => {
       assert.equal(result.url, EXPLICIT_SENTINEL);
     });
 
+    it('falls through to the checkout when WM_SEED_ENV_FILE does not exist', () => {
+      // The candidate loop skips a missing path silently, so a typo degrades to
+      // the checkout-local file rather than failing loudly. Pinning the
+      // behaviour either way so a refactor cannot change it unnoticed.
+      const fixture = makeFixtureCheckout({ withLocalEnvFile: true });
+      const result = runFixture(fixture, {
+        WM_SEED_ENV_FILE: join(fixture.root, 'does-not-exist.env'),
+      });
+      assert.equal(result.url, CHECKOUT_SENTINEL);
+    });
+
+    it('only accepts the exact opt-in value', () => {
+      const fixture = makeFixtureCheckout({ withLocalEnvFile: true });
+      for (const value of ['true', 'yes', '0', '']) {
+        const result = runFixture(fixture, {
+          NODE_TEST_CONTEXT: 'child-v8',
+          WM_ALLOW_ENV_LOAD_IN_TESTS: value,
+        });
+        assert.equal(result.url, null, `WM_ALLOW_ENV_LOAD_IN_TESTS=${JSON.stringify(value)}`);
+      }
+    });
+
     it('ignores WM_SEED_ENV_FILE under a test runtime', () => {
       const fixture = makeFixtureCheckout({ withLocalEnvFile: false });
       const explicit = join(fixture.root, 'explicit.env');
@@ -220,26 +263,43 @@ describe('seeder env hermeticity (#5767)', () => {
   });
 
   describe('no script resolves credentials from outside its checkout', () => {
-    it('findCheckoutEscapingEnvPaths flags the shapes that broke worktree isolation', () => {
+    it('findCheckoutEscapingEnvPaths flags a home path baked into the repo', () => {
       assert.deepEqual(
         findCheckoutEscapingEnvPaths(`envPath = join('/Users/someone/Documents/GitHub/worldmonitor', '.env.local');`),
         ['/Users/someone/Documents/GitHub/worldmonitor'],
       );
       assert.deepEqual(
-        findCheckoutEscapingEnvPaths(`candidates.push(join(process.env.HOME, 'Documents/GitHub/worldmonitor', '.env.local'));`),
-        ['Documents/GitHub/worldmonitor'],
-      );
-      assert.deepEqual(
-        findCheckoutEscapingEnvPaths(`const p = join(homedir(), 'Documents/GitHub/worldmonitor');`),
-        ['Documents/GitHub/worldmonitor'],
+        findCheckoutEscapingEnvPaths(`const p = '/home/ci/worldmonitor/.env.local';`),
+        ['/home/ci/worldmonitor/.env.local'],
       );
       // Negatives: checkout-relative and explicitly-configured paths are fine.
       assert.deepEqual(findCheckoutEscapingEnvPaths(`join(__dirname, '..', '.env.local')`), []);
       assert.deepEqual(findCheckoutEscapingEnvPaths(`process.env.WM_SEED_ENV_FILE`), []);
-      assert.deepEqual(findCheckoutEscapingEnvPaths(`join(process.env.HOME, '.cache')`), []);
     });
 
-    it('finds no offenders anywhere under scripts/', async () => {
+    it('findHomeDirReferences survives every rewrite of the #5767 escape', () => {
+      // Each of these is the same bug in a different costume, and each one
+      // defeated the previous `join(process.env.HOME, '<literal>')` regex.
+      const disguises = [
+        `join(process.env.HOME, 'Documents/GitHub/worldmonitor', '.env.local')`,
+        `join(process.env['HOME'], 'Documents/GitHub/worldmonitor', '.env.local')`,
+        `import { homedir as getHome } from 'node:os';\nconst p = join(getHome(), 'wm/.env.local');`,
+        'const p = `${process.env.HOME}/Documents/GitHub/worldmonitor/.env.local`;',
+        `const p = process.env.HOME + '/Documents/GitHub/worldmonitor/.env.local';`,
+        `const p = join(process.env.USERPROFILE, 'wm', '.env.local');`,
+        `const p = '~/Documents/GitHub/worldmonitor/.env.local';`,
+      ];
+      for (const source of disguises) {
+        assert.ok(
+          findHomeDirReferences(source).length > 0,
+          `home-directory escape went undetected:\n${source}`,
+        );
+      }
+      // Negative: nothing here reaches for a home directory.
+      assert.deepEqual(findHomeDirReferences(`join(__dirname, '..', '.env.local')`), []);
+    });
+
+    it('no script bakes a home path into the repo', async () => {
       const offenders = [];
       let scanned = 0;
       for await (const entry of glob('scripts/**/*.{mjs,cjs,js}', { cwd: REPO_ROOT })) {
@@ -249,7 +309,28 @@ describe('seeder env hermeticity (#5767)', () => {
         if (found.length > 0) offenders.push(`${entry}: ${found.join(', ')}`);
       }
       assert.ok(scanned > 100, `expected to scan the seeder fleet, scanned ${scanned}`);
-      assert.deepEqual(offenders, [], `scripts reaching outside the checkout:\n${offenders.join('\n')}`);
+      assert.deepEqual(offenders, [], `scripts with a hardcoded home path:\n${offenders.join('\n')}`);
+    });
+
+    it('no .env parser reaches for a home directory', async () => {
+      // Scoped to the files that parse .env at all, which the sweep below pins
+      // to the allowlist. Any NEW file that escapes to $HOME for credentials
+      // must parse .env to use them, so it is caught there first and here
+      // second — the two sweeps close each other's gap.
+      const offenders = [];
+      for await (const entry of glob('scripts/**/*.{mjs,cjs,js}', { cwd: REPO_ROOT })) {
+        if (entry.includes('node_modules')) continue;
+        const source = readFileSync(join(REPO_ROOT, entry), 'utf8');
+        if (!parsesEnvFileItself(source)) continue;
+        const found = findHomeDirReferences(source);
+        if (found.length > 0) offenders.push(`${entry}: ${found.join(', ')}`);
+      }
+      assert.deepEqual(
+        offenders,
+        [],
+        `these resolve credentials from the home directory, defeating worktree ` +
+          `isolation:\n${offenders.join('\n')}`,
+      );
     });
   });
 
