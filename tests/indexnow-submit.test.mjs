@@ -146,6 +146,7 @@ describe('IndexNow submission', () => {
     assert.match(workflow, /github\.event\.deployment\.environment == 'Production'/);
     assert.match(workflow, /github\.event\.deployment\.creator\.login == 'vercel\[bot\]'/);
     assert.match(workflow, /api\/mcp/);
+    assert.match(workflow, /public\/mcp-server\\\.md/);
     assert.match(workflow, /INDEXNOW_BATCHES\.find/);
     assert.match(workflow, /grep -Fxq "public\/\$\{APEX_KEY_PATH\}"/);
     assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host worldmonitor\.app/);

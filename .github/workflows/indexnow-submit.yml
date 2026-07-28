@@ -54,7 +54,7 @@ jobs:
             echo "submit=true" >> "$GITHUB_OUTPUT"
           else
             CHANGED_FILES="$(git diff-tree --no-commit-id --name-only -r "${DEPLOYED_SHA}^" "$DEPLOYED_SHA")"
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|api/mcp(\.ts|/)|middleware\.ts|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|api/mcp(\.ts|/)|middleware\.ts|public/mcp-server\.md|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               echo "submit=true" >> "$GITHUB_OUTPUT"
             else
