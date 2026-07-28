@@ -64,9 +64,9 @@ describe('exposure event adapters', () => {
 });
 
 describe('digest input adapters', () => {
-  it('maps risk scores using the region/combinedScore fields and urgency bands', () => {
+  it('maps risk scores using the real ciiScores/region/combinedScore fields and urgency bands', () => {
     const cii = riskScoresToCiiInput({
-      scores: [
+      ciiScores: [
         { region: 'SD', combinedScore: 82 },
         { region: 'UA', combinedScore: 55 },
         { region: 'TN', combinedScore: 30 },
@@ -130,7 +130,7 @@ describe('digest input adapters', () => {
 
   it('buildDigestInputs propagates nulls as unavailable domains', () => {
     const inputs = buildDigestInputs({
-      riskScores: { scores: [{ region: 'SD', combinedScore: 80 }] },
+      riskScores: { ciiScores: [{ region: 'SD', combinedScore: 80 }] },
       surges: null,
       cableHealth: null,
       outages: { outages: [] },

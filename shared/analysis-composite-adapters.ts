@@ -108,7 +108,7 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
  * dashboard's 25-point elevated floor — no new vocabulary.
  */
 export function riskScoresToCiiInput(payload: unknown): CiiEntry[] {
-  const scores = (payload as { scores?: unknown[] })?.scores;
+  const scores = (payload as { ciiScores?: unknown[] })?.ciiScores;
   if (!Array.isArray(scores)) return [];
   const entries: CiiEntry[] = [];
   for (const s of scores) {
