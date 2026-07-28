@@ -659,7 +659,9 @@ const ON_DEMAND_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit',
   // bisDsr/bisPropertyResidential/bisPropertyCommercial have dedicated SEED_META
   // entries (seed-bis-extended.mjs), so they are not on-demand.
-  'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
+  // shippingRates is a scheduled 6h producer and FAST bootstrap key;
+  // absence must be EMPTY/CRIT rather than on-demand.
+  'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import YAML from 'yaml';
 
+import { __testing__ as healthTesting } from '../api/health.js';
 import {
   applyAcceptanceBaseline,
   findOperationalProblems,
@@ -12,6 +13,9 @@ import {
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
+
+const COMMITTED_BASELINE_URL = new URL('../scripts/seed-freshness-baseline.json', import.meta.url);
+const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
 
 describe('scheduled seed freshness monitor', () => {
   it('grades every actionable status, not only STALE_SEED', () => {
@@ -100,6 +104,39 @@ describe('scheduled seed freshness monitor', () => {
       }).map((p) => p.name),
       ['gdeltIntel', 'shippingRates'],
     );
+  });
+
+  it('blocks when the scheduled shipping data expires after recovery', () => {
+    const { SEED_META, STANDALONE_KEYS, classifyKey } = healthTesting;
+    const name = 'shippingRates';
+    const dataKey = STANDALONE_KEYS[name];
+    const metaKey = SEED_META[name].key;
+    const now = Date.parse('2026-07-28T21:00:00Z');
+    assert.equal(
+      dataKey,
+      'supply_chain:shipping:v2',
+      'health must keep the canonical shipping key registered',
+    );
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true }, {
+      keyStrens: new Map([[dataKey, 0]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify({
+        fetchedAt: now - 9 * 60 * 60 * 1000,
+        recordCount: 9,
+      })]]),
+      keyMetaErrors: new Map(),
+      activatedNames: new Set(),
+      now,
+    });
+    const committed = readCommittedBaseline();
+    const result = applyAcceptanceBaseline(
+      findOperationalProblems({ status: 'WARNING', problems: { [name]: entry } }),
+      committed,
+      now,
+    );
+
+    assert.equal(entry.status, 'EMPTY');
+    assert.deepEqual(result.blocking.map((problem) => problem.name), [name]);
   });
 
   it('treats an all-absent on-demand payload as clean', () => {
@@ -196,10 +233,13 @@ describe('scheduled seed freshness monitor', () => {
     });
 
     it('ships a valid, unexpired committed baseline', () => {
-      const committed = JSON.parse(
-        readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'),
-      );
+      const committed = readCommittedBaseline();
       validateAcceptanceBaseline(committed);
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'shippingRates'),
+        false,
+        'shippingRates recovered across the canonical cadence; do not suppress it again',
+      );
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',
