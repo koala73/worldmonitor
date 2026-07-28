@@ -100,6 +100,33 @@ describe('parseRetractArgs', () => {
     assert.match(parsed.error, /at most 100 identifiers/);
   });
 
+  it('rejects an identifier with leading or trailing whitespace', () => {
+    // Caught at the CLI so a copy-paste typo is an actionable message rather
+    // than a 400 — and never a request that tombstones the typo and reports
+    // success while the real record stays live.
+    for (const argv of [
+      ['--dedupe-key', ' energy:intelligence:abc', '--reason', 'r'],
+      ['--dedupe-key', 'energy:intelligence:abc ', '--reason', 'r'],
+      ['--id', ' abc', '--reason', 'r'],
+    ]) {
+      const parsed = parseRetractArgs(argv);
+      assert.equal(parsed.ok, false, `${JSON.stringify(argv)} must be rejected`);
+      assert.match(parsed.error, /leading or trailing whitespace/);
+    }
+  });
+
+  it('rejects --list combined with retraction arguments', () => {
+    // --list used to win outright, so this listed the tombstones and exited 0
+    // having retracted nothing.
+    const parsed = parseRetractArgs(['--list', '--dedupe-key', 'k', '--reason', 'r']);
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error, /--list cannot be combined with/);
+
+    const limitOutsideList = parseRetractArgs(['--dedupe-key', 'k', '--reason', 'r', '--limit', '5']);
+    assert.equal(limitOutsideList.ok, false);
+    assert.match(limitOutsideList.error, /--limit applies to --list only/);
+  });
+
   it('rejects an unknown flag rather than ignoring it', () => {
     const parsed = parseRetractArgs(['--purge-all', '--reason', 'x']);
     assert.equal(parsed.ok, false);
@@ -320,10 +347,12 @@ describe('runRetractCli', () => {
     );
 
     const out = lines.join('\n');
-    assert.equal(code, 0);
-    assert.match(out, /WARNING: 1 id\(s\) did not resolve and were NOT tombstoned/);
+    // Non-zero: a partial application left named identities unsuppressed, and
+    // a scripted `retract ... || alert` must not stay silent on that.
+    assert.equal(code, 1);
+    assert.match(out, /FAILED: 1 id\(s\) did not resolve and were NOT tombstoned/);
     assert.match(out, /gone-1/);
-    assert.match(out, /re-run those with|Re-run those with/i);
+    assert.match(out, /partial/i);
   });
 
   it('tells the operator when the retraction list was truncated', async () => {

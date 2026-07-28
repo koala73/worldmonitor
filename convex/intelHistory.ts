@@ -882,9 +882,20 @@ export const prune = internalMutation({
     // their own cron — there are a handful of them, hand-created, and a second
     // scheduled function for that volume is cost with no signal. The row is
     // tiny next to a 512-float history row, so the batch budget is unaffected.
+    // Tombstones use the FULL retention window no matter what the caller
+    // passed. `retentionMs` is an operator-callable override inherited from
+    // the apiPlanLimit prune this was modelled on, where shortening it merely
+    // deletes old rows early — recoverable, and nothing depends on them. Here
+    // it is a security control: `prune({ retentionMs: 0 })` would set the
+    // cutoff to `now`, drain EVERY tombstone, and hand every retracted
+    // identity back to the producing feed on its next tick, silently undoing
+    // every retraction anyone had ever made. Clamping to the floor lets the
+    // override only ever LENGTHEN suppression, never shorten it — the same
+    // shape as the `limit` floor above, for the same reason.
+    const tombstoneCutoff = now - Math.max(args.retentionMs ?? RETENTION_MS, RETENTION_MS);
     const staleRetractions = await ctx.db
       .query("intelHistoryRetractions")
-      .withIndex("by_retractedAt", (q) => q.lt("retractedAt", cutoff))
+      .withIndex("by_retractedAt", (q) => q.lt("retractedAt", tombstoneCutoff))
       .take(batch);
     for (const doc of staleRetractions) {
       await ctx.db.delete(doc._id);

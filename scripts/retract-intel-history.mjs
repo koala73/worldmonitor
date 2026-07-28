@@ -136,8 +136,36 @@ export function parseRetractArgs(argv) {
     }
   }
 
+  // An untrimmed identifier looks up an identity that does not exist: the
+  // retraction deletes nothing, tombstones the typo, and reports success while
+  // the record it was called about stays live. The relay rejects these too;
+  // catching them here turns a confusing 400 into an actionable message.
+  for (const [flag, values] of [['--id', ids], ['--dedupe-key', dedupeKeys]]) {
+    const untrimmed = values.find((value) => value !== value.trim());
+    if (untrimmed !== undefined) {
+      return {
+        ok: false,
+        error: `${flag} value has leading or trailing whitespace: ${JSON.stringify(untrimmed)}`,
+      };
+    }
+  }
+
   if (list && restore) {
     return { ok: false, error: '--list and --restore are mutually exclusive' };
+  }
+
+  // --list used to win outright, so `--list --dedupe-key k --reason r` listed
+  // the tombstones and exited 0 having retracted nothing — the identifier and
+  // reason checks live below this branch and never ran. A composed command
+  // that silently does the wrong one of two things is worse than an error.
+  if (list && (ids.length > 0 || dedupeKeys.length > 0 || reason)) {
+    return {
+      ok: false,
+      error: '--list cannot be combined with --id, --dedupe-key, or --reason',
+    };
+  }
+  if (!list && limit !== undefined) {
+    return { ok: false, error: '--limit applies to --list only' };
   }
 
   if (list) {
@@ -281,11 +309,19 @@ export async function runRetractCli(argv, { env = process.env, fetchImpl } = {})
     if (unresolved.length > 0) {
       lines.push(
         '',
-        `WARNING: ${unresolved.length} id(s) did not resolve and were NOT tombstoned:`,
+        `FAILED: ${unresolved.length} id(s) did not resolve and were NOT tombstoned:`,
         ...unresolved.map((id) => `  ${id}`),
         'A deleted or pruned row cannot be retracted by id. Re-run those with',
         '--dedupe-key to suppress the identity itself.',
+        '',
+        'The identifiers that DID resolve were retracted; this is a partial',
+        'application, so the exit code is non-zero.',
       );
+      // Exit non-zero even though the resolved half succeeded. This tool is
+      // driven during incidents and from scripts, and "some of the identities
+      // you named are still unsuppressed" is a failure state — a 0 here lets
+      // `retract ... || alert` stay silent on a half-done containment.
+      return { code: 1, lines };
     }
 
     // The store is clean immediately; the read caches in front of it are not,

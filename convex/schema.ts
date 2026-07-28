@@ -1149,6 +1149,14 @@ export default defineSchema({
     // identity; re-retracting the same key refreshes it rather than
     // accumulating duplicates.
     dedupeKey: v.string(),
+    // When suppression was last ASSERTED — not when the operator first acted.
+    // `retract` sets it, and every `append` this tombstone suppresses refreshes
+    // it, because a record still arriving from the producer is evidence the
+    // feed has not stopped serving it and expiry would be premature. Expiry is
+    // therefore measured from the producer's last attempt, so `listRetractions`
+    // orders by "most recently still-live" rather than by when someone typed
+    // the command. The original action time lives in the `reason` an operator
+    // is required to supply and in the `intel_history_retracted` breadcrumb.
     retractedAt: v.number(),
     // Free text from the operator, e.g. "poisoned RSS item, #5743". Required
     // at the relay boundary: a tombstone with no stated cause is unreviewable

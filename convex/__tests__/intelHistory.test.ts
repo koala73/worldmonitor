@@ -1573,6 +1573,41 @@ describe("intelHistory tombstone lifetime", () => {
     expect(pruned.deletedRetractions).toBe(0);
   });
 
+  test("a shortened retentionMs cannot drain tombstones early", async () => {
+    // `retentionMs` is an operator-callable override copied from the
+    // apiPlanLimit prune, where shortening it just deletes old rows early.
+    // Here it is a security control: prune({retentionMs: 0}) would set the
+    // cutoff to `now`, drain every tombstone, and hand every retracted
+    // identity back to its producing feed on the next tick.
+    const t = await intelHistoryAppendTest();
+    await t.mutation(internal.intelHistory.retract, {
+      dedupeKeys: ["suppressed"],
+      reason: "poisoned",
+    });
+
+    // Prune strictly AFTER the tombstone was written. Pruning at exactly NOW
+    // would pass even with the clamp removed — the cutoff is a strict `<`, so
+    // a tombstone stamped NOW is not older than a cutoff of NOW, and the test
+    // would assert nothing.
+    for (const retentionMs of [0, 1, 60_000]) {
+      const res = await t.mutation(internal.intelHistory.prune, {
+        now: NOW + DAY,
+        retentionMs,
+      });
+      expect(res.deletedRetractions, `retentionMs ${retentionMs} must not drain`).toBe(0);
+    }
+
+    expect(
+      await t.run((ctx) => ctx.db.query("intelHistoryRetractions").collect()),
+    ).toHaveLength(1);
+    // ...and the suppression still holds.
+    const replay = await t.mutation(
+      internal.intelHistory.append,
+      appendArgs([record({ dedupeKey: "suppressed" })]),
+    );
+    expect(replay).toEqual({ inserted: 0, skipped: 0, retracted: 1 });
+  });
+
   test("a tombstone the producer stopped hitting expires and the record may return", async () => {
     // The honest other half: suppression is not permanent. Once the feed stops
     // offering the item, nothing refreshes the tombstone, prune drains it, and
@@ -1718,6 +1753,34 @@ describe("relay retraction routes — validation edges", () => {
     if (secret !== null) headers.Authorization = `Bearer ${secret}`;
     return { method: "POST", headers, body: JSON.stringify(body) };
   }
+
+  test("rejects an untrimmed identifier instead of tombstoning the typo", async () => {
+    // A stray space from a copy-paste makes retract look up an identity that
+    // does not exist: nothing is deleted, a tombstone is written for the typo,
+    // and the caller reads "tombstoned: 1" while the real record stays live.
+    const t = await intelHistoryAppendTest();
+
+    for (const bad of [" energy:intelligence:abc", "energy:intelligence:abc ", " "]) {
+      const res = await t.fetch(
+        "/relay/intel-history/retract",
+        post({ dedupeKeys: [bad], reason: "r" }),
+      );
+      expect(res.status, `${JSON.stringify(bad)} must be rejected`).toBe(400);
+      expect((await res.json()).error).toBe("INVALID_DEDUPE_KEYS");
+    }
+
+    const withId = await t.fetch(
+      "/relay/intel-history/retract",
+      post({ ids: [" abc "], reason: "r" }),
+    );
+    expect(withId.status).toBe(400);
+    expect((await withId.json()).error).toBe("INVALID_IDS");
+
+    // Nothing was written on any of those attempts.
+    expect(
+      await t.run((ctx) => ctx.db.query("intelHistoryRetractions").collect()),
+    ).toHaveLength(0);
+  });
 
   test("rejects an over-length identifier rather than silently dropping it", async () => {
     // A dropped identifier would make the route report success for a

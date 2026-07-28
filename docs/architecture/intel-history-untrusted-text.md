@@ -207,6 +207,19 @@ retraction path fails loudly instead of quietly becoming theatre.
   suppresses every later corrected vintage of it too. **Retract every id the
   search returned, not just the first**, and re-search by title or `sourceUrl`
   afterwards to confirm no sibling survived.
+- **An upstream edit can mint a new identity.** Suppression binds to the
+  `dedupeKey`, which the producers derive from properties of the source item —
+  so an item whose identity-bearing properties change comes back under a key no
+  tombstone covers. The known case is energy: the id is
+  `<source>-<hash(url)>-<publishedAt>`, and `publishedAt` falls back to an Atom
+  `<updated>` timestamp when the feed has no `pubDate`, which a publisher can
+  move by editing the entry. `tests/seed-history-wiring.test.mjs` pins that the
+  keys are *stable* run-to-run (no clock, no run id), which is what makes
+  retraction work at all; it cannot pin that an upstream publisher never edits.
+  After retracting, re-search once on the next seed cycle. Tracked separately:
+  the ACLED id collapses every event missing `event_id_cnty` onto
+  `acled-undefined` (#5782), which makes a tombstone on that key far broader
+  than intended.
 - **Ingest reports suppression.** `append` returns a `retracted` count that the
   seeder logs as `[intel-history] <domain>/<resource> appended N, deduped M,
   retracted R`. A nonzero `R` in the Railway logs is the signal that a tombstone

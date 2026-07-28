@@ -1973,6 +1973,13 @@ function readIdentifierList(
     if (typeof entry !== "string" || entry.length === 0 || entry.length > max) {
       return { ok: false };
     }
+    // Reject anything that is not already trimmed, rather than trimming it
+    // here. A stray space from a copy-paste makes the retraction look up an
+    // identity that does not exist, so it deletes nothing, writes a tombstone
+    // for the typo, and returns 200 — the operator reads "tombstoned: 1" while
+    // the poisoned record stays live and retrievable. Silently trimming would
+    // fix that one case and hide the class; rejecting makes the typo visible.
+    if (entry !== entry.trim()) return { ok: false };
   }
   return { ok: true, value: value as string[] };
 }
