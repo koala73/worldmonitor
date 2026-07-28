@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { loadDeskOverlay, parseDeskOverlay } from '../src/services/desk-overlay';
+import { loadDeskOverlay, parseDeskOverlay, parseDeskOverlayCaseId } from '../src/services/desk-overlay';
 
 const SAFE_FLAGS = {
   context_only: true,
@@ -71,5 +71,12 @@ describe('Desk Overlay public contract', () => {
     assert.equal(result.status, 'ok');
     assert.equal(init?.credentials, 'omit');
     assert.equal(init?.cache, 'no-store');
+  });
+
+  it('accepts only bounded Desk case IDs for a globe deep link', () => {
+    assert.equal(parseDeskOverlayCaseId('?desk_case=energy%3Ahormuz-supply-risk'), 'energy:hormuz-supply-risk');
+    assert.equal(parseDeskOverlayCaseId('?desk_case=market%3AUSD%2FKRW'), 'market:USD/KRW');
+    assert.equal(parseDeskOverlayCaseId('?desk_case=../private'), null);
+    assert.equal(parseDeskOverlayCaseId(`?desk_case=${'a'.repeat(129)}`), null);
   });
 });

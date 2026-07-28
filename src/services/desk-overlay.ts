@@ -1,4 +1,6 @@
 export const DESK_OVERLAY_URL = 'https://dev.westkite.dev/desk/data/world_case_files.json';
+const DESK_OVERLAY_CASE_QUERY_KEY = 'desk_case';
+const DESK_OVERLAY_CASE_ID = /^[a-z0-9][a-z0-9:_/-]{0,127}$/i;
 
 export type DeskOverlayStatus = 'ok' | 'baseline' | 'partial' | 'data_check' | 'unavailable';
 
@@ -26,6 +28,12 @@ export interface DeskOverlayResult {
   generatedAt: string | null;
   caveats: string[];
   caseFiles: DeskOverlayCaseFile[];
+}
+
+/** Returns a bounded Desk case ID only when a deep-link query is safe to render. */
+export function parseDeskOverlayCaseId(search: string): string | null {
+  const caseId = new URLSearchParams(search).get(DESK_OVERLAY_CASE_QUERY_KEY)?.trim() ?? '';
+  return DESK_OVERLAY_CASE_ID.test(caseId) ? caseId : null;
 }
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }>;

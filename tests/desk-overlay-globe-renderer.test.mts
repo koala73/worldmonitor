@@ -12,7 +12,7 @@ describe('Desk Overlay globe renderer', () => {
   const src = readSrc('src/components/GlobeMap.ts');
 
   it('loads only the public validated Desk Overlay and retains it as a distinct marker kind', () => {
-    assert.match(src, /import \{ loadDeskOverlay, type DeskOverlayCaseFile(?:, type DeskOverlayResult)? \} from '@\/services\/desk-overlay';/);
+    assert.match(src, /import \{[^}]*loadDeskOverlay[^}]*\} from '@\/services\/desk-overlay';/);
     assert.match(src, /interface DeskOverlayMarker extends BaseMarker[\s\S]*_kind: 'deskOverlay'/);
     assert.match(src, /this\.deskOverlayMarkers/);
     assert.match(src, /void this\.loadDeskOverlay\(\)/);
@@ -28,5 +28,15 @@ describe('Desk Overlay globe renderer', () => {
   it('keeps public artifact failure non-fatal and never invents a point for global-only rows', () => {
     assert.match(src, /loadDeskOverlay\(\)[\s\S]*\.catch\(\(\) =>/);
     assert.match(src, /\.filter\(\(caseFile\) => caseFile\.mapLocation\)/);
+  });
+
+  it('opens a validated Desk deep link directly in globe mode and focuses the requested case', () => {
+    const mapContainer = readSrc('src/components/MapContainer.ts');
+
+    assert.match(mapContainer, /parseDeskOverlayCaseId\(window\.location\.search\)/);
+    assert.match(mapContainer, /preferGlobe \|\| parseDeskOverlayCaseId\(window\.location\.search\)/);
+    assert.match(src, /this\.deskOverlayRequestedCaseId/);
+    assert.match(src, /this\.openDeskOverlayDrawer\(requestedCase\)/);
+    assert.match(src, /this\.globe\.pointOfView\(/);
   });
 });

@@ -68,7 +68,7 @@ import type { SatellitePosition } from '@/services/satellites';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { getCategoryStyle } from '@/services/webcams';
-import { loadDeskOverlay, type DeskOverlayCaseFile, type DeskOverlayResult } from '@/services/desk-overlay';
+import { loadDeskOverlay, parseDeskOverlayCaseId, type DeskOverlayCaseFile, type DeskOverlayResult } from '@/services/desk-overlay';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -577,6 +577,7 @@ export class GlobeMap {
   private markerBudgetProfile: 'mobile' | 'desktop' = 'desktop';
   private deskOverlayMarkers: DeskOverlayMarker[] = [];
   private deskOverlayCaseFiles: DeskOverlayCaseFile[] = [];
+  private readonly deskOverlayRequestedCaseId = parseDeskOverlayCaseId(window.location.search);
   private deskOverlayVisible = true;
   private deskOverlayDrawerEl: HTMLElement | null = null;
   private deskOverlayStatusEl: HTMLElement | null = null;
@@ -1450,6 +1451,20 @@ export class GlobeMap {
       }));
     this.renderDeskOverlayStatus(overlay);
     this.flushMarkers();
+
+    const requestedCase = this.deskOverlayRequestedCaseId
+      ? overlay.caseFiles.find((caseFile) => caseFile.id === this.deskOverlayRequestedCaseId)
+      : null;
+    if (requestedCase) {
+      if (requestedCase.mapLocation && this.globe) {
+        this.globe.pointOfView({
+          lat: requestedCase.mapLocation.lat,
+          lng: requestedCase.mapLocation.lon,
+          altitude: 1.45,
+        }, 700);
+      }
+      this.openDeskOverlayDrawer(requestedCase);
+    }
   }
 
   private renderDeskOverlayStatus(overlay: DeskOverlayResult): void {

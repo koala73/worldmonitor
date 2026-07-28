@@ -55,6 +55,7 @@ import type { ChinaCorridorControlTower } from '../../shared/china-corridor-cont
 import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
+import { parseDeskOverlayCaseId } from '@/services/desk-overlay';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 
@@ -219,7 +220,7 @@ export class MapContainer {
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
     this.isMobile = isMobileDevice();
-    this.useGlobe = preferGlobe && this.hasGlobeSupport();
+    this.useGlobe = (preferGlobe || parseDeskOverlayCaseId(window.location.search) !== null) && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
 
