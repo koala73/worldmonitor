@@ -43,6 +43,7 @@ type QueuedUmamiCall =
       revision: number;
       retryAttempt: number;
     };
+type IdentifyCall = Extract<QueuedUmamiCall, { kind: 'identify' }>;
 
 const pendingUmamiCalls: QueuedUmamiCall[] = [];
 let umamiLoadScheduled = false;
@@ -50,6 +51,9 @@ let umamiLoadStarted = false;
 let umamiLoadAttempts = 0;
 let latestIdentityRevision = 0;
 let identifyRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let identifyInFlight = false;
+let pendingIdentityCall: IdentifyCall | null = null;
+let identifyDeliveryGeneration = 0;
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -176,11 +180,12 @@ function createIdentifyCall(data: Record<string, unknown>): QueuedUmamiCall {
   };
 }
 
-function scheduleIdentityRetry(call: Extract<QueuedUmamiCall, { kind: 'identify' }>): void {
+function scheduleIdentityRetry(call: IdentifyCall): void {
   if (call.revision !== latestIdentityRevision) return;
   if (call.retryAttempt >= UMAMI_IDENTIFY_RETRY_LIMIT) return;
 
   clearScheduledIdentityRetry();
+  const generation = identifyDeliveryGeneration;
   const retryCall = {
     ...call,
     retryAttempt: call.retryAttempt + 1,
@@ -188,6 +193,7 @@ function scheduleIdentityRetry(call: Extract<QueuedUmamiCall, { kind: 'identify'
   const delay = UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS * (2 ** call.retryAttempt);
   identifyRetryTimer = setTimeout(() => {
     identifyRetryTimer = null;
+    if (generation !== identifyDeliveryGeneration) return;
     if (retryCall.revision !== latestIdentityRevision) return;
     if (!sendUmamiCall(retryCall)) {
       queueUmamiCall(retryCall);
@@ -261,24 +267,68 @@ function identifyWithDeliveryObserver(
   }
 }
 
+function finishIdentityDelivery(call: IdentifyCall, generation: number, failed: boolean): void {
+  if (generation !== identifyDeliveryGeneration) return;
+
+  identifyInFlight = false;
+  const nextCall = pendingIdentityCall;
+  pendingIdentityCall = null;
+  if (nextCall) {
+    if (!sendUmamiCall(nextCall)) {
+      queueUmamiCall(nextCall);
+    }
+    return;
+  }
+  if (failed) {
+    scheduleIdentityRetry(call);
+  }
+}
+
+function sendIdentityCall(
+  call: IdentifyCall,
+  umami: NonNullable<Window['umami']>,
+): boolean {
+  // Umami stores each identity field independently with an update-then-create
+  // sequence. Keep a single collector write active and retain only the latest
+  // snapshot received during that write so auth and billing cannot race the
+  // same sessionData key.
+  if (identifyInFlight) {
+    pendingIdentityCall = call;
+    return true;
+  }
+
+  identifyInFlight = true;
+  const generation = identifyDeliveryGeneration;
+  try {
+    const result = identifyWithDeliveryObserver(umami, call.data);
+    if (result && typeof (result as { then?: unknown }).then === 'function') {
+      void Promise.resolve(result).then(
+        () => finishIdentityDelivery(call, generation, false),
+        () => finishIdentityDelivery(call, generation, true),
+      );
+    } else {
+      finishIdentityDelivery(call, generation, false);
+    }
+  } catch {
+    finishIdentityDelivery(call, generation, true);
+  }
+  return true;
+}
+
 function sendUmamiCall(call: QueuedUmamiCall): boolean {
   if (typeof window === 'undefined') return false;
   const umami = window.umami;
   if (!umami) return false;
+  if (call.kind === 'identify') {
+    return sendIdentityCall(call, umami);
+  }
   try {
-    const result: unknown = call.kind === 'track'
-      ? umami.track(call.event, call.data)
-      : identifyWithDeliveryObserver(umami, call.data);
+    const result: unknown = umami.track(call.event, call.data);
     // A tracker promise can reject ASYNCHRONOUSLY on a transient network
-    // failure. For identify, the observer above also turns a swallowed
-    // collector 500 into the same retry signal. Track remains at-most-once:
-    // Umami #4183 can return 500 after committing the event row.
+    // failure. Track remains at-most-once: Umami #4183 can return 500 after
+    // committing the event row.
     if (result && typeof (result as { catch?: unknown }).catch === 'function') {
-      (result as Promise<unknown>).catch(() => {
-        if (call.kind === 'identify') {
-          scheduleIdentityRetry(call);
-        }
-      });
+      void (result as Promise<unknown>).catch(() => {});
     }
     // Durable-delivery contract for the terminal funnel event (#4934
     // round-2 F2): the marker written by trackCheckoutSuccess is cleared
@@ -298,10 +348,6 @@ function sendUmamiCall(call: QueuedUmamiCall): boolean {
     }
     return true;
   } catch {
-    if (call.kind === 'identify') {
-      scheduleIdentityRetry(call);
-      return true;
-    }
     return false;
   }
 }
@@ -576,6 +622,9 @@ export function trackSignOut(): void {
  */
 export function resetAnalyticsForTesting(): void {
   clearScheduledIdentityRetry();
+  identifyDeliveryGeneration += 1;
+  identifyInFlight = false;
+  pendingIdentityCall = null;
   pendingUmamiCalls.length = 0;
   umamiLoadScheduled = false;
   umamiLoadStarted = false;

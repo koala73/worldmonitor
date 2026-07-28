@@ -241,4 +241,45 @@ describe('Umami client retry policy (#5715)', () => {
       fakeTimers.restore();
     }
   });
+
+  it('serializes live identity writes and coalesces updates received while one is in flight', async () => {
+    let resolveFirstResponse: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirstResponse = resolve;
+    });
+    const payloads: Array<{ type: string; data: Record<string, unknown> }> = [];
+    let calls = 0;
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      payloads.push(JSON.parse(String(init?.body)));
+      return calls === 1
+        ? firstResponse
+        : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    identifyUser('user_1', 'free');
+    identifyUser('user_1', 'pro', 'active', 'monthly');
+    identifyUser('user_1', 'pro', 'cancelled', 'annual');
+    await drainPromiseHandlers();
+
+    assert.equal(calls, 1, 'a newer snapshot waits for the active collector write');
+
+    resolveFirstResponse!(collectorResponse(true, 200));
+    await drainPromiseHandlers();
+
+    assert.equal(calls, 2, 'only one coalesced snapshot follows the active write');
+    assert.deepEqual(payloads[1], {
+      type: 'identify',
+      data: {
+        userId: 'user_1',
+        plan: 'pro',
+        subStatus: 'cancelled',
+        planKey: 'annual',
+      },
+    });
+  });
 });
