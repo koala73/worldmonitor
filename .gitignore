@@ -10,6 +10,14 @@ public/crawlable-corpus.json
 *.log
 .env
 .env.local
+# Self-hosting secrets (SELF_HOSTING.md). Both of these are places the docs
+# tell operators to put real API keys, so neither should ever be stageable:
+#   - docker-compose.override.yml holds WORLDMONITOR_VALID_KEYS and the
+#     upstream provider keys; SELF_HOSTING.md already states it is gitignored.
+#   - secrets/ is the Docker-secrets layout documented in docker-compose.yml,
+#     which instructs `echo "gsk_abc123" > secrets/groq_api_key.txt`.
+docker-compose.override.yml
+secrets/
 .playwright-mcp/
 *-network.txt
 .vercel
