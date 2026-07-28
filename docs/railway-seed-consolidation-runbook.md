@@ -467,8 +467,8 @@ continuous metric.
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 5 services |
 | **Net savings** | 4 slots |
-| **Members** | Crypto Quotes (5min), Stablecoin Markets (10min), ETF Flows (15min), Gulf Quotes (10min), Token Panels (30min), SEC CIK Map (daily), SEC 8-K Stream (30min) |
-| **Required env** | `SZSE_PROXY_URL` (China corporate disclosures) and `PROXY_URL` (Gulf Quotes / ETF Flows reach it bare through `_yahoo-fetch.mjs`) |
+| **Members** | Crypto Quotes (5min), Hyperliquid Flow (5min), Stablecoin Markets (10min), ETF Flows (15min), China Corporate Disclosures (30min), Gulf Quotes (10min), Token Panels (30min), Gold ETF Flows (2h), Gold CB Reserves (daily), SEC CIK Map (daily), SEC 8-K Stream (30min) |
+| **Required env** | `PROXY_URL` (Gulf Quotes / ETF Flows require it and SZSE uses it when `SZSE_PROXY_URL` is unset) and `RELAY_SHARED_SECRET` (authenticates China Corporate Disclosures' fixed `https://api.worldmonitor.app/api/internal/china-exchange-egress` fallback after direct/proxy failures). This is the deployment contract; production provisioning and live fallback acceptance require separate verification. |
 | **Note** | These are BACKUP for ais-relay inline loops. ais-relay is the primary seeder. The bundle provides redundancy if relay goes down. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). SEC CIK Map + SEC 8-K Stream (#5695) are primary (not backups): the ticker→CIK registry and the material-events stream for the corporate-intelligence endpoints. |
 
 ### Bundle 11: seed-bundle-relay-backup

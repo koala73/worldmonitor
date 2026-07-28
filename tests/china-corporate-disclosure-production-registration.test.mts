@@ -43,7 +43,12 @@ describe('China corporate disclosure production registration (#5577)', () => {
       'market:china:corporate-disclosures:v1',
     );
     assert.equal(BOOTSTRAP_TIERS.chinaCorporateDisclosures, 'slow');
-    assert.match(read('scripts/seed-bundle-market-backup.mjs'), /seed-china-corporate-disclosures\.mjs/);
+    const bundle = read('scripts/seed-bundle-market-backup.mjs');
+    assert.match(
+      bundle,
+      /\{\s*label:\s*'China-Corporate-Disclosures'[^}]*script:\s*'seed-china-corporate-disclosures\.mjs'[^}]*requiredEnv:\s*\['RELAY_SHARED_SECRET'\][^}]*\}/,
+      'the bundle must fail the China disclosure section when fixed edge auth is unavailable',
+    );
     const railwayServices = JSON.parse(
       read('scripts/railway-services.json'),
     ) as Array<{ service: string; requiredEnv?: (string | string[])[] }>;
@@ -55,13 +60,18 @@ describe('China corporate disclosure production registration (#5577)', () => {
       // alternative, so dropping it would remove the only alerting path for a
       // variable those members still require.
       //
+      // RELAY_SHARED_SECRET is independently mandatory: it authenticates the
+      // fixed Vercel edge fallback after direct and proxy SZSE transports fail.
+      // Without this registry contract a green Railway reconciliation could
+      // leave the runtime fallback silently disabled.
+      //
       // SZSE_PROXY_URL is deliberately NOT declared. The adapter resolves
       // `SZSE_PROXY_URL || PROXY_URL`, so requiring it would make the audit
       // stricter than the runtime it guards: a production environment carrying
       // only the shared exit routes SZSE fine, but would report drift and throw
       // out of buildRailwayServiceConfigPatch -- vetoing reconciliation for
       // every other service in the same run.
-      ['PROXY_URL'],
+      ['PROXY_URL', 'RELAY_SHARED_SECRET'],
     );
     assert.match(
       read('scripts/china-corporate-disclosures/adapters.mjs'),

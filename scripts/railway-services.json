@@ -387,7 +387,8 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
     "requiredEnv": [
-      "PROXY_URL"
+      "PROXY_URL",
+      "RELAY_SHARED_SECRET"
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",

@@ -74,14 +74,14 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://www.szse.cn/api/disc/announcement/annList',
     metadataHost: 'www.szse.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SZSE,
-    maxRequestsPerRun: 3,
+    maxRequestsPerRun: 4,
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 2,
-    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
-    // Railway registers SZSE_PROXY_URL as required config for this service: without
-    // it the source still runs direct-only (no hard failure), but it loses
-    // the one capability this contract exists to provide, so an unset
-    // SZSE_PROXY_URL in production is a deployment gap worth alerting on.
+    maxEdgeRequestsPerRun: 1,
+    fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
+    // SZSE_PROXY_URL is an optional source-specific override; Railway requires
+    // the shared PROXY_URL fallback and the fixed edge hop's
+    // RELAY_SHARED_SECRET at the bundle boundary.
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
@@ -160,12 +160,19 @@ const MAX_UNCLASSIFIED_REVISIONS = 100;
 const SSE_PAGE_SIZE = 100;
 const SSE_REQUEST_TIMEOUT_MS = 30_000;
 const SZSE_PAGE_SIZE = 50;
-// Worst case (direct attempt times out, then both proxy attempts time out) this
-// source can take about 39s before the bundle moves on. Keep this comfortably
+// Worst case (direct, two proxy attempts, then edge fallback all time out) this
+// source can take about 55s before the bundle moves on. Keep this comfortably
 // inside the per-section timeoutMs configured in seed-bundle-market-backup.mjs.
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
 const SZSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PROXY_RETRY_DELAY_MS = 250;
+const SZSE_EDGE_TIMEOUT_MS = 16_000;
+const CHINA_EXCHANGE_EDGE_EGRESS_URL = 'https://api.worldmonitor.app/api/internal/china-exchange-egress';
+const CHINA_EXCHANGE_EDGE_ERROR_CODES = new Set([
+  'upstream_timeout',
+  'upstream_fetch_failed',
+  'upstream_response_too_large',
+]);
 export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
   Math.ceil(
     OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxRequestsPerRun
@@ -175,6 +182,7 @@ export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
   + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun * SZSE_PROXY_TIMEOUT_MS
   + (OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun - 1)
     * SZSE_PROXY_RETRY_DELAY_MS
+  + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxEdgeRequestsPerRun * SZSE_EDGE_TIMEOUT_MS
 );
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
@@ -386,19 +394,16 @@ export function normalizeSzseAnnouncements(payload, { retrievedAt = new Date().t
   return normalized;
 }
 
-export async function readBoundedJsonResponse(response, maxBytes) {
+async function readBoundedResponseBytes(response, maxBytes) {
   const contentLength = Number(response?.headers?.get?.('content-length'));
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     throw sourceError('RESPONSE_TOO_LARGE');
   }
   if (!response?.body?.getReader) {
     const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > maxBytes) throw sourceError('RESPONSE_TOO_LARGE');
-    try {
-      return JSON.parse(text);
-    } catch (error) {
-      throw sourceError('MALFORMED_RESPONSE', error);
-    }
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.byteLength > maxBytes) throw sourceError('RESPONSE_TOO_LARGE');
+    return bytes;
   }
 
   const reader = response.body.getReader();
@@ -420,6 +425,11 @@ export async function readBoundedJsonResponse(response, maxBytes) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  return bytes;
+}
+
+export async function readBoundedJsonResponse(response, maxBytes) {
+  const bytes = await readBoundedResponseBytes(response, maxBytes);
   try {
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
@@ -536,6 +546,61 @@ async function fetchViaConfiguredProxy(input, init, {
   });
 }
 
+export function resolveChinaExchangeEdgeEgress(env = process.env) {
+  const isRailwayProduction = env.RAILWAY_ENVIRONMENT === 'production'
+    || env.RAILWAY_ENVIRONMENT_NAME === 'production';
+  const secret = String(env.RELAY_SHARED_SECRET || '');
+  if (!isRailwayProduction || !secret) return null;
+  return { url: CHINA_EXCHANGE_EDGE_EGRESS_URL, secret };
+}
+
+async function readEdgeEgressFailureCode(response, maxBytes) {
+  const fallback = `HTTP_${Number(response?.status) || 0}`;
+  try {
+    const bytes = await readBoundedResponseBytes(response, maxBytes);
+    const contentType = String(response?.headers?.get?.('content-type') || '')
+      .split(';', 1)[0]
+      .trim()
+      .toLowerCase();
+    if (contentType !== 'application/json') return fallback;
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return CHINA_EXCHANGE_EDGE_ERROR_CODES.has(payload?.error)
+      ? payload.error
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function fetchViaEdgeEgress(_input, init, {
+  edgeEgress,
+  maxBytes,
+  edgeRequestFn,
+}) {
+  const response = await edgeRequestFn(edgeEgress.url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${edgeEgress.secret}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
+    },
+    body: init?.body,
+    redirect: 'error',
+    signal: init?.signal,
+  });
+  if (!response.ok) {
+    throw sourceError(await readEdgeEgressFailureCode(response, maxBytes));
+  }
+  const bytes = await readBoundedResponseBytes(response, maxBytes);
+  return new Response(bytes, {
+    status: response.status,
+    headers: {
+      'Content-Length': String(bytes.byteLength),
+      'Content-Type': response.headers.get('content-type') || 'application/json',
+    },
+  });
+}
+
 async function fetchSseAnnouncements(fetchFn, now) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse;
   const issuers = REVIEWED_DISCLOSURE_ISSUERS.filter((issuer) => issuer.exchange === 'SSE');
@@ -611,6 +676,7 @@ async function fetchSseAnnouncements(fetchFn, now) {
 
 async function fetchSzseAnnouncements(fetchFn, now, {
   proxyFetchFn = null,
+  edgeFetchFn = null,
 } = {}) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse;
   const { begin, end } = dateWindow(now);
@@ -651,39 +717,61 @@ async function fetchSzseAnnouncements(fetchFn, now, {
   let requestCount = 1;
   let transportPath = 'direct';
   let fallbackReason = null;
+  let proxyFailureReason = null;
   try {
     fetched = await request(fetchFn, SZSE_DIRECT_TIMEOUT_MS);
   } catch (directError) {
     fallbackReason = transportFailureReason(directError);
-    if (!proxyFetchFn || !shouldProxySzseFailure(directError)) throw directError;
-    transportPath = 'proxy';
+    if (!shouldProxySzseFailure(directError)) throw directError;
     let proxyError = null;
-    for (let attempt = 0; attempt < contract.maxProxyRequestsPerRun; attempt += 1) {
+    if (proxyFetchFn) {
+      transportPath = 'proxy';
+      for (let attempt = 0; attempt < contract.maxProxyRequestsPerRun; attempt += 1) {
+        requestCount += 1;
+        try {
+          fetched = await request(proxyFetchFn, SZSE_PROXY_TIMEOUT_MS);
+          proxyError = null;
+          break;
+        } catch (error) {
+          proxyError = error;
+          if (
+            attempt + 1 < contract.maxProxyRequestsPerRun
+            && shouldRetrySzseProxyFailure(error)
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
+            continue;
+          }
+          break;
+        }
+      }
+      proxyFailureReason = proxyError ? transportFailureReason(proxyError) : null;
+    }
+
+    if (!fetched && edgeFetchFn) {
+      transportPath = 'edge';
       requestCount += 1;
       try {
-        fetched = await request(proxyFetchFn, SZSE_PROXY_TIMEOUT_MS);
-        proxyError = null;
-        break;
-      } catch (error) {
-        proxyError = error;
-        if (
-          attempt + 1 < contract.maxProxyRequestsPerRun
-          && shouldRetrySzseProxyFailure(error)
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
-          continue;
-        }
-        break;
+        fetched = await request(edgeFetchFn, SZSE_EDGE_TIMEOUT_MS);
+      } catch (edgeError) {
+        const failure = sourceError(errorCodeFor(edgeError), edgeError);
+        failure.requestCount = requestCount;
+        failure.transportPath = transportPath;
+        failure.fallbackReason = fallbackReason;
+        if (proxyFailureReason) failure.proxyFailureReason = proxyFailureReason;
+        failure.edgeFailureReason = transportFailureReason(edgeError);
+        throw failure;
       }
     }
-    if (proxyError) {
+
+    if (!fetched && proxyError) {
       const failure = sourceError(errorCodeFor(proxyError), proxyError);
       failure.requestCount = requestCount;
       failure.transportPath = transportPath;
       failure.fallbackReason = fallbackReason;
-      failure.proxyFailureReason = transportFailureReason(proxyError);
+      failure.proxyFailureReason = proxyFailureReason;
       throw failure;
     }
+    if (!fetched) throw directError;
   }
 
   const contentTruncated = Number(fetched.payload.announceCount) > SZSE_PAGE_SIZE;
@@ -697,6 +785,7 @@ async function fetchSzseAnnouncements(fetchFn, now, {
     errorCode: contentTruncated ? 'PAGE_LIMIT_REACHED' : null,
     transportPath,
     ...(fallbackReason ? { fallbackReason } : {}),
+    ...(proxyFailureReason ? { proxyFailureReason } : {}),
   };
 }
 
@@ -805,6 +894,9 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         requestCount: outcome.requestCount,
         transportPath: outcome.transportPath ?? 'direct',
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.proxyFailureReason
+          ? { proxyFailureReason: outcome.proxyFailureReason }
+          : {}),
         emptyResultCount,
         errorCode: coverageGap ? 'COVERAGE_GAP' : null,
       };
@@ -822,6 +914,9 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         requestCount: outcome.requestCount,
         transportPath: outcome.transportPath ?? 'direct',
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.proxyFailureReason
+          ? { proxyFailureReason: outcome.proxyFailureReason }
+          : {}),
         emptyResultCount,
         errorCode: outcome.errorCode ?? (coverageGap ? 'COVERAGE_GAP' : 'PARTIAL_FETCH'),
       };
@@ -839,6 +934,9 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
       ...(outcome?.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
       ...(outcome?.proxyFailureReason
         ? { proxyFailureReason: outcome.proxyFailureReason }
+        : {}),
+      ...(outcome?.edgeFailureReason
+        ? { edgeFailureReason: outcome.edgeFailureReason }
         : {}),
       emptyResultCount,
       errorCode: outcome?.errorCode ?? 'NOT_ATTEMPTED',
@@ -1198,6 +1296,9 @@ export function buildChinaCorporateDisclosureSnapshot({
       ...(contract.maxProxyRequestsPerRun
         ? { maxProxyRequestsPerRun: contract.maxProxyRequestsPerRun }
         : {}),
+      ...(contract.maxEdgeRequestsPerRun
+        ? { maxEdgeRequestsPerRun: contract.maxEdgeRequestsPerRun }
+        : {}),
       maxResponseBytes: contract.maxResponseBytes,
       redirectPolicy: contract.redirectPolicy,
       documentRetrieval: contract.documentRetrieval,
@@ -1219,6 +1320,8 @@ export async function fetchChinaCorporateDisclosureSnapshot({
   fetchFn = globalThis.fetch,
   proxyUrl = process.env.SZSE_PROXY_URL || process.env.PROXY_URL || '',
   proxyRequestFn = proxyFetch,
+  edgeEgress = undefined,
+  edgeRequestFn = globalThis.fetch,
   now = Date.now(),
   previousSnapshot = null,
   onDecision = (entry) => console.log(JSON.stringify({ event: 'china_corporate_disclosure_source', ...entry })),
@@ -1230,6 +1333,16 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         proxyRequestFn,
       })
     : null;
+  const resolvedEdgeEgress = edgeEgress === undefined
+    ? resolveChinaExchangeEdgeEgress()
+    : edgeEgress;
+  const resolvedEdgeFetchFn = resolvedEdgeEgress?.url && resolvedEdgeEgress?.secret
+    ? (input, init) => fetchViaEdgeEgress(input, init, {
+        edgeEgress: resolvedEdgeEgress,
+        maxBytes: OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
+        edgeRequestFn,
+      })
+    : null;
   const outcomes = [];
   for (const [sourceId, fetchSource] of LAUNCHED_SOURCE_FETCHERS) {
     let requestCount = 0;
@@ -1239,6 +1352,7 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         return fetchFn(input, init);
       }, now, {
         proxyFetchFn: sourceId === 'szse' ? resolvedProxyFetchFn : null,
+        edgeFetchFn: sourceId === 'szse' ? resolvedEdgeFetchFn : null,
       });
       outcomes.push(outcome);
     } catch (error) {
@@ -1251,6 +1365,9 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         ...(error?.fallbackReason ? { fallbackReason: error.fallbackReason } : {}),
         ...(error?.proxyFailureReason
           ? { proxyFailureReason: error.proxyFailureReason }
+          : {}),
+        ...(error?.edgeFailureReason
+          ? { edgeFailureReason: error.edgeFailureReason }
           : {}),
       };
       outcomes.push(outcome);
@@ -1278,6 +1395,9 @@ export async function fetchChinaCorporateDisclosureSnapshot({
       ...(source.fallbackReason ? { fallbackReason: source.fallbackReason } : {}),
       ...(source.proxyFailureReason
         ? { proxyFailureReason: source.proxyFailureReason }
+        : {}),
+      ...(source.edgeFailureReason
+        ? { edgeFailureReason: source.edgeFailureReason }
         : {}),
       checkedAt: source.checkedAt,
     });
