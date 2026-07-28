@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import schema from "../schema";
 import { internal } from "../_generated/api";
@@ -15,6 +15,9 @@ const modules = import.meta.glob("../**/*.ts");
 // ordering — each previously proven only by temporary tests or untested.
 
 const BASE_TIMESTAMP = new Date("2026-03-21T10:00:00Z").getTime();
+// Wall clock for the boundary suites below, which pin `Date.now()` so a seeded
+// row can sit EXACTLY on the comparison edge.
+const FROZEN_NOW = new Date("2026-03-21T12:00:00Z").getTime();
 
 function makeSubscriptionPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -94,9 +97,14 @@ describe("malformed webhook transactional rollback", () => {
       customer: { customer_id: "cust_test_001", email: 12345, name: "Bad" },
     });
 
+    // Pin the CRASH SITE, not just "it threw". `email.trim` is reached after
+    // the subscription insert and entitlement recompute, which is what makes
+    // this a rollback proof at all. If a future refactor validates the payload
+    // up front, this assertion reds and forces a new post-write crash site
+    // rather than silently degrading into an "early validation rejects" test.
     await expect(
       processEvent(t, "wh_malformed_1", "subscription.active", malformed, BASE_TIMESTAMP),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/trim is not a function/);
 
     const { subs, ents, events } = await t.run(async (ctx) => ({
       subs: await ctx.db.query("subscriptions").collect(),
@@ -191,12 +199,22 @@ describe("pending-payment block window boundary", () => {
     });
   }
 
-  test("a pending payment exactly AT the window edge no longer blocks", async () => {
+  // Time MUST be frozen for these two. Seeding `Date.now() - WINDOW` and
+  // letting real time advance puts the row a few ms PAST the edge, where `.gt`
+  // and `.gte` agree — a `.gt` -> `.gte` mutant survived that version of this
+  // test. With the clock pinned, `occurredAt === windowStart` exactly, which is
+  // the only seed value that can tell the two operators apart.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("a pending payment exactly AT the window edge does not block (.gt is exclusive)", async () => {
     const t = convexTest(schema, modules);
-    // occurredAt == Date.now() - WINDOW at seed time; by query time it is
-    // strictly older than the edge, and the index read is `.gt(windowStart)`,
-    // so the exact-boundary row is excluded — the block has expired.
-    await seedPendingCharge(t, Date.now() - PENDING_PAYMENT_BLOCK_WINDOW_MS);
+    await seedPendingCharge(t, FROZEN_NOW - PENDING_PAYMENT_BLOCK_WINDOW_MS);
 
     const blocking = await t.query(internal.payments.billing.getBlockingPendingPayment, {
       userId: "test-user-001",
@@ -205,9 +223,22 @@ describe("pending-payment block window boundary", () => {
     expect(blocking).toBeNull();
   });
 
+  test("one millisecond inside the window still blocks — the edge is exactly windowStart", async () => {
+    const t = convexTest(schema, modules);
+    // Partner to the test above: together they pin the boundary to the ms.
+    // Alone, the exclusion test would also pass if the window were shorter.
+    await seedPendingCharge(t, FROZEN_NOW - PENDING_PAYMENT_BLOCK_WINDOW_MS + 1);
+
+    const blocking = await t.query(internal.payments.billing.getBlockingPendingPayment, {
+      userId: "test-user-001",
+      productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+    });
+    expect(blocking).not.toBeNull();
+  });
+
   test("a pending payment well inside the window still blocks the same tier group", async () => {
     const t = convexTest(schema, modules);
-    await seedPendingCharge(t, Date.now() - PENDING_PAYMENT_BLOCK_WINDOW_MS + 60_000);
+    await seedPendingCharge(t, FROZEN_NOW - PENDING_PAYMENT_BLOCK_WINDOW_MS + 60_000);
 
     const blocking = await t.query(internal.payments.billing.getBlockingPendingPayment, {
       userId: "test-user-001",
@@ -238,11 +269,21 @@ describe("cancelled paid-through boundary at checkout", () => {
     });
   }
 
-  test("a cancellation whose period ends exactly NOW no longer blocks re-subscribing", async () => {
+  // Frozen for the same reason as the pending-payment window above: with a
+  // live clock, `currentPeriodEnd = Date.now()` is already in the past by the
+  // time the query reads it, so `>` and `>=` behave identically and a `>=`
+  // mutant survives.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("a cancellation whose period ends exactly NOW does not block (> is strict)", async () => {
     const t = convexTest(schema, modules);
-    // The guard requires `currentPeriodEnd > now` to block; the equal-boundary
-    // row (strictly older by query time) must fall on the unblocked side.
-    await seedCancelledSub(t, Date.now());
+    await seedCancelledSub(t, FROZEN_NOW);
 
     const blocking = await t.query(internal.payments.billing.getCheckoutBlockingSubscription, {
       userId: "test-user-001",
@@ -251,9 +292,20 @@ describe("cancelled paid-through boundary at checkout", () => {
     expect(blocking).toBeNull();
   });
 
+  test("one millisecond of paid-through time still blocks — the edge is exactly now", async () => {
+    const t = convexTest(schema, modules);
+    await seedCancelledSub(t, FROZEN_NOW + 1);
+
+    const blocking = await t.query(internal.payments.billing.getCheckoutBlockingSubscription, {
+      userId: "test-user-001",
+      productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+    });
+    expect(blocking).toMatchObject({ status: "cancelled" });
+  });
+
   test("a cancellation still paid-through blocks checkout in the same family", async () => {
     const t = convexTest(schema, modules);
-    await seedCancelledSub(t, Date.now() + 5 * 60_000);
+    await seedCancelledSub(t, FROZEN_NOW + 5 * 60_000);
 
     const blocking = await t.query(internal.payments.billing.getCheckoutBlockingSubscription, {
       userId: "test-user-001",
