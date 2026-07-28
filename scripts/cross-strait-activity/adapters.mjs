@@ -29,6 +29,7 @@ const MND_REFRESH_ROTATION_INTERVAL_MS = 3 * 60 * 60 * 1_000;
 const DAY_MS = 86_400_000;
 const MAX_PERSISTED_STRING_LENGTH = 2_048;
 const MAX_SOURCE_URL_LENGTH = 512;
+const PROXY_DIAGNOSTIC_MAX_CHARS = 256;
 
 function monotonicNow() {
   return globalThis.performance.now();
@@ -1477,10 +1478,42 @@ async function fetchJapanModViaConfiguredProxy(input, init, {
   });
   const status = Number(result.status);
   if (!Number.isInteger(status) || status < 200 || status >= 300) {
-    throw new Error(`HTTP_${Number.isInteger(status) ? status : 'UNKNOWN'}`);
+    throw Object.assign(
+      new Error(`HTTP_${Number.isInteger(status) ? status : 'UNKNOWN'}`),
+      {
+        status: Number.isInteger(status) ? status : null,
+        contentType: result?.contentType,
+        bodyPrefix: proxyBodyPrefix(result?.buffer),
+        proxyStage: 'response',
+      },
+    );
   }
-  if (result.buffer.byteLength > maxResponseBytes) throw new Error('RESPONSE_TOO_LARGE');
-  return result.buffer.toString('utf8');
+  if (!Buffer.isBuffer(result?.buffer)) {
+    throw Object.assign(new Error('PROXY_RESPONSE_INVALID'), {
+      status,
+      contentType: result?.contentType,
+      proxyStage: 'response',
+    });
+  }
+  if (result.buffer.byteLength > maxResponseBytes) {
+    throw Object.assign(new Error('RESPONSE_TOO_LARGE'), {
+      status,
+      contentType: result.contentType,
+      bodyPrefix: proxyBodyPrefix(result.buffer),
+      proxyStage: 'response',
+    });
+  }
+  return {
+    html: result.buffer.toString('utf8'),
+    detail: buildProxyDiagnosticDetail({
+      stage: 'response',
+      httpStatus: status,
+      contentType: result.contentType,
+      bodyPrefix: proxyBodyPrefix(result.buffer),
+      errorCode: null,
+      errorMessage: null,
+    }),
+  };
 }
 
 function withoutNestedHistory(observation) {
@@ -1775,11 +1808,17 @@ export function buildCrossStraitActivitySnapshot({
       transportStatus: japanOutcome?.ok ? 'fresh' : 'error',
       requestCount: japanOutcome?.requestCount ?? 0,
       transportPath: japanOutcome?.transportPath ?? 'direct',
+      ...(japanOutcome?.blockedReason
+        ? { blockedReason: japanOutcome.blockedReason }
+        : {}),
       ...(japanOutcome?.fallbackReason
         ? { fallbackReason: japanOutcome.fallbackReason }
         : {}),
       ...(japanOutcome?.proxyFailureReason
         ? { proxyFailureReason: japanOutcome.proxyFailureReason }
+        : {}),
+      ...(japanOutcome?.proxyFailureDetail
+        ? { proxyFailureDetail: japanOutcome.proxyFailureDetail }
         : {}),
       errorCodes: japanOutcome?.errorCodes ?? [],
       lastSuccessAt: japanOutcome?.ok
@@ -1791,7 +1830,9 @@ export function buildCrossStraitActivitySnapshot({
         : {}),
     },
   ];
-  const anyError = sources.some((source) => source.transportStatus === 'error');
+  const anyError = sources.some(
+    (source) => source.transportStatus === 'error' && !source.blockedReason,
+  );
   return constrainCrossStraitActivitySnapshotSize({
     schemaVersion: 1,
     generatedAt,
@@ -1820,6 +1861,58 @@ function errorCode(error) {
   return 'SOURCE_ERROR';
 }
 
+function boundedDiagnosticString(value, maxChars = PROXY_DIAGNOSTIC_MAX_CHARS) {
+  if (typeof value !== 'string') return null;
+  const normalized = value
+    .replace(/(https?:\/\/)[^@\s/]+@/giu, '$1[redacted]@')
+    .replace(/(Proxy-Authorization:\s*)[^\r\n]+/giu, '$1[redacted]')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return normalized ? normalized.slice(0, maxChars) : null;
+}
+
+function proxyBodyPrefix(value) {
+  if (!Buffer.isBuffer(value)) return null;
+  return boundedDiagnosticString(
+    value.toString('utf8', 0, 1_024),
+  );
+}
+
+function buildProxyDiagnosticDetail({
+  stage,
+  httpStatus = null,
+  contentType = null,
+  bodyPrefix = null,
+  errorCode: detailErrorCode = null,
+  errorMessage = null,
+}) {
+  const status = Number(httpStatus);
+  return {
+    stage,
+    httpStatus: Number.isInteger(status) && status >= 100 && status <= 599
+      ? status
+      : null,
+    contentType: boundedDiagnosticString(contentType, 128),
+    bodyPrefix: boundedDiagnosticString(bodyPrefix),
+    errorCode: boundedDiagnosticString(detailErrorCode, 64),
+    errorMessage: boundedDiagnosticString(errorMessage),
+  };
+}
+
+function proxyFailureDetail(error) {
+  const message = String(error?.message ?? '');
+  return buildProxyDiagnosticDetail({
+    stage: error?.proxyStage === 'response'
+      ? 'response'
+      : (/Proxy CONNECT:/i.test(message) ? 'connect' : 'request'),
+    httpStatus: error?.status,
+    contentType: error?.contentType,
+    bodyPrefix: error?.bodyPrefix,
+    errorCode: error?.code,
+    errorMessage: message,
+  });
+}
+
 function proxyErrorCode(error) {
   const code = errorCode(error);
   if (Number(error?.status) === 407
@@ -1827,7 +1920,19 @@ function proxyErrorCode(error) {
     || /Proxy CONNECT:[^\n]*\b407\b/i.test(String(error?.message ?? ''))) {
     return 'PROXY_AUTH_FAILED';
   }
+  if (Number(error?.status) === 403
+    && /Proxy CONNECT:[^\n]*\b403\b/i.test(String(error?.message ?? ''))) {
+    return 'PROXY_CONNECT_FORBIDDEN';
+  }
   return String(error?.message ?? '').match(/PROXY_[A-Z0-9_]+/)?.[0] ?? code;
+}
+
+function blockedJapanProxyReason(directFailureCode, proxyFailureCode) {
+  if (directFailureCode !== 'HTTP_403') return null;
+  // A CONNECT refusal is emitted by the proxy before the TLS tunnel reaches
+  // Japan MOD. Only a 403 response received after CONNECT proves that both
+  // source-facing transport paths are externally blocked.
+  return proxyFailureCode === 'HTTP_403' ? proxyFailureCode : null;
 }
 
 function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
@@ -1866,6 +1971,7 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
   let requestCount = 1;
   let transportPath = 'direct';
   let fallbackReason = null;
+  let proxyResponseDetail = null;
   try {
     await sleepFn(REQUEST_CADENCE_MS);
     html = await fetchBoundedText(fetchFn, contract.indexUrl, contract);
@@ -1884,15 +1990,20 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
     transportPath = 'proxy';
     try {
       await sleepFn(REQUEST_CADENCE_MS);
-      html = await proxyFetchFn(contract.indexUrl, boundedHtmlRequestInit(contract));
+      const proxyResult = await proxyFetchFn(contract.indexUrl, boundedHtmlRequestInit(contract));
+      html = proxyResult.html;
+      proxyResponseDetail = proxyResult.detail;
     } catch (proxyError) {
       const failureCode = proxyErrorCode(proxyError);
+      const blockedReason = blockedJapanProxyReason(fallbackReason, failureCode);
       return {
         ok: false,
+        ...(blockedReason ? { blockedReason } : {}),
         requestCount,
         transportPath,
         fallbackReason,
         proxyFailureReason: failureCode,
+        proxyFailureDetail: proxyFailureDetail(proxyError),
         availableDocumentUrls: [],
         errorCodes: [...new Set([fallbackReason, failureCode])],
       };
@@ -1919,6 +2030,16 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
       ...(fallbackReason ? { fallbackReason } : {}),
       ...(transportPath === 'proxy'
         ? { proxyFailureReason: failureCode }
+        : {}),
+      ...(transportPath === 'proxy'
+        ? {
+            proxyFailureDetail: buildProxyDiagnosticDetail({
+              ...proxyResponseDetail,
+              stage: 'parse',
+              errorCode: failureCode,
+              errorMessage: error?.message,
+            }),
+          }
         : {}),
       availableDocumentUrls: [],
       errorCodes: fallbackReason

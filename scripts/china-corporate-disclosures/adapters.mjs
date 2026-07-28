@@ -74,9 +74,9 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://www.szse.cn/api/disc/announcement/annList',
     metadataHost: 'www.szse.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SZSE,
-    maxRequestsPerRun: 2,
+    maxRequestsPerRun: 3,
     maxDirectRequestsPerRun: 1,
-    maxProxyRequestsPerRun: 1,
+    maxProxyRequestsPerRun: 2,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     // Railway registers PROXY_URL as required config for this service: without
     // it the source still runs direct-only (no hard failure), but it loses
@@ -160,12 +160,22 @@ const MAX_UNCLASSIFIED_REVISIONS = 100;
 const SSE_PAGE_SIZE = 100;
 const SSE_REQUEST_TIMEOUT_MS = 30_000;
 const SZSE_PAGE_SIZE = 50;
-// Worst case (direct attempt times out, then the proxy retry also times out)
-// this source can take up to SZSE_DIRECT_TIMEOUT_MS + SZSE_PROXY_TIMEOUT_MS
-// (~35s) before the bundle moves on. Keep this comfortably inside the
-// per-section timeoutMs configured for it in seed-bundle-market-backup.mjs.
+// Worst case (direct attempt times out, then both proxy attempts time out) this
+// source can take about 39s before the bundle moves on. Keep this comfortably
+// inside the per-section timeoutMs configured in seed-bundle-market-backup.mjs.
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
-const SZSE_PROXY_TIMEOUT_MS = 20_000;
+const SZSE_PROXY_TIMEOUT_MS = 12_000;
+const SZSE_PROXY_RETRY_DELAY_MS = 250;
+export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
+  Math.ceil(
+    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxRequestsPerRun
+    / OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxConcurrentRequests
+  ) * SSE_REQUEST_TIMEOUT_MS
+  + SZSE_DIRECT_TIMEOUT_MS
+  + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun * SZSE_PROXY_TIMEOUT_MS
+  + (OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun - 1)
+    * SZSE_PROXY_RETRY_DELAY_MS
+);
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
   Object.freeze(['szse', fetchSzseAnnouncements]),
@@ -439,6 +449,8 @@ function dateWindow(now, days = 90) {
 
 function errorCodeFor(error) {
   if (typeof error?.code === 'string') return error.code;
+  const status = Number(error?.status);
+  if (Number.isInteger(status) && status >= 100 && status <= 599) return `HTTP_${status}`;
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'TIMEOUT';
   if (/timeout/i.test(String(error?.message))) return 'TIMEOUT';
   return 'FETCH_FAILED';
@@ -451,15 +463,43 @@ function transportFailureReason(error) {
     : errorCodeFor(error);
 }
 
-function shouldProxySzseFailure(error) {
-  const code = errorCodeFor(error);
-  if (code === 'FETCH_FAILED' || code === 'TIMEOUT') return true;
+function isRetryableSzseHttpStatus(code) {
   const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
-  return status === 403
-    || status === 408
+  return status === 408
     || status === 425
     || status === 429
     || status >= 500;
+}
+
+const RETRYABLE_SZSE_PROXY_FAILURE_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'EPIPE',
+  'ERR_SOCKET_CLOSED',
+  'ERR_STREAM_PREMATURE_CLOSE',
+  'ERR_TLS_HANDSHAKE_TIMEOUT',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+function shouldProxySzseFailure(error) {
+  const code = errorCodeFor(error);
+  if (code === 'FETCH_FAILED' || code === 'TIMEOUT') return true;
+  return code === 'HTTP_403' || isRetryableSzseHttpStatus(code);
+}
+
+function shouldRetrySzseProxyFailure(error) {
+  const reason = transportFailureReason(error);
+  return reason === 'FETCH_FAILED'
+    || reason === 'TIMEOUT'
+    || RETRYABLE_SZSE_PROXY_FAILURE_CODES.has(reason)
+    || isRetryableSzseHttpStatus(reason);
 }
 
 async function fetchViaConfiguredProxy(input, init, {
@@ -616,11 +656,27 @@ async function fetchSzseAnnouncements(fetchFn, now, {
   } catch (directError) {
     fallbackReason = transportFailureReason(directError);
     if (!proxyFetchFn || !shouldProxySzseFailure(directError)) throw directError;
-    requestCount += 1;
     transportPath = 'proxy';
-    try {
-      fetched = await request(proxyFetchFn, SZSE_PROXY_TIMEOUT_MS);
-    } catch (proxyError) {
+    let proxyError = null;
+    for (let attempt = 0; attempt < contract.maxProxyRequestsPerRun; attempt += 1) {
+      requestCount += 1;
+      try {
+        fetched = await request(proxyFetchFn, SZSE_PROXY_TIMEOUT_MS);
+        proxyError = null;
+        break;
+      } catch (error) {
+        proxyError = error;
+        if (
+          attempt + 1 < contract.maxProxyRequestsPerRun
+          && shouldRetrySzseProxyFailure(error)
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
+          continue;
+        }
+        break;
+      }
+    }
+    if (proxyError) {
       const failure = sourceError(errorCodeFor(proxyError), proxyError);
       failure.requestCount = requestCount;
       failure.transportPath = transportPath;

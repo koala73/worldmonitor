@@ -10,6 +10,9 @@ import { loadEnvFile, readSeedSnapshot, runSeed, writeExtraKey } from './_seed-u
 loadEnvFile(import.meta.url);
 
 export const CROSS_STRAIT_ACTIVITY_TTL_SECONDS = 180 * 24 * 60 * 60;
+export const CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN = 720;
+export const CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS =
+  CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN * 60;
 export const CROSS_STRAIT_ACTIVITY_MAX_CONTENT_AGE_MIN = 3 * DAY_MIN;
 export const CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS = 240_000;
 // Leave time after the bounded upstream phase to atomically publish the durable
@@ -35,6 +38,11 @@ function withoutRevisionHistory(observation) {
   return currentRevision;
 }
 
+function withoutProxyFailureDetail(source) {
+  const { proxyFailureDetail: _proxyFailureDetail, ...publicSource } = source;
+  return publicSource;
+}
+
 /**
  * The durable record retains the bounded MND backfill and correction vintages.
  * Bootstrap only needs the current MND row plus reviewed Japan context; keeping
@@ -51,7 +59,7 @@ export function projectCrossStraitActivityBootstrap(snapshot) {
     schemaVersion: snapshot?.schemaVersion,
     generatedAt: snapshot?.generatedAt,
     status: snapshot?.status,
-    sources: snapshot?.sources ?? [],
+    sources: (snapshot?.sources ?? []).map(withoutProxyFailureDetail),
     coverage: snapshot?.coverage ?? {},
     observations: [...mnd, ...reviewedJapan].map(withoutRevisionHistory),
     baselines: snapshot?.baselines ?? {},
@@ -80,7 +88,13 @@ function sourceRecordCount(snapshot, sourceId) {
 export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
     const healthy = source?.transportStatus === 'fresh';
-    const fetchedAt = Date.parse(source?.lastSuccessAt ?? '');
+    const blocked = source?.blockedReason === 'HTTP_403';
+    const fetchedAt = Date.parse(
+      blocked ? snapshot?.generatedAt ?? '' : source?.lastSuccessAt ?? '',
+    );
+    const metaTtlSeconds = healthy || blocked
+      ? CROSS_STRAIT_ACTIVITY_TTL_SECONDS
+      : CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS;
     const writeData = () => writer(
       sourceHealthKey(source.id),
       source,
@@ -89,14 +103,14 @@ export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
     const writeMeta = () => writer(sourceHealthMetaKey(source.id), {
       fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : 0,
       recordCount: sourceRecordCount(snapshot, source.id),
-      sourceState: healthy ? 'ok' : 'error',
-      stale: !healthy,
-    }, CROSS_STRAIT_ACTIVITY_TTL_SECONDS);
+      sourceState: healthy ? 'ok' : (blocked ? 'blocked' : 'error'),
+      stale: !healthy && !blocked,
+    }, metaTtlSeconds);
 
     // Never leave health claiming success when an error detail write fails.
     // Healthy observations may publish data first because an older `ok` meta
     // remains truthful; degraded observations publish the error meta first.
-    if (healthy) {
+    if (healthy || blocked) {
       await writeData();
       await writeMeta();
     } else {
@@ -181,7 +195,7 @@ if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
     declareRecords: (snapshot) => snapshot.observations.length,
     sourceVersion: 'taiwan-mnd-html+japan-joint-staff-reviewed-v1',
     schemaVersion: 1,
-    maxStaleMin: 720,
+    maxStaleMin: CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN,
     contentMeta: crossStraitActivityContentMeta,
     maxContentAgeMin: CROSS_STRAIT_ACTIVITY_MAX_CONTENT_AGE_MIN,
     extraKeys: [{

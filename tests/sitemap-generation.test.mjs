@@ -15,8 +15,18 @@ import {
   generateSitemapXml,
   validateSitemapEntries,
 } from '../scripts/build-sitemap.mjs';
+import { gitFileLastmod } from '../scripts/build-crawlable-corpus.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const gitLocalEnvVars = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+  encoding: 'utf8',
+}).trim().split('\n');
+
+function isolatedGitEnv(overrides = {}) {
+  const env = { ...process.env, ...overrides };
+  for (const name of gitLocalEnvVars) delete env[name];
+  return env;
+}
 
 function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow' }) {
   const target = join(publicDir, relativePath);
@@ -143,40 +153,47 @@ describe('root sitemap generator', () => {
     const shallowRoot = join(tempRoot, 'shallow');
     try {
       mkdirSync(sourceRoot);
-      execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot });
-      execFileSync('git', ['config', 'user.email', 'sitemap-test@worldmonitor.app'], { cwd: sourceRoot });
-      execFileSync('git', ['config', 'user.name', 'Sitemap Test'], { cwd: sourceRoot });
+      const gitEnv = isolatedGitEnv();
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['config', 'user.email', 'sitemap-test@worldmonitor.app'], {
+        cwd: sourceRoot,
+        env: gitEnv,
+      });
+      execFileSync('git', ['config', 'user.name', 'Sitemap Test'], {
+        cwd: sourceRoot,
+        env: gitEnv,
+      });
 
       writeFileSync(join(sourceRoot, 'material.txt'), 'material version one\n');
-      execFileSync('git', ['add', 'material.txt'], { cwd: sourceRoot });
+      execFileSync('git', ['add', 'material.txt'], { cwd: sourceRoot, env: gitEnv });
       execFileSync('git', ['commit', '-m', 'add material'], {
         cwd: sourceRoot,
-        env: {
-          ...process.env,
+        env: isolatedGitEnv({
           GIT_AUTHOR_DATE: '2026-06-01T00:00:00Z',
           GIT_COMMITTER_DATE: '2026-06-01T00:00:00Z',
-        },
+        }),
       });
 
       writeFileSync(join(sourceRoot, 'unrelated.txt'), 'release-only change\n');
-      execFileSync('git', ['add', 'unrelated.txt'], { cwd: sourceRoot });
+      execFileSync('git', ['add', 'unrelated.txt'], { cwd: sourceRoot, env: gitEnv });
       execFileSync('git', ['commit', '-m', 'release change'], {
         cwd: sourceRoot,
-        env: {
-          ...process.env,
+        env: isolatedGitEnv({
           GIT_AUTHOR_DATE: '2026-07-27T00:00:00Z',
           GIT_COMMITTER_DATE: '2026-07-27T00:00:00Z',
-        },
+        }),
       });
 
       execFileSync(
         'git',
         ['clone', '--depth', '1', pathToFileURL(sourceRoot).href, shallowRoot],
+        { env: gitEnv },
       );
       assert.equal(
         execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
           cwd: shallowRoot,
           encoding: 'utf8',
+          env: gitEnv,
         }).trim(),
         'true',
       );
@@ -191,6 +208,11 @@ describe('root sitemap generator', () => {
       assert.equal(
         resolveMaterialLastmod({ loc, materialSources: ['material.txt'] }),
         '2026-06-01',
+      );
+      assert.equal(
+        gitFileLastmod(shallowRoot, 'material.txt'),
+        null,
+        'corpus source dates must not trust the shallow root commit',
       );
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
