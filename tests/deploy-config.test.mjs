@@ -244,6 +244,19 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.ok(changelogInclude > markdownIgnore, 'CHANGELOG.md must be re-included after *.md for Docker corpus builds');
   });
 
+  it('keeps local self-hosting credentials out of Docker build contexts', () => {
+    const ignoreRules = new Set(
+      dockerignoreSource
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'))
+    );
+
+    for (const path of ['docker-compose.override.yml', 'secrets/']) {
+      assert.ok(ignoreRules.has(path), `${path} must never enter Docker build contexts or caches`);
+    }
+  });
+
   it('keeps generated corpus prefixes out of the SPA catch-all while preserving normal app deep links', () => {
     const catchAll = getSpaCatchAllRewrite();
     assert.ok(catchAll, 'expected the SPA catch-all rewrite');
