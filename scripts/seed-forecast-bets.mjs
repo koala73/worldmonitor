@@ -18,8 +18,8 @@ import {
 import { generateBets } from './_bet-templates.mjs';
 import { ENERGY_BET_TEMPLATES, EIA_PETROLEUM_FEED } from './_bet-templates-energy.mjs';
 import { COMMODITY_BET_TEMPLATES, COMMODITY_FEED } from './_bet-templates-commodities.mjs';
-import { MARKET_BET_TEMPLATES, MARKET_FEED } from './_bet-templates-markets.mjs';
-import { MARKET_GEO_BET_TEMPLATES } from './_bet-templates-markets-geo.mjs';
+import { MARKET_BET_TEMPLATES, MARKET_FEED, MARKET_SLOT_COUNT } from './_bet-templates-markets.mjs';
+import { MARKET_GEO_BET_TEMPLATES, MARKET_GEO_SLOT_COUNT } from './_bet-templates-markets-geo.mjs';
 import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS } from './_bet-templates-macro.mjs';
 import { ensembleProbability } from './_forecast-ensemble.mjs';
 import { baseRateProbability } from './_bet-baserate.mjs';
@@ -76,14 +76,15 @@ const FEED_MAX_GENERATION_AGE_MS = {
 // Phase-2 ensemble stage (#5525) — OFF by default: U15 Stage A ships templates
 // with base-rate probabilities and proves the new slices resolve (Gate 1.5)
 // before any LLM spend is enabled (Stage B sets FORECAST_BETS_ENSEMBLE=1).
-const ENSEMBLE_ENABLED = process.env.FORECAST_BETS_ENSEMBLE === '1';
-// Ensemble breadth. Raised 6→12 with the geo family (#5733): its 6 flagship
-// bets (userValueScore 0.9) would otherwise claim every ensemble slot and
-// starve the fast-resolving Gate-2 lanes. 12 = the 6-deep geo bench PLUS the
-// general-market (0.8) and energy-price/commodity (0.75/0.7) lines that resolve
-// in days. The deadline guard still stops the loop at the run budget, so this
-// is a ceiling, not a fixed spend; geo ranks first so it is never starved.
-const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', 12);
+const ENSEMBLE_ENABLED = process.env.FORECAST_BETS_ENSEMBLE === '1';// Ensemble breadth. Score-only ranking puts geo (0.9) then general markets
+// (0.8) ahead of energy (0.75) / commodity (0.7) / macro (0.7). Default is
+// therefore: full geo slate + full general-market slate + headroom for the
+// fast-resolving Gate-2 lanes (energy prices, oil commodities, top macro).
+// 6 + 6 + 6 = 18. Env-overridable; the deadline guard still bounds spend, so
+// this is a ceiling, not a fixed cost. Geo still ranks first and is never
+// starved when the budget allows fewer attempts than K.
+export const ENSEMBLE_TOP_K_DEFAULT = MARKET_GEO_SLOT_COUNT + MARKET_SLOT_COUNT + 6;
+const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', ENSEMBLE_TOP_K_DEFAULT);
 const ENSEMBLE_BUDGET_MS = envPositiveInt('FORECAST_BETS_ENSEMBLE_BUDGET_MS', 120_000);
 const RESOLUTIONS_LEDGER_KEY = 'forecast:resolutions:v1';
 
@@ -165,11 +166,19 @@ export function buildBetsSnapshot(feedsByKey, nowMs, priorSeries = {}) {
 }
 
 // Phase-2 ensemble stage (#5525 U13). Ranks the snapshot's bets by
-// userValueScore, runs the 3-pass ensemble on the top-K, and replaces their
-// probability (source 'ensemble') while keeping baselineProbability intact.
-// Skips bets whose OPEN LEDGER WINDOW already holds an ensemble probability —
-// the primary cross-run cost control (updateOpenWindow never downgrades, so a
-// re-run adds nothing). Injected callLLM/news/openWindows keep this testable.
+// userValueScore, runs the 3-pass ensemble on up to top-K *new* attempts, and
+// replaces their probability (source 'ensemble') while keeping
+// baselineProbability intact.
+//
+// Open-ledger skips: bets whose OPEN LEDGER WINDOW already holds a full
+// ensemble probability are skipped (updateOpenWindow never downgrades, so a
+// re-run adds nothing) but do NOT consume a top-K slot. Otherwise long-horizon
+// geo pending windows (up to 210d) would freeze the high-score slice for
+// months and starve every lower-score Gate-2 family. topK therefore means
+// "up to K successful new ensemble attempts", not "first K rows of the ranked
+// list including already-ensembled skips".
+//
+// Injected callLLM/news/openWindows keep this testable.
 export async function attachEnsembleProbabilities(snapshot, options = {}) {
   const bets = snapshot?.predictions || [];
   if (!bets.length || typeof options.callLLM !== 'function') return { attempted: 0, ensembled: 0, skipped: 0 };
@@ -178,13 +187,14 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
   const openEnsembleIds = options.openEnsembleIds instanceof Set ? options.openEnsembleIds : new Set();
   const news = Array.isArray(options.news) ? options.news : [];
 
-  const ranked = [...bets].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0)).slice(0, topK);
+  const ranked = [...bets].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0));
   let attempted = 0;
   let ensembled = 0;
   let partial = 0;
   let skipped = 0;
   for (const bet of ranked) {
     if (openEnsembleIds.has(bet.id)) { skipped += 1; continue; }
+    if (attempted >= topK) break; // K new attempts filled; remaining keep base-rate
     if (Date.now() >= deadlineMs) break; // remaining bets keep the base-rate
     attempted += 1;
     try {

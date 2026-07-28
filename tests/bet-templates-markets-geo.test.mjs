@@ -96,6 +96,7 @@ describe('isGeopoliticalMarket', () => {
       'Who will be the next Prime Minister of Romania?',
       'Will the incumbent win as POTUS in 2028?',
       'Next Supreme Leader of Iran named by December?',
+      'Who will be the next president of France?',
     ]) {
       assert.equal(isGeopoliticalMarket(title), true, `expected geo: ${title}`);
     }
@@ -103,6 +104,28 @@ describe('isGeopoliticalMarket', () => {
     for (const title of [
       'Will Jane Doe become President of Acme Corp this year?',
       'Vice President of Sales departs before Q4?',
+      'Who will be the next president of OpenAI?',
+      'Will Acme Corp have a leadership change this year?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), false, `expected NON-geo: ${title}`);
+    }
+  });
+
+  it('flags weak terms only with a high-salience actor co-occurrence', () => {
+    for (const title of [
+      'Iran leadership change by December 31?',
+      'New US sanctions on Venezuela before September?',
+      'Will there be a war between two NATO members?',
+      'US obtains Iranian enriched uranium by December 31', // enrich is strong; uranium+iran also weak+actor
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), true, `expected geo: ${title}`);
+    }
+    for (const title of [
+      'Will Acme Corp have a leadership change this year?',
+      'Highest-paid occupation in the US this year?',
+      'Will a uranium miner IPO in 2026?',
+      'Retail price war intensifies this quarter?',
+      'Will the SEC issue new sanctions on crypto firms?',
     ]) {
       assert.equal(isGeopoliticalMarket(title), false, `expected NON-geo: ${title}`);
     }
@@ -118,6 +141,7 @@ describe('isGeopoliticalMarket', () => {
       'Will TSMC report record revenue this quarter?', // Taiwan proxy, but no conflict term
       'Company X board election result?', // "election" alone must not fire
       'Will oil prices rise to $90 forward this year?', // "forward" must not trip \bwar\b
+      'Will the Russia stock market ETF recover this year?', // bare country, no conflict term
     ]) {
       assert.equal(isGeopoliticalMarket(title), false, `expected NON-geo: ${title}`);
     }
@@ -183,12 +207,16 @@ describe('geo slot templates', () => {
 
   it('binds slot i to the i-th eligible geo market and caps at the slate size', () => {
     const many = Array.from({ length: MARKET_GEO_SLOT_COUNT + 2 }, (_, i) => market({
-      title: `Sanctions escalation scenario ${i}?`,
-      url: `https://polymarket.com/event/sanctions-${i}`,
-      volume: 1_000_000 + i, // ascending → reverse of volume sort
+      // Strong geo term (coup) so each row is eligible; volume ascending → reverse sort.
+      title: `Coup attempt scenario ${i}?`,
+      url: `https://polymarket.com/event/coup-${i}`,
+      volume: 1_000_000 + i,
     }));
     const bets = generateBets(MARKET_GEO_BET_TEMPLATES, { [MARKET_FEED]: feedFixture(many) }, NOW);
     assert.equal(bets.length, MARKET_GEO_SLOT_COUNT); // capped, extras dropped
+    // Highest volumes win: coup-(N+1) ... coup-(N - SLOT + 2) after reverse volume sort.
+    const expected = Array.from({ length: MARKET_GEO_SLOT_COUNT }, (_, i) => `coup-${MARKET_GEO_SLOT_COUNT + 1 - i}`);
+    assert.deepEqual(bets.map((b) => b.marketSlug), expected);
   });
 });
 
