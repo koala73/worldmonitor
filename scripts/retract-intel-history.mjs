@@ -33,13 +33,19 @@
  * Both --id and --dedupe-key are repeatable and may be combined. --dry-run
  * prints the resolved request without sending it.
  *
- * Environment: CONVEX_SITE_URL (or CONVEX_URL) and RELAY_SHARED_SECRET — the
- * same pair the seeders use to append.
+ * Environment: CONVEX_SITE_URL (or CONVEX_URL), plus RELAY_RETRACT_SECRET when
+ * the deployment separates retraction from ingest, otherwise the seeders'
+ * RELAY_SHARED_SECRET — read from the checkout's `.env.local`
+ * exactly as every seeder does. Without that load the runbook command above
+ * fails with "missing environment" on a normal developer checkout, which is
+ * the worst possible moment to discover a tooling gap.
  *
  * Boundary rules: `scripts/**` ships to Railway via nixpacks with
  * `root_dir=scripts`, so this file may only import from within `scripts/`,
- * `node:*`, and bare packages in scripts/package.json. It imports nothing.
+ * `node:*`, and bare packages in scripts/package.json.
  */
+
+import { loadEnvFile, resolveConvexSiteUrl } from './_seed-utils.mjs';
 
 /** Matches the per-call cap the relay route enforces (convex/intelHistory.ts). */
 export const RETRACT_MAX_IDENTIFIERS = 100;
@@ -175,16 +181,20 @@ export function parseRetractArgs(argv) {
  * @param {Record<string, string | undefined>} env
  */
 export function resolveRetractTarget(env) {
-  const siteUrl =
-    env.CONVEX_SITE_URL || (env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-  const secret = env.RELAY_SHARED_SECRET ?? '';
+  const siteUrl = resolveConvexSiteUrl(env);
+  // Prefer the retraction-scoped credential when the deployment has one. The
+  // relay routes apply the same precedence (convex/http.ts), so an operator
+  // who separates the two only has to set this variable in one more place
+  // than they already do — and the seeder fleet's shared secret stops being
+  // able to delete from the archive the moment they do.
+  const secret = env.RELAY_RETRACT_SECRET || env.RELAY_SHARED_SECRET || '';
 
   const missing = [];
   if (!siteUrl) missing.push('CONVEX_SITE_URL (or CONVEX_URL)');
-  if (!secret) missing.push('RELAY_SHARED_SECRET');
+  if (!secret) missing.push('RELAY_RETRACT_SECRET (or RELAY_SHARED_SECRET)');
   if (missing.length > 0) return { ok: false, missing };
 
-  return { ok: true, siteUrl: siteUrl.replace(/\/+$/, ''), secret };
+  return { ok: true, siteUrl, secret };
 }
 
 /** POST one request to the relay and return its parsed body. */
@@ -232,17 +242,52 @@ export async function runRetractCli(argv, { env = process.env, fetchImpl } = {})
     return { code: 1, lines: [`missing environment: ${target.missing.join(', ')}`] };
   }
 
-  const { status, ok, body } = await sendRetractRequest(
-    { mode: parsed.mode, payload: parsed.payload, siteUrl: target.siteUrl, secret: target.secret },
-    { fetchImpl },
-  );
+  // A network failure, DNS failure, or the request timeout firing rejects
+  // here. Without this catch the rejection escapes runRetractCli, the
+  // top-level await turns it into an unhandled rejection, and the operator
+  // gets a stack trace instead of the exit code this function exists to
+  // return — the one moment a scripted `retract … || alert` must fire.
+  let response;
+  try {
+    response = await sendRetractRequest(
+      { mode: parsed.mode, payload: parsed.payload, siteUrl: target.siteUrl, secret: target.secret },
+      { fetchImpl },
+    );
+  } catch (err) {
+    return { code: 1, lines: [`request failed: ${err?.message || err}`] };
+  }
+  const { status, ok, body } = response;
 
   if (!ok) {
     return { code: 1, lines: [`relay returned HTTP ${status}`, JSON.stringify(body, null, 2)] };
   }
 
   const lines = [JSON.stringify(body, null, 2)];
+
+  // A 200 whose body will not parse is a gateway or proxy interstitial in
+  // front of the Convex site domain, not a completed retraction. Exiting 0
+  // here would let a scripted retraction report success for a request that
+  // never reached the store.
+  if (body?.error === 'UNPARSEABLE_RESPONSE') {
+    return { code: 1, lines };
+  }
+
   if (parsed.mode === 'retract') {
+    // Ids that did not resolve tombstoned NOTHING. The mutation now rejects
+    // the all-unresolved case outright, but a mixed batch still succeeds while
+    // silently leaving those identities unsuppressed — and the reassuring
+    // cache note below would otherwise be the last thing the operator reads.
+    const unresolved = Array.isArray(body?.unresolvedIds) ? body.unresolvedIds : [];
+    if (unresolved.length > 0) {
+      lines.push(
+        '',
+        `WARNING: ${unresolved.length} id(s) did not resolve and were NOT tombstoned:`,
+        ...unresolved.map((id) => `  ${id}`),
+        'A deleted or pruned row cannot be retracted by id. Re-run those with',
+        '--dedupe-key to suppress the identity itself.',
+      );
+    }
+
     // The store is clean immediately; the read caches in front of it are not,
     // and neither can be purged for a single record (their keys are hashes of
     // the request, not of the rows in the response). An operator who checks
@@ -256,10 +301,22 @@ export async function runRetractCli(argv, { env = process.env, fetchImpl } = {})
       'docs/architecture/intel-history-untrusted-text.md § Propagation.',
     );
   }
+
+  if (parsed.mode === 'list' && body?.partial === true) {
+    lines.push(
+      '',
+      'More retractions exist than this page shows — raise --limit to see them.',
+    );
+  }
+
   return { code: 0, lines };
 }
 
 if (process.argv[1]?.endsWith('retract-intel-history.mjs')) {
+  // Only when actually run, never on import — the same contract every seeder
+  // follows, and the reason a test importing this module does not pick up a
+  // developer's production credentials.
+  loadEnvFile(import.meta.url);
   const { code, lines } = await runRetractCli(process.argv.slice(2));
   for (const line of lines) {
     if (code === 0) console.log(line);

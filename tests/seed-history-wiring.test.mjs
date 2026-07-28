@@ -211,6 +211,34 @@ for (const [domain, resource, hook, payload] of HOOKS) {
     assert.match(warns[0], /non-fatal.*convex 503/);
   });
 
+  test(`${domain}/${resource} afterPublish surfaces a live retraction in the run log`, async () => {
+    // A nonzero `retracted` in the Railway log is the ONLY operator-facing
+    // signal that a tombstone is still suppressing a record the upstream feed
+    // has not stopped serving (#5743). The suffix is conditional, so without
+    // this the suppressed case renders byte-identically to "no tombstone
+    // exists" and the signal can be dropped by a refactor with nothing failing.
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(' '));
+    try {
+      await hook(payload, { runId: 'run-42' }, async () => ({
+        inserted: 0,
+        skipped: 3,
+        retracted: 2,
+      }));
+      await hook(payload, { runId: 'run-42' }, async () => ({
+        inserted: 1,
+        skipped: 0,
+        retracted: 0,
+      }));
+    } finally {
+      console.log = originalLog;
+    }
+    assert.match(logs[0], /appended 0, deduped 3, retracted 2/);
+    // ...and stays out of the way when nothing is suppressed.
+    assert.match(logs[1], /appended 1, deduped 0$/);
+  });
+
   test(`${domain}/${resource} afterPublish stays quiet on unconfigured skip`, async () => {
     const logs = [];
     const originalLog = console.log;

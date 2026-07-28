@@ -24,7 +24,7 @@
  * See tests/scripts-railway-nixpacks-no-escape-import.test.mts.
  */
 
-import { httpRetryError } from './_seed-utils.mjs';
+import { httpRetryError, resolveConvexSiteUrl } from './_seed-utils.mjs';
 import { embedBatch, normalizeForEmbedding } from './lib/brief-embedding.mjs';
 
 // Per-run cap. A seed tick that suddenly emits thousands of "historic"
@@ -217,8 +217,7 @@ async function readErrorSnippet(response) {
  * list of missing names so the caller can emit exactly one warn.
  */
 function resolveRelayConfig(env) {
-  const siteUrl =
-    env.CONVEX_SITE_URL || (env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+  const siteUrl = resolveConvexSiteUrl(env);
   const secret = env.RELAY_SHARED_SECRET ?? '';
   const openrouterKey = env.OPENROUTER_API_KEY ?? '';
 
@@ -228,7 +227,7 @@ function resolveRelayConfig(env) {
   if (!openrouterKey) missing.push('OPENROUTER_API_KEY');
   if (missing.length > 0) return { missing };
 
-  return { siteUrl: siteUrl.replace(/\/+$/, ''), secret, openrouterKey, missing };
+  return { siteUrl, secret, openrouterKey, missing };
 }
 
 /**

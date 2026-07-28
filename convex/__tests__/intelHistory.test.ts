@@ -1399,3 +1399,422 @@ describe("POST /relay/intel-history/retract", () => {
     expect(body.retractions.map((r) => r.dedupeKey)).toEqual(["b"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Post-review hardening (#5743)
+//
+// Each block below pins a property an earlier revision got wrong or left
+// unasserted. The concurrency case is the important one: `touchAppendLock` in
+// `retract` is the single line stopping a seed tick from re-inserting a record
+// mid-retraction, and before this test the suite stayed green with it deleted.
+// ---------------------------------------------------------------------------
+describe("intelHistory.retract — concurrency and identifier resolution", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test("a seed tick racing a retraction cannot leave the record stored", async () => {
+    const t = await intelHistoryAppendTest();
+
+    // Whichever transaction wins, the OCC dependency on the shared append lock
+    // forces the loser to retry against the winner's writes: append-then-
+    // retract ends with the row deleted, retract-then-append ends with the
+    // append skipped by the tombstone. Both land on the same invariant, which
+    // is what makes this assertable without controlling the interleaving.
+    await Promise.all([
+      t.mutation(
+        internal.intelHistory.append,
+        appendArgs([record({ dedupeKey: "racing" })]),
+      ),
+      t.mutation(internal.intelHistory.retract, {
+        dedupeKeys: ["racing"],
+        reason: "retracted mid-run",
+      }),
+    ]);
+
+    const rows = await t.run((ctx) =>
+      ctx.db
+        .query("intelHistory")
+        .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", "racing"))
+        .collect(),
+    );
+    expect(rows).toHaveLength(0);
+    const tombstones = await t.run((ctx) =>
+      ctx.db.query("intelHistoryRetractions").collect(),
+    );
+    expect(tombstones).toHaveLength(1);
+  });
+
+  test("retract touches the append lock so the OCC dependency exists at all", async () => {
+    const t = await intelHistoryAppendTest();
+    const before = await t.run(async (ctx) => {
+      const lock = await ctx.db.query("intelHistoryAppendLocks").first();
+      await ctx.db.patch(lock!._id, { lastTouchedAt: NOW - 10 * DAY });
+      return NOW - 10 * DAY;
+    });
+
+    await t.mutation(internal.intelHistory.retract, {
+      dedupeKeys: ["k"],
+      reason: "r",
+    });
+
+    const after = await t.run(async (ctx) => {
+      const lock = await ctx.db.query("intelHistoryAppendLocks").first();
+      return lock!.lastTouchedAt;
+    });
+    expect(after).toBeGreaterThan(before);
+  });
+
+  test("rejects a batch whose ids all fail to resolve instead of reporting success", async () => {
+    // The operator's most likely workflow is copying `id` out of a search
+    // result. If the row was pruned or already retracted since, nothing
+    // resolves, nothing is tombstoned, and a 200 would read as "already
+    // clean" while the next seed tick re-adds the record.
+    const t = await intelHistoryAppendTest();
+
+    await expect(
+      t.mutation(internal.intelHistory.retract, {
+        ids: ["not-a-convex-id"],
+        reason: "stale id",
+      }),
+    ).rejects.toThrow(/no identifier resolved to a dedupeKey/i);
+
+    expect(
+      await t.run((ctx) => ctx.db.query("intelHistoryRetractions").collect()),
+    ).toHaveLength(0);
+  });
+
+  test("resolves a mixed ids + dedupeKeys batch into one deduplicated key set", async () => {
+    const t = await intelHistoryAppendTest();
+    await t.mutation(
+      internal.intelHistory.append,
+      appendArgs([record({ dedupeKey: "shared" })]),
+    );
+    const id = await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("intelHistory")
+        .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", "shared"))
+        .first();
+      return row!._id as string;
+    });
+
+    // The id and the dedupeKey name the SAME record; the Set in
+    // resolveRetractionKeys must collapse them rather than tombstone twice.
+    const res = await t.mutation(internal.intelHistory.retract, {
+      ids: [id],
+      dedupeKeys: ["shared", "other"],
+      reason: "mixed batch",
+    });
+
+    expect(res.keys.sort()).toEqual(["other", "shared"]);
+    expect(res).toMatchObject({ deleted: 1, tombstoned: 2, refreshed: 0 });
+    expect(
+      await t.run((ctx) => ctx.db.query("intelHistoryRetractions").collect()),
+    ).toHaveLength(2);
+  });
+});
+
+describe("intelHistory tombstone lifetime", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  test("a suppressed append refreshes the tombstone, so expiry tracks the producer", async () => {
+    const t = await intelHistoryAppendTest();
+    await t.mutation(internal.intelHistory.retract, {
+      dedupeKeys: ["still-upstream"],
+      reason: "poisoned",
+    });
+
+    // 179 days later the feed is STILL serving the item. That attempt is the
+    // evidence the tombstone must outlive, so it restarts the clock — the
+    // alternative is a record that silently returns on day 181.
+    vi.setSystemTime(NOW + 179 * DAY);
+    const suppressed = await t.mutation(
+      internal.intelHistory.append,
+      appendArgs([record({ dedupeKey: "still-upstream" })]),
+    );
+    expect(suppressed).toEqual({ inserted: 0, skipped: 0, retracted: 1 });
+
+    const tombstone = await t.run((ctx) =>
+      ctx.db.query("intelHistoryRetractions").first(),
+    );
+    expect(tombstone!.retractedAt).toBe(NOW + 179 * DAY);
+
+    // Day 181 from the ORIGINAL retraction would have pruned it; from the
+    // refreshed one it survives, and the record stays suppressed.
+    const pruned = await t.mutation(internal.intelHistory.prune, {
+      now: NOW + 181 * DAY,
+    });
+    expect(pruned.deletedRetractions).toBe(0);
+  });
+
+  test("a tombstone the producer stopped hitting expires and the record may return", async () => {
+    // The honest other half: suppression is not permanent. Once the feed stops
+    // offering the item, nothing refreshes the tombstone, prune drains it, and
+    // a later re-publish is stored again. Pinned so the 180-day bet is a
+    // documented behaviour rather than a surprise.
+    const t = await intelHistoryAppendTest();
+    await t.mutation(internal.intelHistory.retract, {
+      dedupeKeys: ["gone-upstream"],
+      reason: "poisoned",
+    });
+
+    const pruned = await t.mutation(internal.intelHistory.prune, {
+      now: NOW + (INTEL_HISTORY_RETENTION_DAYS + 1) * DAY,
+    });
+    expect(pruned.deletedRetractions).toBe(1);
+
+    const replay = await t.mutation(
+      internal.intelHistory.append,
+      appendArgs([record({ dedupeKey: "gone-upstream" })]),
+    );
+    expect(replay).toEqual({ inserted: 1, skipped: 0, retracted: 0 });
+  });
+
+  test("prune drains both tables in one pass when each is at its batch cap", async () => {
+    const t = convexTest(schema, modules);
+    const beyond = NOW - (INTEL_HISTORY_RETENTION_DAYS + 1) * DAY;
+    await seed(
+      t,
+      Array.from({ length: 2 }, (_, i) => ({
+        dedupeKey: `aged-${i}`,
+        ingestedAt: beyond,
+        occurredAt: beyond,
+        title: `aged-${i}`,
+      })),
+    );
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 2; i++) {
+        await ctx.db.insert("intelHistoryRetractions", {
+          dedupeKey: `expired-${i}`,
+          retractedAt: beyond,
+          reason: "old",
+        });
+      }
+    });
+
+    const first = await t.mutation(internal.intelHistory.prune, {
+      now: NOW,
+      limit: 2,
+    });
+    expect(first).toEqual({ deleted: 2, deletedRetractions: 2, rescheduled: true });
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await t.run((ctx) => ctx.db.query("intelHistory").collect())).toHaveLength(0);
+    expect(
+      await t.run((ctx) => ctx.db.query("intelHistoryRetractions").collect()),
+    ).toHaveLength(0);
+  });
+});
+
+describe("intelHistory.restore — argument handling", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test("a repeated key is not reported as both removed and never-retracted", async () => {
+    const t = await intelHistoryAppendTest();
+    await t.mutation(internal.intelHistory.retract, {
+      dedupeKeys: ["dup"],
+      reason: "r",
+    });
+
+    const res = await t.mutation(internal.intelHistory.restore, {
+      dedupeKeys: ["dup", "dup"],
+    });
+
+    expect(res).toEqual({ removed: 1, notRetracted: [] });
+  });
+
+  test("names only the arguments it actually accepts when given none", async () => {
+    // restore takes no ids, so pointing its caller at one sends them after an
+    // argument the mutation would reject.
+    const t = await intelHistoryAppendTest();
+    await expect(
+      t.mutation(internal.intelHistory.restore, { dedupeKeys: [] }),
+    ).rejects.toThrow(/at least one of dedupeKeys is required/i);
+  });
+
+  test("enforces the same per-call identifier cap as retract", async () => {
+    const t = await intelHistoryAppendTest();
+    await expect(
+      t.mutation(internal.intelHistory.restore, {
+        dedupeKeys: Array.from(
+          { length: INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS + 1 },
+          (_, i) => `k-${i}`,
+        ),
+      }),
+    ).rejects.toThrow(/at most 100 identifiers/i);
+  });
+});
+
+describe("intelHistory.listRetractions — truncation signal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test("marks a filled page partial so a truncated review is not read as exhaustive", async () => {
+    const t = await intelHistoryAppendTest();
+    await t.mutation(internal.intelHistory.retract, {
+      dedupeKeys: ["a", "b", "c"],
+      reason: "batch",
+    });
+
+    const full = await t.query(internal.intelHistory.listRetractions, {});
+    expect(full.partial).toBe(false);
+
+    const page = await t.query(internal.intelHistory.listRetractions, { limit: 2 });
+    expect(page.retractions).toHaveLength(2);
+    expect(page.partial).toBe(true);
+  });
+});
+
+describe("relay retraction routes — validation edges", () => {
+  let originalRelay: string | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    originalRelay = process.env.RELAY_SHARED_SECRET;
+    process.env.RELAY_SHARED_SECRET = RELAY_SECRET;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    if (originalRelay === undefined) delete process.env.RELAY_SHARED_SECRET;
+    else process.env.RELAY_SHARED_SECRET = originalRelay;
+  });
+
+  function post(body: unknown, secret: string | null = RELAY_SECRET) {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (secret !== null) headers.Authorization = `Bearer ${secret}`;
+    return { method: "POST", headers, body: JSON.stringify(body) };
+  }
+
+  test("rejects an over-length identifier rather than silently dropping it", async () => {
+    // A dropped identifier would make the route report success for a
+    // retraction that left the named record live.
+    const t = convexTest(schema, modules);
+
+    const longKey = await t.fetch(
+      "/relay/intel-history/retract",
+      post({ dedupeKeys: ["k".repeat(257)], reason: "r" }),
+    );
+    expect(longKey.status).toBe(400);
+    expect((await longKey.json()).error).toBe("INVALID_DEDUPE_KEYS");
+
+    const longId = await t.fetch(
+      "/relay/intel-history/retract",
+      post({ ids: ["i".repeat(129)], reason: "r" }),
+    );
+    expect(longId.status).toBe(400);
+    expect((await longId.json()).error).toBe("INVALID_IDS");
+  });
+
+  test("rejects a malformed limit on the retractions review route", async () => {
+    const t = convexTest(schema, modules);
+    const res = await t.fetch(
+      "/relay/intel-history/retractions",
+      post({ limit: "twenty" }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("INVALID_LIMIT");
+  });
+
+  test("surfaces an all-unresolved retraction as an error, not a 200", async () => {
+    const t = await intelHistoryAppendTest();
+    const res = await t.fetch(
+      "/relay/intel-history/retract",
+      post({ ids: ["not-a-convex-id"], reason: "stale id" }),
+    );
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toMatch(/no identifier resolved/i);
+  });
+
+  test("a set RELAY_RETRACT_SECRET takes the fleet secret's delete power away", async () => {
+    // RELAY_SHARED_SECRET is held by every Railway seeder that appends
+    // history. Separating the credentials is only worth anything if setting
+    // the retraction secret actually CLOSES the fleet secret on these routes —
+    // a fallback that kept accepting both would be security theatre.
+    const originalRetract = process.env.RELAY_RETRACT_SECRET;
+    process.env.RELAY_RETRACT_SECRET = "retract-only-secret";
+    try {
+      const t = await intelHistoryAppendTest();
+
+      const withFleet = await t.fetch(
+        "/relay/intel-history/retract",
+        post({ dedupeKeys: ["k"], reason: "r" }, RELAY_SECRET),
+      );
+      expect(withFleet.status).toBe(401);
+
+      const withRetract = await t.fetch(
+        "/relay/intel-history/retract",
+        post({ dedupeKeys: ["k"], reason: "r" }, "retract-only-secret"),
+      );
+      expect(withRetract.status).toBe(200);
+
+      // Ingest is unaffected — the seeders keep appending with the fleet
+      // secret, which is the whole reason this is a rollout and not a
+      // migration.
+      const ingest = await t.fetch(
+        "/relay/intel-history",
+        post(
+          {
+            domain: "conflict",
+            resource: "conflict-events",
+            runId: "run-1",
+            records: [record({ dedupeKey: "fresh" })],
+          },
+          RELAY_SECRET,
+        ),
+      );
+      expect(ingest.status).toBe(200);
+    } finally {
+      if (originalRetract === undefined) delete process.env.RELAY_RETRACT_SECRET;
+      else process.env.RELAY_RETRACT_SECRET = originalRetract;
+    }
+  });
+
+  test("falls back to the fleet secret when no retraction secret is set", async () => {
+    const originalRetract = process.env.RELAY_RETRACT_SECRET;
+    delete process.env.RELAY_RETRACT_SECRET;
+    try {
+      const t = await intelHistoryAppendTest();
+      const res = await t.fetch(
+        "/relay/intel-history/retract",
+        post({ dedupeKeys: ["k"], reason: "r" }, RELAY_SECRET),
+      );
+      expect(res.status).toBe(200);
+    } finally {
+      if (originalRetract !== undefined) process.env.RELAY_RETRACT_SECRET = originalRetract;
+    }
+  });
+
+  test("rejects every retraction route when the relay secret is unconfigured", async () => {
+    // Fail closed: an unconfigured deployment must not accept archive
+    // deletions from anyone who guesses the path.
+    delete process.env.RELAY_SHARED_SECRET;
+    const t = convexTest(schema, modules);
+
+    for (const [path, body] of [
+      ["/relay/intel-history/retract", { dedupeKeys: ["k"], reason: "r" }],
+      ["/relay/intel-history/restore", { dedupeKeys: ["k"] }],
+      ["/relay/intel-history/retractions", {}],
+      ["/relay/intel-history", { domain: "conflict", resource: "r", runId: "1", records: [] }],
+    ] as const) {
+      const res = await t.fetch(path, post(body, ""));
+      expect(res.status, `${path} must reject when no secret is configured`).toBe(401);
+    }
+  });
+});

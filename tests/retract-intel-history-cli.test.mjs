@@ -163,8 +163,26 @@ describe('resolveRetractTarget', () => {
     assert.equal(target.ok, false);
     assert.deepEqual(target.missing, [
       'CONVEX_SITE_URL (or CONVEX_URL)',
-      'RELAY_SHARED_SECRET',
+      'RELAY_RETRACT_SECRET (or RELAY_SHARED_SECRET)',
     ]);
+  });
+
+  it('prefers the retraction-scoped secret over the seeder fleet secret', () => {
+    // Once an operator separates the two, the widely-distributed fleet secret
+    // must stop being what deletes from the archive.
+    const both = resolveRetractTarget({
+      CONVEX_SITE_URL: ENV.CONVEX_SITE_URL,
+      RELAY_SHARED_SECRET: 'fleet-secret',
+      RELAY_RETRACT_SECRET: 'retract-only-secret',
+    });
+    assert.equal(both.secret, 'retract-only-secret');
+
+    // ...and falls back cleanly so setting it is a rollout, not a migration.
+    const fallback = resolveRetractTarget({
+      CONVEX_SITE_URL: ENV.CONVEX_SITE_URL,
+      RELAY_SHARED_SECRET: 'fleet-secret',
+    });
+    assert.equal(fallback.secret, 'fleet-secret');
   });
 });
 
@@ -254,7 +272,10 @@ describe('runRetractCli', () => {
     assert.match(lines.join('\n'), /MISSING_REASON/);
   });
 
-  it('reports an unparseable body instead of throwing', async () => {
+  it('treats an unparseable 200 as a failure, not a completed retraction', async () => {
+    // A 200 whose body will not parse is a proxy/gateway interstitial in front
+    // of the Convex site domain. Exiting 0 would let a scripted
+    // `retract ... || alert` report success for a request that never landed.
     const calls = [];
     const fetchImpl = async (url, init) => {
       calls.push({ url, init });
@@ -266,7 +287,48 @@ describe('runRetractCli', () => {
       fetchImpl,
     });
 
-    assert.equal(code, 0);
+    assert.equal(code, 1);
     assert.match(lines.join('\n'), /UNPARSEABLE_RESPONSE/);
+    assert.doesNotMatch(lines.join('\n'), /Allow ~1 hour/, 'no reassurance on a failed request');
+  });
+
+  it('returns its failure result when the request itself throws', async () => {
+    // DNS failure, connection reset, or AbortSignal.timeout firing. Without a
+    // catch this escapes as an unhandled rejection and the operator gets a
+    // stack trace instead of the exit code the tool exists to return.
+    for (const err of [new Error('getaddrinfo ENOTFOUND'), new DOMException('t', 'TimeoutError')]) {
+      const fetchImpl = async () => { throw err; };
+      const { code, lines } = await runRetractCli(
+        ['--dedupe-key', 'k', '--reason', 'why'],
+        { env: ENV, fetchImpl },
+      );
+      assert.equal(code, 1);
+      assert.match(lines.join('\n'), /request failed:/);
+    }
+  });
+
+  it('warns loudly about ids that resolved to nothing', async () => {
+    // A mixed batch succeeds while leaving those identities unsuppressed, and
+    // the cache note would otherwise be the last thing the operator reads.
+    const { fetchImpl } = stubFetch({
+      body: { deleted: 1, tombstoned: 1, refreshed: 0, keys: ['k'], unresolvedIds: ['gone-1'] },
+    });
+
+    const { code, lines } = await runRetractCli(
+      ['--id', 'gone-1', '--dedupe-key', 'k', '--reason', 'mixed'],
+      { env: ENV, fetchImpl },
+    );
+
+    const out = lines.join('\n');
+    assert.equal(code, 0);
+    assert.match(out, /WARNING: 1 id\(s\) did not resolve and were NOT tombstoned/);
+    assert.match(out, /gone-1/);
+    assert.match(out, /re-run those with|Re-run those with/i);
+  });
+
+  it('tells the operator when the retraction list was truncated', async () => {
+    const { fetchImpl } = stubFetch({ body: { retractions: [{ dedupeKey: 'a' }], partial: true } });
+    const { lines } = await runRetractCli(['--list', '--limit', '1'], { env: ENV, fetchImpl });
+    assert.match(lines.join('\n'), /raise --limit/);
   });
 });

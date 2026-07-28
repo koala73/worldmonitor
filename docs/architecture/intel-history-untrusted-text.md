@@ -64,16 +64,30 @@ the field, the relay route rejects the record — #5740). Those are cheap,
 decidable, and have no false positives on legitimate content. Semantic
 "does this text look like an instruction" judgements are none of those things.
 
-**At retrieval we mark provenance instead.** Every consumer is told, in the
-schema it reads, that these fields are verbatim third-party text and must be
-treated as data:
+**At retrieval we mark provenance instead** — on the surfaces that actually
+reach the consumer, which is a narrower set than it first appears.
 
-| Surface | Where the marking lives |
-|---|---|
-| MCP tools | `INTEL_HISTORY_RECORD_SCHEMA` in `api/mcp/registry/rpc-tools.ts` — the `title`, `summary` and `sourceUrl` `description`s carry the content-safety rule. `tools/list` compresses the *tool* description to its first sentence, but `outputSchema` field descriptions reach the agent intact. |
-| REST / OpenAPI | The `UNTRUSTED CONTENT` note and per-field comments on `IntelHistoryRecord` in `proto/worldmonitor/intelligence/v1/intel_history_record.proto`, which flow into the generated specs. |
-| Docs | The Historical intelligence section of `docs/mcp-tools-reference.mdx` and its `docs/zh` mirror. |
-| Structured provenance | `resource` names the producing feed and `sourceUrl` the underlying report, so a consumer that wants to weight records by source already can. |
+> **The trap, learned the hard way.** The obvious place to put this is the
+> `outputSchema` field descriptions, and that was the first implementation.
+> It does not work on its own: many MCP hosts hand the model only the tool's
+> compressed `description` and `inputSchema` and **drop `outputSchema`
+> entirely**. Verified against a live claude.ai session — the flagship host —
+> where the tool arrived with no `outputSchema` at all. An agent could read
+> every marked field and never see one word of the marking. If you are adding
+> a warning to an agent-facing tool, confirm the channel delivers before
+> counting it as a control.
+
+| Surface | Where the marking lives | Reaches an LLM agent? |
+|---|---|---|
+| **MCP server instructions** | The `Content safety:` stanza in `SERVER_INSTRUCTIONS` (`api/mcp/constants.ts`), returned in `initialize.result.instructions`, which the MCP lifecycle spec has clients surface to the model. | **Yes — this is the primary channel.** Delivered verbatim, once per session, to every agent regardless of host. |
+| MCP tool description | A content-safety clause at the end of each of the three tools' descriptions. `tools/list` compresses to the first sentence, so this arrives via `describe_tool`, which the instructions tell agents to call. | Partially — only if the agent asks for the full definition. |
+| MCP `outputSchema` | `INTEL_HISTORY_RECORD_SCHEMA` in `api/mcp/registry/rpc-tools.ts` — `title`, `summary`, `sourceUrl` and `resource`. | **Host-dependent; assume no.** Kept because it is the contract REST clients and `describe_tool` read. |
+| REST / OpenAPI | The `UNTRUSTED CONTENT` note and per-field comments on `IntelHistoryRecord` in `proto/worldmonitor/intelligence/v1/intel_history_record.proto`, which flow into the generated specs. | N/A — human and client-generator surface. |
+| Docs | The Historical intelligence sections of `docs/mcp-tools-reference.mdx` and `docs/mcp-overview.mdx`, plus their `docs/zh` mirrors. | N/A — human surface. |
+| Structured provenance | `resource` names the producing feed and `sourceUrl` the underlying report, so a consumer that wants to weight records by source already can. | Yes — in every response body. |
+
+`tests/intel-history-untrusted-content.test.mjs` pins all of them, and treats
+the `SERVER_INSTRUCTIONS` stanza as the load-bearing one.
 
 This matches what the repo already does everywhere else it hands untrusted text
 to a model: the `SECURITY:` guardrail in `chat-analyst-prompt.ts` and
@@ -119,10 +133,25 @@ node scripts/retract-intel-history.mjs --list
 node scripts/retract-intel-history.mjs --restore --dedupe-key <key>
 ```
 
-`--dry-run` prints the resolved request without sending it. The tool needs
-`CONVEX_SITE_URL` (or `CONVEX_URL`) and `RELAY_SHARED_SECRET` — the same pair
-the seeders append with. Behind it are three secret-guarded relay routes
+`--dry-run` prints the resolved request without sending it. The tool reads
+`.env.local` exactly as the seeders do, so a normal checkout needs no extra
+setup. Behind it are three secret-guarded relay routes
 (`/relay/intel-history/retract`, `/restore`, `/retractions`).
+
+### Credentials — set `RELAY_RETRACT_SECRET`
+
+`RELAY_SHARED_SECRET` is held by every Railway seeder that appends history.
+That wide distribution was acceptable when the worst a leak could do was write
+false intelligence, because the real rows survived alongside it. Retraction
+deletes rows and permanently suppresses their identities, and that direction
+does not undo — `restore` cannot resurrect a row whose embedding is gone.
+
+So the three retraction routes read `RELAY_RETRACT_SECRET` when it is set, and
+fall back to `RELAY_SHARED_SECRET` when it is not. The fallback makes adopting
+it a rollout rather than a migration, and it is **one-way**: once the retraction
+secret exists, the fleet secret no longer opens these routes. Set it on the
+Convex deployment and in the operator's environment; do **not** put it on the
+seeder services, which is the entire point. Ingest is unaffected either way.
 
 ### Why deletion alone would not have worked
 
@@ -151,14 +180,33 @@ retraction path fails loudly instead of quietly becoming theatre.
   breadcrumb in the Convex logs.
 - **Retracting an identity that was never stored works,** and is the way to
   pre-emptively suppress a known-bad upstream id.
+- **A `--id` that no longer resolves is an error, not a quiet success.** A row
+  that was already pruned or retracted has no document id left, so there is no
+  `dedupeKey` to tombstone. When *no* identifier resolves the call is rejected
+  outright; when only some fail, the CLI names them and tells you to re-run
+  with `--dedupe-key`. Reporting `deleted: 0` as success here would be the
+  worst possible outcome — it reads as "already clean" while the next seed tick
+  re-adds the record.
 - **`--restore` lifts the tombstone; it does not resurrect the row.** The
   embedding is gone and nothing here can recompute one. If the event is still
   inside the seeder's live window it reappears on the next tick; if it is not,
   the deletion stands.
-- **Tombstones age out on the same 180-day clock,** measured from `retractedAt`,
-  and drain in the existing `intel-history-prune` cron. Re-retracting the same
-  key restarts that clock — an operator repeating the call is saying the item is
-  still being served upstream, which is exactly when expiry would be premature.
+- **Tombstones expire 180 days after the producer stops offering the item,**
+  not 180 days after the operator acted. Every append the tombstone suppresses
+  refreshes its `retractedAt`, so a feed that keeps serving a poisoned item
+  keeps the suppression alive by construction; expiry only starts running once
+  the item stops appearing. Re-running `retract` refreshes it too. Once the
+  producer does stop, the tombstone drains in the existing
+  `intel-history-prune` cron and a much-later re-publish would be stored again
+  — pinned by a test, so it is a documented behaviour rather than a surprise.
+- **One upstream item can be several records.** The tombstone keys on the
+  seeder's `dedupeKey`, and two producers deliberately mint more than one per
+  source item: a GDELT article that is a location hit for three countries is
+  stored as three rows (`gdelt-<cc>-<hash>`, one per country), and cross-strait
+  observations are revised in place under a stable id, so retracting one
+  suppresses every later corrected vintage of it too. **Retract every id the
+  search returned, not just the first**, and re-search by title or `sourceUrl`
+  afterwards to confirm no sibling survived.
 - **Ingest reports suppression.** `append` returns a `retracted` count that the
   seeder logs as `[intel-history] <domain>/<resource> appended N, deduped M,
   retracted R`. A nonzero `R` in the Railway logs is the signal that a tombstone
@@ -183,6 +231,19 @@ retraction is ever urgent enough that an hour matters, flush the
 an incident call, not the routine path.
 
 ---
+
+### Rollback
+
+Reverting this change is safe for the store but **does not lift the
+retractions**. Removing `intelHistoryRetractions` from `convex/schema.ts`
+stops the table being validated; it does not delete the rows, which sit there
+inert. What *does* change is that `append` stops consulting them, so every
+retracted identity becomes re-insertable on the next seed tick — a revert
+silently un-suppresses everything an operator ever retracted.
+
+If that matters, `--list` the tombstones and record them before reverting, then
+re-apply the suppression by hand (or re-land this change) afterwards. Reverting
+before any retraction has happened is unconditionally safe.
 
 ## If you are here to re-litigate this
 

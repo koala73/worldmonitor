@@ -283,7 +283,18 @@ export const append = internalMutation({
       // are indistinguishable in the row state (both end with nothing written)
       // and only this counter tells an operator the tombstone is still doing
       // work.
-      if (tombstones[index] !== null) {
+      const tombstone = tombstones[index];
+      if (tombstone) {
+        // Restart the tombstone's clock. Expiry is what eventually lets a
+        // retracted identity back in, and the only question that should decide
+        // it is "has the producer stopped offering this item?" — not "how long
+        // ago did the operator act?". This record being in THIS run's payload
+        // is direct evidence the feed is still serving it, so keying expiry on
+        // the last suppressed attempt makes the tombstone outlive the item by
+        // construction instead of by a bet on the retention constant. Only
+        // fires for records an operator actually retracted, so the write cost
+        // is proportional to tombstones, not to ingest volume.
+        await ctx.db.patch(tombstone._id, { retractedAt: ingestedAt });
         retracted += 1;
         continue;
       }
@@ -401,15 +412,16 @@ async function resolveRetractionKeys(
   return { keys: [...keys], unresolvedIds };
 }
 
-function assertRetractionIdentifierBudget(args: {
-  ids?: string[];
-  dedupeKeys?: string[];
-}): void {
+function assertRetractionIdentifierBudget(
+  args: { ids?: string[]; dedupeKeys?: string[] },
+  // Named so the message matches the caller's actual argument surface —
+  // `restore` accepts no ids at all, and telling its caller to "supply ids"
+  // sends them after an argument the mutation would reject.
+  accepts = "ids or dedupeKeys",
+): void {
   const total = (args.ids?.length ?? 0) + (args.dedupeKeys?.length ?? 0);
   if (total === 0) {
-    throw new Error(
-      "intelHistory: at least one of ids or dedupeKeys is required",
-    );
+    throw new Error(`intelHistory: at least one of ${accepts} is required`);
   }
   if (total > INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS) {
     throw new Error(
@@ -453,6 +465,22 @@ export const retract = internalMutation({
     await touchAppendLock(ctx);
 
     const { keys, unresolvedIds } = await resolveRetractionKeys(ctx, args);
+
+    // Fail loudly rather than report a successful no-op. A document id is the
+    // handle an operator copies out of a search result, and a row that was
+    // already pruned — or already retracted — no longer resolves to one. With
+    // no key to tombstone the loop below does nothing, and a 200 saying
+    // `deleted: 0, tombstoned: 0` reads as "already clean" when the truth is
+    // "nothing was suppressed and the next seed tick will re-add it". The
+    // recovery is in the message because the operator needs it right there.
+    if (keys.length === 0) {
+      throw new Error(
+        `intelHistory.retract: no identifier resolved to a dedupeKey — nothing was tombstoned. ` +
+          `Unresolved ids: ${unresolvedIds.join(", ")}. A deleted or pruned row cannot be ` +
+          `retracted by id; re-run with --dedupe-key to suppress the identity itself.`,
+      );
+    }
+
     const retractedAt = Date.now();
 
     let deleted = 0;
@@ -495,17 +523,21 @@ export const retract = internalMutation({
       }
     }
 
-    // Deliberately loud. Retraction removes intelligence from an archive on
-    // the authority of a shared secret; the audit trail cannot live only in
-    // the tombstone row the same credential can delete.
+    // Deliberately loud, and deliberately naming the identities rather than
+    // counting them. Retraction removes intelligence from an archive on the
+    // authority of a shared secret, and the tombstone row — the only other
+    // record of what was taken out — is deletable by that same credential via
+    // `restore`. A count cannot answer "which records were removed, and why?"
+    // six weeks later; the arrays can, and both are already bounded (100 keys
+    // x 256 chars) by the caller's identifier budget.
     console.info(
       JSON.stringify({
         breadcrumb: "intel_history_retracted",
-        keys: keys.length,
+        keys,
         deleted,
         tombstoned,
         refreshed,
-        unresolvedIds: unresolvedIds.length,
+        unresolvedIds,
         reason,
       }),
     );
@@ -529,13 +561,19 @@ export const restore = internalMutation({
     dedupeKeys: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    assertRetractionIdentifierBudget({ dedupeKeys: args.dedupeKeys });
+    assertRetractionIdentifierBudget({ dedupeKeys: args.dedupeKeys }, "dedupeKeys");
 
     await touchAppendLock(ctx);
 
+    // De-duplicated like `retract` does. Without it a repeated key deletes its
+    // tombstone on the first pass and then — read-your-writes inside the
+    // mutation — finds nothing on the second, so the same call reports the key
+    // as both removed AND never-retracted.
+    const dedupeKeys = [...new Set(args.dedupeKeys)];
+
     let removed = 0;
     const notRetracted: string[] = [];
-    for (const dedupeKey of args.dedupeKeys) {
+    for (const dedupeKey of dedupeKeys) {
       const tombstone = await ctx.db
         .query("intelHistoryRetractions")
         .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
@@ -548,11 +586,14 @@ export const restore = internalMutation({
       removed += 1;
     }
 
+    // Names the keys for the same reason `retract` does: this is the operation
+    // that destroys the other record of what was retracted.
     console.info(
       JSON.stringify({
         breadcrumb: "intel_history_restored",
+        dedupeKeys,
         removed,
-        notRetracted: notRetracted.length,
+        notRetracted,
       }),
     );
 
@@ -575,17 +616,23 @@ export const listRetractions = internalQuery({
       1,
       INTEL_HISTORY_MAX_RETRACTION_PAGE,
     );
+    // Over-fetch by one to distinguish "that is all of them" from "the page
+    // filled". Without the flag an operator checking whether a key is still
+    // suppressed reads a truncated page as an exhaustive one and concludes the
+    // retraction was lifted — the same `partial` contract `timeline` and
+    // `search` already return, for the same reason.
     const rows = await ctx.db
       .query("intelHistoryRetractions")
       .withIndex("by_retractedAt")
       .order("desc")
-      .take(limit);
+      .take(limit + 1);
     return {
-      retractions: rows.map((row) => ({
+      retractions: rows.slice(0, limit).map((row) => ({
         dedupeKey: row.dedupeKey,
         retractedAt: row.retractedAt,
         reason: row.reason,
       })),
+      partial: rows.length > limit,
     };
   },
 });
