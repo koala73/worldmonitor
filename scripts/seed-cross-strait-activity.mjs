@@ -38,6 +38,11 @@ function withoutRevisionHistory(observation) {
   return currentRevision;
 }
 
+function withoutProxyFailureDetail(source) {
+  const { proxyFailureDetail: _proxyFailureDetail, ...publicSource } = source;
+  return publicSource;
+}
+
 /**
  * The durable record retains the bounded MND backfill and correction vintages.
  * Bootstrap only needs the current MND row plus reviewed Japan context; keeping
@@ -54,7 +59,7 @@ export function projectCrossStraitActivityBootstrap(snapshot) {
     schemaVersion: snapshot?.schemaVersion,
     generatedAt: snapshot?.generatedAt,
     status: snapshot?.status,
-    sources: snapshot?.sources ?? [],
+    sources: (snapshot?.sources ?? []).map(withoutProxyFailureDetail),
     coverage: snapshot?.coverage ?? {},
     observations: [...mnd, ...reviewedJapan].map(withoutRevisionHistory),
     baselines: snapshot?.baselines ?? {},
@@ -83,8 +88,11 @@ function sourceRecordCount(snapshot, sourceId) {
 export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
     const healthy = source?.transportStatus === 'fresh';
-    const fetchedAt = Date.parse(source?.lastSuccessAt ?? '');
-    const metaTtlSeconds = healthy
+    const blocked = source?.blockedReason === 'HTTP_403';
+    const fetchedAt = Date.parse(
+      blocked ? snapshot?.generatedAt ?? '' : source?.lastSuccessAt ?? '',
+    );
+    const metaTtlSeconds = healthy || blocked
       ? CROSS_STRAIT_ACTIVITY_TTL_SECONDS
       : CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS;
     const writeData = () => writer(
@@ -95,14 +103,14 @@ export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
     const writeMeta = () => writer(sourceHealthMetaKey(source.id), {
       fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : 0,
       recordCount: sourceRecordCount(snapshot, source.id),
-      sourceState: healthy ? 'ok' : 'error',
-      stale: !healthy,
+      sourceState: healthy ? 'ok' : (blocked ? 'blocked' : 'error'),
+      stale: !healthy && !blocked,
     }, metaTtlSeconds);
 
     // Never leave health claiming success when an error detail write fails.
     // Healthy observations may publish data first because an older `ok` meta
     // remains truthful; degraded observations publish the error meta first.
-    if (healthy) {
+    if (healthy || blocked) {
       await writeData();
       await writeMeta();
     } else {
