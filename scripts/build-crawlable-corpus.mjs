@@ -530,12 +530,34 @@ function latestDatedChangelogRelease(changelog) {
   return dates[dates.length - 1] || null;
 }
 
+// Git's local env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...) override
+// `cwd`, so a build running inside a git hook would silently resolve these
+// queries against the hook's repository instead of the rootDir it was given.
+// Strip them, and render dates in UTC (see gitFileLastmod).
+let gitLocalEnvVars = null;
+function gitEnvForRoot() {
+  if (gitLocalEnvVars === null) {
+    try {
+      gitLocalEnvVars = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim().split('\n');
+    } catch {
+      gitLocalEnvVars = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY'];
+    }
+  }
+  const env = { ...process.env, TZ: 'UTC' };
+  for (const name of gitLocalEnvVars) delete env[name];
+  return env;
+}
+
 function hasCompleteGitHistory(rootDir) {
   try {
     return execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
       cwd: rootDir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: gitEnvForRoot(),
     }).trim() === 'false';
   } catch {
     return false;
@@ -545,11 +567,19 @@ function hasCompleteGitHistory(rootDir) {
 export function gitFileLastmod(rootDir, relativePath) {
   if (!hasCompleteGitHistory(rootDir)) return null;
   try {
-    const out = execFileSync('git', ['log', '-1', '--format=%cs', '--', relativePath], {
-      cwd: rootDir,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    // Committer date rendered in UTC, not the commit's recorded timezone —
+    // a +04:00 evening commit would otherwise date as "tomorrow" against a
+    // UTC build clock and trip build-sitemap's future-lastmod guard.
+    const out = execFileSync(
+      'git',
+      ['log', '-1', '--date=format-local:%Y-%m-%d', '--format=%cd', '--', relativePath],
+      {
+        cwd: rootDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: gitEnvForRoot(),
+      },
+    ).trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null;
   } catch {
     return null;

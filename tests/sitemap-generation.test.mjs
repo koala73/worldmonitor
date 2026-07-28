@@ -219,6 +219,59 @@ describe('root sitemap generator', () => {
     }
   });
 
+  // Regression (Vercel deploy failure, 2026-07-27): a commit recorded at
+  // 01:21+04:00 has a %cs short date of "tomorrow" relative to a UTC build
+  // clock, so the future-lastmod guard rejected a commit that is in the past.
+  // Lastmod dates must be rendered in UTC regardless of the commit's own
+  // recorded timezone. (Shallow-clone attribution is covered separately by
+  // tests/crawlable-corpus.test.mjs.)
+  it('renders git lastmod in UTC regardless of the commit timezone', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-sitemap-tz-'));
+    const sourceRoot = join(tempRoot, 'source');
+    try {
+      const gitEnv = isolatedGitEnv();
+      mkdirSync(sourceRoot);
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['config', 'user.email', 'sitemap-test@worldmonitor.app'], {
+        cwd: sourceRoot,
+        env: gitEnv,
+      });
+      execFileSync('git', ['config', 'user.name', 'Sitemap Test'], {
+        cwd: sourceRoot,
+        env: gitEnv,
+      });
+
+      // 2026-07-28T01:21:52+04:00 is 2026-07-27T21:21:52Z — the UTC date is
+      // the truthful lastmod; the recorded-timezone date is in the future.
+      writeFileSync(join(sourceRoot, 'material.txt'), 'evening merge\n');
+      execFileSync('git', ['add', 'material.txt'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['commit', '-m', 'evening merge'], {
+        cwd: sourceRoot,
+        env: isolatedGitEnv({
+          GIT_AUTHOR_DATE: '2026-07-28T01:21:52+04:00',
+          GIT_COMMITTER_DATE: '2026-07-28T01:21:52+04:00',
+        }),
+      });
+
+      const resolveMaterialLastmod = createMaterialLastmodResolver({
+        repoRoot: sourceRoot,
+        existingSitemapSource: '',
+      });
+      assert.equal(
+        resolveMaterialLastmod({ loc: `${SITE_ORIGIN}/pro`, materialSources: ['material.txt'] }),
+        '2026-07-27',
+        'material lastmod must be the UTC date, not the recorded-timezone date',
+      );
+      assert.equal(
+        gitFileLastmod(sourceRoot, 'material.txt'),
+        '2026-07-27',
+        'corpus lastmod must be the UTC date, not the recorded-timezone date',
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('keeps the committed artifact generated and robots ownership exact', () => {
     const sitemap = readFileSync(join(repoRoot, 'public/sitemap.xml'), 'utf8');
     const robots = readFileSync(join(repoRoot, 'public/robots.txt'), 'utf8');
