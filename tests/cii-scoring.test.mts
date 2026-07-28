@@ -2515,7 +2515,7 @@ describe('CII scoring', () => {
       { relPath: 'scripts/regional-snapshot/evidence-collector.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
       { relPath: 'scripts/regional-snapshot/freshness.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
       { relPath: 'scripts/regional-snapshot/trigger-evaluator.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
-      { relPath: 'api/mcp/registry/rpc-tools.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live'] },
+      { relPath: 'api/mcp/registry/analysis-tools.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live'] },
       { relPath: 'tests/regional-snapshot.test.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
     ];
 
