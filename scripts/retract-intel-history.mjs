@@ -33,9 +33,8 @@
  * Both --id and --dedupe-key are repeatable and may be combined. --dry-run
  * prints the resolved request without sending it.
  *
- * Environment: CONVEX_SITE_URL (or CONVEX_URL), plus RELAY_RETRACT_SECRET when
- * the deployment separates retraction from ingest, otherwise the seeders'
- * RELAY_SHARED_SECRET — read from the checkout's `.env.local`
+ * Environment: CONVEX_SITE_URL (or CONVEX_URL), plus RELAY_RETRACT_SECRET —
+ * read from the checkout's `.env.local`
  * exactly as every seeder does. Without that load the runbook command above
  * fails with "missing environment" on a normal developer checkout, which is
  * the worst possible moment to discover a tooling gap.
@@ -210,16 +209,13 @@ export function parseRetractArgs(argv) {
  */
 export function resolveRetractTarget(env) {
   const siteUrl = resolveConvexSiteUrl(env);
-  // Prefer the retraction-scoped credential when the deployment has one. The
-  // relay routes apply the same precedence (convex/http.ts), so an operator
-  // who separates the two only has to set this variable in one more place
-  // than they already do — and the seeder fleet's shared secret stops being
-  // able to delete from the archive the moment they do.
-  const secret = env.RELAY_RETRACT_SECRET || env.RELAY_SHARED_SECRET || '';
+  // Retraction is intentionally isolated from the widely distributed seeder
+  // credential. The relay routes fail closed on the same dedicated variable.
+  const secret = env.RELAY_RETRACT_SECRET || '';
 
   const missing = [];
   if (!siteUrl) missing.push('CONVEX_SITE_URL (or CONVEX_URL)');
-  if (!secret) missing.push('RELAY_RETRACT_SECRET (or RELAY_SHARED_SECRET)');
+  if (!secret) missing.push('RELAY_RETRACT_SECRET');
   if (missing.length > 0) return { ok: false, missing };
 
   return { ok: true, siteUrl, secret };

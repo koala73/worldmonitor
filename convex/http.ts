@@ -1667,25 +1667,23 @@ function intelJson(body: unknown, status: number): Response {
  * configured secret is a rejection, not an open door — an unconfigured
  * deployment must not accept writes from anyone who guesses the path.
  *
- * SEPARABLE RETRACTION CREDENTIAL (#5743). `RELAY_SHARED_SECRET` is held by
+ * DEDICATED RETRACTION CREDENTIAL (#5743). `RELAY_SHARED_SECRET` is held by
  * every Railway seeder that appends history — a wide distribution that was
  * fine when the worst a leak could do was write false intelligence, since the
  * real rows survived alongside it. The retraction routes delete rows and
  * permanently suppress their identities, and that direction does not undo:
  * `restore` cannot resurrect a row whose embedding is gone. Setting
- * `RELAY_RETRACT_SECRET` moves those three routes onto their own credential
- * that the seeder fleet does not carry; leaving it unset falls back to the
- * shared secret, so this is a rollout an operator can do whenever, not a
- * breaking change. Note the fallback is one-way: once the retraction secret is
- * set, the fleet secret no longer opens these routes — which is the entire
- * point of setting it.
+ * `RELAY_RETRACT_SECRET` keeps those three routes on their own credential
+ * that the seeder fleet does not carry. There is deliberately no shared-secret
+ * fallback: an unconfigured deployment fails closed instead of granting every
+ * seeder archive-deletion authority.
  */
 async function intelRelayUnauthorized(
   request: Request,
   { retraction = false }: { retraction?: boolean } = {},
 ): Promise<boolean> {
   const secret = retraction
-    ? process.env.RELAY_RETRACT_SECRET || process.env.RELAY_SHARED_SECRET || ""
+    ? (process.env.RELAY_RETRACT_SECRET ?? "")
     : (process.env.RELAY_SHARED_SECRET ?? "");
   const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
   if (!secret) return true;

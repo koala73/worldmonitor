@@ -181,13 +181,33 @@ describe('normalizeHistoryRecords', () => {
     assert.equal(out.at(-1).dedupeKey, `conflict:acled:evt-60`);
   });
 
-  it('truncates title to 500 chars and summary to 2000 chars', () => {
+  it('preserves accepted title and summary text byte-for-byte', () => {
+    const title = '  Départ annoncé  \n';
+    const summary = '\t Source says “unchanged” 🙂  ';
     const [out] = normalizeHistoryRecords([
-      record(1, { title: 'T'.repeat(900), summary: 'S'.repeat(4000) }),
+      record(1, { title, summary }),
     ]);
 
-    assert.equal(out.title.length, 500);
-    assert.equal(out.summary.length, 2000);
+    assert.equal(out.title, title);
+    assert.equal(out.summary, summary);
+    assert.deepEqual(Buffer.from(out.title), Buffer.from(title));
+    assert.deepEqual(Buffer.from(out.summary), Buffer.from(summary));
+  });
+
+  it('drops blank titles and records whose raw title or summary exceeds the wire limit', () => {
+    const out = normalizeHistoryRecords([
+      record(1, { title: ' \t\n ' }),
+      record(2, { title: 'T'.repeat(501) }),
+      record(3, { summary: 'S'.repeat(2001) }),
+      record(4, { title: 'T'.repeat(500), summary: 'S'.repeat(2000) }),
+    ]);
+
+    assert.deepEqual(
+      out.map((r) => r.dedupeKey),
+      ['conflict:acled:evt-4'],
+    );
+    assert.equal(out[0].title.length, 500);
+    assert.equal(out[0].summary.length, 2000);
   });
 
   it('passes the wire fields through and drops unknown keys', () => {

@@ -21,7 +21,7 @@ import {
 
 const ENV = {
   CONVEX_SITE_URL: 'https://example-deployment.convex.site',
-  RELAY_SHARED_SECRET: 'relay-secret',
+  RELAY_RETRACT_SECRET: 'relay-secret',
 };
 
 /** Capture the outgoing request without touching the network. */
@@ -179,7 +179,7 @@ describe('resolveRetractTarget', () => {
   it('derives the site URL from CONVEX_URL and trims trailing slashes', () => {
     const target = resolveRetractTarget({
       CONVEX_URL: 'https://example-deployment.convex.cloud/',
-      RELAY_SHARED_SECRET: 's',
+      RELAY_RETRACT_SECRET: 's',
     });
     assert.equal(target.ok, true);
     assert.equal(target.siteUrl, 'https://example-deployment.convex.site');
@@ -190,13 +190,11 @@ describe('resolveRetractTarget', () => {
     assert.equal(target.ok, false);
     assert.deepEqual(target.missing, [
       'CONVEX_SITE_URL (or CONVEX_URL)',
-      'RELAY_RETRACT_SECRET (or RELAY_SHARED_SECRET)',
+      'RELAY_RETRACT_SECRET',
     ]);
   });
 
-  it('prefers the retraction-scoped secret over the seeder fleet secret', () => {
-    // Once an operator separates the two, the widely-distributed fleet secret
-    // must stop being what deletes from the archive.
+  it('requires the retraction-scoped secret and ignores the seeder fleet secret', () => {
     const both = resolveRetractTarget({
       CONVEX_SITE_URL: ENV.CONVEX_SITE_URL,
       RELAY_SHARED_SECRET: 'fleet-secret',
@@ -204,12 +202,12 @@ describe('resolveRetractTarget', () => {
     });
     assert.equal(both.secret, 'retract-only-secret');
 
-    // ...and falls back cleanly so setting it is a rollout, not a migration.
-    const fallback = resolveRetractTarget({
+    const fleetOnly = resolveRetractTarget({
       CONVEX_SITE_URL: ENV.CONVEX_SITE_URL,
       RELAY_SHARED_SECRET: 'fleet-secret',
     });
-    assert.equal(fallback.secret, 'fleet-secret');
+    assert.equal(fleetOnly.ok, false);
+    assert.deepEqual(fleetOnly.missing, ['RELAY_RETRACT_SECRET']);
   });
 });
 
@@ -301,7 +299,7 @@ describe('runRetractCli', () => {
 
     assert.equal(code, 1);
     assert.equal(calls.length, 0);
-    assert.match(lines.join('\n'), /RELAY_SHARED_SECRET/);
+    assert.match(lines.join('\n'), /RELAY_RETRACT_SECRET/);
   });
 
   it('surfaces a relay rejection as a non-zero exit with the body', async () => {

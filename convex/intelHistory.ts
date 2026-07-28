@@ -574,16 +574,21 @@ export const restore = internalMutation({
     let removed = 0;
     const notRetracted: string[] = [];
     for (const dedupeKey of dedupeKeys) {
-      const tombstone = await ctx.db
+      // The schema intentionally does not claim uniqueness for this index.
+      // Remove every matching tombstone so legacy or manually introduced
+      // duplicates cannot leave the key partially retracted.
+      const tombstones = await ctx.db
         .query("intelHistoryRetractions")
         .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
-        .first();
-      if (!tombstone) {
+        .collect();
+      if (tombstones.length === 0) {
         notRetracted.push(dedupeKey);
         continue;
       }
-      await ctx.db.delete(tombstone._id);
-      removed += 1;
+      for (const tombstone of tombstones) {
+        await ctx.db.delete(tombstone._id);
+        removed += 1;
+      }
     }
 
     // Names the keys for the same reason `retract` does: this is the operation

@@ -120,14 +120,19 @@ function trimmedString(value, maxChars) {
 }
 
 /**
- * Sanitize + clamp a run's candidate records. Pure — no env, no clock.
+ * Validate + sanitize a run's candidate records. Pure — no env, no clock.
  *
  * Drops anything missing the three required fields (`dedupeKey`,
- * `title`, a finite `occurredAt`), truncates the two free-text fields,
+ * a nonblank `title`, a finite `occurredAt`) or exceeding a wire limit,
  * whitelists the wire shape, and keeps only the newest
  * HISTORY_MAX_RECORDS_PER_RUN by `occurredAt`. Output is sorted
  * newest-first with a `dedupeKey` tiebreak so a run that re-emits the
  * same records chunks them identically.
+ *
+ * Accepted `title` and `summary` values are preserved exactly. They are
+ * evidence fields exposed to agents, so trimming or truncating them would
+ * silently rewrite the source record. Limits are validation boundaries:
+ * over-long records are dropped rather than altered.
  *
  * `dedupeKey` is the caller's responsibility — the convention is
  * `${domain}:${resource}:${stableId}`. This helper never fabricates an
@@ -149,13 +154,15 @@ export function normalizeHistoryRecords(records) {
     // distinct events collapse into a single stored row. Over-long keys are a
     // caller bug, so drop the record (below) rather than corrupt the identity.
     const dedupeKey = trimmedString(raw.dedupeKey, Number.POSITIVE_INFINITY);
-    const title = trimmedString(raw.title, TITLE_MAX_CHARS);
+    const title = typeof raw.title === 'string' ? raw.title : '';
+    const summary = typeof raw.summary === 'string' ? raw.summary : undefined;
     const occurredAt = typeof raw.occurredAt === 'number' ? raw.occurredAt : Number.NaN;
-    if (!dedupeKey || !title || !Number.isFinite(occurredAt)) continue;
+    if (!dedupeKey || !title.trim() || !Number.isFinite(occurredAt)) continue;
     if (dedupeKey.length > DEDUPE_KEY_MAX_CHARS) continue;
+    if (title.length > TITLE_MAX_CHARS) continue;
+    if (summary !== undefined && summary.length > SUMMARY_MAX_CHARS) continue;
 
     const record = { dedupeKey, title, occurredAt };
-    const summary = trimmedString(raw.summary, SUMMARY_MAX_CHARS);
     if (summary) record.summary = summary;
     const country = trimmedString(raw.country, 8);
     if (country) record.country = country;

@@ -1202,6 +1202,41 @@ describe("intelHistory.restore", () => {
     expect(replay).toEqual({ inserted: 1, skipped: 0, retracted: 0 });
   });
 
+  test("removes every duplicate tombstone before allowing append", async () => {
+    const t = await intelHistoryAppendTest();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("intelHistoryRetractions", {
+        dedupeKey: "duplicate-tombstone",
+        retractedAt: NOW - DAY,
+        reason: "first",
+      });
+      await ctx.db.insert("intelHistoryRetractions", {
+        dedupeKey: "duplicate-tombstone",
+        retractedAt: NOW,
+        reason: "duplicate",
+      });
+    });
+
+    const res = await t.mutation(internal.intelHistory.restore, {
+      dedupeKeys: ["duplicate-tombstone"],
+    });
+    expect(res).toEqual({ removed: 2, notRetracted: [] });
+
+    const tombstones = await t.run((ctx) =>
+      ctx.db
+        .query("intelHistoryRetractions")
+        .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", "duplicate-tombstone"))
+        .collect(),
+    );
+    expect(tombstones).toHaveLength(0);
+
+    const replay = await t.mutation(
+      internal.intelHistory.append,
+      appendArgs([record({ dedupeKey: "duplicate-tombstone" })]),
+    );
+    expect(replay).toEqual({ inserted: 1, skipped: 0, retracted: 0 });
+  });
+
   test("reports keys that were never retracted", async () => {
     const t = await intelHistoryAppendTest();
     const res = await t.mutation(internal.intelHistory.restore, {
@@ -1301,17 +1336,22 @@ describe("intelHistory.prune — retraction tombstones", () => {
 
 describe("POST /relay/intel-history/retract", () => {
   let originalRelay: string | undefined;
+  let originalRetract: string | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     originalRelay = process.env.RELAY_SHARED_SECRET;
+    originalRetract = process.env.RELAY_RETRACT_SECRET;
     process.env.RELAY_SHARED_SECRET = RELAY_SECRET;
+    process.env.RELAY_RETRACT_SECRET = RELAY_SECRET;
   });
   afterEach(() => {
     vi.useRealTimers();
     if (originalRelay === undefined) delete process.env.RELAY_SHARED_SECRET;
     else process.env.RELAY_SHARED_SECRET = originalRelay;
+    if (originalRetract === undefined) delete process.env.RELAY_RETRACT_SECRET;
+    else process.env.RELAY_RETRACT_SECRET = originalRetract;
   });
 
   function post(body: unknown, secret: string | null = RELAY_SECRET) {
@@ -1735,17 +1775,22 @@ describe("intelHistory.listRetractions — truncation signal", () => {
 
 describe("relay retraction routes — validation edges", () => {
   let originalRelay: string | undefined;
+  let originalRetract: string | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     originalRelay = process.env.RELAY_SHARED_SECRET;
+    originalRetract = process.env.RELAY_RETRACT_SECRET;
     process.env.RELAY_SHARED_SECRET = RELAY_SECRET;
+    process.env.RELAY_RETRACT_SECRET = RELAY_SECRET;
   });
   afterEach(() => {
     vi.useRealTimers();
     if (originalRelay === undefined) delete process.env.RELAY_SHARED_SECRET;
     else process.env.RELAY_SHARED_SECRET = originalRelay;
+    if (originalRetract === undefined) delete process.env.RELAY_RETRACT_SECRET;
+    else process.env.RELAY_RETRACT_SECRET = originalRetract;
   });
 
   function post(body: unknown, secret: string | null = RELAY_SECRET) {
@@ -1822,69 +1867,63 @@ describe("relay retraction routes — validation edges", () => {
     expect((await res.json()).error).toMatch(/no identifier resolved/i);
   });
 
-  test("a set RELAY_RETRACT_SECRET takes the fleet secret's delete power away", async () => {
+  test("RELAY_RETRACT_SECRET keeps the fleet secret from gaining delete power", async () => {
     // RELAY_SHARED_SECRET is held by every Railway seeder that appends
     // history. Separating the credentials is only worth anything if setting
     // the retraction secret actually CLOSES the fleet secret on these routes —
     // a fallback that kept accepting both would be security theatre.
-    const originalRetract = process.env.RELAY_RETRACT_SECRET;
     process.env.RELAY_RETRACT_SECRET = "retract-only-secret";
-    try {
-      const t = await intelHistoryAppendTest();
+    const t = await intelHistoryAppendTest();
 
-      const withFleet = await t.fetch(
-        "/relay/intel-history/retract",
-        post({ dedupeKeys: ["k"], reason: "r" }, RELAY_SECRET),
-      );
-      expect(withFleet.status).toBe(401);
+    const withFleet = await t.fetch(
+      "/relay/intel-history/retract",
+      post({ dedupeKeys: ["k"], reason: "r" }, RELAY_SECRET),
+    );
+    expect(withFleet.status).toBe(401);
 
-      const withRetract = await t.fetch(
-        "/relay/intel-history/retract",
-        post({ dedupeKeys: ["k"], reason: "r" }, "retract-only-secret"),
-      );
-      expect(withRetract.status).toBe(200);
+    const withRetract = await t.fetch(
+      "/relay/intel-history/retract",
+      post({ dedupeKeys: ["k"], reason: "r" }, "retract-only-secret"),
+    );
+    expect(withRetract.status).toBe(200);
 
-      // Ingest is unaffected — the seeders keep appending with the fleet
-      // secret, which is the whole reason this is a rollout and not a
-      // migration.
-      const ingest = await t.fetch(
-        "/relay/intel-history",
-        post(
-          {
-            domain: "conflict",
-            resource: "conflict-events",
-            runId: "run-1",
-            records: [record({ dedupeKey: "fresh" })],
-          },
-          RELAY_SECRET,
-        ),
-      );
-      expect(ingest.status).toBe(200);
-    } finally {
-      if (originalRetract === undefined) delete process.env.RELAY_RETRACT_SECRET;
-      else process.env.RELAY_RETRACT_SECRET = originalRetract;
-    }
+    // Ingest is unaffected — the seeders keep appending with the fleet secret.
+    const ingest = await t.fetch(
+      "/relay/intel-history",
+      post(
+        {
+          domain: "conflict",
+          resource: "conflict-events",
+          runId: "run-1",
+          records: [record({ dedupeKey: "fresh" })],
+        },
+        RELAY_SECRET,
+      ),
+    );
+    expect(ingest.status).toBe(200);
   });
 
-  test("falls back to the fleet secret when no retraction secret is set", async () => {
-    const originalRetract = process.env.RELAY_RETRACT_SECRET;
+  test("fails closed instead of falling back to the fleet secret", async () => {
     delete process.env.RELAY_RETRACT_SECRET;
-    try {
-      const t = await intelHistoryAppendTest();
+    const t = await intelHistoryAppendTest();
+    for (const [path, body] of [
+      ["/relay/intel-history/retract", { dedupeKeys: ["k"], reason: "r" }],
+      ["/relay/intel-history/restore", { dedupeKeys: ["k"] }],
+      ["/relay/intel-history/retractions", {}],
+    ] as const) {
       const res = await t.fetch(
-        "/relay/intel-history/retract",
-        post({ dedupeKeys: ["k"], reason: "r" }, RELAY_SECRET),
+        path,
+        post(body, RELAY_SECRET),
       );
-      expect(res.status).toBe(200);
-    } finally {
-      if (originalRetract !== undefined) process.env.RELAY_RETRACT_SECRET = originalRetract;
+      expect(res.status, `${path} must require RELAY_RETRACT_SECRET`).toBe(401);
     }
   });
 
-  test("rejects every retraction route when the relay secret is unconfigured", async () => {
+  test("rejects every intel-history route when its credential is unconfigured", async () => {
     // Fail closed: an unconfigured deployment must not accept archive
     // deletions from anyone who guesses the path.
     delete process.env.RELAY_SHARED_SECRET;
+    delete process.env.RELAY_RETRACT_SECRET;
     const t = convexTest(schema, modules);
 
     for (const [path, body] of [

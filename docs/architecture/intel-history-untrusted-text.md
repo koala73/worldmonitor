@@ -146,12 +146,12 @@ false intelligence, because the real rows survived alongside it. Retraction
 deletes rows and permanently suppresses their identities, and that direction
 does not undo — `restore` cannot resurrect a row whose embedding is gone.
 
-So the three retraction routes read `RELAY_RETRACT_SECRET` when it is set, and
-fall back to `RELAY_SHARED_SECRET` when it is not. The fallback makes adopting
-it a rollout rather than a migration, and it is **one-way**: once the retraction
-secret exists, the fleet secret no longer opens these routes. Set it on the
-Convex deployment and in the operator's environment; do **not** put it on the
-seeder services, which is the entire point. Ingest is unaffected either way.
+The three retraction routes require `RELAY_RETRACT_SECRET` exclusively. There
+is no `RELAY_SHARED_SECRET` fallback: if the dedicated credential is absent,
+the routes fail closed rather than granting the seeder fleet deletion
+authority. Set it on the Convex deployment and in the operator's environment;
+do **not** put it on the seeder services, which is the entire point. Ingest
+continues to require `RELAY_SHARED_SECRET`.
 
 ### Why deletion alone would not have worked
 
