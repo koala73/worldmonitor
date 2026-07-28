@@ -4,6 +4,16 @@ import { PRODUCT_CATALOG } from "../config/productCatalog";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIUserAbortError,
+  AuthenticationError,
+  InternalServerError,
+  NotFoundError,
+  RateLimitError,
+} from "dodopayments";
+import {
+  isDefinitiveDodoNotFound,
   PENDING_PAYMENT_BLOCK_WINDOW_MS,
 } from "../payments/billing";
 import { isNewerEvent } from "../payments/subscriptionHelpers";
@@ -140,6 +150,46 @@ describe("malformed webhook transactional rollback", () => {
     expect(subs[0]?.status).toBe("active");
     expect(ents).toHaveLength(1);
     expect(ents[0]?.planKey).toBe("pro_monthly");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5380 Medium-10: Dodo error contract, against REAL SDK error instances
+// ---------------------------------------------------------------------------
+
+// `isDefinitiveDodoNotFound` decides whether reconciliation may downgrade a
+// paying customer. Every existing test drives it through the action's
+// `errorInjectionForTest` seam, which throws a hand-rolled
+// `Object.assign(new Error(), { status: 404 | 500 })` — so the assertions only
+// ever proved our own stub matches our own reader. billing.test.ts additionally
+// replaces the whole `dodopayments` module with a two-property class, so the
+// real error classes are absent there by construction.
+//
+// This table feeds the classifier the SDK's actual exported errors. It fails if
+// the vendor renames `.status`, moves to a different error hierarchy, or ever
+// starts stamping a status onto a connection/timeout error — each of which
+// would silently convert a transient blip into a customer downgrade.
+describe("dodo error classification (real SDK instances)", () => {
+  test("a real NotFoundError is the ONLY definitive-404 shape", () => {
+    expect(isDefinitiveDodoNotFound(new NotFoundError(404, { detail: "gone" }, "Not Found", {})))
+      .toBe(true);
+  });
+
+  test.each([
+    ["AuthenticationError (401)", new AuthenticationError(401, {}, "Unauthorized", {})],
+    ["RateLimitError (429)", new RateLimitError(429, {}, "Too Many Requests", {})],
+    ["InternalServerError (500)", new InternalServerError(500, {}, "Server Error", {})],
+    ["APIConnectionError (no status)", new APIConnectionError({ message: "socket hang up" })],
+    ["APIConnectionTimeoutError (no status)", new APIConnectionTimeoutError({ message: "timed out" })],
+    ["APIUserAbortError (no status)", new APIUserAbortError()],
+  ])("%s must NOT downgrade — it is transient/ambiguous", (_label, err) => {
+    expect(isDefinitiveDodoNotFound(err)).toBe(false);
+  });
+
+  test("non-Error throwables never downgrade", () => {
+    for (const value of [null, undefined, 404, "404", { status: "404" }, {}]) {
+      expect(isDefinitiveDodoNotFound(value)).toBe(false);
+    }
   });
 });
 
