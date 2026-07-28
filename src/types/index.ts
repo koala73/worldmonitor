@@ -64,7 +64,7 @@ export interface DeductContextDetail {
   autoSubmit?: boolean;
 }
 
-export type PropagandaRisk = 'low' | 'medium' | 'high';
+export type PropagandaRisk = 'low' | 'medium' | 'high' | 'unknown';
 
 export interface Feed {
   name: string;

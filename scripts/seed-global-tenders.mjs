@@ -34,7 +34,7 @@ const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/open
 // Callers with a long per-attempt timeout must lower maxRetries accordingly.
 // Sources run in parallel, so the section pays the slowest source, not the sum.
 async function fetchResponse(url, options = {}) {
-  const { timeoutMs = 20_000, maxRetries = 2, ...fetchOptions } = options;
+  const { timeoutMs = 20_000, maxRetries = 2, retry429 = true, ...fetchOptions } = options;
   return withRetry(async () => {
     const response = await fetch(url, {
       ...fetchOptions,
@@ -44,7 +44,11 @@ async function fetchResponse(url, options = {}) {
     if (!response.ok) {
       // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
       // 4xx responses fail fast, and Retry-After is capped before it reaches withRetry.
-      throw httpRetryError(response);
+      const error = httpRetryError(response);
+      // Quota-style rate limits (SAM.gov's small daily budget) do not clear in
+      // seconds — in-run retries only burn more of the budget (#5444).
+      if (!retry429 && response.status === 429) error.nonRetryable = true;
+      throw error;
     }
     return response;
   }, maxRetries, 1000);
@@ -80,14 +84,48 @@ function tedDate(value) {
   return new Date(value).toISOString().slice(0, 10).replaceAll('-', '');
 }
 
-export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn = fetchJson } = {}) {
+// SAM.gov enforces a small per-key daily request quota (10/day for
+// non-federal keys). An hourly seed that fetches every tick — worse, with
+// in-run 429 retries — burns ~72 requests/day and pins the source at HTTP 429
+// permanently (#5444). Spread the budget instead: only hit the API when the
+// last success is older than this interval (~9.6 requests/day). Because the
+// enclosing bundle only checks this member hourly, successful SAM publishes
+// land roughly every 180 minutes; source health allows one more hourly gate
+// for normal scheduling jitter.
+const SAM_MIN_FETCH_INTERVAL_MS = 150 * 60_000;
+
+function previousSamResult(previousSnapshot, now) {
+  const status = (previousSnapshot?.sourceStatuses || []).find((entry) => entry?.source === 'sam');
+  const lastSuccessMs = Date.parse(status?.lastSuccessfulAt || '');
+  if (!status || !Number.isFinite(lastSuccessMs)) return null;
+  const records = (previousSnapshot?.tenders || [])
+    .filter((tender) => tender.source === 'sam' && isOpenOpportunity(tender, now));
+  return { status, records, lastSuccessMs };
+}
+
+export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn = fetchJson, previousSnapshot = null } = {}) {
   if (!apiKey) return { records: [], status: sourceStatus('sam', 'unavailable', [], 'SAM_GOV_API_KEY is not configured', now) };
+  const prior = previousSamResult(previousSnapshot, now);
+  if (prior && now - prior.lastSuccessMs < SAM_MIN_FETCH_INTERVAL_MS) {
+    // Within budget interval: carry the fresh-enough prior result through
+    // without spending a request. lastSuccessfulAt keeps its real value, so
+    // health staleness accounting is unaffected. Only an already-healthy
+    // status may be normalized; a paced stale/error status must remain
+    // degraded until a real SAM request succeeds.
+    const status = prior.status.state === 'ok'
+      ? { ...prior.status, state: 'ok', recordCount: prior.records.length, stale: false, paced: true }
+      : { ...prior.status, recordCount: prior.records.length, paced: true };
+    return {
+      records: prior.records,
+      status,
+    };
+  }
   const url = new URL('https://api.sam.gov/opportunities/v2/search');
   url.searchParams.set('api_key', apiKey);
   url.searchParams.set('postedFrom', utcDate(now - 14 * 86400_000));
   url.searchParams.set('postedTo', utcDate(now));
   url.searchParams.set('limit', String(MAX_PER_SOURCE));
-  const payload = await fetchJsonFn(url);
+  const payload = await fetchJsonFn(url, { retry429: false });
   if (!Array.isArray(payload?.opportunitiesData)) throw new Error('SAM response is missing opportunitiesData');
   const records = payload.opportunitiesData.map(normalizeSamOpportunity).filter((tender) => isOpenOpportunity(tender, now));
   return { records, status: sourceStatus('sam', 'ok', records, '', now) };
@@ -253,7 +291,7 @@ const SOURCE_ADAPTERS = [
 
 export async function fetchGlobalTenders({ previousSnapshot = null, adapters = SOURCE_ADAPTERS, now = Date.now() } = {}) {
   const attemptedAt = new Date(now).toISOString();
-  const settled = await Promise.allSettled(adapters.map(([, fetchSource]) => fetchSource({ now })));
+  const settled = await Promise.allSettled(adapters.map(([, fetchSource]) => fetchSource({ now, previousSnapshot })));
   return mergeTenderSourceResults({
     settled,
     sourceNames: adapters.map(([source]) => source),

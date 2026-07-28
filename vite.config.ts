@@ -129,7 +129,9 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
   Investments: 'panels-economy', MacroTiles: 'panels-economy',
   NationalDebt: 'panels-economy', SanctionsPressure: 'panels-economy',
-  SupplyChain: 'panels-economy', TradePolicy: 'panels-economy',
+  ChinaActivityNowcast: 'panels-economy', ChinaCorridor: 'panels-economy',
+  SupplyChain: 'panels-economy',
+  TradePolicy: 'panels-economy',
   // Country briefs / signals / monitors / agent surfaces.
   // CorrelationPanel base lives here, so all *Correlation consumers MUST stay
   // in this cluster — splitting them across clusters caused TDZ on init.
@@ -1633,12 +1635,15 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
-        // OpenSky Network - Aircraft tracking (military flight detection)
+        // OpenSky Network - Aircraft tracking (military flight detection).
+        // Prod routes /api/opensky through the relay (api/opensky.js), which calls
+        // OpenSky's states/all endpoint. Dev has no relay, so proxy straight to
+        // states/all — stripping the prefix to '' would hit the invalid /api root (404).
         '/api/opensky': {
           target: 'https://opensky-network.org/api',
           changeOrigin: true,
           secure: true,
-          rewrite: (path) => path.replace(/^\/api\/opensky/, ''),
+          rewrite: (path) => path.replace(/^\/api\/opensky/, '/states/all'),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('OpenSky proxy error:', err.message);

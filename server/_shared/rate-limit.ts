@@ -144,16 +144,19 @@ export interface RateLimitOptions {
    * black-hole the whole site. (#3531)
    */
   failClosed?: boolean;
-}
-
-export interface EndpointRateLimitOptions extends RateLimitOptions {
   /**
-   * Optional trusted server-derived user ID for endpoint policies that should
-   * isolate authenticated principals sharing one public IP. Callers must never
-   * pass a raw client-controlled header here. The limiter owns the namespace
-   * prefix so user IDs cannot collide with anonymous IP buckets.
+   * Optional trusted server-derived user ID for policies that should isolate
+   * authenticated principals sharing one public IP. Callers must never pass a
+   * raw client-controlled header here. The limiter owns the namespace prefix
+   * so user IDs cannot collide with anonymous IP buckets.
    */
   principalUserId?: string;
+}
+
+export type EndpointRateLimitOptions = RateLimitOptions;
+
+function getPrincipalRateLimitIdentifier(principalUserId?: string): string | null {
+  return principalUserId ? `user:${principalUserId}` : null;
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
@@ -166,10 +169,21 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  const ip = getClientIp(request);
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    getClientIp(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
+    const { success, limit, reset } = await limitWithFallback(
+      rl,
+      identifier,
+      `rl:fw:${identifier}`,
+      GLOBAL_RATE_LIMIT,
+      GLOBAL_RATE_WINDOW_SECONDS,
+    );
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
@@ -228,12 +242,11 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
-  // inline Upstash INCR. Gateway now enforces the same budget with per-IP
-  // keying in checkEndpointRateLimit.
+  // inline Upstash INCR. Gateway preserves the same budget while using a
+  // trusted paid-user principal when available, otherwise the client IP.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
   // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
-  // Per-IP keying matches run-scenario's production behavior. Pro-identity
-  // primitive deferred (checkScopedRateLimit available if needed).
+  // It follows the same trusted-principal-or-IP attribution contract.
   '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
   // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
@@ -253,6 +266,14 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // resolves edge-function paths via api/api-route-exceptions.json instead
   // of the OpenAPI specs.
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
+  // Docs MCP facade (`api/docs-mcp.ts`, external-protocol exception — serves
+  // /docs/mcp, proxying the Mintlify docs MCP server and lifting its
+  // protocol-level tool-call failures into proper JSON-RPC error objects).
+  // Anonymous by design (upstream is fully public), so the per-IP minute
+  // limit is the whole abuse defence; 60/min mirrors the MCP public-method
+  // posture. Enforced in-handler via `checkScopedRateLimit`, same pattern as
+  // /api/mcp-proxy.
+  '/api/docs-mcp': { limit: 60, window: '60 s' },
   // A2A concierge endpoint (`api/a2a.ts`, external-protocol exception —
   // JSON-RPC shape dictated by the A2A spec, served at /a2a). Anonymous and
   // quota-free by design (routes over the public tool catalog + public
@@ -389,9 +410,9 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
 
-  const identifier = opts.principalUserId
-    ? `user:${opts.principalUserId}`
-    : `ip:${getClientIp(request)}`;
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    `ip:${getClientIp(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS

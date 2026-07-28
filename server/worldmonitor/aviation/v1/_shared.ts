@@ -14,6 +14,8 @@ import {
 } from '../../../../src/config/airports';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 export { parseStringArray } from '../../../_shared/parse-string-array';
 
 // ---------- Constants ----------
@@ -515,7 +517,10 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
       notamResult = seedNotam;
       fromSeed = true;
     }
-  } catch {}
+  } catch (err) {
+    console.warn(`[Aviation] NOTAM seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'seed-read' } });
+  }
 
   if (!fromSeed && process.env.ICAO_API_KEY) {
     try {
@@ -532,6 +537,7 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
       );
     } catch (err) {
       console.warn(`[Aviation] NOTAM fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'live-fetch' } });
     }
   }
 

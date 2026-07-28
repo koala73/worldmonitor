@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import WelcomeApp from './WelcomeApp.tsx';
-import { currentLanguageBase, initI18n } from './i18n';
+import { effectiveWelcomeContentLanguage, initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
 import { clearWelcomeRoot } from './welcome-root';
@@ -37,7 +37,7 @@ initI18n({ metaPrefix: 'welcome.meta' }).then(() => {
   );
   if (
     rootElement.dataset.wmPrerendered === 'welcome' &&
-    rootElement.dataset.wmPrerenderLang === currentLanguageBase()
+    rootElement.dataset.wmPrerenderLang === effectiveWelcomeContentLanguage()
   ) {
     scheduleWelcomeHydration(() => hydrateRoot(rootElement, app));
     return;

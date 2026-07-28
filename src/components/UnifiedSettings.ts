@@ -16,6 +16,13 @@ import { t } from '@/services/i18n';
 import { createSettingsButton } from '@/components/settings-button';
 import { confirmDialog } from '@/components/confirm-dialog';
 import type { UnifiedSettingsTabId } from '@/components/settings-types';
+import {
+  getPanelToggleA11yState,
+  getSettingsTabNavigationIndex,
+  normalizeSettingsTab,
+  restoreSettingsToggleFocus,
+  updateSettingsTabSelection,
+} from '@/components/unified-settings-interactions';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
 import type { PanelConfig } from '@/types';
@@ -25,7 +32,9 @@ import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
+import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -83,6 +92,8 @@ export class UnifiedSettings {
   private newlyCreatedKey: string | null = null;
   private planLimitNotices: ApiPlanLimitNotice[] = [];
   private planLimitNoticesLoading = false;
+  // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
+  private readonly businessSeatsSection: BusinessSeatsSection;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -91,6 +102,7 @@ export class UnifiedSettings {
   /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
   private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeSubscription: (() => void) | null = null;
   // Bounded "entitlement snapshot might still arrive" window. Starts false
   // on open() when currentState is null, flips true on first snapshot OR
   // after a fallback timeout so signed-in free users aren't stranded on an
@@ -108,6 +120,7 @@ export class UnifiedSettings {
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-label', t('header.settings'));
+    this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
 
     this.resetPanelDraft();
 
@@ -215,15 +228,31 @@ export class UnifiedSettings {
           window.open('/pro', '_blank', 'noopener,noreferrer');
           return;
         }
-        this.toggleDraftPanel(panelItem.dataset.panel);
+        const panelKey = panelItem.dataset.panel;
+        const shouldRestoreFocus = document.activeElement === panelItem;
+        this.toggleDraftPanel(panelKey);
+        restoreSettingsToggleFocus(
+          shouldRestoreFocus,
+          this.overlay.querySelectorAll<HTMLElement>('.panel-toggle-item'),
+          'panel',
+          panelKey,
+        );
         return;
       }
 
       const sourceItem = target.closest<HTMLElement>('.source-toggle-item');
       if (sourceItem?.dataset.source) {
-        this.config.toggleSource(sourceItem.dataset.source);
+        const sourceName = sourceItem.dataset.source;
+        const shouldRestoreFocus = document.activeElement === sourceItem;
+        this.config.toggleSource(sourceName);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        restoreSettingsToggleFocus(
+          shouldRestoreFocus,
+          this.overlay.querySelectorAll<HTMLElement>('.source-toggle-item'),
+          'source',
+          sourceName,
+        );
         return;
       }
 
@@ -283,6 +312,18 @@ export class UnifiedSettings {
         return;
       }
 
+      const businessInviteBtn = target.closest<HTMLElement>('.business-seats-invite-btn');
+      if (businessInviteBtn) {
+        void this.businessSeatsSection.handleInvite();
+        return;
+      }
+
+      const businessRemoveBtn = target.closest<HTMLElement>('.business-seat-remove-btn');
+      if (businessRemoveBtn?.dataset.grantId) {
+        void this.businessSeatsSection.handleRemove(businessRemoveBtn.dataset.grantId);
+        return;
+      }
+
       const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
       if (mcpCopyUrlBtn?.dataset.copyValue) {
         const value = mcpCopyUrlBtn.dataset.copyValue;
@@ -322,7 +363,10 @@ export class UnifiedSettings {
   }
 
   public open(tab?: TabId): void {
-    if (tab) this.activeTab = tab;
+    const requestedTab = tab ?? this.activeTab;
+    this.activeTab = requestedTab === 'mcp-clients' && !hasFeature('mcpAccess')
+      ? 'settings'
+      : requestedTab;
     this.resetPanelDraft();
     // Seed entitlementReady BEFORE render() so the first paint of
     // renderUpgradeSection branches on the current snapshot state, not the
@@ -332,6 +376,7 @@ export class UnifiedSettings {
     this.overlay.classList.add('active');
     localStorage.setItem('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
+    (this.overlay.querySelector('.unified-settings-tabs') as HTMLElement)?.addEventListener('keydown', (e: KeyboardEvent) => this.handleKeyDown(e));
     track('settings-open', { tab: tab ?? 'default' });
 
     // Re-render API Keys panel when entitlements arrive (cold-load race:
@@ -351,6 +396,18 @@ export class UnifiedSettings {
       }
       this.replaceUpgradeSection();
     });
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = onSubscriptionChange(() => {
+      this.replaceUpgradeSection();
+      const sub = getSubscription();
+      if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+        void this.businessSeatsSection.load();
+      }
+    });
+    const sub = getSubscription();
+    if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+      void this.businessSeatsSection.load();
+    }
     // Bounded fallback: the entitlement listener can legitimately never
     // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
     // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
@@ -408,6 +465,8 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = null;
     if (this.entitlementReadyTimer) {
       clearTimeout(this.entitlementReadyTimer);
       this.entitlementReadyTimer = null;
@@ -436,6 +495,8 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = null;
     // Mirror close() — without this, a destroy() during the 12s fallback
     // window leaves the timer live; it fires after teardown and calls
     // replaceUpgradeSection() against a detached overlay (no-op via the
@@ -450,6 +511,24 @@ export class UnifiedSettings {
     this.overlay.remove();
   }
 
+  private handleKeyDown(e: KeyboardEvent): void {
+    if (!(e.target instanceof HTMLElement)) return;
+    const tablist = this.overlay.querySelector('.unified-settings-tabs');
+    if (!tablist || !tablist.contains(e.target)) return;
+    const tabs = Array.from(tablist.querySelectorAll<HTMLButtonElement>('button[role="tab"]'));
+    const currentIndex = tabs.indexOf(e.target.closest('button[role="tab"]') as HTMLButtonElement);
+    const nextIndex = getSettingsTabNavigationIndex(e.key, currentIndex, tabs.length);
+    if (nextIndex === null) return;
+
+    e.preventDefault();
+
+    const nextTab = tabs[nextIndex];
+    const tabId = nextTab?.dataset.tab as TabId | undefined;
+    if (!tabId || !nextTab) return;
+    this.switchTab(tabId);
+    nextTab.focus();
+  }
+
   private render(): void {
     this.prefsCleanup?.();
     this.prefsCleanup = null;
@@ -457,7 +536,6 @@ export class UnifiedSettings {
     this.notifCleanup = null;
     this.pendingNotifs = null;
 
-    const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
     const isSignedIn = !this.config.isDesktopApp && (getAuthState().user !== null);
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
@@ -468,6 +546,17 @@ export class UnifiedSettings {
     const notifs = showNotificationsTab
       ? renderNotificationsSettings({ isSignedIn })
       : null;
+    const showMcpClientsTab = hasFeature('mcpAccess');
+    const availableTabs: TabId[] = [
+      'settings',
+      'panels',
+      'sources',
+      ...(showNotificationsTab ? ['notifications' as const] : []),
+      'api-keys',
+      ...(showMcpClientsTab ? ['mcp-clients' as const] : []),
+    ];
+    this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
+    const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
 
     setTrustedHtml(this.overlay, trustedHtml(`
       <div class="modal unified-settings-modal">
@@ -476,12 +565,12 @@ export class UnifiedSettings {
           <button class="modal-close unified-settings-close" aria-label="Close">\u00d7</button>
         </div>
         <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
-          <button class="${tabClass('settings')}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
-          <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
-          <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
-          ${showNotificationsTab ? `<button class="${tabClass('notifications')}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
-          <button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
-          ${hasFeature('mcpAccess') ? `<button class="${tabClass('mcp-clients')}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
+          <button class="${tabClass('settings')}" tabindex="${this.activeTab === 'settings' ? 0 : -1}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
+          <button class="${tabClass('panels')}" tabindex="${this.activeTab === 'panels' ? 0 : -1}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
+          <button class="${tabClass('sources')}" tabindex="${this.activeTab === 'sources' ? 0 : -1}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
+          ${showNotificationsTab ? `<button class="${tabClass('notifications')}" tabindex="${this.activeTab === 'notifications' ? 0 : -1}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
+          <button class="${tabClass('api-keys')}" tabindex="${this.activeTab === 'api-keys' ? 0 : -1}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
+          ${showMcpClientsTab ? `<button class="${tabClass('mcp-clients')}" tabindex="${this.activeTab === 'mcp-clients' ? 0 : -1}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
@@ -523,7 +612,7 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
           ${this.renderApiKeysContent()}
         </div>
-        ${hasFeature('mcpAccess') ? `
+        ${showMcpClientsTab ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
           ${this.renderMcpClientsContent()}
         </div>
@@ -572,15 +661,11 @@ export class UnifiedSettings {
   private switchTab(tab: TabId): void {
     this.activeTab = tab;
 
-    this.overlay.querySelectorAll('.unified-settings-tab').forEach(el => {
-      const isActive = (el as HTMLElement).dataset.tab === tab;
-      el.classList.toggle('active', isActive);
-      el.setAttribute('aria-selected', String(isActive));
-    });
-
-    this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
-      el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
-    });
+    updateSettingsTabSelection(
+      this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab'),
+      this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab-panel'),
+      tab,
+    );
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();
@@ -619,6 +704,18 @@ export class UnifiedSettings {
     if (!isEntitled() && hasPremiumAccess()) {
       return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
     }
+    const sub = getSubscription();
+    const billingState = deriveBillingUxState(sub, getEntitlementState(), Date.now());
+    if (billingState === 'lapsed') {
+      const planName = sub?.displayName ?? 'Pro';
+      return `
+        <div class="upgrade-pro-section upgrade-pro-lapsed" data-billing-state="lapsed">
+          <div class="upgrade-pro-title">${escapeHtml(t('components.billingState.resubscribe'))}: ${escapeHtml(planName)}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.lapsedDesc'))}</div>
+          <a class="upgrade-pro-cta-link" href="${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
+        </div>
+      `;
+    }
     // Signed-in user whose Convex entitlement snapshot has not arrived yet
     // AND whose bounded-wait window has not expired. Rendering "Upgrade to
     // Pro" in this window is how paying users click through to
@@ -642,9 +739,15 @@ export class UnifiedSettings {
     if (isEntitled()) {
       const sub = getSubscription();
       const planName = sub?.displayName ?? 'Pro';
-      const statusColor = sub?.status === 'active' ? '#22c55e' : sub?.status === 'on_hold' ? '#eab308' : '#ef4444';
-      const statusBorderColor = sub?.status === 'active' ? '#22c55e33' : sub?.status === 'on_hold' ? '#eab30833' : '#ef444433';
-      const statusBgColor = sub?.status === 'active' ? '#22c55e0a' : sub?.status === 'on_hold' ? '#eab3080a' : '#ef44440a';
+      // A Business Pro grant invitee has no own subscription row (sub === null)
+      // but IS entitled (we're inside the isEntitled() branch) — treat that as
+      // 'active' rather than falling through to the red "problem" color, which
+      // the ternaries below would otherwise do for every status value that
+      // isn't literally 'active'/'on_hold'.
+      const effectiveStatus = sub?.status ?? 'active';
+      const statusColor = effectiveStatus === 'active' ? '#22c55e' : effectiveStatus === 'on_hold' ? '#eab308' : '#ef4444';
+      const statusBorderColor = effectiveStatus === 'active' ? '#22c55e33' : effectiveStatus === 'on_hold' ? '#eab30833' : '#ef444433';
+      const statusBgColor = effectiveStatus === 'active' ? '#22c55e0a' : effectiveStatus === 'on_hold' ? '#eab3080a' : '#ef44440a';
 
       let statusLine = '';
       if (sub?.currentPeriodEnd) {
@@ -660,6 +763,12 @@ export class UnifiedSettings {
         }
       }
 
+      // An invitee holding a Business Pro grant has Pro features but no own
+      // subscription row — they hold a grant, not a subscription, so the
+      // billing surface remains owner-only. Show their plan status without
+      // the Manage Billing CTA that would 404 against Dodo.
+      const hasOwnSubscription = sub !== null;
+
       return `
         <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
@@ -668,8 +777,9 @@ export class UnifiedSettings {
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
-          <button class="manage-billing-btn">Manage Billing</button>
+          ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
+        ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
     }
 
@@ -702,6 +812,9 @@ export class UnifiedSettings {
       </div>
     `;
   }
+
+  // Business Pro seats (#4634/#4635) state/render/handlers live in
+  // BusinessSeatsSection — see this.businessSeatsSection.
 
   private handleUpgradeClick(): void {
     // Defense in depth: the upgrade CTA can only be clicked when either (a)
@@ -800,12 +913,13 @@ export class UnifiedSettings {
       const locked = !entitled;
       const changed = !locked && savedSettings[key]?.enabled !== panel.enabled;
       const displayName = this.config.getLocalizedPanelName(key, resolvedPanel.name ?? panel.name);
+      const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
       return `
-        <div class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" aria-pressed="${panel.enabled && !locked}" ${locked ? 'data-pro-locked="1"' : ''}>
-          <div class="panel-toggle-checkbox">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
+        <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
+          <div  class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
           <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
-          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge">PRO</span>' : ''}
-        </div>
+          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
+        </button>
       `;
     }).join(''), "legacy direct innerHTML migration"));
 
@@ -975,10 +1089,10 @@ export class UnifiedSettings {
       const isEnabled = !disabled.has(source);
       const escaped = escapeHtml(source);
       return `
-        <div class="source-toggle-item ${isEnabled ? 'active' : ''}" data-source="${escaped}">
-          <div class="source-toggle-checkbox">${isEnabled ? '\u2713' : ''}</div>
+        <button type="button" class="source-toggle-item ${isEnabled ? 'active' : ''}" aria-pressed="${isEnabled}" data-source="${escaped}">
+          <div class="source-toggle-checkbox" aria-hidden="true">${isEnabled ? '\u2713' : ''}</div>
           <span class="source-toggle-label">${escaped}</span>
-        </div>
+        </button>
       `;
     }).join(''), "legacy direct innerHTML migration"));
   }
@@ -1385,8 +1499,11 @@ export class UnifiedSettings {
       return `<span class="mcp-clients-quota-loading">Loading quota...</span>`;
     }
     const reset = this.formatQuotaReset(q.resetsAt);
+    // `limit: null` = unlimited plan (Enterprise) — there is no denominator to
+    // show, so the counter reads "120 / unlimited".
+    const limitLabel = q.limit === null ? 'unlimited' : String(q.limit);
     return `<span class="mcp-clients-quota-label">MCP daily quota:</span>
-      <strong>${q.used} / ${q.limit}</strong>
+      <strong>${q.used} / ${limitLabel}</strong>
       <span class="mcp-clients-quota-reset">used today, resets ${escapeHtml(reset)}</span>`;
   }
 

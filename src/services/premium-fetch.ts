@@ -33,6 +33,9 @@
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
+import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
+import { withPremiumIntent } from './premium-intent';
+import { isDesktopRuntime } from './runtime';
 
 /**
  * Test seam — set in unit tests to inject key/token providers without needing
@@ -108,6 +111,32 @@ function isPremiumRpcTarget(input: RequestInfo | URL, forcePremium = false): boo
     // preserves prior behaviour for malformed inputs.
     return true;
   }
+}
+
+function isProFreshCacheRpcTarget(input: RequestInfo | URL): boolean {
+  try {
+    const href = input instanceof Request ? input.url : String(input);
+    const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
+    return PRO_FRESH_CACHE_RPC_PATHS.has(path);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetch adapter for generated RPC clients that include Pro-fresh market reads.
+ *
+ * Only the exact shared allowlist opts into Clerk bearer injection. Other
+ * methods on the same generated client retain the anonymous wm-session path.
+ */
+export function proFreshRpcFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  if (!isProFreshCacheRpcTarget(input)) {
+    return globalThis.fetch(input, init);
+  }
+  return premiumFetch(input, { ...init, forcePremium: true });
 }
 
 function uniqueNonEmptyKeys(keys: Array<string | null | undefined>): string[] {
@@ -191,17 +220,21 @@ export async function premiumFetch(
     return res;
   }
 
-  // 1. WORLDMONITOR_API_KEY from env (desktop / test environments).
-  try {
-    const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-    const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
-    if (wmKey) {
-      existing.set('X-WorldMonitor-Key', wmKey);
-      const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
-      reportServerError(res, input);
-      return res;
-    }
-  } catch { /* not available — fall through */ }
+  // 1. Browser/test runtime key. Desktop keys remain inside the native
+  // sidecar; its native proxy authenticates these requests without placing a
+  // license key in renderer memory.
+  if (!isDesktopRuntime()) {
+    try {
+      const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
+      const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
+      if (wmKey) {
+        existing.set('X-WorldMonitor-Key', wmKey);
+        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
+        reportServerError(res, input);
+        return res;
+      }
+    } catch { /* not available — fall through */ }
+  }
 
   // 2. Legacy in-memory test seam. In production, tester/widget keys are
   // HttpOnly cookies and ride along through credentials: 'include'.
@@ -252,7 +285,39 @@ export async function premiumFetch(
   // attaches wms_) → gateway accepts → 200. For premium paths reached here
   // (no API key, no tester key, no Clerk Bearer) the gateway will return
   // 401, which is correct.
-  const res = await globalThis.fetch(input, withCredentials(requestInit));
+  //
+  // Mark premium-intent requests so the interceptor reads that 401 as the
+  // expected auth denial it is (#5674). Path-listed premium routes already
+  // short-circuit inside the interceptor, so this only changes behaviour for
+  // routes that are premium per REQUEST rather than per path — today
+  // `/api/news/v1/summarize-article` via `forcePremium`, which must stay out
+  // of PREMIUM_RPC_PATHS so its free translate mode keeps receiving the
+  // anonymous wms_ cookie. Unmarked, each denial cost a session mint, a
+  // replay, and a 15-minute blackout of every anonymous API call.
+  //
+  // Steps 1-3 return as soon as any credential resolves, so everything that
+  // reaches this line is unauthenticated by definition — exactly the population
+  // the marker is meant to describe, and never a request that already steps
+  // aside via its own Authorization / X-WorldMonitor-Key header.
+  //
+  // EXCEPT the Pro-fresh cache tape. `forcePremium` carries two meanings, and
+  // only one of them licenses the marker:
+  //
+  //   - summarization.ts  — "this call requires Pro"; a 401 IS the expected
+  //     denial, so suppressing session recovery is correct.
+  //   - proFreshRpcFetch  — "attach a Bearer opportunistically for a fresher
+  //     cache tier". PRO_FRESH_CACHE_RPC_PATHS is explicitly an authentication
+  //     surface, not an authorization gate: anonymous and free callers keep
+  //     access on the ordinary cache policy, and those paths 401 when the wms_
+  //     cookie is rejected (verified against prod). Marking them would strip
+  //     the mint-and-replay that absorbs an HMAC rotation or cache flap, so a
+  //     recoverable blip would surface as a dead price tape instead.
+  const marksPremiumIntent =
+    isPremiumRpcTarget(input, forcePremium) && !isProFreshCacheRpcTarget(input);
+  const unauthenticatedInit = marksPremiumIntent
+    ? withPremiumIntent(withCredentials(requestInit))
+    : withCredentials(requestInit);
+  const res = await globalThis.fetch(input, unauthenticatedInit);
   reportServerError(res, input);
   return res;
 }

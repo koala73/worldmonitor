@@ -643,11 +643,21 @@ function extractWeatherExtreme(d) {
 
 const GDELT_TONE_TOPICS = ['military', 'nuclear', 'maritime'];
 
+// The per-topic tone keys survive up to TIMELINE_TTL (7d, #5478) so last-good
+// data stays SERVABLE through a GDELT brownout — but a days-old declining
+// trend must not keep minting deterioration signals stamped detectedAt=now.
+// 48h = two daily series points of slack; older (or undatable) payloads are
+// skipped and the bundled-canonical fallback below still provides a coarse
+// tone signal.
+const MAX_TONE_SIGNAL_AGE_MS = 48 * 3600 * 1000;
+
 function extractMediaToneDeterioration(d) {
   const signals = [];
   for (const topic of GDELT_TONE_TOPICS) {
     const tonePayload = d[`gdelt:intel:tone:${topic}`];
     if (!tonePayload) continue;
+    const fetchedMs = Date.parse(tonePayload.fetchedAt);
+    if (!Number.isFinite(fetchedMs) || Date.now() - fetchedMs > MAX_TONE_SIGNAL_AGE_MS) continue;
     const series = Array.isArray(tonePayload.data) ? tonePayload.data : [];
     if (series.length < 3) continue;
     const last3 = series.slice(-3);

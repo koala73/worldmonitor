@@ -1,10 +1,17 @@
 import COUNTRY_BBOXES from '../../../shared/country-bboxes.js';
+import {
+  CHINA_DECISION_SIGNAL_GROUP_IDS,
+  CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES,
+  isChinaDecisionSignalSnapshot,
+} from '../../../shared/china-decision-signals';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { buildAuthHeaders } from '../auth';
+import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
+import { assertMcpToolFetchOk } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
 import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '../ui/registry';
@@ -185,6 +192,110 @@ function compactProcurementOpportunity(tender: ProcurementRouteTender) {
 
 export const RPC_TOOLS: ToolDef[] = [
   {
+    name: 'get_china_decision_signals',
+    _outputBudgetBytes: CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES,
+    description: 'Return the bounded six-domain China decision-signal snapshot used by the public country summary. Every item retains canonical provenance, revision, supersession, translation, confidence, corroboration, and freshness claims; unavailable domains remain explicit rather than becoming zero or normal. Detailed bilateral trade rows and operator-only source health are intentionally excluded.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['schemaVersion', 'generatedAt', 'groups', 'access'],
+      properties: {
+        schemaVersion: { type: 'integer', enum: [1] },
+        generatedAt: { type: 'string' },
+        groups: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'state', 'reason', 'items', 'metadata'],
+            properties: {
+              id: {
+                type: 'string',
+                enum: [...CHINA_DECISION_SIGNAL_GROUP_IDS],
+              },
+              state: { type: 'string', enum: ['available', 'partial', 'stale', 'unavailable'] },
+              reason: { type: ['string', 'null'] },
+              items: {
+                type: 'array',
+                maxItems: 4,
+                items: {
+                  type: 'object',
+                  required: ['id', 'lineageId', 'label', 'summary', 'sourceName', 'sourceUrl', 'publisherType', 'observedAt', 'publishedAt', 'effectiveAt', 'retrievedAt', 'stale', 'metadata', 'provenance'],
+                  properties: {
+                    id: { type: 'string' },
+                    lineageId: { type: 'string' },
+                    label: { type: 'string' },
+                    summary: { type: 'string' },
+                    sourceName: { type: 'string' },
+                    sourceUrl: { type: ['string', 'null'] },
+                    publisherType: {
+                      type: 'string',
+                      enum: ['official_government', 'state_controlled_media', 'official_exchange', 'independent_observation', 'independent_media', 'wire_service', 'market_publisher', 'derived_output', 'unknown'],
+                    },
+                    observedAt: { type: ['string', 'null'] },
+                    publishedAt: { type: ['string', 'null'] },
+                    effectiveAt: { type: ['string', 'null'] },
+                    retrievedAt: { type: ['string', 'null'] },
+                    stale: { type: 'boolean' },
+                    metadata: { type: 'object' },
+                    provenance: { type: 'object' },
+                  },
+                },
+              },
+              metadata: { type: 'object' },
+            },
+          },
+        },
+        access: {
+          type: 'object',
+          required: ['anonymous', 'pro', 'operator'],
+          properties: {
+            anonymous: { type: 'string', enum: ['bounded_public_summary'] },
+            pro: { type: 'string', enum: ['same_provenance_via_mcp'] },
+            operator: { type: 'string', enum: ['source_health_only'] },
+          },
+        },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (_params, base, context, execution) => {
+      const url = `${base}/api/intelligence/v1/get-china-decision-signals`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const response = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(12_000),
+      });
+      await assertMcpToolFetchOk(response, {
+        operation: 'get-china-decision-signals',
+        tool: 'get_china_decision_signals',
+        auth: context,
+        execution,
+      });
+      const wire = await response.json() as { payloadJson?: unknown };
+      if (typeof wire.payloadJson !== 'string') {
+        throw new Error('get-china-decision-signals returned no canonical payload');
+      }
+      const payload = JSON.parse(wire.payloadJson) as unknown;
+      if (!isChinaDecisionSignalSnapshot(payload)) {
+        throw new Error('get-china-decision-signals returned an invalid canonical payload');
+      }
+      return payload;
+    },
+    _coverageKeys: [
+      'china:policy-events:v1',
+      'military:cross-strait-activity:v1',
+      'military:cross-strait-activity-bootstrap:v1',
+      'market:china:corporate-disclosures:v1',
+      'intelligence:china-decision-signals:v1',
+    ],
+    _apiPaths: [
+      'GET /api/intelligence/v1/get-china-decision-signals',
+    ],
+  },
+  {
     name: 'get_procurement_opportunities',
     _outputBudgetBytes: 65536,
     description: 'Search open global public-procurement opportunities through the canonical Pro route. Default output is 10 compact records (maximum 25), without descriptions or submission/eligibility payloads. automationFit is keyword relevance evidence only, never bidding eligibility; participationMode "unknown" remains unknown.',
@@ -249,7 +360,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      if (!response.ok) throw new Error(`list-global-tenders HTTP ${response.status}`);
+      assertToolFetchOk(response, 'list-global-tenders');
       const result = await response.json() as ProcurementRouteResponse;
       return {
         opportunities: (result.tenders || []).map(compactProcurementOpportunity),
@@ -308,7 +419,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: WORLD_BRIEF_UI_URI,
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM).
       // `full` is the documented geopolitical/default digest variant.
@@ -318,7 +429,12 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...digestAuth, 'User-Agent': UA },
         signal: AbortSignal.timeout(6_000),
       });
-      if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
+      await assertMcpToolFetchOk(digestRes, {
+        operation: 'list-feed-digest',
+        tool: 'get_world_brief',
+        auth: context,
+        execution,
+      });
       type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
       const digest = await digestRes.json() as DigestPayload;
       // Pair headlines with their RSS snippets so the LLM grounds per-story
@@ -355,7 +471,12 @@ export const RPC_TOOLS: ToolDef[] = [
         body: briefBody,
         signal: AbortSignal.timeout(18_000),
       });
-      if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
+      await assertMcpToolFetchOk(briefRes, {
+        operation: 'summarize-article',
+        tool: 'get_world_brief',
+        auth: context,
+        execution,
+      });
       const result = await briefRes.json() as Record<string, unknown>;
       return { ...result, headlines, sources };
     },
@@ -457,6 +578,7 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(22_000),
       });
       if (!res.ok) {
+        throwIfBillingDenial(res, 'get-country-intel-brief');
         // Surface the gateway's error code in the thrown message so Sentry
         // groups the failure by root cause, not just status. Body reads are
         // best-effort; a read failure must not mask the HTTP status.
@@ -530,7 +652,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      if (!res.ok) throw new Error(`get-country-risk HTTP ${res.status}`);
+      assertToolFetchOk(res, 'get-country-risk');
       return res.json();
     },
     _apiPaths: [
@@ -753,12 +875,28 @@ export const RPC_TOOLS: ToolDef[] = [
         type === 'military' || !civAuth
           ? Promise.resolve(null)
           : fetch(civUrl, { headers: { ...civAuth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) })
-              .then(r => r.ok ? r.json() as Promise<CivilianResp> : Promise.reject(new Error(`HTTP ${r.status}`))),
+              .then(r => {
+                throwIfBillingDenial(r, 'get-airspace-civilian');
+                return r.ok ? r.json() as Promise<CivilianResp> : Promise.reject(new Error(`HTTP ${r.status}`));
+              }),
         type === 'civilian' || !milAuth
           ? Promise.resolve(null)
           : fetch(milUrl, { headers: { ...milAuth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) })
-              .then(r => r.ok ? r.json() as Promise<MilResp> : Promise.reject(new Error(`HTTP ${r.status}`))),
+              .then(r => {
+                throwIfBillingDenial(r, 'get-airspace-military');
+                return r.ok ? r.json() as Promise<MilResp> : Promise.reject(new Error(`HTTP ${r.status}`));
+              }),
       ]);
+
+      // A billing denial is user-level, not a data-source outage: never serve
+      // partial data or a generic both-failed error over it — rethrow so
+      // dispatch re-emits the full billing contract (status, Retry-After,
+      // X-Billing-Verification, data.code).
+      for (const result of [civResult, milResult]) {
+        if (result.status === 'rejected' && result.reason instanceof BillingDenialError) {
+          throw result.reason;
+        }
+      }
 
       const civOk = type === 'military' || civResult.status === 'fulfilled';
       const milOk = type === 'civilian' || milResult.status === 'fulfilled';
@@ -874,6 +1012,7 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(8_000),
       });
       if (!res.ok) {
+        throwIfBillingDenial(res, 'get-vessel-snapshot');
         const detail = (await res.text().catch(() => '')).slice(0, 200);
         throw new Error(`get-vessel-snapshot HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
       }
@@ -967,7 +1106,7 @@ export const RPC_TOOLS: ToolDef[] = [
         body,
         signal: AbortSignal.timeout(25_000),
       });
-      if (!res.ok) throw new Error(`deduct-situation HTTP ${res.status}`);
+      assertToolFetchOk(res, 'deduct-situation');
       return res.json();
     },
     _apiPaths: [
@@ -1010,7 +1149,7 @@ export const RPC_TOOLS: ToolDef[] = [
         body,
         signal: AbortSignal.timeout(25_000),
       });
-      if (!res.ok) throw new Error(`get-forecasts HTTP ${res.status}`);
+      assertToolFetchOk(res, 'get-forecasts');
       return res.json();
     },
     _apiPaths: [],
@@ -1073,7 +1212,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
-      if (!res.ok) throw new Error(`search-google-flights HTTP ${res.status}`);
+      assertToolFetchOk(res, 'search-google-flights');
       return res.json();
     },
     _apiPaths: [
@@ -1131,7 +1270,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
-      if (!res.ok) throw new Error(`search-google-dates HTTP ${res.status}`);
+      assertToolFetchOk(res, 'search-google-dates');
       return res.json();
     },
     _apiPaths: [

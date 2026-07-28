@@ -16,7 +16,17 @@
  * - searchGdeltDocuments: per-query GDELT search
  */
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, loadSharedConfig, readSeedSnapshot } from './_seed-utils.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  runSeed,
+  writeExtraKey,
+  writeExtraKeyWithMeta,
+  extendExistingTtl,
+  sleep,
+  loadSharedConfig,
+  readSeedSnapshot,
+} from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
 import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
@@ -47,6 +57,31 @@ const ACLED_RESOLUTION_MAX_PAGES = 20;
 const ACLED_PAGE_DELAY_MS = 250;
 const HAPI_CACHE_KEY_PREFIX = 'conflict:humanitarian:v1';
 const HAPI_TTL = 21600;
+// api/health.js's SEED_META entry for this family reads ONE aggregate key
+// (seed-meta:conflict:humanitarian), not the per-country seed-meta keys
+// writeExtraKeyWithMeta derives per HAPI_CACHE_KEY_PREFIX write below — those
+// don't share a common non-country-specific prefix writeSeedMeta could roll up
+// automatically. maxStaleMin in health.js is 300 (5h) — bounded above by HAPI_TTL
+// (360min/6h, the per-country data key's own Redis TTL) so the alarm fires BEFORE
+// per-country data can expire, not just against this seeder's 15min cron cadence
+// (30 days would NOT have caught #5554 promptly, and even 12h left a 6h blind
+// spot where data was already empty but health still reported OK — #5554 review).
+// The TTL here must clearly OUTLIVE that staleness threshold — matching the
+// ACLED_TTL headroom lesson above (a TTL equal to the staleness window has zero
+// headroom against a single missed/late tick, and reports EMPTY instead of STALE).
+const HAPI_SEED_META_KEY = 'seed-meta:conflict:humanitarian';
+const HAPI_SEED_META_TTL_SECONDS = 3 * 86400;
+// HAPI publishes this ACLED-derived table weekly. The conflict seeder runs every
+// 15 minutes for its other feeds, so a freshness gate prevents that unrelated
+// cadence from repeatedly hitting HAPI. The 2h interval remains comfortably
+// inside the 5h health threshold and 6h per-country data TTL.
+export const HAPI_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000;
+export const HAPI_FAILURE_BACKOFF_MS = 2 * 60 * 60 * 1000;
+const HAPI_FAILURE_BACKOFF_KEY = 'conflict:humanitarian:hapi-backoff:v1';
+const HAPI_REQUEST_TIMEOUT_MS = 15_000;
+const HAPI_REQUEST_DELAY_MS = 1_100;
+const HAPI_PAGE_LIMIT = 10_000;
+const HAPI_MAX_PAGES = 3;
 const PIZZINT_TTL = 600;
 
 export const CONFLICT_COUNTRIES = [
@@ -54,21 +89,48 @@ export const CONFLICT_COUNTRIES = [
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
+// Crisis-tracker registry (shared/crawlable-crises.json) countries HAPI must cover that
+// CONFLICT_COUNTRIES doesn't already include. Kept as a SEPARATE list, not merged into
+// CONFLICT_COUNTRIES — that array also sizes GDELT_MIN_SUCCESSFUL_COUNTRIES and the GDELT
+// sweep threshold below; growing it here would silently shift GDELT's coverage floor and
+// break its fixed-count tests (#5554 — a prior fix attempt did exactly this).
+const HAPI_ONLY_COUNTRIES = ['IR', 'IL', 'RU', 'SA', 'DJ', 'ER'];
+// The dashboard's country-tension widget (src/services/conflict/index.ts
+// HAPI_COUNTRY_CODES) requests this 20-country watchlist. Before this fix, a cache
+// miss fell back to a live HAPI fetch, so incomplete seed coverage was invisible;
+// the RPC handlers are now cache-only (#5554 review), so every widget country is
+// part of the guaranteed coverage contract. Keep the complete list in sync with
+// that file rather than listing only the countries unique to the dashboard.
+const HAPI_DASHBOARD_COUNTRIES = [
+  'US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR',
+  'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE',
+];
+const HAPI_CRISIS_COUNTRIES = ['IR', 'IL', 'UA', 'RU', 'SD', 'YE', 'SA', 'DJ', 'ER'];
+// Public crisis trackers and the dashboard batch are the guaranteed coverage
+// contract. The broader conflict set is still collected when national rows are
+// present, but it does not trigger a per-country fallback fan-out.
+export const HAPI_REQUIRED_COUNTRIES = [
+  ...new Set([...HAPI_CRISIS_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES]),
+];
+const HAPI_COUNTRIES = [...new Set([...HAPI_ONLY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES, ...CONFLICT_COUNTRIES])];
 // A throttled failure, as it reaches us: fetchGdeltCountryEvents flattens the direct and
 // proxy attempts into one message, e.g. "...(last direct: HTTP 429) (last proxy: HTTP 429)".
 const RATE_LIMIT_ERROR = /\b429\b|rate.?limit|too many requests/i;
 // #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
 // fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
-// an absolute deadline down, so slow aux feeds — HAPI is sequential, ~306s worst —
-// automatically shrink the sweep window instead of stacking on top of it). One
+// an absolute deadline down, so slow aux feeds automatically shrink the sweep
+// window instead of stacking on top of it). HAPI now uses one bounded bulk request
+// instead of a 38-country sequential sweep. One
 // in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
 // (15s concurrent direct legs + 4 × 20s SERIALIZED sync proxy curls — curlFetch is
 // execFileSync, so "concurrent" proxy attempts block the event loop one at a time;
 // 92s observed live 2026-07-10). Worst single fetchAll attempt before the bulk
-// fallback ≈ max(HAPI 306s, 120s + 100s). Without this cap a
+// fallback is now dominated by the GDELT path. Without this cap a
 // GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
 // The bulk fallback runs after those parallel feeds settle, so its 60s bound
-// and 30s publish slack are additive: max(306s, 220s) + 60s + 30s = 396s.
+// and 30s publish slack are additive: 220s + 60s + 30s = 310s — still
+// comfortably under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
+// below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
 // maxRetries: 0 — a second direct attempt would honor GDELT's Retry-After header
 // (≤60s sleep, _gdelt-fetch.mjs MAX_RETRY_AFTER_MS), blowing any per-batch bound;
@@ -80,10 +142,38 @@ export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxA
 // _seed-utils.mjs: "a healthy seeder is designed never to outlive its own lock");
 // it also sets the fetch deadline (lockTtlMs + 120s margin = 540s). The default
 // 120s lock was ALREADY shorter than this seeder's worst case. Cron cadence is
-// 30min, so a hard-crashed run's dangling lock costs at most 7 of those minutes.
+// 15min, so a hard-crashed run's dangling lock costs at most 7 of those minutes.
 export const ACLED_INTEL_LOCK_TTL_MS = 420_000;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
+const ISO3_TO_ISO2 = new Map(
+  Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [String(iso3).toUpperCase(), iso2]),
+);
+
+// HDX HAPI's `app_identifier` is used for per-client tracking/rate-limiting, not
+// just auth. The previous identifier (`worldmonitor:monitor@worldmonitor.app`)
+// got persistently 429'd — confirmed NOT an IP-level block (a fresh identifier
+// from the same IP at the same instant got 200) and NOT a generic per-identifier
+// rate limit either: live probing found HDX is flagging any app_identifier whose
+// `application` field case-insensitively CONTAINS the substring "worldmonitor"
+// specifically (e.g. `worldmonitor2`, `WorldMonitor`, `xworldmonitorx` all 429;
+// `world-monitor`, `monitorworld`, `wm-crisis-tracker` all 200 from the same IP
+// in the same probe run) — almost certainly a manual flag HDX ops placed on the
+// name after our prior uncoordinated traffic pattern (see #5554). Only the
+// `application` field matters here — separately confirmed live that the `email`
+// field containing "worldmonitor" (monitor@worldmonitor.app, unchanged, kept as
+// the real contact address) is NOT part of the trigger: `totally-different-app-
+// name:monitor@worldmonitor.app` also got 200 in the same probe run. shared/
+// hapi-app-identifier.json's `application` value intentionally avoids the
+// substring for this reason; `email` doesn't need to. Whatever identifier is
+// configured there must ALSO stay low-volume going forward. This seeder is the
+// ONLY source of HAPI traffic; the RPC handlers only ever read the Redis keys
+// this writes. The current implementation makes one bulk request at most every
+// two hours, rather than 38 per-country requests every 15 minutes.
+const HAPI_APP_IDENTIFIER_CONFIG = loadSharedConfig('hapi-app-identifier.json');
+const HAPI_APP_IDENTIFIER = Buffer.from(
+  `${HAPI_APP_IDENTIFIER_CONFIG.application}:${HAPI_APP_IDENTIFIER_CONFIG.email}`,
+).toString('base64');
 
 // ─── ACLED Events ───
 
@@ -366,66 +456,287 @@ export async function fetchGdeltConflictEvents({
 
 // ─── Humanitarian Summary (HAPI) ───
 
-async function fetchHapiSummary(countryCode) {
-  const iso3 = ISO2_TO_ISO3[countryCode];
-  if (!iso3) return null;
-
-  const appId = Buffer.from('worldmonitor:monitor@worldmonitor.app').toString('base64');
-  const url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=1000&offset=0&app_identifier=${appId}&location_code=${iso3}`;
-
-  const resp = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) return null;
-  const rawData = await resp.json();
-  const records = rawData.data || [];
-
-  const agg = { eventsTotal: 0, eventsPV: 0, eventsCT: 0, eventsDem: 0, fatPV: 0, fatCT: 0, month: '', locationName: '' };
-  for (const r of records) {
-    if ((r.location_code || '') !== iso3) continue;
-    const month = r.reference_period_start || '';
-    const eventType = (r.event_type || '').toLowerCase();
-    const events = r.events || 0;
-    const fatalities = r.fatalities || 0;
-    if (!agg.locationName) agg.locationName = r.location_name || '';
-    if (month > agg.month) { agg.month = month; agg.eventsTotal = 0; agg.eventsPV = 0; agg.eventsCT = 0; agg.eventsDem = 0; agg.fatPV = 0; agg.fatCT = 0; }
-    if (month === agg.month) {
-      agg.eventsTotal += events;
-      if (eventType.includes('political_violence')) { agg.eventsPV += events; agg.fatPV += fatalities; }
-      if (eventType.includes('civilian_targeting')) { agg.eventsCT += events; agg.fatCT += fatalities; }
-      if (eventType.includes('demonstration')) agg.eventsDem += events;
-    }
-  }
-  if (!agg.month) return null;
-
-  return {
-    summary: {
-      countryCode: countryCode.toUpperCase(),
-      countryName: agg.locationName,
-      conflictEventsTotal: agg.eventsTotal,
-      conflictPoliticalViolenceEvents: agg.eventsPV + agg.eventsCT,
-      conflictFatalities: agg.fatPV + agg.fatCT,
-      referencePeriod: agg.month,
-      conflictDemonstrations: agg.eventsDem,
-      updatedAt: Date.now(),
-    },
-  };
+function previousMonthStart(nowMs) {
+  const now = new Date(nowMs);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+    .toISOString()
+    .slice(0, 10);
 }
 
-async function fetchAllHumanitarianSummaries() {
-  const results = {};
-  for (const cc of CONFLICT_COUNTRIES) {
-    try {
-      const data = await fetchHapiSummary(cc);
-      if (data?.summary) results[cc] = data;
-      await sleep(300);
-    } catch (e) {
-      console.warn(`  HAPI ${cc}: ${e.message}`);
+export function buildHapiConflictEventsUrl({
+  nowMs = Date.now(),
+  offset = 0,
+  countryCode,
+  adminLevel = '0',
+} = {}) {
+  const url = new URL('https://hapi.humdata.org/api/v2/coordination-context/conflict-events');
+  url.searchParams.set('output_format', 'json');
+  if (adminLevel != null) url.searchParams.set('admin_level', String(adminLevel));
+  url.searchParams.set('start_date', previousMonthStart(nowMs));
+  url.searchParams.set('limit', String(HAPI_PAGE_LIMIT));
+  url.searchParams.set('offset', String(offset));
+  if (countryCode) {
+    const iso3 = ISO2_TO_ISO3[countryCode];
+    if (!iso3) throw new Error(`No ISO3 mapping for HAPI country ${countryCode}`);
+    url.searchParams.set('location_code', iso3);
+  }
+  return url.toString();
+}
+
+function finiteCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function aggregateHapiConflictEvents(
+  records,
+  { nowMs = Date.now(), countryCodes = HAPI_COUNTRIES } = {},
+) {
+  const targetCountries = new Set(countryCodes);
+  const aggregates = new Map();
+
+  for (const row of Array.isArray(records) ? records : []) {
+    const countryCode = ISO3_TO_ISO2.get(String(row?.location_code || '').toUpperCase());
+    if (!countryCode || !targetCountries.has(countryCode)) continue;
+
+    const referencePeriod = String(row?.reference_period_start || '');
+    if (!referencePeriod) continue;
+    const parsedAdminLevel = Number(row?.admin_level ?? 0);
+    const adminLevel = Number.isFinite(parsedAdminLevel) ? parsedAdminLevel : 0;
+
+    let aggregate = aggregates.get(countryCode);
+    if (
+      !aggregate
+      || referencePeriod > aggregate.referencePeriod
+      || (referencePeriod === aggregate.referencePeriod && adminLevel > aggregate.adminLevel)
+    ) {
+      aggregate = {
+        referencePeriod,
+        adminLevel,
+        countryName: String(row?.location_name || ''),
+        eventsTotal: 0,
+        eventsPV: 0,
+        eventsCT: 0,
+        eventsDem: 0,
+        fatalitiesPV: 0,
+        fatalitiesCT: 0,
+      };
+      aggregates.set(countryCode, aggregate);
+    }
+    if (
+      referencePeriod !== aggregate.referencePeriod
+      || adminLevel !== aggregate.adminLevel
+    ) continue;
+
+    const eventType = String(row?.event_type || '').toLowerCase();
+    const events = finiteCount(row?.events);
+    const fatalities = finiteCount(row?.fatalities);
+    aggregate.eventsTotal += events;
+    if (eventType === 'political_violence') {
+      aggregate.eventsPV += events;
+      aggregate.fatalitiesPV += fatalities;
+    } else if (eventType === 'civilian_targeting') {
+      aggregate.eventsCT += events;
+      aggregate.fatalitiesCT += fatalities;
+    } else if (eventType === 'demonstration') {
+      aggregate.eventsDem += events;
     }
   }
-  console.log(`  Humanitarian: ${Object.keys(results).length}/${CONFLICT_COUNTRIES.length} countries`);
+
+  const results = {};
+  for (const [countryCode, aggregate] of aggregates) {
+    results[countryCode] = {
+      summary: {
+        countryCode,
+        countryName: aggregate.countryName,
+        conflictEventsTotal: aggregate.eventsTotal,
+        conflictPoliticalViolenceEvents: aggregate.eventsPV + aggregate.eventsCT,
+        conflictFatalities: aggregate.fatalitiesPV + aggregate.fatalitiesCT,
+        referencePeriod: aggregate.referencePeriod,
+        conflictDemonstrations: aggregate.eventsDem,
+        updatedAt: nowMs,
+      },
+    };
+  }
   return results;
+}
+
+async function defaultPreserveHapiLastGood() {
+  await extendExistingTtl(
+    HAPI_COUNTRIES.map((countryCode) => `${HAPI_CACHE_KEY_PREFIX}:${countryCode}`),
+    HAPI_TTL,
+  );
+  await extendExistingTtl(
+    [HAPI_CACHE_KEY_PREFIX, HAPI_SEED_META_KEY],
+    HAPI_SEED_META_TTL_SECONDS,
+  );
+}
+
+async function fetchHapiRows({
+  fetchFn,
+  nowMs,
+  countryCode,
+  adminLevel,
+}) {
+  const records = [];
+  let fullyRead = false;
+  for (let page = 0; page < HAPI_MAX_PAGES; page += 1) {
+    const offset = page * HAPI_PAGE_LIMIT;
+    const resp = await fetchFn(
+      buildHapiConflictEventsUrl({ nowMs, offset, countryCode, adminLevel }),
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': CHROME_UA,
+          'X-HDX-HAPI-APP-IDENTIFIER': HAPI_APP_IDENTIFIER,
+        },
+        signal: AbortSignal.timeout(HAPI_REQUEST_TIMEOUT_MS),
+      },
+    );
+    if (!resp.ok) {
+      let providerMessage = '';
+      try {
+        const body = await resp.json();
+        providerMessage = String(body?.error || body?.detail || '');
+      } catch {
+        // Status and status text remain sufficient when the provider sends no JSON.
+      }
+      throw Object.assign(
+        new Error(`HTTP ${resp.status} ${resp.statusText}${providerMessage ? `: ${providerMessage}` : ''}`),
+        { status: resp.status },
+      );
+    }
+
+    const rawData = await resp.json();
+    const pageRows = Array.isArray(rawData?.data) ? rawData.data : [];
+    records.push(...pageRows);
+    if (pageRows.length < HAPI_PAGE_LIMIT) {
+      fullyRead = true;
+      break;
+    }
+  }
+
+  if (!fullyRead) {
+    throw new Error(
+      `${countryCode || 'global'} bulk response exceeded ${HAPI_MAX_PAGES * HAPI_PAGE_LIMIT} rows`,
+    );
+  }
+  return records;
+}
+
+export async function fetchAllHumanitarianSummaries({
+  fetchFn = (...args) => globalThis.fetch(...args),
+  now = Date.now,
+  pace = sleep,
+  countryCodes = HAPI_COUNTRIES,
+  requiredCountryCodes = countryCodes === HAPI_COUNTRIES ? HAPI_REQUIRED_COUNTRIES : countryCodes,
+  loadPreviousMarker = () => readSeedSnapshot(HAPI_CACHE_KEY_PREFIX),
+  loadFailureBackoff = () => readSeedSnapshot(HAPI_FAILURE_BACKOFF_KEY),
+  writeFailureBackoff = (value) => writeExtraKey(
+    HAPI_FAILURE_BACKOFF_KEY,
+    value,
+    Math.ceil(HAPI_FAILURE_BACKOFF_MS / 1000),
+  ),
+  preserveLastGood = defaultPreserveHapiLastGood,
+} = {}) {
+  const nowMs = now();
+  const failureBackoff = await loadFailureBackoff().catch((error) => {
+    console.warn(`  HAPI backoff read failed: ${error.message}`);
+    return null;
+  });
+  if (Number(failureBackoff?.retryAt) > nowMs) {
+    console.log(`  Humanitarian: provider backoff active until ${new Date(failureBackoff.retryAt).toISOString()}`);
+    return null;
+  }
+
+  const previousMarker = await loadPreviousMarker().catch((error) => {
+    console.warn(`  HAPI freshness marker read failed: ${error.message}`);
+    return null;
+  });
+  if (
+    Number.isFinite(Number(previousMarker?.updatedAt))
+    && nowMs - Number(previousMarker.updatedAt) < HAPI_REFRESH_INTERVAL_MS
+  ) {
+    console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
+    return null;
+  }
+
+  let failure;
+  try {
+    // Most countries have national rows, so one global admin-0 request covers
+    // them without the old per-country fan-out.
+    const nationalRows = await fetchHapiRows({
+      fetchFn,
+      nowMs,
+      adminLevel: '0',
+    });
+    const results = aggregateHapiConflictEvents(nationalRows, { nowMs, countryCodes });
+
+    // HRP/GHO countries may only publish subnational rows. Fetch only the
+    // national-missing target countries and aggregate their deepest available
+    // administrative level, pacing the bounded fallback sequentially.
+    const missingCountries = requiredCountryCodes.filter((countryCode) => !results[countryCode]);
+    let fallbackFailure = null;
+    let fallbackRows = 0;
+    for (let i = 0; i < missingCountries.length; i += 1) {
+      const countryCode = missingCountries[i];
+      try {
+        const rows = await fetchHapiRows({
+          fetchFn,
+          nowMs,
+          countryCode,
+          adminLevel: null,
+        });
+        fallbackRows += rows.length;
+        Object.assign(
+          results,
+          aggregateHapiConflictEvents(rows, { nowMs, countryCodes: [countryCode] }),
+        );
+      } catch (error) {
+        fallbackFailure = error;
+        console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
+        if (error.status === 429 || error.status === 403) break;
+      }
+      if (i < missingCountries.length - 1) await pace(HAPI_REQUEST_DELAY_MS);
+    }
+
+    if (Object.keys(results).length === 0) {
+      // Carry the fallback's status (e.g. 429/403) onto the thrown error so the
+      // outer catch's backoff write below records the real provider status
+      // instead of falling back to 0 when a fallback rejection is what left
+      // results empty.
+      throw Object.assign(
+        new Error('bulk response contained no target-country national summaries'),
+        fallbackFailure?.status != null ? { status: fallbackFailure.status } : {},
+      );
+    }
+
+    if (fallbackFailure) {
+      const retryAt = nowMs + HAPI_FAILURE_BACKOFF_MS;
+      await writeFailureBackoff({
+        status: Number.isFinite(Number(fallbackFailure.status)) ? Number(fallbackFailure.status) : 0,
+        failedAt: nowMs,
+        retryAt,
+      }).catch((error) => console.warn(`  HAPI backoff write failed: ${error.message}`));
+      await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
+    }
+
+    const requiredCovered = requiredCountryCodes.filter((countryCode) => results[countryCode]).length;
+    console.log(`  Humanitarian: ${Object.keys(results).length}/${countryCodes.length} countries (${requiredCovered}/${requiredCountryCodes.length} required) from ${nationalRows.length + fallbackRows} bulk rows`);
+    return results;
+  } catch (error) {
+    failure = error;
+  }
+
+  const retryAt = nowMs + HAPI_FAILURE_BACKOFF_MS;
+  console.warn(`  HAPI bulk failed: ${failure.message} — preserving last-good data and backing off until ${new Date(retryAt).toISOString()}`);
+  await writeFailureBackoff({
+    status: Number.isFinite(Number(failure.status)) ? Number(failure.status) : 0,
+    failedAt: nowMs,
+    retryAt,
+  }).catch((error) => console.warn(`  HAPI backoff write failed: ${error.message}`));
+  await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
+  return null;
 }
 
 // ─── PizzINT Status ───
@@ -501,9 +812,10 @@ async function fetchGdeltTensions() {
 // global-fetch stub can intercept, so it must be injectable to keep tests hermetic.
 export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents } = {}) {
   // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
-  // not at sweep entry — the aux feeds below (HAPI is sequential, ~306s worst) and
-  // the sweep share runSeed's single fetch deadline, so time the aux stage burns
-  // must come out of the sweep's window, not be added to it.
+  // not at sweep entry — the aux feeds below and the sweep share runSeed's
+  // single fetch deadline, so time the aux stage burns must come out of the
+  // sweep's window, not be added to it. HAPI is now one bulk request plus only
+  // bounded missing-country fallbacks rather than a 38-country sweep.
   const sweepDeadlineAt = Date.now() + GDELT_SWEEP_BUDGET_MS;
   const [acled, acledResolution, hapi, pizzint, gdelt] = await Promise.allSettled([
     fetchAcledEvents({ label: 'ACLED display' }),
@@ -533,7 +845,34 @@ export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents }
 
   // Write secondary keys BEFORE returning or failing the primary feed
   // (runSeed calls process.exit after primary write).
-  if (ha) { for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1); }
+  if (ha && Object.keys(ha).length > 0) {
+    for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1);
+    // Aggregate marker for api/health.js — STANDALONE_KEYS.humanitarianSummary STRLENs
+    // this exact bare key (no country suffix) and SEED_META.humanitarianSummary reads
+    // its seed-meta; the per-country writes above don't give either check anything to
+    // read (they're all suffixed :<CC>, and writeExtraKeyWithMeta's auto-derived
+    // seed-meta keys for them are per-country too, not one family-wide pointer).
+    // Guarded on ha having entries, same as the per-country loop above: a run where
+    // EVERY HAPI call failed has nothing new to report, and attempting this write
+    // anyway would add a fresh network call (and crash risk if Redis is ALSO
+    // degraded) to a path that previously did nothing at all in that scenario —
+    // staleness still surfaces naturally once the last real marker's TTL/maxStaleMin
+    // window elapses, no need to force a write here.
+    const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES.filter((countryCode) => ha[countryCode]).length;
+    await writeExtraKeyWithMeta(
+      HAPI_CACHE_KEY_PREFIX,
+      {
+        countriesCovered: Object.keys(ha).length,
+        requiredCountriesCovered,
+        requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
+        updatedAt: Date.now(),
+      },
+      HAPI_SEED_META_TTL_SECONDS,
+      requiredCountriesCovered,
+      HAPI_SEED_META_KEY,
+      HAPI_SEED_META_TTL_SECONDS,
+    );
+  }
   if (acResolution?.events?.length) {
     await writeExtraKeyWithMeta(
       ACLED_RESOLUTION_CACHE_KEY,

@@ -2,6 +2,8 @@
 // Pure types only — no runtime exports — so this module is safe to import
 // from anywhere without creating evaluation-order surprises or cycles.
 
+import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
+
 // ---------------------------------------------------------------------------
 // Auth-context shape passed into tool _execute. U7 widened the previous
 // `apiKey: string` to a discriminated union so per-tool fetches can branch
@@ -19,6 +21,22 @@ export type McpAuthContext =
   // entitlement pre-check — a user_key context must NEVER skip that gate the
   // way env_key does).
   | { kind: 'user_key'; apiKey: string; userId: string };
+
+export type McpInboundHostClass =
+  | 'canonical_api'
+  | 'apex'
+  | 'www'
+  | 'variant'
+  | 'worldmonitor_subdomain'
+  | 'local'
+  | 'vercel_preview'
+  | 'other';
+
+export interface McpToolExecutionContext {
+  inboundHostClass: McpInboundHostClass;
+  downstreamOrigin: string;
+  downstreamOriginTag: string;
+}
 
 // ---------------------------------------------------------------------------
 // Tool registry types
@@ -118,6 +136,9 @@ export interface FreshnessCheck {
 // Cache-read tool: reads one or more Redis keys and returns them with staleness info.
 export interface CacheToolDef extends BaseToolDef {
   _cacheKeys: string[];
+  // Explicit output labels for keys whose last informative segment is too
+  // generic (for example economic:china:macro:v2 -> "china-macro").
+  _cacheLabels?: Record<string, string>;
   _seedMetaKey: string;
   _maxStaleMin: number;
   _freshnessChecks?: FreshnessCheck[];
@@ -150,7 +171,12 @@ export interface RpcToolDef extends BaseToolDef {
   _seedMetaKey?: never;
   _maxStaleMin?: never;
   _freshnessChecks?: never;
-  _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
+  _execute: (
+    params: Record<string, unknown>,
+    base: string,
+    context: McpAuthContext,
+    execution?: McpToolExecutionContext,
+  ) => Promise<unknown>;
   _coverageKeys?: string[];
   // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation this `_execute`
   // body proxies via fetch (extracted from `${base}/api/...` callsites),
@@ -222,12 +248,19 @@ export interface QuotaReserved {
   /** Roll back the INCR (best-effort). Idempotent — safe to call multiple times. */
   rollback: () => Promise<void>;
 }
-export interface QuotaRejected {
-  ok: false;
-  reason: 'cap-exceeded' | 'redis-unavailable';
-  /** When cap-exceeded: count after the rejected reservation was rolled back (i.e. the floor). */
-  floor?: number;
-}
+export type QuotaRejected =
+  | {
+      ok: false;
+      reason: 'cap-exceeded';
+      /**
+       * Count after the rejected reservation was rolled back (i.e. the floor),
+       * which is also the limit that was ENFORCED. Required — the -32029 copy
+       * interpolates it, so the number a capped caller reads can never drift
+       * from the number the reservation actually applied.
+       */
+      floor: number;
+    }
+  | { ok: false; reason: 'redis-unavailable' };
 
 // ---------------------------------------------------------------------------
 // Auth resolution + handler deps
@@ -235,12 +268,36 @@ export interface QuotaRejected {
 export interface McpHandlerDeps {
   resolveBearerToContext: (token: string) => Promise<McpAuthContext | null>;
   validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
-  getEntitlements: (userId: string) => Promise<{ planKey?: string; features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
+  getEntitlements: (userId: string) => Promise<{
+    planKey?: string;
+    features: {
+      tier: number;
+      mcpAccess?: boolean;
+      // Mirrors `CachedEntitlements.features.planLimits`. Only the MCP daily
+      // allowance is read here (plan 2026-07-25-001 U3); the siblings are
+      // declared so the shape stays recognisable against the catalog and a
+      // future consumer doesn't have to re-widen the dep contract.
+      planLimits?: {
+        apiRequestsPerDay?: number | null;
+        apiBurstRequestsPerMinute?: number | null;
+        mcpCallsPerDay?: number | null;
+        mcpBurstRequestsPerMinute?: number | null;
+      };
+    };
+    validUntil: number;
+    billingStatus?: BillingVerificationStatus;
+    retryAfterSeconds?: number;
+    verificationUnavailable?: boolean;
+  } | null>;
   // #4859: Convex userApiKeys hash lookup (same shared helper as the REST
   // gateway). Returns the key owner, or null for unknown/revoked keys. The
   // production impl fail-softs to null internally; a THROW from a dep is
   // treated as auth-backend-transient (503), mirroring resolveBearerToContext.
   validateUserApiKey: (key: string) => Promise<{ userId: string } | null>;
+  // Fail-closed per-IP guard that runs before the unattributed Convex lookup.
+  // Kept injectable so auth ordering and backpressure are testable without
+  // contacting Redis.
+  guardUserApiKeyValidation: (request: Request, corsHeaders: Record<string, string>) => Promise<Response | null>;
   redisPipeline: PipelineFn;
 }
 
@@ -252,6 +309,31 @@ export interface AuthResolutionRejected {
   ok: false;
   response: Response;
 }
+
+// ---------------------------------------------------------------------------
+// Context pre-check result
+// ---------------------------------------------------------------------------
+// The pre-check is the only place on the gated path that already holds the
+// entitlement object, so it also resolves the caller's daily MCP allowance and
+// hands it to the dispatcher — a second lookup would be an extra Convex
+// round-trip on the hot path (plan 2026-07-25-001 KTD6).
+export interface McpPreCheckPassed {
+  ok: true;
+  /**
+   * Daily `tools/call` allowance for this caller, three-way:
+   *   omitted → unknown; the quota layer applies `PRO_DAILY_QUOTA_LIMIT`
+   *   null    → unlimited (no cap, counter still incremented for metering)
+   *   number  → enforced verbatim
+   * Set for the `pro` context only. `user_key` and `env_key` omit it — raising
+   * API-plan MCP allowances is a deliberate follow-up, not a default (KTD6).
+   */
+  mcpDailyLimit?: number | null;
+}
+export interface McpPreCheckRejected {
+  ok: false;
+  response: Response;
+}
+export type McpPreCheckResult = McpPreCheckPassed | McpPreCheckRejected;
 
 // ---------------------------------------------------------------------------
 // Prompts registry types (MCP 2025-03-26 prompts capability)

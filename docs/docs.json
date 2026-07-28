@@ -46,8 +46,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get Early Access",
-      "href": "https://www.worldmonitor.app/pro#waitlist"
+      "label": "View Pro plans",
+      "href": "https://www.worldmonitor.app/pro#pricing"
     }
   },
   "navigation": {
@@ -73,6 +73,7 @@
                   "usage-auth",
                   "usage-rate-limits",
                   "usage-errors",
+                  "sandbox",
                   "pricing",
                   "accounts",
                   "api-keys",
@@ -93,6 +94,7 @@
                 "pages": [
                   "signal-intelligence",
                   "ai-intelligence",
+                  "methodology/china-activity-nowcast",
                   "methodology/news-digest-and-briefing",
                   "country-instability-index",
                   "methodology/country-resilience-index",
@@ -230,6 +232,8 @@
                   "cors",
                   "health-endpoints",
                   "relay-parameters",
+                  "decision-signal-provenance",
+                  "china-decision-signals",
                   "data-sources"
                 ]
               },
@@ -459,8 +463,8 @@
           ],
           "primary": {
             "type": "button",
-            "label": "获取早期访问权限",
-            "href": "https://www.worldmonitor.app/pro#waitlist"
+            "label": "查看 Pro 方案",
+            "href": "https://www.worldmonitor.app/pro#pricing"
           }
         },
         "footer": {
@@ -529,6 +533,7 @@
                   "zh/usage-auth",
                   "zh/usage-rate-limits",
                   "zh/usage-errors",
+                  "zh/sandbox",
                   "zh/pricing",
                   "zh/accounts",
                   "zh/api-keys",
@@ -548,6 +553,7 @@
                 "pages": [
                   "zh/signal-intelligence",
                   "zh/ai-intelligence",
+                  "zh/methodology/china-activity-nowcast",
                   "zh/methodology/news-digest-and-briefing",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
@@ -685,6 +691,7 @@
                   "zh/cors",
                   "zh/health-endpoints",
                   "zh/relay-parameters",
+                  "zh/decision-signal-provenance",
                   "zh/data-sources"
                 ]
               },

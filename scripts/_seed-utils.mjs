@@ -281,12 +281,37 @@ async function redisCommand(url, token, command) {
 }
 
 async function redisGet(url, token, key) {
-  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!resp.ok) return null;
-  const data = await resp.json();
+  // Retry transient failures (timeout / network tear / 5xx / 429) with the
+  // redisCommand tagging contract. A single unretried blip here silently read
+  // as "key missing", which killed seed-gdelt-intel's cache-merge fallback for
+  // 21h while the canonical key was healthy (issue #5437). The external
+  // contract is unchanged: HTTP failures still degrade to null (now loudly),
+  // thrown failures still propagate — both only after retries.
+  let data;
+  try {
+    data = await withRetry(async () => {
+      const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!resp.ok) {
+        const err = new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
+        if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+          err.nonRetryable = true;
+        } else if (resp.status === 429) {
+          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+        }
+        err.httpStatus = resp.status;
+        throw err;
+      }
+      return resp.json();
+    }, 2, 1000);
+  } catch (err) {
+    if (err.httpStatus == null) throw err;
+    console.warn(`  Redis GET ${key}: degraded to null (${err.message})`);
+    return null;
+  }
   if (!data.result) return null;
   // Envelope-aware: returns inner `data` for seeded keys written in contract
   // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
@@ -358,6 +383,14 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     if (!valid) {
       return { payloadBytes: 0, skipped: true };
     }
+  }
+
+  // Some seeds publish a cohort of source-health records that must succeed
+  // before the canonical archive becomes visible. Keep that work outside the
+  // Redis retry loop: the callback's own writes own their retry policy, and a
+  // failure must abort before the staging/canonical SET sequence begins.
+  if (options.beforePublish) {
+    await options.beforePublish(data);
   }
 
   // When the seeder opts into the contract (options.envelopeMeta provided), wrap
@@ -438,8 +471,40 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
   const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
-  await redisSet(url, token, metaKey, meta, metaTtl);
+  // Retry transient Redis failures: this SET runs bare on runSeed's
+  // validate-skip path, where an unretried Upstash abort escaped to the
+  // seeder's top-level catch as `FATAL: The operation was aborted due to
+  // timeout` → exit 1 (seed-gdelt-intel, issue #5437). redisCommand tags
+  // permanent 4xx nonRetryable and 429 with Retry-After; withRetry honors both.
+  await withRetry(() => redisSet(url, token, metaKey, meta, metaTtl), 2, 1000);
   return meta;
+}
+
+/**
+ * writeFreshnessMetadata for runSeed's OWN bookkeeping call sites: degrades to
+ * null (loudly) instead of throwing when Redis stays down past the retry
+ * budget. By the time runSeed writes seed-meta, the run's outcome is already
+ * decided — the canonical publish succeeded, or the skip path preserved
+ * last-good — so letting a metadata SET escape as a throw converts a Redis
+ * blip into `FATAL: … exit 1` + a "Deploy Crashed!" alert over pure
+ * bookkeeping (seed-gdelt-intel 2026-07-23, issue #5478; the #5438 retry
+ * alone was insufficient under the sustained brownout contention window).
+ * The degraded write leaves the OLD seed-meta in place, which ages naturally
+ * — /api/health STALE_SEED is the durable alarm for a persistent failure.
+ *
+ * External callers keep using writeFreshnessMetadata directly: its
+ * throw-after-retries contract is intentional and pinned by tests.
+ */
+export async function writeFreshnessMetadataSafely(domain, resource, ...rest) {
+  try {
+    return await writeFreshnessMetadata(domain, resource, ...rest);
+  } catch (err) {
+    console.warn(
+      `  WARNING: seed-meta write for ${domain}:${resource} failed after retries (${err?.message || err}) — `
+      + `continuing; seed-meta will age and /api/health STALE_SEED is the alarm if this persists`,
+    );
+    return null;
+  }
 }
 
 /**
@@ -459,12 +524,27 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
 export async function readCanonicalEnvelopeMeta(canonicalKey) {
   try {
     const { url, token } = getRedisCredentials();
-    const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
+    // Retry transient failures before degrading: a blip here is worse than a
+    // crash — the caller falls back to writing recordCount=0 with
+    // fetchedAt=NOW, resetting the freshness clock over real staleness
+    // (issue #5437). Outer catch preserves the never-throws contract.
+    const data = await withRetry(async () => {
+      const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!resp.ok) {
+        const err = new Error(`Canonical meta GET ${canonicalKey} failed: HTTP ${resp.status}`);
+        if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+          err.nonRetryable = true;
+        } else if (resp.status === 429) {
+          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+        }
+        throw err;
+      }
+      return resp.json();
+    }, 2, 1000);
     if (!data || !data.result) return null;
     let parsed;
     try { parsed = JSON.parse(data.result); } catch { return null; }
@@ -1481,7 +1561,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
+    beforePublish,
     afterPublish,
+    afterPreservedValidationSkip,
+    afterFreshness,
     publishTransform,
     declareRecords,        // new — contract opt-in. When present, runSeed enters
                            // envelope-dual-write path: writes `{_seed, data}` to
@@ -1753,10 +1836,15 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await exitAfterTelemetryFlush(0);
     }
 
-    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, { envelopeMeta });
+    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
+      envelopeMeta,
+      beforePublish: beforePublish
+        ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
+        : undefined,
+    });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
-      await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
       const strictFailure = Boolean(opts.emptyDataIsFailure);
       if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
@@ -1794,7 +1882,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // Pass-through canonical's contentAge so health doesn't lose the
           // STALE_CONTENT signal exactly when last-good-with-stale-content
           // data is being served (Codex round 1 P0b).
-          await writeFreshnessMetadata(
+          await writeFreshnessMetadataSafely(
             domain, resource, canonicalMeta.recordCount,
             canonicalMeta.sourceVersion || opts.sourceVersion,
             ttlSeconds,
@@ -1808,9 +1896,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             `existing cache TTL extended`,
           );
         } else {
-          await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
+          await writeFreshnessMetadataSafely(domain, resource, 0, opts.sourceVersion, ttlSeconds);
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
+      }
+      if (!strictFailure && preserved && afterPreservedValidationSkip) {
+        await afterPreservedValidationSkip(data, {
+          canonicalKey,
+          ttlSeconds,
+          recordCount: contractRecordCount,
+          runId,
+        });
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
@@ -1936,11 +2032,23 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       oldestItemAt: contentOldestAt,
       maxContentAgeMin,
     } : undefined;
-    const meta = await writeFreshnessMetadata(
+    const meta = await writeFreshnessMetadataSafely(
       domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,
     );
+    if (afterFreshness) {
+      if (meta == null) {
+        throw new Error(`${domain}:${resource} freshness metadata write failed before completion`);
+      }
+      await afterFreshness(data, {
+        canonicalKey,
+        ttlSeconds,
+        recordCount,
+        runId,
+        freshnessMeta: meta,
+      });
+    }
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });

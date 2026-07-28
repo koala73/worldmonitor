@@ -4,6 +4,8 @@ dist/
 public/blog/
 public/countries/
 public/chokepoints/
+public/crises/
+public/tools/
 public/reference/
 public/crawlable-corpus.json
 .DS_Store

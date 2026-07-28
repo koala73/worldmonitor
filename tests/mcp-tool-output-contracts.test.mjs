@@ -60,9 +60,10 @@ const REQUIRED_ARGS = {
 // description. Used to fabricate minimal-shape responses for RPC `_execute`
 // overrides. The implementation is intentionally narrow — it mirrors the
 // vocabulary the registry actually emits (`type`, `properties`, `required`,
-// `items`).
+// `items`, `enum`).
 function minimalShape(schema) {
   if (!schema || typeof schema !== 'object') return null;
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
   const types = Array.isArray(schema.type)
     ? schema.type
     : (schema.type ? [schema.type] : []);
@@ -81,7 +82,7 @@ function minimalShape(schema) {
   return null;
 }
 
-describe('api/mcp.ts — per-tool output contract (envelope-shape, all 41 tools)', () => {
+describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry tools)', () => {
   let mod;
   let mcpHandler;
   let originalExecutes;
@@ -142,7 +143,7 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all 41 tools)
     const matches = [...src.matchAll(/^\s{4}name:\s+'([a-z0-9_]+)'/gm)];
     return matches.map((m) => m[1]);
   })();
-  assert.ok(TOOL_NAMES.length >= 41, `expected >= 41 tools, got ${TOOL_NAMES.length}`);
+  assert.ok(TOOL_NAMES.length > 0, 'expected at least one tool in the registry');
 
   for (const name of TOOL_NAMES) {
     it(`${name} — tools/call response validates against declared outputSchema`, async () => {

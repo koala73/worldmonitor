@@ -134,12 +134,15 @@
     "china": {
       "title": "중국 국가 스냅숏",
       "description": "기존 공개 데이터 계약 기반의 거시·시장·무역·에너지·운영 가용성 현황.",
-      "macroPolicy": "거시 & 정책",
-      "marketCredit": "시장 & 신용",
-      "tradeSupply": "무역 & 공급망",
+      "policyEvents": "Policy & Enforcement",
       "energy": "에너지",
       "availability": "재해 & 항공",
       "observed": "기준일:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "출처:",
       "imfGrowth": "IMF 성장 전망",
       "creditGdp": "GDP 대비 신용",
@@ -148,8 +151,6 @@
       "gasDemand": "가스 수요",
       "energyMix": "전원 구성",
       "coal": "석탄",
-      "aviationAvailability": "항공 가용성",
-      "hazardAvailability": "재해 가용성",
       "noMajorDisruptions": "보고된 주요 중단 없음",
       "activeDisruptions_one": "활성 중단 {{count}}건",
       "activeDisruptions_other": "활성 중단 {{count}}건",
@@ -161,18 +162,21 @@
       "ccfiSource": "상하이 해운 거래소",
       "comtradeSource": "UN Comtrade 보고국 156",
       "sourceUnavailable": "출처 없음",
-      "macroUnavailable": "거시 및 정책 데이터를 현재 사용할 수 없습니다.",
-      "marketUnavailable": "시장 및 신용 데이터를 현재 사용할 수 없습니다.",
-      "tradeUnavailable": "무역 및 공급망 데이터를 현재 사용할 수 없습니다.",
-      "energyUnavailable": "에너지 데이터를 현재 사용할 수 없습니다.",
-      "availabilityUnavailable": "재해 및 항공 가용성 데이터를 현재 사용할 수 없습니다.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "로딩 중",
         "available": "사용 가능",
         "partial": "부분",
         "stale": "오래됨",
         "unavailable": "사용 불가"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -1556,7 +1560,26 @@
       "cafIndex": "CAF 지수",
       "candidGrants": "Candid 보조금",
       "dataLag": "데이터 지연",
-      "infoTooltip": "<strong>글로벌 기부 활동 지수</strong> 크라우드펀딩 플랫폼 및 암호화폐 지갑을 통한 개인 기부를 추적하는 종합 지수.<ul><li><strong>플랫폼</strong>: GoFundMe, GlobalGiving, JustGiving 캠페인 샘플링</li><li><strong>암호화폐</strong>: 온체인 자선 지갑 유입 (Endaoment, Giving Block)</li><li><strong>기관</strong>: OECD ODA, CAF 세계 기부 지수, Candid 보조금</li></ul>지수는 방향성 지표입니다 (정확한 금액 아님). 실시간 샘플링과 연간 보고서를 결합합니다."
+      "infoTooltip": "<strong>글로벌 기부 활동 지수</strong> 크라우드펀딩 플랫폼 및 암호화폐 지갑을 통한 개인 기부를 추적하는 종합 지수.<ul><li><strong>플랫폼</strong>: GoFundMe, GlobalGiving, JustGiving 캠페인 샘플링</li><li><strong>암호화폐</strong>: 온체인 자선 지갑 유입 (Endaoment, Giving Block)</li><li><strong>기관</strong>: OECD ODA, CAF 세계 기부 지수, Candid 보조금</li></ul>지수는 방향성 지표입니다 (정확한 금액 아님). 실시간 샘플링과 연간 보고서를 결합합니다.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "난민",
@@ -2108,7 +2131,11 @@
       "infoTooltip": "<strong>재난 연쇄 반응</strong> 수렴하는 자연재해 및 인프라 신호 감지:<ul><li>지진, 산불, 홍수 및 극한 날씨의 상관관계</li><li>인프라 및 공급망에 대한 연쇄 효과 추적</li><li>복합 재난 위험이 있는 지역 강조</li></ul>카드를 클릭하여 영향을 받는 지역으로 확대합니다."
     },
     "markets": {
-      "infoTooltip": "<strong>시장</strong> 실시간 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다."
+      "infoTooltip": "<strong>시장</strong> 실시간 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>섹터 히트맵</strong> S&P 500 섹터 성과를 한눈에 확인합니다. 색상 강도는 일일 변화의 규모를 반영합니다. 녹색 = 상승, 빨강 = 하락."
@@ -2170,11 +2197,101 @@
       "cta": "Pro로 업그레이드 →",
       "dismiss": "닫기"
     },
+    "billingState": {
+      "onHoldDesc": "결제에 실패했습니다. 프리미엄 이용 권한을 복원하려면 결제 수단을 업데이트하세요.",
+      "onHoldBannerMessage": "결제에 실패했습니다. 구독을 유지하려면 결제 수단을 업데이트하세요.",
+      "updatePayment": "결제 수단 업데이트",
+      "renewalPendingDesc": "구독 갱신을 확인하고 있습니다. 확인되는 즉시 프리미엄 이용 권한이 자동으로 복원됩니다.",
+      "refreshStatus": "상태 새로고침",
+      "renewalFailedDesc": "구독 갱신을 확인할 수 없습니다. 문제가 계속되면 결제를 관리하거나 지원팀에 문의하세요.",
+      "manageBilling": "결제 관리",
+      "lapsedDesc": "Pro 구독이 종료되었습니다. 프리미엄 이용 권한을 되찾으려면 다시 구독하세요.",
+      "resubscribe": "다시 구독"
+    },
     "checkoutFailureBanner": {
       "message": "결제를 완료할 수 없습니다. 청구되지 않았습니다.",
       "retry": "다시 시도",
       "retrying": "재시도 중…",
       "dismiss": "닫기"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "{{current}}단계 / {{total}}단계",
+      "closeLabel": "설정 건너뛰기",
+      "ariaLabel": "Pro 활성화 설정",
+      "signedInAs": "{{email}}(으)로 로그인됨",
+      "steps": {
+        "brief": {
+          "heading": "매일 아침 받는 데일리 브리핑",
+          "body": "매일 아침 받은편지함에 엄선된 인텔리전스 브리핑을 보내드립니다 — 밤사이 중요한 신호를 5분 안에 읽을 수 있게 정리했습니다.",
+          "confirmCta": "모닝 브리핑 켜기",
+          "confirming": "켜는 중…",
+          "doneNote": "모닝 브리핑이 이미 실행 중입니다.",
+          "scheduleNote": "현재 전달 시간을 그대로 유지합니다.",
+          "summaryLabel": "모닝 브리핑",
+          "summaryVerified": "켜짐 — 다음 모닝 브리핑부터 시작됩니다.",
+          "deliverAt": "전달 시간",
+          "previewLoading": "첫 브리핑의 미리보기를 준비하고 있습니다…",
+          "previewLabel": "오늘 아침 브리핑"
+        },
+        "alerts": {
+          "heading": "긴급 알림",
+          "body": "분쟁 격화, 시장 충격, 새로운 제재 등 중요한 일이 발생하면 브라우저로 알림을 받으세요. 빈도는 설정에서 언제든지 조정할 수 있습니다.",
+          "confirmCta": "알림 활성화",
+          "confirming": "활성화하는 중…",
+          "doneNote": "브라우저 알림이 이미 켜져 있습니다.",
+          "blockedNote": "브라우저에서 알림이 차단되어 있습니다. 알림을 받으려면 브라우저의 사이트 설정에서 알림을 켜세요.",
+          "declinedNote": "괜찮습니다 — 브라우저 알림을 보내지 않습니다. 나중에 브라우저의 사이트 설정에서 언제든지 켤 수 있습니다.",
+          "summaryLabel": "긴급 알림",
+          "summaryVerified": "켜짐 — 긴급 신호가 브라우저로 전달됩니다."
+        },
+        "power": {
+          "heading": "당신의 Pro 툴킷",
+          "body": "맞춤 위젯, MCP 연결, AI 리서처가 잠금 해제되었습니다. 정말로 지켜보고 싶은 보드를 만들어보세요.",
+          "confirmCta": "Pro 도구 둘러보기",
+          "confirming": "여는 중…",
+          "doneNote": "이미 Pro 도구를 사용하고 있습니다.",
+          "summaryLabel": "Pro 툴킷",
+          "summaryVerified": "잠금 해제됨 — 준비되면 언제든지 사용하세요.",
+          "channelsNote": "Telegram, Slack, Discord 또는 웹훅을 선호하시나요?",
+          "pointers": {
+            "search": "대시보드 전체 검색",
+            "widgets": "맞춤 위젯 만들기",
+            "analyst": "AI 분석가에게 질문하기",
+            "mcpClients": "MCP 설정하기",
+            "channels": "알림 설정에서 설정하기"
+          }
+        }
+      },
+      "status": {
+        "pending": "설정되지 않음",
+        "inFlight": "설정 중…",
+        "verified": "준비됨",
+        "failed": "작동하지 않음",
+        "blocked": "차단됨",
+        "unavailable": "사용할 수 없음",
+        "blockedNote": "지금은 사용할 수 없습니다 — 나중에 설정에서 설정할 수 있습니다.",
+        "unavailableNote": "이 기기에서는 사용할 수 없습니다 — 나중에 설정할 수 있습니다.",
+        "failedBody": "문제가 발생했습니다. 다시 시도하거나 나중에 설정에서 설정하세요.",
+        "retry": "다시 시도"
+      },
+      "actions": {
+        "skip": "지금은 건너뛰기",
+        "continue": "계속"
+      },
+      "summary": {
+        "heading": "모두 준비되었습니다",
+        "subVerified": "계정에서 실행 중인 항목입니다.",
+        "subPending": "설정은 언제든지 설정에서 완료할 수 있습니다.",
+        "linePending": "아직 설정되지 않음 — 설정에서 언제든지 완료하세요.",
+        "lineFailed": "설정하지 못했습니다 — 설정에서 다시 시도하세요.",
+        "finish": "내 대시보드로 이동"
+      },
+      "chip": {
+        "message": "Pro 계정 설정을 완료하세요.",
+        "action": "설정 완료",
+        "dismissLabel": "닫기"
+      }
     },
     "frameworkSelector": {
       "label": "분석 프레임워크",
@@ -2386,6 +2503,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {

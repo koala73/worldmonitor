@@ -18,6 +18,17 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.seed-bundle-portwatch-port-activity",
     "service": "seed-bundle-portwatch-port-activity",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "PROXY_URL"
+    ],
+    "watchPatterns": [
+      "scripts/**",
+      "shared/**",
+      "Dockerfile.seed-bundle-portwatch-port-activity"
+    ],
+    "cronSchedule": "0 */12 * * *",
     "documentedAt": "Dockerfile.seed-bundle-portwatch-port-activity"
   },
   {
@@ -164,6 +175,9 @@
     "entry": "scripts/seed-bundle-derived-signals.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-derived-signals",
+    "requiredEnv": [
+      "PROXY_URL"
+    ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-5-seed-bundle-derived-signals"
   },
   {
@@ -194,6 +208,9 @@
     "entry": "scripts/seed-bundle-market-backup.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
+    "requiredEnv": [
+      "PROXY_URL"
+    ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-10-seed-bundle-market-backup"
   },
   {

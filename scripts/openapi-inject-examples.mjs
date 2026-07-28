@@ -32,6 +32,8 @@ const JSON_MEDIA = 'application/json';
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
+const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
+const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
 
 // ── Curated per-parameter example overrides ───────────────────────────────
 // The field-name heuristic in stringExample() picks structurally-valid but
@@ -56,6 +58,10 @@ function readRepoText(rel) {
     return '';
   }
 }
+
+const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
+  readRepoText('scripts/shared/giving-published-estimate-claims.json'),
+);
 
 // chokepointId / chokepointIds: get-bypass-options & siblings (SupplyChain) and
 // register-webhook (ShippingV2) validate against the chokepoint registry
@@ -309,6 +315,109 @@ function getScenarioStatusExample() {
   };
 }
 
+function getGivingSummaryExample() {
+  const generatedAt = '2026-07-24T12:00:00.000Z';
+  const annualizedPlatformValueUsd = (claim) => {
+    if (
+      !claim.platform
+      || !claim.includedInHighlightedAggregate
+      || claim.status !== 'verified'
+      || claim.reportedUnit !== 'USD'
+      || !Number.isFinite(claim.reportedValue)
+      || claim.reportedValue <= 0
+    ) {
+      return 0;
+    }
+    if (claim.denominator === 'year') return claim.reportedValue;
+    if (claim.denominator === 'week') return claim.reportedValue * 52;
+    return 0;
+  };
+  const platforms = [
+    ['GoFundMe', 'annual'],
+    ['GlobalGiving', 'annual'],
+    ['JustGiving', 'cumulative'],
+  ].map(([platform, dataFreshness]) => {
+    const platformClaims = GIVING_PUBLISHED_ESTIMATE_CLAIMS
+      .filter((claim) => claim.platform === platform);
+    const annualizedUsd = platformClaims
+      .reduce((total, claim) => total + annualizedPlatformValueUsd(claim), 0);
+    const lastUpdated = platformClaims.find((claim) =>
+      claim.status === 'verified' && claim.sourcePublishedAt?.trim())?.sourcePublishedAt ?? '';
+    return {
+      platform,
+      dailyVolumeUsd: annualizedUsd / 365,
+      dataFreshness,
+      lastUpdated,
+    };
+  });
+  const verifiedContextValue = (metric) => {
+    const claim = GIVING_PUBLISHED_ESTIMATE_CLAIMS.find((entry) =>
+      entry.contextMetric === metric && entry.status === 'verified');
+    return claim?.reportedValue ?? 0;
+  };
+  const publicProvenance = GIVING_PUBLISHED_ESTIMATE_CLAIMS.map((claim) =>
+    Object.fromEntries(
+      Object.entries(claim).filter(([key]) => key !== 'platform' && key !== 'contextMetric'),
+    ));
+  const oecdOdaAnnualUsdBn = verifiedContextValue('oecd_oda_usd_bn');
+  const dataMode = GIVING_PUBLISHED_ESTIMATE_CLAIMS.some((claim) =>
+    claim.status === 'unverified' || claim.status === 'partially_verified')
+    ? 'partial_estimate'
+    : 'published_estimate';
+  const categories = [
+    'Medical & Health',
+    'Disaster Relief',
+    'Education',
+    'Community',
+    'Memorials',
+    'Animals & Pets',
+    'Environment',
+    'Hunger & Food',
+    'Other',
+  ].map((category) => ({
+    category,
+    share: 0,
+    change24h: 0,
+    activeCampaigns: 0,
+    trending: false,
+  }));
+
+  return {
+    summary: {
+      generatedAt,
+      activityIndex: 0,
+      trend: 'stable',
+      estimatedDailyFlowUsd: platforms.reduce(
+        (total, platform) => total + platform.dailyVolumeUsd,
+        0,
+      ),
+      platforms,
+      categories,
+      crypto: {
+        dailyInflowUsd: 0,
+        trackedWallets: 0,
+        transactions24h: 0,
+        topReceivers: [],
+        pctOfTotal: 0,
+      },
+      institutional: {
+        oecdOdaAnnualUsdBn,
+        oecdDataYear: oecdOdaAnnualUsdBn > 0 ? 2023 : 0,
+        cafWorldGivingIndex: 0,
+        cafDataYear: 0,
+        candidGrantsTracked: verifiedContextValue('candid_grants'),
+        dataLag: 'Annual published context',
+      },
+      dataMode,
+      trendAvailable: false,
+      provenance: publicProvenance,
+      activityIndexAvailable: false,
+    },
+    fetchedAt: Date.parse(generatedAt),
+    dataAvailable: true,
+  };
+}
+
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -484,6 +593,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   schema = resolveRef(schema, spec);
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGivingSummaryExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getscenariostatus'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
@@ -619,6 +735,11 @@ function injectSpecExamples(spec) {
       if (responses.length > 0) responseOperations++;
       for (const [, response] of responses) {
         const media = response.content[JSON_MEDIA];
+        // This response carries a canonical JSON document inside payloadJson.
+        // Its dedicated injector owns a representative decoded example; keep
+        // that curated example stable when the generic examples pass is
+        // re-run or checked after code generation.
+        if ((path === CHINA_CORRIDOR_PATH || path === CHINA_DECISION_SIGNALS_PATH) && media.example !== undefined) continue;
         const example = exampleForSchema(media.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Response`,

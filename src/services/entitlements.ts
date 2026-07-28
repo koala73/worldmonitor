@@ -32,6 +32,15 @@ export interface EntitlementState {
      * Dodo's next webhook repopulates the field).
      */
     mcpAccess?: boolean;
+    /**
+     * Data-export entitlement (plan 2026-07-25-001). The enforcement field for
+     * CSV/JSON/PDF export — `exportFormats` is display metadata only, and
+     * `tier` cannot discriminate (Pro Business shares tier 1 with Pro).
+     * Undefined on legacy snapshots: the export gate treats undefined on a
+     * `tier >= 2` snapshot as entitled (permanent fail-open) so a stale row
+     * never locks a paying customer out of their own data.
+     */
+    dataExport?: boolean;
   };
   validUntil: number;
 }

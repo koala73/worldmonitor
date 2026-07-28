@@ -2,6 +2,7 @@
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse } from './_relay.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { captureSilentError } from './_sentry-edge.js';
 
 export const config = { runtime: 'edge' };
 
@@ -206,7 +207,13 @@ export default async function handler(req) {
         'Cache-Control': cacheControl,
         ...corsHeaders,
       });
-    } catch {}
+    } catch (normalizeError) {
+      // Fall through to the raw relay body so a shape change upstream still
+      // serves data, but never silently: clients receive an un-normalized
+      // payload, which is a bug worth an alert.
+      console.warn('[telegram-feed] normalization failed:', normalizeError?.message || String(normalizeError));
+      void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' } });
+    }
 
     return buildRelayResponse(response, body, {
       'Cache-Control': cacheControl,

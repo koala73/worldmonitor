@@ -77,4 +77,21 @@ describe('project license docs', () => {
       'license docs must separate trademark rights from AGPL code rights',
     );
   });
+
+  it('defines each hosted-service plan license without conflating it with the code license', () => {
+    const terms = readFileSync(join(root, 'docs/terms.mdx'), 'utf8');
+
+    for (const label of [
+      'Personal license (Pro)',
+      'Commercial license (Pro Business)',
+      'Commercial license — for your organization (API Starter)',
+      'Commercial license — for your customers (API Business)',
+    ]) {
+      assert.match(terms, new RegExp(label.replace(/[()]/g, '\\$&'), 'i'));
+    }
+    assert.match(terms, /customer-facing product/i);
+    assert.match(terms, /standalone database or substantially similar feed/i);
+    assert.match(terms, /source code remains subject to AGPL-3\.0-only/i);
+    assert.match(terms, /official thin client packages remain subject to MIT/i);
+  });
 });

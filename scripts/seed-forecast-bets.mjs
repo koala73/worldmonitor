@@ -18,6 +18,9 @@ import {
 import { generateBets } from './_bet-templates.mjs';
 import { ENERGY_BET_TEMPLATES, EIA_PETROLEUM_FEED } from './_bet-templates-energy.mjs';
 import { COMMODITY_BET_TEMPLATES, COMMODITY_FEED } from './_bet-templates-commodities.mjs';
+import { MARKET_BET_TEMPLATES, MARKET_FEED } from './_bet-templates-markets.mjs';
+import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS } from './_bet-templates-macro.mjs';
+import { ensembleProbability } from './_forecast-ensemble.mjs';
 import { baseRateProbability } from './_bet-baserate.mjs';
 import { parseMetricKey } from './_forecast-resolution-eval.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
@@ -42,16 +45,41 @@ const SERIES_CAP = 104; // ~2 years of weekly EIA releases
 const EIA_METRICS = ['inventory', 'production', 'wti', 'brent'];
 // All template families + the feeds they read. Energy (EIA, weekly) has an
 // accumulator-backed base rate; commodities (daily prices) are the fast-
-// resolving lane and use the thin-history prior until their own series accrues.
-const ALL_BET_TEMPLATES = [...ENERGY_BET_TEMPLATES, ...COMMODITY_BET_TEMPLATES];
-const BET_FEEDS = [EIA_PETROLEUM_FEED, COMMODITY_FEED];
+// resolving lane; prediction-markets are the market-anchored calibration slice
+// and FRED macro the market-free independence slice (#5525 Phase 2).
+const ALL_BET_TEMPLATES = [
+  ...ENERGY_BET_TEMPLATES,
+  ...COMMODITY_BET_TEMPLATES,
+  ...MARKET_BET_TEMPLATES,
+  ...MACRO_BET_TEMPLATES,
+];
+const BET_FEEDS = [EIA_PETROLEUM_FEED, COMMODITY_FEED, MARKET_FEED, ...FRED_FEED_KEYS];
 
 // Per-feed generation freshness contract. A live-price feed (commodities) kept
 // warm through a multi-day outage (extendExistingTtl preserves the old
 // _seed.fetchedAt) must NOT mint a "newly dated" bet from a stale price (#5243
 // P2). 5 days tolerates any weekend/holiday gap but rejects a real outage.
 // Period feeds (EIA weekly) are naturally days old → not listed (no cap).
-const FEED_MAX_GENERATION_AGE_MS = { [COMMODITY_FEED]: 5 * 24 * 60 * 60 * 1000 };
+// The markets feed refreshes ~30min — a >1d-old envelope means the producer is
+// down and its prices are stale; FRED envelopes refresh daily → 7d cap.
+const FEED_MAX_GENERATION_AGE_MS = {
+  [COMMODITY_FEED]: 5 * 24 * 60 * 60 * 1000,
+  [MARKET_FEED]: 24 * 60 * 60 * 1000,
+  ...Object.fromEntries(FRED_FEED_KEYS.map((key) => [key, 7 * 24 * 60 * 60 * 1000])),
+};
+
+// Phase-2 ensemble stage (#5525) — OFF by default: U15 Stage A ships templates
+// with base-rate probabilities and proves the new slices resolve (Gate 1.5)
+// before any LLM spend is enabled (Stage B sets FORECAST_BETS_ENSEMBLE=1).
+const ENSEMBLE_ENABLED = process.env.FORECAST_BETS_ENSEMBLE === '1';
+const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', 6);
+const ENSEMBLE_BUDGET_MS = envPositiveInt('FORECAST_BETS_ENSEMBLE_BUDGET_MS', 120_000);
+const RESOLUTIONS_LEDGER_KEY = 'forecast:resolutions:v1';
+
+function envPositiveInt(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
 
 // Drop feeds whose envelope predates their freshness contract, so their
 // templates receive no data and generate no bet. Pure (no I/O / console).
@@ -116,8 +144,77 @@ export function buildBetsSnapshot(feedsByKey, nowMs, priorSeries = {}) {
     const values = (series[parsed?.value] || []).map((p) => Number(p.v)).filter(Number.isFinite);
     const { probability } = baseRateProbability(values, bet.resolution);
     bet.probability = probability;
+    // Three-baseline contract (#5525 KTD5): the base-rate is RETAINED as the
+    // recorded baseline even when the ensemble later replaces `probability`,
+    // so the ensemble-vs-base-rate Brier delta stays computable per slice.
+    bet.baselineProbability = probability;
+    bet.probabilitySource = 'base_rate';
   }
   return { generatedAt: nowMs, predictions: bets };
+}
+
+// Phase-2 ensemble stage (#5525 U13). Ranks the snapshot's bets by
+// userValueScore, runs the 3-pass ensemble on the top-K, and replaces their
+// probability (source 'ensemble') while keeping baselineProbability intact.
+// Skips bets whose OPEN LEDGER WINDOW already holds an ensemble probability —
+// the primary cross-run cost control (updateOpenWindow never downgrades, so a
+// re-run adds nothing). Injected callLLM/news/openWindows keep this testable.
+export async function attachEnsembleProbabilities(snapshot, options = {}) {
+  const bets = snapshot?.predictions || [];
+  if (!bets.length || typeof options.callLLM !== 'function') return { attempted: 0, ensembled: 0, skipped: 0 };
+  const topK = Number.isFinite(options.topK) ? options.topK : ENSEMBLE_TOP_K;
+  const deadlineMs = Number.isFinite(options.deadlineMs) ? options.deadlineMs : Date.now() + ENSEMBLE_BUDGET_MS;
+  const openEnsembleIds = options.openEnsembleIds instanceof Set ? options.openEnsembleIds : new Set();
+  const news = Array.isArray(options.news) ? options.news : [];
+
+  const ranked = [...bets].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0)).slice(0, topK);
+  let attempted = 0;
+  let ensembled = 0;
+  let partial = 0;
+  let skipped = 0;
+  for (const bet of ranked) {
+    if (openEnsembleIds.has(bet.id)) { skipped += 1; continue; }
+    if (Date.now() >= deadlineMs) break; // remaining bets keep the base-rate
+    attempted += 1;
+    try {
+      const result = await ensembleProbability(bet, {
+        signal: `${bet.title} — spec: ${bet.resolution?.operator} ${bet.resolution?.threshold} from baseline ${bet.resolution?.baselineValue}`,
+        baseRate: bet.baselineProbability,
+        news,
+        marketPrice: bet.calibration?.marketPrice,
+      }, options.callLLM, { deadlineMs, cache: options.cache, stageBudgetMs: options.stageBudgetMs });
+      // A partial round (1-2 finite passes) is still better evidence than the
+      // base rate, but it attaches under its OWN provenance: only a full
+      // 'ensemble' pins the open ledger window (skip + no-downgrade guard), so
+      // an 'ensemble_partial' bet is re-scored next run and upgradeable.
+      if ((result.source === 'ensemble' || result.source === 'ensemble_partial') && Number.isFinite(result.probability)) {
+        bet.probability = result.probability;
+        bet.probabilitySource = result.source;
+        bet.passes = result.passes;
+      }
+      if (result.source === 'ensemble') ensembled += 1;
+      else if (result.source === 'ensemble_partial') partial += 1;
+    } catch (err) {
+      console.warn(`  [bets] ensemble failed for ${bet.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { attempted, ensembled, partial, skipped };
+}
+
+// Ids of pending ledger entries whose open window already carries a FULL
+// ensemble-sourced probability (re-scoring them would be wasted spend — the
+// resolver's updateOpenWindow guard would ignore a downgrade anyway).
+// 'ensemble_partial' windows are deliberately NOT indexed: a degraded 1-2 pass
+// round must be retried until a full round lands.
+export function collectOpenEnsembleIds(ledger) {
+  const entries = ledger && typeof ledger === 'object'
+    ? (Array.isArray(ledger) ? ledger : Object.values(ledger.data ?? ledger))
+    : [];
+  const ids = new Set();
+  for (const entry of entries) {
+    if (entry && entry.status === 'pending' && entry.probabilitySource === 'ensemble' && entry.id) ids.add(entry.id);
+  }
+  return ids;
 }
 
 async function redisPipeline(command) {
@@ -153,6 +250,38 @@ async function main() {
   const snapshot = buildBetsSnapshot(feedsByKey, nowMs, priorSeries);
   const nextSeries = computeNextSeries(feedsByKey, priorSeries);
   const count = snapshot.predictions.length;
+
+  // Stage B (#5525 U15): the LLM ensemble replaces the base-rate for top-K
+  // bets. Dynamic imports keep Stage A (flag off) light — the seeder never
+  // loads the 18k-line forecast module or the resolver until enabled. Any
+  // failure here leaves every bet on its honest base-rate.
+  if (ENSEMBLE_ENABLED && count > 0) {
+    try {
+      const [{ callForecastLLM }, resolutions] = await Promise.all([
+        import('./seed-forecasts.mjs'),
+        import('./seed-forecast-resolutions.mjs'),
+      ]);
+      const ledger = await readRedisJson(RESOLUTIONS_LEDGER_KEY).catch(() => null);
+      const openEnsembleIds = collectOpenEnsembleIds(ledger || {});
+      let news = [];
+      try {
+        const archive = await resolutions.readDigestAccumulatorArchive(nowMs - 3 * 24 * 60 * 60 * 1000, nowMs, { maxHashes: 300 });
+        news = (archive?.items || []).map((item) => item?.title).filter(Boolean).slice(0, 12);
+      } catch (err) {
+        console.warn(`  [bets] news archive unavailable for ensemble evidence: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const stats = await attachEnsembleProbabilities(snapshot, {
+        callLLM: callForecastLLM,
+        openEnsembleIds,
+        news,
+        topK: ENSEMBLE_TOP_K,
+        deadlineMs: Date.now() + ENSEMBLE_BUDGET_MS,
+      });
+      console.log(`  [bets] ensemble: attempted=${stats.attempted} ensembled=${stats.ensembled} partial=${stats.partial} skipped-open=${stats.skipped} (K=${ENSEMBLE_TOP_K})`);
+    } catch (err) {
+      console.warn(`  [bets] ensemble stage failed (bets keep base-rate): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Redis writes are best-effort for a non-user-facing shadow seeder: a
   // transient Upstash blip must exit graceful (self-heals next run), not page.

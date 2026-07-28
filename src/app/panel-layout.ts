@@ -40,17 +40,21 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
-import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
+import {
+  markProActivationPending,
+  ProActivationController,
+} from '@/app/pro-activation-controller';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
-import { PanelTabBar } from '@/components/PanelTabBar';
+import { PanelTabBar, tabCapGateCopy } from '@/components/PanelTabBar';
 import {
   loadTabsState,
   saveTabsState,
@@ -63,7 +67,9 @@ import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
-import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
+import { PanelGateReason, evaluateTabCap, exportLockToGateReason, getPanelGateReason, hasPremiumAccess, resolveBillingAwareGateReason, resolveGateAction } from '@/services/panel-gating';
+import { primeExportGateActivation } from '@/services/export-gate';
+import type { TabCapVerdict } from '@/services/export-gate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
@@ -137,6 +143,13 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
 
 const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 
+const DASHBOARD_REFERENCE_LINKS = [
+  { label: 'Countries', path: '/countries/' },
+  { label: 'Chokepoints', path: '/chokepoints/' },
+  { label: 'Crises', path: '/crises/' },
+  { label: 'Tools', path: '/tools/' },
+] as const;
+
 // TEMPORARY MIRROR of each panel constructor's footprint (`defaultRowSpan` /
 // `className: 'panel-wide'`, declared in src/components/*Panel.ts). A deferred
 // shell never instantiates its component, so it cannot read that footprint
@@ -151,6 +164,8 @@ const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   cii: { rowSpan: 2 },
   'chat-analyst': { rowSpan: 2 },
+  'china-corridors': { rowSpan: 2, className: 'panel-wide' },
+  'china-activity-nowcast': { rowSpan: 2, className: 'panel-wide' },
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
@@ -297,6 +312,7 @@ function warnOnBootShellFootprintDrift(snapshot: BootShellFootprintSnapshot): vo
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
+  openSearch: () => void;
   loadAllData: (forceAll?: boolean) => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
@@ -347,10 +363,12 @@ export class PanelLayoutManager implements AppModule {
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
+  private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
   private scheduledLoadAllIdle: number | null = null;
   private responsiveZoneListener: ResponsiveZoneListener | null = null;
+  private readonly proActivationController: ProActivationController;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -372,10 +390,24 @@ export class PanelLayoutManager implements AppModule {
     const returnResult = handleCheckoutReturn();
     const returnedFromOverlay = consumePostCheckoutFlag();
     const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
+    this.proActivationController = new ProActivationController(ctx, {
+      reloadPending: returnedFromCheckout,
+      openAiAnalyst: () => this.revealAnalystPanel(),
+      openSearch: callbacks.openSearch,
+    });
     if (returnedFromCheckout) {
       // Funnel (#4931): the purchase-complete signal on the client side.
       // Queued by the analytics facade until Umami loads after first paint.
       trackCheckoutSuccess(returnResult.kind === 'success' ? 'url-return' : 'overlay-flag');
+      // Pro Activation Onboarding: capture the plan identity from the attempt
+      // record and write the durable pending-onboarding marker BEFORE the
+      // clear below wipes the attempt. Success branch only (the `failed`
+      // branch structurally cannot reach here). An overlay-only return may
+      // carry no attempt record → the marker omits productId and the boot
+      // hook falls back to the live entitlement snapshot for plan identity
+      // (never a write-time frozen fallback — see decideActivationMount).
+      const activationProductId = loadCheckoutAttempt()?.productId ?? null;
+      markProActivationPending(activationProductId);
       // Full-page return cleared its URL params; belt-and-braces clear
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
@@ -499,6 +531,14 @@ export class PanelLayoutManager implements AppModule {
       // snapshot synchronously rather than waiting for the next auth event.
       this.updatePanelGating(getAuthState());
     });
+
+    // #4771: billing-state transitions can arrive on the SUBSCRIPTION row
+    // alone (webhook flips to on_hold, renewal verification records a
+    // verdict) with no entitlement snapshot change. Re-run gating so the
+    // billing-aware CTA copy tracks the current state, not just the banner.
+    this.unsubscribeSubscriptionChange = onSubscriptionChange(() => {
+      this.updatePanelGating(getAuthState());
+    });
   }
 
   async init(): Promise<void> {
@@ -525,6 +565,32 @@ export class PanelLayoutManager implements AppModule {
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
+
+    // Pro Activation Onboarding: after the dashboard settles, evaluate whether
+    // a pending-onboarding marker should open the interstitial (or surface the
+    // finish-setup chip). Deferred off the boot critical path like the panel
+    // hydration scheduler above.
+    this.proActivationController.init();
+  }
+
+  /**
+   * Open + scroll the WM Analyst (chat-analyst) panel into view. The panel is a
+   * lazy/deferred premium panel, so it may not be in `ctx.panels` yet at click
+   * time; scrolling to its reserved grid slot trips the mount observer, and we
+   * retry briefly until the element appears (mirrors search-manager's
+   * scrollToPanelWhenReady contract).
+   */
+  private revealAnalystPanel(attemptsLeft = 12): void {
+    if (this.ctx.isDestroyed || typeof document === 'undefined') return;
+    const key = 'chat-analyst';
+    this.ctx.panels[key]?.show();
+    const el = document.querySelector(`[data-panel="${key}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (attemptsLeft <= 0) return;
+    window.setTimeout(() => this.revealAnalystPanel(attemptsLeft - 1), 80);
   }
 
   destroy(): void {
@@ -626,9 +692,15 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeEntitlementChange?.();
     this.unsubscribeEntitlementChange = null;
 
+    // Clean up subscription-change gating listener (#4771)
+    this.unsubscribeSubscriptionChange?.();
+    this.unsubscribeSubscriptionChange = null;
+
     // Clean up payment failure banner subscription
     this.unsubscribePaymentFailureBanner?.();
     this.unsubscribePaymentFailureBanner = null;
+
+    this.proActivationController.destroy();
 
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
@@ -639,6 +711,11 @@ export class PanelLayoutManager implements AppModule {
 
   /** Reactively update premium panel gating based on auth state. */
   private updatePanelGating(state: AuthSession): void {
+    // #4771: resolve the billing-aware refinement of FREE_TIER once per pass
+    // — the inputs (subscription/entitlement snapshots, now) are invariant
+    // across the panel loop, and a single Date.now() keeps every panel on
+    // the same verdict at a period-end boundary.
+    const billingAwareFreeTier = resolveBillingAwareGateReason(PanelGateReason.FREE_TIER);
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
       const isPremium = WEB_PREMIUM_PANELS.has(key);
       let reason = getPanelGateReason(state, isPremium);
@@ -670,27 +747,28 @@ export class PanelLayoutManager implements AppModule {
         reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
       }
 
+      // #4771: a FREE_TIER verdict for a customer with stale paid evidence
+      // becomes a billing-state reason (verifying renewal / update payment /
+      // resubscribe) so we never push a paying user toward duplicate checkout.
+      if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
+
       if (reason === PanelGateReason.NONE) {
         // User has access -- unlock if previously locked
         (panel as Panel).unlockPanel();
       } else {
         // User does NOT have access -- show appropriate CTA
-        const onAction = this.getGateAction(reason);
+        const onAction = resolveGateAction(reason, {
+          openAuthModal: () => this.ctx.authModal?.open(),
+        });
         (panel as Panel).showGatedCta(reason, onAction);
       }
     }
-  }
 
-  /** Return the action callback for a given gate reason. */
-  private getGateAction(reason: PanelGateReason): () => void {
-    switch (reason) {
-      case PanelGateReason.ANONYMOUS:
-        return () => this.ctx.authModal?.open();
-      case PanelGateReason.FREE_TIER:
-        return () => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
-      default:
-        return () => {};
-    }
+    // KTD8: the tab cap rides the SAME pass, so it re-evaluates on both
+    // subscribeAuthState and onEntitlementChange (plus onSubscriptionChange).
+    // An auth-only subscription would miss the post-checkout snapshot — the
+    // bug documented at the proBlock wiring below.
+    this.updateTabCapLock();
   }
 
   /** #5159/#5205 review: storage access can throw (blocked cookies, sandboxed
@@ -714,6 +792,10 @@ export class PanelLayoutManager implements AppModule {
     // (which shoved #panelsGrid up 698px, field CLS ~0.62 for this cohort).
     const mapStartsCollapsed = this.ctx.isMobile && PanelLayoutManager.isMobileMapCollapsedPreferred();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
+    const referenceLinksHtml = DASHBOARD_REFERENCE_LINKS.map(({ label, path }) => {
+      const href = this.ctx.isDesktopApp ? `https://www.worldmonitor.app${path}` : path;
+      return `<a href="${href}" target="_blank" rel="noopener">${label}</a>`;
+    }).join('');
 
     markLcpDebug('wm:layout:render-start');
     document.documentElement.classList.add('wm-layout-hydrated');
@@ -880,7 +962,8 @@ export class PanelLayoutManager implements AppModule {
         </a>
         <div class="mobile-menu-divider"></div>
         <div class="mobile-menu-footer-links">
-          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
+          ${referenceLinksHtml}
+          <a href="${this.ctx.isDesktopApp ? 'https://www.worldmonitor.app/pro#pricing' : '/pro#pricing'}" target="_blank" rel="noopener">Pricing</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
@@ -948,7 +1031,8 @@ export class PanelLayoutManager implements AppModule {
           </div>
         </div>
         <nav>
-          <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
+          ${referenceLinksHtml}
+          <a href="${this.ctx.isDesktopApp ? 'https://www.worldmonitor.app/pro#pricing' : '/pro#pricing'}" target="_blank" rel="noopener">Pricing</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
@@ -1034,6 +1118,7 @@ export class PanelLayoutManager implements AppModule {
       onDelete: (id) => this.deleteTab(id),
     });
     mount.appendChild(this.panelTabBar.getElement());
+    this.updateTabCapLock();
   }
 
   private panelSettingsEnabledStateChanged(
@@ -1079,8 +1164,49 @@ export class PanelLayoutManager implements AppModule {
     this.panelTabBar?.refresh();
   }
 
+  /**
+   * Tab-cap state for the CURRENT tab count (plan 2026-07-25-001, KTD8).
+   * Pushes the locked/unlocked state into the tab bar and returns the verdict
+   * so `addTab` can enforce it without resolving twice.
+   *
+   * CREATION-ONLY: nothing here removes a tab. A user sitting above their cap
+   * (downgrade, lowered allowance, tabs created during a null-snapshot window)
+   * keeps every tab they have — only the "+" locks.
+   */
+  private updateTabCapLock(): TabCapVerdict {
+    const verdict = evaluateTabCap(getAuthState(), this.tabsState?.tabs.length ?? 0);
+    if (verdict.allowed) {
+      // Only a would-be-capped user pays for the catalog probe; the cap stays
+      // inactive until Pro Business is provably purchasable, so the limit and
+      // the tier flip together (R10). Single-flight and shared with U5.
+      if (verdict.pendingActivation) {
+        void primeExportGateActivation().then((active) => {
+          if (active && !this.ctx.isDestroyed) this.updateTabCapLock();
+        });
+      }
+      this.panelTabBar?.setAddLock(null);
+      return verdict;
+    }
+    const reason = exportLockToGateReason(verdict.reason);
+    this.panelTabBar?.setAddLock({
+      copy: tabCapGateCopy(reason, verdict.cap),
+      onAction: resolveGateAction(reason, { openAuthModal: () => this.ctx.authModal?.open() }),
+    });
+    return verdict;
+  }
+
   private addTab(): void {
     if (!this.tabsState) return;
+
+    const verdict = this.updateTabCapLock();
+    if (!verdict.allowed) {
+      // The metric fires on a blocked CLICK, never on render — a control
+      // nobody reached for is not a gate hit.
+      trackGateHit('dashboard-tab');
+      this.panelTabBar?.showAddLockNotice();
+      return;
+    }
+
     this.snapshotActiveTab();
 
     const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
@@ -1100,6 +1226,9 @@ export class PanelLayoutManager implements AppModule {
 
     this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
     this.panelTabBar?.refresh();
+    // The new tab may have consumed the last slot — lock the control now
+    // rather than on the next entitlement emission.
+    this.updateTabCapLock();
     showToast(t('dashboardTabs.newTabCreated'));
   }
 
@@ -1128,6 +1257,8 @@ export class PanelLayoutManager implements AppModule {
       saveTabsState(this.tabsState);
     }
     this.panelTabBar?.refresh();
+    // Deleting frees a slot: a capped user drops back under the limit.
+    this.updateTabCapLock();
     showToast(t('dashboardTabs.tabDeleted', { name: removed!.name }));
   }
 
@@ -1810,6 +1941,23 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.map?.setSupplyChainPanel(supplyChainPanel);
       return supplyChainPanel;
     });
+    this.lazyImportedPanel('china-corridors', () => import('@/components/ChinaCorridorPanel'), 'ChinaCorridorPanel', (ChinaCorridorPanel) => {
+      const panel = new ChinaCorridorPanel();
+      panel.setOnCorridorSelect((corridor) => {
+        const rendererSupportsOverlay = this.ctx.map?.setChinaCorridorSelection(corridor);
+        if (this.ctx.isMobile) this.revealMobileMap();
+        return rendererSupportsOverlay;
+      });
+      this.ctx.map?.setOnChinaCorridorRendererCapabilityChange((supported) => {
+        panel.setRendererSupportsOverlay(supported);
+      });
+      return panel;
+    });
+    this.lazyDefaultPanel(
+      'china-activity-nowcast',
+      () => import('@/components/ChinaActivityNowcastPanel'),
+      'ChinaActivityNowcastPanel',
+    );
 
     this.createNewsPanel('africa', 'panels.africa');
     this.createNewsPanel('latam', 'panels.latam');

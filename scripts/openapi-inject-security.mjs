@@ -294,6 +294,9 @@ function injectJson(spec) {
             op.responses['403'] = publicForbiddenGate.response;
             changed = true;
           }
+        } else if (op.responses['403'] !== undefined) {
+          delete op.responses['403'];
+          changed = true;
         }
       } else {
         if (BEARER_AUTH_PATHS.has(path)) {
@@ -997,6 +1000,18 @@ function removeYamlUnauthorizedResponse(lines, path, method) {
   return true;
 }
 
+// Public operations without an explicit PUBLIC_FORBIDDEN_GATES entry cannot
+// reach the authenticated account-state 403. Remove stale generated 403s when
+// a route moves into PUBLIC_NO_AUTH_RPC_PATHS.
+function removeYamlForbiddenResponse(lines, path, method) {
+  const op = findYamlOperationRangeForMethod(lines, path, method);
+  if (!op) return false;
+  const existing = findYamlResponseRange(lines, op, '                "403":');
+  if (!existing) return false;
+  lines.splice(existing.start, existing.end - existing.start);
+  return true;
+}
+
 // Enumerate operations by text scan (no YAML parser): a path is a 4-space key
 // beginning with `/`; its methods are the 8-space HTTP-verb keys inside the
 // path block (which ends at the next path or any shallower-indented line,
@@ -1043,6 +1058,9 @@ function injectYamlAuthContract(text) {
         // stale 401 left over from when the path was authenticated.
         changed = ensureYamlOperationSecurity(lines, path, method, 'public') || changed;
         changed = removeYamlUnauthorizedResponse(lines, path, method) || changed;
+        if (!PUBLIC_FORBIDDEN_GATES.has(path)) {
+          changed = removeYamlForbiddenResponse(lines, path, method) || changed;
+        }
       } else {
         changed = ensureYamlUnauthorizedResponse(lines, path, method) || changed;
         if (BEARER_AUTH_PATHS.has(path)) {

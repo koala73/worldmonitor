@@ -11,6 +11,8 @@ import {
   proReq,
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
+import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -432,17 +434,22 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 41 tools with name, description, inputSchema', async () => {
+  it('tools/list returns every registered tool with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 41, `Expected 41 tools, got ${body.result.tools.length}`);
+    assert.equal(
+      body.result.tools.length,
+      TOOL_REGISTRY.length,
+      `Expected ${TOOL_REGISTRY.length} tools, got ${body.result.tools.length}`,
+    );
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
       assert.ok(tool.inputSchema, 'tool.inputSchema must be present');
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
+      assert.ok(!('_cacheLabels' in tool), 'Internal _cacheLabels must not be exposed in tools/list');
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
       assert.ok(!('_coverageKeys' in tool), 'Internal _coverageKeys must not be exposed in tools/list');
       assert.ok(!('_apiPaths' in tool), 'Internal _apiPaths must not be exposed in tools/list (Tier-4 parity)');
@@ -671,6 +678,52 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const out = await callTool('get_market_data', {});
     assert.equal(out.data['stocks-bootstrap'].quotes.length, 2, 'no args → all stock quotes');
     assert.ok(out.data.crypto, 'no args → crypto slice present');
+  });
+
+  it('get_news_intelligence enriches every top story with fail-closed source provenance', async () => {
+    const insights = {
+      topStories: [
+        { primaryTitle: 'Official ministry update', primarySource: 'MIIT (China)' },
+        { primaryTitle: 'Unreviewed report', primarySource: 'Reuters US' },
+        { primaryTitle: 'Reviewed wire report', primarySource: 'Reuters' },
+      ],
+    };
+    mockCacheKeys(
+      { 'news:insights:v1': insights },
+      { 'seed-meta:news:insights': { fetchedAt: Date.now() - 60_000, recordCount: 3 } },
+    );
+
+    const out = await callTool('get_news_intelligence', {});
+    const [government, unreviewed, wire] = out.data.insights.topStories;
+
+    assert.deepEqual(government.sourceProvenance, {
+      risk: 'high',
+      type: 'gov',
+      riskDeclared: true,
+      typeDeclared: true,
+      riskReviewed: true,
+      typeReviewed: true,
+      stateAffiliated: 'China',
+      note: 'Chinese Ministry of Industry and Information Technology official feed',
+    });
+    assert.deepEqual(unreviewed.sourceProvenance, {
+      risk: 'unknown',
+      type: 'unknown',
+      riskDeclared: true,
+      typeDeclared: true,
+      riskReviewed: false,
+      typeReviewed: false,
+      note: 'Provenance not yet reviewed — do not treat as independent journalism',
+    });
+    assert.deepEqual(wire.sourceProvenance, {
+      risk: 'low',
+      type: 'wire',
+      riskDeclared: true,
+      typeDeclared: true,
+      riskReviewed: true,
+      typeReviewed: true,
+      note: 'Wire service, strict editorial standards',
+    });
   });
 
   // --- Telemetry ---
@@ -1001,6 +1054,119 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const out = await callTool('get_market_data', { asset_class: ['crypto'] });
     assert.ok(out.data.crypto, 'asset_class crypto → crypto slice kept');
     assert.ok(!('stocks-bootstrap' in out.data), 'asset_class crypto → stocks slice dropped');
+  });
+
+  it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
+    const macro = await buildOfficialChinaMacroFixture();
+    const releaseCalendar = {
+      events: [{ countryCode: 'CN', event: 'NBS release' }],
+    };
+    const meta = {
+      'seed-meta:economic:china-macro-transport': {
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 5,
+      },
+      'seed-meta:economic:china-release-calendar': {
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 1,
+      },
+    };
+    mockCacheKeys({
+      'economic:china:macro:v2': macro,
+      'economic:china:release-calendar:v1': releaseCalendar,
+    }, meta);
+    const selected = await callTool('get_economic_data', { dataset: ['china-macro'] });
+    assert.deepEqual(Object.keys(selected.data), ['china-macro']);
+    assert.equal(selected.data['china-macro'].indicators.length, 12);
+    assert.equal(
+      selected.data['china-macro'].indicators[0].id,
+      'nbs_industrial_value_added_yoy',
+    );
+    assert.equal(selected.data['china-macro'].indicators[0].comparisonValue, 5.3);
+    assert.equal(selected.data['china-macro'].indicators[0].comparisonBasis, 'year_over_year');
+    assert.equal(selected.data['china-macro'].indicators[0].transportStatus, 'fresh');
+    assert.equal(selected.data['china-macro'].indicators[0].transportFailureReason, '');
+    const settlement = selected.data['china-macro'].indicators.find(
+      (indicator) => indicator.id === 'safe_bank_fx_settlement',
+    );
+    assert.equal(settlement.comparisonValue, null);
+    assert.equal(settlement.comparisonBasis, 'not_available');
+    const blockedPboc = selected.data['china-macro'].indicators.find(
+      (indicator) => indicator.id === 'pboc_m2_yoy',
+    );
+    assert.equal(blockedPboc.transportStatus, 'blocked');
+    assert.equal(blockedPboc.transportFailureReason, 'ROBOTS_DISALLOW');
+    assert.ok(!('observations' in selected.data['china-macro']));
+    assert.ok(
+      JSON.stringify(selected.data['china-macro']).length < 20_000,
+      'legacy current-indicator projection must not grow with the v2 vintage ledger',
+    );
+    assert.ok(!('macro' in selected.data), 'generic key-derived alias must not leak');
+
+    mockCacheKeys({
+      'economic:china:macro:v2': macro,
+      'economic:china:release-calendar:v1': releaseCalendar,
+    }, meta);
+    const excluded = await callTool('get_economic_data', { country: 'US' });
+    assert.equal(excluded.data['china-macro'], null);
+    assert.ok(!('macro' in excluded.data), 'country filter must not leave the real payload under a hidden alias');
+
+    const tools = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 702, method: 'tools/list', params: {},
+    })).then((response) => response.json());
+    const economic = tools.result.tools.find((tool) => tool.name === 'get_economic_data');
+    assert.match(economic.description, /official-only 12-series/i);
+    assert.match(economic.description, /no proxies/i);
+    assert.match(economic.description, /launchReady/i);
+    assert.doesNotMatch(economic.description, /NBS\/SAFE live/i);
+    const chinaSchema = economic.outputSchema.properties.data.properties['china-macro'];
+    assert.ok(chinaSchema.properties.indicators);
+    assert.ok(!chinaSchema.properties.observations);
+    const indicatorSchema = chinaSchema.properties.indicators.items.properties;
+    assert.ok(indicatorSchema.comparisonValue);
+    assert.ok(indicatorSchema.comparisonBasis);
+    assert.ok(indicatorSchema.transportStatus);
+    assert.ok(indicatorSchema.transportFailureReason);
+  });
+
+  it('get_economic_data: China MCP projection keeps retained transport failures explicit', async () => {
+    const macro = await buildOfficialChinaMacroFixture();
+    const nbsDecision = macro.sourceDecisions.find(
+      (decision) => decision.publisherId === 'publisher:nbs-cn',
+    );
+    nbsDecision.status = 'blocked';
+    nbsDecision.reason = 'HTTP_503';
+    for (const observation of macro.observations.filter(
+      (row) => row.seriesId.startsWith('nbs_'),
+    )) {
+      observation.transportStatus = 'error';
+      observation.transportFailureReason = 'HTTP_503';
+      observation.provenance.claims.transport_freshness.value.state = 'error';
+      observation.provenance.claims.transport_freshness.value.assessedAt = macro.generatedAt;
+      const currentVintage = observation.vintages.find(
+        (vintage) => vintage.vintageId === observation.vintageId,
+      );
+      currentVintage.provenance.claims.transport_freshness.value.state = 'error';
+      currentVintage.provenance.claims.transport_freshness.value.assessedAt = macro.generatedAt;
+    }
+    mockCacheKeys({
+      'economic:china:macro:v2': macro,
+    }, {
+      'seed-meta:economic:china-macro-transport': {
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 5,
+      },
+    });
+
+    const selected = await callTool('get_economic_data', { dataset: ['china-macro'] });
+    const industrial = selected.data['china-macro'].indicators.find(
+      (indicator) => indicator.id === 'nbs_industrial_value_added_yoy',
+    );
+    assert.equal(selected.data['china-macro'].launchReady, false);
+    assert.equal(selected.data['china-macro'].status, 'degraded');
+    assert.equal(industrial.value, 5.3);
+    assert.equal(industrial.transportStatus, 'error');
+    assert.equal(industrial.transportFailureReason, 'HTTP_503');
   });
 
   it('get_country_macro: countries filter narrows the ISO2-keyed maps', async () => {
@@ -2424,6 +2590,66 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32603, 'total outage must return -32603');
   });
 
+  it('get_airspace surfaces a mid-call billing denial instead of a generic failure', async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Renewal verification pending', code: 'renewal_verification_pending' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '21',
+          'X-Billing-Verification': 'renewal_verification_pending',
+        },
+      },
+    );
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 15, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'GB' } },
+    }));
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '21');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'renewal_verification_pending');
+  });
+
+  it('get_airspace type=civilian rethrows a billing denial instead of serving partial data', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(
+          JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+          {
+            status: 403,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'X-Billing-Verification': 'subscription_lapsed',
+            },
+          },
+        );
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 16, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'DE', type: 'civilian' } },
+    }));
+
+    // Pre-fix behavior was a plausible-looking 200 with partial:true — a
+    // billing lapse masked as a data-source outage.
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
+  });
+
   it('get_airspace type=civilian skips military fetch', async () => {
     let militaryFetched = false;
     globalThis.fetch = async (url) => {
@@ -2787,6 +3013,200 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 401);
+  });
+
+  it('current Pro fallback remains usable while stronger renewal verification is pending', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 1, mcpAccess: true },
+        validUntil: Date.now() + 86_400_000,
+        billingStatus: 'renewal_verification_pending',
+        retryAfterSeconds: 19,
+      }),
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+
+    const res = await mcpHandler(
+      proReq('POST', callBody('get_market_data')),
+      deps,
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 1);
+  });
+
+  for (const billingStatus of ['renewal_verification_pending', 'renewal_verification_failed']) {
+    it(`error: ${billingStatus} → JSON-RPC retryable no-store 503`, async () => {
+      const { deps, pipe } = makeProDeps({
+        getEntitlements: async () => ({
+          planKey: 'free',
+          features: { tier: 0, mcpAccess: false },
+          validUntil: 0,
+          billingStatus,
+          retryAfterSeconds: 19,
+        }),
+      });
+      const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('Retry-After'), '19');
+      assert.equal(res.headers.get('X-Billing-Verification'), billingStatus);
+      const body = await res.json();
+      assert.equal(body.jsonrpc, '2.0');
+      assert.equal(body.error?.code, -32603);
+      assert.equal(body.error?.data?.code, billingStatus);
+      assert.equal(pipe.count, 0);
+    });
+  }
+
+  it('error: subscription_lapsed → distinct JSON-RPC hard denial', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        billingStatus: 'subscription_lapsed',
+      }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Retry-After'), null);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    const body = await res.json();
+    assert.equal(body.jsonrpc, '2.0');
+    // -32002, NOT -32001: the catalog reserves -32001 for HTTP 401 auth
+    // failures with OAuth-reauth recovery; a confirmed lapse cannot be fixed
+    // by re-authenticating.
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
+    assert.equal(pipe.count, 0);
+  });
+
+  it('error: transient entitlement-lookup failure → retryable 503, not a -32001 re-auth loop', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        verificationUnavailable: true,
+      }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    const body = await res.json();
+    assert.equal(body.jsonrpc, '2.0');
+    // Retryable class, NOT -32001: re-authenticating cannot fix a backend
+    // blip, and the old 401 sent doc-following agents into an OAuth loop.
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'entitlement_verification_unavailable');
+    assert.equal(pipe.count, 0);
+  });
+
+  it('error: mid-call billing 503 from the gateway keeps its contract (no -32603 flatten)', async () => {
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Renewal verification pending', code: 'renewal_verification_pending' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '21',
+          'X-Billing-Verification': 'renewal_verification_pending',
+        },
+      },
+    );
+    try {
+      const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Retry-After'), '21');
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603);
+      assert.equal(body.error?.data?.code, 'renewal_verification_pending');
+      assert.equal(body.id, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('error: mid-call backend-unreachable 503 keeps the entitlement_verification_unavailable contract', async () => {
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Unable to verify API access', code: 'entitlement_verification_unavailable' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '5',
+          'X-Billing-Verification': 'entitlement_verification_unavailable',
+        },
+      },
+    );
+    try {
+      const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Retry-After'), '5');
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603);
+      assert.equal(body.error?.data?.code, 'entitlement_verification_unavailable');
+      assert.equal(body.id, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('error: mid-call confirmed lapse from the gateway surfaces -32002 + 403', async () => {
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+      {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Billing-Verification': 'subscription_lapsed',
+        },
+      },
+    );
+    try {
+      const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+
+      assert.equal(res.status, 403);
+      assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32002);
+      assert.equal(body.error?.data?.code, 'subscription_lapsed');
+      assert.equal(body.id, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('classifies billing-verification denials distinctly in usage telemetry', async () => {
+    const { mcpReasonFor } = await import('../api/mcp/usage.ts');
+    assert.equal(mcpReasonFor('billing', 503), 'billing_verification_503');
+    assert.equal(mcpReasonFor('billing', 403), 'tier_403');
+    assert.equal(mcpReasonFor('precheck', 503), 'auth_unavailable');
   });
 
   it('error: Redis pipeline throws on INCR → -32603 + 503 + Retry-After', async () => {

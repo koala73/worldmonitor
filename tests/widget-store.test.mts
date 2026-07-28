@@ -155,6 +155,70 @@ function makeProWidget(overrides: Partial<CustomWidgetSpec> = {}): CustomWidgetS
 }
 
 describe('widget-store PRO persistence', () => {
+  it('strict loads distinguish empty storage from malformed storage', async () => {
+    installLocalStorage();
+    const { loadWidgetsStrict } = await loadWidgetStore();
+    assert.deepEqual(loadWidgetsStrict(), []);
+
+    localStorage.setItem('wm-custom-widgets', '{not-json');
+    assert.throws(() => loadWidgetsStrict(), SyntaxError);
+  });
+
+  it('strict loads propagate storage access failures', async () => {
+    installLocalStorage();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem() {
+          throw new Error('storage denied');
+        },
+      },
+    });
+    const { loadWidgetsStrict } = await loadWidgetStore();
+    assert.throws(() => loadWidgetsStrict(), /storage denied/);
+  });
+
+  it('strict loads reject a Pro widget that the resilient loader would drop', async () => {
+    const spec = makeProWidget({ html: '' });
+    installLocalStorage({
+      'wm-custom-widgets': JSON.stringify([spec]),
+    });
+    const { loadWidgets, loadWidgetsStrict } = await loadWidgetStore();
+
+    assert.throws(() => loadWidgetsStrict(), /missing HTML/);
+    assert.deepEqual(loadWidgets(), []);
+  });
+
+  it('resilient loads normalize a legacy widget with no tier field to basic instead of dropping it', async () => {
+    const legacyWidget = {
+      id: 'cw-legacy-no-tier',
+      title: 'Pre-tier Widget',
+      html: '<div>legacy</div>',
+      prompt: 'Build a legacy widget',
+      accentColor: null,
+      conversationHistory: [],
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_001,
+      // no `tier` field — widgets saved before `tier` was added to the spec.
+    };
+    installLocalStorage({
+      'wm-custom-widgets': JSON.stringify([legacyWidget]),
+    });
+    const { loadWidgets, loadWidgetsStrict } = await loadWidgetStore();
+
+    const loaded = loadWidgets();
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0]!.tier, 'basic');
+    assert.equal(loaded[0]!.id, 'cw-legacy-no-tier');
+
+    // The strict activation-eligibility loader normalizes the same row to
+    // 'basic' as well — a legacy pre-tier widget is not malformed.
+    const strictLoaded = loadWidgetsStrict();
+    assert.equal(strictLoaded.length, 1);
+    assert.equal(strictLoaded[0]!.tier, 'basic');
+    assert.equal(strictLoaded[0]!.id, 'cw-legacy-no-tier');
+  });
+
   it('saveWidget persists PRO generated HTML in the canonical widget entry', async () => {
     const storage = installLocalStorage();
     const { saveWidget } = await loadWidgetStore();

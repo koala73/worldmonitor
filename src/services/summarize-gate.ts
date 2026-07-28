@@ -50,11 +50,22 @@ export function configureSummarizeGate(probe: EntitlementProbe): void {
 }
 
 /**
+ * Whether the post-403/429 cooldown is currently armed.
+ *
+ * Exported so the caller can tell the two denial reasons apart (#5605): a
+ * cooldown denial is a server outage the operator must see, while an
+ * entitlement denial is the designed anon/free path and must stay quiet.
+ */
+export function isServerSummarizationSuppressed(now: number = Date.now()): boolean {
+  return now < suppressedUntil;
+}
+
+/**
  * Whether a server summarization attempt may be dispatched right now.
  * Suppression wins over the probe; an unconfigured/throwing probe allows.
  */
 export function canAttemptServerSummarization(now: number = Date.now()): boolean {
-  if (now < suppressedUntil) return false;
+  if (isServerSummarizationSuppressed(now)) return false;
   if (!entitlementProbe) return true;
   try {
     return entitlementProbe();

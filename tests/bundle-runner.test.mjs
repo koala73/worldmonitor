@@ -7,15 +7,140 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
+import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
 
+test('requireCanonical ignores fresh legacy meta when a new canonical envelope is absent', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') return null;
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('an explicit freshness meta key gates from source transport success', async () => {
+  const reads = [];
+  const transportFetchedAt = Date.now() - 29 * 60 * 60 * 1000;
+  const completedAt = transportFetchedAt + 60_000;
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: completedAt } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: transportFetchedAt };
+    }
+    if (key === 'seed-meta:economic:china-macro-complete') {
+      return { fetchedAt: completedAt };
+    }
+    return null;
+  });
+  assert.deepEqual(freshness, { fetchedAt: transportFetchedAt });
+  assert.deepEqual(reads, [
+    'economic:china:macro:v2',
+    'seed-meta:economic:china-macro-transport',
+    'seed-meta:economic:china-macro-complete',
+  ]);
+});
+
+test('a missing explicit freshness meta key does not fall back to publish time', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'seed-meta:economic:china-macro-transport') return null;
+    if (key === 'economic:china:macro:v2') return { _seed: { fetchedAt: Date.now() } };
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, [
+    'economic:china:macro:v2',
+    'seed-meta:economic:china-macro-transport',
+  ]);
+});
+
+test('explicit freshness still requires the canonical envelope when configured', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    return null;
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('a prior completion cannot attest a newer transport-only run', async () => {
+  const transportFetchedAt = Date.now();
+  const previousCompletionAt = transportFetchedAt - 60 * 60 * 1000;
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: transportFetchedAt } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: transportFetchedAt };
+    }
+    if (key === 'seed-meta:economic:china-macro-complete') {
+      return { fetchedAt: previousCompletionAt };
+    }
+    return null;
+  });
+  assert.equal(freshness, null);
+});
+
+test('a missing completion marker keeps an explicit-freshness section due', async () => {
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: Date.now() } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: Date.now() };
+    }
+    return null;
+  });
+  assert.equal(freshness, null);
+});
+
 function runBundleWith(sections, opts = {}) {
-  const runPath = join(SCRIPTS_DIR, '_bundle-runner-test-run.mjs');
+  const runPath = join(SCRIPTS_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
   writeFileSync(
     runPath,
     `import { runBundle } from './_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(

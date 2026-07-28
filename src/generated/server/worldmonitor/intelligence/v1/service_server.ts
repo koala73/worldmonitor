@@ -643,6 +643,15 @@ export interface PortActivityEntry {
   anomalySignal: boolean;
 }
 
+export interface GetChinaDecisionSignalsRequest {
+}
+
+export interface GetChinaDecisionSignalsResponse {
+  payloadJson: string;
+  generatedAt: string;
+  upstreamUnavailable: boolean;
+}
+
 export interface GetRegionalSnapshotRequest {
   regionId: string;
 }
@@ -953,6 +962,7 @@ export interface IntelligenceServiceHandler {
   getCountryEnergyProfile(ctx: ServerContext, req: GetCountryEnergyProfileRequest): Promise<GetCountryEnergyProfileResponse>;
   computeEnergyShockScenario(ctx: ServerContext, req: ComputeEnergyShockScenarioRequest): Promise<ComputeEnergyShockScenarioResponse>;
   getCountryPortActivity(ctx: ServerContext, req: GetCountryPortActivityRequest): Promise<CountryPortActivityResponse>;
+  getChinaDecisionSignals(ctx: ServerContext, req: GetChinaDecisionSignalsRequest): Promise<GetChinaDecisionSignalsResponse>;
   getRegionalSnapshot(ctx: ServerContext, req: GetRegionalSnapshotRequest): Promise<GetRegionalSnapshotResponse>;
   getRegimeHistory(ctx: ServerContext, req: GetRegimeHistoryRequest): Promise<GetRegimeHistoryResponse>;
   getRegionalBrief(ctx: ServerContext, req: GetRegionalBriefRequest): Promise<GetRegionalBriefResponse>;
@@ -1957,6 +1967,43 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.getCountryPortActivity(ctx, body);
           return new Response(JSON.stringify(result as CountryPortActivityResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-china-decision-signals",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaDecisionSignalsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaDecisionSignals(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaDecisionSignalsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

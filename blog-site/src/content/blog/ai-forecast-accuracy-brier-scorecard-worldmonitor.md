@@ -1,11 +1,12 @@
 ---
 title: "We Grade Our Own Forecasts: Inside the Forecast Scorecard"
-description: "WorldMonitor resolves its AI forecasts against reality and publishes the results: Brier scores, log scores, calibration buckets, and per-domain accuracy breakdowns."
+description: "WorldMonitor publishes a Brier-score audit of 32 AI forecasts, including calibration results, overconfidence patterns, and comparison with prediction markets."
 metaTitle: "AI Forecast Accuracy & Brier Scorecard | WorldMonitor"
 keywords: "AI forecast accuracy, Brier score forecasting, geopolitical forecast track record, forecast calibration, prediction accountability, forecast verification"
 audience: "Forecasters, superforecasting community, quant researchers, skeptical analysts, AI evaluation researchers"
-heroImage: "/blog/og/ai-forecast-accuracy-brier-scorecard-worldmonitor.png"
+heroImage: "/blog/images/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Every AI product now makes predictions. Almost none of them tell you their error rate.
@@ -25,6 +26,33 @@ From the resolved ledger, the scorecard computes the metrics forecasting researc
 
 The scoring runs over a rolling window with judged and pending counts visible, so you can see not just how good the record is but how much record there is.
 
+## The actual scorecard, as of July 22, 2026
+
+A post about publishing your numbers should publish the numbers. These were pulled from the live `get_forecast_scorecard` endpoint while writing, over the current 180-day rolling window:
+
+**Overall: 32 scored forecasts, Brier 0.202, log score 0.575.** Answering "50%" to everything scores 0.25, so the system beats maximal ignorance — modestly.
+
+**The calibration table, including the ugly rows:**
+
+| Confidence bucket | Forecasts | Avg predicted | Actually happened |
+|---|---|---|---|
+| 0–10% | 4 | 8% | 0% |
+| 10–20% | 2 | 11% | 0% |
+| 30–40% | 4 | 33% | 25% |
+| 40–50% | 9 | 43% | 22% |
+| 50–60% | 8 | 54% | 13% |
+| 60–70% | 5 | 62% | 20% |
+
+Read the bottom three rows: the system is **systematically overconfident in the 40–70% band** — events it calls roughly even-odds happen about a fifth of the time. The low buckets are honest; the middle is the current failure mode, and it's now a named engineering target rather than a private embarrassment. Notice also what the table doesn't contain: no scored forecast above 70% yet — the system hasn't been willing to make high-confidence calls that resolve.
+
+**Head-to-head against prediction markets:** on the three resolved questions where a forecast overlapped a liquid market, our Brier was 0.040 against the market's 0.010. Three questions is anecdote, not statistics — but the market won, and pretending otherwise would defeat the point of this page.
+
+**The void ledger:** of 124 resolved entries, 92 (74%) were voided — resolution criteria that turned out too vague to judge cleanly. Voids are counted and published rather than quietly dropped, and driving that rate down (mostly in infrastructure forecasts, where 76 of 87 resolutions voided) is the pipeline's current top fix.
+
+**By domain:** cyber is the strongest slice (Brier 0.111 over 11 scored); markets sit at 0.210 (n=4); infrastructure is the weakest at 0.286 with the void problem above. Exactly the kind of spread that makes a single blended "accuracy" number misleading — which is why the tool returns the breakdown.
+
+Thirty-two scored forecasts is a young ledger, not a track record. Publishing it anyway — small, unflattering rows included — is the deposit on the claim that this scorecard means something. Metaculus and Good Judgment publish theirs; prediction markets publish by construction; a forecasting product that hides its ledger until the numbers flatter it isn't doing forecasting, it's doing marketing.
+
 ## Why publish it
 
 Three reasons, in ascending order of importance:
@@ -40,6 +68,10 @@ The `get_forecast_scorecard` MCP tool returns the full scorecard — Brier and l
 ## Limits
 
 The ledger only proves what it contains: domains with few resolved forecasts have wide uncertainty around their scores, and the rolling window means the record is a moving sample, not an all-time monument. Resolution requires judgeable outcomes, so inherently vague geopolitical claims either get sharpened into resolvable form or don't enter the ledger. And a good historical Brier score is evidence, not a promise — regimes change, and calibration is always trailing.
+
+## Scoring Reference
+
+The scorecard uses the probability-scoring framework introduced in Glenn W. Brier's [1950 verification paper](https://journals.ametsoc.org/view/journals/mwre/78/1/1520-0493_1950_078_0001_vofeit_2_0_co_2.xml). Published sample sizes, voids, and calibration buckets are retained so readers can evaluate the result rather than rely on a headline accuracy claim.
 
 ## Frequently Asked Questions
 
@@ -57,4 +89,4 @@ In the forecast panel on the dashboard, and programmatically via the `get_foreca
 
 ---
 
-**Anyone can make predictions. The scorecard is the difference between forecasting and content — and it only counts if you publish it before you know how it ends.**
+**Anyone can make predictions. The ledger currently reads Brier 0.202 over 32 scored calls, overconfident in the middle, beaten by the market head-to-head — published anyway, because a scorecard only counts if you print it before it flatters you.**

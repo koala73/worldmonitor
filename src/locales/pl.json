@@ -134,12 +134,15 @@
     "china": {
       "title": "Przegląd kraju: Chiny",
       "description": "Bieżące dane makro, rynkowe, handlowe, energetyczne i dostępność operacyjna z istniejących publicznych kontraktów danych.",
-      "macroPolicy": "Makro i polityka",
-      "marketCredit": "Rynek i kredyt",
-      "tradeSupply": "Handel i łańcuch dostaw",
+      "policyEvents": "Policy & Enforcement",
       "energy": "Energia",
       "availability": "Zagrożenia i lotnictwo",
       "observed": "Stan na:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Źródło:",
       "imfGrowth": "Prognoza wzrostu MFW",
       "creditGdp": "Kredyt do PKB",
@@ -148,8 +151,6 @@
       "gasDemand": "Popyt na gaz",
       "energyMix": "Miks energetyczny",
       "coal": "węgiel",
-      "aviationAvailability": "Dostępność lotnictwa",
-      "hazardAvailability": "Dostępność zagrożeń",
       "noMajorDisruptions": "Nie zgłoszono poważnych zakłóceń",
       "activeDisruptions_one": "{{count}} aktywne zakłócenie",
       "activeDisruptions_few": "{{count}} aktywne zakłócenia",
@@ -165,18 +166,21 @@
       "ccfiSource": "Szanghajska Giełda Żeglugowa",
       "comtradeSource": "UN Comtrade, kraj raportujący 156",
       "sourceUnavailable": "Źródło niedostępne",
-      "macroUnavailable": "Dane makro i polityczne są obecnie niedostępne.",
-      "marketUnavailable": "Dane rynkowe i kredytowe są obecnie niedostępne.",
-      "tradeUnavailable": "Dane o handlu i łańcuchu dostaw są obecnie niedostępne.",
-      "energyUnavailable": "Dane energetyczne są obecnie niedostępne.",
-      "availabilityUnavailable": "Dane o zagrożeniach i lotnictwie są obecnie niedostępne.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Ładowanie",
         "available": "Dostępne",
         "partial": "Częściowe",
         "stale": "Nieaktualne",
         "unavailable": "Niedostępne"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -1777,7 +1781,26 @@
       "trend": "Trend",
       "trending": "TREND",
       "velocity": "Prędkość",
-      "wallets": "Portfele"
+      "wallets": "Portfele",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "supplyChain": {
       "chokepoints": "Wąskie gardła",
@@ -2126,7 +2149,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Wykrywa zbieżne sygnały klęsk naturalnych i infrastruktury:<ul><li>Koreluje trzęsienia ziemi, pożary lasów, powodzie i ekstremalne warunki pogodowe</li><li>Śledzi kaskadowe efekty na infrastrukturę i łańcuchy dostaw</li><li>Podkreśla regiony ze złożonym ryzykiem klęsk</li></ul>Kliknij kartę, aby przybliżyć dotknięty region."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Rzeczywiste indeksy giełdowe, akcje i ceny kryptowalut. Dostosuj swoją listę obserwowanych za pomocą przycisku Watchlist. Sparklines pokazują niedawny trend cen."
+      "infoTooltip": "<strong>Markets</strong> Rzeczywiste indeksy giełdowe, akcje i ceny kryptowalut. Dostosuj swoją listę obserwowanych za pomocą przycisku Watchlist. Sparklines pokazują niedawny trend cen.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> Wydajność sektorów S&P 500 w jednym przeglądzie. Intensywność kolorów odzwierciedla wielkość dziennych zmian. Zielony = zyski, Czerwony = straty."
@@ -2188,11 +2215,101 @@
       "cta": "Przejdź na Pro →",
       "dismiss": "Odrzuć"
     },
+    "billingState": {
+      "onHoldDesc": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby przywrócić dostęp premium.",
+      "onHoldBannerMessage": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby zachować aktywną subskrypcję.",
+      "updatePayment": "Zaktualizuj płatność",
+      "renewalPendingDesc": "Weryfikujemy odnowienie Twojej subskrypcji. Dostęp premium zostanie automatycznie przywrócony po potwierdzeniu.",
+      "refreshStatus": "Odśwież status",
+      "renewalFailedDesc": "Nie udało się zweryfikować odnowienia Twojej subskrypcji. Zarządzaj rozliczeniami lub skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał.",
+      "manageBilling": "Zarządzaj rozliczeniami",
+      "lapsedDesc": "Twoja subskrypcja Pro wygasła. Subskrybuj ponownie, aby odzyskać dostęp premium.",
+      "resubscribe": "Subskrybuj ponownie"
+    },
     "checkoutFailureBanner": {
       "message": "Nie można ukończyć płatności. Nie dokonano opłaty.",
       "retry": "Spróbuj ponownie",
       "retrying": "Ponawianie…",
       "dismiss": "Odrzuć"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Krok {{current}} z {{total}}",
+      "closeLabel": "Pomiń konfigurację",
+      "ariaLabel": "Konfiguracja aktywacji Pro",
+      "signedInAs": "Zalogowano jako {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Twój codzienny brief, każdego ranka",
+          "body": "Wyselekcjonowany brief wywiadowczy w Twojej skrzynce odbiorczej każdego ranka — najważniejsze sygnały z nocy, ujęte w pięciominutową lekturę.",
+          "confirmCta": "Włącz mój poranny brief",
+          "confirming": "Włączanie…",
+          "doneNote": "Twój poranny brief już działa.",
+          "scheduleNote": "Zachowamy Twoją obecną godzinę dostarczania.",
+          "summaryLabel": "Poranny brief",
+          "summaryVerified": "Włączony — zacznie się od Twojego następnego porannego briefu.",
+          "deliverAt": "Dostarczenie o",
+          "previewLoading": "Przygotowujemy podgląd Twojego pierwszego briefu…",
+          "previewLabel": "Dzisiejszy poranny brief"
+        },
+        "alerts": {
+          "heading": "Krytyczne alerty",
+          "body": "Otrzymuj powiadomienia w przeglądarce, gdy wydarzy się coś ważnego — eskalacje konfliktów, wstrząsy rynkowe, nowe sankcje. Dostosuj częstotliwość w dowolnym momencie w Ustawieniach.",
+          "confirmCta": "Włącz alerty",
+          "confirming": "Włączanie…",
+          "doneNote": "Alerty w przeglądarce są już włączone.",
+          "blockedNote": "Powiadomienia są zablokowane w Twojej przeglądarce. Włącz je w ustawieniach witryny w przeglądarce, aby otrzymywać alerty.",
+          "declinedNote": "Nie ma problemu — nie będziemy wysyłać alertów w przeglądarce. Możesz je później włączyć w ustawieniach witryny w przeglądarce.",
+          "summaryLabel": "Krytyczne alerty",
+          "summaryVerified": "Włączone — krytyczne sygnały dotrą do Twojej przeglądarki."
+        },
+        "power": {
+          "heading": "Twój zestaw narzędzi Pro",
+          "body": "Niestandardowe widżety, połączenia MCP i badacz AI zostały odblokowane. Zbuduj panel, który naprawdę chcesz obserwować.",
+          "confirmCta": "Poznaj narzędzia Pro",
+          "confirming": "Otwieranie…",
+          "doneNote": "Już korzystasz ze swoich narzędzi Pro.",
+          "summaryLabel": "Zestaw narzędzi Pro",
+          "summaryVerified": "Odblokowane i gotowe, gdy Ty będziesz gotowy.",
+          "channelsNote": "Wolisz Telegram, Slack, Discord czy webhook?",
+          "pointers": {
+            "search": "Przeszukaj cały pulpit",
+            "widgets": "Utwórz niestandardowy widżet",
+            "analyst": "Zapytaj analityka AI",
+            "mcpClients": "Skonfiguruj MCP",
+            "channels": "Skonfiguruj je w ustawieniach powiadomień"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nie skonfigurowano",
+        "inFlight": "Konfigurowanie…",
+        "verified": "Gotowe",
+        "failed": "Nie zadziałało",
+        "blocked": "Zablokowane",
+        "unavailable": "Niedostępne",
+        "blockedNote": "To nie jest teraz dostępne — możesz to skonfigurować później w ustawieniach.",
+        "unavailableNote": "To nie jest dostępne na Twoim urządzeniu — możesz to skonfigurować później.",
+        "failedBody": "Coś poszło nie tak. Możesz spróbować ponownie lub skonfigurować to później w ustawieniach.",
+        "retry": "Spróbuj ponownie"
+      },
+      "actions": {
+        "skip": "Na razie pomiń",
+        "continue": "Kontynuuj"
+      },
+      "summary": {
+        "heading": "Wszystko gotowe",
+        "subVerified": "Oto, co działa na Twoim koncie.",
+        "subPending": "Możesz dokończyć konfigurację w dowolnym momencie w ustawieniach.",
+        "linePending": "Jeszcze nie skonfigurowano — dokończ w dowolnym momencie w ustawieniach.",
+        "lineFailed": "Nie udało nam się tego skonfigurować — spróbuj ponownie w ustawieniach.",
+        "finish": "Przejdź do mojego panelu"
+      },
+      "chip": {
+        "message": "Dokończ konfigurację swojego konta Pro.",
+        "action": "Dokończ konfigurację",
+        "dismissLabel": "Odrzuć"
+      }
     },
     "frameworkSelector": {
       "label": "Framework analizy",
@@ -2422,6 +2539,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {

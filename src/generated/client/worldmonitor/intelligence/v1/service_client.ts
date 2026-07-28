@@ -643,6 +643,15 @@ export interface PortActivityEntry {
   anomalySignal: boolean;
 }
 
+export interface GetChinaDecisionSignalsRequest {
+}
+
+export interface GetChinaDecisionSignalsResponse {
+  payloadJson: string;
+  generatedAt: string;
+  upstreamUnavailable: boolean;
+}
+
 export interface GetRegionalSnapshotRequest {
   regionId: string;
 }
@@ -1490,6 +1499,29 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as CountryPortActivityResponse;
+  }
+
+  async getChinaDecisionSignals(_req: GetChinaDecisionSignalsRequest, options?: IntelligenceServiceCallOptions): Promise<GetChinaDecisionSignalsResponse> {
+    let path = "/api/intelligence/v1/get-china-decision-signals";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetChinaDecisionSignalsResponse;
   }
 
   async getRegionalSnapshot(req: GetRegionalSnapshotRequest, options?: IntelligenceServiceCallOptions): Promise<GetRegionalSnapshotResponse> {

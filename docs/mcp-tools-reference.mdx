@@ -757,6 +757,40 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_china_decision_signals`
+
+Returns the bounded six-domain China decision-signal snapshot used by the
+country summary. Macro-financial, policy/enforcement, cross-Strait activity,
+corporate disclosures, corridor conditions, and activity nowcast groups share
+one stable order and the status vocabulary `available`, `partial`, `stale`, or
+`unavailable`.
+
+Every returned item retains canonical provenance, publisher type, source and
+original reference, translation state, observation/effective/publication/
+retrieval times, revision and supersession, confidence, corroboration, and
+freshness claims. The tool returns the same bounded items as the public RPC; it
+does not expose detailed bilateral trade rows or operator-only source health.
+
+- **Parameters:** none, apart from the optional common `jmespath` projection.
+- **API endpoint:** `GET /api/intelligence/v1/get-china-decision-signals`
+- **Kind:** canonical RPC over the Railway-composed cache.
+- **Refresh cadence:** every **15 min**; each group can degrade independently.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_china_decision_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_military_posture`
 
 Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.

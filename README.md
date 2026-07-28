@@ -1,6 +1,6 @@
 # World Monitor
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md)
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
@@ -111,7 +111,7 @@ See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started
 | **Frontend** | Vanilla TypeScript, Vite, globe.gl + Three.js, deck.gl + MapLibre GL |
 | **Desktop** | Tauri 2 (Rust) with Node.js sidecar |
 | **AI/ML** | Ollama / Groq / OpenRouter, Transformers.js (browser-side) |
-| **API Contracts** | Protocol Buffers (281 protos, 35 services), sebuf HTTP annotations |
+| **API Contracts** | Protocol Buffers (284 protos, 35 services), sebuf HTTP annotations |
 | **Deployment** | Vercel Edge Functions (60+), Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 

@@ -77,7 +77,7 @@ import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
-import { trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
+import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
@@ -116,6 +116,7 @@ import {
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
+import type { Id } from '../convex/_generated/dataModel';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
@@ -582,6 +583,12 @@ export class App {
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
+    if (shouldPrime('china-corridors')) {
+      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
+    }
+    if (shouldPrime('china-activity-nowcast')) {
+      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast());
+    }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
     }
@@ -1005,6 +1012,10 @@ export class App {
           showToast('Country brief failed to open. Please try again.');
         });
       },
+      openSearch: () => {
+        track('search-open', { source: 'pro-onboarding' });
+        void this.openSearch();
+      },
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
@@ -1268,8 +1279,8 @@ export class App {
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
-    // sr-only <h1> are baked in English so search crawlers see something
-    // before JS runs; once i18n is ready we swap them to the user's locale.
+    // the accessible <h1> are baked in English before the app boots; once i18n
+    // is ready we swap them to the user's locale.
     document.title = t('shell.documentTitle');
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);
@@ -1446,6 +1457,16 @@ export class App {
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         destroyEntitlementSubscription();
+        // destroyEntitlementSubscription deliberately PRESERVES the last
+        // snapshot so a WebSocket reconnect doesn't flash paying users back to
+        // locked. That preservation is wrong across an account change: until
+        // the new user's first snapshot lands, getEntitlementState() still
+        // describes the previous one. Anything reading it then attributes A's
+        // plan to B — e.g. premium-denial's clientBelievesPro would read B's
+        // legitimate 403 as A's entitlement desync and retry instead of
+        // showing the upgrade CTA. Sign-out already resets for this reason;
+        // an account switch carries the same hazard.
+        resetEntitlementState();
         destroySubscriptionWatch();
         void initEntitlementSubscription(userId);
         void initSubscriptionWatch(userId);
@@ -1482,6 +1503,50 @@ export class App {
             console.warn('[billing] claimSubscription failed:', err);
             // Non-fatal — anon ID preserved for retry on next page load
           });
+        }
+
+        // Accept a Business Pro seat invite carried in the URL (mirror of the
+        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // Runs after sign-in so the invitee's Clerk email is available server-side.
+        const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
+        const businessInviteToken = new URLSearchParams(window.location.search).get('token');
+        if (businessInviteGrantId && businessInviteToken) {
+          void (async () => {
+            const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+            if (!client || !api) return;
+            const ready = await waitForConvexAuth(10_000);
+            if (!ready) {
+              console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
+              return;
+            }
+            try {
+              await client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                grantId: businessInviteGrantId as Id<'businessProGrants'>,
+                token: businessInviteToken,
+              });
+              showToast('Pro seat activated');
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Failed to accept invite';
+              if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+                showToast('This invite is for a different email address');
+              } else if (msg.includes('INVITE_EXPIRED')) {
+                showToast('This invite has expired');
+              } else if (msg.includes('BUSINESS_NOT_ACTIVE')) {
+                showToast('The Business plan that sent this invite is no longer active');
+              } else if (msg.includes('INVITE_ALREADY_USED')) {
+                showToast('This invite has already been used');
+              } else {
+                showToast('Could not accept invite');
+              }
+              console.warn('[business-seats] acceptBusinessInvite failed:', err);
+            } finally {
+              // Clear the invite params from the URL so a refresh does not retry.
+              const url = new URL(window.location.href);
+              url.searchParams.delete('accept-business-invite');
+              url.searchParams.delete('token');
+              window.history.replaceState({}, '', url.toString());
+            }
+          })();
         }
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
@@ -2205,6 +2270,8 @@ export class App {
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
     }
 
     this.refreshScheduler.scheduleRefresh(

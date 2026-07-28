@@ -1,0 +1,62 @@
+---
+title: "Sandbox & Test Environment"
+description: "Exercise the World Monitor API with no key and no quota: deterministic sandbox fixtures, anonymous MCP discovery, and a read-only data surface."
+---
+
+World Monitor provides a sandbox so agents and integrations can be built and tested **without an API key, without consuming quota, and without any risk to production data**. It has three legs:
+
+## 1. Sandbox fixtures — deterministic sample responses
+
+The sandbox serves deterministic, schema-valid sample responses for representative REST operations as plain static JSON. Start at the index:
+
+```bash
+curl https://www.worldmonitor.app/sandbox/index.json
+```
+
+Each entry lists the operation, its production URL, and a `fixture` URL. Fetching a fixture returns the **exact envelope shape** the production endpoint returns, wrapped with the request metadata:
+
+```bash
+curl https://www.worldmonitor.app/sandbox/get-resilience-score.json
+```
+
+```json
+{
+  "sandbox": true,
+  "operation": {
+    "method": "GET",
+    "path": "/api/resilience/v1/get-resilience-score",
+    "productionUrl": "https://api.worldmonitor.app/api/resilience/v1/get-resilience-score"
+  },
+  "request": { "query": { "countryCode": "US" } },
+  "response": { "status": 200, "body": { "...": "schema-valid example payload" } }
+}
+```
+
+Guarantees:
+
+- **Deterministic** — fixtures are generated from the published OpenAPI examples (`scripts/generate-sandbox-fixtures.mjs`) and only change when the API contract changes. Safe to snapshot in CI.
+- **Schema-valid** — every `response.body` validates against the operation's response schema in [openapi.json](https://worldmonitor.app/openapi.json).
+- **Clearly synthetic** — every fixture carries `"sandbox": true`. Never treat fixture payloads as live data.
+
+## 2. Anonymous, quota-free discovery on the live MCP server
+
+The production MCP server at `https://worldmonitor.app/mcp` lets you explore the full tool surface with no auth and no daily-quota consumption:
+
+- `tools/list` — the live tool inventory (compressed descriptions)
+- `describe_tool` — full definition for any tool, including its output schema
+- `prompts/list` / `prompts/get` — pre-built workflow templates
+- `resources/list` — read-only resources (the seed-meta freshness resource is fully anonymous)
+
+The [docs MCP server](/mcp-overview) at `https://www.worldmonitor.app/docs/mcp` is entirely public — search and read this documentation over MCP with no key at all.
+
+## 3. A read-only data surface
+
+Every data operation in the [REST API](/api-reference) and every MCP data tool is **read-only**: there is no call an agent can make against `api.worldmonitor.app` that mutates production data. The only mutating surfaces are account-scoped (API-key management, alert rules, notification channels) and require an authenticated session — they are deliberately absent from the sandbox.
+
+## Going live
+
+1. Issue a key at [worldmonitor.app/pro](https://worldmonitor.app/pro) and send it as `X-WorldMonitor-Key: wm_<40-hex>` (or use [OAuth 2.1](/api-oauth) with `scope=mcp`).
+2. Swap the fixture URL for the `productionUrl` from the sandbox index — the envelope shape is identical.
+3. Mind the [rate limits](/usage-rate-limits) and honor `Retry-After` on 429.
+
+See [Authentication](/usage-auth) for the full auth matrix and [Errors](/usage-errors) for the error envelope you'll see on the live API.

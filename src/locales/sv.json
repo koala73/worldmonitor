@@ -1515,7 +1515,26 @@
       "trend": "Trend",
       "trending": "TREND",
       "velocity": "Hastighet",
-      "wallets": "Plånböcker"
+      "wallets": "Plånböcker",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "supplyChain": {
       "chokepoints": "Flaskhalsar",
@@ -1852,7 +1871,11 @@
       "infoTooltip": "<strong>Katastrofkaskad</strong> Detekterar konvergerande signaler för naturkatastrofer och infrastruktur:<ul><li>Korrelerar jordbävningar, skogsbränder, översvämningar och extremt väder</li><li>Spårar kaskadeffekter på infrastruktur och försörjningskedjor</li><li>Markerar regioner med sammanlagd katastrofrisk</li></ul>Klicka på ett kort för att zooma in på den påverkade regionen."
     },
     "markets": {
-      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden."
+      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektorkarta</strong> S&P 500-sektorprestanda i en överblick. Färgintensitet återspeglar storleken på den dagliga förändringen. Grön = vinster, Röd = förluster."
@@ -1914,11 +1937,101 @@
       "cta": "Uppgradera till Pro →",
       "dismiss": "Stäng"
     },
+    "billingState": {
+      "onHoldDesc": "Betalningen misslyckades. Uppdatera din betalningsmetod för att återställa premiumåtkomsten.",
+      "onHoldBannerMessage": "Betalningen misslyckades. Uppdatera din betalningsmetod för att hålla din prenumeration aktiv.",
+      "updatePayment": "Uppdatera betalning",
+      "renewalPendingDesc": "Vi verifierar förnyelsen av din prenumeration. Premiumåtkomsten återställs automatiskt när den har bekräftats.",
+      "refreshStatus": "Uppdatera status",
+      "renewalFailedDesc": "Vi kunde inte verifiera förnyelsen av din prenumeration. Hantera fakturering eller kontakta supporten om problemet kvarstår.",
+      "manageBilling": "Hantera fakturering",
+      "lapsedDesc": "Din Pro-prenumeration har upphört. Prenumerera igen för att återfå premiumåtkomsten.",
+      "resubscribe": "Prenumerera igen"
+    },
     "checkoutFailureBanner": {
       "message": "Betalningen kunde inte genomföras. Ingen debitering gjordes.",
       "retry": "Försök igen",
       "retrying": "Försöker igen…",
       "dismiss": "Stäng"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Steg {{current}} av {{total}}",
+      "closeLabel": "Hoppa över installationen",
+      "ariaLabel": "Inställning för Pro-aktivering",
+      "signedInAs": "Inloggad som {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Din dagliga sammanfattning, varje morgon",
+          "body": "En sammanställd underrättelsesammanfattning i din inkorg varje morgon — nattens viktiga signaler, komprimerade till fem minuters läsning.",
+          "confirmCta": "Slå på min morgonsammanfattning",
+          "confirming": "Slår på…",
+          "doneNote": "Din morgonsammanfattning körs redan.",
+          "scheduleNote": "Vi behåller din nuvarande leveranstid.",
+          "summaryLabel": "Morgonsammanfattning",
+          "summaryVerified": "På — börjar med din nästa morgonsammanfattning.",
+          "deliverAt": "Leverans kl.",
+          "previewLoading": "Förbereder en förhandsvisning av din första sammanfattning…",
+          "previewLabel": "Dagens morgonsammanfattning"
+        },
+        "alerts": {
+          "heading": "Kritiska varningar",
+          "body": "Få ett meddelande i din webbläsare när något stort händer — konflikteskaleringar, marknadschocker, nya sanktioner. Justera frekvensen när som helst i Inställningar.",
+          "confirmCta": "Aktivera varningar",
+          "confirming": "Aktiverar…",
+          "doneNote": "Webbläsarvarningar är redan på.",
+          "blockedNote": "Aviseringar är blockerade i din webbläsare. Slå på dem i webbläsarens webbplatsinställningar för att få varningar.",
+          "declinedNote": "Inga problem — vi skickar inga webbläsarvarningar. Du kan slå på dem senare via webbläsarens webbplatsinställningar.",
+          "summaryLabel": "Kritiska varningar",
+          "summaryVerified": "På — kritiska signaler når din webbläsare."
+        },
+        "power": {
+          "heading": "Din Pro-verktygslåda",
+          "body": "Anpassade widgetar, MCP-anslutningar och AI-forskaren är upplåsta. Bygg den vy du verkligen vill bevaka.",
+          "confirmCta": "Utforska Pro-verktyg",
+          "confirming": "Öppnar…",
+          "doneNote": "Du använder redan dina Pro-verktyg.",
+          "summaryLabel": "Pro-verktygslåda",
+          "summaryVerified": "Upplåst och redo när du är det.",
+          "channelsNote": "Föredrar du Telegram, Slack, Discord eller en webhook?",
+          "pointers": {
+            "search": "Sök i hela instrumentpanelen",
+            "widgets": "Skapa en anpassad widget",
+            "analyst": "Fråga AI-analytikern",
+            "mcpClients": "Konfigurera MCP",
+            "channels": "Ställ in dem i aviseringsinställningarna"
+          }
+        }
+      },
+      "status": {
+        "pending": "Inte konfigurerat",
+        "inFlight": "Konfigurerar…",
+        "verified": "Klart",
+        "failed": "Det fungerade inte",
+        "blocked": "Blockerat",
+        "unavailable": "Inte tillgängligt",
+        "blockedNote": "Det här är inte tillgängligt just nu — du kan konfigurera det senare i inställningarna.",
+        "unavailableNote": "Det här är inte tillgängligt på din enhet — du kan konfigurera det senare.",
+        "failedBody": "Något gick fel. Du kan försöka igen eller konfigurera det senare i inställningarna.",
+        "retry": "Försök igen"
+      },
+      "actions": {
+        "skip": "Hoppa över för nu",
+        "continue": "Fortsätt"
+      },
+      "summary": {
+        "heading": "Allt är klart",
+        "subVerified": "Så här är det på ditt konto just nu.",
+        "subPending": "Du kan slutföra installationen när som helst i inställningarna.",
+        "linePending": "Inte konfigurerat än — slutför när som helst i inställningarna.",
+        "lineFailed": "Vi kunde inte konfigurera det här — försök igen i inställningarna.",
+        "finish": "Gå till min instrumentpanel"
+      },
+      "chip": {
+        "message": "Slutför installationen av ditt Pro-konto.",
+        "action": "Slutför installation",
+        "dismissLabel": "Stäng"
+      }
     },
     "frameworkSelector": {
       "label": "Analysramverk",
@@ -2130,6 +2243,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {
@@ -2998,12 +3127,15 @@
     "china": {
       "title": "Landsöversikt Kina",
       "description": "Aktuell makro-, marknads-, handels-, energi- och driftstillgänglighet från befintliga publika datakontrakt.",
-      "macroPolicy": "Makro & politik",
-      "marketCredit": "Marknad & kredit",
-      "tradeSupply": "Handel & leveranskedja",
+      "policyEvents": "Policy & Enforcement",
       "energy": "Energi",
       "availability": "Faror & luftfart",
       "observed": "Per:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Källa:",
       "imfGrowth": "IMF:s tillväxtprognos",
       "creditGdp": "Kredit i förhållande till BNP",
@@ -3012,8 +3144,6 @@
       "gasDemand": "Gasefterfrågan",
       "energyMix": "Elmix",
       "coal": "kol",
-      "aviationAvailability": "Luftfartstillgänglighet",
-      "hazardAvailability": "Farotillgänglighet",
       "noMajorDisruptions": "Inga större störningar rapporterade",
       "activeDisruptions_one": "{{count}} aktiv störning",
       "activeDisruptions_other": "{{count}} aktiva störningar",
@@ -3025,18 +3155,21 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade, rapportör 156",
       "sourceUnavailable": "Källa saknas",
-      "macroUnavailable": "Makro- och politikdata är för närvarande inte tillgängliga.",
-      "marketUnavailable": "Marknads- och kreditdata är för närvarande inte tillgängliga.",
-      "tradeUnavailable": "Handels- och leveranskedjedata är för närvarande inte tillgängliga.",
-      "energyUnavailable": "Energidata är för närvarande inte tillgängliga.",
-      "availabilityUnavailable": "Data om faror och luftfart är för närvarande inte tillgängliga.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Läser in",
         "available": "Tillgänglig",
         "partial": "Delvis",
         "stale": "Inaktuell",
         "unavailable": "Otillgänglig"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "preferences": {

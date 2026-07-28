@@ -1,0 +1,870 @@
+[
+  {
+    "id": "official-numeric-revised",
+    "familyId": "official_numeric_observation",
+    "scenarios": ["revised_observation"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:miit-industrial-output:2026-06:v2",
+      "familyId": "official_numeric_observation",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:miit-cn",
+            "name": "Ministry of Industry and Information Technology",
+            "type": "official_government",
+            "registryReference": {
+              "sourceName": "MIIT (China)",
+              "sourceType": "gov",
+              "propagandaRisk": "high"
+            }
+          }
+        },
+        "source_url": {
+          "status": "known",
+          "value": "https://www.miit.gov.cn/example/industrial-output-2026-06"
+        },
+        "original_reference": {
+          "status": "known",
+          "value": {
+            "kind": "observation",
+            "id": "miit:industrial-output:2026-06:v2",
+            "contentHash": "sha256:62d42e59ae40a23dd63c594c613471cea77d04a938c435a0521476131db95588"
+          }
+        },
+        "original_language": {
+          "status": "known",
+          "value": "zh-CN"
+        },
+        "translation": {
+          "status": "not_applicable",
+          "reason": "The normalized signal is numeric and carries no translated text."
+        },
+        "observation_time": {
+          "status": "known",
+          "value": {
+            "role": "observation",
+            "value": "2026-06",
+            "precision": "month"
+          }
+        },
+        "effective_time": {
+          "status": "unknown",
+          "reason": "The release does not declare a separate effective date."
+        },
+        "publication_time": {
+          "status": "known",
+          "value": {
+            "role": "publication",
+            "value": "2026-07-18T02:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-18T02:07:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "known",
+          "value": {
+            "vintageId": "miit:industrial-output:2026-06:v2",
+            "sequence": 2,
+            "state": "revised"
+          }
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "current"
+          }
+        },
+        "extraction_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.42,
+            "method": "structured-table-parser/v1"
+          }
+        },
+        "classification_confidence": {
+          "status": "not_applicable",
+          "reason": "The series identity is configured rather than inferred."
+        },
+        "corroboration": {
+          "status": "unknown",
+          "reason": "No independent comparison has been performed."
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "fresh",
+            "assessedAt": "2026-07-18T02:08:00Z",
+            "lastSuccessAt": "2026-07-18T02:07:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "current",
+            "assessedAt": "2026-07-18T02:08:00Z",
+            "contentAsOf": "2026-06"
+          }
+        },
+        "derivation": {
+          "status": "not_applicable",
+          "reason": "This is a source observation, not a computed output."
+        }
+      }
+    }
+  },
+  {
+    "id": "typed-document-translated",
+    "familyId": "typed_document_event",
+    "scenarios": ["translated_document", "cancelled_or_superseded_event"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:xinhua-policy-event:2026-07-21:cancelled",
+      "familyId": "typed_document_event",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:xinhua",
+            "name": "Xinhua News Agency",
+            "type": "state_controlled_media",
+            "registryReference": {
+              "sourceName": "Xinhua",
+              "sourceType": "wire",
+              "propagandaRisk": "high"
+            }
+          }
+        },
+        "source_url": {
+          "status": "known",
+          "value": "https://english.news.cn/example/policy-notice"
+        },
+        "original_reference": {
+          "status": "known",
+          "value": {
+            "kind": "document",
+            "id": "xinhua:policy-notice:2026-07-21"
+          }
+        },
+        "original_language": {
+          "status": "known",
+          "value": "zh-CN"
+        },
+        "translation": {
+          "status": "known",
+          "value": {
+            "state": "machine_assisted",
+            "targetLanguage": "en"
+          }
+        },
+        "observation_time": {
+          "status": "not_applicable",
+          "reason": "The record is a document event, not a sampled observation."
+        },
+        "effective_time": {
+          "status": "known",
+          "value": {
+            "role": "effective",
+            "value": "2026-07-22",
+            "precision": "day"
+          }
+        },
+        "publication_time": {
+          "status": "known",
+          "value": {
+            "role": "publication",
+            "value": "2026-07-21T08:30:00Z",
+            "precision": "instant"
+          }
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-21T08:42:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "unknown",
+          "reason": "The publisher supplies no version number."
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "cancelled",
+            "reason": "The publisher withdrew the announced event."
+          }
+        },
+        "extraction_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.61,
+            "method": "document-extractor/v2"
+          }
+        },
+        "classification_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.92,
+            "method": "typed-policy-classifier/v1"
+          }
+        },
+        "corroboration": {
+          "status": "unknown",
+          "reason": "Publisher authority is not independent corroboration."
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "fresh",
+            "assessedAt": "2026-07-21T08:43:00Z",
+            "lastSuccessAt": "2026-07-21T08:42:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "current",
+            "assessedAt": "2026-07-21T08:43:00Z",
+            "contentAsOf": "2026-07-21T08:30:00Z"
+          }
+        },
+        "derivation": {
+          "status": "not_applicable",
+          "reason": "This event is extracted from original evidence."
+        }
+      }
+    }
+  },
+  {
+    "id": "operational-stale-transport",
+    "familyId": "operational_activity_record",
+    "scenarios": ["stale_transport_current_content"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:operational-activity:strait:2026-07-24T08:00Z",
+      "familyId": "operational_activity_record",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:reuters",
+            "name": "Reuters",
+            "type": "wire_service",
+            "registryReference": {
+              "sourceName": "Reuters",
+              "sourceType": "wire",
+              "propagandaRisk": "low"
+            }
+          }
+        },
+        "source_url": {
+          "status": "known",
+          "value": "https://www.reuters.com/example/operational-activity"
+        },
+        "original_reference": {
+          "status": "known",
+          "value": {
+            "kind": "event",
+            "id": "reuters:event:operational-activity:2026-07-24"
+          }
+        },
+        "original_language": {
+          "status": "known",
+          "value": "en"
+        },
+        "translation": {
+          "status": "known",
+          "value": {
+            "state": "not_translated"
+          }
+        },
+        "observation_time": {
+          "status": "known",
+          "value": {
+            "role": "observation",
+            "value": "2026-07-24T08:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "effective_time": {
+          "status": "unknown",
+          "reason": "No separate effective interval is published."
+        },
+        "publication_time": {
+          "status": "known",
+          "value": {
+            "role": "publication",
+            "value": "2026-07-24T08:05:00Z",
+            "precision": "instant"
+          }
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-24T08:07:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "unknown",
+          "reason": "The event publisher does not expose vintages."
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "current"
+          }
+        },
+        "extraction_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.88,
+            "method": "event-parser/v1"
+          }
+        },
+        "classification_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.7,
+            "method": "activity-classifier/v1"
+          }
+        },
+        "corroboration": {
+          "status": "known",
+          "value": {
+            "state": "multi_source",
+            "sourceSignalIds": [
+              "signal:source-a:2026-07-24",
+              "signal:source-b:2026-07-24"
+            ]
+          }
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "stale",
+            "assessedAt": "2026-07-24T09:30:00Z",
+            "lastSuccessAt": "2026-07-24T08:07:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "current",
+            "assessedAt": "2026-07-24T09:30:00Z",
+            "contentAsOf": "2026-07-24T08:00:00Z"
+          }
+        },
+        "derivation": {
+          "status": "not_applicable",
+          "reason": "This is a normalized source event."
+        }
+      }
+    }
+  },
+  {
+    "id": "exchange-disclosure-superseded",
+    "familyId": "exchange_disclosure",
+    "scenarios": ["cancelled_or_superseded_event"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:sec-disclosure:issuer-42:2026-07-23:v2",
+      "familyId": "exchange_disclosure",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:sec",
+            "name": "US Securities and Exchange Commission",
+            "type": "official_exchange",
+            "registryReference": {
+              "sourceName": "SEC",
+              "sourceType": "gov",
+              "propagandaRisk": "unknown"
+            }
+          }
+        },
+        "source_url": {
+          "status": "known",
+          "value": "https://www.sec.gov/example/issuer-42-correction"
+        },
+        "original_reference": {
+          "status": "known",
+          "value": {
+            "kind": "document",
+            "id": "sec:issuer-42:filing:2026-07-23:v2"
+          }
+        },
+        "original_language": {
+          "status": "known",
+          "value": "en"
+        },
+        "translation": {
+          "status": "known",
+          "value": {
+            "state": "not_translated"
+          }
+        },
+        "observation_time": {
+          "status": "not_applicable",
+          "reason": "A disclosure is a published document, not an observation."
+        },
+        "effective_time": {
+          "status": "unknown",
+          "reason": "The correction does not declare a separate effective time."
+        },
+        "publication_time": {
+          "status": "known",
+          "value": {
+            "role": "publication",
+            "value": "2026-07-23T15:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-23T15:04:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "known",
+          "value": {
+            "vintageId": "sec:issuer-42:filing:2026-07-23:v2",
+            "sequence": 2,
+            "state": "corrected"
+          }
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "superseded",
+            "relatedSignalId": "signal:sec-disclosure:issuer-42:2026-07-23:v3"
+          }
+        },
+        "extraction_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.99,
+            "method": "structured-filing-parser/v1"
+          }
+        },
+        "classification_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.95,
+            "method": "disclosure-type-map/v1"
+          }
+        },
+        "corroboration": {
+          "status": "unknown",
+          "reason": "No independent issuer comparison has been performed."
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "fresh",
+            "assessedAt": "2026-07-23T15:05:00Z",
+            "lastSuccessAt": "2026-07-23T15:04:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "current",
+            "assessedAt": "2026-07-23T15:05:00Z",
+            "contentAsOf": "2026-07-23T15:00:00Z"
+          }
+        },
+        "derivation": {
+          "status": "not_applicable",
+          "reason": "This is a source disclosure."
+        }
+      }
+    }
+  },
+  {
+    "id": "corridor-stale-content",
+    "familyId": "composed_corridor_condition",
+    "scenarios": ["current_transport_stale_content", "derived_output"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:corridor-condition:demo:2026-07-24T10:00Z",
+      "familyId": "composed_corridor_condition",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:worldmonitor-derived",
+            "name": "WorldMonitor derived output",
+            "type": "derived_output",
+            "registryReference": null
+          }
+        },
+        "source_url": {
+          "status": "not_applicable",
+          "reason": "The derived condition links its inputs through derivation."
+        },
+        "original_reference": {
+          "status": "not_applicable",
+          "reason": "There is no single original record."
+        },
+        "original_language": {
+          "status": "not_applicable",
+          "reason": "The derived condition has no original-language text."
+        },
+        "translation": {
+          "status": "not_applicable",
+          "reason": "The derived condition has no translated source text."
+        },
+        "observation_time": {
+          "status": "known",
+          "value": {
+            "role": "observation",
+            "value": "2026-07-24T10:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "effective_time": {
+          "status": "known",
+          "value": {
+            "role": "effective",
+            "value": "2026-07-24T10:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "publication_time": {
+          "status": "not_applicable",
+          "reason": "The computed condition is not a publisher release."
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-24T10:01:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "known",
+          "value": {
+            "vintageId": "corridor-condition:demo:2026-07-24T10:00Z",
+            "sequence": 1,
+            "state": "original"
+          }
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "current"
+          }
+        },
+        "extraction_confidence": {
+          "status": "not_applicable",
+          "reason": "Inputs own extraction confidence."
+        },
+        "classification_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.86,
+            "method": "corridor-condition/v1"
+          }
+        },
+        "corroboration": {
+          "status": "known",
+          "value": {
+            "state": "multi_source",
+            "sourceSignalIds": [
+              "signal:corridor-input:a",
+              "signal:corridor-input:b"
+            ]
+          }
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "fresh",
+            "assessedAt": "2026-07-24T10:01:00Z",
+            "lastSuccessAt": "2026-07-24T10:01:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "stale",
+            "assessedAt": "2026-07-24T10:01:00Z",
+            "contentAsOf": "2026-07-20T00:00:00Z"
+          }
+        },
+        "derivation": {
+          "status": "known",
+          "value": {
+            "methodId": "worldmonitor:corridor-condition",
+            "methodVersion": "1",
+            "computedAt": "2026-07-24T10:01:00Z",
+            "inputSignalIds": [
+              "signal:corridor-input:a",
+              "signal:corridor-input:b"
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "derived-comparison",
+    "familyId": "derived_comparison",
+    "scenarios": ["derived_output"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:derived-comparison:official-vs-proxy:2026-07",
+      "familyId": "derived_comparison",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:worldmonitor-derived",
+            "name": "WorldMonitor derived output",
+            "type": "derived_output",
+            "registryReference": null
+          }
+        },
+        "source_url": {
+          "status": "not_applicable",
+          "reason": "Inputs retain their own stable source URLs."
+        },
+        "original_reference": {
+          "status": "not_applicable",
+          "reason": "Inputs retain their own original references."
+        },
+        "original_language": {
+          "status": "not_applicable",
+          "reason": "The comparison is numeric."
+        },
+        "translation": {
+          "status": "not_applicable",
+          "reason": "The comparison is numeric."
+        },
+        "observation_time": {
+          "status": "known",
+          "value": {
+            "role": "observation",
+            "value": "2026-07",
+            "precision": "month"
+          }
+        },
+        "effective_time": {
+          "status": "known",
+          "value": {
+            "role": "effective",
+            "value": "2026-07",
+            "precision": "month"
+          }
+        },
+        "publication_time": {
+          "status": "not_applicable",
+          "reason": "The comparison is computed, not published by a source."
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-24T11:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "known",
+          "value": {
+            "vintageId": "comparison:official-vs-proxy:2026-07:v1",
+            "sequence": 1,
+            "state": "original"
+          }
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "current"
+          }
+        },
+        "extraction_confidence": {
+          "status": "not_applicable",
+          "reason": "Inputs own extraction confidence."
+        },
+        "classification_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.75,
+            "method": "agreement-comparison/v1"
+          }
+        },
+        "corroboration": {
+          "status": "known",
+          "value": {
+            "state": "contradicted",
+            "sourceSignalIds": [
+              "signal:official-input:2026-07",
+              "signal:proxy-input:2026-07"
+            ]
+          }
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "fresh",
+            "assessedAt": "2026-07-24T11:00:00Z",
+            "lastSuccessAt": "2026-07-24T11:00:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "current",
+            "assessedAt": "2026-07-24T11:00:00Z",
+            "contentAsOf": "2026-07"
+          }
+        },
+        "derivation": {
+          "status": "known",
+          "value": {
+            "methodId": "worldmonitor:agreement-comparison",
+            "methodVersion": "1",
+            "computedAt": "2026-07-24T11:00:00Z",
+            "inputSignalIds": [
+              "signal:official-input:2026-07",
+              "signal:proxy-input:2026-07"
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "operational-explicit-unknowns",
+    "familyId": "operational_activity_record",
+    "scenarios": ["missing_metadata_explicit_unknown"],
+    "provenance": {
+      "contractVersion": "decision-signal-provenance/v1",
+      "signalId": "signal:operational-activity:unknown-metadata:2026-07-24",
+      "familyId": "operational_activity_record",
+      "claims": {
+        "publisher": {
+          "status": "known",
+          "value": {
+            "id": "publisher:reuters",
+            "name": "Reuters",
+            "type": "wire_service",
+            "registryReference": {
+              "sourceName": "Reuters",
+              "sourceType": "wire",
+              "propagandaRisk": "low"
+            }
+          }
+        },
+        "source_url": {
+          "status": "known",
+          "value": "https://www.reuters.com/example/unknown-metadata-event"
+        },
+        "original_reference": {
+          "status": "known",
+          "value": {
+            "kind": "event",
+            "id": "reuters:event:unknown-metadata:2026-07-24"
+          }
+        },
+        "original_language": {
+          "status": "unknown",
+          "reason": "The upstream payload omits language metadata."
+        },
+        "translation": {
+          "status": "unknown",
+          "reason": "Translation state cannot be established without language metadata."
+        },
+        "observation_time": {
+          "status": "known",
+          "value": {
+            "role": "observation",
+            "value": "2026-07-24",
+            "precision": "day"
+          }
+        },
+        "effective_time": {
+          "status": "unknown",
+          "reason": "No effective time was supplied."
+        },
+        "publication_time": {
+          "status": "unknown",
+          "reason": "No publication timestamp was supplied."
+        },
+        "retrieval_time": {
+          "status": "known",
+          "value": {
+            "role": "retrieval",
+            "value": "2026-07-24T12:00:00Z",
+            "precision": "instant"
+          }
+        },
+        "revision": {
+          "status": "unknown",
+          "reason": "No revision metadata was supplied."
+        },
+        "supersession": {
+          "status": "known",
+          "value": {
+            "state": "current"
+          }
+        },
+        "extraction_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.6,
+            "method": "event-parser/v1"
+          }
+        },
+        "classification_confidence": {
+          "status": "known",
+          "value": {
+            "score": 0.5,
+            "method": "activity-classifier/v1"
+          }
+        },
+        "corroboration": {
+          "status": "unknown",
+          "reason": "No corroboration assessment was supplied."
+        },
+        "transport_freshness": {
+          "status": "known",
+          "value": {
+            "state": "fresh",
+            "assessedAt": "2026-07-24T12:00:00Z",
+            "lastSuccessAt": "2026-07-24T12:00:00Z"
+          }
+        },
+        "content_freshness": {
+          "status": "known",
+          "value": {
+            "state": "timestamp_unknown",
+            "assessedAt": "2026-07-24T12:00:00Z"
+          }
+        },
+        "derivation": {
+          "status": "not_applicable",
+          "reason": "This is a normalized source event."
+        }
+      }
+    }
+  }
+]

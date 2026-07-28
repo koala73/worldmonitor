@@ -19,6 +19,8 @@ const PLAN_DISPLAY: Record<string, string> = {
   free: "Free",
   pro_monthly: "Pro (Monthly)",
   pro_annual: "Pro (Annual)",
+  pro_business_monthly: "Pro Business (Monthly)",
+  pro_business_annual: "Pro Business (Annual)",
   api_starter: "API Starter (Monthly)",
   api_starter_annual: "API Starter (Annual)",
   api_business: "API Business",
@@ -30,7 +32,12 @@ const PLAN_DISPLAY: Record<string, string> = {
 // 4-card generic grid — safer than a deny-list that would silently opt-in
 // every new plan key added to PLAN_DISPLAY without a matching update here.
 // See `featureCardsHtml` and `userWelcomeHtml` for the parallel gates.
-const PRO_PLANS = new Set(["pro_monthly", "pro_annual"]);
+const PRO_PLANS = new Set([
+  "pro_monthly",
+  "pro_annual",
+  "pro_business_monthly",
+  "pro_business_annual",
+]);
 
 async function sendEmail(
   apiKey: string,
@@ -350,6 +357,47 @@ export const sendSubscriptionEmails = internalAction({
       </div>`,
     );
     console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
+  },
+});
+
+/**
+ * Confirm a subscription.active transition that restored a previously
+ * non-active subscription. This is deliberately a customer-only transactional
+ * email: the new-subscription action above also notifies admin, while a
+ * reactivation should acknowledge the returning customer without creating a
+ * second "new subscriber" alert.
+ */
+export const sendReactivationEmail = internalAction({
+  args: {
+    userEmail: v.string(),
+    planKey: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("[subscriptionEmails] RESEND_API_KEY not set");
+      return;
+    }
+
+    const planName = PLAN_DISPLAY[args.planKey] ?? args.planKey;
+    await sendEmail(
+      apiKey,
+      args.userEmail,
+      `Welcome back to World Monitor ${planName}`,
+      `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
+        <div style="background: #4ade80; height: 4px;"></div>
+        <div style="padding: 40px 32px;">
+          <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">Welcome back.</p>
+          <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">Your ${planName} subscription is active again and your premium access has been restored.</p>
+          <div style="text-align: center;">
+            <a href="https://worldmonitor.app/dashboard" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Open World Monitor</a>
+          </div>
+          <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">Questions? Reply to this email or contact ${ADMIN_EMAIL}.</p>
+        </div>
+      </div>`,
+      ADMIN_EMAIL,
+    );
+    console.log(`[subscriptionEmails] Reactivation email sent to ${args.userEmail}`);
   },
 });
 

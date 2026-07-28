@@ -82,6 +82,13 @@ function probeContent(payload, probe) {
     if (probe.requiredTruthyPaths?.some((path) => !valuesAtPath(payload, path).some(Boolean))) {
       return { status: 'empty', rows: [payload] };
     }
+    if (
+      Array.isArray(probe.validStatusValues)
+      && !valuesAtPath(payload, probe.statusPath ?? ['status'])
+        .some((value) => probe.validStatusValues.includes(String(value)))
+    ) {
+      return { status: 'partial', rows: [payload] };
+    }
     return { status: 'present', rows: [payload] };
   }
   if (probe.kind === 'object-property') {

@@ -705,6 +705,22 @@ describe('standalone Railway cron split', () => {
   it('Dockerfile sets dns-result-order=ipv4first (matches other seed services)', () => {
     assert.match(dockerfileSrc, /dns-result-order=ipv4first/);
   });
+
+  it('declares the 12-hour recovery cadence in the Railway service registry', () => {
+    const registry = JSON.parse(
+      readFileSync(resolve(root, 'scripts/railway-services.json'), 'utf8'),
+    );
+    const service = registry.find(
+      (entry) => entry.service === 'seed-bundle-portwatch-port-activity',
+    );
+    assert.equal(service?.cronSchedule, '0 */12 * * *');
+    assert.deepEqual(service?.requiredEnv, [
+      'UPSTASH_REDIS_REST_URL',
+      'UPSTASH_REDIS_REST_TOKEN',
+      'PROXY_URL',
+    ]);
+    assert.match(bundleSrc, /Cron schedule:\s*"0 \*\/12 \* \* \*"/);
+  });
 });
 
 describe('SKIPPED log message', () => {

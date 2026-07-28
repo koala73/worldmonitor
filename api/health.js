@@ -9,6 +9,7 @@ import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
+import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
 
 export const config = { runtime: 'edge' };
 
@@ -104,6 +105,8 @@ const BOOTSTRAP_KEYS = {
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
+  crossStraitActivity: 'military:cross-strait-activity:v1',
+  crossStraitActivityBootstrap: 'military:cross-strait-activity-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   forecastsBootstrap: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
@@ -137,8 +140,11 @@ const BOOTSTRAP_KEYS = {
   euYieldCurve:      'economic:yield-curve-eu:v1',
   earningsCalendar:  'market:earnings-calendar:v1',
   econCalendar:      'economic:econ-calendar:v1',
-  chinaMacro:        'economic:china:macro:v1',
-  chinaReleaseCalendar: 'economic:china:release-calendar:v1',
+  chinaMacro:        BOOTSTRAP_CACHE_KEYS.chinaMacro,
+  chinaReleaseCalendar: BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar,
+  chinaCorporateDisclosures: 'market:china:corporate-disclosures:v1',
+  chinaPolicyEvents: 'china:policy-events:v1',
+  chinaDecisionSignals: BOOTSTRAP_CACHE_KEYS.chinaDecisionSignals,
   cotPositioning:    'market:cot:v1',
   hyperliquidFlow:   'market:hyperliquid:flow:v1',
   crudeInventories:  'economic:crude-inventories:v1',
@@ -171,6 +177,7 @@ const BOOTSTRAP_KEYS = {
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   hkoWarnings:        'weather:hko-warnings:v1',
+  humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
   // keys: health-monitored but NOT bootstrap-hydrated into page loads.
   newsFeedHealth:    'news:feed-health:v1',
@@ -198,7 +205,7 @@ const STANDALONE_KEYS = {
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
   minerals:              'supply_chain:minerals:v2',
-  giving:                'giving:summary:v1',
+  giving:                'giving:summary:v2',
   gpsjam:                'intelligence:gpsjam:v2',
   theaterPosture:        'theater_posture:sebuf:stale:v1',
   theaterPostureLive:    'theater-posture:sebuf:v1',
@@ -227,6 +234,8 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
+  crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
@@ -266,7 +275,7 @@ const STANDALONE_KEYS = {
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   resilienceRanking:        'resilience:ranking:v25',
-  productCatalog:           'product-catalog:v2',
+  productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
   energyMixAll:             'energy:mix:v1:_all',
@@ -336,6 +345,15 @@ const STANDALONE_KEYS = {
 };
 
 const SEED_META = {
+  // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
+  // to one bulk refresh every 2h. Bounded above by
+  // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
+  // by cron headroom alone: this MUST fire before a per-country key can expire,
+  // or users see empty data for up to 6h before health notices (#5554 review;
+  // an earlier 720min value left exactly that blind spot). 300 (5h) is ~10x
+  // the HAPI refresh interval (headroom for missed/lock-contended ticks) while staying
+  // a full hour below the 6h data-expiry floor.
+  humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300, minRecordCount: 23 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
@@ -373,8 +391,15 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   submarineCables:  { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 25200 },
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy afterPublish-derived stress/macro key
-  chinaMacro:       { key: 'seed-meta:economic:china-macro', maxStaleMin: 4_320 }, // 36h gate; 72h tolerates one missed run
+  chinaMacro:       { key: 'seed-meta:economic:china-macro-transport', maxStaleMin: 4_320 }, // oldest required-source last success; preserved failures do not refresh it
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
+  chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
+  crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
+  crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
+  crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
+  chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
+  chinaDecisionSignals: { key: 'seed-meta:intelligence:china-decision-signals', maxStaleMin: 60, minRecordCount: 6 },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -427,7 +452,7 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 180 },
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
   globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
@@ -443,6 +468,7 @@ const SEED_META = {
   forecastResolutions: { key: 'seed-meta:forecast:resolutions',     maxStaleMin: 2160 }, // daily Bet-2 resolver; 36h catches a missed cron without flapping on normal daily jitter
   forecastScorecard:   { key: 'seed-meta:forecast:scorecard',       maxStaleMin: 2160 }, // scorecard extra key written by seed-forecast-resolutions
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
+  forecastMarketsResolution: { key: 'seed-meta:prediction:markets-resolution', maxStaleMin: 2160 }, // #5525 market settlement feed; written every resolver run (even zero-due), so it shares the resolver's 36h window
   forecastFunnel:      { key: 'seed-meta:forecast:funnel:health:v1', maxStaleMin: 180 }, // funnel-diversity guardrail (#5233); written by seed-forecasts afterPublish each hourly run (3× cadence). status:'error' → SEED_ERROR when the published funnel collapses (too few domains / mostly synthetic)
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
@@ -462,7 +488,7 @@ const SEED_META = {
   securityAdvisories:  { key: 'seed-meta:intelligence:advisories',           maxStaleMin: 120 },
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
-  comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 34560 }, // 24d freshness gate + 25d meta TTL; meta-only aggregate over sharded country keys
+  comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
   blsSeries:           { key: 'seed-meta:economic:bls-series',                maxStaleMin: 2880 }, // daily seed; 2880min = 48h = 2x interval
   sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 },
   crossSourceSignals:  { key: 'seed-meta:intelligence:cross-source-signals',  maxStaleMin: 30 }, // 15min cron; 30min = 2x interval
@@ -725,6 +751,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'ucdpEventsBootstrap',
   'forecastsBootstrap',
   'wildfiresBootstrap',
+  'crossStraitActivityBootstrap',
 ]);
 
 // These compact projections must leave a payload on every successful publish.
@@ -739,6 +766,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'wildfiresBootstrap',
   'forecastsBootstrap',
   'positiveGeoEvents',
+  'crossStraitActivityBootstrap',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data
@@ -765,6 +793,10 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // sit in the broad set because their data key can be wholly absent on quiet
   // (writeSeedMeta-only path).
   'outages',
+  // Official disclosure categories are sparse. The canonical snapshot always
+  // exists after a successful query, but a quiet 90-day window can validly
+  // contain zero owned-category events.
+  'chinaCorporateDisclosures',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -1186,8 +1218,14 @@ function healthResponseBody(snapshot, compact) {
   // the full 20 KB check map. Passing a compact snapshot back through here is a
   // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
   const problems = snapshot.checks
-    ? Object.fromEntries(Object.entries(snapshot.checks).filter(([, check]) => isProblemStatus(check.status)))
-    : (snapshot.problems ?? {});
+    ? Object.fromEntries(Object.entries(snapshot.checks).filter(
+      ([name, check]) => name !== 'chinaDecisionSignals' && isProblemStatus(check.status),
+    ))
+    : { ...(snapshot.problems ?? {}) };
+  // Older compact snapshots may predate the operator-only China health
+  // projection. Strip it again at the response boundary so a cached value
+  // cannot leak source freshness details to anonymous status readers.
+  delete problems.chinaDecisionSignals;
   if (Object.keys(problems).length > 0) body.problems = problems;
   return body;
 }

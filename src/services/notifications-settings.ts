@@ -463,6 +463,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // Logged for local debugging only; the setting simply isn't persisted.
       function fireForgetSave(p: Promise<unknown>, label: string): void {
         void p.catch((err) => {
+          if (signal.aborted) return;
           console.warn(`[notifications] ${label} failed (not saved):`, err);
         });
       }
@@ -474,7 +475,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         loadingEl.style.display = 'block';
         contentEl.style.display = 'none';
         if (signal.aborted) return;
-        getChannelsData().then((data) => {
+        getChannelsData(undefined, signal).then((data) => {
           if (signal.aborted) return;
           setTrustedHtml(contentEl, trustedHtml(renderNotifContent(data), "legacy direct innerHTML migration"));
           loadingEl.style.display = 'none';
@@ -593,7 +594,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         fireForgetSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        }), 'save alert rules');
+        }, signal), 'save alert rules');
       }
 
       reloadNotifSection();
@@ -606,7 +607,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           variant: SITE_VARIANT,
           ...state,
           channels,
-        }), 'save alert rules');
+        }, signal), 'save alert rules');
       }
 
       signal.addEventListener('abort', () => {
@@ -640,7 +641,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             quietHoursTimezone: tzEl?.value || detectedTz,
             quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
             countries: countryPicker ? countryPicker.getValue() : undefined,
-          }), 'save quiet hours');
+          }, signal), 'save quiet hours');
         }, 800);
       };
 
@@ -656,7 +657,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             digestHour: hourEl ? Number(hourEl.value) : 8,
             digestTimezone: tzEl?.value || detectedTz,
             countries: countryPicker ? countryPicker.getValue() : undefined,
-          }), 'save digest settings');
+          }, signal), 'save digest settings');
         }, 800);
       };
 
@@ -733,14 +734,22 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                   digestHour: hourEl ? Number(hourEl.value) : 8,
                   digestTimezone: tzEl?.value || detectedTz,
                   ...(snappedSensitivity ? { sensitivity: snappedSensitivity } : {}),
-                });
+                }, undefined, signal);
               } catch (err) {
                 if (err instanceof IncompatibleDeliveryError) {
                   const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
                   if (hint) hint.textContent = err.message;
                   return;
                 }
-                throw err;
+                // This IIFE is `void`-ed with no .catch(), so a rethrow here
+                // escapes as an unhandled rejection and reaches
+                // window.onunhandledrejection — the exact WORLDMONITOR-SN
+                // invariant fireForgetSave exists to uphold. Every sibling save
+                // in this file routes through fireForgetSave; this one cannot,
+                // because it needs the IncompatibleDeliveryError branch above.
+                // So swallow the same way fireForgetSave does instead.
+                if (signal.aborted) return;
+                console.warn('[notifications] save digest mode failed (not saved):', err);
               }
             })();
           }, 800);
@@ -780,7 +789,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               variant: SITE_VARIANT,
               ...state,
               aiDigestEnabled: target.checked,
-            }), 'save alert rules');
+            }, signal), 'save alert rules');
           }, 500);
           return;
         }
@@ -792,7 +801,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             fireForgetSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
-            }), 'save alert rules');
+            }, signal), 'save alert rules');
           }, 1000);
         }
       }, { signal });
@@ -826,7 +835,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
         const startTelegramPairing = (rowEl: HTMLElement) => {
           setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`, "legacy direct innerHTML migration"));
-          createPairingToken().then(({ token, expiresAt }) => {
+          createPairingToken(signal).then(({ token, expiresAt }) => {
             if (signal.aborted) return;
             const botUsername = getTelegramBotUsername();
             const deepLink = `https://t.me/${String(botUsername)}?start=${token}`;
@@ -875,7 +884,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 `, "legacy direct innerHTML migration"));
                 return;
               }
-              getChannelsData().then((data) => {
+              getChannelsData(undefined, signal).then((data) => {
                 const tg = data.channels.find(c => c.channelType === 'telegram');
                 if (tg?.verified) {
                   clearNotifPoll();
@@ -906,7 +915,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             }
             return;
           }
-          setEmailChannel(email).then(() => {
+          setEmailChannel(email, undefined, signal).then(() => {
             if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
           }).catch(() => {});
           return;
@@ -919,7 +928,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return;
           }
           if (btn) btn.textContent = 'Connecting…';
-          startSlackOAuth().then((oauthUrl) => {
+          startSlackOAuth(signal).then((oauthUrl) => {
             if (signal.aborted) return;
             const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
             if (!popup) {
@@ -944,7 +953,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return;
           }
           if (btn) btn.textContent = 'Connecting…';
-          startDiscordOAuth().then((oauthUrl) => {
+          startDiscordOAuth(signal).then((oauthUrl) => {
             if (signal.aborted) return;
             const popup = window.open(oauthUrl, 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
             if (!popup) {
@@ -988,7 +997,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }
           const saveBtn = target.closest<HTMLButtonElement>('#usWebhookSave');
           if (saveBtn) saveBtn.textContent = 'Saving...';
-          setWebhookChannel(url, labelInput?.value?.trim() || undefined).then(() => {
+          setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(() => {
             if (!signal.aborted) { saveRuleWithNewChannel('webhook'); reloadNotifSection(); }
           }).catch(() => {
             if (saveBtn && !signal.aborted) saveBtn.textContent = 'Save';
@@ -1050,7 +1059,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             })();
             return;
           }
-          deleteChannel(channelType).then(() => {
+          deleteChannel(channelType, signal).then(() => {
             if (!signal.aborted) reloadNotifSection();
           }).catch(() => {});
           return;

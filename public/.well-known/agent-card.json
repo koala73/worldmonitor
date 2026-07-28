@@ -23,7 +23,7 @@
     {
       "id": "route-to-tool",
       "name": "Capability discovery and tool routing",
-      "description": "Describe the intelligence data you need in plain language; returns the best-fit WorldMonitor MCP tools (from the live 39-tool catalog) plus the MCP/REST endpoints and auth needed to call them.",
+      "description": "Describe the intelligence data you need in plain language; returns the best-fit WorldMonitor MCP tools (from the live 42-tool catalog) plus the MCP/REST endpoints and auth needed to call them.",
       "tags": ["discovery", "routing", "mcp", "geopolitics", "markets", "supply-chain"],
       "examples": [
         "Which tool gives live shipping chokepoint status?",

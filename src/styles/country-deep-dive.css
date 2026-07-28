@@ -331,6 +331,17 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+.cdp-china-summary-source-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-underline-offset: 2px;
+}
+
+.cdp-china-summary-source-link:hover {
+  text-decoration-color: currentColor;
+}
+
 .cdp-grid {
   display: grid;
   grid-template-columns: 1fr;
