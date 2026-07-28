@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { BOOTSTRAP_CACHE_KEYS, BOOTSTRAP_TIERS } from '../shared/bootstrap-tier-keys.js';
+import { CROSS_STRAIT_BLOCKED_SOURCE_REASONS as PRODUCER_BLOCKED_REASONS } from '../scripts/cross-strait-activity/adapters.mjs';
+import { CROSS_STRAIT_BLOCKED_SOURCE_REASONS as CLIENT_BLOCKED_REASONS } from '../src/types/cross-strait-activity';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -15,6 +17,16 @@ describe('cross-Strait activity production registration (#5575)', () => {
     assert.match(registry, /'Japan Joint Staff': 'gov'/);
     assert.match(registry, /'Taiwan Ministry of National Defense': \{[\s\S]*?risk: 'high'/);
     assert.match(registry, /'Japan Joint Staff': \{[\s\S]*?risk: 'high'/);
+  });
+
+  it('keeps the client blocked-reason mirror identical to the producer list', () => {
+    // The client copy cannot import the producer (Railway's nixpacks service
+    // copies only scripts/), and a missing reason is NOT a type error: the
+    // runtime source-health guard would reject the whole snapshot and the panel
+    // would render nothing. Compare the executable values, not their source
+    // text, so an added-but-unmirrored reason fails here instead of in prod.
+    assert.deepEqual([...CLIENT_BLOCKED_REASONS], [...PRODUCER_BLOCKED_REASONS]);
+    assert.ok(PRODUCER_BLOCKED_REASONS.includes('PROXY_TARGET_FORBIDDEN'));
   });
 
   it('schedules the bounded seeder and registers bootstrap, China coverage, and health', () => {

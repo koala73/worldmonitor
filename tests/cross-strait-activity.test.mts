@@ -127,6 +127,13 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(jmod.preflight.observedIndexStatus, 403);
     assert.equal(jmod.documentAdmission, 'manual_review_required');
     assert.equal(jmod.runtimePdfRequestsPerRun, 0);
+    // The control tunnel exists to tell a target-scoped proxy policy apart from
+    // a proxy-wide outage, so it must target a host we already contract with —
+    // and never Japan MOD, whose refusal is the thing under test.
+    assert.equal(jmod.maxProxyControlProbesPerRun, 1);
+    assert.equal(jmod.proxyControlProbeHost, 'www.mnd.gov.tw');
+    assert.ok(mnd.allowedHosts.includes(jmod.proxyControlProbeHost));
+    assert.ok(!jmod.allowedHosts.includes(jmod.proxyControlProbeHost));
   });
 
   it('parses MND list links and preserves the publisher reporting window and categories', () => {
@@ -1244,7 +1251,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     );
   });
 
-  it('keeps a proxy CONNECT 403 degraded because the request never reached Japan MOD', async () => {
+  it('keeps a proxy CONNECT 403 degraded when no control tunnel can corroborate it', async () => {
     const previousSnapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
         () => new Response(fixture('jmod-index.html')),
@@ -1275,6 +1282,9 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(japan?.blockedReason, undefined);
     assert.equal(japan?.fallbackReason, 'HTTP_403');
     assert.equal(japan?.proxyFailureReason, 'PROXY_CONNECT_FORBIDDEN');
+    // No probe is injected here, so the production control tunnel runs against
+    // the unroutable test proxy and cannot corroborate the refusal.
+    assert.equal(japan?.proxyControlProbe, 'unreachable');
     assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'PROXY_CONNECT_FORBIDDEN']);
     assert.equal(snapshot.status, 'degraded');
     assert.deepEqual(japan?.proxyFailureDetail, {
@@ -1297,6 +1307,134 @@ describe('quantified cross-Strait activity (#5575)', () => {
         (row: { sourceId: string }) => row.sourceId === 'japan-mod',
       ),
     );
+  });
+
+  it('classifies a proxy CONNECT 403 as a target block once a control tunnel proves the proxy healthy', async () => {
+    const probedHosts: string[] = [];
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async () => {
+        throw Object.assign(
+          new Error('Proxy CONNECT: HTTP/1.1 403 Forbidden'),
+          { status: 403 },
+        );
+      },
+      proxyConnectProbeFn: async (host: string) => {
+        probedHosts.push(host);
+      },
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'error');
+    assert.equal(japan?.blockedReason, 'PROXY_TARGET_FORBIDDEN');
+    assert.equal(japan?.fallbackReason, 'HTTP_403');
+    assert.equal(japan?.proxyFailureReason, 'PROXY_CONNECT_FORBIDDEN');
+    assert.equal(japan?.proxyControlProbe, 'reachable');
+    assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'PROXY_CONNECT_FORBIDDEN']);
+    // The control tunnel must never be opened to the blocked source itself —
+    // that would prove nothing about the proxy's willingness to tunnel.
+    assert.deepEqual(probedHosts, [CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.proxyControlProbeHost]);
+    assert.ok(!probedHosts.some((host) => host.includes('mod.go.jp')));
+    // Source-facing requests stay within the documented two-leg budget; the
+    // control tunnel is transport telemetry, not a Japan MOD request.
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.lastSuccessAt, null);
+  });
+
+  it('keeps a proxy CONNECT 403 degraded when the control tunnel is also refused', async () => {
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async () => {
+        throw Object.assign(
+          new Error('Proxy CONNECT: HTTP/1.1 403 Forbidden'),
+          { status: 403 },
+        );
+      },
+      proxyConnectProbeFn: async () => {
+        throw Object.assign(
+          new Error('Proxy CONNECT: HTTP/1.1 403 Forbidden'),
+          { status: 403 },
+        );
+      },
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'error');
+    assert.equal(
+      japan?.blockedReason,
+      undefined,
+      'a proxy-wide CONNECT refusal must stay operator-visible, not read as an upstream block',
+    );
+    assert.equal(japan?.proxyControlProbe, 'unreachable');
+    assert.equal(snapshot.status, 'degraded');
+  });
+
+  it('never opens a control tunnel for a proxy failure that is not a CONNECT refusal', async () => {
+    for (const proxyError of [
+      Object.assign(new Error('Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required'), { status: 407 }),
+      Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+    ]) {
+      let probeCalls = 0;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        fetchFn: crossStraitFixtureFetch(
+          () => new Response('Forbidden', { status: 403 }),
+        ),
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        sleepFn: async () => {},
+        proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        proxyRequestFn: async () => { throw proxyError; },
+        proxyConnectProbeFn: async () => { probeCalls += 1; },
+      });
+
+      const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+      assert.equal(probeCalls, 0);
+      assert.equal(japan?.blockedReason, undefined);
+      assert.equal(japan?.proxyControlProbe, undefined);
+    }
+  });
+
+  it('never promotes a control-verified CONNECT refusal to blocked without a direct 403', async () => {
+    for (const [directResult, fallbackReason] of [
+      [() => { throw new Error('network reset'); }, 'SOURCE_ERROR'],
+      [() => new Response('Unavailable', { status: 500 }), 'HTTP_500'],
+    ] as const) {
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        fetchFn: crossStraitFixtureFetch(directResult),
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        sleepFn: async () => {},
+        proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        proxyRequestFn: async () => {
+          throw Object.assign(
+            new Error('Proxy CONNECT: HTTP/1.1 403 Forbidden'),
+            { status: 403 },
+          );
+        },
+        proxyConnectProbeFn: async () => {},
+      });
+
+      const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+      assert.equal(japan?.fallbackReason, fallbackReason);
+      assert.equal(japan?.proxyControlProbe, 'reachable');
+      assert.equal(
+        japan?.blockedReason,
+        undefined,
+        'only a direct HTTP 403 evidences a source-side refusal on the direct leg',
+      );
+    }
   });
 
   it('classifies direct and proxied Japan MOD HTTP 403 responses as explicitly blocked', async () => {

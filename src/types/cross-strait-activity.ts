@@ -94,6 +94,22 @@ export interface CrossStraitProxyFailureDetail {
   errorMessage: string | null;
 }
 
+/**
+ * Mirrors CROSS_STRAIT_BLOCKED_SOURCE_REASONS in
+ * scripts/cross-strait-activity/adapters.mjs. The producer lives under scripts/
+ * because Railway's nixpacks service copies only that directory, so this list
+ * is a hand-kept mirror rather than an import; the production-registration test
+ * pins the two together, because a producer reason missing here is not a type
+ * error — it silently fails the runtime source-health guard and drops the whole
+ * snapshot on the client.
+ */
+export const CROSS_STRAIT_BLOCKED_SOURCE_REASONS = [
+  'HTTP_403',
+  'PROXY_TARGET_FORBIDDEN',
+] as const;
+
+export type CrossStraitBlockedReason = typeof CROSS_STRAIT_BLOCKED_SOURCE_REASONS[number];
+
 export interface CrossStraitActivitySourceHealth {
   id: CrossStraitSourceId;
   publisher: string;
@@ -102,10 +118,12 @@ export interface CrossStraitActivitySourceHealth {
   transportStatus: 'fresh' | 'error';
   requestCount: number;
   transportPath?: 'direct' | 'proxy';
-  blockedReason?: 'HTTP_403';
+  blockedReason?: CrossStraitBlockedReason;
   fallbackReason?: string;
   proxyFailureReason?: string;
   proxyFailureDetail?: CrossStraitProxyFailureDetail;
+  /** Present only when a proxy CONNECT refusal was tested against a control host. */
+  proxyControlProbe?: 'reachable' | 'unreachable';
   errorCodes: string[];
   lastSuccessAt: string | null;
   admittedDocumentCount?: number;

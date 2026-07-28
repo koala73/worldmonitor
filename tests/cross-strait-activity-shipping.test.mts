@@ -250,6 +250,69 @@ test('blocked source health never publishes fresh metadata before its detail rec
   assert.deepEqual(writes, ['military:cross-strait-activity:v1:source:japan-mod']);
 });
 
+test('a control-verified proxy target block clears fleet health like an upstream refusal', async () => {
+  const { classifyKey, STATUS_COUNTS, SEED_META, STANDALONE_KEYS } = __testing__;
+  const now = Date.parse('2026-07-28T20:00:00.000Z');
+  const writes = new Map<string, unknown>();
+
+  await writeSourceHealth({
+    generatedAt: new Date(now).toISOString(),
+    observations: [{ sourceId: 'japan-mod' }, { sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      blockedReason: 'PROXY_TARGET_FORBIDDEN',
+      proxyFailureReason: 'PROXY_CONNECT_FORBIDDEN',
+      proxyControlProbe: 'reachable',
+      lastSuccessAt: null,
+    }],
+  }, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  const metaKey = SEED_META.crossStraitActivityJapanMod.key;
+  const dataKey = STANDALONE_KEYS.crossStraitActivityJapanMod;
+  assert.deepEqual(writes.get(metaKey), {
+    fetchedAt: now,
+    recordCount: 2,
+    sourceState: 'blocked',
+    stale: false,
+  });
+
+  const entry = classifyKey('crossStraitActivityJapanMod', dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 1024]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify(writes.get(metaKey))]]),
+    keyMetaErrors: new Map(),
+    now,
+  });
+  assert.equal(entry.status, 'SOURCE_BLOCKED');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('an uncorroborated proxy CONNECT refusal never reaches the blocked state', async () => {
+  const writes = new Map<string, unknown>();
+  await writeSourceHealth({
+    generatedAt: '2026-07-28T20:00:00.000Z',
+    observations: [{ sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      proxyFailureReason: 'PROXY_CONNECT_FORBIDDEN',
+      proxyControlProbe: 'unreachable',
+      lastSuccessAt: null,
+    }],
+  }, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  assert.equal(
+    (writes.get('seed-meta:military:cross-strait-activity:japan-mod') as { sourceState: string })
+      .sourceState,
+    'error',
+  );
+});
+
 test('a proxy CONNECT refusal remains an operator-visible source error', async () => {
   const writes = new Map<string, unknown>();
   await writeSourceHealth({

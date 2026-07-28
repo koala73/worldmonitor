@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   CROSS_STRAIT_ACTIVITY_KEY,
+  CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
   fetchCrossStraitActivitySnapshot,
   validateCrossStraitActivitySnapshot,
 } from './cross-strait-activity/adapters.mjs';
@@ -89,7 +90,7 @@ function sourceRecordCount(snapshot, sourceId) {
 export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
     const healthy = source?.transportStatus === 'fresh';
-    const blocked = source?.blockedReason === 'HTTP_403';
+    const blocked = CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(source?.blockedReason);
     const fetchedAt = Date.parse(
       blocked ? snapshot?.generatedAt ?? '' : source?.lastSuccessAt ?? '',
     );

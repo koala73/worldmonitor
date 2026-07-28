@@ -335,6 +335,38 @@ describe('Force Posture official-activity supplement (#5575)', () => {
       crossStraitSourceHealthHeading(unavailable.sourceHealth?.state ?? 'degraded'),
       'Official activity unavailable',
     );
+
+    // A proxy-target block reaches the reader through the same disclosure as an
+    // upstream refusal: both mean no transport path exists and the displayed
+    // counts are retained reviewed records, not current ones.
+    const proxyBlockedSource = {
+      ...snapshot.sources[1],
+      transportStatus: 'error' as const,
+      blockedReason: 'PROXY_TARGET_FORBIDDEN' as const,
+      proxyFailureReason: 'PROXY_CONNECT_FORBIDDEN',
+      proxyControlProbe: 'reachable' as const,
+      errorCodes: ['HTTP_403', 'PROXY_CONNECT_FORBIDDEN'],
+      lastSuccessAt: null,
+    };
+    const proxyBlockedSnapshot = {
+      ...snapshot,
+      status: 'healthy' as const,
+      sources: [snapshot.sources[0], proxyBlockedSource],
+    };
+    assert.ok(
+      isCrossStraitActivitySnapshot(proxyBlockedSnapshot),
+      'the runtime guard must admit the new reason or the panel renders nothing',
+    );
+    const proxyBlocked = buildCrossStraitActivityPanelModel(proxyBlockedSnapshot);
+    assert.equal(proxyBlocked.sourceHealth?.state, 'blocked');
+    assert.equal(
+      proxyBlocked.sourceHealth?.sources[1]?.blockedReason,
+      'PROXY_TARGET_FORBIDDEN',
+    );
+    assert.equal(
+      crossStraitSourceHealthHeading(proxyBlocked.sourceHealth?.state ?? 'degraded'),
+      'Official activity source blocked',
+    );
   });
 
   it('rejects malformed nested cache snapshots and soft-fails the supplement model', () => {

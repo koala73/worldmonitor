@@ -76,7 +76,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `OK` | Green | Data present, seed fresh |
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
 | `NOT_CONFIGURED` | Green | An optional source adapter this deployment never supplied a credential for (producer wrote `sourceState: "unavailable"`, e.g. the Global Tenders SAM.gov adapter without `SAM_GOV_API_KEY`). Not a fault and not counted as a problem; flips to `OK` on the first run after the credential is added |
-| `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved a direct HTTP 403 and another upstream HTTP 403 after a successful proxy CONNECT while retaining fresh reviewed records. CONNECT-layer refusals, stale, empty, or unreviewed states still fail closed |
+| `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved no transport path reaches the publisher while retaining fresh reviewed records — either an upstream HTTP 403 after a successful proxy CONNECT (`HTTP_403`), or a target-scoped proxy CONNECT refusal corroborated by a successful control tunnel (`PROXY_TARGET_FORBIDDEN`). Uncorroborated CONNECT refusals, stale, empty, or unreviewed states still fail closed |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
 | `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints or 139/174 PortWatch port-activity countries) |
@@ -113,12 +113,21 @@ observations are regional augmentation and do not satisfy the Taiwan MND
 content requirement. `/api/health` separately monitors
 `military:cross-strait-activity-bootstrap:v1`; fresh canonical data cannot hide
 a missing compact UI projection. It also exposes dedicated MND and Japan Joint
-Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED` when
-retained reviewed records exist and the current direct request plus an
-upstream response after a successful proxy CONNECT both return HTTP 403.
-CONNECT-layer refusals, stale metadata, a missing source record, or any other
-source using the blocked state still fail closed through the existing
-`STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. Other current fetch failures
+Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED`, and
+only when retained reviewed records exist and one of two evidenced conditions
+holds. `HTTP_403` means the direct request and an upstream response received
+after a successful proxy CONNECT both returned HTTP 403 — the publisher itself
+refused both paths. `PROXY_TARGET_FORBIDDEN` means the direct request returned
+HTTP 403 and the proxy refused CONNECT for the target *while a control CONNECT
+to a different contracted host succeeded in the same run through the same
+credentials* — the proxy provider forbids this destination specifically, so no
+configured transport path exists. An uncorroborated CONNECT refusal, a control
+tunnel that also fails, `PROXY_AUTH_FAILED`, stale metadata, a missing source
+record, or any other source using the blocked state still fail closed through
+the existing `STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. The distinction
+matters operationally: `PROXY_TARGET_FORBIDDEN` is durable and needs a
+different egress to change, whereas a bare CONNECT refusal is a proxy fault to
+remediate. Other current fetch failures
 report `SEED_ERROR` while the last-good archive remains available.
 The bundle freshness gate advances only after the archive, projection, and
 both source-health records publish successfully. The public bootstrap retains

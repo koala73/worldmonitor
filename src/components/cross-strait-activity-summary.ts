@@ -1,8 +1,10 @@
-import type {
-  CrossStraitActivitySourceHealth,
-  CrossStraitActivitySnapshot,
-  CrossStraitBaselineWindow,
-  TaiwanMndActivityCategories,
+import {
+  CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
+  type CrossStraitActivitySourceHealth,
+  type CrossStraitActivitySnapshot,
+  type CrossStraitBaselineWindow,
+  type CrossStraitBlockedReason,
+  type TaiwanMndActivityCategories,
 } from '@/types/cross-strait-activity';
 
 export interface CrossStraitComparisonModel {
@@ -223,7 +225,14 @@ function isSourceHealth(value: unknown): boolean {
     )
     && (
       value.blockedReason === undefined
-      || value.blockedReason === 'HTTP_403'
+      || CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(
+        value.blockedReason as CrossStraitBlockedReason,
+      )
+    )
+    && (
+      value.proxyControlProbe === undefined
+      || value.proxyControlProbe === 'reachable'
+      || value.proxyControlProbe === 'unreachable'
     )
     && (
       value.fallbackReason === undefined
@@ -362,7 +371,8 @@ export function buildCrossStraitActivityPanelModel(
 
   const progress = `${snapshot.coverage.usableMndReportingDays} usable reporting days`;
   const hasBlockedSource = snapshot.sources.some(
-    (source) => source.blockedReason === 'HTTP_403',
+    (source) => source.blockedReason !== undefined
+      && CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(source.blockedReason),
   );
   const sourceHealth = snapshot.status === 'degraded'
     || snapshot.status === 'unavailable'
