@@ -23,15 +23,21 @@
  * The truth table below is the bound; `honours a near-expiry token from Clerk's
  * stale-while-revalidate path` is the case that was live in production.
  */
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  __setClerkInstanceForTests,
   clerkTokenExpiresAtMs,
+  getClerkToken,
   shouldReuseCachedClerkToken,
 } from '../src/services/clerk.ts';
 
 const NOW = 1_760_000_000_000;
+
+afterEach(() => {
+  __setClerkInstanceForTests(null);
+});
 
 /** A JWT whose payload carries `exp`, the only claim this cache decision reads. */
 function tokenExpiringAt(expMs: number): string {
@@ -133,5 +139,38 @@ describe('shouldReuseCachedClerkToken', () => {
 
   it('never reuses a missing token', () => {
     assert.equal(shouldReuseCachedClerkToken({ token: null, cachedAt: NOW, now: NOW }), false);
+  });
+});
+
+describe('getClerkToken', () => {
+  it('forces a refresh instead of returning Clerk\'s near-expiry cached token', async () => {
+    const nearExpiry = tokenExpiringAt(Date.now() + 5_000);
+    const refreshed = tokenExpiringAt(Date.now() + 60_000);
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const tokens = [nearExpiry, refreshed];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return tokens.shift() ?? null;
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkToken(), refreshed);
+    assert.deepEqual(calls, [
+      { template: 'convex' },
+      { template: 'convex', skipCache: true },
+    ]);
+  });
+
+  it('returns null when a forced refresh still yields a near-expiry token', async () => {
+    const session = {
+      async getToken() {
+        return tokenExpiringAt(Date.now() + 5_000);
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkToken(), null);
   });
 });

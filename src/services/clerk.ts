@@ -25,6 +25,7 @@ import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 type ClerkInstance = Clerk;
+type ClerkSession = NonNullable<ClerkInstance['session']>;
 
 function readPublishableKey(): string | undefined {
   try {
@@ -564,6 +565,12 @@ export function shouldReuseCachedClerkToken(input: {
   return now < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
 }
 
+async function fetchClerkToken(session: ClerkSession, skipCache = false): Promise<string | null> {
+  const cacheOptions = skipCache ? { skipCache: true } : {};
+  return (await session.getToken({ template: 'convex', ...cacheOptions }).catch(() => null))
+    ?? await session.getToken(cacheOptions).catch(() => null);
+}
+
 export async function getClerkToken(): Promise<string | null> {
   if (shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })) {
     return _cachedToken;
@@ -585,17 +592,25 @@ export async function getClerkToken(): Promise<string | null> {
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.
-      const token = (await session.getToken({ template: 'convex' }).catch(() => null))
-        ?? await session.getToken().catch(() => null);
+      let token = await fetchClerkToken(session);
+      const firstFetchedAt = Date.now();
+      if (token && !shouldReuseCachedClerkToken({ token, cachedAt: firstFetchedAt, now: firstFetchedAt })) {
+        // Clerk may return a near-expiry cached token while refreshing it in the
+        // background. The initiating caller must not receive that stale token:
+        // force one server refresh, then accept only a token outside the margin.
+        token = await fetchClerkToken(session, true);
+      }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen) return null;
-      if (token) {
+      const fetchedAt = Date.now();
+      if (shouldReuseCachedClerkToken({ token, cachedAt: fetchedAt, now: fetchedAt })) {
         _cachedToken = token;
-        _cachedTokenAt = Date.now();
+        _cachedTokenAt = fetchedAt;
+        return token;
       }
-      return token;
+      return null;
     } catch {
       return null;
     } finally {
@@ -608,6 +623,11 @@ export async function getClerkToken(): Promise<string | null> {
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
+  clerkInstance = instance;
+  clearClerkTokenCache();
 }
 
 
