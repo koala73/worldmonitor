@@ -10,11 +10,11 @@
  * - conflict:ucdp-events:v1    (scripts/seed-ucdp-events.mjs)
  * - risk:scores:sebuf:v8       (get-risk-scores.ts — `region`/`combinedScore`)
  * - military:surges:v1         (scripts/_military-surges.mjs)
- * - cable-health-v1            (get-cable-health.ts health map)
+ * - cable-health-v1            (get-cable-health.ts `{ generatedAt, cables }`)
  * - infra:outages:v1           (scripts/seed-internet-outages.mjs)
  * - temporal:anomalies:v1      (list-temporal-anomalies.ts)
- * - thermal:escalation:v1      (spike rule mirrored from
- *   scripts/seed-cross-source-signals.mjs — status 'spike' or anomalyScore > 2)
+ * - thermal:escalation:v1      (scripts/lib/thermal-escalation.mjs —
+ *   `THERMAL_STATUS_*` and `zScore`)
  * - supply_chain:shipping_stress:v1 (get-shipping-stress.ts —
  *   `stressScore`/`stressLevel`)
  *
@@ -23,6 +23,7 @@
 
 import type {
   AlertDigestInputs,
+  AlertSeverity,
   AnomalyEntry,
   CableEntry,
   CiiEntry,
@@ -33,6 +34,19 @@ import type {
 } from './analysis-alert-digest';
 import { finiteNumber, nonEmptyString } from './analysis-adapter-guards';
 
+const OUTAGE_SEVERITY_LEVELS: Readonly<Record<string, AlertSeverity>> = {
+  OUTAGE_SEVERITY_TOTAL: 'critical',
+  OUTAGE_SEVERITY_MAJOR: 'high',
+  OUTAGE_SEVERITY_PARTIAL: 'medium',
+};
+
+const THERMAL_STATUS_LEVELS: Readonly<Record<string, AlertSeverity>> = {
+  THERMAL_STATUS_PERSISTENT: 'critical',
+  THERMAL_STATUS_SPIKE: 'high',
+  THERMAL_STATUS_ELEVATED: 'medium',
+  THERMAL_STATUS_NORMAL: 'low',
+};
+
 export interface ExposureEvent {
   id: string;
   name: string;
@@ -40,7 +54,6 @@ export interface ExposureEvent {
   lat: number;
   lon: number;
 }
-
 
 function coords(entry: unknown): { lat: number; lon: number } | null {
   const location = (entry as { location?: { latitude?: unknown; longitude?: unknown } })?.location;
@@ -139,7 +152,10 @@ export function surgesToDigestInput(payload: unknown): SurgeEntry[] {
 
 export function cableHealthToDigestInput(payload: unknown): CableEntry[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
-  const map = payload as Record<string, { status?: unknown }>;
+  const wrapped = (payload as { cables?: unknown }).cables;
+  const map = wrapped && typeof wrapped === 'object' && !Array.isArray(wrapped)
+    ? wrapped as Record<string, { status?: unknown }>
+    : payload as Record<string, { status?: unknown }>;
   return Object.entries(map)
     .filter(([, v]) => v && typeof v === 'object' && 'status' in v)
     .map(([name, v]) => ({ name, status: v.status }));
@@ -150,9 +166,11 @@ export function outagesToDigestInput(payload: unknown): OutageEntry[] {
   if (!Array.isArray(outages)) return [];
   return outages.map((o) => {
     const record = o as OutageEntry;
+    const rawSeverity = nonEmptyString(record.severity).toUpperCase();
+    const severity = OUTAGE_SEVERITY_LEVELS[rawSeverity] ?? record.severity;
     return {
       country: record.country,
-      severity: record.severity,
+      severity,
       detectedAt: record.detectedAt,
       endedAt: record.endedAt,
     };
@@ -177,12 +195,22 @@ export function thermalToDigestInput(payload: unknown): ThermalEntry[] {
   const clusters = (payload as { clusters?: unknown[] })?.clusters;
   if (!Array.isArray(clusters)) return [];
   return clusters.map((c, i) => {
-    const record = c as { id?: unknown; name?: unknown; region?: unknown; status?: unknown; anomalyScore?: unknown };
-    const spike = nonEmptyString(record.status) === 'spike' || (finiteNumber(record.anomalyScore) ?? 0) > 2;
+    const record = c as {
+      id?: unknown;
+      name?: unknown;
+      region?: unknown;
+      status?: unknown;
+      zScore?: unknown;
+      anomalyScore?: unknown;
+    };
+    const status = nonEmptyString(record.status);
+    const score = finiteNumber(record.zScore) ?? finiteNumber(record.anomalyScore);
+    const level = THERMAL_STATUS_LEVELS[status]
+      ?? (status.toLowerCase() === 'spike' || (score ?? 0) > 2 ? 'high' : 'low');
     return {
       id: nonEmptyString(record.id) || nonEmptyString(record.name) || nonEmptyString(record.region) || `cluster-${i}`,
-      level: spike ? 'high' : 'low',
-      score: finiteNumber(record.anomalyScore),
+      level,
+      score,
     };
   });
 }

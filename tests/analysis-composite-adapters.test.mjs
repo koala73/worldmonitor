@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -14,6 +15,30 @@ import {
   stressToDigestInput,
   buildDigestInputs,
 } from '../shared/analysis-composite-adapters.ts';
+
+const PRODUCER_PAYLOADS = JSON.parse(
+  readFileSync(new URL('./fixtures/analysis-producer-payloads.json', import.meta.url), 'utf8'),
+);
+
+describe('producer fixture contracts', () => {
+  it('pins fixture field names to the canonical producer assembly points', () => {
+    const cableProducer = readFileSync(
+      new URL('../server/worldmonitor/infrastructure/v1/get-cable-health.ts', import.meta.url),
+      'utf8',
+    );
+    const thermalProducer = readFileSync(
+      new URL('../scripts/lib/thermal-escalation.mjs', import.meta.url),
+      'utf8',
+    );
+    const outageProducer = readFileSync(
+      new URL('../scripts/seed-internet-outages.mjs', import.meta.url),
+      'utf8',
+    );
+    assert.match(cableProducer, /return \{ generatedAt: Date\.now\(\), cables \}/);
+    assert.match(thermalProducer, /\bzScore,\s*\n\s*persistenceHours:[\s\S]*?\n\s*status,/);
+    assert.match(outageProducer, /severity: mapOutageSeverity\(raw\.outage\?\.outageType\),[\s\S]*?endedAt: toEpochMs\(raw\.endDate\),/);
+  });
+});
 
 describe('exposure event adapters', () => {
   it('maps seeded earthquakes to exposure events', () => {
@@ -61,6 +86,19 @@ describe('exposure event adapters', () => {
     assert.deepEqual(firesToExposureEvents(undefined), []);
     assert.deepEqual(ucdpEventsToExposureEvents({}), []);
   });
+
+  it('preserves the finite default cap but allows callers to request the complete feed', () => {
+    const fireDetections = Array.from({ length: 60 }, (_, i) => ({
+      id: `fire-${i}`,
+      frp: i,
+      location: { latitude: 10 + i / 100, longitude: 20 },
+    }));
+    assert.equal(firesToExposureEvents({ fireDetections }).length, 50);
+    assert.equal(
+      firesToExposureEvents({ fireDetections }, Number.POSITIVE_INFINITY).length,
+      60,
+    );
+  });
 });
 
 describe('digest input adapters', () => {
@@ -91,27 +129,19 @@ describe('digest input adapters', () => {
     }
   });
 
-  it('maps a cable health map keyed by cable id', () => {
-    const cables = cableHealthToDigestInput({
-      seamewe6: { status: 'CABLE_HEALTH_STATUS_FAULT', score: 0.9 },
-      curie: { status: 'CABLE_HEALTH_STATUS_OK', score: 0.1 },
-    });
+  it('maps the canonical cable-health producer envelope', () => {
+    const cables = cableHealthToDigestInput(PRODUCER_PAYLOADS.cableHealth);
     assert.deepEqual(cables.map((c) => c.name).sort(), ['curie', 'seamewe6']);
     assert.equal(cables.find((c) => c.name === 'seamewe6').status, 'CABLE_HEALTH_STATUS_FAULT');
   });
 
-  it('mirrors the cross-source thermal spike rule (status or anomalyScore > 2)', () => {
-    const thermal = thermalToDigestInput({
-      clusters: [
-        { id: 't1', name: 'Hormuz approaches', status: 'spike', anomalyScore: 1.1 },
-        { id: 't2', region: 'Red Sea', anomalyScore: 2.5 },
-        { id: 't3', name: 'Quiet zone', status: 'normal', anomalyScore: 0.4 },
-      ],
-    });
-    const byId = Object.fromEntries(thermal.map((t) => [t.id, t.level]));
-    assert.equal(byId.t1, 'high');
-    assert.equal(byId.t2, 'high');
-    assert.equal(byId.t3, 'low');
+  it('maps canonical thermal status enums and zScore values', () => {
+    const thermal = thermalToDigestInput(PRODUCER_PAYLOADS.thermalEscalation);
+    const byId = Object.fromEntries(thermal.map((t) => [t.id, { level: t.level, score: t.score }]));
+    assert.deepEqual(byId['persistent-zone'], { level: 'critical', score: 4.2 });
+    assert.deepEqual(byId['spike-zone'], { level: 'high', score: 3.1 });
+    assert.deepEqual(byId['elevated-zone'], { level: 'medium', score: 1.8 });
+    assert.deepEqual(byId['normal-zone'], { level: 'low', score: 0.2 });
   });
 
   it('maps shipping stress fields', () => {
@@ -121,9 +151,13 @@ describe('digest input adapters', () => {
     });
   });
 
-  it('passes outages and anomalies through with picked fields', () => {
-    const outages = outagesToDigestInput({ outages: [{ country: 'Sudan', severity: 'major', endedAt: 0, noise: 'x' }] });
+  it('maps canonical outage severity enums into digest levels', () => {
+    const outages = outagesToDigestInput(PRODUCER_PAYLOADS.internetOutages);
     assert.deepEqual(Object.keys(outages[0]).sort(), ['country', 'detectedAt', 'endedAt', 'severity']);
+    assert.deepEqual(outages.map((outage) => outage.severity), ['critical', 'high', 'medium']);
+  });
+
+  it('passes anomalies through with picked fields', () => {
     const anomalies = anomaliesToDigestInput({ anomalies: [{ type: 'news', region: 'EU', zScore: 2.2, severity: 'high' }] });
     assert.equal(anomalies[0].type, 'news');
   });

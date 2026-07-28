@@ -1,5 +1,4 @@
 import type { Hotspot, MilitaryFlight, MilitaryVessel } from '@/types';
-import { getHotspotCountries } from '@/config/countries';
 import {
   computeEscalationChange,
   computeEscalationScore,
@@ -7,6 +6,7 @@ import {
   evaluateEscalationSignal,
   findHotspotById,
 } from '../../shared/analysis-hotspot-escalation';
+import { getHotspotCountryScore } from '../../shared/hotspot-country-map';
 import type {
   DynamicEscalationScore,
   EscalationInputs,
@@ -33,13 +33,7 @@ export function setGeoAlertGetter(fn: (lat: number, lon: number, radiusKm: numbe
 }
 
 function getCIIForHotspot(hotspotId: string): number | null {
-  if (!ciiGetter) return null;
-
-  const countryCodes = getHotspotCountries(hotspotId);
-  if (countryCodes.length === 0) return null;
-
-  const scores = countryCodes.map(code => ciiGetter!(code)).filter((s): s is number => s !== null);
-  return scores.length > 0 ? Math.max(...scores) : null;
+  return ciiGetter ? getHotspotCountryScore(hotspotId, ciiGetter) : null;
 }
 
 function getGeoAlertForHotspot(hotspot: Hotspot): { score: number; types: number } | null {

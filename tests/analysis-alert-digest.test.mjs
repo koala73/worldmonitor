@@ -91,6 +91,21 @@ describe('buildAlertDigest', () => {
     assert.equal(digest.generatedAt, new Date(NOW).toISOString());
   });
 
+  it('treats the producer endedAt=0 sentinel as an ongoing outage', () => {
+    const digest = buildAlertDigest({
+      cii: [],
+      militarySurges: [],
+      cables: [],
+      outages: [{ country: 'Sudan', severity: 'critical', endedAt: 0 }],
+      temporalAnomalies: [],
+      thermal: [],
+      shippingStress: { index: 0, level: 'low' },
+    }, NOW);
+    const outage = digest.tripped.find((alert) => alert.domain === 'outages');
+    assert.ok(outage);
+    assert.equal(outage.severity, 'critical');
+  });
+
   it('does not trip shipping stress without an elevated level', () => {
     const inputs = { ...fullInputs(), shippingStress: { index: 30, level: 'normal' } };
     const digest = buildAlertDigest(inputs, NOW);

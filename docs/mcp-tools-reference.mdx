@@ -831,7 +831,7 @@ Geographic signal convergence: one-degree grid cells where protests, military fl
 | `lat` | number | Latitude of the area of interest; requires lon and radius_km as well. |
 | `lon` | number | Longitude of the area of interest; requires lat and radius_km as well. |
 | `radius_km` | number | Radius in km around lat/lon to keep alerts for; requires lat and lon. |
-| `min_domains` | number | Distinct signal domains required per cell, 2-5 (default 3). |
+| `min_domains` | number | Distinct signal domains required per cell, 2-5 (default 3). With the current four feeds, 5 is a compatibility safety threshold that yields no alerts. |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
@@ -854,7 +854,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_focal_points`
 
-Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. News story clusters are entity-matched against the curated registry, cross-referenced with cross-source escalation signals, and scored with the same engine the dashboard runs. Includes an `aiContext` block and mapping-coverage counters.
+Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. News story clusters are entity-matched against the curated registry, cross-referenced with cross-source escalation signals, and scored with the same engine the dashboard runs. Includes an application-authored `ai_context` block; source headlines remain separate in focal-point evidence. Also includes mapping-coverage counters.
 
 **Parameters (tool-specific):**
 

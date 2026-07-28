@@ -180,7 +180,7 @@ export function buildAlertDigest(inputs: AlertDigestInputs, now: number): AlertD
   evaluate('outages', inputs.outages, (entries) => {
     for (const e of entries) {
       const endedAt = num(e.endedAt);
-      if (endedAt !== null && endedAt <= now) continue;
+      if (endedAt !== null && endedAt > 0 && endedAt <= now) continue;
       const country = str(e.country) || 'unknown';
       tripped.push({
         domain: 'outages',

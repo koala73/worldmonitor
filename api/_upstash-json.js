@@ -1,5 +1,24 @@
 import { unwrapEnvelope } from './_seed-envelope.js';
 
+/**
+ * Envelope-aware Redis read that preserves the difference between a cache
+ * miss and an infrastructure/parse failure. Analysis composites use this
+ * status to avoid turning a lost input into a fresh-looking empty feed.
+ *
+ * @param {string} key
+ * @param {number} [timeoutMs=3000]
+ * @returns {Promise<{ status: 'hit' | 'miss' | 'error'; value: unknown | null }>}
+ */
+export async function readJsonFromUpstashWithStatus(key, timeoutMs = 3_000) {
+  try {
+    const value = await readRawJsonFromUpstash(key, timeoutMs);
+    if (value === null) return { status: 'miss', value: null };
+    return { status: 'hit', value: unwrapEnvelope(value).data };
+  } catch {
+    return { status: 'error', value: null };
+  }
+}
+
 export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -12,13 +31,9 @@ export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   if (!resp.ok) return null;
 
   const data = await resp.json();
-  if (!data.result) return null;
+  if (data.result == null) return null;
 
   try {
-    // Envelope-aware: contract-mode canonical keys are stored as {_seed, data}.
-    // MCP tool outputs and RPC consumers must see the bare payload only.
-    // unwrapEnvelope is a no-op on legacy bare-shape values and on seed-meta
-    // keys (which remain top-level {fetchedAt, recordCount, ...}).
     return unwrapEnvelope(JSON.parse(data.result)).data;
   } catch {
     return null;
@@ -60,7 +75,10 @@ export async function readRawJsonFromUpstash(key, timeoutMs = 3_000) {
     throw new Error(`readRawJsonFromUpstash: Upstash GET ${key} returned HTTP ${resp.status}`);
   }
   const data = await resp.json();
-  if (data.result == null) return null; // genuine miss
+  if (!data || typeof data !== 'object' || !Object.prototype.hasOwnProperty.call(data, 'result')) {
+    throw new Error(`readRawJsonFromUpstash: Upstash GET ${key} returned a malformed response`);
+  }
+  if (data.result === null) return null; // genuine miss
   try {
     return JSON.parse(data.result);
   } catch (err) {

@@ -25,6 +25,7 @@ import {
   rawToScore,
 } from '../shared/analysis-hotspot-escalation.ts';
 import { CONFLICT_ZONES, INTEL_HOTSPOTS, STRATEGIC_WATERWAYS } from '../shared/geo-data.ts';
+import { getHotspotCountryScore } from '../shared/hotspot-country-map.ts';
 import * as clientGeo from '../src/config/geo.ts';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -51,6 +52,19 @@ const QUIET_INPUTS = {
   flightsNearby: 0,
   vesselsNearby: 0,
 };
+
+describe('hotspot country score mapping', () => {
+  it('uses the maximum available score for regional hotspots', () => {
+    const scores = new Map([['ML', 44], ['NE', null], ['BF', 71]]);
+    assert.equal(getHotspotCountryScore('sahel', (code) => scores.get(code) ?? null), 71);
+    assert.equal(getHotspotCountryScore('pak_afghan', (code) => ({ PK: 66, AF: 82 })[code] ?? null), 82);
+  });
+
+  it('returns null when no mapped country has a score', () => {
+    assert.equal(getHotspotCountryScore('sahel', () => null), null);
+    assert.equal(getHotspotCountryScore('not-a-hotspot', () => 99), null);
+  });
+});
 
 describe('hotspot escalation component normalization', () => {
   it('weights the four components at 0.35 / 0.25 / 0.25 / 0.15', () => {

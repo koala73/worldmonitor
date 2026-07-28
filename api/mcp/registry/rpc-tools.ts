@@ -17,7 +17,8 @@ import {
   ucdpEventsToExposureEvents,
 } from '../../../shared/analysis-composite-adapters';
 import { buildEntityIndex } from '../../../shared/analysis-entity-index';
-import { FocalPointCore } from '../../../shared/analysis-focal-points';
+import { FocalPointCore, generateAgentSafeAIContext } from '../../../shared/analysis-focal-points';
+import { getHotspotCountryScore } from '../../../shared/hotspot-country-map';
 import {
   computeEscalationScore,
   countMilitaryNearHotspot,
@@ -58,7 +59,7 @@ import {
 import { ENTITY_REGISTRY } from '../../../shared/entities-data';
 import { INTEL_HOTSPOTS } from '../../../shared/geo-data';
 // @ts-expect-error — JS module, no declaration file
-import { readJsonFromUpstash } from '../../_upstash-json.js';
+import { readJsonFromUpstash, readJsonFromUpstashWithStatus } from '../../_upstash-json.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
@@ -92,16 +93,64 @@ function getSharedEntityIndex(): ReturnType<typeof buildEntityIndex> {
 async function readCachesWithFreshness(
   keys: readonly string[],
   checks: FreshnessCheck[],
-): Promise<{ payloads: unknown[]; freshness: { cached_at: string | null; stale: boolean } }> {
+): Promise<{
+  payloads: unknown[];
+  freshness: {
+    cached_at: string | null;
+    stale: boolean;
+    unavailable_inputs: string[];
+    failed_inputs: string[];
+  };
+}> {
   const results = await Promise.all([
-    ...keys.map((key) => readJsonFromUpstash(key)),
-    ...checks.map((check) => readJsonFromUpstash(check.key)),
+    ...keys.map((key) => readJsonFromUpstashWithStatus(key)),
+    ...checks.map((check) => readJsonFromUpstashWithStatus(check.key)),
   ]);
+  const payloadReads = results.slice(0, keys.length) as Array<{
+    status: 'hit' | 'miss' | 'error';
+    value: unknown | null;
+  }>;
+  const metaReads = results.slice(keys.length) as Array<{
+    status: 'hit' | 'miss' | 'error';
+    value: unknown | null;
+  }>;
+  const payloads = payloadReads.map((result) => result.value);
+  const unavailablePayloads = keys.filter(
+    (_key, index) => payloadReads[index]?.status !== 'hit' || payloadReads[index]?.value === null,
+  );
+  const unavailableMetadata = checks
+    .filter((_check, index) => metaReads[index]?.status !== 'hit' || metaReads[index]?.value === null)
+    .map((check) => check.key);
+  const failedPayloads = keys.filter((_key, index) => payloadReads[index]?.status === 'error');
+  const failedMetadata = checks
+    .filter((_check, index) => metaReads[index]?.status === 'error')
+    .map((check) => check.key);
+  const unavailableInputs = [...unavailablePayloads, ...unavailableMetadata];
+  const failedInputs = [...failedPayloads, ...failedMetadata];
+  const evaluated = evaluateFreshness(checks, metaReads.map((result) => result.value));
   return {
-    payloads: results.slice(0, keys.length),
-    freshness: evaluateFreshness(checks, results.slice(keys.length)),
+    payloads,
+    freshness: {
+      ...evaluated,
+      stale: evaluated.stale || unavailableInputs.length > 0,
+      unavailable_inputs: unavailableInputs,
+      failed_inputs: failedInputs,
+    },
   };
 }
+
+const ANALYSIS_CACHE_STATUS_PROPERTIES = {
+  unavailable_inputs: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Required cache keys that were missing or unreadable; their contribution is not treated as quiet.',
+  },
+  failed_inputs: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Subset of unavailable_inputs whose Redis read failed rather than returning a genuine miss.',
+  },
+} as const;
 
 // `limit: 0` means "no cap" across the MCP tool surface (the cache tools
 // document it that way and capNested implements it), so the analysis tools
@@ -1425,10 +1474,16 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        lat: { type: 'number', description: 'Latitude of the area of interest; requires lon and radius_km as well.' },
-        lon: { type: 'number', description: 'Longitude of the area of interest; requires lat and radius_km as well.' },
-        radius_km: { type: 'number', description: 'Radius in km around lat/lon to keep alerts for; requires lat and lon.' },
-        min_domains: { type: 'number', description: 'Distinct signal domains required per cell, 2-5 (default 3).' },
+        lat: { type: 'number', minimum: -90, maximum: 90, description: 'Latitude of the area of interest; requires lon and radius_km as well.' },
+        lon: { type: 'number', minimum: -180, maximum: 180, description: 'Longitude of the area of interest; requires lat and radius_km as well.' },
+        radius_km: { type: 'number', exclusiveMinimum: 0, maximum: 20000, description: 'Positive radius in km around lat/lon to keep alerts for; requires lat and lon (maximum 20,000).' },
+        min_domains: {
+          type: 'number',
+          minimum: 2,
+          maximum: 5,
+          description:
+            'Distinct signal domains required per cell, 2-5 (default 3); 5 is a compatibility safety threshold that yields no alerts while four domains are ingested.',
+        },
       },
       required: [],
     },
@@ -1437,6 +1492,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
         stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
@@ -1477,6 +1533,27 @@ export const RPC_TOOLS: ToolDef[] = [
           stale: false,
           data: { alerts: [], cell_count: 0, min_domains: 0, feeds: {} },
           error: 'lat, lon, and radius_km must be provided together (all three or none).',
+        };
+      }
+      if (
+        provided === 3
+        && (
+          !Number.isFinite(lat)
+          || !Number.isFinite(lon)
+          || !Number.isFinite(radiusKm)
+          || lat! < -90
+          || lat! > 90
+          || lon! < -180
+          || lon! > 180
+          || radiusKm! <= 0
+          || radiusKm! > 20_000
+        )
+      ) {
+        return {
+          cached_at: null,
+          stale: false,
+          data: { alerts: [], cell_count: 0, min_domains: 0, feeds: {} },
+          error: 'lat must be within [-90, 90], lon within [-180, 180], and radius_km within (0, 20000].',
         };
       }
       const minDomains = Math.min(5, Math.max(2, Math.round(Number(params.min_domains ?? 3)) || 3));
@@ -1541,7 +1618,8 @@ export const RPC_TOOLS: ToolDef[] = [
       'registry of countries, companies, and organizations, then cross-referenced with cross-source escalation signals mapped ' +
       'to countries through the same entity index. Each focal point reports its urgency band, news and signal scores, a ' +
       'correlation bonus when headlines and map signals name the same entity, supporting headlines, and a generated narrative. ' +
-      'The response also carries an aiContext block suitable for grounding follow-up analysis, plus mapping-coverage counters ' +
+      'The response also carries an application-authored ai_context block suitable for grounding follow-up analysis; source ' +
+      'headlines remain separate in the focal-point evidence, plus mapping-coverage counters ' +
       'so a thin result is distinguishable from an outage. Filter to one country with country_code; cap the list with limit.',
     inputSchema: {
       type: 'object',
@@ -1556,6 +1634,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
         stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
@@ -1599,14 +1678,15 @@ export const RPC_TOOLS: ToolDef[] = [
       let points = summary.focalPoints;
       const countryCode = typeof params.country_code === 'string' ? params.country_code : '';
       if (countryCode) points = filterFocalPointsByCountry(points, countryCode, index);
+      const selectedPoints = points.slice(0, limit);
       return {
         ...freshness,
         data: {
-          focal_points: points.slice(0, limit).map((point) => ({
+          focal_points: selectedPoints.map((point) => ({
             ...point,
             ciiScore: point.entityType === 'country' ? ciiLookup(point.entityId) : null,
           })),
-          ai_context: summary.aiContext,
+          ai_context: generateAgentSafeAIContext(selectedPoints),
           coverage: {
             clusters: clusters.length,
             signals_total: mapping.signalsTotal,
@@ -1643,6 +1723,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Fetch time of the seeded cable table.' },
         stale: { type: 'boolean', description: 'True when the cable table is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
@@ -1725,12 +1806,15 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
         stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
             postures: { type: 'array', items: { type: 'object' } },
             foreign_presence: { type: 'array', items: { type: 'object' } },
             seeded_surges: { type: 'array', items: { type: 'object' } },
+            seeded_surges_available: { type: 'boolean' },
+            history_available: { type: 'boolean' },
             flight_count: { type: 'number' },
           },
           required: [],
@@ -1744,6 +1828,7 @@ export const RPC_TOOLS: ToolDef[] = [
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:theater-posture', maxStaleMin: 60 },
+        { key: 'seed-meta:military-surges', maxStaleMin: 30 },
       ];
       const { payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload], freshness } = await readCachesWithFreshness(keys, checks);
       if ([flightsPayload, posturePayload, surgesPayload].every((value) => value === null)) {
@@ -1784,6 +1869,8 @@ export const RPC_TOOLS: ToolDef[] = [
             ? foreignPresence.filter((alert) => alert.region.toLowerCase().includes(theaterFilter))
             : foreignPresence,
           seeded_surges: seededSurges.filter((surge) => matchesTheater(surge.theaterId, surge.theater)),
+          seeded_surges_available: surgesPayload !== null,
+          history_available: historyPayload !== null,
           flight_count: flights.length,
         },
       };
@@ -1819,6 +1906,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the feeds read; null in point and countries modes.' },
         stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
@@ -1873,37 +1961,44 @@ export const RPC_TOOLS: ToolDef[] = [
       const source = typeof params.event_source === 'string' ? params.event_source : 'all';
       const limit = resolveLimit(params.limit, 20);
       const wants = (name: string) => source === 'all' || source === name;
-      const reads: Array<{ key: string; check: FreshnessCheck; adapt: (payload: unknown) => ExposureEvent[] }> = [];
+      const reads: Array<{
+        key: string;
+        check: FreshnessCheck;
+        adapt: (payload: unknown, limit: number) => ExposureEvent[];
+      }> = [];
       if (wants('earthquakes')) {
         reads.push({
           key: 'seismology:earthquakes:v1',
           check: { key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 },
-          adapt: (payload) => earthquakesToExposureEvents(payload),
+          adapt: (payload, cap) => earthquakesToExposureEvents(payload, cap),
         });
       }
       if (wants('wildfires')) {
         reads.push({
           key: 'wildfire:fires:v1',
           check: { key: 'seed-meta:wildfire:fires', maxStaleMin: 360 },
-          adapt: (payload) => firesToExposureEvents(payload),
+          adapt: (payload, cap) => firesToExposureEvents(payload, cap),
         });
       }
       if (wants('conflicts')) {
         reads.push({
           key: 'conflict:ucdp-events:v1',
           check: { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 1440 },
-          adapt: (payload) => ucdpEventsToExposureEvents(payload),
+          adapt: (payload, cap) => ucdpEventsToExposureEvents(payload, cap),
         });
       }
 
-      const payloads = await Promise.all(reads.map((read) => readJsonFromUpstash(read.key)));
-      const metas = await Promise.all(reads.map((read) => readJsonFromUpstash(read.check.key)));
+      const { payloads, freshness } = await readCachesWithFreshness(
+        reads.map((read) => read.key),
+        reads.map((read) => read.check),
+      );
       if (payloads.every((value: unknown) => value === null)) {
         throw new Error('cache_all_null: no event feeds are available for exposure enrichment');
       }
 
+      const perFeedLimit = Number.isFinite(limit) ? 50 : Number.POSITIVE_INFINITY;
       const enriched = reads
-        .flatMap((read, i) => read.adapt(payloads[i]))
+        .flatMap((read, i) => read.adapt(payloads[i], perFeedLimit))
         .map((event) => {
           const radius = getRadiusForEventType(event.type);
           const exposure = computeExposure(event.lat, event.lon, radius);
@@ -1912,7 +2007,6 @@ export const RPC_TOOLS: ToolDef[] = [
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation)
         .slice(0, limit);
 
-      const freshness = evaluateFreshness(reads.map((read) => read.check), metas);
       return { ...freshness, data: { events: enriched, exposure: null, countries: null } };
     },
     _coverageKeys: ['seismology:earthquakes:v1', 'wildfire:fires:v1', 'conflict:ucdp-events:v1'],
@@ -1941,13 +2035,22 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
         stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
             tripped: { type: 'array', items: { type: 'object' } },
             quiet: { type: 'array', items: { type: 'string' } },
             unavailable: { type: 'array', items: { type: 'string' } },
-            weekly: { type: ['object', 'null'] },
+            weekly: {
+              type: ['object', 'null'],
+              properties: {
+                trends: { type: 'array', items: { type: 'object' } },
+                current_anomalies: { type: 'array', items: { type: 'object' } },
+                history_available: { type: 'boolean' },
+                note: { type: 'string' },
+              },
+            },
           },
           required: [],
         },
@@ -1957,7 +2060,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
       const view = typeof params.view === 'string' ? params.view : 'today';
-      const keys = [
+      const keys: string[] = [
         CII_RISK_SCORE_CACHE_KEYS.live,
         'military:surges:v1',
         'cable-health-v1',
@@ -1966,16 +2069,20 @@ export const RPC_TOOLS: ToolDef[] = [
         'thermal:escalation:v1',
         'supply_chain:shipping_stress:v1',
       ];
+      if (view === 'weekly') keys.push('military:surges:history:v1');
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30 },
-        { key: 'seed-meta:military:flights', maxStaleMin: 30 },
+        { key: 'seed-meta:military-surges', maxStaleMin: 30 },
         { key: 'seed-meta:cable-health', maxStaleMin: 90 },
         { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
         { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 },
         { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
         { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
       ];
-      const { payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress], freshness } = await readCachesWithFreshness(keys, checks);
+      const {
+        payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress, historyPayload],
+        freshness,
+      } = await readCachesWithFreshness(keys, checks);
       if ([riskScores, surges, cableHealth, outages, temporal, thermal, stress].every((value: unknown) => value === null)) {
         throw new Error('cache_all_null: no digest input feeds are available');
       }
@@ -1987,8 +2094,10 @@ export const RPC_TOOLS: ToolDef[] = [
       );
 
       let weekly: Record<string, unknown> | null = null;
+      const unavailable = [...digest.unavailable];
       if (view === 'weekly') {
-        const historyPayload = await readJsonFromUpstash('military:surges:history:v1');
+        const historyAvailable = historyPayload !== null;
+        if (!historyAvailable) unavailable.push('military_history');
         const activity = surgeHistoryToActivityHistory(historyPayload);
         const series = [...activity.entries()].map(([theaterId, points]) => ({
           domain: `military:${theaterId}`,
@@ -1997,12 +2106,13 @@ export const RPC_TOOLS: ToolDef[] = [
         weekly = {
           trends: buildWeeklyTrends(series, now),
           current_anomalies: anomaliesToDigestInput(temporal),
+          history_available: historyAvailable,
           note: 'weekly trends derive from the persisted military-activity history; other domains publish no whole-feed history caches yet',
         };
       }
       return {
         ...freshness,
-        data: { tripped: digest.tripped, quiet: digest.quiet, unavailable: digest.unavailable, weekly },
+        data: { tripped: digest.tripped, quiet: digest.quiet, unavailable, weekly },
       };
     },
     _coverageKeys: [
@@ -2040,6 +2150,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
         stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
           properties: {
@@ -2099,7 +2210,6 @@ export const RPC_TOOLS: ToolDef[] = [
       const clusters = insightsToFocalClusters(insights);
       const ciiLookup = riskScoresToCiiLookup(riskScores);
       const flights = militaryFlightsToSurgeInputs(flightsPayload);
-      const index = getSharedEntityIndex();
 
       const geoEngine = new GeoConvergenceEngine({ now: () => now });
       geoEngine.ingestEvents(unrestEventsToGeoEvents(unrest, { now }), 'protest');
@@ -2116,8 +2226,7 @@ export const RPC_TOOLS: ToolDef[] = [
           (cluster) => matchesKeyword(cluster.primaryTitle) || (cluster.allItems ?? []).some((item) => matchesKeyword(item.title)),
         ).length;
         const nearby = geoEngine.alertsNear(hotspot.lat, hotspot.lon, 300);
-        const countryEntity = index.byId.get(hotspot.id.toUpperCase());
-        const ciiScore = countryEntity?.type === 'country' ? ciiLookup(hotspot.id.toUpperCase()) : null;
+        const ciiScore = getHotspotCountryScore(hotspot.id, ciiLookup);
         const score = computeEscalationScore(
           hotspot,
           {

@@ -497,6 +497,52 @@ export function generateAIContext(focalPoints: FocalPoint[]): string {
 }
 
 /**
+ * Generate application-authored context for agent consumers without copying
+ * source headlines, generated narratives, or correlation evidence.
+ */
+export function generateAgentSafeAIContext(focalPoints: FocalPoint[]): string {
+  if (focalPoints.length === 0) {
+    return '';
+  }
+
+  const lines: string[] = ['[INTELLIGENCE SYNTHESIS]'];
+  const critical = focalPoints.filter(fp => fp.urgency === 'critical').slice(0, 3);
+  const elevated = focalPoints.filter(fp => fp.urgency === 'elevated').slice(0, 3);
+  const correlatedFPs = focalPoints.filter(fp => fp.newsMentions > 0 && fp.signalCount > 0).slice(0, 5);
+
+  if (critical.length > 0) {
+    lines.push('', 'CRITICAL FOCAL POINTS:');
+    for (const fp of critical) {
+      const signalDesc = fp.signalTypes
+        .map(t => SIGNAL_TYPE_LABELS[t as SignalType])
+        .filter(Boolean)
+        .join(', ');
+      const signalSuffix = signalDesc ? ` (${signalDesc})` : '';
+      lines.push(
+        `- ${fp.displayName} [CRITICAL]: ${fp.newsMentions} news mentions, ${fp.signalCount} map signals${signalSuffix}`,
+      );
+    }
+  }
+
+  if (elevated.length > 0) {
+    lines.push('', 'ELEVATED WATCH:');
+    for (const fp of elevated) {
+      lines.push(`- ${fp.displayName}: ${fp.newsMentions} news, ${fp.signalCount} signals`);
+    }
+  }
+
+  if (correlatedFPs.length > 0) {
+    lines.push('', 'NEWS-SIGNAL CORRELATIONS:');
+    for (const fp of correlatedFPs) {
+      const signalDesc = fp.signalTypes.map(t => SIGNAL_TYPE_LABELS[t as SignalType]).join(', ');
+      lines.push(`- ${fp.displayName}: news coverage + ${signalDesc} detected`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Get signal icons for UI display
  */
 export function getSignalIcons(signalTypes: string[]): string {
