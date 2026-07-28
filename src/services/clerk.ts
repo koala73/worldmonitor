@@ -493,8 +493,9 @@ export function clearClerkTokenCache(): void {
  * Uses the 'convex' JWT template which includes the `plan` claim.
  * Returns null if no active session.
  *
- * Tokens are cached for 50s (Clerk tokens expire at 60s) with in-flight
- * deduplication to prevent concurrent panels from racing against Clerk.
+ * Tokens are cached with in-flight deduplication to prevent concurrent panels
+ * from racing against Clerk, bounded by BOTH the flat TTL below and the token's
+ * own `exp` (see shouldReuseCachedClerkToken — the TTL alone is not enough).
  * A monotonic _tokenGen counter lets clearClerkTokenCache() invalidate
  * any mid-flight fetch whose result would otherwise paint the previous
  * user's JWT into the new session.
@@ -505,8 +506,66 @@ let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
 
+/**
+ * How long before a token's own `exp` we stop reusing it.
+ *
+ * `server/auth-session.ts` verifies with `jose`'s `jwtVerify` and sets no
+ * `clockTolerance`, so an `exp` in the past is a hard 401. This margin is the
+ * only thing absorbing client/server clock skew plus the request's flight time.
+ */
+const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
+
+/**
+ * The `exp` claim of a Clerk JWT as epoch ms, or null when it cannot be read.
+ *
+ * Null (rather than throwing, or assuming expiry) keeps an unreadable token on
+ * the flat-TTL path — the behaviour that predates this function — so a Clerk
+ * token-format change degrades to the old caching instead of signing everyone
+ * out. Reading `exp` needs no signature check: the server is the authority, and
+ * a forged `exp` can only make this client refresh sooner.
+ */
+export function clerkTokenExpiresAtMs(token: string | null): number | null {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const exp = (
+      JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { exp?: unknown }
+    ).exp;
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1_000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the cached token can still sign a request. Both bounds must hold.
+ *
+ * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ): Clerk's `getToken()`
+ * is stale-while-revalidate — within 15s of expiry it returns the CACHED token
+ * immediately and refreshes in the background — so the premise this cache was
+ * built on ("Clerk tokens expire at 60s", i.e. every token arrives fresh) does
+ * not hold. Stamping a token that had 12s left with a flat 50s TTL left ~38s in
+ * which every request it signed came back 401, healing only when the TTL lapsed.
+ *
+ * The TTL is still enforced on top: it is what bounds how long a session that
+ * was revoked but not yet expired keeps working.
+ */
+export function shouldReuseCachedClerkToken(input: {
+  token: string | null;
+  cachedAt: number;
+  now: number;
+}): boolean {
+  const { token, cachedAt, now } = input;
+  if (!token) return false;
+  if (now - cachedAt >= TOKEN_CACHE_TTL_MS) return false;
+  const expiresAt = clerkTokenExpiresAtMs(token);
+  if (expiresAt === null) return true;
+  return now < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
+}
+
 export async function getClerkToken(): Promise<string | null> {
-  if (_cachedToken && Date.now() - _cachedTokenAt < TOKEN_CACHE_TTL_MS) {
+  if (shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
