@@ -31,6 +31,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripJsComments } from '../scripts/lib/js-source-structure.mjs';
 
 class MemoryStorage {
   private readonly store = new Map<string, string>();
@@ -77,7 +78,9 @@ beforeEach(() => {
   _sessionStorage.clear();
 });
 
-const { decideNoUserPathOutcome } = await import('../src/services/checkout-no-user-policy.ts');
+const { decideNoUserPathOutcome, runNoUserPath } = await import(
+  '../src/services/checkout-no-user-policy.ts'
+);
 
 describe('decideNoUserPathOutcome', () => {
   it('default (fallbackToPricingPage=true) returns redirect-pro with persist=false', () => {
@@ -148,43 +151,88 @@ describe('cross-page redirect leak regression', () => {
   });
 });
 
-// #5380 High-3: the policy module is pure, so a mutation wiring
-// `savePendingCheckoutIntent(intent)` into checkout.ts's REDIRECT branch left
-// this suite green — the leak this file documents would be back with every
-// test passing. Pin the caller's wiring by source-grep (checkout.ts needs the
-// full Clerk + Dodo tree and cannot load under node:test).
-describe('startCheckout no-user wiring (source-grep)', () => {
-  const dirname = path.dirname(fileURLToPath(import.meta.url));
-  const src = readFileSync(path.join(dirname, '..', 'src', 'services', 'checkout.ts'), 'utf8');
-
-  function noUserBlock(): { redirectBranch: string; inlineBranch: string } {
-    const start = src.indexOf('const outcome = decideNoUserPathOutcome');
-    assert.ok(start > -1, 'expected decideNoUserPathOutcome call in checkout.ts');
-    const ifIdx = src.indexOf("if (outcome.kind === 'redirect-pro')", start);
-    const elseIdx = src.indexOf('} else {', ifIdx);
-    const endIdx = src.indexOf('return false;', elseIdx);
-    assert.ok(ifIdx > -1 && elseIdx > ifIdx && endIdx > elseIdx, 'no-user branch shape changed — update this test');
-    return {
-      redirectBranch: src.slice(ifIdx, elseIdx),
-      inlineBranch: src.slice(elseIdx, endIdx),
-    };
+// #5380 High-3: `decideNoUserPathOutcome` alone could not see the caller's
+// wiring, so a mutation persisting inside the REDIRECT branch left this suite
+// green. The first attempt at closing that used a source-grep guard over
+// checkout.ts — and two mutations proved a regex cannot do this job:
+//
+//   a) moving `openSignIn()` ABOVE the persist calls and leaving a comment
+//      naming `savePendingCheckoutIntent(intent)` above it — `indexOf` found
+//      the comment, so the ordering assertion held with the bug restored;
+//   b) writing `sessionStorage.setItem(...)` directly in the redirect branch —
+//      the negative grep for `savePendingCheckoutIntent` never fired.
+//
+// Both are now executable failures: `runNoUserPath` owns the sequencing, and
+// this suite runs it against a recorder.
+describe('runNoUserPath effect sequencing', () => {
+  function record(fallbackToPricingPage: boolean): string[] {
+    const log: string[] = [];
+    runNoUserPath(fallbackToPricingPage, {
+      navigate: (url) => log.push(`navigate:${url}`),
+      persistIntent: () => log.push('persistIntent'),
+      persistAttempt: () => log.push('persistAttempt'),
+      openSignIn: () => log.push('openSignIn'),
+    });
+    return log;
   }
 
-  it('redirect-pro branch must NOT persist a pending checkout intent', () => {
-    const { redirectBranch } = noUserBlock();
-    assert.ok(redirectBranch.includes('window.location.assign'), 'redirect branch must navigate');
-    assert.ok(
-      !redirectBranch.includes('savePendingCheckoutIntent'),
-      'redirect path persisting intent recreates the stale auto-resume leak this suite exists to prevent',
-    );
-    assert.ok(!redirectBranch.includes('saveCheckoutAttempt'), 'redirect path must not persist attempt state either');
+  it('redirect path navigates and performs NO persistence at all', () => {
+    assert.deepEqual(record(true), ['navigate:https://worldmonitor.app/pro']);
   });
 
-  it('inline sign-in branch MUST persist the intent before opening sign-in', () => {
-    const { inlineBranch } = noUserBlock();
-    const saveIdx = inlineBranch.indexOf('savePendingCheckoutIntent(intent)');
-    const signInIdx = inlineBranch.indexOf('openSignIn()');
-    assert.ok(saveIdx > -1, 'inline path must persist the pending intent');
-    assert.ok(signInIdx > saveIdx, 'intent must be persisted BEFORE openSignIn so the post-auth listener can resume');
+  it('inline path persists intent AND attempt BEFORE opening sign-in', () => {
+    // Exact sequence, not just membership: Clerk's post-auth listener fires as
+    // soon as sign-in resolves, so a persist that lands after openSignIn can
+    // miss the resume window.
+    assert.deepEqual(record(false), ['persistIntent', 'persistAttempt', 'openSignIn']);
+  });
+
+  it('inline path never navigates away from the dashboard', () => {
+    assert.ok(!record(false).some((entry) => entry.startsWith('navigate:')));
+  });
+});
+
+// What regex IS reliable for: call-site COUNTS. The handler literal in
+// checkout.ts is the only wiring the executable tests above cannot reach, so
+// pin how many times this module writes checkout state. Any NEW write site —
+// including a direct `sessionStorage.setItem` in the redirect handler (bypass
+// (b) above) — moves a count and reds this test. Counts survive the comment
+// and indirection tricks that defeat proximity and negative greps.
+describe('checkout.ts checkout-state write sites (count pins)', () => {
+  const dirname = path.dirname(fileURLToPath(import.meta.url));
+  const src = stripJsComments(
+    readFileSync(path.join(dirname, '..', 'src', 'services', 'checkout.ts'), 'utf8'),
+  );
+
+  function countOf(token: string): number {
+    return src.split(token).length - 1;
+  }
+
+  it('delegates the signed-out branch to runNoUserPath exactly once', () => {
+    assert.equal(countOf('runNoUserPath('), 1);
+  });
+
+  it('pins every checkout-state write site in checkout.ts', () => {
+    // savePendingCheckoutIntent: 1 declaration + 3 calls (the /pro-origin
+    // capture, the signed-out handler, the mid-flight session-expired retry).
+    assert.equal(
+      countOf('savePendingCheckoutIntent('),
+      4,
+      'a new pending-intent write site appeared — confirm it cannot fire on the redirect path (#5380)',
+    );
+    // saveCheckoutAttempt: 3 calls (/pro-origin capture, signed-out handler,
+    // pre-network attempt record); imported, not declared here.
+    assert.equal(
+      countOf('saveCheckoutAttempt('),
+      3,
+      'a new attempt write site appeared — confirm it cannot fire on the redirect path (#5380)',
+    );
+    // Direct sessionStorage writes: the post-checkout flag and the pending
+    // intent serializer. A third means someone bypassed both helpers.
+    assert.equal(
+      countOf('sessionStorage.setItem('),
+      2,
+      'a direct sessionStorage write bypasses the persistence helpers — see #5380 bypass (b)',
+    );
   });
 });
