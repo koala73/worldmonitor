@@ -46,6 +46,12 @@ function inRange(history, start, end) {
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+function isIsoCalendarDate(value) {
+  if (!ISO_DATE_PATTERN.test(value ?? '')) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 function assertCompleteDailyCoverage(id, series) {
   const history = series?.history;
   if (!Array.isArray(history) || history.length === 0) {
@@ -54,7 +60,7 @@ function assertCompleteDailyCoverage(id, series) {
 
   const start = series.observationStart;
   const end = series.observationEnd;
-  if (!ISO_DATE_PATTERN.test(start ?? '') || !ISO_DATE_PATTERN.test(end ?? '') || start > end) {
+  if (!isIsoCalendarDate(start) || !isIsoCalendarDate(end) || start > end) {
     throw new Error(
       `${id} has incomplete daily coverage: invalid observation range ${start ?? 'unknown'} → ${end ?? 'unknown'}`,
     );
@@ -64,7 +70,7 @@ function assertCompleteDailyCoverage(id, series) {
   let previousDate = null;
   for (const row of history) {
     const date = row?.date;
-    if (!ISO_DATE_PATTERN.test(date ?? '')) {
+    if (!isIsoCalendarDate(date)) {
       throw new Error(`${id} has incomplete daily coverage: invalid observation date ${date ?? 'unknown'}`);
     }
     if (previousDate !== null && date <= previousDate) {

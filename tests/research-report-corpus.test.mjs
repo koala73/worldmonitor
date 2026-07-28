@@ -318,6 +318,23 @@ describe('research report corpus (#5668)', () => {
     }
   });
 
+  it('fails closed when a published series contains an impossible calendar date', () => {
+    const invalidDate = '2026-02-30';
+    const invalid = structuredClone(snapshot);
+    const series = invalid.chokepoints[report.focusChokepointId];
+    const insertionIndex = series.history.findIndex((row) => row.date === '2026-03-01');
+    series.history.splice(insertionIndex, 0, {
+      ...series.history[insertionIndex - 1],
+      date: invalidDate,
+    });
+    series.rowCount = series.history.length;
+
+    assert.throws(
+      () => computeReportMetrics(invalid, report),
+      new RegExp(`${report.focusChokepointId}.*invalid observation date.*${invalidDate}`, 'i'),
+    );
+  });
+
   // Regression: the ArcGIS layer's server-side maxRecordCount (1000) is below
   // the requested page size, so advancing offset by PAGE_SIZE instead of the
   // rows actually returned silently skipped rows 1000-1999 (a contiguous
