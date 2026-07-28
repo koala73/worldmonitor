@@ -1057,7 +1057,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
-    const macro = await buildOfficialChinaMacroFixture();
+    // Live clock: this test asserts on the MCP projection, which re-derives
+    // transport freshness against Date.now(). A pinned fixture time expires
+    // 72h later and reddens main for every branch (#5762).
+    const macro = await buildOfficialChinaMacroFixture(Date.now());
     const releaseCalendar = {
       events: [{ countryCode: 'CN', event: 'NBS release' }],
     };
@@ -1130,7 +1133,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_economic_data: China MCP projection keeps retained transport failures explicit', async () => {
-    const macro = await buildOfficialChinaMacroFixture();
+    // Live clock: this test asserts on the MCP projection, which re-derives
+    // transport freshness against Date.now(). A pinned fixture time expires
+    // 72h later and reddens main for every branch (#5762).
+    const macro = await buildOfficialChinaMacroFixture(Date.now());
     const nbsDecision = macro.sourceDecisions.find(
       (decision) => decision.publisherId === 'publisher:nbs-cn',
     );
