@@ -87,6 +87,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/analysis-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/rpc-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY RPC-tool entries (with _execute, incl. describe_tool). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
