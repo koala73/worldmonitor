@@ -280,7 +280,7 @@ describe('appendSeedHistory env guard', () => {
       },
     );
 
-    assert.deepEqual(result, { inserted: 1, skipped: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 1, skipped: 0, retracted: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
     assert.equal(calls[0].url, 'https://fearless-otter-42.convex.site/relay/intel-history');
   });
 });
@@ -302,7 +302,7 @@ describe('appendSeedHistory', () => {
       { fetchImpl, embed, env: ENV },
     );
 
-    assert.deepEqual(result, { inserted: 0, skipped: 0, chunks: 0, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 0, skipped: 0, retracted: 0, chunks: 0, abandoned: 0, failedChunks: 0 });
     assert.equal(calls.length, 0);
     assert.equal(batches.length, 0);
   });
@@ -326,7 +326,7 @@ describe('appendSeedHistory', () => {
       { fetchImpl, embed, env: ENV },
     );
 
-    assert.deepEqual(result, { inserted: 103, skipped: 17, chunks: 3, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 103, skipped: 17, retracted: 0, chunks: 3, abandoned: 0, failedChunks: 0 });
     assert.equal(calls.length, 3);
     assert.deepEqual(
       calls.map((c) => c.body.records.length),
@@ -462,6 +462,7 @@ describe('appendSeedHistory', () => {
     assert.deepEqual(result, {
       inserted: 0,
       skipped: 0,
+      retracted: 0,
       chunks: 0,
       abandoned: 1,
       failedChunks: 0,
@@ -503,6 +504,7 @@ describe('appendSeedHistory', () => {
     assert.deepEqual(result, {
       inserted: 0,
       skipped: 0,
+      retracted: 0,
       chunks: 0,
       abandoned: 1,
       failedChunks: 0,
@@ -576,7 +578,7 @@ describe('appendSeedHistory', () => {
       ),
     );
 
-    assert.deepEqual(result, { inserted: 3, skipped: 1, chunks: 1, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 3, skipped: 1, retracted: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
     assert.equal(calls.length, 2, 'one failed attempt + one successful retry');
   });
 

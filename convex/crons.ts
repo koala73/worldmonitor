@@ -46,9 +46,12 @@ crons.daily(
 // events it published — and each row carries a 512-float vector, so the
 // vector index is the real cost being bounded here. Ages rows past
 // INTEL_HISTORY_RETENTION_DAYS out by `ingestedAt` in bounded per-run
-// batches that self-drain. See `prune` in convex/intelHistory.ts. 04:30 UTC
-// sits between the plan-limit prune (04:45) and the wave-runs cleanup
-// (04:00) so the three delete-heavy jobs never overlap.
+// batches that self-drain. Also drains expired retraction tombstones
+// (#5743) in the same pass, by `retractedAt` — a handful of hand-created
+// rows do not justify a second scheduled function. See `prune` in
+// convex/intelHistory.ts. 04:30 UTC sits between the plan-limit prune
+// (04:45) and the wave-runs cleanup (04:00) so the three delete-heavy jobs
+// never overlap.
 crons.daily(
   "intel-history-prune",
   { hourUTC: 4, minuteUTC: 30 },

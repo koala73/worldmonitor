@@ -333,8 +333,15 @@ export function makeSeedHistoryAfterPublish({ domain, resource, buildRecords }) 
         records: buildRecords(data),
       });
       if (result?.skipped !== 'unconfigured') {
+        // `retracted` only appears once an operator has tombstoned something
+        // this run would otherwise have re-added (#5743), so it is appended
+        // rather than always printed: a nonzero count in a Railway log is the
+        // signal that a retraction is still doing work against a feed that
+        // has not stopped serving the item.
+        const retracted = result?.retracted ?? 0;
         console.log(
-          `  [intel-history] ${domain}/${resource} appended ${result?.inserted ?? 0}, deduped ${result?.skipped ?? 0}`,
+          `  [intel-history] ${domain}/${resource} appended ${result?.inserted ?? 0}, deduped ${result?.skipped ?? 0}` +
+            (retracted > 0 ? `, retracted ${retracted}` : ''),
         );
       }
     } catch (err) {
@@ -361,8 +368,9 @@ export function makeSeedHistoryAfterPublish({ domain, resource, buildRecords }) 
  * @param {() => number} [deps.now]        clock seam for the budget
  * @param {(ms: number) => Promise<void>} [deps.sleep] retry-delay seam
  * @param {number} [deps.budgetMs]         aggregate wall-clock budget override
- * @returns {Promise<{inserted: number, skipped: number, chunks: number, abandoned: number,
- *   failedChunks: number} | {skipped: 'unconfigured'}>}
+ * @returns {Promise<{inserted: number, skipped: number, retracted: number,
+ *   chunks: number, abandoned: number, failedChunks: number}
+ *   | {skipped: 'unconfigured'}>}
  *
  * Throws SeedHistoryError on a hard runtime failure; propagates the
  * embedder's own EmbeddingProviderError / EmbeddingTimeoutError. Never
@@ -388,7 +396,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
 
   const sanitized = normalizeHistoryRecords(records);
   if (sanitized.length === 0) {
-    return { inserted: 0, skipped: 0, chunks: 0, abandoned: 0, failedChunks: 0 };
+    return { inserted: 0, skipped: 0, retracted: 0, chunks: 0, abandoned: 0, failedChunks: 0 };
   }
 
   const now = deps.now ?? (() => Date.now());
@@ -426,6 +434,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
     return {
       inserted: 0,
       skipped: 0,
+      retracted: 0,
       chunks: 0,
       abandoned: sanitized.length,
       failedChunks: 0,
@@ -435,6 +444,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
   const url = `${config.siteUrl}${RELAY_PATH}`;
   let inserted = 0;
   let skipped = 0;
+  let retracted = 0;
   let chunks = 0;
   let abandoned = 0;
   let failedChunks = 0;
@@ -470,6 +480,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
       });
       inserted += Number(body?.inserted) || 0;
       skipped += Number(body?.skipped) || 0;
+      retracted += Number(body?.retracted) || 0;
       chunks += 1;
     } catch (err) {
       if (err?.budgetExhausted || now() >= deadline) {
@@ -487,5 +498,5 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
 
   if (chunks === 0 && failedChunks > 0) throw lastError;
 
-  return { inserted, skipped, chunks, abandoned, failedChunks };
+  return { inserted, skipped, retracted, chunks, abandoned, failedChunks };
 }
