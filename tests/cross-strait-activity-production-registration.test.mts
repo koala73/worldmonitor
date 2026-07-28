@@ -30,10 +30,17 @@ describe('cross-Strait activity production registration (#5575)', () => {
     );
     const railwayServices = JSON.parse(
       read('scripts/railway-services.json'),
-    ) as Array<{ service: string; requiredEnv?: string[] }>;
+    ) as Array<{ service: string; requiredEnv?: (string | string[])[] }>;
     assert.deepEqual(
       railwayServices.find((entry) => entry.service === 'seed-bundle-derived-signals')?.requiredEnv,
-      ['JAPAN_MOD_PROXY_URL'],
+      // Any-of, matching the bundle gate above and the adapter's
+      // `JAPAN_MOD_PROXY_URL || PROXY_URL`. Unlike market-backup and
+      // conflict-intel, NO member of this bundle reaches a bare
+      // resolveProxy/PROXY_URL, so neither variable is mandatory on its own --
+      // the service just needs one routable exit. Declared flat as
+      // ['JAPAN_MOD_PROXY_URL'] the audit failed a production environment
+      // carrying only the shared exit, which the seeder runs on undegraded.
+      [['JAPAN_MOD_PROXY_URL', 'PROXY_URL']],
     );
     assert.match(
       read('scripts/cross-strait-activity/adapters.mjs'),

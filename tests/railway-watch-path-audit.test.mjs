@@ -364,6 +364,252 @@ describe('Railway operational-config audit', () => {
   });
 });
 
+// The registry is hand-edited JSON with no runtime schema, and every field the
+// audit reads decides what --apply pushes to production. Each shape below used
+// to fail OPEN: the audit returned [] and printed "audit passed".
+describe('registry shape validation', () => {
+  const liveConfig = {
+    services: { 'svc-example': service({ watchPatterns: managedRegistry[0].watchPatterns }) },
+  };
+
+  it('rejects an unknown deployMode instead of skipping the rootDirectory audit', () => {
+    const typo = [{ ...managedRegistry[0], deployMode: 'nixpacks-root-scrpits' }];
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, typo),
+      /unknown deployMode "nixpacks-root-scrpits"/,
+    );
+  });
+
+  it('rejects a non-array watchPatterns instead of comparing it clean', () => {
+    // sortedUniqueStrings() collapses a non-array to [], which compares equal to
+    // a whole-repo filter — and the closure contract test skips the same entry
+    // on `Array.isArray`, so this shape escaped BOTH gates.
+    const asString = [{ ...managedRegistry[0], watchPatterns: 'scripts/seed-example.mjs' }];
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, asString),
+      /watchPatterns must be an array of strings/,
+    );
+    const withNonString = [{ ...managedRegistry[0], watchPatterns: ['scripts/a.mjs', 42] }];
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, withNonString),
+      /watchPatterns must be an array of strings/,
+    );
+  });
+
+  it('rejects a malformed cronSchedule or requiredEnv declaration', () => {
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], cronSchedule: 15 }]),
+      /cronSchedule must be a string or null/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], requiredEnv: [[]] }]),
+      /empty any-of group/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], requiredEnv: ['lower_case'] }]),
+      /invalid requiredEnv name/,
+    );
+  });
+});
+
+describe('requiredEnv any-of groups', () => {
+  // HAPI, SZSE and Japan MOD all resolve `SOURCE_SPECIFIC || PROXY_URL`. Declared
+  // as two flat entries the audit demanded BOTH, so configuring only the
+  // source-specific exit — the independently-replaceable state the per-source
+  // split exists to deliver — reported drift and threw out of the patch builder,
+  // vetoing reconciliation for every OTHER service in the same run.
+  const anyOfRegistry = [{
+    ...managedRegistry[0],
+    requiredEnv: [['HAPI_PROXY_URL', 'PROXY_URL']],
+  }];
+
+  it('is satisfied by the source-specific variable alone', () => {
+    const config = {
+      services: {
+        'svc-example': service({
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+          variables: { HAPI_PROXY_URL: 'http://exit-a' },
+        }),
+      },
+    };
+    assert.deepEqual(auditRailwayServiceConfig(config, serviceIds, anyOfRegistry), []);
+  });
+
+  it('is satisfied by the shared fallback alone', () => {
+    const config = {
+      services: {
+        'svc-example': service({
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+          variables: { PROXY_URL: 'http://shared' },
+        }),
+      },
+    };
+    assert.deepEqual(auditRailwayServiceConfig(config, serviceIds, anyOfRegistry), []);
+  });
+
+  it('still fails when no alternative in the group is configured', () => {
+    const config = {
+      services: {
+        'svc-example': service({
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+          variables: { UNRELATED: 'x' },
+        }),
+      },
+    };
+    const drift = auditRailwayServiceConfig(config, serviceIds, anyOfRegistry);
+    assert.deepEqual(drift[0].missingRequiredEnv, ['HAPI_PROXY_URL or PROXY_URL']);
+    assert.throws(
+      () => buildRailwayServiceConfigPatch(drift),
+      /missing required environment: HAPI_PROXY_URL or PROXY_URL/,
+    );
+  });
+
+  it('one unroutable service does not hide another service\'s real drift', () => {
+    // The env veto is deliberately fail-closed, but the audit REPORT must still
+    // name every drifted service so an operator sees the whole picture.
+    const registry = [
+      { ...managedRegistry[0], requiredEnv: [['HAPI_PROXY_URL', 'PROXY_URL']] },
+      { service: 'seed-other', deployMode: 'nixpacks-root-scripts', watchPatterns: ['scripts/seed-other.mjs'], cronSchedule: '0 * * * *' },
+    ];
+    const config = {
+      services: {
+        'svc-example': service({
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+        }),
+        'svc-other': service({ watchPatterns: ['scripts/WRONG.mjs'], cronSchedule: '0 * * * *' }),
+      },
+    };
+    const drift = auditRailwayServiceConfig(
+      config,
+      new Map([['seed-example', 'svc-example'], ['seed-other', 'svc-other']]),
+      registry,
+    );
+    assert.deepEqual(drift.map((entry) => entry.service), ['seed-example', 'seed-other']);
+    assert.deepEqual(drift[1].watchPatterns, {
+      actual: ['scripts/WRONG.mjs'],
+      expected: ['scripts/seed-other.mjs'],
+    });
+  });
+});
+
+// Restores the coverage the registry rewrite dropped. Before this sweep the
+// audit only ever looked at registry-managed services, so a narrow watch filter
+// on any of the ~30 other live seeders — the "merged is not ran" failure this
+// guard exists to prevent — returned [] and printed "audit passed".
+describe('unmanaged live seeders', () => {
+  const registry = [managedRegistry[0]];
+  const ids = new Map([['seed-example', 'svc-example'], ['seed-forecasts', 'svc-forecasts']]);
+
+  function unmanagedSeeder({ watchPatterns, rootDirectory = 'scripts' }) {
+    return {
+      source: { repo: 'koala73/worldmonitor', rootDirectory },
+      build: { watchPatterns },
+      deploy: { startCommand: 'node seed-forecasts.mjs' },
+      variables: {},
+    };
+  }
+
+  // The managed service must be present in every fixture, otherwise it reports
+  // missingService and drowns out what these cases are actually asserting.
+  const managedService = () => service({
+    watchPatterns: managedRegistry[0].watchPatterns,
+    cronSchedule: managedRegistry[0].cronSchedule,
+  });
+
+  it('flags a narrow watch filter on a seeder the registry does not manage', () => {
+    const config = {
+      services: {
+        'svc-example': service({
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+        }),
+        'svc-forecasts': unmanagedSeeder({ watchPatterns: ['scripts/seed-forecasts.mjs'] }),
+      },
+    };
+    const drift = auditRailwayServiceConfig(config, ids, registry);
+    assert.deepEqual(drift, [{
+      service: 'seed-forecasts',
+      serviceId: 'svc-forecasts',
+      missingService: false,
+      unmanagedSeeder: true,
+      watchPatterns: {
+        actual: ['scripts/seed-forecasts.mjs'],
+        expected: ['scripts/**', 'shared/**'],
+      },
+      cronSchedule: null,
+    }]);
+    assert.deepEqual(buildRailwayServiceConfigPatch(drift), {
+      services: { 'svc-forecasts': { build: { watchPatterns: ['scripts/**', 'shared/**'] } } },
+    });
+  });
+
+  it('accepts a whole-repository filter, however it is expressed', () => {
+    for (const watchPatterns of [[], undefined]) {
+      const config = {
+        services: {
+          'svc-example': managedService(),
+          'svc-forecasts': unmanagedSeeder({ watchPatterns }),
+        },
+      };
+      assert.deepEqual(auditRailwayServiceConfig(config, ids, registry), []);
+    }
+  });
+
+  it('accepts the broad contract and preserves extras outside scripts/ and shared/', () => {
+    const broad = {
+      services: {
+        'svc-example': managedService(),
+        'svc-forecasts': unmanagedSeeder({ watchPatterns: ['scripts/**', 'shared/**'] }),
+      },
+    };
+    assert.deepEqual(auditRailwayServiceConfig(broad, ids, registry), []);
+
+    // A repo-rooted service can legitimately watch a Dockerfile or a server
+    // helper; the fix must ADD the broad patterns, not replace those.
+    const repoRooted = {
+      services: {
+        'svc-example': managedService(),
+        'svc-forecasts': unmanagedSeeder({
+          rootDirectory: '',
+          watchPatterns: ['Dockerfile.seed-forecasts'],
+        }),
+      },
+    };
+    const drift = auditRailwayServiceConfig(repoRooted, ids, registry);
+    assert.deepEqual(drift[0].watchPatterns.expected, [
+      'Dockerfile.seed-forecasts',
+      'scripts/**',
+      'shared/**',
+    ]);
+  });
+
+  it('does not second-guess a managed service or a non-seeder', () => {
+    // A managed seeder's exact closure is intentionally narrow; the broad
+    // contract must not fight it.
+    assert.deepEqual(
+      auditRailwayServiceConfig({ services: { 'svc-example': managedService() } }, ids, registry),
+      [],
+    );
+
+    const notASeeder = {
+      services: {
+        'svc-example': managedService(),
+        'svc-web': {
+          source: { repo: 'koala73/worldmonitor', rootDirectory: '' },
+          build: { watchPatterns: ['src/**'] },
+          deploy: { startCommand: 'npm run start' },
+          variables: {},
+        },
+      },
+    };
+    assert.deepEqual(auditRailwayServiceConfig(notASeeder, ids, registry), []);
+  });
+});
+
 describe('audit CLI argument parsing', () => {
   // The value this resolves selects which Railway environment --apply mutates.
   it('accepts both the space-separated and equals forms', () => {

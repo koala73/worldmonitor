@@ -18,6 +18,23 @@ function hasConfiguredVariable(variables, name) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+// A nested array is an any-of group: the service needs at least one of those
+// variables. Sources that resolve a routing value as `SOURCE_SPECIFIC || SHARED`
+// (HAPI, SZSE, Japan MOD) must declare it that way, or this gate is stricter
+// than the runtime it guards and reports drift for a service that routes fine.
+// Same shape the bundle runner accepts in section.requiredEnv.
+export function unsatisfiedRequiredEnv(requiredEnv, variables) {
+  if (!Array.isArray(requiredEnv)) return [];
+  const unsatisfied = [];
+  for (const requirement of requiredEnv) {
+    const alternatives = Array.isArray(requirement) ? requirement : [requirement];
+    if (!alternatives.some((name) => hasConfiguredVariable(variables, name))) {
+      unsatisfied.push(alternatives.join(' or '));
+    }
+  }
+  return unsatisfied;
+}
+
 function sortedUniqueStrings(values) {
   if (!Array.isArray(values)) return [];
   return [...new Set(values.filter((value) => typeof value === 'string'))].sort();
@@ -47,14 +64,110 @@ export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
   dockerfile: '',
 });
 
+// Every field this audit derives production mutations from is validated here,
+// because the registry is hand-edited JSON with no runtime schema. A typo used
+// to fail OPEN in two ways: an unknown deployMode made
+// ROOT_DIRECTORY_BY_DEPLOY_MODE[...] undefined and skipped the rootDirectory
+// check entirely, and a non-array watchPatterns collapsed to [] in
+// sortedUniqueStrings and compared clean against a whole-repo filter — while the
+// closure contract test skipped the same entry for `Array.isArray`. Both shapes
+// reported "audit passed".
+function assertRegistryEntry(entry) {
+  const name = entry?.service ?? JSON.stringify(entry);
+  if (hasOwn(entry, 'deployMode') && !hasOwn(ROOT_DIRECTORY_BY_DEPLOY_MODE, entry.deployMode)) {
+    throw new Error(
+      `${name} declares unknown deployMode ${JSON.stringify(entry.deployMode)}; expected one of ${Object.keys(ROOT_DIRECTORY_BY_DEPLOY_MODE).join(', ')}`,
+    );
+  }
+  if (hasOwn(entry, 'watchPatterns')) {
+    if (!Array.isArray(entry.watchPatterns)
+      || entry.watchPatterns.some((pattern) => typeof pattern !== 'string')) {
+      throw new Error(`${name} watchPatterns must be an array of strings`);
+    }
+  }
+  if (hasOwn(entry, 'cronSchedule')
+    && entry.cronSchedule !== null
+    && typeof entry.cronSchedule !== 'string') {
+    throw new Error(`${name} cronSchedule must be a string or null`);
+  }
+  if (hasOwn(entry, 'requiredEnv')) {
+    if (!Array.isArray(entry.requiredEnv)) {
+      throw new Error(`${name} requiredEnv must be an array`);
+    }
+    for (const requirement of entry.requiredEnv) {
+      const alternatives = Array.isArray(requirement) ? requirement : [requirement];
+      if (alternatives.length === 0) {
+        throw new Error(`${name} requiredEnv contains an empty any-of group`);
+      }
+      for (const variable of alternatives) {
+        if (typeof variable !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(variable)) {
+          throw new Error(`${name} has invalid requiredEnv name ${JSON.stringify(variable)}`);
+        }
+      }
+    }
+  }
+  return entry;
+}
+
 export function managedRailwayServices(registry) {
   if (!Array.isArray(registry)) {
     throw new Error('Railway service registry must be an array');
   }
+  registry.forEach(assertRegistryEntry);
   return registry.filter(
     (entry) => hasOwn(entry, 'watchPatterns')
       || (hasOwn(entry, 'cronSchedule') && entry.cronSchedule !== null),
   );
+}
+
+// Repository-wide fallback contract for a live seeder the registry does not
+// manage with an exact dependency closure. Broad watch paths over-trigger, but
+// they cannot MISS a transitive helper change — which is the failure this guard
+// exists to prevent (docs/solutions/integration-issues/
+// railway-seeder-watch-paths-can-skip-deployments.md).
+export const BROAD_WATCH_PATTERNS = Object.freeze(['scripts/**', 'shared/**']);
+
+const REPOSITORY = 'koala73/worldmonitor';
+const SEED_COMMAND_RE = /^node\s+(?:\.\/)?(?:scripts\/)?(?:seed-[^\s]+|fetch-gpsjam\.mjs|publish-bootstrap-tiers\.mjs)(?:\s|$)/;
+const SEED_DOCKERFILE_RE = /(?:^|\/)Dockerfile\.(?:seed-[^/\s]+|digest-notifications|publish-bootstrap-tiers)$/;
+
+function isSeederService(service) {
+  return service?.source?.repo === REPOSITORY
+    && (
+      SEED_COMMAND_RE.test(service?.deploy?.startCommand || '')
+      || SEED_DOCKERFILE_RE.test(service?.build?.dockerfilePath || '')
+    );
+}
+
+/**
+ * Watch-path contract for a live seeder with no registry-managed closure.
+ *
+ * Returns null when the service is acceptable, or the {actual, expected} shape
+ * the patch builder consumes. Missing and `[]` both mean "watch the whole
+ * repository", which is broader than this contract and therefore safe.
+ */
+export function unmanagedWatchPatternDrift(service) {
+  const watchPatterns = service?.build?.watchPatterns;
+  if (watchPatterns == null) return null;
+  if (!Array.isArray(watchPatterns)) {
+    return { actual: [], expected: [...BROAD_WATCH_PATTERNS] };
+  }
+  if (watchPatterns.length === 0) return null;
+
+  const scriptsRoot = normalizeRootDirectory(service?.source?.rootDirectory) === 'scripts';
+  // A scripts-rooted seeder gets exactly the two broad patterns: anything it
+  // enumerates beyond them is already covered, and leaving the enumeration in
+  // place is how the next helper goes missing. Repo-root and Dockerfile
+  // services keep their extras — those can legitimately point outside
+  // scripts/ and shared/ (a Dockerfile, a server helper).
+  const expected = scriptsRoot
+    ? [...BROAD_WATCH_PATTERNS]
+    : [
+      ...watchPatterns,
+      ...BROAD_WATCH_PATTERNS.filter((pattern) => !watchPatterns.includes(pattern)),
+    ];
+  if (sameStringSet(watchPatterns, expected)) return null;
+  return { actual: watchPatterns, expected };
 }
 
 export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
@@ -63,7 +176,37 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
     throw new Error('Railway environment config must contain a services object');
   }
 
-  return managedRailwayServices(registry)
+  const managed = managedRailwayServices(registry);
+  const managedServiceIds = new Set(
+    managed.map((entry) => serviceIdFor(serviceIdsByName, entry.service)).filter(Boolean),
+  );
+  const nameByServiceId = new Map(
+    (serviceIdsByName instanceof Map
+      ? [...serviceIdsByName]
+      : Object.entries(serviceIdsByName ?? {})
+    ).map(([name, id]) => [id, name]),
+  );
+
+  // Live seeders the registry does not manage. Without this sweep the audit
+  // only ever looks at the handful of services that opted in, and a narrow
+  // watch filter on any other seeder — the "merged is not ran" failure — passes
+  // silently while the summary line still reads "audit passed".
+  const unmanagedDrift = Object.entries(services)
+    .filter(([serviceId, service]) => !managedServiceIds.has(serviceId) && isSeederService(service))
+    .flatMap(([serviceId, service]) => {
+      const watchPatterns = unmanagedWatchPatternDrift(service);
+      if (!watchPatterns) return [];
+      return [{
+        service: nameByServiceId.get(serviceId) ?? serviceId,
+        serviceId,
+        missingService: false,
+        unmanagedSeeder: true,
+        watchPatterns,
+        cronSchedule: null,
+      }];
+    });
+
+  return managed
     .flatMap((entry) => {
       const serviceId = serviceIdFor(serviceIdsByName, entry.service);
       if (!serviceId || !services[serviceId]) {
@@ -82,6 +225,8 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
       // registry exists to control is never checked. Surface it rather than
       // letting it pass clean.
       const missingWatchPatterns = !hasOwn(entry, 'watchPatterns');
+      // assertRegistryEntry has already rejected an unknown deployMode, so an
+      // absent expectation here means the entry genuinely declares none.
       const expectedRootDirectory = hasOwn(entry, 'deployMode')
         ? ROOT_DIRECTORY_BY_DEPLOY_MODE[entry.deployMode]
         : undefined;
@@ -90,11 +235,7 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         && actualRootDirectory !== expectedRootDirectory
         ? { actual: actualRootDirectory, expected: expectedRootDirectory }
         : null;
-      const missingRequiredEnv = Array.isArray(entry.requiredEnv)
-        ? entry.requiredEnv.filter(
-            (name) => !hasConfiguredVariable(service?.variables, name),
-          )
-        : [];
+      const missingRequiredEnv = unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables);
       const expectedWatchPatterns = entry.watchPatterns;
       const actualWatchPatterns = service?.build?.watchPatterns ?? [];
       const watchPatterns = hasOwn(entry, 'watchPatterns')
@@ -126,6 +267,7 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         ...(missingRequiredEnv.length > 0 ? { missingRequiredEnv } : {}),
       }];
     })
+    .concat(unmanagedDrift)
     .sort((left, right) => left.service.localeCompare(right.service));
 }
 
@@ -267,7 +409,7 @@ export async function waitForRailwayServiceConfigConvergence(
 
 function printAudit(drift) {
   if (drift.length === 0) {
-    console.log('Railway operational-config audit passed: registry-managed cron schedules and watch paths match production.');
+    console.log('Railway operational-config audit passed: registry-managed cron schedules and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
     return;
   }
 
@@ -278,6 +420,11 @@ function printAudit(drift) {
       continue;
     }
     const details = [];
+    if (entry.unmanagedSeeder) {
+      details.push(
+        `live seeder is not registry-managed, so it must watch ${BROAD_WATCH_PATTERNS.join(' + ')} (or the whole repository) — add an exact dependency closure to scripts/railway-services.json to narrow it`,
+      );
+    }
     if (entry.missingWatchPatterns) {
       details.push('pins a cron but declares no watchPatterns');
     }

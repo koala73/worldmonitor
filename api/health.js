@@ -1017,13 +1017,16 @@ function classifyKey(name, redisKey, opts, ctx) {
   else status = 'OK';
 
   const entry = { status, records };
-  // Source-level on-demand marker. The status suffix (`EMPTY_ON_DEMAND`) only
-  // covers the absent/zero-record branches; an on-demand key that HAS data and
-  // goes stale falls through to plain STALE_SEED (and chinaCoverage reaches
-  // CHINA_DEGRADED), so a consumer keying off the status name alone cannot tell
-  // an on-demand source from a strict one. scripts/check-seed-freshness.mjs
-  // needs that distinction to avoid grading RPC-populated keys as ingestion
-  // failures. Emitted for every status, not just the EMPTY_* ones.
+  // Source-level on-demand marker: "this key is RPC-populated or awaiting its
+  // first producer run", NOT "any failure here is acceptable". The status suffix
+  // (`EMPTY_ON_DEMAND`) cannot carry that, because it only covers the
+  // absent/zero-record branches — an on-demand key that HAS data and goes stale
+  // falls through to plain STALE_SEED. Emitted for every status so a consumer
+  // can combine source and status; deciding WHICH statuses the marker excuses is
+  // the consumer's call, and scripts/check-seed-freshness.mjs deliberately
+  // excuses only the empty/absent ones (see ON_DEMAND_SOFT_STATUSES there —
+  // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
+  // ON_DEMAND_KEYS policy block above exists to prevent).
   if (isOnDemand) entry.onDemand = true;
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;

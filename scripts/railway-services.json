@@ -45,7 +45,6 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-conflict-intel",
     "requiredEnv": [
-      "HAPI_PROXY_URL",
       "PROXY_URL"
     ],
     "watchPatterns": [
@@ -300,7 +299,10 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-derived-signals",
     "requiredEnv": [
-      "JAPAN_MOD_PROXY_URL"
+      [
+        "JAPAN_MOD_PROXY_URL",
+        "PROXY_URL"
+      ]
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
@@ -385,7 +387,6 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
     "requiredEnv": [
-      "SZSE_PROXY_URL",
       "PROXY_URL"
     ],
     "watchPatterns": [

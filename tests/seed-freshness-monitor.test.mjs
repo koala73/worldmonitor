@@ -7,14 +7,16 @@ import YAML from 'yaml';
 import {
   applyAcceptanceBaseline,
   findOperationalProblems,
-  findStaleSeedProblems,
+  formatAcceptanceReport,
   isOnDemandProblem,
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
 
 describe('scheduled seed freshness monitor', () => {
-  it('alerts only when seed metadata has exceeded maxStaleMin', () => {
+  it('grades every actionable status, not only STALE_SEED', () => {
+    // The predecessor of this gate filtered on `status === 'STALE_SEED'` alone,
+    // so a seeder that errored outright or published an empty key never paged.
     const payload = {
       status: 'UNHEALTHY',
       checkedAt: '2026-07-13T17:45:19.746Z',
@@ -27,13 +29,10 @@ describe('scheduled seed freshness monitor', () => {
       },
     };
 
-    assert.deepEqual(findStaleSeedProblems(payload), [
-      {
-        name: 'wildfire',
-        seedAgeMin: 361,
-        maxStaleMin: 360,
-      },
-    ]);
+    assert.deepEqual(
+      findOperationalProblems(payload).map((p) => p.name),
+      ['emptyFeed', 'failedFeed', 'frozenFeed', 'wildfire'],
+    );
   });
 
   it('treats every non-on-demand health problem as an operational failure', () => {
@@ -63,21 +62,32 @@ describe('scheduled seed freshness monitor', () => {
     ]);
   });
 
-  it('exempts on-demand sources by the source marker, not the status suffix', () => {
-    // EMPTY_ON_DEMAND is the ONLY *_ON_DEMAND status api/health.js emits, and it
-    // covers just the absent/zero-record branches. An on-demand key that HAS
-    // data and goes stale is plain STALE_SEED (api/health.js classifyKey), and
-    // chinaCoverage degrades to CHINA_DEGRADED -- both are on-demand sources
-    // that a suffix-only test would grade as ingestion failures.
+  it('exempts on-demand sources only for the states being on-demand explains', () => {
+    // The marker means "RPC-populated, or awaiting its first producer run", so
+    // it excuses ABSENCE and nothing more. EMPTY_ON_DEMAND is the only
+    // *_ON_DEMAND status api/health.js emits and it covers exactly those
+    // branches; the marker path must not be broader than the suffix path.
     assert.equal(isOnDemandProblem({ status: 'EMPTY_ON_DEMAND' }), true);
-    assert.equal(isOnDemandProblem({ status: 'STALE_SEED', onDemand: true }), true);
-    assert.equal(isOnDemandProblem({ status: 'CHINA_DEGRADED', onDemand: true }), true);
+    assert.equal(isOnDemandProblem({ status: 'EMPTY', onDemand: true }), true);
+    assert.equal(isOnDemandProblem({ status: 'EMPTY_DATA', onDemand: true }), true);
     assert.equal(isOnDemandProblem({ status: 'STALE_SEED' }), false);
     assert.equal(isOnDemandProblem({ status: 'SEED_ERROR', onDemand: false }), false);
     // Boundary: contains the token but does not end with it, and non-string.
     assert.equal(isOnDemandProblem({ status: 'EMPTY_ON_DEMAND_LEGACY' }), false);
     assert.equal(isOnDemandProblem({ status: 42 }), false);
     assert.equal(isOnDemandProblem({}), false);
+  });
+
+  it('never softens a fault status on an on-demand source', () => {
+    // api/health.js's ON_DEMAND_KEYS policy block records the incident: a
+    // homepage panel sat at 8.2x its staleness budget for 16+ hours undetected
+    // because on-demand softening hid a chronic provider failure. `shippingRates`
+    // has no ACTIVATION_MARKERS entry, so its marker is permanent -- softening
+    // fault statuses would make it unmonitorable forever.
+    assert.equal(isOnDemandProblem({ status: 'SEED_ERROR', onDemand: true }), false);
+    assert.equal(isOnDemandProblem({ status: 'STALE_SEED', onDemand: true }), false);
+    assert.equal(isOnDemandProblem({ status: 'CHINA_DEGRADED', onDemand: true }), false);
+    assert.equal(isOnDemandProblem({ status: 'COVERAGE_PARTIAL', onDemand: true }), false);
 
     assert.deepEqual(
       findOperationalProblems({
@@ -85,19 +95,20 @@ describe('scheduled seed freshness monitor', () => {
         problems: {
           shippingRates: { status: 'STALE_SEED', onDemand: true, seedAgeMin: 716, maxStaleMin: 420 },
           gdeltIntel: { status: 'SEED_ERROR', records: 1 },
+          newsRecallBenchmark: { status: 'EMPTY_ON_DEMAND', records: 0 },
         },
       }).map((p) => p.name),
-      ['gdeltIntel'],
+      ['gdeltIntel', 'shippingRates'],
     );
   });
 
-  it('treats an all-on-demand payload as clean', () => {
+  it('treats an all-absent on-demand payload as clean', () => {
     assert.deepEqual(
       findOperationalProblems({
         status: 'WARNING',
         problems: {
           newsRecallBenchmark: { status: 'EMPTY_ON_DEMAND', records: 0 },
-          chinaCoverage: { status: 'CHINA_DEGRADED', onDemand: true, records: 15 },
+          resilienceRanking: { status: 'EMPTY', onDemand: true, records: 0 },
         },
       }),
       [],
@@ -106,7 +117,6 @@ describe('scheduled seed freshness monitor', () => {
 
   it('rejects payloads that cannot prove compact seed freshness', () => {
     assert.throws(() => validateCompactHealthPayload(null), /object/);
-    assert.deepEqual(findStaleSeedProblems({ status: 'HEALTHY' }), []);
     assert.deepEqual(findOperationalProblems({ status: 'HEALTHY' }), []);
     assert.throws(() => validateCompactHealthPayload({ status: 'WARNING' }), /problems/);
     assert.throws(
@@ -197,6 +207,88 @@ describe('scheduled seed freshness monitor', () => {
       for (const entry of committed.acknowledged) {
         assert.ok(entry.reason?.length > 20, `${entry.name} needs a substantive reason`);
       }
+
+      // Every suppression needs an owner that outlives the change that added it.
+      // These entries originally all pointed at the PR that introduced the
+      // baseline: `Number.isInteger` was satisfied, but the moment that PR
+      // merged and closed, four degraded sources were suppressed against a
+      // closed PR with nobody owning them. Distinct issue numbers is the
+      // cheapest offline proxy for "somebody actually filed these".
+      const issues = committed.acknowledged.map((entry) => entry.issue);
+      assert.equal(
+        new Set(issues).size,
+        issues.length,
+        'each acknowledged degradation needs its OWN tracking issue, not one shared number',
+      );
+      for (const entry of committed.acknowledged) {
+        assert.doesNotMatch(
+          entry.reason,
+          /needs (its own|a) tracking issue/i,
+          `${entry.name} still says it needs a tracking issue — file it and point issue: at it`,
+        );
+      }
+    });
+  });
+
+  // The run's ORDER of output is not observable through the split functions
+  // above, which is how an early `return` on expiry suppressed the blocking
+  // list without a single assertion noticing.
+  describe('acceptance report', () => {
+    const blocked = {
+      name: 'supplyChainTrade', status: 'STALE_SEED', records: 3, seedAgeMin: 900, maxStaleMin: 360,
+    };
+    const baselineResult = (overrides) => ({
+      blocking: [], acknowledged: [], cleared: [], expired: false, expiresAt: '2026-08-27', ...overrides,
+    });
+
+    it('names every blocking problem, not just the count', () => {
+      const report = formatAcceptanceReport(baselineResult({ blocking: [blocked] }), '2026-07-28T12:00:00Z');
+      assert.equal(report.failed, true);
+      assert.deepEqual(report.errors, [
+        'Ingestion operational acceptance failed: 1 unacknowledged problem(s).',
+        '- supplyChainTrade: status=STALE_SEED records=3 age=900m max=360m',
+      ]);
+    });
+
+    it('still reports the blocking problems on the run where the baseline expires', () => {
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [blocked], expired: true, expiresAt: '2020-01-01' }),
+        '2026-07-28T12:00:00Z',
+      );
+      assert.equal(report.failed, true);
+      assert.match(report.errors.join('\n'), /baseline expired on 2020-01-01/);
+      assert.match(
+        report.errors.join('\n'),
+        /supplyChainTrade: status=STALE_SEED/,
+        'the expiry run must still name what is actually broken',
+      );
+      // Order matters: the actionable list must precede the expiry notice, so a
+      // truncated CI log still shows what to fix.
+      assert.ok(
+        report.errors.findIndex((line) => line.includes('supplyChainTrade'))
+          < report.errors.findIndex((line) => line.includes('expired on')),
+      );
+    });
+
+    it('fails on expiry even when nothing else is blocking', () => {
+      const report = formatAcceptanceReport(baselineResult({ expired: true }), '2026-07-28T12:00:00Z');
+      assert.equal(report.failed, true);
+      assert.equal(report.info.length, 0, 'a failing run must not also claim it passed');
+    });
+
+    it('passes cleanly and still surfaces acknowledged and recovered entries', () => {
+      const report = formatAcceptanceReport(
+        baselineResult({
+          acknowledged: [{ name: 'gdeltIntel', status: 'SEED_ERROR', records: 1, issue: 5766 }],
+          cleared: [{ name: 'shippingRates', status: 'STALE_SEED', issue: 5769 }],
+        }),
+        '2026-07-28T12:00:00Z',
+      );
+      assert.equal(report.failed, false);
+      assert.deepEqual(report.errors, []);
+      assert.match(report.info[0], /acknowledged \(#5766\): gdeltIntel: status=SEED_ERROR records=1/);
+      assert.match(report.info[1], /recovered: shippingRates:STALE_SEED/);
+      assert.match(report.info[2], /acceptance passed at 2026-07-28T12:00:00Z.*\(1 acknowledged\)/);
     });
   });
 

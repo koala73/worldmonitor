@@ -46,14 +46,22 @@ describe('China corporate disclosure production registration (#5577)', () => {
     assert.match(read('scripts/seed-bundle-market-backup.mjs'), /seed-china-corporate-disclosures\.mjs/);
     const railwayServices = JSON.parse(
       read('scripts/railway-services.json'),
-    ) as Array<{ service: string; requiredEnv?: string[] }>;
+    ) as Array<{ service: string; requiredEnv?: (string | string[])[] }>;
     assert.deepEqual(
       railwayServices.find((entry) => entry.service === 'seed-bundle-market-backup')?.requiredEnv,
-      // PROXY_URL stays declared: seed-gulf-quotes and seed-etf-flows reach it
-      // bare through _yahoo-fetch -> resolveProxy -> _proxy-utils, with no
-      // source-specific alternative, so dropping it would remove the only
-      // alerting path for a variable those members still require.
-      ['SZSE_PROXY_URL', 'PROXY_URL'],
+      // PROXY_URL stays declared and MANDATORY: seed-gulf-quotes and
+      // seed-etf-flows reach it bare through _yahoo-fetch -> resolveProxy ->
+      // _proxy-utils (`process.env.PROXY_URL` only), with no source-specific
+      // alternative, so dropping it would remove the only alerting path for a
+      // variable those members still require.
+      //
+      // SZSE_PROXY_URL is deliberately NOT declared. The adapter resolves
+      // `SZSE_PROXY_URL || PROXY_URL`, so requiring it would make the audit
+      // stricter than the runtime it guards: a production environment carrying
+      // only the shared exit routes SZSE fine, but would report drift and throw
+      // out of buildRailwayServiceConfigPatch -- vetoing reconciliation for
+      // every other service in the same run.
+      ['PROXY_URL'],
     );
     assert.match(
       read('scripts/china-corporate-disclosures/adapters.mjs'),

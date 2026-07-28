@@ -18,31 +18,29 @@ export function validateCompactHealthPayload(payload) {
   return payload;
 }
 
-export function findStaleSeedProblems(payload) {
-  validateCompactHealthPayload(payload);
-  return Object.entries(payload.problems ?? {})
-    .filter(([, problem]) => problem?.status === 'STALE_SEED')
-    .map(([name, problem]) => ({
-      name,
-      seedAgeMin: problem.seedAgeMin,
-      maxStaleMin: problem.maxStaleMin,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
+// The ONLY states being on-demand actually explains: nothing has requested the
+// key yet, or the producer has not run for the first time. Absence is expected
+// for an RPC-populated cache or a deployment-order bridge, so it must not page.
+//
+// Everything else must stay strict even for an on-demand source. `SEED_ERROR`
+// means the producer ran and failed; a long `STALE_SEED` means it stopped
+// running. Neither is explained by "nobody asked for it yet", and softening
+// them is a known-bad trade: api/health.js's ON_DEMAND_KEYS policy block
+// records `marketImplications` sitting at 8.2x its staleness budget for 16+
+// hours undetected for exactly this reason, which is why that key was removed
+// from the set. Do not widen this list to cover fault statuses — a genuinely
+// accepted degradation belongs in seed-freshness-baseline.json, where it
+// carries an owner issue and an expiry.
+const ON_DEMAND_SOFT_STATUSES = new Set(['EMPTY_ON_DEMAND', 'EMPTY', 'EMPTY_DATA']);
 
-// On-demand sources are informational: they are RPC-populated or
-// deployment-order bridges, so staleness is expected rather than an ingestion
-// fault. `/api/health` marks them with `onDemand: true` on every status
-// (api/health.js classifyKey). The status-suffix test is retained only as a
-// fallback for compact snapshots cached before that marker shipped — on its own
-// it is not sufficient, because `EMPTY_ON_DEMAND` is the ONLY `_ON_DEMAND`
-// status and it covers just the absent/zero-record branches: an on-demand key
-// that has data and goes stale is plain `STALE_SEED`, and chinaCoverage
-// degrades to `CHINA_DEGRADED`.
+// `/api/health` marks on-demand sources with `onDemand: true` on every status
+// (api/health.js classifyKey). The status-suffix test is retained as a fallback
+// for compact snapshots cached before that marker shipped, and is self-limiting:
+// `EMPTY_ON_DEMAND` is the only `_ON_DEMAND` status, so it covers only the
+// absent/zero-record branches — the same set the marker path allows.
 export function isOnDemandProblem(problem) {
-  if (problem?.onDemand === true) return true;
-  return typeof problem?.status === 'string'
-    && problem.status.endsWith('_ON_DEMAND');
+  if (typeof problem?.status === 'string' && problem.status.endsWith('_ON_DEMAND')) return true;
+  return problem?.onDemand === true && ON_DEMAND_SOFT_STATUSES.has(problem?.status);
 }
 
 export function findOperationalProblems(payload) {
@@ -124,6 +122,49 @@ function readAcceptanceBaseline() {
   return JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
 }
 
+function describeProblem(problem) {
+  const freshness = Number.isFinite(problem.seedAgeMin)
+    ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
+    : '';
+  return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`;
+}
+
+/**
+ * Pure renderer for one acceptance run. Kept separate from main() so the
+ * ORDER of the report is testable without a network round trip — the bug this
+ * shape closes was an early `return` on expiry that suppressed the blocking
+ * list, and no assertion over the pure split functions could have seen it.
+ */
+export function formatAcceptanceReport(
+  { blocking, acknowledged, cleared, expired, expiresAt },
+  checkedAt,
+) {
+  const info = [
+    ...acknowledged.map((problem) => `- acknowledged (#${problem.issue}): ${describeProblem(problem)}`),
+    ...cleared.map((entry) =>
+      `- recovered: ${entry.name}:${entry.status} no longer reported; remove it from scripts/seed-freshness-baseline.json (#${entry.issue}).`),
+  ];
+  const errors = [];
+
+  // The actionable list comes BEFORE any terminal condition. Expiry is the run
+  // where an operator most needs to see what is actually broken.
+  if (blocking.length > 0) {
+    errors.push(`Ingestion operational acceptance failed: ${blocking.length} unacknowledged problem(s).`);
+    errors.push(...blocking.map((problem) => `- ${describeProblem(problem)}`));
+  }
+  if (expired) {
+    errors.push(
+      `Ingestion operational acceptance failed: the accepted-problem baseline expired on ${expiresAt}. Re-review scripts/seed-freshness-baseline.json and set a new expiresAt.`,
+    );
+  }
+  if (errors.length === 0) {
+    info.push(
+      `Ingestion operational acceptance passed at ${checkedAt || 'unknown time'}: no unacknowledged health problems (${acknowledged.length} acknowledged).`,
+    );
+  }
+  return { info, errors, failed: errors.length > 0 };
+}
+
 async function main() {
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
   const response = await fetch(healthUrl, {
@@ -135,46 +176,13 @@ async function main() {
   }
 
   const payload = await response.json();
-  const operationalProblems = findOperationalProblems(payload);
-  const { blocking, acknowledged, cleared, expired, expiresAt } =
-    applyAcceptanceBaseline(operationalProblems, readAcceptanceBaseline());
-
-  const describe = (problem) => {
-    const freshness = Number.isFinite(problem.seedAgeMin)
-      ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
-      : '';
-    return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`;
-  };
-
-  for (const problem of acknowledged) {
-    console.log(`- acknowledged (#${problem.issue}): ${describe(problem)}`);
-  }
-  for (const entry of cleared) {
-    console.log(
-      `- recovered: ${entry.name}:${entry.status} no longer reported; remove it from scripts/seed-freshness-baseline.json (#${entry.issue}).`,
-    );
-  }
-
-  if (expired) {
-    console.error(
-      `Ingestion operational acceptance failed: the accepted-problem baseline expired on ${expiresAt}. Re-review scripts/seed-freshness-baseline.json and set a new expiresAt.`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (blocking.length === 0) {
-    console.log(
-      `Ingestion operational acceptance passed at ${payload.checkedAt || 'unknown time'}: no unacknowledged health problems (${acknowledged.length} acknowledged).`,
-    );
-    return;
-  }
-
-  console.error(`Ingestion operational acceptance failed: ${blocking.length} unacknowledged problem(s).`);
-  for (const problem of blocking) {
-    console.error(`- ${describe(problem)}`);
-  }
-  process.exitCode = 1;
+  const report = formatAcceptanceReport(
+    applyAcceptanceBaseline(findOperationalProblems(payload), readAcceptanceBaseline()),
+    payload.checkedAt,
+  );
+  for (const line of report.info) console.log(line);
+  for (const line of report.errors) console.error(line);
+  if (report.failed) process.exitCode = 1;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

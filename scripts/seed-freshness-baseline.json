@@ -11,10 +11,18 @@
     "'recovered' on the next run (prune it); a source that fails with a DIFFERENT status",
     "than the one baselined is treated as new and blocks, which is the point.",
     "",
-    "chinaCoverage and shippingRates are in api/health.js ON_DEMAND_KEYS. Once the",
-    "onDemand marker added alongside this file reaches production, they are exempted at",
-    "source level and these two entries become redundant -- they are listed only to cover",
-    "the window before that deploy lands."
+    "Every entry carries a real tracking issue, never the PR that introduced the entry:",
+    "a merged PR closes, and a suppression pointing at a closed PR has no owner.",
+    "",
+    "chinaCoverage and shippingRates are both in api/health.js ON_DEMAND_KEYS, but the",
+    "onDemand marker does NOT make either entry redundant, for two different reasons.",
+    "chinaCoverage is also in ACTIVATION_MARKERS and seed-china-coverage-health.mjs writes",
+    "that marker unconditionally in afterPublish with no TTL -- the seeder is publishing, so",
+    "isOnDemand is permanently FALSE for it and the marker is never emitted. shippingRates",
+    "does carry the marker permanently (it has no activation entry), but the monitor only",
+    "excuses on-demand sources in the empty/absent states, so its STALE_SEED still blocks.",
+    "Softening fault statuses is the marketImplications blind spot the ON_DEMAND_KEYS policy",
+    "block in api/health.js exists to prevent."
   ],
   "expiresAt": "2026-08-27",
   "acknowledged": [
@@ -27,26 +35,26 @@
     {
       "name": "gdeltIntel",
       "status": "SEED_ERROR",
-      "issue": 5756,
-      "reason": "GDELT repair route fails TLS (SSL_ERROR_SYSCALL). GDELT blocks Railway egress outright, so PROXY_URL is mandatory rather than a fallback, and seed-gdelt-intel is not part of this PR's per-source proxy split. Needs its own tracking issue."
+      "issue": 5768,
+      "reason": "GDELT repair route fails TLS (SSL_ERROR_SYSCALL). GDELT blocks Railway egress outright, so PROXY_URL is mandatory rather than a fallback, and seed-gdelt-intel is deliberately not part of the per-source proxy split."
     },
     {
       "name": "humanitarianSummary",
       "status": "SEED_ERROR",
-      "issue": 5756,
-      "reason": "HAPI returns 'Blocked due to bot activity' to Railway egress (same signature as #5713, which was closed). Recovers intermittently between health snapshots. Needs its own tracking issue."
+      "issue": 5769,
+      "reason": "HAPI returns 'Blocked due to bot activity' to Railway egress (same signature as #5713, which was closed). Recovers intermittently between health snapshots, so one green poll is not evidence of recovery."
     },
     {
       "name": "chinaCoverage",
       "status": "CHINA_DEGRADED",
-      "issue": 5756,
-      "reason": "Stale CCFI transport (TRANSPORT_STALE) plus partial official-exchange disclosures (CHINA_COVERAGE_PARTIAL). On-demand key; redundant once the onDemand marker deploys."
+      "issue": 5771,
+      "reason": "Stale CCFI transport (TRANSPORT_STALE) plus partial official-exchange disclosures (CHINA_COVERAGE_PARTIAL). Activation-gated on-demand key: the activation marker is already written, so isOnDemand is permanently false and this entry is load-bearing, not transitional."
     },
     {
       "name": "shippingRates",
       "status": "STALE_SEED",
-      "issue": 5756,
-      "reason": "Two controlled Railway recovery windows produced no container execution. Flaps between polls. On-demand key; redundant once the onDemand marker deploys."
+      "issue": 5773,
+      "reason": "Two controlled Railway recovery windows produced no container execution at all. Flaps between polls. Carries the onDemand marker permanently, but the monitor only excuses on-demand sources in the empty/absent states, so this entry is what holds the gate green."
     }
   ]
 }
