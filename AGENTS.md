@@ -234,7 +234,7 @@ Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in
 - Yahoo Finance requests must be staggered (150ms delays)
 - New data sources MUST have bootstrap hydration wired in `api/bootstrap.js`
 - Redis seed scripts MUST write `seed-meta:<key>` for health monitoring
-- Seed credentials come from the current checkout only — call `loadEnvFile()`, never resolve a `.env` path from `$HOME` or an absolute literal
+- Seed credentials load only via `loadEnvFile()` (inert under test runtimes, resolves `.env.local` at the checkout root, `only:` narrows the keys) — never hand-roll a `.env` reader or resolve one from `$HOME` or an absolute literal. Note `worktree:bootstrap` symlinks the source checkout's `.env.local`, so a bootstrapped worktree shares real credentials when a seeder is actually run
 
 ## External References
 

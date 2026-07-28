@@ -10,12 +10,9 @@
  *   node scripts/seed-wb-indicators.mjs [--env production|preview|development] [--sha <sha>]
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { loadEnvFile } from './_seed-utils.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const PROGRESS_KEY = 'economic:worldbank-progress:v1';
