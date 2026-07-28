@@ -1,4 +1,5 @@
 import COUNTRY_BBOXES from '../../../shared/country-bboxes.js';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import {
   CHINA_DECISION_SIGNAL_GROUP_IDS,
   CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES,
@@ -1537,7 +1538,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
       const limit = Math.max(1, Math.round(Number(params.limit ?? 10)) || 10);
-      const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'];
+      const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
         { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 30 },
@@ -1579,7 +1580,7 @@ export const RPC_TOOLS: ToolDef[] = [
         },
       };
     },
-    _coverageKeys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
+    _coverageKeys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live],
     _apiPaths: [],
   },
   {
@@ -1906,7 +1907,7 @@ export const RPC_TOOLS: ToolDef[] = [
     _execute: async (params) => {
       const view = typeof params.view === 'string' ? params.view : 'today';
       const keys = [
-        'risk:scores:sebuf:v8',
+        CII_RISK_SCORE_CACHE_KEYS.live,
         'military:surges:v1',
         'cable-health-v1',
         'infra:outages:v1',
@@ -1959,7 +1960,7 @@ export const RPC_TOOLS: ToolDef[] = [
       };
     },
     _coverageKeys: [
-      'risk:scores:sebuf:v8',
+      CII_RISK_SCORE_CACHE_KEYS.live,
       'military:surges:v1',
       'cable-health-v1',
       'infra:outages:v1',
@@ -2017,7 +2018,7 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
-      const keys = ['news:insights:v1', 'risk:scores:sebuf:v8', 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'];
+      const keys = ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
         { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30 },
@@ -2100,7 +2101,7 @@ export const RPC_TOOLS: ToolDef[] = [
       const freshness = evaluateFreshness(checks, metas);
       return { ...freshness, data: { hotspots: scored.slice(0, limit) } };
     },
-    _coverageKeys: ['news:insights:v1', 'risk:scores:sebuf:v8', 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'],
+    _coverageKeys: ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'],
     _apiPaths: [],
   },
   {

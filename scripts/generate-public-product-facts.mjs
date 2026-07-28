@@ -330,6 +330,26 @@ for (const path of proTestLocaleSurfaces) {
   });
 }
 
+// The translation baseline records the English string each committed
+// translation was made from. A tool-count bump is a pure numeral
+// substitution already applied to EVERY locale above, so the baseline gets
+// the same substitution — otherwise every count change would report the five
+// count-bearing keys as drifted and demand a full LLM translation pass for a
+// number. Guarded by tests/pro-locale-freshness.test.mjs.
+transform('scripts/locale-baselines/pro-test.json', (source) => {
+  const baseline = JSON.parse(source);
+  if (typeof baseline['welcome.depth.s12v'] === 'string') {
+    baseline['welcome.depth.s12v'] = String(mcpToolCount);
+  }
+  for (const keys of LOCALE_TOOL_COUNT_PROSE_KEYS) {
+    const flatKey = keys.join('.');
+    if (typeof baseline[flatKey] === 'string') {
+      baseline[flatKey] = baseline[flatKey].replace(/\b\d{2,}\b/g, String(mcpToolCount));
+    }
+  }
+  return json(baseline);
+});
+
 const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
   .filter((name) => name.endsWith('.json'))
   .map((name) => `pro-test/src/locales/${name}`)

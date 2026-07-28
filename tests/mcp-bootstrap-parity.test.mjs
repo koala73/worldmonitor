@@ -15,7 +15,6 @@ import assert from 'node:assert/strict';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import { __testing__ as mcpTesting } from '../api/mcp.ts';
-import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
 
 const { BOOTSTRAP_KEYS, STANDALONE_KEYS } = healthTesting;
 const { TOOL_REGISTRY } = mcpTesting;
