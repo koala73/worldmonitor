@@ -41,7 +41,11 @@ export async function readJsonBatchFromUpstashWithStatus(keys, timeoutMs = 3_000
   try {
     const resp = await fetch(`${creds.url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${creds.token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-edge/1.0',
+      },
       body: JSON.stringify(keys.map((key) => ['GET', key])),
       signal: AbortSignal.timeout(timeoutMs),
     });
