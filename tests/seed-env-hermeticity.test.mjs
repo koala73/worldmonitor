@@ -163,6 +163,9 @@ describe('seeder env hermeticity (#5767)', () => {
         [{ NODE_TEST_CONTEXT: 'child' }, true, 'node:test child process (json)'],
         [{ VITEST: 'true' }, true, 'vitest'],
         [{ VITEST_WORKER_ID: '3' }, true, 'vitest worker'],
+        // The value vitest actually uses for its first worker. Pinned because a
+        // refactor to a truthiness check would keep every other case green.
+        [{ VITEST_WORKER_ID: '0' }, true, 'vitest worker zero'],
         [{ JEST_WORKER_ID: '1' }, true, 'jest worker'],
         [{ NODE_ENV: 'test' }, true, 'NODE_ENV=test'],
         [{}, false, 'plain node process'],
