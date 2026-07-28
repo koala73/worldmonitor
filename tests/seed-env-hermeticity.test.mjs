@@ -107,6 +107,33 @@ function findCheckoutEscapingEnvPaths(source) {
   return offenders;
 }
 
+// Files under scripts/ allowed to parse a .env file into process.env themselves.
+// Every other script must route through the shared `loadEnvFile`, which is where
+// the test-runtime and checkout-scoping rules live — a private copy of the parser
+// silently opts out of both, which is how #5767's second instance survived.
+const ENV_PARSER_ALLOWLIST = new Set([
+  // The one implementation.
+  'scripts/_seed-utils.mjs',
+  // Deliberately narrower than the shared helper: hydrates only the two Upstash
+  // keys it needs rather than bulk-importing every var, and is main()-scoped.
+  'scripts/shadow-score-report.mjs',
+]);
+
+/**
+ * Pure predicate: does this source parse a `.env` file into `process.env` itself?
+ * Keyed on the two halves that must both be present — reading a `.env` path and
+ * writing a computed key into `process.env` — so merely mentioning `.env.local`
+ * in a comment, or symlinking it (bootstrap-worktree.mjs), does not trip it.
+ */
+function parsesEnvFileItself(source) {
+  const readsEnvFile = /['"`][^'"`\n]*\.env(?:\.local)?['"`]/.test(source);
+  // `[^\n]*?` rather than `[^\]]+` so a nested subscript still matches — the real
+  // loaders write `process.env[m[1]] = m[2]`, which a bracket-excluding class
+  // silently skips. The trailing `[^=]` keeps `===` comparisons out.
+  const writesComputedEnvKey = /process\.env\[[^\n]*?\]\s*=[^=]/.test(source);
+  return readsEnvFile && writesComputedEnvKey;
+}
+
 describe('seeder env hermeticity (#5767)', () => {
   describe('isTestRuntime()', () => {
     it('detects the runners that import seeder modules', () => {
@@ -223,6 +250,64 @@ describe('seeder env hermeticity (#5767)', () => {
       }
       assert.ok(scanned > 100, `expected to scan the seeder fleet, scanned ${scanned}`);
       assert.deepEqual(offenders, [], `scripts reaching outside the checkout:\n${offenders.join('\n')}`);
+    });
+  });
+
+  describe('only the shared helper parses .env files', () => {
+    it('parsesEnvFileItself needs both halves — a read AND a computed process.env write', () => {
+      assert.equal(
+        parsesEnvFileItself(`const p = join(root, '.env.local');\nprocess.env[key] = val;`),
+        true,
+      );
+      assert.equal(
+        // The shape both real loaders use — a nested subscript on the left.
+        parsesEnvFileItself(
+          `readFileSync('.env.local');\nif (!process.env[m[1]]) process.env[m[1]] = m[2];`,
+        ),
+        true,
+        'a nested subscript must not evade the guard',
+      );
+      assert.equal(
+        parsesEnvFileItself(`const p = '.env.local';\nif (process.env[key] === val) return;`),
+        false,
+        'a comparison is not a write',
+      );
+      // Negatives: each half alone, and the shapes that legitimately touch either.
+      assert.equal(parsesEnvFileItself(`// documented in .env.local`), false, 'comment only');
+      assert.equal(parsesEnvFileItself(`process.env[key] = val;`), false, 'no env file read');
+      assert.equal(
+        parsesEnvFileItself(`symlinkSync(join(src, '.env.local'), dest);`),
+        false,
+        'symlinking an env file is not parsing it',
+      );
+      assert.equal(
+        parsesEnvFileItself(`const p = '.env.local';\nprocess.env.FOO = 'bar';`),
+        false,
+        'a fixed-key write is not a bulk import',
+      );
+    });
+
+    it('no script under scripts/ re-implements the loader', async () => {
+      const offenders = [];
+      for await (const entry of glob('scripts/**/*.{mjs,cjs,js}', { cwd: REPO_ROOT })) {
+        if (entry.includes('node_modules') || ENV_PARSER_ALLOWLIST.has(entry)) continue;
+        if (parsesEnvFileItself(readFileSync(join(REPO_ROOT, entry), 'utf8'))) offenders.push(entry);
+      }
+      assert.deepEqual(
+        offenders,
+        [],
+        `these parse .env themselves instead of calling loadEnvFile(), so they bypass the ` +
+          `test-runtime guard entirely:\n${offenders.join('\n')}`,
+      );
+    });
+
+    it('the allowlist has no stale entries', async () => {
+      for (const entry of ENV_PARSER_ALLOWLIST) {
+        assert.ok(
+          parsesEnvFileItself(readFileSync(join(REPO_ROOT, entry), 'utf8')),
+          `${entry} no longer parses .env itself — drop it from ENV_PARSER_ALLOWLIST`,
+        );
+      }
     });
   });
 });
