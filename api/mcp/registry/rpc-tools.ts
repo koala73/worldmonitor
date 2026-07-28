@@ -52,6 +52,7 @@ import {
   recalcPostureWithVessels,
 } from '../../../shared/analysis-military-surge';
 import {
+  computeBoundedExposure,
   computeExposure,
   getRadiusForEventType,
   listCountryPopulations,
@@ -1994,7 +1995,7 @@ export const RPC_TOOLS: ToolDef[] = [
         return {
           cached_at: null,
           stale: false,
-          data: { events: null, exposure: computeExposure(lat, lon, radiusKm), countries: null },
+          data: { events: null, exposure: computeBoundedExposure(lat, lon, radiusKm), countries: null },
         };
       }
 

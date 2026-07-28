@@ -4,11 +4,13 @@ import { describe, it } from 'node:test';
 import {
   PRIORITY_COUNTRIES,
   EXPOSURE_CENTROIDS,
+  computeBoundedExposure,
   computeExposure,
   getRadiusForEventType,
   listCountryPopulations,
   MAX_EXPOSURE_RADIUS_KM,
 } from '../shared/analysis-population-exposure.ts';
+import { getPopulationExposure } from '../server/worldmonitor/displacement/v1/get-population-exposure.ts';
 import {
   Z_THRESHOLD_LOW,
   Z_THRESHOLD_MEDIUM,
@@ -87,10 +89,10 @@ describe('analysis-temporal-severity core', () => {
 });
 
 describe('exposure radius clamping', () => {
-  it('caps the radius so an absurd request cannot return an absurd population', () => {
+  it('caps free-form agent radii so an absurd request cannot return an absurd population', () => {
     // Unclamped, radius 20000 returned ~5.6e11 people — roughly 69x the world
     // population — because density is multiplied across the whole disc.
-    const wild = computeExposure(31.0, 34.8, 20000);
+    const wild = computeBoundedExposure(31.0, 34.8, 20000);
     assert.equal(wild.exposureRadiusKm, MAX_EXPOSURE_RADIUS_KM, 'result reports the radius actually used');
     const capped = computeExposure(31.0, 34.8, MAX_EXPOSURE_RADIUS_KM);
     assert.equal(wild.exposedPopulation, capped.exposedPopulation);
@@ -105,9 +107,22 @@ describe('exposure radius clamping', () => {
 
   it('treats non-finite and negative radii as zero rather than NaN', () => {
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
-      const result = computeExposure(31.0, 34.8, bad);
+      const result = computeBoundedExposure(31.0, 34.8, bad);
       assert.equal(result.exposedPopulation, 0);
       assert.equal(result.exposureRadiusKm, 0);
     }
+  });
+});
+
+describe('v1 population-exposure compatibility', () => {
+  it('preserves the existing unbounded REST radius contract', async () => {
+    const radius = MAX_EXPOSURE_RADIUS_KM + 1;
+    const result = await getPopulationExposure(
+      /** @type {never} */ ({}),
+      { mode: 'exposure', lat: 31.0, lon: 34.8, radius },
+    );
+
+    assert.equal(result.exposure?.exposureRadiusKm, radius);
+    assert.deepEqual(result.exposure, computeExposure(31.0, 34.8, radius));
   });
 });

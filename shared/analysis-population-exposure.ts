@@ -65,7 +65,7 @@ export const EXPOSURE_CENTROIDS: Record<string, [number, number]> = {
 const FALLBACK_INFO: PriorityCountryInfo = { name: '', pop: 50_000_000, area: 500_000 };
 
 /**
- * Ceiling on the exposure radius.
+ * Ceiling for new agent-facing exposure requests.
  *
  * The estimate multiplies ONE country's average density across the whole
  * disc, so it is only meaningful while the disc stays inside terrain that
@@ -75,15 +75,15 @@ const FALLBACK_INFO: PriorityCountryInfo = { name: '', pop: 50_000_000, area: 50
  * radius 20000 yields ~5.6e11 people, ~69x world population — which is worse
  * than refusing, because it looks like an answer.
  *
- * Callers see the radius actually used via `exposureRadiusKm` on the result.
+ * The existing v1 REST RPC predates this ceiling and keeps its unbounded
+ * contract. New callers that accept free-form radii use
+ * `computeBoundedExposure`; callers with already-bounded domain radii use
+ * `computeExposure`.
  */
 export const MAX_EXPOSURE_RADIUS_KM = 1000;
 
 export function computeExposure(lat: number, lon: number, radiusKm: number): ExposureEstimate {
-  const effectiveRadiusKm = Math.min(
-    MAX_EXPOSURE_RADIUS_KM,
-    Math.max(0, Number.isFinite(radiusKm) ? radiusKm : 0),
-  );
+  const effectiveRadiusKm = Math.max(0, Number.isFinite(radiusKm) ? radiusKm : 0);
   let bestMatch: string | null = null;
   let bestDist = Infinity;
 
@@ -105,6 +105,17 @@ export function computeExposure(lat: number, lon: number, radiusKm: number): Exp
     nearestCountry: bestMatch || '',
     densityPerKm2: Math.round(density),
   };
+}
+
+export function computeBoundedExposure(
+  lat: number,
+  lon: number,
+  radiusKm: number,
+): ExposureEstimate {
+  const boundedRadiusKm = Number.isFinite(radiusKm)
+    ? Math.min(MAX_EXPOSURE_RADIUS_KM, Math.max(0, radiusKm))
+    : 0;
+  return computeExposure(lat, lon, boundedRadiusKm);
 }
 
 export function getRadiusForEventType(type: string): number {
