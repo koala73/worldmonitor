@@ -44,6 +44,68 @@ function inRange(history, start, end) {
   return history.filter((row) => row.date >= start && row.date <= end);
 }
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function assertCompleteDailyCoverage(id, series) {
+  const history = series?.history;
+  if (!Array.isArray(history) || history.length === 0) {
+    throw new Error(`${id} has incomplete daily coverage: no observations`);
+  }
+
+  const start = series.observationStart;
+  const end = series.observationEnd;
+  if (!ISO_DATE_PATTERN.test(start ?? '') || !ISO_DATE_PATTERN.test(end ?? '') || start > end) {
+    throw new Error(
+      `${id} has incomplete daily coverage: invalid observation range ${start ?? 'unknown'} → ${end ?? 'unknown'}`,
+    );
+  }
+
+  const present = new Set();
+  let previousDate = null;
+  for (const row of history) {
+    const date = row?.date;
+    if (!ISO_DATE_PATTERN.test(date ?? '')) {
+      throw new Error(`${id} has incomplete daily coverage: invalid observation date ${date ?? 'unknown'}`);
+    }
+    if (previousDate !== null && date <= previousDate) {
+      throw new Error(
+        `${id} has incomplete daily coverage: dates must be unique and ascending (${previousDate}, ${date})`,
+      );
+    }
+    present.add(date);
+    previousDate = date;
+  }
+
+  const missing = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  for (; cursor <= last; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const date = cursor.toISOString().slice(0, 10);
+    if (!present.has(date)) missing.push(date);
+  }
+  if (missing.length > 0) {
+    const preview = missing.slice(0, 5).join(', ');
+    const remainder = missing.length > 5 ? ` (+${missing.length - 5} more)` : '';
+    throw new Error(`${id} has incomplete daily coverage: missing ${preview}${remainder}`);
+  }
+
+  if (history[0].date !== start || history.at(-1).date !== end) {
+    throw new Error(
+      `${id} has incomplete daily coverage: history bounds do not match ${start} → ${end}`,
+    );
+  }
+  if (series.rowCount !== history.length) {
+    throw new Error(
+      `${id} has incomplete daily coverage: rowCount ${series.rowCount} does not match ${history.length} observations`,
+    );
+  }
+  if (!Array.isArray(series.missingDates) || series.missingDates.length > 0) {
+    throw new Error(
+      `${id} has incomplete daily coverage: missingDates metadata must be an empty array`,
+    );
+  }
+}
+
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function monthLabel(isoMonth) {
@@ -93,6 +155,16 @@ export function computeReportMetrics(snapshot, report) {
   }
   const focus = snapshot.chokepoints[report.focusChokepointId];
   if (!focus) throw new Error(`Snapshot has no focus chokepoint ${report.focusChokepointId}`);
+  const publishedSeriesIds = new Set([
+    ...Object.keys(snapshot.chokepoints),
+    report.focusChokepointId,
+    ...(report.contextChokepointIds ?? []),
+  ]);
+  for (const id of publishedSeriesIds) {
+    const series = snapshot.chokepoints[id];
+    if (!series) throw new Error(`Snapshot has no published chokepoint ${id}`);
+    assertCompleteDailyCoverage(id, series);
+  }
   const history = focus.history;
   const observationEnd = focus.observationEnd;
   const capturedAtDate = String(snapshot.capturedAt).slice(0, 10);
