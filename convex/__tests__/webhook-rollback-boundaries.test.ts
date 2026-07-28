@@ -154,6 +154,50 @@ describe("malformed webhook transactional rollback", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #5380 Medium-11 (PARTIAL): exactly-once under concurrent DISPATCH
+// ---------------------------------------------------------------------------
+
+// Scope, stated precisely so this test is not mistaken for a race proof:
+// `convex-test` runs mutations to completion one at a time, so dispatching both
+// deliveries without awaiting between them does NOT interleave their
+// transactions. What this pins is the invariant at the boundary the HTTP action
+// actually uses — two in-flight deliveries of one webhookId leave exactly one
+// activation — with the second landing on the dedup-ledger branch.
+//
+// The genuine interleaving (both handlers reading an empty `by_webhookId` index
+// before either inserts) is not reproducible in this harness. In production
+// Convex's serializable isolation is what closes it: the first insert
+// invalidates the second transaction's read set, so it retries and then sees
+// the ledger row. That is a property of the Convex runtime, not of this code,
+// and it is why census #11 stays open rather than being claimed here.
+describe("concurrent dispatch of one webhookId", () => {
+  test("two in-flight deliveries activate exactly one subscription", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t);
+    await seedCustomer(t);
+
+    const payload = makeSubscriptionPayload();
+    const settled = await Promise.allSettled([
+      processEvent(t, "wh_concurrent_1", "subscription.active", payload, BASE_TIMESTAMP),
+      processEvent(t, "wh_concurrent_1", "subscription.active", payload, BASE_TIMESTAMP),
+    ]);
+    // Neither delivery may error: the loser is a dedup skip, not a failure —
+    // a rejection here would make the HTTP action return 500 and have Dodo
+    // retry an event that was already applied.
+    expect(settled.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+
+    const { subs, ents, events } = await t.run(async (ctx) => ({
+      subs: await ctx.db.query("subscriptions").collect(),
+      ents: await ctx.db.query("entitlements").collect(),
+      events: await ctx.db.query("webhookEvents").collect(),
+    }));
+    expect(subs).toHaveLength(1);
+    expect(ents).toHaveLength(1);
+    expect(events).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #5380 Medium-10: Dodo error contract, against REAL SDK error instances
 // ---------------------------------------------------------------------------
 
