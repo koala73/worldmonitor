@@ -18,7 +18,7 @@ import "worldmonitor/military/v1/list_defense_patents.proto";
 service MilitaryService {
   option (sebuf.http.service_config) = {base_path: "/api/military/v1"};
 
-  // ListMilitaryFlights retrieves paginated military aircraft observations and clusters from OpenSky and Wingbits with callsign, position, altitude and operator.
+  // ListMilitaryFlights returns paginated OpenSky military aircraft observations within a bounding box, including callsign, position, altitude and operator fields.
   rpc ListMilitaryFlights(ListMilitaryFlightsRequest) returns (ListMilitaryFlightsResponse) {
     option (sebuf.http.config) = {path: "/list-military-flights", method: HTTP_METHOD_GET};
   }

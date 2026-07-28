@@ -176,7 +176,7 @@ paths:
             tags:
                 - MaritimeService
             summary: ListNavigationalWarnings
-            description: ListNavigationalWarnings retrieves active NGA maritime safety warnings, with issue and expiry times, affected areas, source authority and full warning text.
+            description: ListNavigationalWarnings retrieves active NGA maritime safety warnings with issue times, affected areas, source authority, area filtering and full warning text.
             operationId: ListNavigationalWarnings
             parameters:
                 - name: page_size

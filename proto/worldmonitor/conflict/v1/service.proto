@@ -28,7 +28,7 @@ service ConflictService {
     option (sebuf.http.config) = {path: "/get-humanitarian-summary", method: HTTP_METHOD_GET};
   }
 
-  // ListIranEvents retrieves recent Iran conflict events from LiveUAMap with titles, categories, severity, locations, coordinates, timestamps and cited source URLs.
+  // ListIranEvents is disabled by default; enable IRAN_EVENTS_ENABLED to return cached LiveUAMap Iran conflict records, otherwise an empty list with scrapedAt zero.
   rpc ListIranEvents(ListIranEventsRequest) returns (ListIranEventsResponse) {
     option (sebuf.http.config) = {path: "/list-iran-events", method: HTTP_METHOD_GET};
   }

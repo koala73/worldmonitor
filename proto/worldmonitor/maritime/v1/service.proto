@@ -17,7 +17,7 @@ service MaritimeService {
     option (sebuf.http.config) = {path: "/get-vessel-snapshot", method: HTTP_METHOD_GET};
   }
 
-  // ListNavigationalWarnings retrieves active NGA maritime safety warnings, with issue and expiry times, affected areas, source authority and full warning text.
+  // ListNavigationalWarnings retrieves active NGA maritime safety warnings with issue times, affected areas, source authority, area filtering and full warning text.
   rpc ListNavigationalWarnings(ListNavigationalWarningsRequest) returns (ListNavigationalWarningsResponse) {
     option (sebuf.http.config) = {path: "/list-navigational-warnings", method: HTTP_METHOD_GET};
   }

@@ -595,7 +595,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListIranEvents
-            description: ListIranEvents retrieves recent Iran conflict events from LiveUAMap with titles, categories, severity, locations, coordinates, timestamps and cited source URLs.
+            description: ListIranEvents is disabled by default; enable IRAN_EVENTS_ENABLED to return cached LiveUAMap Iran conflict records, otherwise an empty list with scrapedAt zero.
             operationId: ListIranEvents
             parameters:
                 - name: jmespath

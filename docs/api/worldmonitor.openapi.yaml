@@ -2718,7 +2718,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListIranEvents
-            description: ListIranEvents retrieves recent Iran conflict events from LiveUAMap with titles, categories, severity, locations, coordinates, timestamps and cited source URLs.
+            description: ListIranEvents is disabled by default; enable IRAN_EVENTS_ENABLED to return cached LiveUAMap Iran conflict records, otherwise an empty list with scrapedAt zero.
             operationId: ListIranEvents
             parameters:
                 - name: jmespath
@@ -12582,7 +12582,7 @@ paths:
             tags:
                 - MaritimeService
             summary: ListNavigationalWarnings
-            description: ListNavigationalWarnings retrieves active NGA maritime safety warnings, with issue and expiry times, affected areas, source authority and full warning text.
+            description: ListNavigationalWarnings retrieves active NGA maritime safety warnings with issue times, affected areas, source authority, area filtering and full warning text.
             operationId: ListNavigationalWarnings
             parameters:
                 - name: page_size
@@ -14938,7 +14938,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryFlights
-            description: ListMilitaryFlights retrieves paginated military aircraft observations and clusters from OpenSky and Wingbits with callsign, position, altitude and operator.
+            description: ListMilitaryFlights returns paginated OpenSky military aircraft observations within a bounding box, including callsign, position, altitude and operator fields.
             operationId: ListMilitaryFlights
             parameters:
                 - name: page_size
