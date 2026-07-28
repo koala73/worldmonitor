@@ -976,7 +976,7 @@ export async function startCheckout(
     // which skipped the contract-violation reporter below, discarded the
     // upstream snapshot that would name the emitter, and split one bug
     // across a Sentry fingerprint per browser engine. WORLDMONITOR-XV.
-    const rawSuccessText = await resp.text().catch(() => '');
+    const rawSuccessText = await resp.text();
     const result = parseCheckoutSuccessBody(rawSuccessText);
     if (result === null) {
       // A 200 we cannot parse is a different contract violation from a

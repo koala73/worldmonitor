@@ -23,6 +23,7 @@ import { build, type Plugin } from 'esbuild';
 
 interface CapturedReport {
   message: string;
+  exception?: unknown;
   level?: string;
   tags?: Record<string, string>;
   extra?: Record<string, unknown>;
@@ -34,6 +35,7 @@ interface HarnessState {
   /** Body + headers the stub fetch should answer the create-checkout POST with. */
   responseBody: string;
   responseHeaders: Record<string, string>;
+  bodyReadError?: unknown;
 }
 
 declare global {
@@ -90,7 +92,10 @@ function installBrowserGlobals(): void {
       return {
         ok: true,
         status: 200,
-        text: async () => harness.responseBody,
+        text: async () => {
+          if (harness.bodyReadError !== undefined) throw harness.bodyReadError;
+          return harness.responseBody;
+        },
         json: async () => JSON.parse(harness.responseBody),
         headers: { get: (name: string) => harness.responseHeaders[name.toLowerCase()] ?? null },
       };
@@ -98,8 +103,12 @@ function installBrowserGlobals(): void {
   });
 }
 
-function resetHarness(responseBody: string, responseHeaders: Record<string, string> = {}): void {
-  globalThis.__xvHarness = { reports: [], assignedUrls: [], responseBody, responseHeaders };
+function resetHarness(
+  responseBody: string,
+  responseHeaders: Record<string, string> = {},
+  bodyReadError?: unknown,
+): void {
+  globalThis.__xvHarness = { reports: [], assignedUrls: [], responseBody, responseHeaders, bodyReadError };
   installBrowserGlobals();
 }
 
@@ -110,7 +119,11 @@ const stubSources: Record<string, string> = {
       fn({
         addBreadcrumb: () => {},
         captureMessage: (message, payload) => globalThis.__xvHarness.reports.push({ message, ...payload }),
-        captureException: (err, payload) => globalThis.__xvHarness.reports.push({ message: String(err && err.message || err), ...payload }),
+        captureException: (err, payload) => globalThis.__xvHarness.reports.push({
+          message: String(err && err.message || err),
+          exception: err,
+          ...payload,
+        }),
       });
     }
   `,
@@ -214,6 +227,26 @@ function soleReport(): CapturedReport {
 }
 
 describe('create-checkout 200 with an unparsable body (WORLDMONITOR-XV)', () => {
+  it('preserves a rejected body read as the original transport exception', async () => {
+    const bodyReadError = new DOMException('The operation was aborted.', 'AbortError');
+    resetHarness('', {}, bodyReadError);
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('prod_monthly'), false);
+    assert.deepEqual(globalThis.__xvHarness.assignedUrls, ['https://worldmonitor.app/pro']);
+
+    const report = soleReport();
+    assert.strictEqual(report.exception, bodyReadError);
+    assert.equal((report.exception as Error).name, 'AbortError');
+    assert.equal((report.exception as Error).stack, bodyReadError.stack);
+    assert.equal(report.message, 'The operation was aborted.');
+    assert.equal(report.tags?.action, 'exception');
+    assert.notEqual(report.tags?.action, 'unparsable-success-body');
+    assert.equal(report.tags?.code, 'service_unavailable');
+    assert.equal(report.extra?.serverMessage, 'The operation was aborted.');
+    assert.equal(Object.hasOwn(report.extra ?? {}, 'upstream'), false);
+  });
+
   it('reports the contract violation instead of letting the parse error escape', async () => {
     // An HTML interstitial served with 200 — the shape a middlebox or edge
     // challenge produces, and what a bare resp.json() choked on.
