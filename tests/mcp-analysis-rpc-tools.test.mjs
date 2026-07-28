@@ -30,6 +30,8 @@ import { installRedis } from './helpers/fake-upstash-redis.mts';
 // imports TOOL_REGISTRY back from the barrel, so importing it first hits the
 // cycle mid-initialisation ("Cannot access 'RPC_TOOLS' before initialization").
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
+import { McpSourceUnavailableError } from '../api/mcp/source-unavailable.ts';
 
 const NOW = Date.UTC(2026, 6, 28, 12, 0, 0);
 const MIN = 60_000;
@@ -638,11 +640,6 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
     },
     {
-      tool: 'simulate_infrastructure_cascade',
-      params: {},
-      keys: ['infrastructure:submarine-cables:v1'],
-    },
-    {
       tool: 'get_military_surge',
       params: {},
       keys: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1'],
@@ -683,7 +680,11 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       installUpstashStub(analysisPayloads(), { misses: keys });
       await assert.rejects(
         () => findTool(tool)._execute(params, '', {}, {}),
-        /cache_all_null/,
+        (error) => {
+          assert.ok(error instanceof McpSourceUnavailableError);
+          assert.deepEqual(error.unavailableInputs, keys);
+          return true;
+        },
       );
     });
   }
@@ -715,6 +716,12 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     const military = await findTool('get_military_surge')._execute({}, '', {}, {});
     assert.equal(military.data.history_available, true);
     assert.equal(military.data.seeded_surges_available, true);
+    assert.equal(military.data.cii_available, true);
+    assert.equal(
+      military.data.postures.find((posture) => posture.theaterId === 'iran-theater').postureLevel,
+      'critical',
+      'the server posture must include the same CII elevation as the dashboard',
+    );
     assert.deepEqual(military.unavailable_inputs, []);
 
     const population = await findTool('get_population_exposure')._execute(
@@ -736,6 +743,29 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     const hotspot = await findTool('get_hotspot_escalation')._execute({ hotspot_id: 'tehran' }, '', {}, {});
     assert.equal(hotspot.data.hotspots.length, 1);
     assert.equal(hotspot.data.hotspots[0].components.ciiContribution, 88);
+    assert.deepEqual(
+      {
+        breaking_news: hotspot.data.input_availability.breaking_news,
+        news_velocity: hotspot.data.input_availability.news_velocity,
+        military_vessels: hotspot.data.input_availability.military_vessels,
+        score_history: hotspot.data.input_availability.score_history,
+      },
+      {
+        breaking_news: false,
+        news_velocity: false,
+        military_vessels: false,
+        score_history: false,
+      },
+    );
+
+    installUpstashStub(analysisPayloads(), { misses: ['unrest:events:v1'] });
+    const degradedHotspot = await findTool('get_hotspot_escalation')._execute(
+      { hotspot_id: 'tehran' },
+      '',
+      {},
+      {},
+    );
+    assert.equal(degradedHotspot.data.input_availability.geo_convergence, false);
   });
 
   it('returns the simulatable cascade catalog when source_id is omitted', async () => {
@@ -752,6 +782,75 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(result.data.stats.nodes > 0);
     assert.ok(catalogNodes.some((node) => node.id === 'cable:sea-me-we-5'));
     assert.ok(catalogNodes.every((node) => !node.id.startsWith('country-')));
+  });
+
+  it('keeps the static cascade catalog and chokepoint simulations available without cable data', async () => {
+    installUpstashStub(analysisPayloads(), {
+      misses: ['infrastructure:submarine-cables:v1'],
+    });
+    const tool = findTool('simulate_infrastructure_cascade');
+    const catalogResult = await tool._execute({}, '', {}, {});
+    const catalogNodes = Object.values(catalogResult.data.catalog).flat();
+
+    assert.equal(catalogResult.stale, true);
+    assert.ok(catalogResult.unavailable_inputs.includes('infrastructure:submarine-cables:v1'));
+    assert.ok(catalogNodes.some((node) => node.id === 'chokepoint:hormuz_strait'));
+    assert.ok(catalogNodes.every((node) => !node.id.startsWith('cable:')));
+
+    const cascadeResult = await tool._execute(
+      { source_id: 'chokepoint:hormuz_strait', disruption_level: 0.8 },
+      '',
+      {},
+      {},
+    );
+    assert.equal(cascadeResult.data.cascade.source.id, 'chokepoint:hormuz_strait');
+    assert.equal(cascadeResult.stale, true);
+
+    await assert.rejects(
+      () => tool._execute({ source_id: 'cable:sea-me-we-5' }, '', {}, {}),
+      (error) => {
+        assert.ok(error instanceof McpSourceUnavailableError);
+        assert.ok(error.unavailableInputs.includes('infrastructure:submarine-cables:v1'));
+        return true;
+      },
+    );
+  });
+
+  it('preserves safe outage diagnostics through the JSON-RPC dispatcher', async () => {
+    const keys = ['unrest:events:v1', 'military:flights:v1', 'seismology:earthquakes:v1', 'usni-fleet:sebuf:v1'];
+    installUpstashStub(analysisPayloads(), { misses: keys });
+
+    const telemetry = [];
+    const originalLog = console.log;
+    const originalTelemetry = process.env.MCP_TELEMETRY;
+    process.env.MCP_TELEMETRY = '1';
+    console.log = (event) => telemetry.push(event);
+    let response;
+    try {
+      response = await dispatchToolsCall(
+        new Request('http://localhost/mcp'),
+        { kind: 'env_key', apiKey: 'test' },
+        {},
+        { id: 7, params: { name: 'get_signal_convergence', arguments: {} } },
+        {},
+      );
+    } finally {
+      console.log = originalLog;
+      if (originalTelemetry === undefined) delete process.env.MCP_TELEMETRY;
+      else process.env.MCP_TELEMETRY = originalTelemetry;
+    }
+    const body = await response.json();
+
+    assert.equal(body.error.code, -32003);
+    assert.equal(body.error.message, 'Required data inputs are unavailable');
+    assert.equal(body.error.data.retryable, true);
+    assert.equal(body.error.data.stale, true);
+    assert.deepEqual(body.error.data.unavailable_inputs, keys);
+    assert.deepEqual(body.error.data.failed_inputs, []);
+    assert.equal(
+      telemetry.find((event) => event?.tag === 'mcp.toolcall')?.error_kind,
+      'source_unavailable',
+    );
   });
 
   it('filters convergence alerts by a valid radius', async () => {
@@ -816,6 +915,45 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.deepEqual(result.failed_inputs, ['military:flights:v1']);
   });
 
+  it('rejects fresh but producer-invalid payloads instead of reporting a quiet period', async () => {
+    const payloads = analysisPayloads();
+    const keys = ['unrest:events:v1', 'military:flights:v1', 'seismology:earthquakes:v1', 'usni-fleet:sebuf:v1'];
+    for (const key of keys) payloads[key] = {};
+    installUpstashStub(payloads);
+
+    await assert.rejects(
+      () => findTool('get_signal_convergence')._execute({}, '', {}, {}),
+      (error) => {
+        assert.ok(error instanceof McpSourceUnavailableError);
+        assert.deepEqual(error.unavailableInputs, keys);
+        assert.deepEqual(error.failedInputs, keys);
+        return true;
+      },
+    );
+  });
+
+  it('keeps valid empty producer envelopes distinct from malformed caches', async () => {
+    installUpstashStub({
+      ...analysisPayloads(),
+      'unrest:events:v1': { events: [] },
+      'military:flights:v1': { flights: [] },
+      'seismology:earthquakes:v1': { earthquakes: [] },
+      'usni-fleet:sebuf:v1': { vessels: [] },
+    });
+
+    const result = await findTool('get_signal_convergence')._execute({}, '', {}, {});
+    assert.equal(result.stale, false);
+    assert.deepEqual(result.unavailable_inputs, []);
+    assert.deepEqual(result.failed_inputs, []);
+    assert.deepEqual(result.data.alerts, []);
+    assert.deepEqual(result.data.feeds, {
+      protests: 0,
+      military_flights: 0,
+      earthquakes: 0,
+      naval_vessels: 0,
+    });
+  });
+
   it('classifies a seed envelope without data as a failed input', async () => {
     const payloads = analysisPayloads();
     payloads['military:flights:v1'] = {
@@ -872,6 +1010,18 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(result.unavailable_inputs.includes('military:surges:history:v1'));
     assert.equal(result.data.history_available, false);
     assert.equal(result.data.seeded_surges_available, true);
+  });
+
+  it('does not synthesize CII-only military postures when both asset feeds are unavailable', async () => {
+    installUpstashStub(analysisPayloads(), {
+      misses: ['military:flights:v1', 'theater-posture:sebuf:v1'],
+    });
+    const result = await findTool('get_military_surge')._execute({}, '', {}, {});
+
+    assert.equal(result.stale, true);
+    assert.deepEqual(result.data.postures, []);
+    assert.ok(result.data.seeded_surges.length > 0, 'the independent seeded surge feed remains usable');
+    assert.equal(result.data.cii_available, true);
   });
 
   it('keeps foreign-presence detections when filtering by theater id', async () => {

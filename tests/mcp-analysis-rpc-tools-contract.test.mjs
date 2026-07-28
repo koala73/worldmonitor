@@ -25,7 +25,7 @@ describe('wave-2a analysis tools registry contract', () => {
     },
     get_military_surge: {
       budget: 65536,
-      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1'],
+      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'risk:scores:sebuf:v8'],
     },
   };
 
@@ -98,6 +98,13 @@ describe('wave-2a analysis tools registry contract', () => {
       assert.match(section, /`ai_context`/);
       assert.doesNotMatch(section, /`aiContext`/);
     }
+  });
+
+  it('publishes a valid cascade source id in the English example', () => {
+    const english = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
+    const section = english.match(/### `simulate_infrastructure_cascade`[\s\S]*?(?=\n### `)/)?.[0] ?? '';
+    assert.match(section, /"source_id":"chokepoint:hormuz_strait"/);
+    assert.doesNotMatch(section, /"source_id":"hormuz"/);
   });
 });
 

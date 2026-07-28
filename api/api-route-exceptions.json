@@ -73,6 +73,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/source-unavailable.ts",
+      "category": "internal-helper",
+      "reason": "Typed analysis-source outage propagation for MCP composite tools: preserves bounded cache-key diagnostics in JSON-RPC error.data without exposing source payloads. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/usage.ts",
       "category": "external-protocol",
       "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",

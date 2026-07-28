@@ -53,7 +53,53 @@ import {
 import { INTEL_HOTSPOTS } from '../../../shared/geo-data';
 import { readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
 import { evaluateFreshness } from '../freshness';
+import { McpSourceUnavailableError } from '../source-unavailable';
 import type { FreshnessCheck, ToolDef } from '../types';
+
+type PayloadValidator = (value: unknown) => boolean;
+
+function hasArrayField(value: unknown, field: string): boolean {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Object.prototype.hasOwnProperty.call(value, field)
+    && Array.isArray((value as Record<string, unknown>)[field]);
+}
+
+function hasObjectField(value: unknown, field: string): boolean {
+  const fieldValue = value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    ? (value as Record<string, unknown>)[field]
+    : null;
+  return !!fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue);
+}
+
+const ANALYSIS_PAYLOAD_VALIDATORS: Readonly<Record<string, PayloadValidator>> = {
+  'unrest:events:v1': (value) => hasArrayField(value, 'events'),
+  'military:flights:v1': (value) => hasArrayField(value, 'flights'),
+  'seismology:earthquakes:v1': (value) => hasArrayField(value, 'earthquakes'),
+  'usni-fleet:sebuf:v1': (value) => hasArrayField(value, 'vessels'),
+  'news:insights:v1': (value) => hasArrayField(value, 'topStories'),
+  'intelligence:cross-source-signals:v1': (value) => hasArrayField(value, 'signals'),
+  [CII_RISK_SCORE_CACHE_KEYS.live]: (value) => hasArrayField(value, 'ciiScores'),
+  'infrastructure:submarine-cables:v1': (value) => hasArrayField(value, 'cables'),
+  'theater-posture:sebuf:v1': (value) => hasArrayField(value, 'theaters'),
+  'military:surges:v1': (value) => Array.isArray(value) || hasArrayField(value, 'surges'),
+  'military:surges:history:v1': (value) => hasArrayField(value, 'history'),
+  'wildfire:fires:v1': (value) => hasArrayField(value, 'fireDetections'),
+  'conflict:ucdp-events:v1': (value) => hasArrayField(value, 'events'),
+  'cable-health-v1': (value) => hasObjectField(value, 'cables'),
+  'infra:outages:v1': (value) => hasArrayField(value, 'outages'),
+  'temporal:anomalies:v1': (value) => hasArrayField(value, 'anomalies'),
+  'thermal:escalation:v1': (value) => hasArrayField(value, 'clusters'),
+  'supply_chain:shipping_stress:v1': (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    return Object.prototype.hasOwnProperty.call(record, 'stressScore')
+      && Object.prototype.hasOwnProperty.call(record, 'stressLevel');
+  },
+};
 
 /**
  * Read data caches and freshness metadata in one parallel round while keeping
@@ -75,7 +121,13 @@ async function readCachesWithFreshness(
     ...keys,
     ...checks.map((check) => check.key),
   ]);
-  const payloadReads = results.slice(0, keys.length);
+  const payloadReads = results.slice(0, keys.length).map((result, index) => {
+    const validator = ANALYSIS_PAYLOAD_VALIDATORS[keys[index] ?? ''];
+    if (result.status === 'hit' && validator && !validator(result.value)) {
+      return { status: 'error' as const, value: null };
+    }
+    return result;
+  });
   const metaReads = results.slice(keys.length);
   const payloads = payloadReads.map((result) => result.value);
   const unavailablePayloads = keys.filter(
@@ -114,6 +166,22 @@ const ANALYSIS_CACHE_STATUS_PROPERTIES = {
     description: 'Subset of unavailable_inputs whose Redis read failed rather than returning a genuine miss.',
   },
 } as const;
+
+type AnalysisFreshness = Awaited<ReturnType<typeof readCachesWithFreshness>>['freshness'];
+
+function requireAnyInput(
+  payloads: unknown[],
+  freshness: AnalysisFreshness,
+  message: string,
+): void {
+  if (payloads.every((value) => value === null)) {
+    throw new McpSourceUnavailableError(
+      message,
+      freshness.unavailable_inputs,
+      freshness.failed_inputs,
+    );
+  }
+}
 
 function resolveLimit(raw: unknown, fallback: number): number {
   if (raw === undefined || raw === null) return fallback;
@@ -230,9 +298,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military:usni-fleet', maxStaleMin: 720 },
       ];
       const { payloads: [unrest, flights, quakes, fleet], freshness } = await readCachesWithFreshness(keys, checks);
-      if ([unrest, flights, quakes, fleet].every((value) => value === null)) {
-        throw new Error('cache_all_null: no convergence input feeds are available');
-      }
+      requireAnyInput(
+        [unrest, flights, quakes, fleet],
+        freshness,
+        'No convergence input feeds are available',
+      );
 
       const now = Date.now();
       const engine = new GeoConvergenceEngine({ convergenceThreshold: minDomains, now: () => now });
@@ -329,9 +399,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
       ];
       const { payloads: [insights, crossSource, riskScores], freshness } = await readCachesWithFreshness(keys, checks);
-      if ([insights, crossSource, riskScores].every((value) => value === null)) {
-        throw new Error('cache_all_null: no focal-point input feeds are available');
-      }
+      requireAnyInput(
+        [insights, crossSource, riskScores],
+        freshness,
+        'No focal-point input feeds are available',
+      );
 
       const index = getSharedEntityIndex();
       const clusters = insightsToFocalClusters(insights);
@@ -411,10 +483,6 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         ['infrastructure:submarine-cables:v1'],
         checks,
       );
-      if (cablesPayload === null) {
-        throw new Error('cache_all_null: the submarine-cable table is unavailable');
-      }
-
       const cables = submarineCablesToCableInputs(cablesPayload);
       const graph = buildDependencyGraph({ cables, waterways: MCP_CASCADE_WATERWAYS });
       const stats = getGraphStats(graph);
@@ -430,6 +498,13 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       }
 
       if (!graph.nodes.has(sourceId)) {
+        if (cablesPayload === null && sourceId.startsWith('cable:')) {
+          throw new McpSourceUnavailableError(
+            'The submarine-cable catalog is unavailable',
+            freshness.unavailable_inputs,
+            freshness.failed_inputs,
+          );
+        }
         const sample = [...graph.nodes.keys()].filter((id) => !id.startsWith('country-')).slice(0, 12);
         return {
           ...freshness,
@@ -479,6 +554,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             seeded_surges: { type: 'array', items: { type: 'object' } },
             seeded_surges_available: { type: 'boolean' },
             history_available: { type: 'boolean' },
+            cii_available: { type: 'boolean' },
             flight_count: { type: 'number' },
           },
           required: [],
@@ -488,22 +564,38 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
-      const keys = ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'military:surges:history:v1'];
+      const keys = [
+        'military:flights:v1',
+        'theater-posture:sebuf:v1',
+        'military:surges:v1',
+        'military:surges:history:v1',
+        CII_RISK_SCORE_CACHE_KEYS.live,
+      ];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:theater-posture', maxStaleMin: 60 },
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
       ];
-      const { payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload], freshness } = await readCachesWithFreshness(keys, checks);
-      if ([flightsPayload, posturePayload, surgesPayload].every((value) => value === null)) {
-        throw new Error('cache_all_null: no military feeds are available');
-      }
+      const {
+        payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload, riskScores],
+        freshness,
+      } = await readCachesWithFreshness(keys, checks);
+      requireAnyInput(
+        [flightsPayload, posturePayload, surgesPayload],
+        freshness,
+        'No primary military feeds are available',
+      );
 
       const flights = militaryFlightsToSurgeInputs(flightsPayload);
       const history = surgeHistoryToActivityHistory(historyPayload);
-      const postures = getTheaterPostureSummaries(flights, history);
-      applyVesselCountsToPostures(postures, theaterPostureVesselCounts(posturePayload));
-      recalcPostureWithVessels(postures);
+      const postures = flightsPayload !== null || posturePayload !== null
+        ? getTheaterPostureSummaries(flights, history)
+        : [];
+      if (postures.length > 0) {
+        applyVesselCountsToPostures(postures, theaterPostureVesselCounts(posturePayload));
+        recalcPostureWithVessels(postures, riskScoresToCiiLookup(riskScores));
+      }
 
       const engine = new MilitarySurgeEngine();
       const foreignPresence = engine.detectForeignMilitaryPresence(flights).map((alert) => ({
@@ -543,11 +635,18 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           seeded_surges: seededSurges.filter((surge) => matchesTheater(surge.theaterId, surge.theater)),
           seeded_surges_available: surgesPayload !== null,
           history_available: historyPayload !== null,
+          cii_available: riskScores !== null,
           flight_count: flights.length,
         },
       };
     },
-    _coverageKeys: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'military:surges:history:v1'],
+    _coverageKeys: [
+      'military:flights:v1',
+      'theater-posture:sebuf:v1',
+      'military:surges:v1',
+      'military:surges:history:v1',
+      CII_RISK_SCORE_CACHE_KEYS.live,
+    ],
     _apiPaths: [],
   },
   {
@@ -664,9 +763,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         reads.map((read) => read.key),
         reads.map((read) => read.check),
       );
-      if (payloads.every((value: unknown) => value === null)) {
-        throw new Error('cache_all_null: no event feeds are available for exposure enrichment');
-      }
+      requireAnyInput(
+        payloads,
+        freshness,
+        'No event feeds are available for exposure enrichment',
+      );
 
       const enriched = reads
         .flatMap((read, i) => read.adapt(payloads[i], Number.POSITIVE_INFINITY))
@@ -754,9 +855,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress, historyPayload],
         freshness,
       } = await readCachesWithFreshness(keys, checks);
-      if ([riskScores, surges, cableHealth, outages, temporal, thermal, stress].every((value: unknown) => value === null)) {
-        throw new Error('cache_all_null: no digest input feeds are available');
-      }
+      requireAnyInput(
+        [riskScores, surges, cableHealth, outages, temporal, thermal, stress],
+        freshness,
+        'No digest input feeds are available',
+      );
 
       const now = Date.now();
       const digest = buildAlertDigest(
@@ -802,12 +905,12 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     _outputBudgetBytes: 65536,
     description:
       'Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. ' +
-      'Runs the dashboard escalation engine server-side: for each curated hotspot, news pressure (keyword matches over the ' +
+      'Runs a reduced server snapshot of the dashboard escalation engine: for each curated hotspot, news pressure (keyword matches over the ' +
       'seeded story clusters), country instability, geographic signal convergence (protests, military flights, earthquakes ' +
       'gridded around the hotspot), and nearby military activity are normalized to 0-100 components, weighted 35/25/25/15, ' +
-      'and blended 30/70 with the curated static baseline into the same 1-5 composite the dashboard map publishes. Server ' +
-      'runs are snapshots: trend reads stable without the browser session history, CII attaches only where a hotspot maps to ' +
-      'a scored country, and vessel counts are unavailable — each such gap is visible in the per-hotspot components block.',
+      'and blended 30/70 with the curated static baseline into a 1-5 composite. Server runs do not have the browser session ' +
+      'inputs for breaking-news flags, news velocity, score history, or vessel positions; input_availability names those ' +
+      'omissions explicitly, while unavailable_inputs reports missing server-side feeds.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -836,6 +939,19 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
                   combinedScore: { type: 'number', description: 'Composite escalation on the documented 1-5 scale.' },
                   components: { type: 'object' }, trend: { type: 'string' },
                 },
+              },
+            },
+            input_availability: {
+              type: 'object',
+              properties: {
+                news_pressure: { type: 'boolean' },
+                country_instability: { type: 'boolean' },
+                geo_convergence: { type: 'boolean' },
+                military_flights: { type: 'boolean' },
+                breaking_news: { type: 'boolean' },
+                news_velocity: { type: 'boolean' },
+                military_vessels: { type: 'boolean' },
+                score_history: { type: 'boolean' },
               },
             },
           },
@@ -873,9 +989,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 },
       ];
       const { payloads: [insights, riskScores, flightsPayload, unrest, quakes], freshness } = await readCachesWithFreshness(keys, checks);
-      if ([insights, riskScores, flightsPayload, unrest, quakes].every((value) => value === null)) {
-        throw new Error('cache_all_null: no hotspot-escalation input feeds are available');
-      }
+      requireAnyInput(
+        [insights, riskScores, flightsPayload, unrest, quakes],
+        freshness,
+        'No hotspot-escalation input feeds are available',
+      );
 
       const now = Date.now();
       const clusters = insightsToFocalClusters(insights);
@@ -927,7 +1045,22 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
 
       const limit = resolveLimit(params.limit, INTEL_HOTSPOTS.length);
       scored.sort((a, b) => b.combinedScore - a.combinedScore || b.dynamicScore - a.dynamicScore);
-      return { ...freshness, data: { hotspots: scored.slice(0, limit) } };
+      return {
+        ...freshness,
+        data: {
+          hotspots: scored.slice(0, limit),
+          input_availability: {
+            news_pressure: insights !== null,
+            country_instability: riskScores !== null,
+            geo_convergence: [unrest, flightsPayload, quakes].every((value) => value !== null),
+            military_flights: flightsPayload !== null,
+            breaking_news: false,
+            news_velocity: false,
+            military_vessels: false,
+            score_history: false,
+          },
+        },
+      };
     },
     _coverageKeys: ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'],
     _apiPaths: [],

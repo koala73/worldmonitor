@@ -230,7 +230,7 @@
     },
     {
       "name": "get_hotspot_escalation",
-      "description": "Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. Runs the dashboard escalation engine server-side: for each curated hotspot, news pressure (keyword matches over the seeded story clusters), country instability, geographic signal convergence (protests, military flights, earthquakes gridded around the hotspot), and nearby military activity are normalized to 0-100 components, weighted 35/25/25/15, and blended 30/70 with the curated static baseline into the same 1-5 composite the dashboard map publishes. Server runs are snapshots: trend reads stable without the browser session history, CII attaches only where a hotspot maps to a scored country, and vessel counts are unavailable — each such gap is visible in the per-hotspot components block."
+      "description": "Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. Runs a reduced server snapshot of the dashboard escalation engine: for each curated hotspot, news pressure (keyword matches over the seeded story clusters), country instability, geographic signal convergence (protests, military flights, earthquakes gridded around the hotspot), and nearby military activity are normalized to 0-100 components, weighted 35/25/25/15, and blended 30/70 with the curated static baseline into a 1-5 composite. Server runs do not have the browser session inputs for breaking-news flags, news velocity, score history, or vessel positions; input_availability names those omissions explicitly, while unavailable_inputs reports missing server-side feeds."
     },
     {
       "name": "search_intel_history",

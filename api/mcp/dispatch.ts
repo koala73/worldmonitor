@@ -15,6 +15,7 @@ import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
 import { TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import { McpSourceUnavailableError } from './source-unavailable';
 import {
   emitTelemetry,
   principalIdForLog,
@@ -286,8 +287,9 @@ export async function dispatchToolsCall(
     // expected, handled customer state — warning-level, not error-level, so
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
+    const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
     const downstreamTags = downstreamErrorTags(err);
-    const log = isClient4xx || isExpectedDenial ? console.warn : console.error;
+    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: {
@@ -305,7 +307,7 @@ export async function dispatchToolsCall(
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx || isExpectedDenial ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
     });
     emitTelemetry('mcp.toolcall', {
       tool: tool.name,
@@ -317,7 +319,11 @@ export async function dispatchToolsCall(
       jmespath_used: jmespathUsed,
       jmespath_failed: null,
       ok: false,
-      error_kind: isClient4xx ? 'client_4xx' : 'server_error',
+      error_kind: isClient4xx
+        ? 'client_4xx'
+        : isExpectedSourceOutage
+          ? 'source_unavailable'
+          : 'server_error',
       budget_exceeded: false,
     });
     // #4770: a mid-request billing denial from the gateway keeps its full
@@ -332,6 +338,20 @@ export async function dispatchToolsCall(
         id,
       );
       if (denial) return denial;
+    }
+    if (err instanceof McpSourceUnavailableError) {
+      return rpcError(
+        id,
+        -32003,
+        'Required data inputs are unavailable',
+        corsHeaders,
+        {
+          retryable: true,
+          stale: true,
+          unavailable_inputs: err.unavailableInputs,
+          failed_inputs: err.failedInputs,
+        },
+      );
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }
