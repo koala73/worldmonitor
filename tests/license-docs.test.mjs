@@ -94,4 +94,29 @@ describe('project license docs', () => {
     assert.match(terms, /source code remains subject to AGPL-3\.0-only/i);
     assert.match(terms, /official thin client packages remain subject to MIT/i);
   });
+
+  it('keeps hosted-service attribution guidance consistent across legal and pricing docs', () => {
+    const documents = [
+      {
+        relativePath: 'docs/terms.mdx',
+        sourceNoticePattern: /must still preserve any source-specific citation/i,
+      },
+      {
+        relativePath: 'docs/pricing.mdx',
+        sourceNoticePattern: /Source-specific notices supplied with an output still apply/i,
+      },
+      {
+        relativePath: 'public/pricing.md',
+        sourceNoticePattern: /Source-specific notices supplied with an output still apply/i,
+      },
+    ];
+
+    for (const { relativePath, sourceNoticePattern } of documents) {
+      const text = readFileSync(join(root, relativePath), 'utf8');
+
+      assert.match(text, /(?:Attribution to World Monitor|World Monitor attribution) is optional/i);
+      assert.match(text, /"Source: World Monitor" or "via World Monitor" is sufficient/i);
+      assert.match(text, sourceNoticePattern);
+    }
+  });
 });
