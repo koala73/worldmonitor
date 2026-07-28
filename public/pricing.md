@@ -14,6 +14,8 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 - **API Business — Commercial license for your customers:** the subscribing organization may display, embed or deliver API outputs as part of its own customer-facing product or service. It does not permit raw-data resale, shared API access or a standalone substitute for World Monitor.
 - **Enterprise — Custom agreement:** required for higher-volume redistribution, additional seats, white-labeling, standalone data feeds and custom deployments.
 
+World Monitor attribution is optional in reports, presentations and derived analysis permitted by your plan. If you choose to credit us, "Source: World Monitor" or "via World Monitor" is sufficient. Source-specific notices supplied with an output still apply.
+
 These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples and restrictions: https://worldmonitor.app/docs/terms#subscription-license-scope
 
 ## Free
@@ -30,7 +32,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $399.99/year
 - Annual savings: 2 months free versus monthly billing
 - Best for: Investors, analysts, researchers, traders and operators who need the decision layer on top of the free dashboard
-- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, MCP access and 51 tools under one key
+- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, MCP access and 59 tools under one key
 - License: Personal use
 - Limits: 10 custom dashboards, MCP + SDK 50 calls/day
 - Digest cadence: Daily, twice-daily or weekly

@@ -150,7 +150,7 @@ paths:
             tags:
                 - AviationService
             summary: GetAirportOpsSummary
-            description: GetAirportOpsSummary returns operational health metrics for watched airports.
+            description: GetAirportOpsSummary returns watched-airport operational health, including delay percentages, average delay minutes, cancellation rates and closure status.
             operationId: GetAirportOpsSummary
             parameters:
                 - name: airports

@@ -94,9 +94,13 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId. ---------
 const validateUserApiKey = vi.fn(async () => ({ userId: "acct_lapsed", keyId: "k1", name: "t" }));
-vi.mock("../_shared/user-api-key", () => ({
-  validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
-}));
+vi.mock("../_shared/user-api-key", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../_shared/user-api-key")>();
+  return {
+    ...actual,
+    validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+  };
+});
 
 // --- Stub Clerk session resolution for mixed bearer + wm_ requests. ----------
 type MockClerkSession = { userId: string; orgId: string | null } | null;
@@ -221,6 +225,24 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     expect(checkFailClosedScopedIpRateLimit.mock.invocationCallOrder[0]).toBeLessThan(
       validateUserApiKey.mock.invocationCallOrder[0],
     );
+  });
+
+  test("Convex validation outage on a wm_ key returns retryable 503, not 401", async () => {
+    const { UserApiKeyUnavailableError } = await import("../_shared/user-api-key");
+    validateUserApiKey.mockRejectedValue(
+      new UserApiKeyUnavailableError("Convex user API key validation unavailable: http-503"),
+    );
+
+    const res = await makeGateway()(keyReq(REGULAR_PATH, "GET", "wm_lapsed_customer_key"), ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Retry-After")).toBe("5");
+    expect(res.headers.get("X-Validation-Mode")).toBe("degraded");
+    expect(body).toEqual({ error: "Service temporarily unavailable" });
+    // Must not look like an invalid key.
+    expect(JSON.stringify(body)).not.toMatch(/Invalid API key/i);
   });
 
   // --- apiAccess:false (downgraded) → 403 everywhere ------------------------

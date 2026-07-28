@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildEntityIndex, extractEntityContexts } from '../shared/analysis-entity-index.ts';
-import { ENTITY_REGISTRY } from '../shared/entities-data.ts';
+import { buildEntityIndex, extractEntityContexts } from '../shared/entity-extraction-core.js';
+import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
 import {
   FocalPointCore,
   SIGNAL_TYPE_LABELS,

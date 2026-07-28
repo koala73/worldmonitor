@@ -263,17 +263,18 @@ for (const [path, groups] of [
 // Every pro-test locale publishes the MCP tool count (guarded by
 // tests/public-product-facts.test.mjs across the full locale sweep), so
 // enumerate the directory instead of hand-listing a subset.
-const proTestLocaleSurfaces = readdirSync(join(ROOT, 'pro-test/src/locales'))
+const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
   .filter((name) => name.endsWith('.json'))
-  .sort()
-  .map((name) => `pro-test/src/locales/${name}`);
+  .map((name) => `pro-test/src/locales/${name}`)
+  .sort();
 
 const mcpCountSurfaces = [
   'server.json',
   'cli/README.md',
-  ...proTestLocaleSurfaces,
+  ...proLocalePaths,
   'pro-test/prerender.mjs',
   'pro-test/welcome.html',
+  'public/pro/welcome.html',
   'blog-site/src/content/blog/ask-claude-whats-happening-worldmonitor-mcp.md',
   'blog-site/src/content/blog/build-geopolitical-risk-agent-worldmonitor-mcp.md',
   'blog-site/src/content/blog/daily-intelligence-briefing-workflow-15-minutes.md',
@@ -304,6 +305,21 @@ for (const path of mcpCountSurfaces) {
   transform(path, (source) => replaceMcpToolCounts(source, mcpToolCount));
 }
 
+// The server card is the machine-readable tool catalog consumed by docs-stats
+// and external MCP discovery. Generate it from the same registry as the count
+// so adding tools cannot leave a syntactically valid but incomplete card.
+transform('public/.well-known/mcp/server-card.json', (source) => {
+  const card = JSON.parse(source);
+  card.tools = TOOL_REGISTRY.map(({ name, description }) => ({ name, description }));
+  return json(card);
+});
+
+transform('public/agent-view.json', (source) => {
+  const view = JSON.parse(source);
+  view.endpoints.mcp.tools = mcpToolCount;
+  return json(view);
+});
+
 // Every locale publishes the MCP tool count in one stat tile and four
 // localized prose claims. The prose phrasings vary per language, so they
 // cannot be matched by replaceMcpToolCounts — instead rewrite any 2+ digit
@@ -316,7 +332,7 @@ const LOCALE_TOOL_COUNT_PROSE_KEYS = [
   ['welcome', 'pricing', 'proF4'],
   ['welcome', 'faq', 'a7'],
 ];
-for (const path of proTestLocaleSurfaces) {
+for (const path of proLocalePaths) {
   transform(path, (source) => {
     const locale = JSON.parse(source);
     if (typeof locale.welcome?.depth?.s12v === 'string') {
@@ -353,11 +369,6 @@ transform('scripts/locale-baselines/pro-test.json', (source) => {
   }
   return json(baseline);
 });
-
-const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
-  .filter((name) => name.endsWith('.json'))
-  .map((name) => `pro-test/src/locales/${name}`)
-  .sort();
 
 for (const path of proLocalePaths) {
   transform(path, (source) => {

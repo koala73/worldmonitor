@@ -16,7 +16,7 @@
 import {
   type EntityIndex,
   findEntitiesInText,
-} from './analysis-entity-index';
+} from './entity-extraction-core.js';
 import {
   GEO_CONVERGENCE_WINDOW_MS,
   type GeoEventInput,

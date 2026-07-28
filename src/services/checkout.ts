@@ -55,6 +55,7 @@ import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
 import { saveAnonClaimToken } from './anonymous-identity-storage';
+import { applyProBannerEntitlementHint } from './pro-banner-policy';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -103,6 +104,13 @@ function markPostCheckout(): void {
   } catch {
     // Storage denied — the reload will still run; transition detector will
     // fall back to its null baseline, matching the pre-flag behavior.
+  }
+  // Optimistic pre-paint pro hint so the reloaded dashboard does not reserve
+  // an empty Upgrade strip for a just-paid account (#5728 first-session strip).
+  try {
+    applyProBannerEntitlementHint(localStorage, true);
+  } catch {
+    // Storage optional — live entitlement still suppresses the banner.
   }
 }
 

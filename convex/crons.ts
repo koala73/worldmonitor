@@ -41,6 +41,21 @@ crons.daily(
   {},
 );
 
+// Daily retention prune for the append-only historical intelligence store
+// (#5694). The table has no natural ceiling — every seeder run appends the
+// events it published — and each row carries a 512-float vector, so the
+// vector index is the real cost being bounded here. Ages rows past
+// INTEL_HISTORY_RETENTION_DAYS out by `ingestedAt` in bounded per-run
+// batches that self-drain. See `prune` in convex/intelHistory.ts. 04:30 UTC
+// sits between the plan-limit prune (04:45) and the wave-runs cleanup
+// (04:00) so the three delete-heavy jobs never overlap.
+crons.daily(
+  "intel-history-prune",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.intelHistory.prune,
+  {},
+);
+
 crons.daily(
   "broadcast-ramp-runner",
   { hourUTC: 13, minuteUTC: 0 },

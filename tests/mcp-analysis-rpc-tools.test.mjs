@@ -34,8 +34,8 @@ import {
   unrestEventsToGeoEvents,
   usniVesselsToGeoEvents,
 } from '../shared/analysis-mcp-adapters.ts';
-import { buildEntityIndex } from '../shared/analysis-entity-index.ts';
-import { ENTITY_REGISTRY } from '../shared/entities-data.ts';
+import { buildEntityIndex } from '../shared/entity-extraction-core.js';
+import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
 import { GeoConvergenceEngine } from '../shared/analysis-geo-convergence.ts';
 import { buildDependencyGraph, calculateCascade } from '../shared/analysis-infrastructure-cascade.ts';
 import { getTheaterPostureSummaries } from '../shared/analysis-military-surge.ts';

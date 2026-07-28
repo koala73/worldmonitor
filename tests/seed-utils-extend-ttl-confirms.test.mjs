@@ -16,7 +16,10 @@ import { strict as assert } from 'node:assert';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 
-const { extendExistingTtl } = await import('../scripts/_seed-utils.mjs');
+const {
+  extendExistingTtl,
+  extendExistingTtlDetailed,
+} = await import('../scripts/_seed-utils.mjs');
 
 const originalFetch = globalThis.fetch;
 
@@ -42,6 +45,17 @@ test('extendExistingTtl: returns false when any key is missing/expired (EXPIRE n
   mockPipeline([{ result: 1 }, { result: 1 }, { result: 0 }]);
   const ok = await extendExistingTtl(['canonical', 'seed-meta', 'rpc'], 1800);
   assert.equal(ok, false);
+});
+
+test('extendExistingTtlDetailed: preserves mixed per-key EXPIRE outcomes', async () => {
+  mockPipeline([{ result: 1 }, { result: 0 }, { result: null }]);
+  const result = await extendExistingTtlDetailed(['alive', 'missing', 'unknown'], 1800);
+  assert.deepEqual(result, {
+    allExtended: false,
+    extendedKeys: ['alive'],
+    missingKeys: ['missing'],
+    unconfirmedKeys: ['unknown'],
+  });
 });
 
 test('extendExistingTtl: returns false on non-ok HTTP response', async () => {

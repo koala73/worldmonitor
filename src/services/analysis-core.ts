@@ -2,9 +2,12 @@
  * Core analysis functions shared between main thread and worker.
  * All functions here are PURE (no side effects, no external state).
  *
- * This module is the single source of truth for:
- * - News clustering algorithm
- * - Correlation signal detection algorithms
+ * The clustering algorithm (clusterNewsCore, aggregateThreats,
+ * MAX_CLUSTER_NEWS_ITEMS) and its input/output types now live in
+ * shared/news-clustering-core.js (issue #5697) so server-side MCP tools
+ * cluster identically; they are re-exported here unchanged. This module keeps
+ * the correlation signal detection algorithms, which pull in entity
+ * extraction and other client-coupled modules.
  *
  * Both the main-thread services and the Web Worker import from here.
  */
@@ -35,54 +38,22 @@ import {
 } from './entity-extraction';
 import { getEntityIndex } from './entity-index';
 import { effectivePubDateMs } from './feed-date';
-import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
-const THREAT_PRIORITY: Record<ThreatLevel, number> = {
-  critical: 5, high: 4, medium: 3, low: 2, info: 1,
-};
-
-function aggregateThreats(
-  items: Array<{ threat?: ThreatClassification; tier?: number }>
-): ThreatClassification {
-  const withThreat = items.filter(i => i.threat);
-  if (withThreat.length === 0) {
-    return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };
-  }
-  let maxLevel: ThreatLevel = 'info';
-  let maxPriority = 0;
-  for (const item of withThreat) {
-    const p = THREAT_PRIORITY[item.threat!.level];
-    if (p > maxPriority) { maxPriority = p; maxLevel = item.threat!.level; }
-  }
-  const catCounts = new Map<EventCategory, number>();
-  for (const item of withThreat) {
-    const cat = item.threat!.category;
-    catCounts.set(cat, (catCounts.get(cat) ?? 0) + 1);
-  }
-  let topCat: EventCategory = 'general';
-  let topCount = 0;
-  for (const [cat, count] of catCounts) {
-    if (count > topCount) { topCount = count; topCat = cat; }
-  }
-  let weightedSum = 0;
-  let weightTotal = 0;
-  for (const item of withThreat) {
-    const weight = item.tier ? (6 - Math.min(item.tier, 5)) : 1;
-    weightedSum += item.threat!.confidence * weight;
-    weightTotal += weight;
-  }
-  return {
-    level: maxLevel,
-    category: topCat,
-    confidence: weightTotal > 0 ? weightedSum / weightTotal : 0.5,
-    source: 'keyword',
-  };
-}
+export {
+  MAX_CLUSTER_NEWS_ITEMS,
+  aggregateThreats,
+  clusterNewsCore,
+} from '../../shared/news-clustering-core.js';
+export type {
+  NewsItemCore,
+  NewsItemWithTier,
+  ClusteredEventCore,
+} from '../../shared/news-clustering-core.js';
+import type { ClusteredEventCore } from '../../shared/news-clustering-core.js';
 
 const TOPIC_BASELINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPIC_BASELINE_SPIKE_MULTIPLIER = 3;
 const TOPIC_HISTORY_MAX_POINTS = 1000;
-export const MAX_CLUSTER_NEWS_ITEMS = 1000;
 
 interface TopicVelocityPoint {
   timestamp: number;
@@ -97,46 +68,6 @@ export {
   generateSignalId,
   generateDedupeKey,
 };
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-export interface NewsItemCore {
-  source: string;
-  title: string;
-  link: string;
-  pubDate: Date;
-  isAlert: boolean;
-  monitorColor?: string;
-  tier?: number;
-  threat?: ThreatClassification;
-  lat?: number;
-  lon?: number;
-  locationName?: string;
-  lang?: string;
-}
-
-export type NewsItemWithTier = NewsItemCore & { tier: number };
-
-export interface ClusteredEventCore {
-  id: string;
-  primaryTitle: string;
-  primarySource: string;
-  primaryLink: string;
-  sourceCount: number;
-  topSources: Array<{ name: string; tier: number; url: string }>;
-  allItems: NewsItemCore[];
-  firstSeen: Date;
-  lastUpdated: Date;
-  isAlert: boolean;
-  monitorColor?: string;
-  velocity?: { sourcesPerHour?: number };
-  threat?: ThreatClassification;
-  lat?: number;
-  lon?: number;
-  lang?: string;
-}
 
 export interface PredictionMarketCore {
   title: string;
@@ -198,160 +129,6 @@ export interface StreamSnapshot {
   predictionChanges: Map<string, number>;
   topicVelocityHistory: Map<string, TopicVelocityPoint[]>;
   timestamp: number;
-}
-
-// ============================================================================
-// CLUSTERING FUNCTIONS
-// ============================================================================
-
-function generateClusterId(items: NewsItemWithTier[]): string {
-  const sorted = [...items].sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
-  const first = sorted[0]!;
-  return `${first.pubDate.getTime()}-${first.title.slice(0, 20).replace(/\W/g, '')}`;
-}
-
-/**
- * Cluster news items by title similarity using Jaccard index.
- * Pure function - no side effects.
- */
-export function clusterNewsCore(
-  items: NewsItemCore[],
-  getSourceTier: (source: string) => number
-): ClusteredEventCore[] {
-  if (items.length === 0) return [];
-
-  const boundedItems = items.length > MAX_CLUSTER_NEWS_ITEMS
-    ? [...items]
-        .sort((a, b) =>
-          effectivePubDateMs(b) - effectivePubDateMs(a)
-          || a.source.localeCompare(b.source)
-          || a.title.localeCompare(b.title)
-          || a.link.localeCompare(b.link)
-        )
-        .slice(0, MAX_CLUSTER_NEWS_ITEMS)
-    : items;
-
-  const itemsWithTier: NewsItemWithTier[] = boundedItems.map(item => ({
-    ...item,
-    tier: item.tier ?? getSourceTier(item.source),
-  }));
-
-  const tokenCache = new Map<string, Set<string>>();
-  const tokenList: Set<string>[] = [];
-  const invertedIndex = new Map<string, number[]>();
-  for (const item of itemsWithTier) {
-    const tokens = tokenize(item.title);
-    tokenCache.set(item.title, tokens);
-    tokenList.push(tokens);
-  }
-
-  for (let index = 0; index < tokenList.length; index++) {
-    const tokens = tokenList[index]!;
-    for (const token of tokens) {
-      const bucket = invertedIndex.get(token);
-      if (bucket) {
-        bucket.push(index);
-      } else {
-        invertedIndex.set(token, [index]);
-      }
-    }
-  }
-
-  const clusters: NewsItemWithTier[][] = [];
-  const assigned = new Set<number>();
-
-  for (let i = 0; i < itemsWithTier.length; i++) {
-    if (assigned.has(i)) continue;
-
-    const currentItem = itemsWithTier[i]!;
-    const cluster: NewsItemWithTier[] = [currentItem];
-    assigned.add(i);
-    const tokensI = tokenList[i]!;
-
-    const candidateIndices = new Set<number>();
-    for (const token of tokensI) {
-      const bucket = invertedIndex.get(token);
-      if (!bucket) continue;
-      for (const idx of bucket) {
-        if (idx > i) {
-          candidateIndices.add(idx);
-        }
-      }
-    }
-
-    const sortedCandidates = Array.from(candidateIndices).sort((a, b) => a - b);
-    for (const j of sortedCandidates) {
-      if (assigned.has(j)) {
-        continue;
-      }
-
-      const otherItem = itemsWithTier[j]!;
-      const tokensJ = tokenList[j]!;
-      const similarity = jaccardSimilarity(tokensI, tokensJ);
-
-      if (similarity >= SIMILARITY_THRESHOLD) {
-        cluster.push(otherItem);
-        assigned.add(j);
-      }
-    }
-
-    clusters.push(cluster);
-  }
-
-  return clusters.map(cluster => {
-    const sorted = [...cluster].sort((a, b) => {
-      const tierDiff = a.tier - b.tier;
-      if (tierDiff !== 0) return tierDiff;
-      return effectivePubDateMs(b) - effectivePubDateMs(a);
-    });
-
-    const primary = sorted[0]!;
-    const dates = cluster.map(i => i.pubDate.getTime());
-
-    const topSources = sorted
-      .slice(0, 3)
-      .map(item => ({
-        name: item.source,
-        tier: item.tier,
-        url: item.link,
-      }));
-
-    const threat = aggregateThreats(cluster);
-
-    // Pick most common geo location across items
-    const locItems = cluster.filter((i): i is NewsItemWithTier & { lat: number; lon: number } => i.lat != null && i.lon != null);
-    let clusterLat: number | undefined;
-    let clusterLon: number | undefined;
-    if (locItems.length > 0) {
-      const locCounts = new Map<string, { lat: number; lon: number; count: number }>();
-      for (const li of locItems) {
-        const key = `${li.lat},${li.lon}`;
-        const entry = locCounts.get(key) || { lat: li.lat, lon: li.lon, count: 0 };
-        entry.count++;
-        locCounts.set(key, entry);
-      }
-      const best = Array.from(locCounts.values()).sort((a, b) => b.count - a.count)[0]!;
-      clusterLat = best.lat;
-      clusterLon = best.lon;
-    }
-
-    return {
-      id: generateClusterId(cluster),
-      primaryTitle: primary.title,
-      primarySource: primary.source,
-      primaryLink: primary.link,
-      sourceCount: cluster.length,
-      topSources,
-      allItems: cluster,
-      firstSeen: new Date(dates.reduce((min, d) => d < min ? d : min)),
-      lastUpdated: new Date(dates.reduce((max, d) => d > max ? d : max)),
-      isAlert: cluster.some(i => i.isAlert),
-      monitorColor: cluster.find(i => i.monitorColor)?.monitorColor,
-      threat,
-      ...(clusterLat != null && { lat: clusterLat, lon: clusterLon }),
-      lang: primary.lang,
-    };
-  }).sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
 }
 
 // ============================================================================

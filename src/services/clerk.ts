@@ -36,6 +36,16 @@ function readPublishableKey(): string | undefined {
 
 const PUBLISHABLE_KEY = readPublishableKey();
 
+/**
+ * True when a Clerk publishable key is configured. Used by surfaces that must
+ * distinguish "auth still hydrating" from "Clerk will never load" (e.g. the
+ * Pro banner deferral in #5728 — without this, `isPending` stays sticky when
+ * the key is absent and free users would never see the upsell).
+ */
+export function isClerkAuthEnabled(): boolean {
+  return Boolean(PUBLISHABLE_KEY);
+}
+
 let clerkInstance: ClerkInstance | null = null;
 let loadPromise: Promise<void> | null = null;
 let loadScheduled = false;
@@ -240,6 +250,13 @@ export async function initClerk(): Promise<void> {
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
+      // Flip auth isPending → false for queued subscribers even though
+      // clerkInstance stays null. Without this, surfaces that defer while
+      // auth is pending (Pro banner #5728, AuthHeaderWidget skeletons)
+      // hang forever on permanent load failures (blocked CDN, CN in-app
+      // browsers). Leave the queue intact so a later successful retry can
+      // still attachListener + re-fire with a real session.
+      notifyPendingSubscribersOfHydrationFailure();
       throw e;
     }
   })();
@@ -297,6 +314,23 @@ function attachPendingSubscribers(): void {
     // Fire once so subscribers learn about a cookie-backed signed-in
     // session that was already present before Clerk finished loading.
     cb();
+  }
+}
+
+/**
+ * Fire queued pre-load subscribers without consuming the queue.
+ * Used when initClerk fails so `subscribeAuthState` can snapshot
+ * `{ user: null, isPending: false }` instead of leaving the whole app
+ * stuck on the boot-default pending session.
+ */
+function notifyPendingSubscribersOfHydrationFailure(): void {
+  for (const cb of pendingSubscribers) {
+    if (pendingSubscriberDetachers.get(cb)?.detached) continue;
+    try {
+      cb();
+    } catch {
+      // One subscriber must not block the rest of the settle fan-out.
+    }
   }
 }
 

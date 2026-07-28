@@ -108,6 +108,9 @@ const SEED_DOMAINS = {
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // seed-health alerts at 420min; /api/health uses a wider 720min freshness budget.
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
+  // Corporate intelligence (#5695): intervalMin = maxStaleMin / 2 (api/health.js: 2880 / 120).
+  'intelligence:sec-cik-map': { key: 'seed-meta:intelligence:sec-cik-map', intervalMin: 1440, minRecordCount: 5000 },
+  'intelligence:sec-8k-stream': { key: 'seed-meta:intelligence:sec-8k-stream', intervalMin: 60, minRecordCount: 50 },
   'intelligence:social-reddit': { key: 'seed-meta:intelligence:social-reddit', intervalMin: 270 }, // 180min relay loop (3h; dropped from 60min now that ScrapeCreators handles Reddit); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 270 }, // 180min relay loop (3h); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
@@ -395,9 +398,14 @@ export default async function handler(req) {
     // `unavailable` means an optional adapter was never configured, matching
     // api/health.js's NOT_CONFIGURED treatment rather than a broken source.
     const sourceUnavailable = meta.sourceState === 'unavailable';
+    const sourceBlocked = domain === 'military:cross-strait-activity:japan-mod'
+      && meta.sourceState === 'blocked'
+      && recordCount != null
+      && recordCount > 0;
     const sourceError = typeof meta.sourceState === 'string'
       && meta.sourceState !== 'ok'
-      && !sourceUnavailable;
+      && !sourceUnavailable
+      && !sourceBlocked;
     const isError = meta.status === 'error' || sourceError;
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(
@@ -422,6 +430,8 @@ export default async function handler(req) {
               ? 'coverage_partial'
               : stale
               ? 'stale'
+              : sourceBlocked
+                ? 'source_blocked'
               : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: recordCount ?? meta.recordCount ?? null,

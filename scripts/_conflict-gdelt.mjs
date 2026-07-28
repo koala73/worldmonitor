@@ -34,6 +34,51 @@ export function buildGdeltConflictUrl(cc, name = GDELT_COUNTRY_NAMES[cc], maxRec
     + `&mode=artlist&maxrecords=${maxRecords}&format=json&timespan=3d&sort=datedesc`;
 }
 
+function sanitizeGdeltHeadline(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+}
+
+function canonicalGdeltArticleUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+    url.hash = '';
+    const params = [...url.searchParams.entries()].sort(
+      ([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB) || valueA.localeCompare(valueB),
+    );
+    url.search = '';
+    for (const [key, paramValue] of params) url.searchParams.append(key, paramValue);
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+// Small deterministic hash for bounded durable IDs. This is not a security
+// primitive; its job is to keep GDELT's unbounded URL/title inputs out of IDs.
+function stableHash(value) {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of new TextEncoder().encode(value)) {
+    hash ^= BigInt(byte);
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return hash.toString(16).padStart(16, '0');
+}
+
+function stableGdeltArticleId({ cc, eventDate, canonicalUrl, domain, title, seendate }) {
+  // URLs are GDELT's closest article-level identity. Fall back to bounded,
+  // normalized article content when a source omits or malforms its URL.
+  const identity = canonicalUrl
+    ? `url:${canonicalUrl}`
+    : `article:${cc}|${eventDate}|${String(domain || '').trim().toLowerCase().slice(0, 128)}|${title.slice(0, 300)}|${String(seendate || '').replace(/[^0-9]/g, '').slice(0, 14)}`;
+  return `gdelt-${cc}-${stableHash(identity)}`;
+}
+
 // Map a GDELT DOC 2.0 artlist response to conflict events in the ACLED/EMA shape.
 // Every returned article is a location-filtered hit for `name`, so all are attributed
 // to that country. Articles with an unparseable seendate are dropped (they can't be
@@ -41,17 +86,27 @@ export function buildGdeltConflictUrl(cc, name = GDELT_COUNTRY_NAMES[cc], maxRec
 export function mapGdeltArticlesToEvents(articles, cc, name = GDELT_COUNTRY_NAMES[cc]) {
   if (!Array.isArray(articles) || !name) return [];
   return articles
-    .map((a, i) => {
+    .map((a) => {
       const event_date = gdeltSeenDateToIso(a?.seendate);
       if (!event_date) return null;
+      const title = sanitizeGdeltHeadline(a?.title);
+      const url = canonicalGdeltArticleUrl(a?.url);
       return {
-        id: `gdelt-${cc}-${i}`,
+        id: stableGdeltArticleId({
+          cc,
+          eventDate: event_date,
+          canonicalUrl: url,
+          domain: a?.domain,
+          title,
+          seendate: a?.seendate,
+        }),
         eventType: 'GDELT coverage',
         country: name,       // full name — matches UCDP / normalizeCountry
         event_date,          // 'YYYY-MM-DD' — the field the EMA engine reads
         occurredAt: Date.parse(event_date) || 0,
         source: a?.domain || '',
-        url: a?.url || '',
+        title,
+        url,
       };
     })
     .filter(Boolean);

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,9 +9,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // source-text greps (cabin_class fix shape, conditional-spread anti-pattern
 // audit, DEFAULT_LIST_LIMIT cache-tool audit) operate on the same byte
 // surface they did before the split.
-const MCP_SRC = readFileSync(resolve(HERE, '../api/mcp/registry/cache-tools.ts'), 'utf8')
-  + '\n'
-  + readFileSync(resolve(HERE, '../api/mcp/registry/rpc-tools.ts'), 'utf8');
+// Concatenate every registry module (excluding the merge/index file) rather
+// than naming them: a hardcoded list silently stops covering a tool that moves
+// to a new sibling module.
+const REGISTRY_DIR = resolve(HERE, '../api/mcp/registry');
+const MCP_SRC = readdirSync(REGISTRY_DIR)
+  .filter((f) => f.endsWith('.ts') && f !== 'index.ts')
+  .sort()
+  .map((f) => readFileSync(resolve(REGISTRY_DIR, f), 'utf8'))
+  .join('\n');
 const ENV_EXAMPLE = readFileSync(resolve(HERE, '../.env.example'), 'utf8');
 
 /**

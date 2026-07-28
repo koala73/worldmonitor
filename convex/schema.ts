@@ -1060,4 +1060,72 @@ export default defineSchema({
   })
     .index("by_webhookEventId", ["webhookEventId"])
     .index("by_broadcast_event", ["broadcastId", "eventType"]),
+
+  // Pre-seeded, document-backed serialization point for `intelHistory.append`.
+  //
+  // Convex does not treat an empty `by_dedupeKey` index range as a conflict
+  // dependency, so concurrent first-seen appends could both see no row and
+  // insert the same key. `intelHistory.append` reads and patches this
+  // always-existing singleton before checking dedupe keys, making the OCC
+  // dependency document-backed. The historical seeders are low-frequency,
+  // so one global serialization point is intentional and keeps the invariant
+  // simple. It is seeded by the deploy workflow; append fails loudly if it is
+  // absent rather than silently weakening idempotency.
+  intelHistoryAppendLocks: defineTable({
+    lockKey: v.string(),
+    lastTouchedAt: v.number(),
+  }).index("by_lockKey", ["lockKey"]),
+
+  // Append-only historical intelligence memory (#5694). Seeders publish a
+  // rolling live snapshot to Redis that overwrites itself every run; this
+  // table is the durable long tail behind it — one row per distinct event,
+  // never updated in place. `dedupeKey` is the seeder-side identity of an
+  // event, so a re-publish of the same event is a skip, not a second row
+  // (see `append` in convex/intelHistory.ts).
+  //
+  // EMBEDDING CONTRACT — `embedding` is produced by
+  // openai/text-embedding-3-small at 512 dimensions: the SAME model and
+  // dimension pair the brief deduper uses (EMBED_MODEL / EMBED_DIMS in
+  // scripts/lib/brief-dedup-consts.mjs). The vector index below hard-codes
+  // `dimensions: 512` and Convex rejects a stored vector of any other length,
+  // so changing the model OR the dimension is a table migration (a new /
+  // version-suffixed table plus a full re-embed) — NOT an in-place edit of
+  // this number. Mixing vectors from two models in one index is worse than a
+  // hard failure: the search still returns results, they are just ranked
+  // against a similarity scale that no longer means anything. The deduper
+  // carries the same warning on its CACHE_VERSION prefix.
+  intelHistory: defineTable({
+    // "conflict" | "military" | "energy" today. Deliberately v.string() and
+    // not a v.union of literals: a new seeder domain should be a code change
+    // in the collector, not a schema deploy that has to land first.
+    domain: v.string(),
+    resource: v.string(),
+    country: v.optional(v.string()),
+    category: v.optional(v.string()),
+    title: v.string(),
+    summary: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    // Event time as reported by the source, vs. the time we stored it. Both
+    // are kept: reads are ordered by `occurredAt` (what a user means by "what
+    // happened last week") while retention ages rows out by `ingestedAt` (so
+    // a backfill of old events is not deleted by the next prune tick).
+    occurredAt: v.number(),
+    ingestedAt: v.number(),
+    runId: v.string(),
+    dedupeKey: v.string(),
+    embedding: v.array(v.float64()),
+  })
+    .index("by_dedupeKey", ["dedupeKey"])
+    .index("by_ingestedAt", ["ingestedAt"])
+    .index("by_domain_occurredAt", ["domain", "occurredAt"])
+    .index("by_country_occurredAt", ["country", "occurredAt"])
+    // Convex's vector-index filter builder supports only `eq` and `or` — there
+    // is no `and`. A query scoped to BOTH domain and country therefore pushes
+    // one field down and post-filters the other; see `search` in
+    // convex/intelHistory.ts for which one and why.
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 512,
+      filterFields: ["domain", "country"],
+    }),
 });

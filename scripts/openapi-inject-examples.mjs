@@ -493,6 +493,14 @@ function stringExample(name, schema = {}, context = {}) {
   // field. Keep the generated response example truthful instead of emitting
   // the generic non-empty string placeholder.
   if (key === 'abstract' && (where.includes('listdefensepatents') || where.includes('list-defense-patents'))) return '';
+  // Intel-history scope: `domain` collides with web-domain params on other
+  // ops, so anchor on the exact accepted-values pattern instead of the name.
+  // If the contract's pattern ever changes this falls through to the generic
+  // heuristic and the schema-validity check reds — the correct failure mode.
+  if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  // get-similar-events `situation` enforces min_len 10; the generic
+  // placeholder is shorter and produces an un-runnable request sample.
+  if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
   if (shouldUseDescriptionClosedValue(context)) {
@@ -587,6 +595,62 @@ function mergeObjects(a, b) {
     : b;
 }
 
+function getCompanyEnrichmentExample() {
+  return {
+    company: {
+      name: 'Apple Inc.',
+      domain: 'apple.com',
+      description: 'Electronic Computers',
+      location: 'Cupertino, CA',
+      website: 'https://www.apple.com',
+      founded: 0,
+      cik: '0000320193',
+      ticker: 'AAPL',
+    },
+    // Deprecated compatibility collections are intentionally empty. `github`
+    // is omitted because the handler serializes its undefined value away.
+    techStack: [],
+    secFilings: {
+      totalFilings: 120,
+      recentFilings: [{
+        form: '8-K',
+        fileDate: '2026-07-24',
+        description: 'Results of Operations and Financial Condition',
+        url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000070/0000320193-26-000070-index.htm',
+        items: ['2.02'],
+      }],
+    },
+    hackerNewsMentions: [],
+    enrichedAtMs: 1784908800000,
+    sources: ['sec_edgar', 'finnhub', 'news'],
+    market: {
+      exchange: 'NASDAQ NMS - GLOBAL MARKET',
+      industry: 'Technology',
+      marketCapMusd: 3200000,
+      ipoDate: '1980-12-12',
+      logoUrl: 'https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png',
+      country: 'US',
+      currency: 'USD',
+    },
+    earningsSurprises: [{
+      period: '2026-06-30',
+      actualEps: 1.57,
+      estimateEps: 1.43,
+      surprise: 0.14,
+      surprisePercent: 9.79,
+      year: 2026,
+      quarter: 3,
+    }],
+    newsMentions: [{
+      title: 'Apple reports quarterly results',
+      url: 'https://example.com/apple-results',
+      source: 'example.com',
+      publishedAtMs: 1784905200000,
+    }],
+    unavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
@@ -604,6 +668,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getScenarioStatusExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getcompanyenrichment'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getCompanyEnrichmentExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -662,7 +733,14 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);
-  if (type === 'boolean') return true;
+  if (type === 'boolean') {
+    // Success-path examples must not teach outage envelopes. `unavailable` on
+    // corporate-intel (and similar) RPCs means the upstream seed/registry was
+    // unreadable — a 200 example with unavailable:true is a contract footgun.
+    const key = normalizeKey(name || context.name || '');
+    if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    return true;
+  }
   return stringExample(name, schema, context);
 }
 

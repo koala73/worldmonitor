@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 
 import {
   buildCrossStraitActivityPanelModel,
+  crossStraitSourceHealthHeading,
   isCrossStraitActivitySnapshot,
   tryBuildCrossStraitActivityPanelModel,
 } from '../src/components/cross-strait-activity-summary';
@@ -304,6 +305,36 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     const unavailable = buildCrossStraitActivityPanelModel({ ...snapshot, status: 'unavailable' });
     assert.equal(unavailable.sourceHealth?.state, 'unavailable');
     assert.match(unavailable.sourceHealth?.summary ?? '', /snapshot unavailable/);
+
+    const blocked = buildCrossStraitActivityPanelModel({
+      ...snapshot,
+      status: 'healthy',
+      sources: [
+        snapshot.sources[0],
+        {
+          ...snapshot.sources[1],
+          transportStatus: 'error',
+          blockedReason: 'HTTP_403',
+          errorCodes: ['HTTP_403'],
+          lastSuccessAt: '2026-07-24T09:00:00.000Z',
+        },
+      ],
+    });
+    assert.equal(blocked.sourceHealth?.state, 'blocked');
+    assert.match(blocked.sourceHealth?.summary ?? '', /externally blocked/);
+    assert.equal(blocked.sourceHealth?.sources[1]?.blockedReason, 'HTTP_403');
+    assert.equal(
+      blocked.sourceHealth?.sources[1]?.lastSuccessAt,
+      '2026-07-24T09:00:00.000Z',
+    );
+    assert.equal(
+      crossStraitSourceHealthHeading(blocked.sourceHealth?.state ?? 'degraded'),
+      'Official activity source blocked',
+    );
+    assert.equal(
+      crossStraitSourceHealthHeading(unavailable.sourceHealth?.state ?? 'degraded'),
+      'Official activity unavailable',
+    );
   });
 
   it('rejects malformed nested cache snapshots and soft-fails the supplement model', () => {
@@ -366,6 +397,7 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     assert.match(panel, /if \(this\.officialActivity\) this\.requestRender\(\)/);
     assert.match(panel, /override destroy\(\): void \{[\s\S]*?this\.officialActivityDestroyed = true;/);
     assert.match(panel, /model\.sourceHealth/);
+    assert.match(panel, /crossStraitSourceHealthHeading\(model\.sourceHealth\.state\)/);
     assert.match(panel, /last success:/);
     assert.match(basePanel, /protected requestRender\(\): void/);
     assert.match(renderer, /url\.port === ''/);

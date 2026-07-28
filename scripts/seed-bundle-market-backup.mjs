@@ -13,4 +13,7 @@ await runBundle('market-backup', [
   { label: 'Gold-ETF-Flows', script: 'seed-gold-etf-flows.mjs', seedMetaKey: 'market:gold-etf-flows', canonicalKey: 'market:gold-etf-flows:v1', intervalMs: 120 * MIN, timeoutMs: 60_000 },
   // IMF IFS publishes monthly with ~2-3 month lag. Daily cadence is plenty.
   { label: 'Gold-CB-Reserves', script: 'seed-gold-cb-reserves.mjs', seedMetaKey: 'market:gold-cb-reserves', canonicalKey: 'market:gold-cb-reserves:v1', intervalMs: 24 * 60 * MIN, timeoutMs: 180_000 },
+  // SEC company_tickers.json updates roughly daily; the 8-K feed is near-real-time (#5695).
+  { label: 'SEC-CIK-Map', script: 'seed-sec-cik-map.mjs', seedMetaKey: 'intelligence:sec-cik-map', canonicalKey: 'intelligence:sec-cik-map:v1', intervalMs: 24 * 60 * MIN, timeoutMs: 120_000 },
+  { label: 'SEC-8K-Stream', script: 'seed-sec-8k-stream.mjs', seedMetaKey: 'intelligence:sec-8k-stream', canonicalKey: 'intelligence:sec-8k-stream:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
 ]);

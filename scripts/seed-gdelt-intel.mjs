@@ -1,11 +1,24 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, sleep, verifySeedKey, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
+import {
+  acquireLockSafely,
+  extendExistingTtl,
+  extendExistingTtlDetailed,
+  loadEnvFile,
+  releaseLock,
+  runSeed,
+  sleep,
+  verifySeedKey,
+  writeExtraKey,
+} from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:gdelt-intel:v1';
+const SEED_DOMAIN_RESOURCE = 'intelligence:gdelt-intel';
+const SEED_META_KEY = `seed-meta:${SEED_DOMAIN_RESOURCE}`;
+const SEED_META_TTL = 86400 * 7;
 const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron so verifySeedKey always has a prior snapshot to merge from when GDELT 429s all topics
 // 7d — brownout-scale, NOT one-missed-tick-scale. The per-run EXPIRE-extend in
 // afterPublish keeps last-good timelines alive up to this TTL while GDELT is
@@ -14,12 +27,24 @@ const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron s
 // re-seeds it until GDELT answers again (issue #5478). Consumers get the
 // stored fetchedAt alongside the data to judge staleness.
 export const TIMELINE_TTL = 604800;
+const TIMELINE_REPAIR_DELAY_MS = 5_500;
+// Both entrypoints mutate the same canonical/timeline cohort, so their shared
+// ownership lease must cover the full bounded retry envelope, not just healthy
+// latency. Under simultaneous GDELT and Upstash throttling, 12 sequential
+// timeline reads/fetches/writes plus metadata reconciliation can take roughly
+// 75 minutes (Retry-After is capped at 60s in the shared Redis helpers). Two
+// hours preserves a wide scheduling margin without blocking the next 6h cron
+// tick if a process dies before its owner-token release runs.
+export const GDELT_LOCK_TTL_MS = 2 * 60 * 60_000;
+const RUN_SEED_FETCH_PHASE_TIMEOUT_MS = 270_000;
+const TIMELINE_ERROR_REASON = 'timeline_keys_missing_or_unconfirmed';
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics on success
 const POST_EXHAUST_DELAY_MS = 120_000; // 2min extra cooldown after a topic exhausts all retries
 
 // Wall-clock soft budget for the whole fetch phase (issue #4864). Kept well
-// under runSeed's hard #4786 deadline (lockTtlMs 120s + 120s margin = 240s) so
+// under runSeed's explicit 270s hard #4786 deadline, while the 10min lock also
+// covers canonical/timeline publication after the 150s fetch budget, so
 // that under a GDELT/Decodo throttle storm the loop stops fetching and falls
 // through to the cached-snapshot merge below — publishing partial+cached data
 // and exiting 0 — instead of two independent budget-blowers pushing the phase
@@ -39,6 +64,15 @@ const INTEL_TOPICS = [
   { id: 'intelligence', query: '(espionage OR spy OR "intelligence agency" OR covert OR surveillance) sourcelang:eng' },
   { id: 'maritime',     query: '(naval blockade OR piracy OR "strait of hormuz" OR "south china sea" OR warship) sourcelang:eng' },
 ];
+
+const TIMELINE_SERIES = [
+  { id: 'tone', mode: 'TimelineTone', topicField: '_tone' },
+  { id: 'vol', mode: 'TimelineVol', topicField: '_vol' },
+];
+
+function timelineKey(seriesId, topicId) {
+  return `gdelt:intel:${seriesId}:${topicId}`;
+}
 
 function isValidUrl(str) {
   try {
@@ -93,7 +127,11 @@ function normalizeTimeline(data, mode) {
   })).filter((pt) => pt.date);
 }
 
-async function fetchTopicTimeline(topic, mode) {
+export async function fetchTopicTimeline(topic, mode, opts = {}) {
+  const {
+    strict = false,
+    _fetchJson = fetchGdeltJson,
+  } = opts;
   const url = new URL(GDELT_DOC_API);
   url.searchParams.set('query', topic.query);
   url.searchParams.set('mode', mode);
@@ -111,13 +149,14 @@ async function fetchTopicTimeline(topic, mode) {
     // Worst case ~25s per call × 12 = ~5 min ceiling. Gives timelines a
     // realistic chance to succeed via proxy without blocking the seeder
     // for the full article-fetch budget.
-    const data = await fetchGdeltJson(url.toString(), {
+    const data = await _fetchJson(url.toString(), {
       label: `${topic.id}/${mode}`,
       maxRetries: 0,
       proxyMaxAttempts: 2,
     });
     return normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value');
-  } catch {
+  } catch (err) {
+    if (strict) throw err;
     return [];
   }
 }
@@ -207,18 +246,18 @@ export async function fetchAllTopics(deps = {}) {
     console.log(`    ${result.articles.length} articles`);
     // Fetch tone/vol timelines in parallel — best-effort, 429s silently return [].
     // Also bounded so a slow timeline pair can't overrun the phase.
-    const [tone, vol] = await withBudget(
-      Promise.all([
-        _fetchTimeline(INTEL_TOPICS[i], 'TimelineTone'),
-        _fetchTimeline(INTEL_TOPICS[i], 'TimelineVol'),
-      ]),
+    const timelines = await withBudget(
+      Promise.all(TIMELINE_SERIES.map(
+        (series) => _fetchTimeline(INTEL_TOPICS[i], series.mode),
+      )),
       remaining(),
       [[], []],
       () => console.warn(`    ${INTEL_TOPICS[i].id}: timeline budget reached — skipping timelines`),
     );
-    result._tone = tone;
-    result._vol = vol;
-    console.log(`    timeline: ${tone.length} tone pts, ${vol.length} vol pts`);
+    for (let j = 0; j < TIMELINE_SERIES.length; j++) {
+      result[TIMELINE_SERIES[j].topicField] = timelines[j];
+    }
+    console.log(`    timeline: ${result._tone.length} tone pts, ${result._vol.length} vol pts`);
     topics.push(result);
     // After a topic exhausts all retries, give GDELT a longer cooldown before hitting
     // it again with the next topic — the rate limit window for popular queries exceeds 50s.
@@ -290,8 +329,8 @@ function publishTransform(data) {
 // already-successful run into exit 1. A failed fresh write degrades to the
 // EXPIRE-extend path (preserve last-good), loudly.
 export async function afterPublish(data, _meta) {
-  const toneKeysToExtend = [];
-  const volKeysToExtend = [];
+  const keysToExtend = new Map(TIMELINE_SERIES.map((series) => [series.id, []]));
+  const missingOrUnconfirmedKeys = [];
   const writeOrQueueExtend = async (key, timeline, fetchedAt, extendQueue) => {
     if (Array.isArray(timeline) && timeline.length > 0) {
       try {
@@ -310,17 +349,274 @@ export async function afterPublish(data, _meta) {
     // a stale stamp would make cross-source-signals' 48h signal-grade guard
     // suppress a genuinely fresh series.
     const fetchedAt = data.fetchedAt ?? topic.fetchedAt;
-    await writeOrQueueExtend(`gdelt:intel:tone:${topic.id}`, topic._tone, fetchedAt, toneKeysToExtend);
-    await writeOrQueueExtend(`gdelt:intel:vol:${topic.id}`, topic._vol, fetchedAt, volKeysToExtend);
+    for (const series of TIMELINE_SERIES) {
+      await writeOrQueueExtend(
+        timelineKey(series.id, topic.id),
+        topic[series.topicField],
+        fetchedAt,
+        keysToExtend.get(series.id),
+      );
+    }
   }
-  if (toneKeysToExtend.length > 0) {
-    console.log(`  Extending tone TTL for ${toneKeysToExtend.length} rate-limited topic(s): ${toneKeysToExtend.map((k) => k.split(':').pop()).join(', ')}`);
-    await extendExistingTtl(toneKeysToExtend, TIMELINE_TTL);
+  for (const series of TIMELINE_SERIES) {
+    const queuedKeys = keysToExtend.get(series.id);
+    if (queuedKeys.length > 0) {
+      console.log(`  Extending ${series.id} TTL for ${queuedKeys.length} rate-limited topic(s): ${queuedKeys.map((key) => key.split(':').pop()).join(', ')}`);
+      const ttlResult = await extendExistingTtlDetailed(queuedKeys, TIMELINE_TTL);
+      const unavailableKeys = new Set([...ttlResult.missingKeys, ...ttlResult.unconfirmedKeys]);
+      missingOrUnconfirmedKeys.push(...queuedKeys.filter((key) => unavailableKeys.has(key)));
+    }
   }
-  if (volKeysToExtend.length > 0) {
-    console.log(`  Extending vol TTL for ${volKeysToExtend.length} rate-limited topic(s): ${volKeysToExtend.map((k) => k.split(':').pop()).join(', ')}`);
-    await extendExistingTtl(volKeysToExtend, TIMELINE_TTL);
+  if (missingOrUnconfirmedKeys.length > 0) {
+    console.warn(
+      `  WARNING: ${missingOrUnconfirmedKeys.length} timeline key(s) are missing or could not be confirmed; `
+      + `run \`node scripts/seed-gdelt-intel.mjs --repair-timelines\` to restore them outside the article-fetch budget`,
+    );
   }
+  const completionState = missingOrUnconfirmedKeys.length > 0 ? 'DEGRADED' : 'OK';
+  return {
+    completionState,
+    freshnessMetaPatch: completionState === 'DEGRADED'
+      ? {
+          status: 'error',
+          errorReason: TIMELINE_ERROR_REASON,
+          missingTimelineKeys: missingOrUnconfirmedKeys,
+        }
+      : null,
+  };
+}
+
+function hasTimelineData(value) {
+  const points = Array.isArray(value) ? value : value?.data;
+  return Array.isArray(points) && points.length > 0;
+}
+
+// Dedicated operator repair path for issue #5712. The regular seed's 150s
+// article budget is intentionally unable to walk all 12 timeline requests
+// during a GDELT throttle storm. This path does no article work, paces each
+// timeline request independently, and writes every missing key with SET.
+export async function repairTimelines(deps = {}) {
+  const {
+    _readTimeline = verifySeedKey,
+    _fetchTimeline = (topic, mode) => fetchTopicTimeline(topic, mode, { strict: true }),
+    _writeTimeline = writeExtraKey,
+    _extendTtl = extendExistingTtl,
+    _sleep = sleep,
+    _interRequestDelayMs = TIMELINE_REPAIR_DELAY_MS,
+    _now = () => Date.now(),
+  } = deps;
+  const repairedKeys = [];
+  const preservedKeys = [];
+  const failedKeys = [];
+  let fetchCount = 0;
+
+  for (const topic of INTEL_TOPICS) {
+    for (const series of TIMELINE_SERIES) {
+      const key = timelineKey(series.id, topic.id);
+      let existing = null;
+      try {
+        existing = await _readTimeline(key);
+      } catch (err) {
+        console.warn(`  ${key}: Redis read failed (${err?.message || err}); attempting a fresh repair`);
+      }
+
+      if (hasTimelineData(existing) && await _extendTtl([key], TIMELINE_TTL)) {
+        preservedKeys.push(key);
+        continue;
+      }
+
+      if (fetchCount > 0 && _interRequestDelayMs > 0) {
+        await _sleep(_interRequestDelayMs);
+      }
+      fetchCount += 1;
+
+      let timeline;
+      try {
+        timeline = await _fetchTimeline(topic, series.mode);
+      } catch (err) {
+        failedKeys.push(key);
+        console.warn(`  ${key}: repair fetch failed (${err?.message || err})`);
+        continue;
+      }
+      if (!Array.isArray(timeline) || timeline.length === 0) {
+        failedKeys.push(key);
+        console.warn(`  ${key}: repair fetch returned no timeline points`);
+        continue;
+      }
+
+      try {
+        await _writeTimeline(
+          key,
+          { data: timeline, fetchedAt: new Date(_now()).toISOString() },
+          TIMELINE_TTL,
+        );
+        repairedKeys.push(key);
+      } catch (err) {
+        failedKeys.push(key);
+        console.warn(`  ${key}: repair write failed (${err?.message || err})`);
+      }
+    }
+  }
+
+  const result = {
+    completionState: failedKeys.length > 0 ? 'DEGRADED' : 'OK',
+    repairedCount: repairedKeys.length,
+    preservedCount: preservedKeys.length,
+    repairedKeys,
+    preservedKeys,
+    failedKeys,
+  };
+  return result;
+}
+
+function emptyRepairResult(extra = {}) {
+  return {
+    completionState: 'DEGRADED',
+    repairedCount: 0,
+    preservedCount: 0,
+    repairedKeys: [],
+    preservedKeys: [],
+    failedKeys: [],
+    ...extra,
+  };
+}
+
+export async function reconcileTimelineRepairMetadata(repairResult, deps = {}) {
+  const {
+    _readMeta = () => verifySeedKey(SEED_META_KEY),
+    _writeMeta = (meta, ttl) => writeExtraKey(SEED_META_KEY, meta, ttl),
+  } = deps;
+  const currentMeta = await _readMeta();
+  if (!currentMeta || typeof currentMeta !== 'object' || Array.isArray(currentMeta)) {
+    throw new Error(`${SEED_META_KEY} is absent or unreadable`);
+  }
+
+  const failedKeys = [...new Set(repairResult.failedKeys ?? [])];
+  const nextMeta = { ...currentMeta };
+  if (failedKeys.length > 0) {
+    const unrelatedErrorOwnsRecord =
+      nextMeta.status === 'error'
+      && typeof nextMeta.errorReason === 'string'
+      && nextMeta.errorReason.length > 0
+      && nextMeta.errorReason !== TIMELINE_ERROR_REASON;
+    if (!unrelatedErrorOwnsRecord) {
+      nextMeta.status = 'error';
+      nextMeta.errorReason = TIMELINE_ERROR_REASON;
+    }
+    nextMeta.missingTimelineKeys = failedKeys;
+  } else {
+    delete nextMeta.missingTimelineKeys;
+    if (nextMeta.errorReason === TIMELINE_ERROR_REASON) {
+      delete nextMeta.status;
+      delete nextMeta.errorReason;
+    }
+  }
+  await _writeMeta(nextMeta, SEED_META_TTL);
+  return nextMeta;
+}
+
+function logTimelineRepairResult(result) {
+  console.log(JSON.stringify({
+    event: 'gdelt_timeline_repair',
+    state: result.completionState,
+    repairedCount: result.repairedCount,
+    preservedCount: result.preservedCount,
+    failedCount: result.failedKeys?.length ?? 0,
+    metadataReconciled: result.metadataReconciled === true,
+    lockReason: result.lockReason,
+    repairError: result.repairError,
+    metadataError: result.metadataError,
+    lockReleaseError: result.lockReleaseError,
+  }));
+}
+
+// Operator entrypoint: the repair, health-metadata reconciliation, and final
+// outcome all share the scheduled seeder's ownership lock. The only structured
+// result is emitted after metadata persistence and lock release have settled.
+export async function runTimelineRepair(deps = {}) {
+  const {
+    _acquireLock = acquireLockSafely,
+    _releaseLock = releaseLock,
+    _repair = repairTimelines,
+    _repairDeps,
+    _readMeta = () => verifySeedKey(SEED_META_KEY),
+    _writeMeta = (meta, ttl) => writeExtraKey(SEED_META_KEY, meta, ttl),
+    _runId = () => `repair-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  } = deps;
+  const runId = typeof _runId === 'function' ? _runId() : _runId;
+  let locked = false;
+  let result = emptyRepairResult({ lockReason: 'lock_unavailable' });
+
+  try {
+    let lockResult;
+    if (
+      _acquireLock === acquireLockSafely
+      && (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN)
+    ) {
+      lockResult = { locked: false, skipped: true, reason: 'missing_redis_credentials' };
+    } else {
+      try {
+        lockResult = await _acquireLock(
+          SEED_DOMAIN_RESOURCE,
+          runId,
+          GDELT_LOCK_TTL_MS,
+          { label: `${SEED_DOMAIN_RESOURCE} timeline repair` },
+        );
+      } catch (err) {
+        result = emptyRepairResult({
+          lockReason: 'lock_error',
+          lockError: err?.message || String(err),
+        });
+      }
+    }
+
+    if (lockResult?.locked) {
+      locked = true;
+      try {
+        const repairResult = await _repair(_repairDeps);
+        if (!repairResult || typeof repairResult !== 'object') {
+          throw new Error('repair returned no result');
+        }
+        result = repairResult;
+        try {
+          await reconcileTimelineRepairMetadata(result, { _readMeta, _writeMeta });
+          result = { ...result, metadataReconciled: true };
+        } catch (err) {
+          result = {
+            ...result,
+            completionState: 'DEGRADED',
+            metadataReconciled: false,
+            metadataError: err?.message || String(err),
+          };
+        }
+      } catch (err) {
+        result = emptyRepairResult({
+          repairError: err?.message || String(err),
+        });
+      }
+    } else if (lockResult) {
+      result = emptyRepairResult({
+        lockReason: lockResult.skipped
+          ? (lockResult.reason || 'lock_unavailable')
+          : 'lock_contended',
+      });
+    }
+  } finally {
+    if (locked) {
+      try {
+        await _releaseLock(SEED_DOMAIN_RESOURCE, runId);
+      } catch (err) {
+        result = {
+          ...result,
+          completionState: 'DEGRADED',
+          lockReleaseError: err?.message || String(err),
+        };
+      }
+    }
+  }
+
+  logTimelineRepairResult(result);
+  return result;
 }
 
 export function declareRecords(data) {
@@ -354,6 +650,8 @@ export function contentMeta(data) {
 export const RUN_SEED_OPTS = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
+  lockTtlMs: GDELT_LOCK_TTL_MS,
+  fetchPhaseTimeoutMs: RUN_SEED_FETCH_PHASE_TIMEOUT_MS,
   sourceVersion: 'gdelt-doc-v2',
   publishTransform,
   afterPublish,
@@ -367,8 +665,23 @@ export const RUN_SEED_OPTS = {
   maxContentAgeMin: 1440,
 };
 
+export async function runCli(args = process.argv.slice(2), deps = {}) {
+  const {
+    _runTimelineRepair = runTimelineRepair,
+    _runSeed = runSeed,
+  } = deps;
+  if (args.includes('--repair-timelines')) {
+    const result = await _runTimelineRepair();
+    return result.completionState === 'OK' ? 0 : 1;
+  }
+  await _runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, RUN_SEED_OPTS);
+  return 0;
+}
+
 if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
-  runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, RUN_SEED_OPTS).catch((err) => {
+  runCli().then((exitCode) => {
+    process.exitCode = exitCode;
+  }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

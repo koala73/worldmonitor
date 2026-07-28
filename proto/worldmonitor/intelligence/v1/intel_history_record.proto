@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// IntelHistoryRecord is one durable historical intelligence event (#5694).
+//
+// Seeders append the events they publish to the Convex `intelHistory` table
+// (convex/intelHistory.ts) after each run; every read path — chronological
+// (GetIntelTimeline) and semantic (SearchIntelHistory, GetSimilarEvents) —
+// returns this same projection, so a caller can hold one record shape.
+//
+// Defined in its own file because all three RPCs reuse it, matching the
+// satellite.proto convention.
+message IntelHistoryRecord {
+  // Opaque stable handle for the stored event (a Convex document id). Useful
+  // for de-duplicating across calls; not resolvable through any public route.
+  string id = 1;
+  // Producing domain, e.g. "conflict", "military", "energy". Matches the
+  // domain filter accepted by the three RPCs.
+  string domain = 2;
+  // Seeder-level resource that produced the event, e.g. "acled-events".
+  // Finer-grained than domain and not part of any request filter.
+  string resource = 3;
+  // ISO 3166-1 alpha-2 country code. Empty when the event is not attributable
+  // to a single country.
+  string country = 4;
+  // Producer-supplied event category, e.g. "battle". Free-form per domain;
+  // empty when the producer did not classify the event.
+  string category = 5;
+  // Event headline. Always present.
+  string title = 6;
+  // Longer description. Empty when the producer had none.
+  string summary = 7;
+  // Canonical link to the underlying report. Empty when the producer had none.
+  string source_url = 8;
+  // When the event happened, Unix epoch milliseconds. This is the field the
+  // timeline orders by and the from/to filters bound.
+  int64 occurred_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // When WorldMonitor stored the event, Unix epoch milliseconds. Distinct from
+  // occurred_at for backfills, and the field retention ages rows out by.
+  int64 ingested_at = 10 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Cosine similarity against the request's query vector, in [-1, 1]. Higher
+  // is closer. Always 0 on GetIntelTimeline, which ranks by time and has no
+  // query vector to score against.
+  double score = 11;
+}

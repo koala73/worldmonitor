@@ -136,15 +136,41 @@ export function parseExistingSitemapLastmods(source) {
   return dates;
 }
 
+// Git's local env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...) override
+// `cwd`, so a build running inside a git hook would silently resolve these
+// queries against the hook's repository instead of the repoRoot it was given.
+// Strip them, and render dates in UTC (see gitLastmod).
+let gitLocalEnvVars = null;
+function gitEnvForRoot() {
+  if (gitLocalEnvVars === null) {
+    try {
+      gitLocalEnvVars = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim().split('\n');
+    } catch {
+      gitLocalEnvVars = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY'];
+    }
+  }
+  const env = { ...process.env, TZ: 'UTC' };
+  for (const name of gitLocalEnvVars) delete env[name];
+  return env;
+}
+
 function gitLastmod(repoRoot, materialSources) {
   try {
+    // Render the committer date in UTC, not the commit's recorded timezone:
+    // %cs of a commit recorded at 01:21+04:00 reads as "tomorrow" relative to
+    // a UTC build clock, and the future-lastmod guard would reject it even
+    // though the commit is in the past (Vercel deploy failure, 2026-07-27).
     const value = execFileSync(
       'git',
-      ['log', '-1', '--format=%cs', '--', ...materialSources],
+      ['log', '-1', '--date=format-local:%Y-%m-%d', '--format=%cd', '--', ...materialSources],
       {
         cwd: repoRoot,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
+        env: gitEnvForRoot(),
       },
     ).trim();
     return isIsoDate(value) ? value : null;
@@ -162,6 +188,7 @@ function hasCompleteGitHistory(repoRoot) {
         cwd: repoRoot,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
+        env: gitEnvForRoot(),
       },
     ).trim() === 'false';
   } catch {
@@ -267,7 +294,7 @@ export function buildSitemapEntries({
 
   const corpusPages = discoverContentCorpusPages({ publicDir });
   if (requireCompleteCorpus) {
-    for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/reference/']) {
+    for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/research/', '/reference/']) {
       if (!corpusPages.some((page) => new URL(page.loc).pathname.startsWith(prefix))) {
         throw new Error(
           `generated content corpus is incomplete: no ${prefix} pages; `

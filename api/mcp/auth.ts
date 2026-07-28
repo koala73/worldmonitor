@@ -343,8 +343,8 @@ export async function resolveAuthContext(
       }
       userKey = await deps.validateUserApiKey(candidateKey);
     } catch {
-      // Production validateUserApiKey fail-softs to null; a throw means the
-      // auth backend itself is unreachable — 503 mirrors the bearer path.
+      // validateUserApiKey throws UserApiKeyUnavailableError when Convex is
+      // unreachable/misconfigured — 503 mirrors the bearer path (not 401).
       return {
         ok: false,
         response: new Response(

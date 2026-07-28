@@ -85,6 +85,15 @@ export interface CrossStraitCategoryBaseline {
   };
 }
 
+export interface CrossStraitProxyFailureDetail {
+  stage: 'connect' | 'request' | 'response' | 'parse';
+  httpStatus: number | null;
+  contentType: string | null;
+  bodyPrefix: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 export interface CrossStraitActivitySourceHealth {
   id: CrossStraitSourceId;
   publisher: string;
@@ -93,8 +102,10 @@ export interface CrossStraitActivitySourceHealth {
   transportStatus: 'fresh' | 'error';
   requestCount: number;
   transportPath?: 'direct' | 'proxy';
+  blockedReason?: 'HTTP_403';
   fallbackReason?: string;
   proxyFailureReason?: string;
+  proxyFailureDetail?: CrossStraitProxyFailureDetail;
   errorCodes: string[];
   lastSuccessAt: string | null;
   admittedDocumentCount?: number;

@@ -323,6 +323,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/list-telegram-feed': 'fast',
   '/api/intelligence/v1/get-company-enrichment': 'slow',
   '/api/intelligence/v1/list-company-signals': 'slow',
+  '/api/intelligence/v1/search-sec-filings': 'medium',
+  '/api/intelligence/v1/list-material-events': 'medium',
   '/api/news/v1/summarize-article-cache': 'slow',
 
   '/api/imagery/v1/search-imagery': 'static',
@@ -394,6 +396,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-regime-history': 'slow',
   // get-regional-brief is premium-gated; slow-browser in practice, slow entry for route-parity.
   '/api/intelligence/v1/get-regional-brief': 'slow',
+  // Historical intelligence memory (#5694) — the timeline is a generated GET
+  // and therefore requires an explicit gateway cache tier. The two semantic
+  // reads are POSTs and cache successful results inside their handlers.
+  '/api/intelligence/v1/get-intel-timeline': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
   '/api/resilience/v1/get-runtime-manifest': 'no-store',
@@ -1207,26 +1213,55 @@ export function createDomainGateway(
         return validationGuardResponse;
       }
 
+      // Only destructure validateUserApiKey: several gateway unit tests mock this
+      // module with a partial surface. Requiring isUserApiKeyUnavailableError at
+      // import time breaks those mocks (vitest throws "No export is defined").
+      // Classify unavailability by the stable `code` field instead.
       const { validateUserApiKey } = await import('./_shared/user-api-key');
-      const userKeyResult = await validateUserApiKey(wmKey);
-      if (userKeyResult) {
-        isUserApiKey = true;
-        usage.isUserApiKey = true;
-        usage.userApiKeyCustomerRef = userKeyResult.userId;
-        keyCheck = { valid: true, required: true };
-        // Propagate the resolved key-owner identity to downstream route
-        // handlers via x-user-id. The entitlement check itself takes the
-        // userId argument directly (see checkEntitlement(sessionUserId, …))
-        // so it no longer depends on this header — the header is now for
-        // handler consumption + the internal-MCP `isCallerPremium` path.
-        sessionUserId = userKeyResult.userId;
-        // The Clerk role belongs to the bearer subject, not the user-key owner.
-        // Once the explicit wm_ key becomes the identity source, require the
-        // key owner's Convex entitlement to drive tier-gated access.
-        sessionRole = null;
-        usage.sessionUserId = sessionUserId;
-        usage.clerkOrgId = null;
-        request = withAuthenticatedUserId(request, sessionUserId);
+      try {
+        const userKeyResult = await validateUserApiKey(wmKey);
+        if (userKeyResult) {
+          isUserApiKey = true;
+          usage.isUserApiKey = true;
+          usage.userApiKeyCustomerRef = userKeyResult.userId;
+          keyCheck = { valid: true, required: true };
+          // Propagate the resolved key-owner identity to downstream route
+          // handlers via x-user-id. The entitlement check itself takes the
+          // userId argument directly (see checkEntitlement(sessionUserId, …))
+          // so it no longer depends on this header — the header is now for
+          // handler consumption + the internal-MCP `isCallerPremium` path.
+          sessionUserId = userKeyResult.userId;
+          // The Clerk role belongs to the bearer subject, not the user-key owner.
+          // Once the explicit wm_ key becomes the identity source, require the
+          // key owner's Convex entitlement to drive tier-gated access.
+          sessionRole = null;
+          usage.sessionUserId = sessionUserId;
+          usage.clerkOrgId = null;
+          request = withAuthenticatedUserId(request, sessionUserId);
+        }
+      } catch (err) {
+        // Transient Convex validation outage must not look like an invalid key.
+        // Mirror api/_user-api-key.js serviceUnavailable() (503 + Retry-After +
+        // X-Validation-Mode: degraded) so clients retry instead of rotating keys.
+        // Duck-type on `code` so partial test mocks of user-api-key still work.
+        const code =
+          typeof err === 'object' && err !== null
+            ? (err as { code?: unknown }).code
+            : undefined;
+        if (code === 'validation_unavailable') {
+          emitRequest(503, 'validation_unavailable', null);
+          return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+            status: 503,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'Retry-After': '5',
+              'X-Validation-Mode': 'degraded',
+              ...corsHeaders,
+            },
+          });
+        }
+        throw err;
       }
     }
 

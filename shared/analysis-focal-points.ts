@@ -17,8 +17,8 @@
 import {
   extractEntityContexts,
   type EntityIndex,
-  type EntityType,
-} from './analysis-entity-index';
+} from './entity-extraction-core.js';
+import type { EntityType } from './entity-registry.js';
 
 // ============================================================================
 // Structural input shapes — the subset of the client types this core reads.
@@ -184,9 +184,13 @@ export function aggregateEntities(
   index: EntityIndex
 ): Map<string, EntityMention> {
   const mentions = new Map<string, EntityMention>();
+  const clustersById = new Map<string, FocalClusterInput>();
+  for (const cluster of clusters) {
+    if (!clustersById.has(cluster.id)) clustersById.set(cluster.id, cluster);
+  }
 
   for (const [clusterId, context] of entityContexts) {
-    const cluster = clusters.find(c => c.id === clusterId);
+    const cluster = clustersById.get(clusterId);
     if (!cluster) continue;
 
     for (const entity of context.entities) {

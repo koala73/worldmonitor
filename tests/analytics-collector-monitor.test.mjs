@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  ANALYTICS_CANARY_WEBSITE_ID,
   COLLECTOR_PROBES,
+  buildProbeRequest,
   evaluateProbeResult,
   summarizeProbeFailures,
 } from '../scripts/check-analytics-collector.mjs';
@@ -22,11 +24,18 @@ describe('scheduled analytics collector monitor', () => {
       null,
     );
     assert.equal(evaluateProbeResult(probeByName('ingest-route'), { status: 405 }), null);
+    assert.equal(
+      evaluateProbeResult(probeByName('write-canary'), {
+        status: 200,
+        body: JSON.stringify({ cache: 'cache-id', sessionId: 'session-id', visitId: 'visit-id' }),
+      }),
+      null,
+    );
   });
 
   it('alerts on the exact failure signature of the 4-day outage', () => {
     // Cloudflare 502 after the origin OOM-died, on every path.
-    for (const name of ['heartbeat', 'tracker-script', 'ingest-route']) {
+    for (const name of ['heartbeat', 'tracker-script', 'ingest-route', 'write-canary']) {
       assert.match(evaluateProbeResult(probeByName(name), { status: 502 }), /HTTP 502/);
     }
     assert.match(
@@ -35,13 +44,27 @@ describe('scheduled analytics collector monitor', () => {
     );
   });
 
-  it('never POSTs to the ingest route, so probing writes no synthetic events', () => {
-    const source = readFileSync(
-      new URL('../scripts/check-analytics-collector.mjs', import.meta.url),
-      'utf8',
-    );
-    assert.doesNotMatch(source, /method:\s*['"]POST['"]/i);
+  it('POSTs one synthetic event only to the dedicated canary website', () => {
     assert.equal(probeByName('ingest-route').path, '/api/send');
+    assert.equal(buildProbeRequest(probeByName('ingest-route')).method, 'GET');
+
+    const writeCanary = probeByName('write-canary');
+    assert.equal(writeCanary.path, '/api/send');
+    const request = buildProbeRequest(writeCanary);
+    assert.equal(request.method, 'POST');
+    assert.equal(request.headers['Content-Type'], 'application/json');
+    assert.match(request.headers['User-Agent'], /^Mozilla\/5\.0 /);
+
+    const body = JSON.parse(request.body);
+    assert.equal(body.type, 'event');
+    assert.equal(body.payload.website, ANALYTICS_CANARY_WEBSITE_ID);
+    assert.equal(body.payload.hostname, 'analytics-canary.worldmonitor.app');
+    assert.equal(body.payload.name, 'collector-write-canary');
+    assert.notEqual(
+      ANALYTICS_CANARY_WEBSITE_ID,
+      'e8800335-c853-46a8-8497-c993ed2f58bc',
+      'the monitor must never pollute the product analytics website',
+    );
   });
 
   it('blames the probe, not the collector, when the WAF rejects the User-Agent', () => {
@@ -61,17 +84,31 @@ describe('scheduled analytics collector monitor', () => {
     assert.match(reason, /did not contain \/api\/send/);
   });
 
+  it('rejects bot-filtered and malformed write-canary receipts despite HTTP 200', () => {
+    const writeCanary = probeByName('write-canary');
+    assert.match(
+      evaluateProbeResult(writeCanary, { status: 200, body: '{"beep":"boop"}' }),
+      /receipt missing non-empty string cache/,
+    );
+    assert.match(
+      evaluateProbeResult(writeCanary, { status: 200, body: '{not json' }),
+      /receipt was not valid JSON/,
+    );
+  });
+
   it('reports every failing probe, in probe order, and nothing else', () => {
     const failures = summarizeProbeFailures(COLLECTOR_PROBES, {
       heartbeat: { status: 502 },
       'tracker-script': { status: 200, body: 'posts to /api/send' },
       'ingest-route': { error: 'fetch failed' },
+      'write-canary': { status: 500 },
     });
     assert.deepEqual(
       failures.map((failure) => failure.name),
-      ['heartbeat', 'ingest-route'],
+      ['heartbeat', 'ingest-route', 'write-canary'],
     );
     assert.match(failures[1].reason, /fetch failed/);
+    assert.match(failures[2].reason, /HTTP 500/);
   });
 
   it('refuses malformed probes and results instead of passing them', () => {
@@ -90,7 +127,7 @@ describe('scheduled analytics collector monitor', () => {
     );
 
     assert.match(workflow, /schedule:/);
-    assert.match(workflow, /cron:\s*['"]\*\/15 \* \* \* \*['"]/);
+    assert.match(workflow, /cron:\s*['"]\*\/5 \* \* \* \*['"]/);
     assert.match(workflow, /actions\/setup-node@[a-f0-9]+/);
     assert.match(workflow, /node-version:\s*['"]24['"]/);
     assert.match(workflow, /node scripts\/check-analytics-collector\.mjs/);
