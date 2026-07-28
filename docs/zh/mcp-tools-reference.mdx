@@ -846,7 +846,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `country_code` | string | 筛选为一个国家（ISO-2）及注册表关联到它的实体。 |
-| `limit` | number | 限制焦点列表数量（默认 10）。 |
+| `limit` | number | 限制焦点列表数量（默认 10，传 0 表示不限）。 |
 
 - **API 端点：** 无（仅 MCP 的派生分析）。
 - **类型：** 派生分析 — 与仪表板共享的引擎，基于 Redis 种子缓存。
@@ -893,8 +893,8 @@ curl -s https://worldmonitor.app/mcp \
 | `event_source` | string: earthquakes / wildfires / conflicts / all | events 模式下要富化的事件源（默认 all）。 |
 | `lat` | number | point 模式的纬度。 |
 | `lon` | number | point 模式的经度。 |
-| `radius_km` | number | point 模式的公里半径（默认 50）。 |
-| `limit` | number | events 模式下富化事件列表的上限（默认 20）。 |
+| `radius_km` | number | point 模式的公里半径（默认 50，上限 1000）。 |
+| `limit` | number | events 模式下富化事件列表的上限（默认 20，传 0 表示不限）。 |
 
 - **API 端点：** `GET /api/displacement/v1/get-population-exposure`
 - **类型：** 派生分析 — 共享暴露核心；events 模式读取 Redis 种子缓存。
@@ -923,7 +923,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `hotspot_id` | string | 仅返回此精选热点 id（任意完整响应中可见 id 列表）。 |
-| `limit` | number | 限制排序后的热点列表（默认 29，即完整精选集）。 |
+| `limit` | number | 限制排序后的热点列表（默认 29，即完整精选集；传 0 表示不限）。 |
 
 - **API 端点：** 无（仅 MCP 的派生分析）。
 - **类型：** 派生分析 — 与仪表板共享的引擎，基于 Redis 种子缓存。

@@ -7,6 +7,7 @@ import {
   computeExposure,
   getRadiusForEventType,
   listCountryPopulations,
+  MAX_EXPOSURE_RADIUS_KM,
 } from '../shared/analysis-population-exposure.ts';
 import {
   Z_THRESHOLD_LOW,
@@ -82,5 +83,31 @@ describe('analysis-temporal-severity core', () => {
     assert.equal(getBaselineSeverity(1.5), 'medium');
     assert.equal(getBaselineSeverity(1.499), 'normal');
     assert.equal(getBaselineSeverity(0), 'normal');
+  });
+});
+
+describe('exposure radius clamping', () => {
+  it('caps the radius so an absurd request cannot return an absurd population', () => {
+    // Unclamped, radius 20000 returned ~5.6e11 people — roughly 69x the world
+    // population — because density is multiplied across the whole disc.
+    const wild = computeExposure(31.0, 34.8, 20000);
+    assert.equal(wild.exposureRadiusKm, MAX_EXPOSURE_RADIUS_KM, 'result reports the radius actually used');
+    const capped = computeExposure(31.0, 34.8, MAX_EXPOSURE_RADIUS_KM);
+    assert.equal(wild.exposedPopulation, capped.exposedPopulation);
+    assert.ok(wild.exposedPopulation < 8.1e9 * 10, 'stays within an order of magnitude of world population');
+  });
+
+  it('leaves in-range radii untouched', () => {
+    for (const r of [1, 30, 50, 100, MAX_EXPOSURE_RADIUS_KM]) {
+      assert.equal(computeExposure(31.0, 34.8, r).exposureRadiusKm, r);
+    }
+  });
+
+  it('treats non-finite and negative radii as zero rather than NaN', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+      const result = computeExposure(31.0, 34.8, bad);
+      assert.equal(result.exposedPopulation, 0);
+      assert.equal(result.exposureRadiusKm, 0);
+    }
   });
 });

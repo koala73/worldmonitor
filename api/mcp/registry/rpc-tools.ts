@@ -77,6 +77,43 @@ function getSharedEntityIndex(): ReturnType<typeof buildEntityIndex> {
   return sharedEntityIndex;
 }
 
+/**
+ * Read data caches and their freshness metadata in one round of parallel
+ * requests, returning the two sets already separated.
+ *
+ * The hand-rolled form each analysis tool used was
+ * `const [a, b, ...metas] = await Promise.all([...keys.map(read), ...checks.map(read)])`,
+ * whose correctness depends on the count of named payload variables exactly
+ * matching `keys.length`. Add a key without adding a variable and the first
+ * meta silently becomes a payload, `metas` shifts, and evaluateFreshness
+ * reports another dataset's staleness — with no error and no failing test.
+ * Slicing here makes that misalignment unrepresentable.
+ */
+async function readCachesWithFreshness(
+  keys: readonly string[],
+  checks: FreshnessCheck[],
+): Promise<{ payloads: unknown[]; freshness: { cached_at: string | null; stale: boolean } }> {
+  const results = await Promise.all([
+    ...keys.map((key) => readJsonFromUpstash(key)),
+    ...checks.map((check) => readJsonFromUpstash(check.key)),
+  ]);
+  return {
+    payloads: results.slice(0, keys.length),
+    freshness: evaluateFreshness(checks, results.slice(keys.length)),
+  };
+}
+
+// `limit: 0` means "no cap" across the MCP tool surface (the cache tools
+// document it that way and capNested implements it), so the analysis tools
+// honour the same convention instead of silently coercing 0 to the default.
+function resolveLimit(raw: unknown, fallback: number): number {
+  if (raw === undefined || raw === null) return fallback;
+  const parsed = Math.round(Number(raw));
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed <= 0) return Number.POSITIVE_INFINITY;
+  return parsed;
+}
+
 type McpBriefSource = {
   title: string;
   source: string;
@@ -1451,10 +1488,7 @@ export const RPC_TOOLS: ToolDef[] = [
         { key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 },
         { key: 'seed-meta:military:usni-fleet', maxStaleMin: 720 },
       ];
-      const [unrest, flights, quakes, fleet, ...metas] = await Promise.all([
-        ...keys.map((key) => readJsonFromUpstash(key)),
-        ...checks.map((check) => readJsonFromUpstash(check.key)),
-      ]);
+      const { payloads: [unrest, flights, quakes, fleet], freshness } = await readCachesWithFreshness(keys, checks);
       if ([unrest, flights, quakes, fleet].every((value) => value === null)) {
         throw new Error('cache_all_null: no convergence input feeds are available');
       }
@@ -1482,8 +1516,6 @@ export const RPC_TOOLS: ToolDef[] = [
           return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) <= radiusKm;
         });
       }
-
-      const freshness = evaluateFreshness(checks, metas);
       return {
         ...freshness,
         data: {
@@ -1515,7 +1547,7 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         country_code: { type: 'string', description: 'Filter focal points to one country (ISO-2) and entities the registry relates to it.' },
-        limit: { type: 'number', description: 'Cap the focal point list (default 10).' },
+        limit: { type: 'number', description: 'Cap the focal point list (default 10, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1546,17 +1578,14 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
-      const limit = Math.max(1, Math.round(Number(params.limit ?? 10)) || 10);
+      const limit = resolveLimit(params.limit, 10);
       const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
         { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 30 },
         { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30 },
       ];
-      const [insights, crossSource, riskScores, ...metas] = await Promise.all([
-        ...keys.map((key) => readJsonFromUpstash(key)),
-        ...checks.map((check) => readJsonFromUpstash(check.key)),
-      ]);
+      const { payloads: [insights, crossSource, riskScores], freshness } = await readCachesWithFreshness(keys, checks);
       if ([insights, crossSource, riskScores].every((value) => value === null)) {
         throw new Error('cache_all_null: no focal-point input feeds are available');
       }
@@ -1570,8 +1599,6 @@ export const RPC_TOOLS: ToolDef[] = [
       let points = summary.focalPoints;
       const countryCode = typeof params.country_code === 'string' ? params.country_code : '';
       if (countryCode) points = filterFocalPointsByCountry(points, countryCode, index);
-
-      const freshness = evaluateFreshness(checks, metas);
       return {
         ...freshness,
         data: {
@@ -1635,10 +1662,10 @@ export const RPC_TOOLS: ToolDef[] = [
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 25200 },
       ];
-      const [cablesPayload, ...metas] = await Promise.all([
-        readJsonFromUpstash('infrastructure:submarine-cables:v1'),
-        ...checks.map((check) => readJsonFromUpstash(check.key)),
-      ]);
+      const { payloads: [cablesPayload], freshness } = await readCachesWithFreshness(
+        ['infrastructure:submarine-cables:v1'],
+        checks,
+      );
       if (cablesPayload === null) {
         throw new Error('cache_all_null: the submarine-cable table is unavailable');
       }
@@ -1646,7 +1673,6 @@ export const RPC_TOOLS: ToolDef[] = [
       const cables = submarineCablesToCableInputs(cablesPayload);
       const graph = buildDependencyGraph({ cables, waterways: MCP_CASCADE_WATERWAYS });
       const stats = getGraphStats(graph);
-      const freshness = evaluateFreshness(checks, metas);
 
       const sourceId = typeof params.source_id === 'string' ? params.source_id.trim() : '';
       if (!sourceId) {
@@ -1719,10 +1745,7 @@ export const RPC_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:theater-posture', maxStaleMin: 60 },
       ];
-      const [flightsPayload, posturePayload, surgesPayload, historyPayload, ...metas] = await Promise.all([
-        ...keys.map((key) => readJsonFromUpstash(key)),
-        ...checks.map((check) => readJsonFromUpstash(check.key)),
-      ]);
+      const { payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload], freshness } = await readCachesWithFreshness(keys, checks);
       if ([flightsPayload, posturePayload, surgesPayload].every((value) => value === null)) {
         throw new Error('cache_all_null: no military feeds are available');
       }
@@ -1753,8 +1776,6 @@ export const RPC_TOOLS: ToolDef[] = [
         [id, name, shortName].some(
           (value) => typeof value === 'string' && value.toLowerCase().includes(theaterFilter),
         );
-
-      const freshness = evaluateFreshness(checks, metas);
       return {
         ...freshness,
         data: {
@@ -1788,8 +1809,8 @@ export const RPC_TOOLS: ToolDef[] = [
         event_source: { type: 'string', enum: ['earthquakes', 'wildfires', 'conflicts', 'all'], description: 'Which event feeds to enrich in events mode (default all).' },
         lat: { type: 'number', description: 'Latitude for point mode.' },
         lon: { type: 'number', description: 'Longitude for point mode.' },
-        radius_km: { type: 'number', description: 'Radius in km for point mode (default 50).' },
-        limit: { type: 'number', description: 'Cap the enriched event list in events mode (default 20).' },
+        radius_km: { type: 'number', description: 'Radius in km for point mode (default 50, clamped to 1000).' },
+        limit: { type: 'number', description: 'Cap the enriched event list in events mode (default 20, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1830,6 +1851,17 @@ export const RPC_TOOLS: ToolDef[] = [
             error: 'point mode requires numeric lat and lon.',
           };
         }
+        // Out-of-range coordinates would still resolve to a nearest centroid
+        // by Euclidean distance and return a real-looking estimate for a place
+        // that does not exist (lat 999 attributes to Mali).
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+          return {
+            cached_at: null,
+            stale: false,
+            data: { events: null, exposure: null, countries: null },
+            error: `lat must be within [-90, 90] and lon within [-180, 180] (received lat=${lat}, lon=${lon}).`,
+          };
+        }
         const radiusKm = Math.max(1, Number(params.radius_km ?? 50) || 50);
         return {
           cached_at: null,
@@ -1839,7 +1871,7 @@ export const RPC_TOOLS: ToolDef[] = [
       }
 
       const source = typeof params.event_source === 'string' ? params.event_source : 'all';
-      const limit = Math.max(1, Math.round(Number(params.limit ?? 20)) || 20);
+      const limit = resolveLimit(params.limit, 20);
       const wants = (name: string) => source === 'all' || source === name;
       const reads: Array<{ key: string; check: FreshnessCheck; adapt: (payload: unknown) => ExposureEvent[] }> = [];
       if (wants('earthquakes')) {
@@ -1943,10 +1975,7 @@ export const RPC_TOOLS: ToolDef[] = [
         { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
         { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
       ];
-      const [riskScores, surges, cableHealth, outages, temporal, thermal, stress, ...metas] = await Promise.all([
-        ...keys.map((key) => readJsonFromUpstash(key)),
-        ...checks.map((check) => readJsonFromUpstash(check.key)),
-      ]);
+      const { payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress], freshness } = await readCachesWithFreshness(keys, checks);
       if ([riskScores, surges, cableHealth, outages, temporal, thermal, stress].every((value: unknown) => value === null)) {
         throw new Error('cache_all_null: no digest input feeds are available');
       }
@@ -1971,8 +2000,6 @@ export const RPC_TOOLS: ToolDef[] = [
           note: 'weekly trends derive from the persisted military-activity history; other domains publish no whole-feed history caches yet',
         };
       }
-
-      const freshness = evaluateFreshness(checks, metas);
       return {
         ...freshness,
         data: { tripped: digest.tripped, quiet: digest.quiet, unavailable: digest.unavailable, weekly },
@@ -2004,7 +2031,7 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         hotspot_id: { type: 'string', description: 'Return only this curated hotspot id (see any full response for the id list).' },
-        limit: { type: 'number', description: 'Cap the ranked hotspot list (default 29, the full curated set).' },
+        limit: { type: 'number', description: 'Cap the ranked hotspot list (default 29, the full curated set; pass 0 for no cap).' },
       },
       required: [],
     },
@@ -2063,10 +2090,7 @@ export const RPC_TOOLS: ToolDef[] = [
         { key: 'seed-meta:unrest:events', maxStaleMin: 120 },
         { key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 },
       ];
-      const [insights, riskScores, flightsPayload, unrest, quakes, ...metas] = await Promise.all([
-        ...keys.map((key) => readJsonFromUpstash(key)),
-        ...checks.map((check) => readJsonFromUpstash(check.key)),
-      ]);
+      const { payloads: [insights, riskScores, flightsPayload, unrest, quakes], freshness } = await readCachesWithFreshness(keys, checks);
       if ([insights, riskScores, flightsPayload, unrest, quakes].every((value) => value === null)) {
         throw new Error('cache_all_null: no hotspot-escalation input feeds are available');
       }
@@ -2121,10 +2145,8 @@ export const RPC_TOOLS: ToolDef[] = [
         };
       });
 
-      const limit = Math.max(1, Math.round(Number(params.limit ?? INTEL_HOTSPOTS.length)) || INTEL_HOTSPOTS.length);
+      const limit = resolveLimit(params.limit, INTEL_HOTSPOTS.length);
       scored.sort((a, b) => b.combinedScore - a.combinedScore || b.dynamicScore - a.dynamicScore);
-
-      const freshness = evaluateFreshness(checks, metas);
       return { ...freshness, data: { hotspots: scored.slice(0, limit) } };
     },
     _coverageKeys: ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'],

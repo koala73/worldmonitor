@@ -861,7 +861,7 @@ Focal-point detection: entities where news coverage and live map signals converg
 | Name | Type | Description |
 |------|------|-------------|
 | `country_code` | string | Filter focal points to one country (ISO-2) and entities the registry relates to it. |
-| `limit` | number | Cap the focal point list (default 10). |
+| `limit` | number | Cap the focal point list (default 10, pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
@@ -953,8 +953,8 @@ Population exposure: estimated people within the impact radius of active earthqu
 | `event_source` | string: earthquakes / wildfires / conflicts / all | Which event feeds to enrich in events mode (default all). |
 | `lat` | number | Latitude for point mode. |
 | `lon` | number | Longitude for point mode. |
-| `radius_km` | number | Radius in km for point mode (default 50). |
-| `limit` | number | Cap the enriched event list in events mode (default 20). |
+| `radius_km` | number | Radius in km for point mode (default 50, clamped to 1000). |
+| `limit` | number | Cap the enriched event list in events mode (default 20, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-population-exposure`
 - **Kind:** derived analysis — shared exposure core; events mode reads Redis seed caches.
@@ -1013,7 +1013,7 @@ Hotspot escalation scores: the 29 curated intelligence hotspots ranked on the do
 | Name | Type | Description |
 |------|------|-------------|
 | `hotspot_id` | string | Return only this curated hotspot id (see any full response for the id list). |
-| `limit` | number | Cap the ranked hotspot list (default 29, the full curated set). |
+| `limit` | number | Cap the ranked hotspot list (default 29, the full curated set; pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.

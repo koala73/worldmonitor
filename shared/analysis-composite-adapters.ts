@@ -31,6 +31,7 @@ import type {
   SurgeEntry,
   ThermalEntry,
 } from './analysis-alert-digest';
+import { finiteNumber, nonEmptyString } from './analysis-adapter-guards';
 
 export interface ExposureEvent {
   id: string;
@@ -40,13 +41,11 @@ export interface ExposureEvent {
   lon: number;
 }
 
-const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 function coords(entry: unknown): { lat: number; lon: number } | null {
   const location = (entry as { location?: { latitude?: unknown; longitude?: unknown } })?.location;
-  const lat = num(location?.latitude);
-  const lon = num(location?.longitude);
+  const lat = finiteNumber(location?.latitude);
+  const lon = finiteNumber(location?.longitude);
   if (lat === null || lon === null) return null;
   return { lat, lon };
 }
@@ -59,10 +58,10 @@ export function earthquakesToExposureEvents(payload: unknown, limit = 50): Expos
     const c = coords(q);
     if (!c) continue;
     const record = q as { id?: unknown; place?: unknown; magnitude?: unknown };
-    const magnitude = num(record.magnitude);
+    const magnitude = finiteNumber(record.magnitude);
     events.push({
-      id: str(record.id) || `quake-${events.length}`,
-      name: str(record.place) || `M${magnitude ?? '?'} earthquake`,
+      id: nonEmptyString(record.id) || `quake-${events.length}`,
+      name: nonEmptyString(record.place) || `M${magnitude ?? '?'} earthquake`,
       type: 'earthquake',
       ...c,
     });
@@ -77,11 +76,11 @@ export function firesToExposureEvents(payload: unknown, limit = 50): ExposureEve
   const ranked = fires
     .map((f) => ({ f: f as { id?: unknown; frp?: unknown; region?: unknown }, c: coords(f) }))
     .filter((x): x is { f: { id?: unknown; frp?: unknown; region?: unknown }; c: { lat: number; lon: number } } => x.c !== null)
-    .sort((a, b) => (num(b.f.frp) ?? 0) - (num(a.f.frp) ?? 0))
+    .sort((a, b) => (finiteNumber(b.f.frp) ?? 0) - (finiteNumber(a.f.frp) ?? 0))
     .slice(0, limit);
   return ranked.map(({ f, c }, i) => ({
-    id: str(f.id) || `fire-${i}`,
-    name: `Fire detection${str(f.region) ? ` — ${str(f.region)}` : ''}`,
+    id: nonEmptyString(f.id) || `fire-${i}`,
+    name: `Fire detection${nonEmptyString(f.region) ? ` — ${nonEmptyString(f.region)}` : ''}`,
     type: 'wildfire',
     ...c,
   }));
@@ -93,11 +92,11 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
   const dated = raw
     .map((e) => ({ e: e as { id?: unknown; country?: unknown; dateStart?: unknown }, c: coords(e) }))
     .filter((x): x is { e: { id?: unknown; country?: unknown; dateStart?: unknown }; c: { lat: number; lon: number } } => x.c !== null)
-    .sort((a, b) => Date.parse(str(b.e.dateStart)) - Date.parse(str(a.e.dateStart)))
+    .sort((a, b) => Date.parse(nonEmptyString(b.e.dateStart)) - Date.parse(nonEmptyString(a.e.dateStart)))
     .slice(0, limit);
   return dated.map(({ e, c }, i) => ({
     id: e.id != null ? String(e.id) : `conflict-${i}`,
-    name: `Conflict event${str(e.country) ? ` — ${str(e.country)}` : ''}`,
+    name: `Conflict event${nonEmptyString(e.country) ? ` — ${nonEmptyString(e.country)}` : ''}`,
     type: 'conflict',
     ...c,
   }));
@@ -113,8 +112,8 @@ export function riskScoresToCiiInput(payload: unknown): CiiEntry[] {
   const entries: CiiEntry[] = [];
   for (const s of scores) {
     const record = s as { region?: unknown; combinedScore?: unknown };
-    const score = num(record.combinedScore);
-    const code = str(record.region);
+    const score = finiteNumber(record.combinedScore);
+    const code = nonEmptyString(record.region);
     if (!code || score === null) continue;
     const level = score >= 70 ? 'critical' : score >= 50 ? 'high' : score >= 25 ? 'medium' : 'low';
     entries.push({ code, score, level });
@@ -179,11 +178,11 @@ export function thermalToDigestInput(payload: unknown): ThermalEntry[] {
   if (!Array.isArray(clusters)) return [];
   return clusters.map((c, i) => {
     const record = c as { id?: unknown; name?: unknown; region?: unknown; status?: unknown; anomalyScore?: unknown };
-    const spike = str(record.status) === 'spike' || (num(record.anomalyScore) ?? 0) > 2;
+    const spike = nonEmptyString(record.status) === 'spike' || (finiteNumber(record.anomalyScore) ?? 0) > 2;
     return {
-      id: str(record.id) || str(record.name) || str(record.region) || `cluster-${i}`,
+      id: nonEmptyString(record.id) || nonEmptyString(record.name) || nonEmptyString(record.region) || `cluster-${i}`,
       level: spike ? 'high' : 'low',
-      score: num(record.anomalyScore),
+      score: finiteNumber(record.anomalyScore),
     };
   });
 }
@@ -191,7 +190,7 @@ export function thermalToDigestInput(payload: unknown): ThermalEntry[] {
 export function stressToDigestInput(payload: unknown): StressInput | null {
   if (!payload || typeof payload !== 'object') return null;
   const record = payload as { stressScore?: unknown; stressLevel?: unknown };
-  return { index: num(record.stressScore), level: record.stressLevel };
+  return { index: finiteNumber(record.stressScore), level: record.stressLevel };
 }
 
 export interface RawDigestPayloads {

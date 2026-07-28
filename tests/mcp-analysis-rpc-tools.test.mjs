@@ -680,3 +680,33 @@ describe('wave-2 analysis tools: user-input error returns honour the declared en
     }
   });
 });
+
+describe('wave-2 analysis tools: user-input bounds', () => {
+  it('get_population_exposure rejects out-of-range coordinates instead of guessing a country', () => {
+    // Euclidean nearest-centroid has no notion of a valid globe, so lat 999
+    // previously resolved to Mali and returned a real-looking estimate.
+    const tool = findTool('get_population_exposure');
+    return tool._execute({ mode: 'point', lat: 999, lon: -999 }, '', {}, {}).then((result) => {
+      assert.match(result.error, /lat must be within/);
+      for (const key of tool.outputSchema.required) {
+        assert.ok(key in result, `error return must include required key "${key}"`);
+      }
+    });
+  });
+
+  it('accepts coordinates exactly on the range boundary', async () => {
+    const tool = findTool('get_population_exposure');
+    for (const [lat, lon] of [[90, 180], [-90, -180], [0, 0]]) {
+      const result = await tool._execute({ mode: 'point', lat, lon, radius_km: 10 }, '', {}, {});
+      assert.equal(result.error, undefined, `lat=${lat} lon=${lon} must be accepted`);
+      assert.equal(typeof result.data.exposure.exposedPopulation, 'number');
+    }
+  });
+
+  it('clamps a runaway radius and reports the radius actually used', async () => {
+    const tool = findTool('get_population_exposure');
+    const result = await tool._execute({ mode: 'point', lat: 31, lon: 34.8, radius_km: 20000 }, '', {}, {});
+    assert.equal(result.data.exposure.exposureRadiusKm, 1000);
+    assert.ok(result.data.exposure.exposedPopulation < 8.1e10);
+  });
+});

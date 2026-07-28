@@ -36,20 +36,20 @@ import type {
   TheaterPostureSummary,
 } from './analysis-military-surge';
 import { CONFLICT_ZONES, INTEL_HOTSPOTS, STRATEGIC_WATERWAYS } from './geo-data';
+import {
+  asArray,
+  asRecord,
+  finiteNumber,
+  nestedLocation,
+  nonEmptyString,
+  usableCoord,
+} from './analysis-adapter-guards';
 
 // ---------------------------------------------------------------------------
 // Shared primitives
 // ---------------------------------------------------------------------------
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
 
 /** Array field off a payload object, tolerating null / wrong-typed payloads. */
 function arrayField(payload: unknown, field: string): unknown[] {
@@ -57,18 +57,7 @@ function arrayField(payload: unknown, field: string): unknown[] {
   return record ? asArray(record[field]) : [];
 }
 
-function finiteNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
 
-function nonEmptyString(value: unknown): string {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : '';
-}
 
 /**
  * A coordinate pair is usable when both components are finite, in range, and
@@ -77,14 +66,6 @@ function nonEmptyString(value: unknown): string {
  * every domain's junk stacks into the same 1-degree cell and manufactures a
  * four-domain "convergence" out of nothing.
  */
-function usableCoord(lat: number | null, lon: number | null): lat is number {
-  return (
-    lat !== null && lon !== null &&
-    lat >= -90 && lat <= 90 &&
-    lon >= -180 && lon <= 180 &&
-    !(lat === 0 && lon === 0)
-  );
-}
 
 export interface GeoAdapterOptions {
   /** Epoch-ms clock. Injected so window trimming is deterministic under test. */
@@ -134,13 +115,6 @@ function toGeoEvents(
   return events;
 }
 
-function nestedLocation(record: Record<string, unknown>): { lat: number | null; lon: number | null } {
-  const location = asRecord(record.location);
-  return {
-    lat: finiteNumber(location?.latitude),
-    lon: finiteNumber(location?.longitude),
-  };
-}
 
 /** `unrest:events:v1` -> protest events. */
 export function unrestEventsToGeoEvents(payload: unknown, options: GeoAdapterOptions = {}): GeoEventInput[] {

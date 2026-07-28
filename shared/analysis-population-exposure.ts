@@ -64,7 +64,26 @@ export const EXPOSURE_CENTROIDS: Record<string, [number, number]> = {
 
 const FALLBACK_INFO: PriorityCountryInfo = { name: '', pop: 50_000_000, area: 500_000 };
 
+/**
+ * Ceiling on the exposure radius.
+ *
+ * The estimate multiplies ONE country's average density across the whole
+ * disc, so it is only meaningful while the disc stays inside terrain that
+ * density describes. The event radii this model ships with top out at 100 km;
+ * 1000 km is a generous bound that still keeps the arithmetic defensible.
+ * Without it an unclamped caller radius produces a confidently-wrong number —
+ * radius 20000 yields ~5.6e11 people, ~69x world population — which is worse
+ * than refusing, because it looks like an answer.
+ *
+ * Callers see the radius actually used via `exposureRadiusKm` on the result.
+ */
+export const MAX_EXPOSURE_RADIUS_KM = 1000;
+
 export function computeExposure(lat: number, lon: number, radiusKm: number): ExposureEstimate {
+  const effectiveRadiusKm = Math.min(
+    MAX_EXPOSURE_RADIUS_KM,
+    Math.max(0, Number.isFinite(radiusKm) ? radiusKm : 0),
+  );
   let bestMatch: string | null = null;
   let bestDist = Infinity;
 
@@ -78,11 +97,11 @@ export function computeExposure(lat: number, lon: number, radiusKm: number): Exp
 
   const info = bestMatch ? PRIORITY_COUNTRIES[bestMatch] ?? FALLBACK_INFO : FALLBACK_INFO;
   const density = info.pop / info.area;
-  const areaKm2 = Math.PI * radiusKm * radiusKm;
+  const areaKm2 = Math.PI * effectiveRadiusKm * effectiveRadiusKm;
 
   return {
     exposedPopulation: Math.round(density * areaKm2),
-    exposureRadiusKm: radiusKm,
+    exposureRadiusKm: effectiveRadiusKm,
     nearestCountry: bestMatch || '',
     densityPerKm2: Math.round(density),
   };
