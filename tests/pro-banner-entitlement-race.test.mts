@@ -12,8 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 
 import {
+  applyProBannerEntitlementHint,
   decideProBannerMount,
   isPremiumEntitlementHint,
+  resolveBannerPremium,
   PRO_BANNER_ENTITLEMENT_HINT_KEY,
   PRO_BANNER_ENTITLEMENT_HINT_VALUE,
   type ProBannerDecisionInput,
@@ -138,12 +140,78 @@ describe('decideProBannerMount (#5728)', () => {
   });
 });
 
+describe('resolveBannerPremium (#5728 sign-out + local keys)', () => {
+  it('treats settled signed-out without local unlock as free despite stale raw premium', () => {
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: false,
+        signedIn: false,
+        localUnlockPremium: false,
+        rawPremium: true, // stale isEntitled from previous account
+        accountBackedPremium: true,
+      }),
+      { premium: false, accountBacked: false },
+    );
+  });
+
+  it('keeps local unlock premium when signed out (desktop / tester keys)', () => {
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: false,
+        signedIn: false,
+        localUnlockPremium: true,
+        rawPremium: true,
+        accountBackedPremium: false,
+      }),
+      { premium: true, accountBacked: false },
+    );
+  });
+
+  it('reports account-backed when Convex/Clerk pro while signed in', () => {
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: false,
+        signedIn: true,
+        localUnlockPremium: false,
+        rawPremium: true,
+        accountBackedPremium: true,
+      }),
+      { premium: true, accountBacked: true },
+    );
+  });
+
+  it('defers to raw premium while auth is still pending', () => {
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: true,
+        signedIn: false,
+        localUnlockPremium: false,
+        rawPremium: false,
+        accountBackedPremium: false,
+      }),
+      { premium: false, accountBacked: false },
+    );
+  });
+});
+
 describe('entitlement hint helpers', () => {
   it('recognizes only the canonical pro value', () => {
     assert.equal(isPremiumEntitlementHint(PRO_BANNER_ENTITLEMENT_HINT_VALUE), true);
     assert.equal(isPremiumEntitlementHint('1'), false);
     assert.equal(isPremiumEntitlementHint(null), false);
     assert.equal(isPremiumEntitlementHint(''), false);
+  });
+
+  it('applyProBannerEntitlementHint writes and clears the shared key', () => {
+    const store = new Map<string, string>();
+    const storage = {
+      setItem: (k: string, v: string) => { store.set(k, v); },
+      removeItem: (k: string) => { store.delete(k); },
+    };
+    applyProBannerEntitlementHint(storage, true);
+    assert.equal(store.get(PRO_BANNER_ENTITLEMENT_HINT_KEY), PRO_BANNER_ENTITLEMENT_HINT_VALUE);
+    applyProBannerEntitlementHint(storage, false);
+    assert.equal(store.has(PRO_BANNER_ENTITLEMENT_HINT_KEY), false);
   });
 });
 
@@ -203,12 +271,14 @@ describe('pre-paint reservation honors entitlement hint', () => {
 });
 
 describe('wiring contracts (#5728)', () => {
-  it('ProBanner defers on auth pending and persists the entitlement hint', () => {
+  it('ProBanner uses account-backed resolution and auth/entitlement retries', () => {
     const src = readFileSync(resolve(root, 'src/components/ProBanner.ts'), 'utf-8');
     assert.match(src, /decideProBannerMount\(/);
+    assert.match(src, /resolveBannerPremium\(/);
     assert.match(src, /subscribeAuthState\(/);
     assert.match(src, /isClerkAuthEnabled\(/);
-    assert.match(src, /PRO_BANNER_ENTITLEMENT_HINT_KEY/);
+    assert.match(src, /accountBacked/);
+    assert.match(src, /hasLocalUnlockPremium/);
     assert.match(src, /writePremiumHint\(true\)/);
     assert.match(src, /writePremiumHint\(false\)/);
   });
@@ -226,6 +296,23 @@ describe('wiring contracts (#5728)', () => {
     )?.[0] ?? '';
     assert.ok(failureFn.includes('for (const cb of pendingSubscribers)'));
     assert.doesNotMatch(failureFn, /\.splice\(/);
+  });
+
+  it('resetEntitlementState notifies listeners so free surfaces re-evaluate', () => {
+    const src = readFileSync(resolve(root, 'src/services/entitlements.ts'), 'utf-8');
+    assert.match(
+      src,
+      /export function resetEntitlementState\(\): void \{[\s\S]*?for \(const cb of listeners\)/,
+    );
+    assert.match(src, /cb\(null\)/);
+  });
+
+  it('checkout success paths write the pro banner entitlement hint', () => {
+    const checkout = readFileSync(resolve(root, 'src/services/checkout.ts'), 'utf-8');
+    assert.match(checkout, /applyProBannerEntitlementHint\(localStorage, true\)/);
+    const ret = readFileSync(resolve(root, 'src/services/checkout-return.ts'), 'utf-8');
+    assert.match(ret, /markJustPaidProBannerHint/);
+    assert.match(ret, /applyProBannerEntitlementHint\(localStorage, true\)/);
   });
 
   it('pre-paint script and policy share the same hint key/value', () => {

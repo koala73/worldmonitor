@@ -2,13 +2,18 @@
  * Pure Pro-banner mount policy (issue #5728).
  *
  * Extracted so the init-race / entitlement-hint rules can be unit-tested
- * without DOM, Clerk, or Convex. ProBanner.ts is the only runtime caller.
+ * without DOM, Clerk, or Convex. Runtime callers: ProBanner.ts (mount) and
+ * checkout success paths (hint write before post-checkout reload).
  *
- * The pre-paint bootstrap in index.html mirrors ENTITLEMENT_HINT_KEY —
- * keep the string literals in lockstep when renaming.
+ * The pre-paint bootstrap in index.html mirrors PRO_BANNER_ENTITLEMENT_HINT_KEY
+ * / PRO_BANNER_ENTITLEMENT_HINT_VALUE — keep those string literals in lockstep
+ * when renaming (tests/pro-banner-entitlement-race.test.mts asserts parity).
  */
 
-/** localStorage key written when the user last resolved as entitled. */
+/**
+ * localStorage key for the optimistic pre-paint premium signal.
+ * UX-only — never an authz source of truth. Spoofing it only hides the upsell.
+ */
 export const PRO_BANNER_ENTITLEMENT_HINT_KEY = 'wm-entitlement-hint';
 
 /** Value stored under PRO_BANNER_ENTITLEMENT_HINT_KEY for a paying user. */
@@ -21,11 +26,15 @@ export interface ProBannerDecisionInput {
   inIframe: boolean;
   /** User dismissed the banner this week (or this session). */
   dismissed: boolean;
-  /** Live premium signal (API key / tester key / Clerk pro / Convex). */
+  /**
+   * Effective premium for the banner (callers must already ignore stale
+   * entitlement when settled signed-out without local unlock keys).
+   */
   hasPremiumAccess: boolean;
   /**
-   * Prior-session premium signal from localStorage. Used to skip both the
-   * pre-paint reservation and the JS upsell while auth/entitlement rehydrate.
+   * Prior-session / post-checkout premium signal from localStorage. Used to
+   * skip both the pre-paint reservation and the JS upsell while auth
+   * rehydrates. Account-backed only when written by JS (not desktop keys).
    */
   premiumHint: boolean;
   /** Auth still hydrating (`getAuthState().isPending`). */
@@ -39,6 +48,47 @@ export interface ProBannerDecisionInput {
   signedIn: boolean;
   /** True when the first Convex entitlement snapshot has arrived. */
   entitlementLoaded: boolean;
+}
+
+/**
+ * Inputs for "should we treat this session as free for the upsell?" after
+ * sign-out, when entitlement state may still describe the previous account.
+ */
+export interface BannerPremiumResolutionInput {
+  authPending: boolean;
+  signedIn: boolean;
+  /** Desktop API key / browser tester keys — local unlock, not an account. */
+  localUnlockPremium: boolean;
+  /** hasPremiumAccess() (may include stale Convex entitlement). */
+  rawPremium: boolean;
+  /** Convex isEntitled() or Clerk plan/role pro. */
+  accountBackedPremium: boolean;
+}
+
+export interface BannerPremiumResolution {
+  /** Premium for mount/suppress decisions. */
+  premium: boolean;
+  /** Safe to persist wm-entitlement-hint (account-backed only). */
+  accountBacked: boolean;
+}
+
+/**
+ * Resolve effective premium for the Pro banner.
+ *
+ * Settled signed-out without local unlock keys → free, even if the entitlement
+ * module still holds a previous-account snapshot (sign-out races App's
+ * resetEntitlementState against ProBanner's auth listener).
+ */
+export function resolveBannerPremium(
+  input: BannerPremiumResolutionInput,
+): BannerPremiumResolution {
+  if (!input.authPending && !input.signedIn && !input.localUnlockPremium) {
+    return { premium: false, accountBacked: false };
+  }
+  return {
+    premium: input.rawPremium,
+    accountBacked: input.accountBackedPremium,
+  };
 }
 
 /**
@@ -74,4 +124,20 @@ export function decideProBannerMount(input: ProBannerDecisionInput): ProBannerDe
 /** Parse the localStorage entitlement hint used by pre-paint + ProBanner. */
 export function isPremiumEntitlementHint(raw: string | null | undefined): boolean {
   return raw === PRO_BANNER_ENTITLEMENT_HINT_VALUE;
+}
+
+/**
+ * Persist or clear the pre-paint entitlement hint via injectable storage
+ * (production: localStorage; tests: Map). Account-backed callers only write
+ * `true`; checkout success may write optimistically before the first reload.
+ */
+export function applyProBannerEntitlementHint(
+  storage: { setItem(key: string, value: string): void; removeItem(key: string): void },
+  entitled: boolean,
+): void {
+  if (entitled) {
+    storage.setItem(PRO_BANNER_ENTITLEMENT_HINT_KEY, PRO_BANNER_ENTITLEMENT_HINT_VALUE);
+  } else {
+    storage.removeItem(PRO_BANNER_ENTITLEMENT_HINT_KEY);
+  }
 }

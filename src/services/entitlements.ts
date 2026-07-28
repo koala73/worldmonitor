@@ -125,9 +125,21 @@ export function destroyEntitlementSubscription(): void {
  * Explicitly nulls currentState. Call on sign-out to prevent the previous
  * user's entitlements from leaking into a subsequent session.
  * Distinct from destroyEntitlementSubscription() which preserves state for reconnects.
+ *
+ * Notifies listeners with `null` so UI that subscribed via onEntitlementChange
+ * (e.g. Pro banner #5728) re-evaluates immediately. Without this, a sign-out
+ * that only cleared state left free-tier surfaces stuck on the previous
+ * account's premium snapshot until the next real Convex update.
  */
 export function resetEntitlementState(): void {
   currentState = null;
+  for (const cb of listeners) {
+    try {
+      cb(null);
+    } catch {
+      // One listener must not block the rest of the sign-out fan-out.
+    }
+  }
 }
 
 /**

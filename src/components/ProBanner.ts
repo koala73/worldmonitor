@@ -1,15 +1,18 @@
 import { trackGateHit } from '@/services/analytics';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import { onEntitlementChange, getEntitlementState, isEntitled } from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { getCurrentClerkUser, isClerkAuthEnabled } from '@/services/clerk';
+import { getSecretState } from '@/services/runtime-config';
+import { isProWidgetEnabled, isWidgetFeatureEnabled } from '@/services/widget-store';
 import {
+  applyProBannerEntitlementHint,
   decideProBannerMount,
   isPremiumEntitlementHint,
+  resolveBannerPremium,
   PRO_BANNER_ENTITLEMENT_HINT_KEY,
-  PRO_BANNER_ENTITLEMENT_HINT_VALUE,
 } from '@/services/pro-banner-policy';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -92,10 +95,11 @@ function dismiss(): void {
 }
 
 /**
- * Prior-session premium signal shared with the index.html pre-paint script.
- * Written on every definitive premium resolution; cleared when we know the
- * user is free (or signed out) so a stale hint cannot suppress the upsell
- * forever after a lapse / sign-out.
+ * Optimistic pre-paint premium signal shared with index.html.
+ * UX-only — never an authz source of truth. Written only for account-backed
+ * premium (Convex/Clerk), not desktop API keys or browser tester keys, so a
+ * local pro tooling session cannot suppress the free upsell strip for the
+ * next web visitor on the same machine.
  */
 function readPremiumHint(): boolean {
   try {
@@ -107,14 +111,40 @@ function readPremiumHint(): boolean {
 
 function writePremiumHint(premium: boolean): void {
   try {
-    if (premium) {
-      localStorage.setItem(PRO_BANNER_ENTITLEMENT_HINT_KEY, PRO_BANNER_ENTITLEMENT_HINT_VALUE);
-    } else {
-      localStorage.removeItem(PRO_BANNER_ENTITLEMENT_HINT_KEY);
-    }
+    applyProBannerEntitlementHint(localStorage, premium);
   } catch {
     // Storage is optional; live signals still gate the banner this session.
   }
+}
+
+function hasLocalUnlockPremium(): boolean {
+  return (
+    getSecretState('WORLDMONITOR_API_KEY').present ||
+    isProWidgetEnabled() ||
+    isWidgetFeatureEnabled()
+  );
+}
+
+function hasAccountBackedPremium(): boolean {
+  const clerkUser = getCurrentClerkUser();
+  const auth = getAuthState();
+  return (
+    isEntitled() ||
+    auth.user?.role === 'pro' ||
+    clerkUser?.plan === 'pro'
+  );
+}
+
+function resolveEffectiveBannerPremium(): ReturnType<typeof resolveBannerPremium> {
+  const auth = getAuthState();
+  const signedIn = getCurrentClerkUser() !== null || auth.user !== null;
+  return resolveBannerPremium({
+    authPending: auth.isPending,
+    signedIn,
+    localUnlockPremium: hasLocalUnlockPremium(),
+    rawPremium: hasPremiumAccess(auth),
+    accountBackedPremium: hasAccountBackedPremium(),
+  });
 }
 
 export function showProBanner(container: HTMLElement): void {
@@ -129,12 +159,18 @@ export function showProBanner(container: HTMLElement): void {
   }
   if (bannerEl) return;
 
-  const premium = hasPremiumAccess();
-  if (premium) {
+  const auth = getAuthState();
+  const { premium, accountBacked } = resolveEffectiveBannerPremium();
+  // Persist only account-backed premium. Local unlock keys suppress the
+  // banner this session via `premium` without poisoning pre-paint for free web.
+  if (accountBacked) {
     writePremiumHint(true);
+  } else if (!auth.isPending && !premium) {
+    // Settled free (incl. sign-out): drop a stale pro hint immediately so
+    // the next cold load re-reserves the free strip.
+    writePremiumHint(false);
   }
 
-  const auth = getAuthState();
   const decision = decideProBannerMount({
     inIframe: window.self !== window.top,
     dismissed: isDismissed(),
@@ -142,7 +178,7 @@ export function showProBanner(container: HTMLElement): void {
     premiumHint: readPremiumHint(),
     authPending: auth.isPending,
     clerkConfigured: isClerkAuthEnabled(),
-    signedIn: getCurrentClerkUser() !== null,
+    signedIn: getCurrentClerkUser() !== null || auth.user !== null,
     entitlementLoaded: getEntitlementState() !== null,
   });
 
@@ -154,11 +190,12 @@ export function showProBanner(container: HTMLElement): void {
     // Keep the pre-paint reservation for free users (CLS). Entitled users
     // without a hint still defer the *copy* but may briefly hold the strip
     // until the first entitlement snapshot — better than flashing "Upgrade".
+    // Post-checkout reloads write the hint before navigation (checkout.ts)
+    // so the first paid load usually skips reservation entirely.
     return;
   }
 
-  // Definitive free (or settled signed-out): drop any stale premium hint so
-  // the next cold load re-reserves the strip for free users.
+  // Definitive free (or settled signed-out): drop any leftover stale hint.
   writePremiumHint(false);
 
   trackGateHit('pro-banner');
@@ -230,9 +267,9 @@ export function isProBannerVisible(): boolean {
 //     → re-mount via showProBanner. Same gate set as the initial mount path,
 //       so we can never surface a banner the user has already ✕'d this week.
 function syncProBanner(): void {
-  const premium = hasPremiumAccess();
+  const { premium, accountBacked } = resolveEffectiveBannerPremium();
   if (premium) {
-    writePremiumHint(true);
+    if (accountBacked) writePremiumHint(true);
     if (!bannerEl) {
       setReservation(false);
       return;
@@ -240,6 +277,12 @@ function syncProBanner(): void {
     bannerEl.classList.add('pro-banner-out');
     scheduleBannerRemoval();
     return;
+  }
+  // Settled free / sign-out: clear a stale pro hint even when the banner was
+  // never mounted (premium branch above would re-affirm it before #5728 fix).
+  const auth = getAuthState();
+  if (!auth.isPending) {
+    writePremiumHint(false);
   }
   // A premium snapshot may have started the fade-out immediately before a
   // non-premium snapshot arrived. Keep the banner visible for the restored
