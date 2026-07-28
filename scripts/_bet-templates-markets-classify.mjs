@@ -18,7 +18,25 @@
 // Unambiguous conflict / statecraft vocabulary. Word-boundaried so "war" does
 // not fire on "warrant"/"forward" and "strike" is only matched in explicit
 // military compounds, never alone (no "strike price" false positive).
-const GEO_TERMS = /\b(?:cease-?fire|armistice|truce|coup(?:\sd'[ée]tat)?|uranium|enrich(?:ed|ment)|nuclear|sanctions?|invade|invasion|annex(?:ation|ed|es)?|air\s?strikes?|drone\sstrikes?|missile\sstrikes?|strikes?\son|missiles?|ballistic|warheads?|war|wartime|warfare|regime\schange|leadership\schange|hostages?|prisoner\s(?:swap|exchange)|prisoners\sof\swar|nato|occupation|martial\slaw|troops|referendum|secede|secession|assassinat(?:e|ed|ion)|territorial|border\s(?:clash|dispute)|blockade|genocide|ethnic\scleansing|militants?|insurgen(?:t|cy|ts)|militias?)\b/i;
+const GEO_TERMS = /\b(?:cease-?fire|armistice|truce|coup(?:\sd'[ée]tat)?|uranium|enrich(?:ed|ment)|sanctions?|invade|invasion|annex(?:ation|ed|es)?|air\s?strikes?|drone\sstrikes?|missile\sstrikes?|strikes?\son|missiles?|ballistic|warheads?|war|wartime|warfare|regime\schange|leadership\schange|hostages?|prisoner\s(?:swap|exchange)|prisoners\sof\swar|nato|occupation|martial\slaw|troops|referendum|secede|secession|assassinat(?:e|ed|ion)|territorial|border\s(?:clash|dispute)|blockade|genocide|ethnic\scleansing|militants?|insurgen(?:t|cy|ts)|militias?)\b/i;
+
+// "nuclear" is only geopolitical in a weapon/statecraft context — bare
+// "nuclear" would falsely tag nuclear-ENERGY company/reactor/SMR markets (a
+// real prediction-market category). Require a conflict/diplomacy qualifier;
+// "energy"/"power"/"reactor" deliberately fall through as NON-geo.
+const GEO_NUCLEAR = /\bnuclear\s(?:weapons?|warheads?|tests?|strikes?|deal|program(?:me)?|talks|enrichment|arsenal|threat|attack|bomb|war|escalation|facilit(?:y|ies)|site)\b/i;
+
+// National / legislative elections and control-of-chamber markets — core
+// geopolitical events. QUALIFIED so corporate "board election", "union
+// election", or "Hall of Fame election" never match (bare "election" is not
+// matched on its own).
+const GEO_ELECTIONS = /\b(?:(?:presidential|parliamentary|general|snap|midterm|legislative|congressional|senate|gubernatorial|federal|national|primary)\selections?|midterms?|runoff|presidenc(?:y|ies)|control\sof\s(?:the\s)?(?:senate|house|congress|parliament|bundestag|knesset|duma))\b/i;
+
+// National head-of-state / head-of-government markets — core geopolitics.
+// "prime minister" and "potus" are unambiguously national; "president" is
+// matched ONLY with a country qualifier so corporate "President of <company>"
+// or "Vice President" never fire.
+const GEO_LEADERSHIP = /\b(?:prime\sminister|potus|president\sof\s(?:the\s)?(?:united\sstates|u\.?s\.?a?|france|russia|iran|brazil|mexico|venezuela|turkey|t[üu]rkiye|egypt|ukraine|poland|argentina|colombia|philippines|south\skorea|the\seu)|next\s(?:president|prime\sminister|chancellor|premier|supreme\sleader))\b/i;
 
 // High-salience geopolitical actors and conflict placenames that are
 // effectively never the subject of a company/crypto/finance market. Excludes
@@ -30,5 +48,9 @@ const GEO_ENTITIES = /\b(?:ukraine|ukrainian|gaza|crimea|donbas|donbass|kashmir|
 export function isGeopoliticalMarket(title) {
   const text = String(title ?? '');
   if (!text.trim()) return false;
-  return GEO_TERMS.test(text) || GEO_ENTITIES.test(text);
+  return GEO_TERMS.test(text)
+    || GEO_NUCLEAR.test(text)
+    || GEO_ELECTIONS.test(text)
+    || GEO_LEADERSHIP.test(text)
+    || GEO_ENTITIES.test(text);
 }

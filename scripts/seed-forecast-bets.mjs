@@ -77,12 +77,13 @@ const FEED_MAX_GENERATION_AGE_MS = {
 // with base-rate probabilities and proves the new slices resolve (Gate 1.5)
 // before any LLM spend is enabled (Stage B sets FORECAST_BETS_ENSEMBLE=1).
 const ENSEMBLE_ENABLED = process.env.FORECAST_BETS_ENSEMBLE === '1';
-// Ensemble breadth. Raised 6→10 with the geo family (#5733): its 6 flagship
+// Ensemble breadth. Raised 6→12 with the geo family (#5733): its 6 flagship
 // bets (userValueScore 0.9) would otherwise claim every ensemble slot and
-// starve the fast-resolving general-market / commodity Gate-2 bets. 10 covers
-// the geo bench PLUS the top short-dated lines; the deadline guard still stops
-// the loop at the run budget, so this is a ceiling, not a fixed spend.
-const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', 10);
+// starve the fast-resolving Gate-2 lanes. 12 = the 6-deep geo bench PLUS the
+// general-market (0.8) and energy-price/commodity (0.75/0.7) lines that resolve
+// in days. The deadline guard still stops the loop at the run budget, so this
+// is a ceiling, not a fixed spend; geo ranks first so it is never starved.
+const ENSEMBLE_TOP_K = envPositiveInt('FORECAST_BETS_ENSEMBLE_TOP_K', 12);
 const ENSEMBLE_BUDGET_MS = envPositiveInt('FORECAST_BETS_ENSEMBLE_BUDGET_MS', 120_000);
 const RESOLUTIONS_LEDGER_KEY = 'forecast:resolutions:v1';
 

@@ -21,7 +21,7 @@
 // (crosses/yesPrice against prediction:markets-resolution:v1, slug-keyed), so
 // the resolver's updateMarketSettlements loader tracks these with no change.
 
-import { MARKET_FEED, MARKET_SETTLEMENT_FEED, MARKET_MIN_VOLUME, marketSlugFromUrl } from './_bet-templates-markets.mjs';
+import { MARKET_FEED, MARKET_SETTLEMENT_FEED, parseMarketRecord } from './_bet-templates-markets.mjs';
 import { isGeopoliticalMarket } from './_bet-templates-markets-classify.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -34,28 +34,21 @@ const MAX_HORIZON_MS = 210 * DAY_MS;
 // Dedicated geo slate size — as much room as the general family.
 export const MARKET_GEO_SLOT_COUNT = 6;
 
-// Eligible GEOPOLITICAL markets, volume-sorted, deduped by slug. Pure. Mirrors
-// eligibleMarkets but scoped to geopolitical titles on the long horizon.
+// Eligible GEOPOLITICAL markets, volume-sorted, deduped by slug. Pure. Shares
+// parseMarketRecord with the general family (identical record/liquidity gates,
+// no drift) and differs only in the geo predicate and the long horizon.
 export function eligibleGeoMarkets(feed, nowMs) {
   const pools = [feed?.geopolitical, feed?.tech, feed?.finance].filter(Array.isArray);
   const seen = new Set();
   const out = [];
   for (const record of pools.flat()) {
-    if (!record || typeof record !== 'object') continue;
-    const title = String(record.title || '').trim();
-    if (!title || !isGeopoliticalMarket(title)) continue;
-    const yesPrice = Number(record.yesPrice);
-    const volume = Number(record.volume);
-    const endDateMs = Date.parse(record.endDate ?? '');
-    const slugInfo = marketSlugFromUrl(record.url);
-    if (!slugInfo) continue;
-    if (!Number.isFinite(yesPrice)) continue;
-    if (!Number.isFinite(volume) || volume < MARKET_MIN_VOLUME) continue;
-    if (!Number.isFinite(endDateMs)) continue;
-    if (endDateMs < nowMs + MIN_LEAD_MS || endDateMs > nowMs + MAX_HORIZON_MS) continue;
-    if (seen.has(slugInfo.slug)) continue;
-    seen.add(slugInfo.slug);
-    out.push({ title, yesPrice, volume, endDateMs, ...slugInfo });
+    const market = parseMarketRecord(record);
+    if (!market) continue;
+    if (!isGeopoliticalMarket(market.title)) continue;
+    if (market.endDateMs < nowMs + MIN_LEAD_MS || market.endDateMs > nowMs + MAX_HORIZON_MS) continue;
+    if (seen.has(market.slug)) continue;
+    seen.add(market.slug);
+    out.push(market);
   }
   return out.sort((a, b) => b.volume - a.volume);
 }

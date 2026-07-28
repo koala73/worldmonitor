@@ -9,6 +9,7 @@ import {
 import {
   MARKET_BET_TEMPLATES, MARKET_FEED, MARKET_SETTLEMENT_FEED, eligibleMarkets,
 } from '../scripts/_bet-templates-markets.mjs';
+import { buildBetsSnapshot } from '../scripts/seed-forecast-bets.mjs';
 import { parseMetricKey } from '../scripts/_forecast-resolution-eval.mjs';
 
 const NOW = Date.parse('2026-07-28T00:00:00Z');
@@ -48,6 +49,62 @@ describe('isGeopoliticalMarket', () => {
       'Gaza reconstruction deal signed in 2026?',
     ]) {
       assert.equal(isGeopoliticalMarket(title), true, `expected geo: ${title}`);
+    }
+  });
+
+  it('flags NUCLEAR markets only in a weapon/statecraft context', () => {
+    for (const title of [
+      'Will Iran sign a nuclear deal by December?',
+      'North Korea conducts a nuclear test in 2026?',
+      'Will Russia issue a nuclear threat over Ukraine?',
+      'Nuclear weapons treaty ratified before 2027?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), true, `expected geo: ${title}`);
+    }
+    // Nuclear-ENERGY markets are a real category and must stay NON-geo.
+    for (const title of [
+      'Will a new nuclear energy company IPO in 2026?',
+      'Nuclear power plant approved in Ohio this year?',
+      'Will the nuclear reactor SMR startup raise a Series C?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), false, `expected NON-geo: ${title}`);
+    }
+  });
+
+  it('flags national / legislative elections but not corporate ones', () => {
+    for (const title of [
+      'Who wins the 2028 US presidential election?',
+      'Will the ruling party lose the parliamentary election?',
+      'Republicans win control of the Senate in the midterms?',
+      'Will there be a runoff in the French presidential election?',
+      'Which party controls the House after the general election?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), true, `expected geo: ${title}`);
+    }
+    for (const title of [
+      'Will the board election reinstate the former CEO?',
+      'Union election at the Detroit plant passes?',
+      'Baseball Hall of Fame election results announced?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), false, `expected NON-geo: ${title}`);
+    }
+  });
+
+  it('flags national head-of-state / head-of-government markets', () => {
+    for (const title of [
+      'Will Zohran Mamdani become President of the United States before 2029?',
+      'Who will be the next Prime Minister of Romania?',
+      'Will the incumbent win as POTUS in 2028?',
+      'Next Supreme Leader of Iran named by December?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), true, `expected geo: ${title}`);
+    }
+    // Corporate leadership must NOT fire (no country qualifier).
+    for (const title of [
+      'Will Jane Doe become President of Acme Corp this year?',
+      'Vice President of Sales departs before Q4?',
+    ]) {
+      assert.equal(isGeopoliticalMarket(title), false, `expected NON-geo: ${title}`);
     }
   });
 
@@ -154,5 +211,18 @@ describe('geo / general partition is exhaustive and disjoint', () => {
     const geoSoon = market({ title: 'NATO Article 5 invoked before September?', url: 'https://polymarket.com/event/nato-a5', endDate: new Date(NOW + 15 * DAY_MS).toISOString() });
     assert.equal(eligibleMarkets(feedFixture([geoSoon]), NOW).length, 0);
     assert.equal(eligibleGeoMarkets(feedFixture([geoSoon]), NOW).length, 1);
+  });
+});
+
+describe('geopolitical bets reach the seeder snapshot end-to-end', () => {
+  it('buildBetsSnapshot emits a geopolitical-domain bet from the market feed', () => {
+    const geo = market(); // Iran leadership change, Dec-31, $21M — inside 210d
+    const snapshot = buildBetsSnapshot({ [MARKET_FEED]: feedFixture([geo]) }, NOW);
+    const geoBet = snapshot.predictions.find((b) => b.domain === 'geopolitical');
+    assert.ok(geoBet, 'expected a geopolitical bet in the snapshot');
+    assert.equal(geoBet.id, 'market:iran-leadership-change-by');
+    assert.equal(geoBet.generationOrigin, 'bet_engine');
+    assert.equal(geoBet.resolution.sourceFeed, MARKET_SETTLEMENT_FEED);
+    assert.ok(Number.isFinite(geoBet.probability), 'carries a base-rate probability (Stage A)');
   });
 });
