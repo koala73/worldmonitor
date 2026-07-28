@@ -257,7 +257,25 @@ describe('runRetractCli', () => {
       const { code } = await runRetractCli(argv, { env: ENV, fetchImpl });
       assert.equal(code, 0);
       assert.equal(calls[0].url, `https://example-deployment.convex.site${path}`);
+      assert.equal(
+        calls[0].init.headers['User-Agent'],
+        'worldmonitor-retract-intel-history/1.0',
+      );
     }
+  });
+
+  it('exits non-zero when restore leaves requested keys untouched', async () => {
+    const { fetchImpl } = stubFetch({
+      body: { removed: 1, notRetracted: ['missing-key'] },
+    });
+    const { code, lines } = await runRetractCli(
+      ['--restore', '--dedupe-key', 'restored-key', '--dedupe-key', 'missing-key'],
+      { env: ENV, fetchImpl },
+    );
+
+    assert.equal(code, 1);
+    assert.match(lines.join('\n'), /missing-key/);
+    assert.match(lines.join('\n'), /partial/);
   });
 
   it('sends nothing on --dry-run', async () => {

@@ -233,7 +233,11 @@ export async function sendRetractRequest(
   const url = `${siteUrl}${ROUTES[mode]}`;
   const response = await fetchImpl(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${secret}`,
+      'User-Agent': 'worldmonitor-retract-intel-history/1.0',
+    },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -336,6 +340,21 @@ export async function runRetractCli(argv, { env = process.env, fetchImpl } = {})
       'Allow ~1 hour before concluding a record is still retrievable. See',
       'docs/architecture/intel-history-untrusted-text.md § Propagation.',
     );
+  }
+
+  if (parsed.mode === 'restore') {
+    const notRetracted = Array.isArray(body?.notRetracted) ? body.notRetracted : [];
+    if (notRetracted.length > 0) {
+      lines.push(
+        '',
+        `FAILED: ${notRetracted.length} key(s) were not retracted:`,
+        ...notRetracted.map((key) => `  ${key}`),
+        '',
+        'The keys that DID have tombstones were restored; this is a partial',
+        'application, so the exit code is non-zero.',
+      );
+      return { code: 1, lines };
+    }
   }
 
   if (parsed.mode === 'list' && body?.partial === true) {
