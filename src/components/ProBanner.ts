@@ -3,7 +3,14 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
-import { getCurrentClerkUser } from '@/services/clerk';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { getCurrentClerkUser, isClerkAuthEnabled } from '@/services/clerk';
+import {
+  decideProBannerMount,
+  isPremiumEntitlementHint,
+  PRO_BANNER_ENTITLEMENT_HINT_KEY,
+  PRO_BANNER_ENTITLEMENT_HINT_VALUE,
+} from '@/services/pro-banner-policy';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -84,6 +91,32 @@ function dismiss(): void {
   }
 }
 
+/**
+ * Prior-session premium signal shared with the index.html pre-paint script.
+ * Written on every definitive premium resolution; cleared when we know the
+ * user is free (or signed out) so a stale hint cannot suppress the upsell
+ * forever after a lapse / sign-out.
+ */
+function readPremiumHint(): boolean {
+  try {
+    return isPremiumEntitlementHint(localStorage.getItem(PRO_BANNER_ENTITLEMENT_HINT_KEY));
+  } catch {
+    return false;
+  }
+}
+
+function writePremiumHint(premium: boolean): void {
+  try {
+    if (premium) {
+      localStorage.setItem(PRO_BANNER_ENTITLEMENT_HINT_KEY, PRO_BANNER_ENTITLEMENT_HINT_VALUE);
+    } else {
+      localStorage.removeItem(PRO_BANNER_ENTITLEMENT_HINT_KEY);
+    }
+  } catch {
+    // Storage is optional; live signals still gate the banner this session.
+  }
+}
+
 export function showProBanner(container: HTMLElement): void {
   // Cache container even on early-return paths so the entitlement-change
   // listener can re-mount on a downgrade. App.ts calls this once at init
@@ -95,37 +128,38 @@ export function showProBanner(container: HTMLElement): void {
     bannerEl = null;
   }
   if (bannerEl) return;
-  if (window.self !== window.top) {
+
+  const premium = hasPremiumAccess();
+  if (premium) {
+    writePremiumHint(true);
+  }
+
+  const auth = getAuthState();
+  const decision = decideProBannerMount({
+    inIframe: window.self !== window.top,
+    dismissed: isDismissed(),
+    hasPremiumAccess: premium,
+    premiumHint: readPremiumHint(),
+    authPending: auth.isPending,
+    clerkConfigured: isClerkAuthEnabled(),
+    signedIn: getCurrentClerkUser() !== null,
+    entitlementLoaded: getEntitlementState() !== null,
+  });
+
+  if (decision === 'suppress') {
     setReservation(false);
     return;
   }
-  if (isDismissed()) {
-    setReservation(false);
+  if (decision === 'defer') {
+    // Keep the pre-paint reservation for free users (CLS). Entitled users
+    // without a hint still defer the *copy* but may briefly hold the strip
+    // until the first entitlement snapshot — better than flashing "Upgrade".
     return;
   }
-  // Don't pitch Pro to users who already have it. hasPremiumAccess() is the
-  // authoritative signal — unions API key, tester key, Clerk pro role, AND
-  // Convex Dodo entitlement (panel-gating.ts:11-27). A paying user shouldn't
-  // see "Upgrade to Pro" at the top of every dashboard refresh.
-  if (hasPremiumAccess()) {
-    setReservation(false);
-    return;
-  }
-  // Defer the initial mount when entitlement state hasn't loaded yet for a
-  // signed-in user. App.ts:923 calls showProBanner() synchronously during
-  // init Phase 1, but App.ts:868's `void initEntitlementSubscription()` is
-  // non-awaited — the Convex snapshot can take up to ~10s on a cold start.
-  // hasPremiumAccess() reads isEntitled() against currentState===null in
-  // that window and returns false, which would mount an "Upgrade to Pro"
-  // banner for a paying Convex-only user that the onEntitlementChange
-  // listener then has to dismiss seconds later. The flash is jarring and
-  // misleading; better to render nothing until we know the user's tier.
-  //
-  // The skip is gated on "signed in", because anonymous users will never
-  // have a Convex entitlement and would otherwise wait forever. The
-  // listener handles re-mounting once the first snapshot confirms the
-  // user is actually free.
-  if (getCurrentClerkUser() && getEntitlementState() === null) return;
+
+  // Definitive free (or settled signed-out): drop any stale premium hint so
+  // the next cold load re-reserves the strip for free users.
+  writePremiumHint(false);
 
   trackGateHit('pro-banner');
   setReservation(true);
@@ -178,9 +212,10 @@ export function isProBannerVisible(): boolean {
   return bannerEl !== null;
 }
 
-// Reactive sync with entitlement state. App.ts calls showProBanner() ONCE at
-// init, so any later free↔pro flip (Dodo webhook lands mid-session, plan
-// cancelled, billing grace expires) needs an explicit re-render here —
+// Reactive sync with entitlement / subscription / auth state. App.ts calls
+// showProBanner() ONCE at init, so any later free↔pro flip (Dodo webhook lands
+// mid-session, plan cancelled, billing grace expires) OR Clerk hydration after
+// the deferred-load window (#5728) needs an explicit re-render here —
 // otherwise the banner stays at whatever state the init call computed for
 // the rest of the SPA session.
 //
@@ -197,6 +232,7 @@ export function isProBannerVisible(): boolean {
 function syncProBanner(): void {
   const premium = hasPremiumAccess();
   if (premium) {
+    writePremiumHint(true);
     if (!bannerEl) {
       setReservation(false);
       return;
@@ -230,3 +266,7 @@ function syncProBanner(): void {
 
 onEntitlementChange(syncProBanner);
 onSubscriptionChange(syncProBanner);
+// Clerk hydrates after first paint via requestIdleCallback. The init-time
+// showProBanner() call often runs while auth is still pending; without this
+// subscription the deferred mount would never retry once the session settles.
+subscribeAuthState(syncProBanner);
