@@ -40,6 +40,11 @@ test('humanitarian health reports partial target-country coverage', () => {
     /HAPI_SEED_META_TTL_SECONDS,\s*requiredCountriesCovered,\s*HAPI_SEED_META_KEY/,
   );
   assert.equal(HAPI_REQUIRED_COUNTRIES.length, 23);
+  assert.match(
+    seedSource,
+    /proxyUrl = process\.env\.HAPI_PROXY_URL \|\| process\.env\.PROXY_URL \|\| ''/,
+    'HAPI must have a source-specific proxy route instead of sharing every fallback exit',
+  );
   assert.deepEqual(
     new Set(HAPI_REQUIRED_COUNTRIES),
     new Set([

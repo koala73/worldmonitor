@@ -2056,7 +2056,7 @@ export async function fetchCrossStraitActivitySnapshot({
   previousSnapshot = null,
   mndListUrl = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  proxyUrl = process.env.PROXY_URL ?? '',
+  proxyUrl = process.env.JAPAN_MOD_PROXY_URL || process.env.PROXY_URL || '',
   proxyRequestFn = proxyFetch,
 } = {}) {
   const generatedAt = new Date(now).toISOString();

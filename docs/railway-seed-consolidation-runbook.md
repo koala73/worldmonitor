@@ -30,11 +30,22 @@
 
 Railway stores watch paths in each service's environment configuration, not in
 the repository. The repo-side contract is
-`scripts/audit-railway-watch-paths.mjs`: every WorldMonitor Railway seeder,
-including Dockerfile and repo-root services, must either have no watch filter
-(watch the whole repo) or include both `scripts/**` and `shared/**`. Enumerating
-the current entry file and known helpers is unsafe because the next helper can
-be added without updating the dashboard list.
+`scripts/railway-services.json`: every registry-managed production seeder pins
+its cron and the exact repository-relative files in its runtime dependency
+closure. `tests/railway-watch-path-audit.test.mjs` walks each entry point's
+imports and fails when that closure grows without a matching registry update.
+This keeps a helper change deployable without making unrelated changes under
+`scripts/**` or `shared/**` rebuild every seeder.
+
+The always-on bootstrap publisher is the deliberate exception: its empty watch
+path list means Railway watches the whole repository. That broader trigger
+covers its Dockerfile and future bootstrap inputs without rebuilding the cron
+seeder fleet.
+
+`scripts/audit-railway-watch-paths.mjs` compares the registry with live
+production configuration. It reports exact watch-path and cron drift, missing
+registered services, and missing required source-routing variables. Apply mode
+refuses a partial mutation while a service or required variable is absent.
 
 After linking the CLI to the `world-monitor` production environment, audit the
 live settings with:
@@ -49,10 +60,13 @@ To reconcile only drifted seeders and verify the read-back:
 node scripts/audit-railway-watch-paths.mjs --apply
 ```
 
-The apply mode changes only `build.watchPatterns`, preserves any existing paths
-outside those broad directories, uses one environment config commit, and waits
-for Railway's eventually consistent config read-back before reporting success.
-Run the audit after adding or replacing a standalone seeder.
+The apply mode changes only drifted `build.watchPatterns` and
+`deploy.cronSchedule` fields, uses one environment config commit, and waits for
+Railway's eventually consistent config read-back before reporting success. It
+does not assign a cron to explicitly always-on services such as the bootstrap
+publisher, while still auditing their watch paths and required environment.
+Run the audit after adding or replacing a standalone seeder, changing a bundle
+dependency, or changing a production cron.
 
 ### Bootstrap R2 publisher contract
 
@@ -66,10 +80,10 @@ This service is an always-on publisher, not a Railway cron. Configure it with
 `Dockerfile.publish-bootstrap-tiers` (the root application Dockerfile does not
 contain the publisher) and start command
 `node scripts/publish-bootstrap-tiers.mjs --loop`, **no cron schedule**, and
-watch paths `scripts/**`, `shared/**`. It publishes both tiers on startup, then
-fast every two minutes and slow every ten minutes. Keep Redis authoritative:
-until the publisher and later rollout gates pass, `/api/bootstrap` continues to
-serve its existing Redis assembly.
+an empty watch-path list (whole-repository watching). It publishes both tiers
+on startup, then fast every two minutes and slow every ten minutes. Keep Redis
+authoritative: until the publisher and later rollout gates pass,
+`/api/bootstrap` continues to serve its existing Redis assembly.
 
 The environment contract is deliberately split by consumer:
 
@@ -109,11 +123,14 @@ incident note.
 ### Merged does not mean deployed
 
 `.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
-default branch. It first requires the latest `main` commit's `gate` status to
-be green, then checks public compact health and fails when any seed metadata is
-older than its `maxStaleMin` threshold (`STALE_SEED`). This is the alert for the
-"green main, stale Railway image" gap; the existing compact health monitor
-continues to cover critical `EMPTY`/`EMPTY_DATA` and Redis failures.
+default branch and immediately after ingestion-path changes land on `main`.
+Scheduled runs first require the latest `main` commit's `gate` status to be
+green. Push and manual runs execute directly. The monitor checks public compact
+health and fails on every actionable problem, including `SEED_ERROR`,
+`STALE_SEED`, `STALE_CONTENT`, and degraded composed coverage. Statuses that
+explicitly end in `_ON_DEMAND` remain informational. This is the operational
+acceptance gate for the "merged and green, but production data is still
+unhealthy" gap.
 
 Do not use `railway redeploy` to recover a bad or stale source deployment.
 Railway documents redeploy as rebuilding the most recent deployment with the
@@ -133,6 +150,14 @@ path, verify the deployment commit SHA and the relevant compact-health problem
 have both advanced. See Railway's official
 [redeploy CLI reference](https://docs.railway.com/cli/redeploy) and
 [deployment actions reference](https://docs.railway.com/deployments/deployment-actions).
+
+`railway run` is also not production-network evidence: Railway documents it as
+executing locally after injecting service variables. For an immediate long-cron
+backfill, use a controlled temporary Railway cron execution, verify its terminal
+run plus seed metadata and compact health, then restore the captured command and
+schedule and rerun the operational-config audit. The full rollback-safe sequence
+is documented in
+[A merged seeder fix is not live until its cron fires](solutions/integration-issues/merged-is-not-ran-long-cron-seeders.md).
 
 ---
 

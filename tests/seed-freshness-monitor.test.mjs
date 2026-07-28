@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  findOperationalProblems,
   findStaleSeedProblems,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
@@ -30,9 +31,37 @@ describe('scheduled seed freshness monitor', () => {
     ]);
   });
 
+  it('treats every non-on-demand health problem as an operational failure', () => {
+    const payload = {
+      status: 'WARNING',
+      checkedAt: '2026-07-28T08:56:11.076Z',
+      problems: {
+        gdeltIntel: { status: 'SEED_ERROR', records: 1 },
+        chinaCoverage: { status: 'CHINA_DEGRADED', records: 15 },
+        humanitarianSummary: { status: 'SEED_ERROR', records: 1 },
+        shippingRates: { status: 'STALE_SEED', seedAgeMin: 528, maxStaleMin: 420 },
+        newsRecallBenchmark: { status: 'EMPTY_ON_DEMAND', records: 0 },
+      },
+    };
+
+    assert.deepEqual(findOperationalProblems(payload), [
+      { name: 'chinaCoverage', status: 'CHINA_DEGRADED', records: 15 },
+      { name: 'gdeltIntel', status: 'SEED_ERROR', records: 1 },
+      { name: 'humanitarianSummary', status: 'SEED_ERROR', records: 1 },
+      {
+        name: 'shippingRates',
+        status: 'STALE_SEED',
+        records: undefined,
+        seedAgeMin: 528,
+        maxStaleMin: 420,
+      },
+    ]);
+  });
+
   it('rejects payloads that cannot prove compact seed freshness', () => {
     assert.throws(() => validateCompactHealthPayload(null), /object/);
     assert.deepEqual(findStaleSeedProblems({ status: 'HEALTHY' }), []);
+    assert.deepEqual(findOperationalProblems({ status: 'HEALTHY' }), []);
     assert.throws(() => validateCompactHealthPayload({ status: 'WARNING' }), /problems/);
     assert.throws(
       () => validateCompactHealthPayload({ status: 'HEALTHY', problems: [] }),
@@ -40,7 +69,7 @@ describe('scheduled seed freshness monitor', () => {
     );
   });
 
-  it('runs on a schedule, skips non-green main, and invokes the monitor script', () => {
+  it('runs after ingestion merges and on a schedule, then invokes the acceptance monitor', () => {
     const workflow = readFileSync(
       new URL('../.github/workflows/seed-freshness-monitor.yml', import.meta.url),
       'utf8',
@@ -48,6 +77,8 @@ describe('scheduled seed freshness monitor', () => {
 
     assert.match(workflow, /schedule:/);
     assert.match(workflow, /cron:\s*['"]\*\/15 \* \* \* \*['"]/);
+    assert.match(workflow, /push:[\s\S]*?branches:\s*\[main\]/);
+    assert.match(workflow, /scripts\/\*\*/);
     assert.match(workflow, /actions\/setup-node@[a-f0-9]+/);
     assert.match(workflow, /node-version:\s*['"]24['"]/);
     assert.match(workflow, /context\s*==\s*"gate"/);

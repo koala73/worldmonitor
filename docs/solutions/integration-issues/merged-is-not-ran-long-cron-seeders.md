@@ -66,16 +66,33 @@ The timeline that explained everything:
 | Mon 2026-07-13 18:07 UTC | #5284 merged and the image rebuilt |
 | Sun 2026-07-19 03:00 UTC | next cron tick — **5 days away** |
 
-The fix was baked into the image and had never executed. The remedy is a manual
-backfill, which also *verifies* the fix in the real seeder path (publish,
-envelope dual-write, Redis verification) rather than only in a probe:
+The fix was baked into the image and had never executed. The remedy is a
+Railway-side manual backfill, which also *verifies* the fix on the production
+network (publish, envelope dual-write, Redis verification) rather than only in
+a local probe.
 
-```bash
-cd scripts
-railway run --service <service> --environment production -- node seed-defense-patents.mjs
-# => {"event":"seed_complete","recordCount":90,"state":"OK"}
-#    Verified: data present in Redis   ===  Done  ===
-```
+Do **not** use `railway run` for this acceptance step. Railway documents that
+command as fetching service variables and executing the command **locally**.
+It can therefore pass or fail on the operator's network while proving nothing
+about the seeder's production egress.
+
+Until the project has a dedicated one-off runner, use a controlled temporary
+cron execution:
+
+1. Capture the service's current `deploy.startCommand` and
+   `deploy.cronSchedule`.
+2. Confirm no prior execution is `Active`; Railway skips overlapping cron runs.
+3. Temporarily set the cron to the next five-minute cadence (Railway's minimum).
+   Add a bounded repair flag to the start command only when that seeder defines
+   one.
+4. Wait for the Railway execution to reach a terminal state and verify logs,
+   seed metadata, and compact health.
+5. Restore the exact captured command and schedule, then run
+   `node scripts/audit-railway-watch-paths.mjs` to prove registry convergence.
+
+See Railway's official [cron job](https://docs.railway.com/cron-jobs) and
+[`railway run`](https://docs.railway.com/cli/run) documentation for the network
+and scheduling semantics.
 
 `/api/health` cleared on the next poll.
 
@@ -115,8 +132,11 @@ The registration is at `api/health.js:211` (data key) and `api/health.js:403`
 ## Prevention
 
 - **Before calling a seeder fix "shipped", check its cron cadence.** If the next
-  tick is far away, run a manual backfill. This is not optional cleanup — it is
-  the step that makes the fix real *and* proves it end-to-end.
+  tick is far away, run a Railway-side manual backfill. This is not optional
+  cleanup — it is the step that makes the fix real *and* proves it end-to-end.
+- **Never use `railway run` as production-network evidence.** It injects
+  Railway variables into a local process. Use an actual scheduled execution or
+  a dedicated Railway-side one-off runner.
 - **When a health key goes crit right after a merge, check the cron before
   hunting for a regression.** Compare the seeder's last real run to the merge
   time. `railway status --json` → `serviceManifest.deploy.cronSchedule`.

@@ -78,11 +78,11 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 2,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
-    // Railway registers PROXY_URL as required config for this service: without
+    // Railway registers SZSE_PROXY_URL as required config for this service: without
     // it the source still runs direct-only (no hard failure), but it loses
     // the one capability this contract exists to provide, so an unset
-    // PROXY_URL in production is a deployment gap worth alerting on.
-    proxyEnvironmentVariable: 'PROXY_URL',
+    // SZSE_PROXY_URL in production is a deployment gap worth alerting on.
+    proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
@@ -1217,7 +1217,7 @@ export function buildChinaCorporateDisclosureSnapshot({
 
 export async function fetchChinaCorporateDisclosureSnapshot({
   fetchFn = globalThis.fetch,
-  proxyUrl = process.env.PROXY_URL ?? '',
+  proxyUrl = process.env.SZSE_PROXY_URL || process.env.PROXY_URL || '',
   proxyRequestFn = proxyFetch,
   now = Date.now(),
   previousSnapshot = null,

@@ -693,7 +693,7 @@ export async function fetchAllHumanitarianSummaries({
   requiredCountryCodes = countryCodes === HAPI_COUNTRIES ? HAPI_REQUIRED_COUNTRIES : countryCodes,
   loadPreviousMarker = () => readSeedSnapshot(HAPI_CACHE_KEY_PREFIX),
   loadFailureBackoff = () => readSeedSnapshot(HAPI_FAILURE_BACKOFF_KEY),
-  proxyUrl = process.env.PROXY_URL ?? '',
+  proxyUrl = process.env.HAPI_PROXY_URL || process.env.PROXY_URL || '',
   proxyRequestFn = proxyFetch,
   writeFailureBackoff = (value) => writeExtraKey(
     HAPI_FAILURE_BACKOFF_KEY,

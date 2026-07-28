@@ -22,14 +22,18 @@ describe('cross-Strait activity production registration (#5575)', () => {
     assert.equal(BOOTSTRAP_TIERS.crossStraitActivity, 'slow');
     assert.match(
       read('scripts/seed-bundle-derived-signals.mjs'),
-      /label:\s*'Cross-Strait-Activity'[\s\S]*?seed-cross-strait-activity\.mjs[\s\S]*?requiredEnv:\s*\['PROXY_URL'\]/,
+      /label:\s*'Cross-Strait-Activity'[\s\S]*?seed-cross-strait-activity\.mjs[\s\S]*?requiredEnv:\s*\['JAPAN_MOD_PROXY_URL'\]/,
     );
     const railwayServices = JSON.parse(
       read('scripts/railway-services.json'),
     ) as Array<{ service: string; requiredEnv?: string[] }>;
     assert.deepEqual(
       railwayServices.find((entry) => entry.service === 'seed-bundle-derived-signals')?.requiredEnv,
-      ['PROXY_URL'],
+      ['JAPAN_MOD_PROXY_URL'],
+    );
+    assert.match(
+      read('scripts/cross-strait-activity/adapters.mjs'),
+      /proxyUrl = process\.env\.JAPAN_MOD_PROXY_URL \|\| process\.env\.PROXY_URL \|\| ''/,
     );
     assert.match(
       read('scripts/china-coverage-manifest.mjs'),

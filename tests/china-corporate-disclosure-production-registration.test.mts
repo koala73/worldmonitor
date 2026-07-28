@@ -49,7 +49,11 @@ describe('China corporate disclosure production registration (#5577)', () => {
     ) as Array<{ service: string; requiredEnv?: string[] }>;
     assert.deepEqual(
       railwayServices.find((entry) => entry.service === 'seed-bundle-market-backup')?.requiredEnv,
-      ['PROXY_URL'],
+      ['SZSE_PROXY_URL'],
+    );
+    assert.match(
+      read('scripts/china-corporate-disclosures/adapters.mjs'),
+      /proxyUrl = process\.env\.SZSE_PROXY_URL \|\| process\.env\.PROXY_URL \|\| ''/,
     );
     assert.match(
       read('scripts/china-coverage-manifest.mjs'),

@@ -100,7 +100,11 @@ describe('Railway service registry coverage', () => {
       'R2_BOOTSTRAP_ACCESS_KEY_ID',
       'R2_BOOTSTRAP_SECRET_ACCESS_KEY',
     ]);
-    assert.deepEqual(publisher.watchPatterns, ['scripts/**', 'shared/**']);
+    assert.deepEqual(
+      publisher.watchPatterns,
+      [],
+      'empty watch paths intentionally rebuild the publisher for any repository change',
+    );
     assert.equal(publisher.cronSchedule, null, 'publisher must be always-on, never a Railway cron');
   });
 

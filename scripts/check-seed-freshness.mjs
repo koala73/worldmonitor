@@ -28,6 +28,29 @@ export function findStaleSeedProblems(payload) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function isOnDemandProblem(problem) {
+  return typeof problem?.status === 'string'
+    && problem.status.endsWith('_ON_DEMAND');
+}
+
+export function findOperationalProblems(payload) {
+  validateCompactHealthPayload(payload);
+  return Object.entries(payload.problems ?? {})
+    .filter(([, problem]) => !isOnDemandProblem(problem))
+    .map(([name, problem]) => ({
+      name,
+      status: problem?.status ?? 'UNKNOWN',
+      records: problem?.records,
+      ...(Number.isFinite(problem?.seedAgeMin)
+        ? { seedAgeMin: problem.seedAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxStaleMin)
+        ? { maxStaleMin: problem.maxStaleMin }
+        : {}),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 async function main() {
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
   const response = await fetch(healthUrl, {
@@ -39,15 +62,20 @@ async function main() {
   }
 
   const payload = await response.json();
-  const staleSeeds = findStaleSeedProblems(payload);
-  if (staleSeeds.length === 0) {
-    console.log(`Seed freshness healthy at ${payload.checkedAt || 'unknown time'}: no STALE_SEED problems.`);
+  const operationalProblems = findOperationalProblems(payload);
+  if (operationalProblems.length === 0) {
+    console.log(`Ingestion operational acceptance passed at ${payload.checkedAt || 'unknown time'}: no actionable health problems.`);
     return;
   }
 
-  console.error(`Seed freshness alert: ${staleSeeds.length} seed(s) exceeded maxStaleMin.`);
-  for (const seed of staleSeeds) {
-    console.error(`- ${seed.name}: age=${seed.seedAgeMin}m max=${seed.maxStaleMin}m`);
+  console.error(`Ingestion operational acceptance failed: ${operationalProblems.length} actionable problem(s).`);
+  for (const problem of operationalProblems) {
+    const freshness = Number.isFinite(problem.seedAgeMin)
+      ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
+      : '';
+    console.error(
+      `- ${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`,
+    );
   }
   process.exitCode = 1;
 }
