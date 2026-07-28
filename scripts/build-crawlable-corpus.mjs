@@ -305,21 +305,47 @@ function formatCoordinates(lat, lon) {
   return `${latText}, ${lonText}`;
 }
 
-function selectMetaDescription(candidates) {
-  const eligible = [...new Set(candidates)]
+function longestEligibleMetaDescription(candidates) {
+  return [...new Set(candidates)]
     .map((candidate) => String(candidate ?? '').trim())
     .filter((candidate) => candidate.length <= META_DESCRIPTION_MAX)
-    .sort((a, b) => b.length - a.length);
-  const selected = eligible[0];
-  if (!selected || selected.length < META_DESCRIPTION_MIN) {
-    throw new Error(
-      `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
-    );
-  }
-  return selected;
+    .sort((a, b) => b.length - a.length)[0];
 }
 
-function countryMetaDescription({ name, rank, rankedCount }) {
+function formatMetaDescriptionList(items) {
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+}
+
+function signalMetaDescriptionCandidates({ subjects, signals }) {
+  const candidates = [];
+  const subsetCount = 2 ** signals.length;
+  for (const subject of subjects) {
+    for (const verb of ['tracks', 'monitors', 'covers']) {
+      for (let mask = 1; mask < subsetCount; mask += 1) {
+        const selectedSignals = signals.filter((_, index) => mask & (2 ** index));
+        if (selectedSignals.length < 3) continue;
+        candidates.push(`${subject}: ${verb} ${formatMetaDescriptionList(selectedSignals)}.`);
+      }
+    }
+  }
+  return candidates;
+}
+
+function selectMetaDescription(candidates, fallbackCandidates) {
+  const selected = longestEligibleMetaDescription(candidates);
+  if (selected?.length >= META_DESCRIPTION_MIN) return selected;
+
+  const fallback = longestEligibleMetaDescription(fallbackCandidates?.() ?? []);
+  if (fallback?.length >= META_DESCRIPTION_MIN) return fallback;
+
+  throw new Error(
+    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
+  );
+}
+
+export function countryMetaDescription({ name, rank, rankedCount }) {
   const subjects = [
     `${name} country risk and resilience`,
     `${name} country risk`,
@@ -349,14 +375,32 @@ function countryMetaDescription({ name, rank, rankedCount }) {
     'with instability, travel advisories, sanctions and security signals.',
     'with current instability, advisories, sanctions and security signals.',
   ];
-  return selectMetaDescription(
-    subjects.flatMap((subject) => standings.flatMap(
-      (standing) => signals.map((signal) => `${subject}: ${standing}, ${signal}`),
-    )),
-  );
+  const candidates = subjects.flatMap((subject) => standings.flatMap(
+    (standing) => signals.map((signal) => `${subject}: ${standing}, ${signal}`),
+  ));
+  return selectMetaDescription(candidates, () => signalMetaDescriptionCandidates({
+    subjects: [
+      `${name} country risk profile`,
+      `${name} risk profile`,
+      `${name} country risk`,
+      `${name} risk`,
+    ],
+    signals: [
+      'live instability',
+      'travel advisories',
+      'sanctions',
+      'security signals',
+      'resilience rankings',
+      'current conditions',
+      'global context',
+      'regional context',
+      'risk trends',
+      'public data',
+    ],
+  }));
 }
 
-function chokepointMetaDescription(name) {
+export function chokepointMetaDescription(name) {
   const subjects = [
     `${name} chokepoint status`,
     `${name} live chokepoint status`,
@@ -369,9 +413,29 @@ function chokepointMetaDescription(name) {
     'track disruption risk, vessel transits, congestion, AIS warnings and major trade routes through this strategic waterway.',
     'monitor disruption risk, transits, congestion, AIS warnings and trade routes through this strategic waterway.',
   ];
-  return selectMetaDescription(
-    subjects.flatMap((subject) => signals.map((signal) => `${subject}: ${signal}`)),
+  const candidates = subjects.flatMap(
+    (subject) => signals.map((signal) => `${subject}: ${signal}`),
   );
+  return selectMetaDescription(candidates, () => signalMetaDescriptionCandidates({
+    subjects: [
+      `${name} maritime chokepoint`,
+      `${name} chokepoint status`,
+      `${name} chokepoint`,
+      `${name} status`,
+    ],
+    signals: [
+      'live disruption risk',
+      'vessel transits',
+      'congestion',
+      'AIS warnings',
+      'trade routes',
+      'maritime security',
+      'current conditions',
+      'regional context',
+      'shipping signals',
+      'public data',
+    ],
+  }));
 }
 
 function metricTile(label, value) {

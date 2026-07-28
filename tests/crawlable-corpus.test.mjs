@@ -8,6 +8,8 @@ import { describe, it } from 'node:test';
 
 import {
   buildCorpus,
+  chokepointMetaDescription,
+  countryMetaDescription,
   gitFileLastmod,
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
@@ -50,6 +52,42 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('keeps future long source names inside the meta-description boundary', () => {
+    const descriptions = new Set();
+    for (let length = 1; length <= 100; length += 1) {
+      const cases = [
+        {
+          name: 'A'.repeat(length),
+          description: countryMetaDescription({
+            name: 'A'.repeat(length),
+            rank: 999_999,
+            rankedCount: 999_999,
+          }),
+        },
+        {
+          name: 'B'.repeat(length),
+          description: countryMetaDescription({
+            name: 'B'.repeat(length),
+            rank: null,
+            rankedCount: 999_999,
+          }),
+        },
+        {
+          name: 'C'.repeat(length),
+          description: chokepointMetaDescription('C'.repeat(length)),
+        },
+      ];
+
+      for (const { name, description } of cases) {
+        assert.ok(description.length >= 155 && description.length <= 160);
+        assert.ok(description.startsWith(name), 'fallback must retain the page-specific name');
+        assert.match(description, /\.$/, 'fallback must remain a complete sentence');
+        assert.ok(!descriptions.has(description), 'boundary descriptions must remain unique');
+        descriptions.add(description);
+      }
+    }
+  });
+
   it('does not treat a shallow boundary commit as a source update', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'wm-corpus-shallow-'));
     const sourceRoot = join(tempRoot, 'source');
