@@ -49,6 +49,7 @@ import {
 import {
   getTheaterPostureSummaries,
   MilitarySurgeEngine,
+  POSTURE_THEATERS,
   recalcPostureWithVessels,
 } from '../../../shared/analysis-military-surge';
 import {
@@ -1902,12 +1903,20 @@ export const RPC_TOOLS: ToolDef[] = [
         [id, name, shortName].some(
           (value) => typeof value === 'string' && value.toLowerCase().includes(theaterFilter),
         );
+      const matchedRegionIds = new Set(
+        POSTURE_THEATERS
+          .filter((theater) => matchesTheater(theater.id, theater.name, theater.shortName))
+          .flatMap((theater) => theater.regions),
+      );
       return {
         ...freshness,
         data: {
           postures: postures.filter((p) => matchesTheater(p.theaterId, p.theaterName, p.shortName)),
           foreign_presence: theaterFilter
-            ? foreignPresence.filter((alert) => alert.region.toLowerCase().includes(theaterFilter))
+            ? foreignPresence.filter((alert) =>
+              matchedRegionIds.has(alert.region_id) ||
+              alert.region_id.toLowerCase().includes(theaterFilter) ||
+              alert.region.toLowerCase().includes(theaterFilter))
             : foreignPresence,
           seeded_surges: seededSurges.filter((surge) => matchesTheater(surge.theaterId, surge.theater)),
           seeded_surges_available: surgesPayload !== null,
@@ -2037,9 +2046,8 @@ export const RPC_TOOLS: ToolDef[] = [
         throw new Error('cache_all_null: no event feeds are available for exposure enrichment');
       }
 
-      const perFeedLimit = Number.isFinite(limit) ? 50 : Number.POSITIVE_INFINITY;
       const enriched = reads
-        .flatMap((read, i) => read.adapt(payloads[i], perFeedLimit))
+        .flatMap((read, i) => read.adapt(payloads[i], Number.POSITIVE_INFINITY))
         .map((event) => {
           const radius = getRadiusForEventType(event.type);
           const exposure = computeExposure(event.lat, event.lon, radius);

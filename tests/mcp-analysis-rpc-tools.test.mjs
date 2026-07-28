@@ -848,6 +848,63 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.seeded_surges_available, true);
   });
 
+  it('keeps foreign-presence detections when filtering by theater id', async () => {
+    const payloads = analysisPayloads();
+    payloads['military:flights:v1'].flights = Array.from({ length: 2 }, (_, i) => ({
+      id: `gulf-flight-${i}`,
+      callsign: `GULF${i}`,
+      lat: 26.5,
+      lon: 52,
+      lastSeenMs: Date.now(),
+      operator: 'usaf',
+      aircraftType: 'fighter',
+    }));
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_military_surge')._execute(
+      { theater: 'iran-theater' },
+      '',
+      {},
+      {},
+    );
+
+    assert.deepEqual(
+      result.data.foreign_presence.map((alert) => alert.region_id),
+      ['persian-gulf'],
+    );
+  });
+
+  it('ranks every producer event before applying the final exposure limit', async () => {
+    const payloads = analysisPayloads();
+    payloads['seismology:earthquakes:v1'].earthquakes = [
+      ...Array.from({ length: 50 }, (_, i) => ({
+        id: `mali-quake-${i}`,
+        place: 'Mali',
+        magnitude: 5,
+        location: { latitude: 17.6, longitude: -4 },
+        occurredAt: Date.now(),
+      })),
+      {
+        id: 'palestine-quake',
+        place: 'Palestine',
+        magnitude: 5,
+        location: { latitude: 31.9, longitude: 35.2 },
+        occurredAt: Date.now(),
+      },
+    ];
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'earthquakes', limit: 1 },
+      '',
+      {},
+      {},
+    );
+
+    assert.equal(result.data.events.length, 1);
+    assert.equal(result.data.events[0].id, 'palestine-quake');
+  });
+
   it('surfaces missing weekly history in both freshness and digest availability', async () => {
     installUpstashStub(analysisPayloads(), { misses: ['military:surges:history:v1'] });
     const result = await findTool('get_alert_digest')._execute({ view: 'weekly' }, '', {}, {});
