@@ -13,7 +13,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 **Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 `403 INSUFFICIENT_TIER`。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的 44 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
+所有付费套餐共享同一个 MCP 服务器和同样的 51 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-sign-in-flow)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -199,7 +199,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## 工具目录
 
-服务器暴露 44 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_world_brief`、`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）以及规范化中国决策信号 RPC（`get_china_decision_signals`）。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
+服务器暴露 51 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_world_brief`、`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）以及规范化中国决策信号 RPC（`get_china_decision_signals`），以及每次请求基于种子缓存重新运行共享仪表板引擎的派生分析工具（`get_signal_convergence`、`get_focal_points`、`simulate_infrastructure_cascade`、`get_military_surge`、`get_population_exposure`、`get_alert_digest`、`get_hotspot_escalation`）。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
 
 <Tip>
 如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
@@ -242,6 +242,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_positive_events` | 外交协议、人道主义援助、和平倡议。 |
 | `get_social_velocity` | Reddit r/worldnews + r/geopolitics 热门帖、互动评分。 |
 | `get_temporal_anomalies` | 事件计数对比按星期/季节的基线，z 分数严重度分级。 |
+| `get_signal_convergence` | 抗议、军机、海军动向与地震共现的网格单元。 |
+| `get_focal_points` | 新闻报道与实时地图信号汇聚的实体，按多信号评分。 |
+| `get_military_surge` | 战区飞机态势、外国军力存在检测、种子化激增警报。 |
+| `get_hotspot_escalation` | 29 个精选热点，按新闻、不稳定性、地理汇聚、军事活动评为 1-5 分。 |
+| `get_alert_digest` | 今日所有触发阈值项的跨域汇总。 |
 | `get_china_decision_signals` | 保留规范溯源的六领域中国摘要，明确显示各领域降级；不暴露详细双边贸易行或 operator 健康信息。 |
 
 ### 移动与基础设施
@@ -252,6 +257,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_maritime_activity` | 各国 AIS 密度区域、暗船事件、咽喉要道拥堵。参数：`country_code`。 |
 | `get_aviation_status` | FAA 机场延误、NOTAM 关闭、被跟踪的军用飞机。 |
 | `get_infrastructure_status` | Cloudflare Radar 中断、主要云/互联网服务状态。 |
+| `simulate_infrastructure_cascade` | 电缆、咽喉要道、管道或港口中断后的下游故障传播。 |
 | `search_flights` | Google Flights 在指定日期在 IATA 机场代码之间的实时搜索。 |
 | `search_flight_prices_by_date` | 跨日期范围的日期网格最便宜日定价。 |
 
@@ -276,6 +282,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 工具 | 描述 |
 |------|-------------|
 | `get_displacement_data` | 按国家统计的难民和 IDP 数量（UNHCR 年度数据）。 |
+| `get_population_exposure` | 地震、火灾、冲突事件影响半径内的估算人口。 |
 
 ### AI 情报（实时 LLM）
 
@@ -333,6 +340,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_maritime_activity` | `GET /api/maritime/v1/get-vessel-snapshot` |
 | `get_military_posture` | `GET /api/military/v1/get-theater-posture` |
 | `get_displacement_data` | `GET /api/displacement/v1/get-displacement-summary` |
+| `get_population_exposure` | `GET /api/displacement/v1/get-population-exposure` |
 | `get_positive_events` | `GET /api/positive-events/v1/list-positive-geo-events` |
 | `get_sanctions_data` | `GET /api/sanctions/v1/list-sanctions-pressure`<br/>`GET /api/sanctions/v1/lookup-sanction-entity` |
 | `get_research_signals` | `GET /api/research/v1/list-tech-events` |
@@ -364,11 +372,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 - [#4525](https://github.com/koala73/worldmonitor/issues/4525) —— 延后的纯读取 MCP 覆盖候选项。
 - [#4526](https://github.com/koala73/worldmonitor/issues/4526) —— 手动映射和 fetch-on-miss 分诊。
 
-有关完整的 44 个工具列表，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
+有关完整的 51 个工具列表，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
 
 ## Prompt 与资源
 
-除了 44 个工具之外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
+除了 51 个工具之外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
 
 ### Prompt
 

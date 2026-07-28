@@ -820,6 +820,220 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_signal_convergence`
+
+Geographic signal convergence: one-degree grid cells where protests, military flights, naval movements, and earthquakes co-occur inside a 24-hour window. Alerts carry coordinates, contributing domains, a reverse-geocoded location name, and a breadth/volume score. Pass `lat`/`lon`/`radius_km` together to narrow to one area.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `lat` | number | Latitude of the area of interest; requires lon and radius_km as well. |
+| `lon` | number | Longitude of the area of interest; requires lat and radius_km as well. |
+| `radius_km` | number | Radius in km around lat/lon to keep alerts for; requires lat and lon. |
+| `min_domains` | number | Distinct signal domains required per cell, 2-5 (default 3). |
+
+- **API endpoints:** none (MCP-only derived analysis).
+- **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
+- **Freshness budget:** per-feed (flights 30 min, unrest 120 min, earthquakes 30 min, fleet 720 min); `stale: true` when any feed exceeds its budget.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_signal_convergence","arguments":{"min_domains":3}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_focal_points`
+
+Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. News story clusters are entity-matched against the curated registry, cross-referenced with cross-source escalation signals, and scored with the same engine the dashboard runs. Includes an `aiContext` block and mapping-coverage counters.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country_code` | string | Filter focal points to one country (ISO-2) and entities the registry relates to it. |
+| `limit` | number | Cap the focal point list (default 10). |
+
+- **API endpoints:** none (MCP-only derived analysis).
+- **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
+- **Freshness budget:** up to **30 min** per contributing feed before `stale: true`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_focal_points","arguments":{"limit":5}}
+  }'
+```
+
+</CodeGroup>
+
+### `simulate_infrastructure_cascade`
+
+Infrastructure cascade simulation: breadth-first failure propagation across the seeded submarine-cable table plus the curated pipeline, port, and chokepoint registries. Call with no `source_id` for the catalog of simulatable node ids grouped by type; chained capacity math multiplies along paths so distant impacts shrink realistically.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `source_id` | string | Node id to disrupt (see the no-argument catalog for valid ids). |
+| `disruption_level` | number | Initial failure severity between 0.1 and 1 (default 1). |
+
+- **API endpoints:** none (MCP-only derived analysis).
+- **Kind:** derived analysis — dependency graph built per request from the seeded cable table.
+- **Freshness budget:** up to **25200 min** (~17.5 days) for the weekly cable table before `stale: true`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"simulate_infrastructure_cascade","arguments":{"source_id":"hormuz","disruption_level":0.8}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_military_surge`
+
+Military surge watch: per-theater aircraft postures (fighters, tankers, AWACS, reconnaissance, transports, bombers, drones), foreign-presence detections, and the flights seeder's own surge alerts reported as a separate `seeded_surges` block (it uses different baselines than the snapshot engine — the two are never silently merged).
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `theater` | string | Filter to one theater by id or name substring (case-insensitive). |
+
+- **API endpoints:** none (MCP-only derived analysis; posture aggregates are also served by `get_military_posture`).
+- **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
+- **Freshness budget:** flights **30 min**, theater posture **60 min** before `stale: true`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_military_surge","arguments":{"theater":"taiwan"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_population_exposure`
+
+Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events, using the dashboard's country-density approximation (nearest priority-country centroid × event-type radius disc). Coarse screening numbers — there is no city-level population dataset behind them.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `mode` | string: events / point / countries | events enriches live feeds (default); point takes lat/lon; countries lists the population table. |
+| `event_source` | string: earthquakes / wildfires / conflicts / all | Which event feeds to enrich in events mode (default all). |
+| `lat` | number | Latitude for point mode. |
+| `lon` | number | Longitude for point mode. |
+| `radius_km` | number | Radius in km for point mode (default 50). |
+| `limit` | number | Cap the enriched event list in events mode (default 20). |
+
+- **API endpoints:** `GET /api/displacement/v1/get-population-exposure`
+- **Kind:** derived analysis — shared exposure core; events mode reads Redis seed caches.
+- **Freshness budget:** per-feed (earthquakes 30 min, wildfires 360 min, conflicts 1440 min); point and countries modes are computed, `cached_at: null`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_population_exposure","arguments":{"event_source":"earthquakes"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_alert_digest`
+
+Cross-domain alert digest: every threshold trip across seven domains (country instability, military surges, cable health, ongoing outages, temporal anomalies, thermal escalation, shipping stress) using each producer's own severity vocabulary — no invented thresholds. Quiet domains and unavailable caches are listed separately so silence is never mistaken for calm.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `view` | string: today / weekly | today lists current threshold trips (default); weekly adds trend context. |
+
+- **API endpoints:** none (MCP-only derived analysis).
+- **Kind:** derived analysis — shared digest core over seven Redis seed caches.
+- **Freshness budget:** per-feed (30-360 min); `stale: true` when any contributing feed exceeds its budget.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_alert_digest","arguments":{"view":"today"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_hotspot_escalation`
+
+Hotspot escalation scores: the 29 curated intelligence hotspots ranked on the documented 1-5 composite scale. News pressure, country instability, geographic signal convergence, and nearby military activity are normalized to 0-100 components, weighted 35/25/25/15, and blended 30/70 with each hotspot's curated static baseline — the same math the dashboard map publishes.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `hotspot_id` | string | Return only this curated hotspot id (see any full response for the id list). |
+| `limit` | number | Cap the ranked hotspot list (default 29, the full curated set). |
+
+- **API endpoints:** none (MCP-only derived analysis).
+- **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
+- **Freshness budget:** up to **30 min** for news/risk/flights, **120 min** for unrest before `stale: true`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_hotspot_escalation","arguments":{"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_china_decision_signals`
 
 Returns the bounded six-domain China decision-signal snapshot used by the

@@ -80,18 +80,10 @@ const EXCLUDED_FROM_MCP = new Map([
   // ===========================================================================
   // Cascade-mirror fallbacks (live/stale/backup of a sibling already exposed)
   // ===========================================================================
-  ['theater-posture:sebuf:v1',
-    'cascade-mirror: live counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
   ['theater-posture:sebuf:backup:v1',
     'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
-  [CII_RISK_SCORE_CACHE_KEYS.live,
-    `cascade-mirror: live counterpart of ${CII_RISK_SCORE_CACHE_KEYS.stale} (covered by get_conflict_events).`],
-  ['military:flights:v1',
-    'cascade-mirror: live counterpart of military:flights:stale:v1 — deferred to a future expanded military tool (no current tool exposes either variant).'],
   ['military:flights:stale:v1',
     'cascade-mirror: stale fallback of military:flights:v1 — deferred to a future expanded military tool. CASCADE_GROUPS militaryFlights entry.'],
-  ['usni-fleet:sebuf:v1',
-    'cascade-mirror: live USNI fleet — deferred to a future military-fleet tool (no current tool exposes either variant).'],
   ['usni-fleet:sebuf:stale:v1',
     'cascade-mirror: stale USNI fleet — deferred to a future military-fleet tool.'],
   ['displacement:summary:v1:' + (new Date().getUTCFullYear() - 1),
@@ -184,8 +176,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: strict health seed probe added by #5055; future economic-data MCP expansion can expose energy prices directly.'],
   ['shared:fx-rates:v1',
     'deferred: strict health seed probe added by #5055; FX rates are shared infrastructure consumed by seeders and future economic MCP expansion.'],
-  ['infrastructure:submarine-cables:v1',
-    'deferred: strict health seed probe added by #5055; future infrastructure MCP expansion can expose the cable inventory directly.'],
   ['patents:defense:latest',
     'deferred: strict health seed probe added by #5055; future military or defense-innovation MCP expansion can expose patent summaries.'],
   ['conflict:acled:v1:all:0:0',
@@ -224,8 +214,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: Windy webcam active-version pointer for app map markers. A future webcam MCP tool would expose decoded camera entries, not the raw Redis pointer.'],
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
-  ['thermal:escalation:v1',
-    'deferred to a future conflict-escalation tool.'],
   ['resilience:static:index:v1',
     'deferred to a future resilience tool (paired with resilience:ranking:v25).'],
   ['resilience:static:fao',
@@ -334,8 +322,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future expanded energy tool. IEA OECD oil-stocks index — companion to energy:eia-petroleum:v1 (US weekly petroleum stocks already exposed via get_energy_intelligence). Monthly IEA cadence vs weekly EIA — distinct release.'],
   ['energy:intelligence:feed:v1',
     'deferred: derived energy-intelligence narrative feed (LLM-generated); underlying energy inputs already exposed via get_energy_intelligence. A future LLM-narrative tool would expose this.'],
-  ['cable-health-v1',
-    'deferred to a future maritime-infrastructure tool. Subsea cable disruption tracker — not in v1 brainstorm inventory.'],
 
   // ---- Energy supplementary keys not bundled into get_energy_intelligence ----
   // get_energy_intelligence covers the 9 headline keys (EIA petroleum,

@@ -193,8 +193,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: REST-only transport multiplexer — fans out to documented GET RPCs that are each individually covered by a tool's _apiPaths or excluded here; the MCP equivalent is native parallel tool calls, so a batch tool would double-map every covered op"],
   ["GET /api/aviation/v1/search-flight-prices",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["GET /api/displacement/v1/get-population-exposure",
-    "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
   ["GET /api/economic/v1/get-bls-series",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/economic/v1/get-fred-series",

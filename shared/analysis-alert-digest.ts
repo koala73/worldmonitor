@@ -305,7 +305,7 @@ export function buildWeeklyTrends(series: TrendSeries[], _now: number): DomainTr
 
     const earlyVariance = earlyValues.reduce((a, b) => a + (b - earlyMean) ** 2, 0) / earlyValues.length;
     const earlyStddev = Math.sqrt(earlyVariance);
-    const latest = values[values.length - 1];
+    const latest = values[values.length - 1] ?? 0;
 
     trends.push({
       domain: s.domain,
