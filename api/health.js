@@ -850,12 +850,12 @@ function keyHasData(redisKey, len) {
 
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: true, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -864,7 +864,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
   if (meta?.status === 'error') {
-    return { hasMeta: true, seedAge: null, seedStale: true, seedError: true, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return { hasMeta: true, seedAge: null, seedStale: true, seedError: true, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   let seedAge = null;
   let seedStale = true;
@@ -879,12 +879,17 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // same makes an optional, deliberately-unconfigured source an eternal warn that
   // no amount of operator work can clear — so it is classified separately below.
   const sourceUnavailable = meta?.sourceState === 'unavailable';
+  // A current, bounded upstream classification can prove that every admitted
+  // transport path is externally blocked. Keep that state visible without
+  // treating it as a broken producer that can be repaired by another retry.
+  const sourceBlocked = meta?.sourceState === 'blocked';
   // Source-specific producers can preserve usable last-good records while a
   // current upstream attempt is degraded. Surface that state immediately as a
   // warning without discarding the retained record count from health output.
   const sourceDegraded = typeof meta?.sourceState === 'string'
     && meta.sourceState !== 'ok'
-    && !sourceUnavailable;
+    && !sourceUnavailable
+    && !sourceBlocked;
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
@@ -912,7 +917,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  return { hasMeta: meta != null, seedAge, seedStale, seedError: sourceDegraded, sourceUnavailable, metaReadFailed: false, metaCount, contentAge };
+  return { hasMeta: meta != null, seedAge, seedStale, seedError: sourceDegraded, sourceUnavailable, sourceBlocked, metaReadFailed: false, metaCount, contentAge };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -947,7 +952,7 @@ function classifyKey(name, redisKey, opts, ctx) {
 
   const strlen = keyStrens.get(redisKey) ?? 0;
   const hasData = keyHasData(redisKey, strlen);
-  const { hasMeta, seedAge, seedStale, seedError, sourceUnavailable, metaCount, contentAge } = meta;
+  const { hasMeta, seedAge, seedStale, seedError, sourceUnavailable, sourceBlocked, metaCount, contentAge } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -961,6 +966,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // the moment the credential lands the next run reports sourceState 'ok' and this
   // flips to OK on its own — no health-config change needed.
   if (sourceUnavailable) status = 'NOT_CONFIGURED';
+  else if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
+    // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
+    // a reviewed-data contract and explicit two-path proof for this state.
+    status = 'SEED_ERROR';
+  }
+  else if (sourceBlocked && hasData && records > 0 && seedStale !== true) status = 'SOURCE_BLOCKED';
   else if (seedError) status = 'SEED_ERROR';
   else if (!hasData) {
     if (cascadeCovered) status = 'OK_CASCADE';
@@ -1016,6 +1027,11 @@ const STATUS_COUNTS = {
   // Must stay registered here: the summary does `STATUS_COUNTS[status] ?? 'warn'`,
   // so an unlisted status would silently re-become the warn this exists to stop.
   NOT_CONFIGURED: 'ok',
+  // The producer ran and classified an external transport refusal with a
+  // documented reason. Retained reviewed data remains usable, and retrying the
+  // same bounded paths cannot clear it, so this is informational rather than a
+  // fleet-health warning.
+  SOURCE_BLOCKED: 'ok',
   STALE_SEED: 'warn',
   SEED_ERROR: 'warn',
   EMPTY_ON_DEMAND: 'warn',

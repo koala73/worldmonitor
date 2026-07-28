@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 import { __testing__ } from '../api/health.js';
+import seedHealthHandler from '../api/seed-health.js';
 import { atomicPublish, runSeed } from '../scripts/_seed-utils.mjs';
 import { CROSS_STRAIT_ACTIVITY_KEY } from '../scripts/cross-strait-activity/adapters.mjs';
 import {
@@ -42,7 +43,22 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
     schemaVersion: 1,
     generatedAt: '2026-07-25T12:00:00.000Z',
     status: 'degraded',
-    sources: [{ id: 'taiwan-mnd', transportStatus: 'error' }, { id: 'japan-mod', transportStatus: 'fresh' }],
+    sources: [
+      { id: 'taiwan-mnd', transportStatus: 'error' },
+      {
+        id: 'japan-mod',
+        transportStatus: 'error',
+        blockedReason: 'HTTP_403',
+        proxyFailureDetail: {
+          stage: 'response',
+          httpStatus: 403,
+          contentType: null,
+          bodyPrefix: null,
+          errorCode: null,
+          errorMessage: 'HTTP_403',
+        },
+      },
+    ],
     coverage: { latestMndReportingDay: '2026-07-25' },
     observations: [
       observation('taiwan-mnd', '2026-07-24', [{ obsolete: true }]),
@@ -60,7 +76,14 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
     'japan-mod:2026-07-20',
   ]);
   assert.ok(projection.observations.every((row) => !('history' in row)));
-  assert.deepEqual(projection.sources, snapshot.sources);
+  assert.deepEqual(projection.sources, snapshot.sources.map((source) => {
+    const { proxyFailureDetail: _proxyFailureDetail, ...publicSource } = source;
+    return publicSource;
+  }));
+  assert.equal(
+    projection.sources.some((source) => 'proxyFailureDetail' in source),
+    false,
+  );
   assert.deepEqual(projection.coverage, snapshot.coverage);
   assert.deepEqual(projection.baselines, snapshot.baselines);
   assert.ok(Buffer.byteLength(JSON.stringify(projection), 'utf8') <= CROSS_STRAIT_ACTIVITY_BOOTSTRAP_MAX_BYTES);
@@ -91,6 +114,301 @@ test('cross-Strait source transport health degrades immediately without discardi
 
     assert.equal(entry.status, 'SEED_ERROR', name);
     assert.equal(entry.records, 91, name);
+  }
+});
+
+test('a freshly classified blocked source is explicit and does not pin fleet health', async () => {
+  const { classifyKey, STATUS_COUNTS, SEED_META, STANDALONE_KEYS } = __testing__;
+  const now = Date.parse('2026-07-27T20:00:00.000Z');
+  const writes = new Map<string, unknown>();
+  const snapshot = {
+    generatedAt: new Date(now).toISOString(),
+    observations: [
+      { sourceId: 'japan-mod' },
+      { sourceId: 'japan-mod' },
+    ],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      blockedReason: 'HTTP_403',
+      lastSuccessAt: null,
+    }],
+  };
+
+  await writeSourceHealth(snapshot, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  const metaKey = SEED_META.crossStraitActivityJapanMod.key;
+  const dataKey = STANDALONE_KEYS.crossStraitActivityJapanMod;
+  assert.deepEqual([...writes.keys()], [dataKey, metaKey]);
+  assert.deepEqual(writes.get(metaKey), {
+    fetchedAt: now,
+    recordCount: 2,
+    sourceState: 'blocked',
+    stale: false,
+  });
+
+  const entry = classifyKey('crossStraitActivityJapanMod', dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 1024]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify(writes.get(metaKey))]]),
+    keyMetaErrors: new Map(),
+    now,
+  });
+
+  assert.equal(entry.status, 'SOURCE_BLOCKED');
+  assert.equal(entry.records, 2);
+  assert.equal(STATUS_COUNTS.SOURCE_BLOCKED, 'ok');
+
+  const mndMetaKey = SEED_META.crossStraitActivityTaiwanMnd.key;
+  const mndDataKey = STANDALONE_KEYS.crossStraitActivityTaiwanMnd;
+  const mndEntry = classifyKey(
+    'crossStraitActivityTaiwanMnd',
+    mndDataKey,
+    { allowOnDemand: true },
+    {
+      keyStrens: new Map([[mndDataKey, 1024]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[
+        mndMetaKey,
+        JSON.stringify({
+          fetchedAt: now,
+          recordCount: 2,
+          sourceState: 'blocked',
+          stale: false,
+        }),
+      ]]),
+      keyMetaErrors: new Map(),
+      now,
+    },
+  );
+
+  assert.equal(mndEntry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[mndEntry.status], 'warn');
+
+  const staleEntry = classifyKey(
+    'crossStraitActivityJapanMod',
+    dataKey,
+    { allowOnDemand: true },
+    {
+      keyStrens: new Map([[dataKey, 1024]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[
+        metaKey,
+        JSON.stringify({
+          fetchedAt: now - ((SEED_META.crossStraitActivityJapanMod.maxStaleMin + 1) * 60_000),
+          recordCount: 2,
+          sourceState: 'blocked',
+          stale: false,
+        }),
+      ]]),
+      keyMetaErrors: new Map(),
+      now,
+    },
+  );
+  assert.equal(staleEntry.status, 'STALE_SEED');
+
+  const missingEntry = classifyKey(
+    'crossStraitActivityJapanMod',
+    dataKey,
+    { allowOnDemand: true },
+    {
+      keyStrens: new Map([[dataKey, 0]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify(writes.get(metaKey))]]),
+      keyMetaErrors: new Map(),
+      now,
+    },
+  );
+  assert.notEqual(missingEntry.status, 'SOURCE_BLOCKED');
+  assert.equal(STATUS_COUNTS[missingEntry.status], 'crit');
+});
+
+test('blocked source health never publishes fresh metadata before its detail record', async () => {
+  const writes: string[] = [];
+  await assert.rejects(
+    writeSourceHealth({
+      generatedAt: '2026-07-27T20:00:00.000Z',
+      observations: [{ sourceId: 'japan-mod' }],
+      sources: [{
+        id: 'japan-mod',
+        transportStatus: 'error',
+        blockedReason: 'HTTP_403',
+        lastSuccessAt: null,
+      }],
+    }, async (key: string) => {
+      writes.push(key);
+      if (key === 'military:cross-strait-activity:v1:source:japan-mod') {
+        throw new Error('injected blocked detail write failure');
+      }
+    }),
+    /blocked detail write failure/,
+  );
+
+  assert.deepEqual(writes, ['military:cross-strait-activity:v1:source:japan-mod']);
+});
+
+test('a proxy CONNECT refusal remains an operator-visible source error', async () => {
+  const writes = new Map<string, unknown>();
+  await writeSourceHealth({
+    generatedAt: '2026-07-27T20:00:00.000Z',
+    observations: [{ sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      blockedReason: 'PROXY_CONNECT_FORBIDDEN',
+      lastSuccessAt: null,
+    }],
+  }, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  assert.deepEqual(
+    writes.get('seed-meta:military:cross-strait-activity:japan-mod'),
+    {
+      fetchedAt: 0,
+      recordCount: 1,
+      sourceState: 'error',
+      stale: true,
+    },
+  );
+});
+
+test('operator seed-health matches the fail-closed Japan blocked classification', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
+    RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
+    RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
+  };
+  const operatorKey = 'cross-strait-source-health-test-key';
+  const japanMetaKey = 'seed-meta:military:cross-strait-activity:japan-mod';
+  const taiwanMetaKey = 'seed-meta:military:cross-strait-activity:taiwan-mnd';
+  const probeKey = 'resilience:intervals:v9:US';
+
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+  process.env.WORLDMONITOR_VALID_KEYS = operatorKey;
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+
+  const readEntry = async ({
+    japanMeta,
+    taiwanMeta,
+  }: {
+    japanMeta: Record<string, unknown> | null;
+    taiwanMeta?: Record<string, unknown>;
+  }) => {
+    globalThis.fetch = async (_url, init) => {
+      const commands = JSON.parse(String(init?.body));
+      const results = commands.map(([operation, key]: [string, string]) => {
+        if (operation === 'EXISTS') return { result: 0 };
+        assert.equal(operation, 'GET');
+        if (key === japanMetaKey) {
+          return { result: japanMeta == null ? null : JSON.stringify(japanMeta) };
+        }
+        if (key === taiwanMetaKey && taiwanMeta) {
+          return { result: JSON.stringify(taiwanMeta) };
+        }
+        if (key === probeKey) {
+          return {
+            result: JSON.stringify({
+              p05: 65.2,
+              p95: 72.8,
+              _formula: 'd6',
+              methodology: 'weight-perturbation-sensitivity-v3',
+              computedAt: new Date().toISOString(),
+            }),
+          };
+        }
+        return {
+          result: JSON.stringify({
+            fetchedAt: Date.now(),
+            recordCount: 10_000,
+            sourceVersion: key === 'seed-meta:resilience:intervals'
+              ? 'resilience-intervals:resilience:intervals:v9:weight-perturbation-sensitivity-v3'
+              : 'test',
+          }),
+        };
+      });
+      return new Response(JSON.stringify(results), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await seedHealthHandler(new Request(
+      'https://api.worldmonitor.app/api/seed-health',
+      { headers: { 'X-WorldMonitor-Key': operatorKey } },
+    ));
+    return {
+      response,
+      body: await response.json(),
+    };
+  };
+
+  try {
+    const fresh = await readEntry({
+      japanMeta: {
+        fetchedAt: Date.now(),
+        recordCount: 2,
+        sourceState: 'blocked',
+      },
+    });
+    assert.equal(fresh.response.status, 200);
+    assert.equal(
+      fresh.body.seeds['military:cross-strait-activity:japan-mod'].status,
+      'source_blocked',
+    );
+    assert.equal(
+      fresh.body.seeds['military:cross-strait-activity:japan-mod'].stale,
+      false,
+    );
+
+    const stale = await readEntry({
+      japanMeta: {
+        fetchedAt: Date.now() - (361 * 60_000),
+        recordCount: 2,
+        sourceState: 'blocked',
+      },
+    });
+    assert.equal(stale.body.seeds['military:cross-strait-activity:japan-mod'].status, 'stale');
+
+    const zeroCount = await readEntry({
+      japanMeta: {
+        fetchedAt: Date.now(),
+        recordCount: 0,
+        sourceState: 'blocked',
+      },
+    });
+    assert.equal(zeroCount.body.seeds['military:cross-strait-activity:japan-mod'].status, 'error');
+
+    const wrongDomain = await readEntry({
+      japanMeta: {
+        fetchedAt: Date.now(),
+        recordCount: 2,
+        sourceState: 'ok',
+      },
+      taiwanMeta: {
+        fetchedAt: Date.now(),
+        recordCount: 2,
+        sourceState: 'blocked',
+      },
+    });
+    assert.equal(wrongDomain.body.seeds['military:cross-strait-activity:taiwan-mnd'].status, 'error');
+
+    const missing = await readEntry({ japanMeta: null });
+    assert.equal(missing.response.status, 503);
+    assert.equal(missing.body.seeds['military:cross-strait-activity:japan-mod'].status, 'missing');
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 

@@ -5,6 +5,7 @@ import { getGeoHubById } from '@/services/geo-hub-index';
 import { h } from '@/utils/dom-utils';
 import type { CrossStraitActivitySnapshot } from '@/types/cross-strait-activity';
 import {
+  crossStraitSourceHealthHeading,
   isCrossStraitActivitySnapshot,
   tryBuildCrossStraitActivityPanelModel,
 } from './cross-strait-activity-summary';
@@ -64,7 +65,7 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
         role: 'status',
         style: 'font-size:8px;line-height:1.35;margin:0 0 7px;padding:5px;border-left:2px solid #ff9800;background:rgba(255,152,0,0.10);',
       },
-      h('strong', {}, model.sourceHealth.state === 'unavailable' ? 'Official activity unavailable' : 'Official activity degraded'),
+      h('strong', {}, crossStraitSourceHealthHeading(model.sourceHealth.state)),
       h('div', { style: 'opacity:0.82;' }, model.sourceHealth.summary),
       ...model.sourceHealth.sources.map((source) => h('div', { style: 'margin-top:2px;' },
         `${source.publisher}: ${source.transportStatus}; errors: ${source.errorCodes.join(', ') || 'none'}; last success: ${source.lastSuccessAt ?? 'not recorded'}`,

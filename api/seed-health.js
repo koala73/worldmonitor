@@ -395,9 +395,14 @@ export default async function handler(req) {
     // `unavailable` means an optional adapter was never configured, matching
     // api/health.js's NOT_CONFIGURED treatment rather than a broken source.
     const sourceUnavailable = meta.sourceState === 'unavailable';
+    const sourceBlocked = domain === 'military:cross-strait-activity:japan-mod'
+      && meta.sourceState === 'blocked'
+      && recordCount != null
+      && recordCount > 0;
     const sourceError = typeof meta.sourceState === 'string'
       && meta.sourceState !== 'ok'
-      && !sourceUnavailable;
+      && !sourceUnavailable
+      && !sourceBlocked;
     const isError = meta.status === 'error' || sourceError;
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(
@@ -422,6 +427,8 @@ export default async function handler(req) {
               ? 'coverage_partial'
               : stale
               ? 'stale'
+              : sourceBlocked
+                ? 'source_blocked'
               : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: recordCount ?? meta.recordCount ?? null,
