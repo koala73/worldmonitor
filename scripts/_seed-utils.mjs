@@ -208,15 +208,30 @@ export function loadSharedConfig(filename) {
   throw new Error(`Cannot find shared/${filename} — checked ../shared/ and ./shared/`);
 }
 
+// Env vars set by the runners that import seeder modules without running them.
+// 149 seeders call loadEnvFile() at module scope, so under one of these the
+// import alone would hand production credentials to the test process (#5767).
+const TEST_RUNTIME_MARKERS = ['NODE_TEST_CONTEXT', 'VITEST', 'VITEST_WORKER_ID', 'JEST_WORKER_ID'];
+
+export function isTestRuntime(env = process.env) {
+  if (env.NODE_ENV === 'test') return true;
+  return TEST_RUNTIME_MARKERS.some((key) => typeof env[key] === 'string' && env[key] !== '');
+}
+
 export function loadEnvFile(metaUrl) {
+  // Loading credentials is part of *running* a seeder, never part of importing
+  // one. CI already runs the whole suite with no .env.local present, so staying
+  // inert here just makes local runs match CI instead of hitting production.
+  if (isTestRuntime() && process.env.WM_ALLOW_ENV_LOAD_IN_TESTS !== '1') return;
+
   const __dirname = metaUrl ? dirname(fileURLToPath(metaUrl)) : process.cwd();
-  const candidates = [
-    join(__dirname, '..', '.env.local'),
-    join(__dirname, '..', '..', '.env.local'),
-  ];
-  if (process.env.HOME) {
-    candidates.push(join(process.env.HOME, 'Documents/GitHub/worldmonitor', '.env.local'));
-  }
+  const candidates = [];
+  // Explicit opt-in for checkouts that deliberately borrow another env file.
+  // Replaces the old hardcoded $HOME/Documents/GitHub/worldmonitor candidate,
+  // which reached out of whichever worktree the seeder lived in and so made
+  // worktree isolation ineffective by design.
+  if (process.env.WM_SEED_ENV_FILE) candidates.push(process.env.WM_SEED_ENV_FILE);
+  candidates.push(join(__dirname, '..', '.env.local'), join(__dirname, '..', '..', '.env.local'));
   for (const envPath of candidates) {
     if (!existsSync(envPath)) continue;
     const lines = readFileSync(envPath, 'utf8').split('\n');
