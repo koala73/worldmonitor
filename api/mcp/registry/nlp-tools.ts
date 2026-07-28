@@ -12,7 +12,6 @@
  * every pre-existing tool is unchanged.
  */
 
-// @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash, redisPipeline, setCachedData } from '../../_upstash-json.js';
 import { extractEntitiesFromTitle } from '../../../shared/entity-extraction-core.js';
 import { getEntityById } from '../../../shared/entity-registry.js';

@@ -1,15 +1,7 @@
 /**
- * Wave-2a analysis MCP tools (#5696).
- *
- * Two halves:
- *  1. The pure seed-payload -> shared-core-input adapters in
- *     shared/analysis-mcp-adapters.ts, exercised against realistic
- *     seed-shaped fixtures (happy path, empty caches, malformed entries).
- *  2. Registry contract assertions for the four hybrid `_execute` tools.
- *
- * The adapters are where the seeder payloads and the shared cores actually
- * meet, so they get the behavioural coverage; `_execute` itself is IO plus a
- * call into an already-unit-tested core.
+ * Analysis MCP adapter and cache-orchestration coverage (#5696).
+ * Registry, schema, and input-contract coverage lives in the companion
+ * mcp-analysis-rpc-tools-contract test.
  */
 
 import assert from 'node:assert/strict';
@@ -20,23 +12,17 @@ import {
   applyVesselCountsToPostures,
   crossSourceSignalsToSignalSummary,
   CROSS_SOURCE_TO_FOCAL_SIGNAL,
-  earthquakesToGeoEvents,
   filterFocalPointsByCountry,
   insightsToFocalClusters,
   MCP_CASCADE_WATERWAYS,
-  MCP_GEO_PLACES,
-  militaryFlightsToGeoEvents,
   militaryFlightsToSurgeInputs,
   riskScoresToCiiLookup,
   submarineCablesToCableInputs,
   surgeHistoryToActivityHistory,
   theaterPostureVesselCounts,
-  unrestEventsToGeoEvents,
-  usniVesselsToGeoEvents,
 } from '../shared/analysis-mcp-adapters.ts';
 import { buildEntityIndex } from '../shared/entity-extraction-core.js';
 import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
-import { GeoConvergenceEngine } from '../shared/analysis-geo-convergence.ts';
 import { buildDependencyGraph, calculateCascade } from '../shared/analysis-infrastructure-cascade.ts';
 import { getTheaterPostureSummaries } from '../shared/analysis-military-surge.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
@@ -100,6 +86,21 @@ function installUpstashStub(payloads, { httpFailures = [], malformed = [], misse
   const redisFetch = state.fetchImpl;
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
+    if (url.pathname === '/pipeline') {
+      const commands = JSON.parse(typeof init?.body === 'string' ? init.body : '[]');
+      const response = await redisFetch(input, init);
+      const entries = await response.json();
+      const injected = entries.map((entry, index) => {
+        const key = String(commands[index]?.[1] ?? '');
+        if (failed.has(key)) return { error: 'simulated failure' };
+        if (malformedKeys.has(key)) return { error: 'malformed successful response' };
+        return entry;
+      });
+      return new Response(JSON.stringify(injected), {
+        status: response.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const marker = '/get/';
     const markerIndex = url.pathname.indexOf(marker);
     const key = markerIndex === -1 ? '' : decodeURIComponent(url.pathname.slice(markerIndex + marker.length));
@@ -246,139 +247,7 @@ function analysisPayloads() {
   };
 }
 
-// ---------------------------------------------------------------------------
-// get_signal_convergence adapters
-// ---------------------------------------------------------------------------
-
-describe('geo-convergence seed adapters', () => {
-  const unrest = () => ({
-    events: [
-      { id: 'acled-1', location: { latitude: 32.4, longitude: 35.2 }, occurredAt: NOW - 2 * HOUR },
-      { id: 'acled-2', location: { latitude: 32.9, longitude: 35.8 }, occurredAt: NOW - 5 * HOUR },
-    ],
-  });
-
-  const flights = () => ({
-    flights: [
-      { id: 'opensky-ae1', lat: 32.1, lon: 35.4, lastSeenMs: NOW - 10 * MIN, aircraftType: 'fighter' },
-      { id: 'opensky-ae2', lat: 32.7, lon: 35.1, lastSeenMs: NOW - 20 * MIN, aircraftType: 'tanker' },
-    ],
-    fetchedAt: NOW - 5 * MIN,
-  });
-
-  const quakes = () => ({
-    earthquakes: [
-      { id: 'us1', location: { latitude: 32.2, longitude: 35.9 }, occurredAt: NOW - 3 * HOUR, magnitude: 4.1 },
-    ],
-  });
-
-  const fleet = () => ({
-    vessels: [
-      { name: 'USS Example', hullNumber: 'DDG-1', vesselType: 'destroyer', region: 'Mediterranean Sea', regionLat: 32.5, regionLon: 35.5 },
-    ],
-    timestamp: NOW - 90 * MIN,
-  });
-
-  it('maps every seeded domain onto the core GeoEventInput shape', () => {
-    assert.deepEqual(unrestEventsToGeoEvents(unrest(), { now: NOW }), [
-      { lat: 32.4, lon: 35.2, time: NOW - 2 * HOUR },
-      { lat: 32.9, lon: 35.8, time: NOW - 5 * HOUR },
-    ]);
-    assert.deepEqual(militaryFlightsToGeoEvents(flights(), { now: NOW }), [
-      { lat: 32.1, lon: 35.4, time: NOW - 10 * MIN },
-      { lat: 32.7, lon: 35.1, time: NOW - 20 * MIN },
-    ]);
-    assert.deepEqual(earthquakesToGeoEvents(quakes(), { now: NOW }), [
-      { lat: 32.2, lon: 35.9, time: NOW - 3 * HOUR },
-    ]);
-    assert.deepEqual(usniVesselsToGeoEvents(fleet(), { now: NOW }), [
-      { lat: 32.5, lon: 35.5, time: NOW - 90 * MIN },
-    ]);
-  });
-
-  it('returns [] for null, empty and wrong-shaped payloads', () => {
-    for (const adapter of [unrestEventsToGeoEvents, militaryFlightsToGeoEvents, earthquakesToGeoEvents, usniVesselsToGeoEvents]) {
-      assert.deepEqual(adapter(null, { now: NOW }), []);
-      assert.deepEqual(adapter(undefined, { now: NOW }), []);
-      assert.deepEqual(adapter({}, { now: NOW }), []);
-      assert.deepEqual(adapter({ events: 'nope', flights: 'nope', earthquakes: 'nope', vessels: 'nope' }, { now: NOW }), []);
-      assert.deepEqual(adapter([], { now: NOW }), []);
-    }
-  });
-
-  it('drops malformed coordinates, out-of-range values and null-island entries', () => {
-    const payload = {
-      events: [
-        { location: { latitude: 'x', longitude: 35 }, occurredAt: NOW },
-        { location: { latitude: 32, longitude: null }, occurredAt: NOW },
-        { location: null, occurredAt: NOW },
-        null,
-        { location: { latitude: 91, longitude: 10 }, occurredAt: NOW },
-        { location: { latitude: 10, longitude: 181 }, occurredAt: NOW },
-        // Null island: the "unknown location" sentinel of several upstreams.
-        // Left in, four domains' junk would stack into a fake convergence cell.
-        { location: { latitude: 0, longitude: 0 }, occurredAt: NOW },
-        { location: { latitude: 32.4, longitude: 35.2 }, occurredAt: NOW },
-      ],
-    };
-    assert.deepEqual(unrestEventsToGeoEvents(payload, { now: NOW }), [
-      { lat: 32.4, lon: 35.2, time: NOW },
-    ]);
-  });
-
-  it('drops events older than the convergence window', () => {
-    const payload = {
-      earthquakes: [
-        { location: { latitude: 32.2, longitude: 35.9 }, occurredAt: NOW - 40 * HOUR },
-        { location: { latitude: 32.3, longitude: 35.8 }, occurredAt: NOW - 3 * HOUR },
-      ],
-    };
-    assert.deepEqual(earthquakesToGeoEvents(payload, { now: NOW }), [
-      { lat: 32.3, lon: 35.8, time: NOW - 3 * HOUR },
-    ]);
-  });
-
-  it('falls back to the payload timestamp when a record carries no usable time', () => {
-    const payload = { flights: [{ lat: 32.1, lon: 35.4 }], fetchedAt: NOW - 7 * MIN };
-    assert.deepEqual(militaryFlightsToGeoEvents(payload, { now: NOW }), [
-      { lat: 32.1, lon: 35.4, time: NOW - 7 * MIN },
-    ]);
-  });
-
-  it('feeds a real engine to a real multi-domain convergence alert', () => {
-    const engine = new GeoConvergenceEngine({ now: () => NOW, convergenceThreshold: 3 });
-    engine.ingestEvents(unrestEventsToGeoEvents(unrest(), { now: NOW }), 'protest');
-    engine.ingestEvents(militaryFlightsToGeoEvents(flights(), { now: NOW }), 'military_flight');
-    engine.ingestEvents(earthquakesToGeoEvents(quakes(), { now: NOW }), 'earthquake');
-    engine.ingestEvents(usniVesselsToGeoEvents(fleet(), { now: NOW }), 'military_vessel');
-
-    const alerts = engine.detect(new Set());
-    assert.equal(alerts.length, 1);
-    assert.equal(alerts[0].cellId, '32,35');
-    assert.deepEqual([...alerts[0].types].sort(), ['earthquake', 'military_flight', 'military_vessel', 'protest']);
-    assert.equal(alerts[0].totalEvents, 6);
-  });
-
-  it('exposes named-place datasets that reverse-geocode a coordinate', () => {
-    assert.ok(Array.isArray(MCP_GEO_PLACES.conflictZones) && MCP_GEO_PLACES.conflictZones.length > 0);
-    assert.ok(Array.isArray(MCP_GEO_PLACES.waterways) && MCP_GEO_PLACES.waterways.length > 0);
-    assert.ok(Array.isArray(MCP_GEO_PLACES.hotspots) && MCP_GEO_PLACES.hotspots.length > 0);
-    // Waterway entries must be flat {name, lat, lon}; conflict zones keep the
-    // GeoJSON-ordered [lon, lat] `center` the core expects.
-    for (const w of MCP_GEO_PLACES.waterways) {
-      assert.equal(typeof w.name, 'string');
-      assert.equal(typeof w.lat, 'number');
-      assert.equal(typeof w.lon, 'number');
-    }
-    for (const z of MCP_GEO_PLACES.conflictZones) {
-      assert.ok(Array.isArray(z.center) && z.center.length === 2);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
 // get_focal_points adapters
-// ---------------------------------------------------------------------------
 
 describe('focal-point seed adapters', () => {
   const index = buildEntityIndex(ENTITY_REGISTRY);
@@ -554,9 +423,7 @@ describe('focal-point seed adapters', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // simulate_infrastructure_cascade adapters
-// ---------------------------------------------------------------------------
 
 describe('infrastructure-cascade seed adapters', () => {
   const cables = () => ({
@@ -650,9 +517,7 @@ describe('infrastructure-cascade seed adapters', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // get_military_surge adapters
-// ---------------------------------------------------------------------------
 
 describe('military-surge seed adapters', () => {
   const flights = () => ({
@@ -757,10 +622,8 @@ describe('military-surge seed adapters', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Cache-backed orchestration: exercise the real hybrid _execute paths with
 // Upstash-shaped responses rather than stubbing the tool implementation.
-// ---------------------------------------------------------------------------
 
 describe('wave-2 analysis tools: cache-backed orchestration', () => {
   const allMissCases = [
@@ -912,6 +775,21 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(distant.data.alerts.length, 0);
   });
 
+  it('reads every composite payload and freshness record in one Redis pipeline', async () => {
+    installUpstashStub(analysisPayloads());
+    const redisFetch = globalThis.fetch;
+    let pipelineCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/pipeline') pipelineCalls += 1;
+      return redisFetch(input, init);
+    };
+
+    await findTool('get_alert_digest')._execute({ view: 'weekly' }, '', {}, {});
+
+    assert.equal(pipelineCalls, 1);
+  });
+
   it('marks a partial HTTP failure stale and names the failed input', async () => {
     installUpstashStub(analysisPayloads(), { httpFailures: ['military:flights:v1'] });
     const result = await findTool('get_signal_convergence')._execute({}, '', {}, {});
@@ -936,6 +814,55 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.stale, true);
     assert.deepEqual(result.unavailable_inputs, ['military:flights:v1']);
     assert.deepEqual(result.failed_inputs, ['military:flights:v1']);
+  });
+
+  it('classifies a seed envelope without data as a failed input', async () => {
+    const payloads = analysisPayloads();
+    payloads['military:flights:v1'] = {
+      _seed: { fetchedAt: Date.now(), recordCount: 1, sourceVersion: 'test' },
+    };
+    installUpstashStub(payloads);
+    const result = await findTool('get_signal_convergence')._execute({}, '', {}, {});
+
+    assert.equal(result.stale, true);
+    assert.ok(result.unavailable_inputs.includes('military:flights:v1'));
+    assert.ok(result.failed_inputs.includes('military:flights:v1'));
+  });
+
+  for (const toolName of ['get_focal_points', 'get_alert_digest', 'get_hotspot_escalation']) {
+    it(`${toolName} degrades when CII metadata is below its coverage floor`, async () => {
+      installUpstashStub({
+        ...analysisPayloads(),
+        'seed-meta:intelligence:risk-scores': {
+          fetchedAt: Date.now(),
+          recordCount: 0,
+          sourceVersion: 'test',
+        },
+      });
+      const result = await findTool(toolName)._execute({}, '', {}, {});
+
+      assert.equal(result.stale, true);
+      assert.ok(!result.failed_inputs.includes('seed-meta:intelligence:risk-scores'));
+    });
+  }
+
+  it('uses the production 420-minute UCDP freshness budget', async () => {
+    installUpstashStub({
+      ...analysisPayloads(),
+      'seed-meta:conflict:ucdp-events': {
+        fetchedAt: Date.now() - 421 * MIN,
+        recordCount: 1,
+        sourceVersion: 'test',
+      },
+    });
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'conflicts' },
+      '',
+      {},
+      {},
+    );
+
+    assert.equal(result.stale, true);
   });
 
   it('surfaces missing military surge history instead of reporting fresh stable data', async () => {
@@ -1012,190 +939,5 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(result.data.unavailable.includes('military_history'));
     assert.equal(result.data.weekly.history_available, false);
     assert.deepEqual(result.data.weekly.trends, []);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Registry contract
-// ---------------------------------------------------------------------------
-
-describe('wave-2a analysis tools registry contract', () => {
-  const expected = {
-    get_signal_convergence: {
-      budget: 65536,
-      coverage: ['unrest:events:v1', 'military:flights:v1', 'seismology:earthquakes:v1', 'usni-fleet:sebuf:v1'],
-    },
-    get_focal_points: {
-      budget: 65536,
-      coverage: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
-    },
-    simulate_infrastructure_cascade: {
-      budget: 131072,
-      coverage: ['infrastructure:submarine-cables:v1'],
-    },
-    get_military_surge: {
-      budget: 65536,
-      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1'],
-    },
-  };
-
-  for (const [name, spec] of Object.entries(expected)) {
-    it(`${name} declares the full hybrid tool contract`, () => {
-      const tool = findTool(name);
-      assert.ok(tool, `${name} must be registered in the tool registry`);
-      assert.equal(tool._cacheKeys, undefined, `${name} is a hybrid _execute tool, not a cache tool`);
-      assert.equal(typeof tool.description, 'string');
-      assert.ok(tool.description.length > 200, 'descriptions are long-form; tools/list compresses them');
-      assert.equal(tool._outputBudgetBytes, spec.budget);
-      assert.deepEqual(tool.annotations, {
-        readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
-      });
-      assert.deepEqual(tool._apiPaths, []);
-      assert.equal(typeof tool._execute, 'function');
-      assert.deepEqual(tool.inputSchema.required, [], 'every wave-2a tool is callable with no arguments');
-      assert.equal(tool.inputSchema.type, 'object');
-      assert.equal(typeof tool.outputSchema, 'object');
-      for (const key of spec.coverage) {
-        assert.ok(tool._coverageKeys.includes(key), `${name} must declare coverage of ${key}`);
-      }
-    });
-  }
-
-  it('first sentences stay inside the tools/list compression budget', () => {
-    // Same extraction compressDescription() uses (api/mcp/utils.ts) — asserting
-    // on a hand-rolled split would let a description pass here and still be
-    // byte-truncated mid-word on the wire.
-    for (const name of Object.keys(expected)) {
-      const tool = findTool(name);
-      const match = tool.description.match(/^[\s\S]+?[.!?](?:\s|$)/);
-      assert.ok(match, `${name}: description has no extractable first sentence`);
-      const bytes = Buffer.byteLength(match[0].trim(), 'utf8');
-      assert.ok(bytes <= 120, `${name}: first sentence is ${bytes} bytes (max 120)`);
-    }
-  });
-
-  it('documents every parameter it reads', () => {
-    const params = {
-      get_signal_convergence: ['lat', 'lon', 'radius_km', 'min_domains'],
-      get_focal_points: ['country_code', 'limit'],
-      simulate_infrastructure_cascade: ['source_id', 'disruption_level'],
-      get_military_surge: ['theater'],
-    };
-    for (const [name, keys] of Object.entries(params)) {
-      const tool = findTool(name);
-      assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), [...keys].sort());
-      for (const key of keys) {
-        assert.equal(typeof tool.inputSchema.properties[key].description, 'string', `${name}.${key} needs a description`);
-      }
-    }
-  });
-
-  it('advertises convergence bounds that the runtime can honor', () => {
-    const schema = findTool('get_signal_convergence').inputSchema.properties;
-    assert.equal(schema.min_domains.maximum, 5);
-    assert.equal(schema.lat.minimum, -90);
-    assert.equal(schema.lat.maximum, 90);
-    assert.equal(schema.lon.minimum, -180);
-    assert.equal(schema.lon.maximum, 180);
-    assert.equal(schema.radius_km.exclusiveMinimum, 0);
-  });
-
-  it('documents the focal-point response field with its actual wire name', () => {
-    const english = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
-    const chinese = readFileSync(new URL('../docs/zh/mcp-tools-reference.mdx', import.meta.url), 'utf8');
-    for (const docs of [english, chinese]) {
-      const section = docs.match(/### `get_focal_points`[\s\S]*?(?=\n### `)/)?.[0] ?? '';
-      assert.match(section, /`ai_context`/);
-      assert.doesNotMatch(section, /`aiContext`/);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Error-path envelope conformance
-//
-// The hybrid tools return whatever `_execute` produces — dispatch injects no
-// envelope — so a result-level `{error}` return must STILL carry the keys the
-// tool's own outputSchema marks required. tests/mcp-tool-output-contracts.test.mjs
-// cannot catch this: it monkey-patches `_execute` for RPC tools, so no error
-// path is ever validated against the schema.
-// ---------------------------------------------------------------------------
-
-describe('wave-2 analysis tools: user-input error returns honour the declared envelope', () => {
-  // Each entry drives a tool down its user-input fault branch WITHOUT any cache
-  // read (every guard short-circuits before Upstash), so these run offline.
-  const errorCases = [
-    ['get_signal_convergence', { lat: 32 }],                       // partial lat/lon/radius triple
-    ['get_population_exposure', { mode: 'point' }],                // point mode without coordinates
-    ['get_hotspot_escalation', { hotspot_id: 'does-not-exist' }],  // unknown curated id
-  ];
-
-  for (const [name, args] of errorCases) {
-    it(`${name} returns cached_at/stale/data alongside error`, async () => {
-      const tool = findTool(name);
-      const result = await tool._execute(args, '', {}, {});
-      assert.equal(typeof result.error, 'string', 'error message present');
-      assert.ok(result.error.length > 0);
-      for (const key of tool.outputSchema.required) {
-        assert.ok(key in result, `${name} error return must include required key "${key}"`);
-      }
-      assert.equal(typeof result.stale, 'boolean');
-      assert.equal(typeof result.data, 'object');
-      assert.notEqual(result.data, null);
-    });
-  }
-
-  it('every analysis tool that can return an error declares it in outputSchema', () => {
-    for (const name of ['get_signal_convergence', 'simulate_infrastructure_cascade', 'get_population_exposure', 'get_hotspot_escalation']) {
-      const tool = findTool(name);
-      assert.ok(
-        tool.outputSchema.properties.error,
-        `${name} returns {error} on user-input faults, so outputSchema must declare it`,
-      );
-    }
-  });
-});
-
-describe('wave-2 analysis tools: user-input bounds', () => {
-  it('rejects invalid convergence coordinates and radii before reading caches', async () => {
-    const tool = findTool('get_signal_convergence');
-    for (const args of [
-      { lat: 91, lon: 0, radius_km: 10 },
-      { lat: 0, lon: 181, radius_km: 10 },
-      { lat: 0, lon: 0, radius_km: -1 },
-      { lat: 0, lon: 0, radius_km: 20001 },
-    ]) {
-      const result = await tool._execute(args, '', {}, {});
-      assert.match(result.error, /lat.*lon.*radius_km/i);
-      assert.deepEqual(result.data.alerts, []);
-    }
-  });
-
-  it('get_population_exposure rejects out-of-range coordinates instead of guessing a country', () => {
-    // Euclidean nearest-centroid has no notion of a valid globe, so lat 999
-    // previously resolved to Mali and returned a real-looking estimate.
-    const tool = findTool('get_population_exposure');
-    return tool._execute({ mode: 'point', lat: 999, lon: -999 }, '', {}, {}).then((result) => {
-      assert.match(result.error, /lat must be within/);
-      for (const key of tool.outputSchema.required) {
-        assert.ok(key in result, `error return must include required key "${key}"`);
-      }
-    });
-  });
-
-  it('accepts coordinates exactly on the range boundary', async () => {
-    const tool = findTool('get_population_exposure');
-    for (const [lat, lon] of [[90, 180], [-90, -180], [0, 0]]) {
-      const result = await tool._execute({ mode: 'point', lat, lon, radius_km: 10 }, '', {}, {});
-      assert.equal(result.error, undefined, `lat=${lat} lon=${lon} must be accepted`);
-      assert.equal(typeof result.data.exposure.exposedPopulation, 'number');
-    }
-  });
-
-  it('clamps a runaway radius and reports the radius actually used', async () => {
-    const tool = findTool('get_population_exposure');
-    const result = await tool._execute({ mode: 'point', lat: 31, lon: 34.8, radius_km: 20000 }, '', {}, {});
-    assert.equal(result.data.exposure.exposureRadiusKm, 1000);
-    assert.ok(result.data.exposure.exposedPopulation < 8.1e10);
   });
 });

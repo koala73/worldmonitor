@@ -8,7 +8,6 @@ import { timingSafeIncludes } from '../_crypto.js';
 import { getClientIp } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-// @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
 import { resolvePlanDrivenMcpAllowance } from './quota';
 import {

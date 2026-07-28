@@ -1,4 +1,3 @@
-// @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';

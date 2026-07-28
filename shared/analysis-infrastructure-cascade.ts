@@ -13,6 +13,7 @@
 
 import { PIPELINES } from './pipelines-data';
 import { PORTS } from './ports-data';
+import { haversineKm } from './geo-distance';
 import type { PipelineRecord } from './pipelines-data';
 import type { PortRecord } from './ports-data';
 
@@ -464,7 +465,7 @@ function buildChokepointEdges(
 
     // Find ports near this chokepoint
     const nearbyPorts = ports.filter(port => {
-      const dist = haversineDistance(waterway.lat, waterway.lon, port.lat, port.lon);
+      const dist = haversineKm(waterway.lat, waterway.lon, port.lat, port.lon);
       return dist < 500; // Within 500km
     });
 
@@ -556,15 +557,6 @@ function getChokepointDependentCountries(chokepointId: string): { code: string; 
     ],
   };
   return dependencies[chokepointId] || [];
-}
-
-// Haversine distance for chokepoint proximity
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export function buildDependencyGraph(inputs: CascadeGraphInputs): DependencyGraph {
