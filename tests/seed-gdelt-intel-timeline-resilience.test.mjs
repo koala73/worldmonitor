@@ -29,6 +29,7 @@ const {
   repairTimelines,
   runCli,
   runTimelineRepair,
+  GDELT_LOCK_TTL_MS,
   TIMELINE_TTL,
   RUN_SEED_OPTS,
 } =
@@ -332,6 +333,8 @@ test('runCli without the repair flag selects only the normal seed path', async (
 test('runTimelineRepair holds the scheduled-seed lock through metadata reconciliation and clears only timeline errors', async () => {
   const order = [];
   let lockArgs;
+  let lockExpiresAt;
+  let simulatedNow = 0;
   let writtenMeta;
   let writtenTtl;
   const currentMeta = {
@@ -350,10 +353,19 @@ test('runTimelineRepair holds the scheduled-seed lock through metadata reconcili
     _acquireLock: async (...args) => {
       order.push('acquire');
       lockArgs = args;
+      lockExpiresAt = simulatedNow + args[2];
       return { locked: true, skipped: false, reason: null };
     },
     _repair: async () => {
       order.push('repair');
+      // Exercise the degraded-path wall-clock envelope rather than merely
+      // checking that the lease exceeds an arbitrary lower bound. Twelve
+      // sequential Redis reads, strict GDELT fetches, retried writes, pacing,
+      // and metadata I/O can consume about 75 minutes under capped
+      // Retry-After responses.
+      simulatedNow += 75 * 60_000;
+      assert.ok(simulatedNow < lockExpiresAt,
+        'repair ownership must still be live after the bounded worst-case retry envelope');
       return {
         completionState: 'OK',
         repairedCount: 1,
@@ -380,7 +392,7 @@ test('runTimelineRepair holds the scheduled-seed lock through metadata reconcili
   assert.deepEqual(order, ['acquire', 'repair', 'read-meta', 'write-meta', 'release']);
   assert.equal(lockArgs[0], 'intelligence:gdelt-intel');
   assert.equal(lockArgs[1], 'repair-test');
-  assert.ok(lockArgs[2] >= 10 * 60_000, 'repair lock must cover all 12 paced strict requests');
+  assert.equal(lockArgs[2], GDELT_LOCK_TTL_MS);
   assert.equal(writtenTtl, 7 * 86400);
   assert.deepEqual(writtenMeta, {
     fetchedAt: currentMeta.fetchedAt,
@@ -598,8 +610,10 @@ test('runSeed opts wire in the content-age trio and the resilient afterPublish',
   assert.equal(RUN_SEED_OPTS.contentMeta, contentMeta, 'content-age opt-in must use the exported contentMeta');
   assert.equal(RUN_SEED_OPTS.maxContentAgeMin, 1440,
     '24h = 4x the 6h cadence; only a real brownout (every topic failing every run for a day) trips STALE_CONTENT');
-  assert.ok(RUN_SEED_OPTS.lockTtlMs > 150_000,
-    'scheduled seed lock must outlive the 150s fetch budget plus publication');
+  assert.equal(RUN_SEED_OPTS.lockTtlMs, GDELT_LOCK_TTL_MS,
+    'scheduled seed and repair must share the same full-operation ownership budget');
+  assert.ok(RUN_SEED_OPTS.lockTtlMs > 75 * 60_000,
+    'scheduled seed lock must cover the bounded worst-case retry envelope, not only the 150s fetch phase');
   assert.equal(RUN_SEED_OPTS.afterPublish, afterPublish, 'main entry must run the degrade-not-crash afterPublish');
   assert.equal(typeof RUN_SEED_OPTS.validateFn, 'function');
   assert.equal(RUN_SEED_OPTS.declareRecords.length, 1);

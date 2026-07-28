@@ -28,8 +28,14 @@ const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron s
 // stored fetchedAt alongside the data to judge staleness.
 export const TIMELINE_TTL = 604800;
 const TIMELINE_REPAIR_DELAY_MS = 5_500;
-const TIMELINE_REPAIR_LOCK_TTL_MS = 15 * 60_000;
-const RUN_SEED_LOCK_TTL_MS = 10 * 60_000;
+// Both entrypoints mutate the same canonical/timeline cohort, so their shared
+// ownership lease must cover the full bounded retry envelope, not just healthy
+// latency. Under simultaneous GDELT and Upstash throttling, 12 sequential
+// timeline reads/fetches/writes plus metadata reconciliation can take roughly
+// 75 minutes (Retry-After is capped at 60s in the shared Redis helpers). Two
+// hours preserves a wide scheduling margin without blocking the next 6h cron
+// tick if a process dies before its owner-token release runs.
+export const GDELT_LOCK_TTL_MS = 2 * 60 * 60_000;
 const RUN_SEED_FETCH_PHASE_TIMEOUT_MS = 270_000;
 const TIMELINE_ERROR_REASON = 'timeline_keys_missing_or_unconfirmed';
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
@@ -553,7 +559,7 @@ export async function runTimelineRepair(deps = {}) {
         lockResult = await _acquireLock(
           SEED_DOMAIN_RESOURCE,
           runId,
-          TIMELINE_REPAIR_LOCK_TTL_MS,
+          GDELT_LOCK_TTL_MS,
           { label: `${SEED_DOMAIN_RESOURCE} timeline repair` },
         );
       } catch (err) {
@@ -644,7 +650,7 @@ export function contentMeta(data) {
 export const RUN_SEED_OPTS = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  lockTtlMs: RUN_SEED_LOCK_TTL_MS,
+  lockTtlMs: GDELT_LOCK_TTL_MS,
   fetchPhaseTimeoutMs: RUN_SEED_FETCH_PHASE_TIMEOUT_MS,
   sourceVersion: 'gdelt-doc-v2',
   publishTransform,
