@@ -123,14 +123,14 @@ incident note.
 ### Merged does not mean deployed
 
 `.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
-default branch and immediately after ingestion-path changes land on `main`.
-Scheduled runs first require the latest `main` commit's `gate` status to be
-green. Push and manual runs execute directly. The monitor checks public compact
-health and fails on every actionable problem, including `SEED_ERROR`,
+default branch. Scheduled runs first require the latest `main` commit's `gate`
+status to be green; manual runs execute directly. The monitor checks public
+compact health and fails on every actionable problem, including `SEED_ERROR`,
 `STALE_SEED`, `STALE_CONTENT`, and degraded composed coverage. Statuses that
-explicitly end in `_ON_DEMAND` remain informational. This is the operational
-acceptance gate for the "merged and green, but production data is still
-unhealthy" gap.
+explicitly end in `_ON_DEMAND` remain informational. It deliberately does not
+run on an ingestion push because Railway may not have deployed or executed that
+revision yet. This is the operational acceptance gate for the "merged and
+green, but production data is still unhealthy" gap.
 
 Do not use `railway redeploy` to recover a bad or stale source deployment.
 Railway documents redeploy as rebuilding the most recent deployment with the

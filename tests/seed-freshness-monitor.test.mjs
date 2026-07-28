@@ -69,7 +69,7 @@ describe('scheduled seed freshness monitor', () => {
     );
   });
 
-  it('runs after ingestion merges and on a schedule, then invokes the acceptance monitor', () => {
+  it('runs on a schedule without grading pre-deployment ingestion pushes', () => {
     const workflow = readFileSync(
       new URL('../.github/workflows/seed-freshness-monitor.yml', import.meta.url),
       'utf8',
@@ -77,8 +77,7 @@ describe('scheduled seed freshness monitor', () => {
 
     assert.match(workflow, /schedule:/);
     assert.match(workflow, /cron:\s*['"]\*\/15 \* \* \* \*['"]/);
-    assert.match(workflow, /push:[\s\S]*?branches:\s*\[main\]/);
-    assert.match(workflow, /scripts\/\*\*/);
+    assert.doesNotMatch(workflow, /^\s{2}push:/m);
     assert.match(workflow, /actions\/setup-node@[a-f0-9]+/);
     assert.match(workflow, /node-version:\s*['"]24['"]/);
     assert.match(workflow, /context\s*==\s*"gate"/);

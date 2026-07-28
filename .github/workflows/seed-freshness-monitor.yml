@@ -1,14 +1,6 @@
 name: Seed Freshness Monitor
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/**'
-      - 'shared/**'
-      - 'Dockerfile.seed-*'
-      - 'api/health.js'
-      - '.github/workflows/seed-freshness-monitor.yml'
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
@@ -45,5 +37,5 @@ jobs:
           fi
 
       - name: Check ingestion operational acceptance
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || steps.gate.outputs.should_run == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.gate.outputs.should_run == 'true'
         run: node scripts/check-seed-freshness.mjs

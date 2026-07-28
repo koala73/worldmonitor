@@ -77,10 +77,11 @@ while read-back verification prevents a Railway CLI no-op from being mistaken
 for a successful mutation.
 
 The scheduled workflow checks operational health only after the current main
-commit has a successful `gate` status; ingestion-path pushes run it immediately.
-That separates a code failure from the operational case this guard targets:
-repository checks are green while a Railway producer or composed coverage is
-still unhealthy.
+commit has a successful `gate` status. It deliberately does not run on an
+ingestion push because Railway may not have deployed or executed that revision
+yet. That separates a code failure from the operational case this guard
+targets: repository checks are green while a Railway producer or composed
+coverage is still unhealthy.
 
 ## Prevention
 
