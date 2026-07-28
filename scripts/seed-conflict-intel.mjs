@@ -31,6 +31,8 @@ import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
 import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
 import { parseProxyConfig, proxyFetch } from './_proxy-utils.cjs';
+import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
+import { resolveIso2 } from './_country-resolver.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -1078,6 +1080,48 @@ export function declareRecords(data) {
   return Array.isArray(data?.events) ? data.events.length : 0;
 }
 
+/**
+ * Project published ACLED events into intel-history records (#5694). ACLED
+ * carries no prose headline, so the title is composed from the structured
+ * fields the payload retains; `country` arrives as a display name and is
+ * mapped to ISO2 for the history store's filterable country field.
+ */
+export function buildConflictHistoryRecords(data) {
+  return (data?.events ?? []).map((event) => {
+    if (!event?.id || !Number.isFinite(event?.occurredAt)) return null;
+    const place = [event.admin1, event.country].filter(Boolean).join(', ');
+    const actors = Array.isArray(event.actors) ? event.actors.filter(Boolean).slice(0, 2) : [];
+    const structuredTitle = [
+      event.eventType || 'Conflict event',
+      actors.length > 0 ? actors.join(' vs ') : null,
+      place ? `in ${place}` : null,
+    ].filter(Boolean).join(' — ');
+    // GDELT article events carry an upstream headline; retain it for a useful,
+    // searchable history record while ACLED keeps its structured fallback.
+    const title = typeof event.title === 'string' && event.title.trim()
+      ? event.title.trim()
+      : structuredTitle;
+    const summaryBits = [];
+    if (Number.isFinite(event.fatalities)) summaryBits.push(`fatalities: ${event.fatalities}`);
+    if (event.source) summaryBits.push(`source: ${event.source}`);
+    return {
+      dedupeKey: `conflict:acled-intel:${event.id}`,
+      country: resolveIso2({ name: event.country }) ?? undefined,
+      category: event.eventType || undefined,
+      title,
+      summary: summaryBits.length > 0 ? summaryBits.join('; ') : undefined,
+      sourceUrl: event.url || undefined,
+      occurredAt: event.occurredAt,
+    };
+  }).filter(Boolean);
+}
+
+export const conflictIntelAfterPublish = makeSeedHistoryAfterPublish({
+  domain: 'conflict',
+  resource: 'acled-intel',
+  buildRecords: buildConflictHistoryRecords,
+});
+
 if (process.argv[1]?.endsWith('seed-conflict-intel.mjs')) {
   runSeed('conflict', 'acled-intel', ACLED_CACHE_KEY, fetchAll, {
     validateFn: validate,
@@ -1087,6 +1131,7 @@ if (process.argv[1]?.endsWith('seed-conflict-intel.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 38,
+    afterPublish: conflictIntelAfterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

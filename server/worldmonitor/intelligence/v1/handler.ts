@@ -15,6 +15,8 @@ import { listOrefAlerts } from './list-oref-alerts';
 import { listTelegramFeed } from './list-telegram-feed';
 import { getCompanyEnrichment } from './get-company-enrichment';
 import { listCompanySignals } from './list-company-signals';
+import { searchSecFilings } from './search-sec-filings';
+import { listMaterialEvents } from './list-material-events';
 import { getGdeltTopicTimeline } from './get-gdelt-topic-timeline';
 import { listCrossSourceSignals } from './list-cross-source-signals';
 import { listMarketImplications } from './list-market-implications';
@@ -26,6 +28,9 @@ import { getChinaDecisionSignals } from './get-china-decision-signals';
 import { getRegionalSnapshot } from './get-regional-snapshot';
 import { getRegimeHistory } from './get-regime-history';
 import { getRegionalBrief } from './get-regional-brief';
+import { searchIntelHistory } from './search-intel-history';
+import { getIntelTimeline } from './get-intel-timeline';
+import { getSimilarEvents } from './get-similar-events';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -43,6 +48,8 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   listTelegramFeed,
   getCompanyEnrichment,
   listCompanySignals,
+  searchSecFilings,
+  listMaterialEvents,
   getGdeltTopicTimeline,
   listCrossSourceSignals,
   listMarketImplications,
@@ -54,4 +61,7 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getRegionalSnapshot,
   getRegimeHistory,
   getRegionalBrief,
+  searchIntelHistory,
+  getIntelTimeline,
+  getSimilarEvents,
 };

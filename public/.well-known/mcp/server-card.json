@@ -19,7 +19,10 @@
     "endpoint": "https://worldmonitor.app/mcp"
   },
   "remotes": [
-    { "type": "streamable-http", "url": "https://worldmonitor.app/mcp" }
+    {
+      "type": "streamable-http",
+      "url": "https://worldmonitor.app/mcp"
+    }
   ],
   "capabilities": {
     "tools": true,
@@ -194,8 +197,40 @@
       "description": "Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide."
     },
     {
+      "name": "search_intel_history",
+      "description": "Semantic search over WorldMonitor's accumulating store of past intelligence events (Pro), ranked by similarity. Records are appended as the conflict, military, and energy seeders publish, so the store starts at activation and deepens from there: a thin or empty result means that window is not covered yet, not that nothing happened. Optional domain, country, and occurredAt bounds are applied to the ranked candidate window, so a narrow filter over a broad store can return fewer than the limit even when older matches exist \u2014 widen the window or drop a filter before concluding the history is thin. The route embeds your query on every call, so it is rate-limited fail-closed — prefer one well-phrased query over several near-duplicates."
+    },
+    {
+      "name": "get_intel_timeline",
+      "description": "Reverse-chronological read of WorldMonitor's accumulating intelligence-event history for one domain or country (Pro). At least one of domain or country is required — they are the two indexed scopes on the store, and an unscoped read is rejected rather than served as a table scan. Pure index read: no embedding and no ranking, so every record scores 0 and ordering is by occurredAt alone. Records are appended as the conflict, military, and energy seeders publish, so a window before capture was activated is empty by construction rather than quiet."
+    },
+    {
+      "name": "get_similar_events",
+      "description": "Historical precedents for a situation you describe, drawn from WorldMonitor's accumulating event store (Pro). Same vector search as search_intel_history over a longer input: a sentence or two of context ranks better than a keyword. Optional domain and country narrow the candidates. The store holds only what the conflict, military, and energy seeders have published since capture was activated, so an empty precedent list is weak evidence of a novel situation, not proof of one. The route embeds your text on every call and is rate-limited fail-closed."
+    },
+    {
+      "name": "get_company_intelligence",
+      "description": "Per-company corporate intelligence from SEC EDGAR and market data. Views: enrichment (SEC identity, recent filings, market profile, earnings surprises, news mentions), signals (classified 8-K material events + news), filings-search (EDGAR full-text search with form/date filters), material-events (market-wide stream of recent material 8-K filings). Company identity resolves through the SEC ticker registry — unresolvable companies return empty envelopes, never guessed attribution."
+    },
+    {
       "name": "describe_tool",
       "description": "Return the full uncompressed definition of one tool by name. Use when the compressed tools/list entry is ambiguous about behaviour or argument semantics."
+    },
+    {
+      "name": "classify_event",
+      "description": "Classify a supplied news headline or short text into a threat category and severity via the enum-validated WorldMonitor event classifier (temperature-0, 24h-cached per title, never free-form LLM output). Input is capped at 500 characters. classification is null when the classifier cannot produce an enum-valid result."
+    },
+    {
+      "name": "extract_entities",
+      "description": "Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB) to extract from it, or omit text to aggregate entities across the current headline digest. No LLM involved."
+    },
+    {
+      "name": "get_news_clusters",
+      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM."
+    },
+    {
+      "name": "get_keyword_spikes",
+      "description": "Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard's incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM."
     }
   ],
   "toolCategories": [
@@ -210,9 +245,13 @@
   ],
   "authentication": {
     "type": "oauth2",
-    "authorization_servers": ["https://api.worldmonitor.app"],
+    "authorization_servers": [
+      "https://api.worldmonitor.app"
+    ],
     "resource": "https://worldmonitor.app",
-    "scopes": ["mcp"],
+    "scopes": [
+      "mcp"
+    ],
     "alternative_methods": [
       {
         "type": "api_key",

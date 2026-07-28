@@ -209,11 +209,13 @@ test('public algorithms docs publish current temporal anomaly severities', () =>
 });
 
 test('public algorithms docs describe tracked leader names without overclaiming compounds', () => {
-  const trendingCode = readRepo('src/services/trending-keywords.ts');
+  // LEADER_NAMES moved to shared/keyword-spike-core.js (issue #5697) so the
+  // server-side get_keyword_spikes MCP tool shares the list.
+  const trendingCode = readRepo('shared/keyword-spike-core.js');
   const docsStats = readRepo('scripts/docs-stats.mjs');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
   const leaderBlock = trendingCode.match(/const\s+LEADER_NAMES\s*=\s*\[([\s\S]*?)\];/);
-  assert.ok(leaderBlock, 'trending keywords must define LEADER_NAMES');
+  assert.ok(leaderBlock, 'keyword-spike-core must define LEADER_NAMES');
 
   const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).map((name) => name.slice(1, -1));
   const multiWordNames = leaderNames.filter((name) => /\s/.test(name));

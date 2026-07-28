@@ -6,6 +6,32 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **Corporate intelligence is live; `get-company-enrichment` and
+  `list-company-signals` are no longer deprecated** (#5695). Both
+  `/api/intelligence/v1/get-company-enrichment` and
+  `/api/intelligence/v1/list-company-signals` previously returned an empty stub
+  (disabled in #3777 because the old domain-slug attribution heuristic
+  fabricated company intelligence — issues #3754/#3755). They now aggregate real
+  data behind authoritative SEC ticker→CIK resolution: EDGAR identity and recent
+  filings, Finnhub market profile and earnings surprises, and recent news
+  mentions. A company that does not resolve in the SEC registry returns an empty
+  envelope with `sources: []` rather than a guess. Verified lookup keys are
+  `ticker` and `name` — a `name` resolves solely when it identifies exactly one
+  filer. The legacy `domain` request field remains deprecated for v1 wire
+  compatibility and returns the same empty, non-attributing stub as before.
+  Legacy response fields `github`, `techStack`, `hackerNewsMentions`, and
+  `company.founded` likewise remain deprecated and empty.
+  **Added:** `market`, `earningsSurprises`, `newsMentions`, `company.cik`,
+  `company.ticker`, filing `url`/`items` on enrichment; `cik` on signals (empty
+  CIK distinguishes "no such company" from "resolved but quiet"); a `ticker`
+  query param on both. Two new endpoints ship alongside:
+  `/api/intelligence/v1/search-sec-filings` (EDGAR full-text search) and
+  `/api/intelligence/v1/list-material-events` (market-wide 8-K material-event
+  stream). All four are exposed through the new `get_company_intelligence` MCP
+  tool. Earnings surprises remain enrichment facts; they are not emitted as
+  time-ordered signals because Finnhub's `period` is a fiscal period end, not an
+  authoritative report timestamp.
+
 - **CII formula `v8`** — fixed dead UCDP conflict-floor attribution. The server
   scorer read non-existent `intensity_level` / `type_of_violence` fields from the
   cached `conflict:ucdp-events:v1` feed (whose rows actually carry `violenceType`,

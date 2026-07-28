@@ -170,7 +170,10 @@ describe('crawlable corpus generator', () => {
         publicDir: outDir,
         existingSitemapSource: '',
         resolveMaterialLastmod: () => '2026-07-28',
-        today: '2026-07-28',
+        // Real current date: a pinned 'today' silently expires the moment any
+        // material source is committed after it (this fixture went stale on
+        // 2026-07-28 and failed every PR touching a corpus-backing file).
+        today: new Date().toISOString().slice(0, 10),
       });
       const corpusLocations = new Set(
         sitemapEntries
@@ -393,8 +396,12 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.countries.some((country) => country.slug === 'norway' && country.rank === 1));
     assert.ok(data.chokepoints.some((chokepoint) => chokepoint.slug === 'strait-of-hormuz' && chokepoint.id === 'hormuz_strait'));
     assert.ok(data.glossaryTerms.some((term) => term.slug === 'country-resilience-index'));
-    assert.ok(data.changelog[0].bullets[0].includes('server scorer read non-existent'));
-    assert.ok(data.changelog[0].bullets[0].includes('methodology_version is now v8'));
+    // Position-independent: the parser must carry full bullet prose through,
+    // but pinning the NEWEST bullet made every changelog addition a test
+    // failure. Assert the known CII v8 entry exists wherever it now sits.
+    const allBullets = data.changelog.flatMap((entry) => entry.bullets);
+    assert.ok(allBullets.some((bullet) => bullet.includes('server scorer read non-existent')));
+    assert.ok(allBullets.some((bullet) => bullet.includes('methodology_version is now v8')));
     assert.match(data.lastmod.chokepoints, /^\d{4}-\d{2}-\d{2}$/);
   });
 });

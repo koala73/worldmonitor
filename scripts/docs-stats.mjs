@@ -344,11 +344,13 @@ function computeStats() {
     return acc;
   }, {});
 
-  const leaderBlock = read('src/services/trending-keywords.ts').match(
+  // LEADER_NAMES moved to shared/keyword-spike-core.js (issue #5697) so the
+  // server-side get_keyword_spikes MCP tool shares the tracked list.
+  const leaderBlock = read('shared/keyword-spike-core.js').match(
     /const\s+LEADER_NAMES\s*(?::[^=]*)?\s*=\s*\[([\s\S]*?)\];/,
   );
   if (!leaderBlock) {
-    throw new Error('docs-stats: could not find LEADER_NAMES array in src/services/trending-keywords.ts');
+    throw new Error('docs-stats: could not find LEADER_NAMES array in shared/keyword-spike-core.js');
   }
   const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).length;
 

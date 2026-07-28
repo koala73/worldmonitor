@@ -62,7 +62,9 @@ function installSeedHealthPipelineMock(chinaMeta: { fetchedAt: number; recordCou
       return {
         result: JSON.stringify({
           fetchedAt: chinaMeta.fetchedAt,
-          recordCount: 1_000,
+          // Must clear EVERY seed's minRecordCount floor (sec-cik-map: 5000)
+          // so only the China entry under test can degrade `overall`.
+          recordCount: 1_000_000,
           sourceVersion: key === 'seed-meta:resilience:intervals'
             ? RESILIENCE_INTERVAL_SOURCE_VERSION
             : 'test',

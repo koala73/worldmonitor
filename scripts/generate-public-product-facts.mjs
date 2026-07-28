@@ -256,13 +256,24 @@ for (const [path, groups] of [
   transform(path, (source) => rewriteApplicationJsonLd(source, groups));
 }
 
+const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
+  .filter((name) => name.endsWith('.json'))
+  .map((name) => `pro-test/src/locales/${name}`)
+  .sort();
+
+// Every translated locale carries the same MCP tool-count claim, so they all
+// belong here — listing only en/fa left nl.json and zh.json publishing a stale
+// count that tests/public-product-facts.test.mjs only caught on the next
+// registry change. public/pro/welcome.html is the prerendered build artifact of
+// those locales; rewriting it keeps the committed copy converged with what
+// `npm run build:pro` would emit without paying for the full pro build.
 const mcpCountSurfaces = [
   'server.json',
   'cli/README.md',
-  'pro-test/src/locales/en.json',
-  'pro-test/src/locales/fa.json',
+  ...proLocalePaths,
   'pro-test/prerender.mjs',
   'pro-test/welcome.html',
+  'public/pro/welcome.html',
   'blog-site/src/content/blog/ask-claude-whats-happening-worldmonitor-mcp.md',
   'blog-site/src/content/blog/build-geopolitical-risk-agent-worldmonitor-mcp.md',
   'blog-site/src/content/blog/daily-intelligence-briefing-workflow-15-minutes.md',
@@ -293,21 +304,17 @@ for (const path of mcpCountSurfaces) {
   transform(path, (source) => replaceMcpToolCounts(source, mcpToolCount));
 }
 
-for (const path of [
-  'pro-test/src/locales/en.json',
-  'pro-test/src/locales/fa.json',
-]) {
+// The depth statistic is the same number in every translation, so it is
+// refreshed wherever the key already exists — a locale that has not been
+// translated that far is left alone rather than given a stray English key.
+for (const path of proLocalePaths) {
   transform(path, (source) => {
     const locale = JSON.parse(source);
+    if (locale.welcome?.depth?.s12v === undefined) return source;
     locale.welcome.depth.s12v = String(mcpToolCount);
     return json(locale);
   });
 }
-
-const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
-  .filter((name) => name.endsWith('.json'))
-  .map((name) => `pro-test/src/locales/${name}`)
-  .sort();
 
 for (const path of proLocalePaths) {
   transform(path, (source) => {

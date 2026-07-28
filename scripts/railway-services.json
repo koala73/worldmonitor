@@ -51,18 +51,26 @@
     "watchPatterns": [
       "scripts/_conflict-gdelt-bulk.mjs",
       "scripts/_conflict-gdelt.mjs",
+      "scripts/_country-resolver.mjs",
       "scripts/_gdelt-fetch.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-history.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/brief-embedding.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
       "scripts/seed-conflict-intel.mjs",
+      "scripts/shared/country-names.json",
       "scripts/shared/hapi-app-identifier.json",
       "scripts/shared/iso2-to-iso3.json",
-      "scripts/package.json",
-      "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/shared/iso3-to-iso2.json"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -264,7 +272,9 @@
     "entry": "scripts/seed-bundle-static-ref.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-static-ref",
-    "requiredEnv": ["USPTO_API_KEY"],
+    "requiredEnv": [
+      "USPTO_API_KEY"
+    ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"
   },
   {
@@ -301,10 +311,18 @@
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-history.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/china-decision-alerts.mjs",
       "scripts/cross-strait-activity/adapters.mjs",
+      "scripts/lib/_upstash-pipeline.mjs",
+      "scripts/lib/brief-dedup-consts.mjs",
+      "scripts/lib/brief-dedup-jaccard.mjs",
+      "scripts/lib/brief-embedding.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
       "scripts/regional-snapshot/_helpers.mjs",
       "scripts/regional-snapshot/_sanitize.mjs",
       "scripts/regional-snapshot/actor-scoring.mjs",
@@ -329,14 +347,11 @@
       "scripts/seed-cross-source-signals.mjs",
       "scripts/seed-cross-strait-activity.mjs",
       "scripts/seed-regional-snapshots.mjs",
-      "scripts/shared/geography.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
-      "scripts/shared/notification-dedup.cjs",
-      "scripts/package.json",
-      "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/shared/notification-dedup.cjs"
     ],
     "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-5-seed-bundle-derived-signals"
@@ -384,6 +399,9 @@
       "scripts/_yahoo-fetch.mjs",
       "scripts/china-corporate-disclosures/adapters.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
       "scripts/seed-bundle-market-backup.mjs",
       "scripts/seed-china-corporate-disclosures.mjs",
       "scripts/seed-crypto-quotes.mjs",
@@ -392,6 +410,8 @@
       "scripts/seed-gold-etf-flows.mjs",
       "scripts/seed-gulf-quotes.mjs",
       "scripts/seed-hyperliquid-flow.mjs",
+      "scripts/seed-sec-8k-stream.mjs",
+      "scripts/seed-sec-cik-map.mjs",
       "scripts/seed-stablecoin-markets.mjs",
       "scripts/seed-token-panels.mjs",
       "scripts/shared/ai-tokens.json",
@@ -401,10 +421,7 @@
       "scripts/shared/etfs.json",
       "scripts/shared/gulf.json",
       "scripts/shared/other-tokens.json",
-      "scripts/shared/stablecoins.json",
-      "scripts/package.json",
-      "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/shared/stablecoins.json"
     ],
     "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-10-seed-bundle-market-backup"

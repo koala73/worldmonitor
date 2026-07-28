@@ -265,6 +265,42 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_company_intelligence`
+
+来自 SEC EDGAR 与市场数据的逐公司企业情报（#5695）。公司身份通过 SEC 股票代码/名称注册表解析到 CIK：优先精确股票代码，或使用仅映射到单一 CIK 的 SEC 法定名称精确匹配。无法解析时，`enrichment` 返回 `sources: []` 且 `company.cik` 为空，`signals` 返回 `signals: []` 且 `cik` 为空。两种视图中，`unavailable: false` 表示未找到，`unavailable: true` 表示注册表或必需数据源未能响应。四种视图复用四条规范 REST 路由。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `view` | `string: enrichment / signals / filings-search / material-events` | 默认 `enrichment`。 |
+| `ticker` | string | 交易所股票代码，例如 `AAPL`；是 `enrichment` 与 `signals` 的首选公司键。 |
+| `name` | string | 无股票代码时的公司名称；仅接受映射到单一 CIK 的 SEC 法定名称精确匹配。 |
+| `query` | string | 仅 `filings-search`：必填全文查询。 |
+| `forms` | string | 仅 `filings-search`：逗号分隔的表单筛选，例如 `8-K` 或 `10-K,10-Q`。 |
+| `start_date` / `end_date` | string | 仅 `filings-search`：申报日期范围（YYYY-MM-DD）。 |
+| `item_code` | string | 仅 `material-events`：筛选一个 8-K 条目代码，例如 `5.02`。 |
+| `limit` | integer | `filings-search` 最多 25，`material-events` 最多 100；超出视图上限会被拒绝。 |
+
+- **API 端点：** `GET /api/intelligence/v1/get-company-enrichment`、`GET /api/intelligence/v1/list-company-signals`、`GET /api/intelligence/v1/search-sec-filings`、`GET /api/intelligence/v1/list-material-events`
+- **类型：** 规范路由代理 — `enrichment` 汇总 SEC、Finnhub 盈利事实与新闻；`signals` 仅使用具备权威时间戳的 SEC 申报与新闻，不把财政期末当作事件时间。
+- **新鲜度：** 每个视图都携带自己的真实来源时间戳（`enrichedAtMs`、`discoveredAtMs` 或 `fetchedAtMs`）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_company_intelligence","arguments":{"ticker":"AAPL","view":"signals"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_country_macro`
 
 来自 IMF WEO 的逐国宏观经济指标（约 210 个国家，月度节奏）。捆绑财政/外部平衡（通胀、经常账户、政府收入/支出/初级余额、CPI）、增长与人均（实际 GDP 增长、人均 GDP 美元和 PPP、储蓄和投资率、储蓄-投资缺口）、劳动力和人口统计（失业率、人口），以及对外贸易（经常账户美元、进口/出口量百分比变化）。每个序列取最新可用年份。用于国家级经济筛选、同侪基准对比和滞胀/失衡标志。注意：以美元计的出口/进口水平（exportsUsd、importsUsd、tradeBalanceUsd）返回 null — WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 currentAccountUsd 或量变化（import/exportVolumePctChg）。
@@ -663,6 +699,126 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `classify_event`
+
+通过枚举校验的 WorldMonitor 事件分类器，将提供的新闻标题或短文本分类为威胁类别和严重性。分类器为 temperature-0、按标题缓存 24 小时，且只会返回固定类别/级别枚举中的值 —— 绝不返回自由格式的 LLM 输出。无法产生枚举有效结果时 `classification` 为 `null`。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `text` | string（必填） | 待分类的标题或短摘录，1-500 字符。超长输入会返回 `error` 而不是被截断。 |
+
+- **API 端点：** `GET /api/intelligence/v1/classify-event`
+- **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
+- **配额：** 标准 —— OAuth（Pro）与仪表盘密钥上下文每次调用均消耗 MCP 每日预留（每 UTC 日 50 次）。环境 API 密钥（`wm_…`）调用方不受该每日预留约束，与其他所有 MCP 工具一样，仍受 60 次请求/分钟/密钥 的限流保护。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"classify_event","arguments":{"text":"Iran closes Strait of Hormuz to tanker traffic"}}
+  }'
+```
+
+</CodeGroup>
+
+### `extract_entities`
+
+与仪表盘共享的确定性命名实体提取：注册表实体（公司、指数、大宗商品、加密货币、行业、国家 —— 通过别名与关键词匹配）加上模式实体（CVE 编号、APT/FIN 威胁组织代号、被追踪的世界领导人）。不涉及 LLM。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `text` | string | 可选的提取文本，最长 2048 字符（超长输入返回 `error`）。省略时，工具转而跨当前头条摘要聚合实体。 |
+| `limit` | integer | 每个列表的最大实体数（1-50）。默认 20。 |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`（仅头条模式；文本模式不发起任何请求）。
+- **类型：** 基于共享提取核心的确定性本地计算。头条模式下实体聚合为 `mentionCount`/`avgConfidence`；文本模式下每个匹配报告 `matchType`、`matchedText` 和 `confidence`。
+- **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"extract_entities","arguments":{"text":"CVE-2026-12345 exploited by APT28 against Microsoft cloud tenants"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_news_clusters`
+
+使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别以及时间跨度。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `limit` | integer | 返回簇的上限（1-25）。默认 10。 |
+| `min_sources` | integer | 仅返回覆盖**不同媒体来源数**不低于该值的簇（1-10）—— 真正的交叉印证，而非同一家媒体重复发稿。默认 1。 |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`
+- **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
+- **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_clusters","arguments":{"min_sources":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_keyword_spikes`
+
+相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| `window_hours` | integer | 检测飙升的近期窗口（1-12）。默认 2。 |
+| `min_count` | integer | 词项构成飙升所需的最低近期窗口故事数（2-20）。默认 5。 |
+| `limit` | integer | 返回飙升的上限（1-25）。默认 10。 |
+
+- **API 端点：** 无 —— 直接从 Redis 读取故事累积器与 story-track key；不代理任何 HTTP 端点。
+- **类型：** 确定性本地计算，附带 10 分钟 Redis 结果缓存。当累积器不可用/为空，或故事存储仅部分可读时返回 `note` —— 部分读取的结果绝不写入缓存，因此瞬时 Redis 故障不会在整个 TTL 内持续提供错误的飙升数据。
+- **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_keyword_spikes","arguments":{"window_hours":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_cyber_threats`
 
 活跃网络威胁情报：恶意软件 IOC（URLhaus、Feodotracker）、CISA 已知被利用漏洞和活跃的命令与控制基础设施。
@@ -874,6 +1030,116 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_positive_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 历史情报
+
+这三个 Pro 工具读取持久化历史存储 —— 冲突、军事和能源 seeder 在每次运行后向其追加记录。它们共享同一条记录结构 —— `id`、`domain`、`resource`、`country`、`category`、`title`、`summary`、`sourceUrl`、`occurredAt`、`ingestedAt`、`score` —— 因此客户端只需一套解析逻辑即可覆盖三者。
+
+<Note>
+该存储从历史采集启用当天开始积累，并从那时起逐步加深；不存在深度回填。早期时间窗返回空结果意味着该时间窗尚未被覆盖，而不是当时什么都没发生。每个响应还带有 `upstreamUnavailable`：为 `true` 时，`records` 为空是因为查询失败，而绝不是因为没有匹配项。
+</Note>
+
+### `search_intel_history`
+
+对存储的历史进行语义搜索，按与自由文本查询的相似度排序。该路由使用与写入向量时相同的模型嵌入你的查询，因此措辞越接近分析师描述该事件的方式，排序效果越好。可选的 `domain`、`country` 和 `occurredAt` 时间窗会在排序前收窄候选集。每条记录带有 `[-1, 1]` 区间内的余弦相似度 `score`；越高越接近。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `query` | string | **是** | 自由文本搜索短语，2-500 个字符，例如 "artillery strikes near Kharkiv" |
+| `domain` | string | 否 | `conflict`、`military`、`energy` 之一。省略则搜索全部领域 |
+| `country` | string | 否 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。省略则搜索全部国家 |
+| `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
+| `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
+| `limit` | integer | 否 | 最大匹配数。省略时路由返回 20 条，上限为 64 |
+
+- **API 端点：** `POST /api/intelligence/v1/search-intel-history`
+- **类型：** 实时 RPC — 先嵌入查询，再对历史存储排序。Edge 运行时超时：**12.0s**。
+- **成本提示：** 每次调用消耗一次 embeddings 往返，因此该路由采用 fail-closed 限流。优先使用一个措辞良好的查询，而不是多个近似重复的查询。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_intel_history","arguments":{"query":"port closure after drone strike","domain":"conflict","limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_intel_timeline`
+
+按时间倒序读取某一范围内存储的历史。纯索引读取 —— 无嵌入、无排序 —— 因此仅按 `occurredAt` 排列，且每条记录的 `score` 均为 `0`。
+
+`domain` 与 `country` 至少需要提供一个。它们是该存储上仅有的两个索引范围；无范围的读取没有索引可用，会以参数错误被拒绝，而不会退化为全表扫描。同时提供两者则收窄为二者的交集。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `domain` | string | 二选一 | `conflict`、`military`、`energy` 之一。未设置 `country` 时必填 |
+| `country` | string | 二选一 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。未设置 `domain` 时必填 |
+| `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
+| `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
+| `limit` | integer | 否 | 最大事件数。省略时路由返回 50 条，上限为 200 |
+
+- **API 端点：** `GET /api/intelligence/v1/get-intel-timeline`
+- **类型：** 实时 RPC — 一次存储读取，无嵌入。Edge 运行时超时：**8.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_intel_timeline","arguments":{"country":"UA","domain":"conflict","limit":50}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_similar_events`
+
+为你描述的情境查找历史先例。与 `search_intel_history` 使用相同的向量搜索，但输入更长：`situation` 是对一个正在发展的情境的描述，而非搜索短语，一两句上下文比一个关键词排序效果更好。结果集刻意保持较小，因为它被当作先例清单阅读，而不是用来滚动浏览。
+
+通常不设置 `country` 才是正确选择 —— 别处的先例同样是先例。空清单应被理解为"该情境可能是新颖的"这一较弱证据，而非确证：该存储只包含三个 seeder 自采集启用以来发布的内容。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `situation` | string | **是** | 情境描述，10-1000 个字符，例如 "a naval blockade closes a major grain export corridor for weeks" |
+| `domain` | string | 否 | `conflict`、`military`、`energy` 之一。省略则搜索全部领域 |
+| `country` | string | 否 | ISO 3166-1 alpha-2 大写代码，例如 "EG"。省略则搜索全部国家 |
+| `limit` | integer | 否 | 最大先例数。省略时路由返回 10 条，上限为 32 |
+
+- **API 端点：** `POST /api/intelligence/v1/get-similar-events`
+- **类型：** 实时 RPC — 先嵌入情境文本，再对历史存储排序。Edge 运行时超时：**12.0s**。
+- **成本提示：** 与 `search_intel_history` 一样由 embeddings 支撑，因此适用同样的 fail-closed 限流策略。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_similar_events","arguments":{"situation":"a naval blockade closes a major grain export corridor for weeks"}}
   }'
 ```
 

@@ -50,7 +50,7 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 - 313 AI datacenters mapped
 - 29 scored hotspots
 - 92 exchanges and assets
-- 42 MCP tools
+- 50 MCP tools
 - 24 supported languages
 
 ## Source Examples

@@ -1,18 +1,17 @@
 import type { ClusteredEventCore } from './analysis-core';
 import {
-  findEntitiesInText,
   getEntityIndex,
-  getEntityDisplayName,
   findRelatedEntities,
+  getEntityDisplayName,
 } from './entity-index';
+// extractEntitiesFromTitle moved to shared/entity-extraction-core.js (issue
+// #5697) so server-side MCP tools share the exact extraction; re-exported
+// here unchanged for existing client imports.
+import { extractEntitiesFromTitle } from '../../shared/entity-extraction-core.js';
 
-export interface ExtractedEntity {
-  entityId: string;
-  name: string;
-  matchedText: string;
-  matchType: 'alias' | 'keyword' | 'name';
-  confidence: number;
-}
+export type { ExtractedEntity } from '../../shared/entity-extraction-core.js';
+export { extractEntitiesFromTitle };
+import type { ExtractedEntity } from '../../shared/entity-extraction-core.js';
 
 export interface NewsEntityContext {
   clusterId: string;
@@ -20,18 +19,6 @@ export interface NewsEntityContext {
   entities: ExtractedEntity[];
   primaryEntity?: string;
   relatedEntityIds: string[];
-}
-
-export function extractEntitiesFromTitle(title: string): ExtractedEntity[] {
-  const matches = findEntitiesInText(title);
-
-  return matches.map(match => ({
-    entityId: match.entityId,
-    name: getEntityDisplayName(match.entityId),
-    matchedText: match.matchedText,
-    matchType: match.matchType,
-    confidence: match.confidence,
-  }));
 }
 
 export function extractEntitiesFromCluster(cluster: ClusteredEventCore): NewsEntityContext {

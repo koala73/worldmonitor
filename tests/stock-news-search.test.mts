@@ -6,6 +6,7 @@ import {
   resetStockNewsSearchStateForTests,
   searchRecentStockHeadlines,
 } from '../server/worldmonitor/market/v1/stock-news-search.ts';
+import { fetchCompanyNewsMentions } from '../server/worldmonitor/intelligence/v1/_company-shared.ts';
 
 const originalFetch = globalThis.fetch;
 
@@ -143,5 +144,24 @@ describe('searchRecentStockHeadlines', () => {
     assert.equal(result.provider, 'serpapi');
     assert.equal(result.headlines.length, 1);
     assert.equal(result.headlines[0]?.source, 'CNBC');
+  });
+
+  it('cancels the provider ladder at the corporate-intelligence deadline', async () => {
+    process.env.EXA_API_KEYS = 'exa-key-1';
+    process.env.BRAVE_API_KEYS = 'brave-key-1';
+    const requested: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      requested.push(url);
+      if (url !== 'https://api.exa.ai/search') throw new Error(`Unexpected fallback after abort: ${url}`);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+
+    const result = await fetchCompanyNewsMentions('ABRT', 'Abort Corp', 20);
+    assert.equal(result, null);
+    assert.deepEqual(requested, ['https://api.exa.ai/search']);
   });
 });

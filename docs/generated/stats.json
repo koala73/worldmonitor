@@ -14,7 +14,7 @@
   "serviceTopLevelEntries": 213,
   "apiEndpointEntries": 89,
   "panelClasses": 107,
-  "protoFiles": 284,
+  "protoFiles": 290,
   "protoServices": 35,
   "protoDomainFolders": 36,
   "openapiServiceSpecs": 35,
@@ -90,7 +90,7 @@
   "leaderNames": 16,
   "populationPriorityCountries": 20,
   "sebufVersion": "v0.11.1",
-  "mcpToolCount": 42,
+  "mcpToolCount": 50,
   "mcpApps": {
     "specVersion": "2026-01-26",
     "mimeType": "text/html;profile=mcp-app",

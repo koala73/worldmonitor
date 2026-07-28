@@ -6,6 +6,7 @@ import {
 } from './cross-strait-activity/adapters.mjs';
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { loadEnvFile, readSeedSnapshot, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -175,6 +176,48 @@ async function fetchSnapshot() {
   return snapshot;
 }
 
+// Which country's ministry reported the observation, for the history store's
+// filterable country field (the activity itself concerns the Taiwan Strait).
+const HISTORY_SOURCE_COUNTRY = Object.freeze({ 'taiwan-mnd': 'TW', 'japan-mod': 'JP' });
+
+/**
+ * Project published cross-Strait observations into intel-history records
+ * (#5694). Observations are revisioned in place (same id, new vintage); the
+ * dedupe key intentionally uses the bare observation id so history keeps the
+ * first-seen vintage rather than one row per correction.
+ */
+export function buildCrossStraitHistoryRecords(snapshot) {
+  return (snapshot?.observations ?? []).map((obs) => {
+    if (!obs?.id) return null;
+    const occurredAt = Date.parse(obs.reportingDay ?? '') || Date.parse(obs.publicationTime ?? '');
+    if (!Number.isFinite(occurredAt) || occurredAt <= 0) return null;
+    const categories = obs.categories && typeof obs.categories === 'object'
+      ? Object.entries(obs.categories)
+        .filter(([, value]) => value != null && value !== '')
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('; ')
+      : '';
+    const detail = obs.summary || categories || obs.originalTerminology || 'activity report';
+    return {
+      dedupeKey: `military:cross-strait-activity:${obs.id}`,
+      country: HISTORY_SOURCE_COUNTRY[obs.sourceId],
+      category: obs.observationKind || undefined,
+      title: `Cross-Strait activity ${obs.reportingDay ?? ''}: ${detail}`.trim(),
+      summary: obs.summary || undefined,
+      sourceUrl: obs.sourceUrl || undefined,
+      occurredAt,
+    };
+  }).filter(Boolean);
+}
+
+// This seeder's completion marker rides afterFreshness, so history takes the
+// afterPublish slot.
+export const crossStraitHistoryAfterPublish = makeSeedHistoryAfterPublish({
+  domain: 'military',
+  resource: 'cross-strait-activity',
+  buildRecords: buildCrossStraitHistoryRecords,
+});
+
 function validatePublishableSnapshot(snapshot) {
   if (!validateCrossStraitActivitySnapshot(snapshot)) return false;
   // runSeed commits the canonical key before extraKeys. Precomputing the
@@ -206,6 +249,7 @@ if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
       metaCritical: true,
     }],
     beforePublish: crossStraitActivityBeforePublish,
+    afterPublish: crossStraitHistoryAfterPublish,
     afterFreshness: crossStraitActivityAfterPublish,
   });
 }
