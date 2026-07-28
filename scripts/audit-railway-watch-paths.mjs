@@ -32,6 +32,21 @@ function serviceIdFor(serviceIdsByName, serviceName) {
   return serviceIdsByName?.[serviceName];
 }
 
+function normalizeRootDirectory(value) {
+  return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
+}
+
+// deployMode is the registry's claim about where Railway roots the build. It
+// decides which build inputs and which shared-config prefix belong in a
+// service's dependency closure, so a registry entry that claims the wrong mode
+// produces watch paths that --apply then pushes to production. Auditing it
+// keeps the claim honest against the live service.
+export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
+  'nixpacks-root-scripts': 'scripts',
+  'nixpacks-root-repo': '',
+  dockerfile: '',
+});
+
 export function managedRailwayServices(registry) {
   if (!Array.isArray(registry)) {
     throw new Error('Railway service registry must be an array');
@@ -62,6 +77,19 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
       }
 
       const service = services[serviceId];
+      // A managed entry that pins a cron but omits watchPatterns is only half a
+      // contract: cron drift is reconciled while the deployment trigger this
+      // registry exists to control is never checked. Surface it rather than
+      // letting it pass clean.
+      const missingWatchPatterns = !hasOwn(entry, 'watchPatterns');
+      const expectedRootDirectory = hasOwn(entry, 'deployMode')
+        ? ROOT_DIRECTORY_BY_DEPLOY_MODE[entry.deployMode]
+        : undefined;
+      const actualRootDirectory = normalizeRootDirectory(service?.source?.rootDirectory);
+      const rootDirectory = expectedRootDirectory !== undefined
+        && actualRootDirectory !== expectedRootDirectory
+        ? { actual: actualRootDirectory, expected: expectedRootDirectory }
+        : null;
       const missingRequiredEnv = Array.isArray(entry.requiredEnv)
         ? entry.requiredEnv.filter(
             (name) => !hasConfiguredVariable(service?.variables, name),
@@ -85,13 +113,16 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         ? { actual: actualCronSchedule, expected: expectedCronSchedule }
         : null;
 
-      if (!watchPatterns && !cronSchedule && missingRequiredEnv.length === 0) return [];
+      if (!watchPatterns && !cronSchedule && !rootDirectory
+        && !missingWatchPatterns && missingRequiredEnv.length === 0) return [];
       return [{
         service: entry.service,
         serviceId,
         missingService: false,
         watchPatterns,
         cronSchedule,
+        ...(rootDirectory ? { rootDirectory } : {}),
+        ...(missingWatchPatterns ? { missingWatchPatterns } : {}),
         ...(missingRequiredEnv.length > 0 ? { missingRequiredEnv } : {}),
       }];
     })
@@ -110,6 +141,22 @@ export function buildRailwayServiceConfigPatch(drift) {
     throw new Error(
       missingEnv
         .map((entry) => `${entry.service} missing required environment: ${entry.missingRequiredEnv.join(', ')}`)
+        .join('; '),
+    );
+  }
+  // Both of these mean the registry's own claims are untrustworthy for this
+  // service, so the watch paths derived from them must not be pushed.
+  const incomplete = drift.filter((entry) => entry.missingWatchPatterns);
+  if (incomplete.length > 0) {
+    throw new Error(
+      `${incomplete.map((entry) => entry.service).join(', ')} pins a cron without watchPatterns; refusing a partial config apply`,
+    );
+  }
+  const wrongRoot = drift.filter((entry) => entry.rootDirectory);
+  if (wrongRoot.length > 0) {
+    throw new Error(
+      wrongRoot
+        .map((entry) => `${entry.service} rootDirectory is ${JSON.stringify(entry.rootDirectory.actual)} but deployMode implies ${JSON.stringify(entry.rootDirectory.expected)}`)
         .join('; '),
     );
   }
@@ -231,9 +278,24 @@ function printAudit(drift) {
       continue;
     }
     const details = [];
+    if (entry.missingWatchPatterns) {
+      details.push('pins a cron but declares no watchPatterns');
+    }
     if (entry.watchPatterns) {
+      // Name the paths, not the counts. With exact per-file lists the common
+      // drift is a content difference at equal length, which a count renders as
+      // two identical numbers and no way to act on it.
+      const { actual, expected } = entry.watchPatterns;
+      const missing = expected.filter((pattern) => !actual.includes(pattern));
+      const unexpected = actual.filter((pattern) => !expected.includes(pattern));
+      const parts = [];
+      if (missing.length > 0) parts.push(`missing ${missing.join(', ')}`);
+      if (unexpected.length > 0) parts.push(`unexpected ${unexpected.join(', ')}`);
+      details.push(`watch paths ${parts.join('; ') || 'differ in order only'}`);
+    }
+    if (entry.rootDirectory) {
       details.push(
-        `watch paths ${entry.watchPatterns.actual.length} actual != ${entry.watchPatterns.expected.length} expected`,
+        `rootDirectory ${JSON.stringify(entry.rootDirectory.actual)} != ${JSON.stringify(entry.rootDirectory.expected)}`,
       );
     }
     if (entry.cronSchedule) {
@@ -248,10 +310,20 @@ function printAudit(drift) {
   }
 }
 
-function readArgument(name, fallback) {
-  const index = process.argv.indexOf(name);
+// Accepts both `--flag value` and `--flag=value`. The equals form matters: an
+// exact indexOf match silently misses it, and this value selects which Railway
+// environment --apply mutates, so a missed `--environment=staging` would patch
+// production with no error and no signal.
+export function readArgument(argv, name, fallback) {
+  const inline = argv.find((arg) => arg.startsWith(`${name}=`));
+  if (inline) {
+    const value = inline.slice(name.length + 1);
+    if (!value) throw new Error(`${name} requires a value`);
+    return value;
+  }
+  const index = argv.indexOf(name);
   if (index < 0) return fallback;
-  const value = process.argv[index + 1];
+  const value = argv[index + 1];
   if (!value || value.startsWith('--')) {
     throw new Error(`${name} requires a value`);
   }
@@ -260,7 +332,8 @@ function readArgument(name, fallback) {
 
 async function main() {
   const apply = process.argv.includes('--apply');
-  const environment = readArgument('--environment', DEFAULT_ENVIRONMENT);
+  const asJson = process.argv.includes('--json');
+  const environment = readArgument(process.argv, '--environment', DEFAULT_ENVIRONMENT);
   const registry = readRegistry();
   const serviceIdsByName = readServiceIds(environment);
   const readConfig = () => readEnvironmentConfig(environment);
@@ -269,7 +342,11 @@ async function main() {
     serviceIdsByName,
     registry,
   );
-  printAudit(drift);
+  // Always name the target. --apply mutates live infrastructure and the
+  // environment is resolved from argv, so it must never be implicit.
+  console.log(`Railway operational-config audit: environment=${environment} mode=${apply ? 'apply' : 'audit'}`);
+  if (asJson) console.log(JSON.stringify({ environment, apply, drift }, null, 2));
+  else printAudit(drift);
 
   if (drift.length === 0) return;
   if (!apply) {
@@ -288,9 +365,9 @@ async function main() {
   );
   if (remaining.length > 0) {
     printAudit(remaining);
-    throw new Error('Railway accepted the patch but operational-config drift remains');
+    throw new Error(`Railway accepted the patch but operational-config drift remains in ${environment}`);
   }
-  console.log(`Applied and verified registry-managed config for ${drift.length} Railway service(s).`);
+  console.log(`Applied and verified registry-managed config for ${drift.length} Railway service(s) in ${environment}.`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

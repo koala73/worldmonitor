@@ -356,7 +356,7 @@ All new services share these settings:
 | **Service name** | `seed-bundle-portwatch` |
 | **Start command** | `node scripts/seed-bundle-portwatch.mjs` |
 | **Cron schedule** | `0 */1 * * *` (hourly) |
-| **Watch paths** | `scripts/**`, `shared/**` |
+| **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 4 services |
 | **Net savings** | 3 slots |
 | **Members** | Disruptions (hourly), Main (6h), Port Activity (12h), Chokepoints Ref (weekly) |
@@ -401,11 +401,11 @@ continuous metric.
 | **Service name** | `seed-bundle-derived-signals` |
 | **Start command** | `node scripts/seed-bundle-derived-signals.mjs` |
 | **Cron schedule** | `*/5 * * * *` (every 5 min) |
-| **Watch paths** | `scripts/**`, `shared/**` |
+| **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
 | **Members** | Correlation (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), Regional Snapshots (6h) |
-| **Required env** | `PROXY_URL` (Cross-Strait Activity's Japan MOD proxy fallback; missing config fails that section as `CONFIG_ERROR`) |
+| **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
 | **Note** | Cross-Strait Activity is the only external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
 ### Bundle 6: seed-bundle-climate
@@ -464,10 +464,11 @@ continuous metric.
 | **Service name** | `seed-bundle-market-backup` |
 | **Start command** | `node scripts/seed-bundle-market-backup.mjs` |
 | **Cron schedule** | `*/5 * * * *` (every 5 min) |
-| **Watch paths** | `scripts/**`, `shared/**` |
+| **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 5 services |
 | **Net savings** | 4 slots |
 | **Members** | Crypto Quotes (5min), Stablecoin Markets (10min), ETF Flows (15min), Gulf Quotes (10min), Token Panels (30min) |
+| **Required env** | `SZSE_PROXY_URL` (China corporate disclosures) and `PROXY_URL` (Gulf Quotes / ETF Flows reach it bare through `_yahoo-fetch.mjs`) |
 | **Note** | These are BACKUP for ais-relay inline loops. ais-relay is the primary seeder. The bundle provides redundancy if relay goes down. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). |
 
 ### Bundle 11: seed-bundle-relay-backup

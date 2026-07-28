@@ -49,7 +49,11 @@ describe('China corporate disclosure production registration (#5577)', () => {
     ) as Array<{ service: string; requiredEnv?: string[] }>;
     assert.deepEqual(
       railwayServices.find((entry) => entry.service === 'seed-bundle-market-backup')?.requiredEnv,
-      ['SZSE_PROXY_URL'],
+      // PROXY_URL stays declared: seed-gulf-quotes and seed-etf-flows reach it
+      // bare through _yahoo-fetch -> resolveProxy -> _proxy-utils, with no
+      // source-specific alternative, so dropping it would remove the only
+      // alerting path for a variable those members still require.
+      ['SZSE_PROXY_URL', 'PROXY_URL'],
     );
     assert.match(
       read('scripts/china-corporate-disclosures/adapters.mjs'),

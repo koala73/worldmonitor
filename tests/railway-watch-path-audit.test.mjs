@@ -8,6 +8,8 @@ import {
   auditRailwayServiceConfig,
   buildRailwayEditArgs,
   buildRailwayServiceConfigPatch,
+  managedRailwayServices,
+  readArgument,
   serializeRailwayServiceConfigPatch,
   waitForRailwayServiceConfigConvergence,
 } from '../scripts/audit-railway-watch-paths.mjs';
@@ -30,6 +32,47 @@ function service({
     deploy: { cronSchedule, startCommand: 'node seed-example.mjs' },
     variables,
   };
+}
+
+const NIXPACKS_BUILD_FILES = Object.freeze([
+  'scripts/package.json',
+  'scripts/package-lock.json',
+  'scripts/nixpacks.toml',
+]);
+
+// walkContainerGraph only follows import/require/dynamic-import edges, so a data
+// file pulled in with fs is invisible to it -- and one already is:
+// scripts/seed-supply-chain-trade.mjs reads scripts/shared/un-to-iso2.json via
+// readFileSync(join(__dirname, ...)). Without this extractor the closure guard
+// cannot tell whether such a path is watched, which is exactly the
+// silently-skipped-deployment class the registry exists to prevent.
+function extractFileReadDependencies(files, repoRootDir) {
+  const dependencies = new Set();
+  const add = (fromFile, ...segments) => {
+    const resolved = resolve(dirname(fromFile), ...segments);
+    if (!resolved.startsWith(repoRootDir)) return;
+    if (!existsSync(resolved)) return;
+    dependencies.add(relative(repoRootDir, resolved));
+  };
+  for (const file of files) {
+    if (!/\.[cm]?[jt]s$/u.test(file)) continue;
+    const source = stripComments(readFileSync(file, 'utf8'));
+    // readFileSync(join(__dirname, 'shared', 'x.json')) -- any local alias of
+    // readFileSync/join (the seeders import them as _readFileSync/_join).
+    for (const match of source.matchAll(
+      /\b_?readFileSync\s*\(\s*_?join\(\s*__dirname\s*,\s*((?:['"][^'"]+['"]\s*,\s*)*['"][^'"]+['"])\s*\)/gu,
+    )) {
+      const segments = [...match[1].matchAll(/['"]([^'"]+)['"]/gu)].map((m) => m[1]);
+      if (segments.length > 0) add(file, ...segments);
+    }
+    // readFileSync(new URL('./x.json', import.meta.url))
+    for (const match of source.matchAll(
+      /new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/gu,
+    )) {
+      add(file, match[1]);
+    }
+  }
+  return dependencies;
 }
 
 function extractSharedConfigDependencies(files, deployMode) {
@@ -250,12 +293,103 @@ describe('Railway operational-config audit', () => {
     assert.equal(reads, 3);
     assert.equal(sleeps, 2);
   });
+
+  it('treats an omitted build.watchPatterns as the empty whole-repo list', () => {
+    // Railway omits the field entirely when no filter is configured, so
+    // "absent" and "[]" must both satisfy an entry that expects []. This is
+    // load-bearing for the always-on bootstrap publisher.
+    const registry = [{ service: 'publisher', watchPatterns: [], cronSchedule: null }];
+    const ids = new Map([['publisher', 'svc-publisher']]);
+    const omitted = service({ cronSchedule: null });
+    delete omitted.build.watchPatterns;
+
+    assert.deepEqual(
+      auditRailwayServiceConfig({ services: { 'svc-publisher': omitted } }, ids, registry),
+      [],
+      'omitted watchPatterns must satisfy an expected []',
+    );
+    assert.deepEqual(
+      auditRailwayServiceConfig(
+        { services: { 'svc-publisher': service({ cronSchedule: null, watchPatterns: [] }) } },
+        ids,
+        registry,
+      ),
+      [],
+      'explicit [] must satisfy an expected []',
+    );
+    const narrowed = auditRailwayServiceConfig(
+      { services: { 'svc-publisher': service({ cronSchedule: null, watchPatterns: ['scripts/**'] }) } },
+      ids,
+      registry,
+    );
+    assert.deepEqual(narrowed[0].watchPatterns, { actual: ['scripts/**'], expected: [] });
+  });
+
+  it('flags a managed entry that pins a cron without declaring watchPatterns', () => {
+    const registry = [{ service: 'seed-example', cronSchedule: '*/15 * * * *' }];
+    const drift = auditRailwayServiceConfig(
+      { services: { 'svc-example': service({ cronSchedule: '*/15 * * * *' }) } },
+      serviceIds,
+      registry,
+    );
+    assert.equal(drift[0].missingWatchPatterns, true);
+    assert.throws(
+      () => buildRailwayServiceConfigPatch(drift),
+      /seed-example pins a cron without watchPatterns/,
+    );
+  });
+
+  it('audits Railway rootDirectory against the deployMode the registry claims', () => {
+    const registry = [{
+      ...managedRegistry[0],
+      deployMode: 'nixpacks-root-repo', // implies rootDirectory ''
+    }];
+    const config = {
+      services: {
+        'svc-example': service({
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+        }),
+      },
+    };
+    const drift = auditRailwayServiceConfig(config, serviceIds, registry);
+    assert.deepEqual(drift[0].rootDirectory, { actual: 'scripts', expected: '' });
+    assert.throws(
+      () => buildRailwayServiceConfigPatch(drift),
+      /seed-example rootDirectory is "scripts" but deployMode implies ""/,
+    );
+
+    const matching = [{ ...managedRegistry[0], deployMode: 'nixpacks-root-scripts' }];
+    assert.deepEqual(auditRailwayServiceConfig(config, serviceIds, matching), []);
+  });
+});
+
+describe('audit CLI argument parsing', () => {
+  // The value this resolves selects which Railway environment --apply mutates.
+  it('accepts both the space-separated and equals forms', () => {
+    assert.equal(readArgument(['node', 's', '--environment', 'staging'], '--environment', 'production'), 'staging');
+    assert.equal(readArgument(['node', 's', '--environment=staging'], '--environment', 'production'), 'staging');
+    assert.equal(readArgument(['node', 's', '--apply', '--environment=staging'], '--environment', 'production'), 'staging');
+  });
+
+  it('falls back only when the flag is genuinely absent', () => {
+    assert.equal(readArgument(['node', 's', '--apply'], '--environment', 'production'), 'production');
+  });
+
+  it('refuses a flag with no value instead of silently defaulting', () => {
+    assert.throws(() => readArgument(['node', 's', '--environment'], '--environment', 'production'), /requires a value/);
+    assert.throws(() => readArgument(['node', 's', '--environment', '--apply'], '--environment', 'production'), /requires a value/);
+    assert.throws(() => readArgument(['node', 's', '--environment='], '--environment', 'production'), /requires a value/);
+  });
 });
 
 describe('critical ingestion Railway registry contract', () => {
   const registry = JSON.parse(
     readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
   );
+  // Cron pins stay an explicit literal: these are production schedules and a
+  // silent edit to one should fail loudly rather than be rubber-stamped by
+  // reading the same file the change lives in.
   const expected = new Map([
     ['seed-conflict-intel', '*/15 * * * *'],
     ['seed-gdelt-intel', '0 */4 * * *'],
@@ -267,11 +401,30 @@ describe('critical ingestion Railway registry contract', () => {
     ['seed-bundle-portwatch-port-activity', '0 */12 * * *'],
   ]);
 
-  for (const [serviceName, cronSchedule] of expected) {
+  // Closure coverage is DERIVED from the same predicate the audit uses to decide
+  // what --apply pushes to Railway. A hardcoded list here would let a future
+  // registry entry ship narrow watch paths to production with its dependency
+  // closure never verified.
+  const closureManaged = managedRailwayServices(registry)
+    .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
+
+  it('every cron pin names a service that is registry-managed', () => {
+    const managedNames = new Set(closureManaged.map((entry) => entry.service));
+    for (const serviceName of expected.keys()) {
+      assert.ok(managedNames.has(serviceName), `${serviceName} must be registry-managed`);
+    }
+  });
+
+  it('covers every managed service with watch paths', () => {
+    assert.ok(closureManaged.length >= expected.size);
+  });
+
+  for (const entry of closureManaged) {
+    const serviceName = entry.service;
     it(`${serviceName} pins its cron and complete runtime dependency closure`, () => {
-      const entry = registry.find((candidate) => candidate.service === serviceName);
-      assert.ok(entry, `${serviceName} must be present in railway-services.json`);
-      assert.equal(entry.cronSchedule, cronSchedule);
+      if (expected.has(serviceName)) {
+        assert.equal(entry.cronSchedule, expected.get(serviceName));
+      }
       assert.ok(Array.isArray(entry.watchPatterns), `${serviceName} must declare watchPatterns`);
       assert.ok(entry.watchPatterns.length > 0, `${serviceName} watchPatterns must not be empty`);
       assert.equal(
@@ -309,6 +462,7 @@ describe('critical ingestion Railway registry contract', () => {
       const runtimeFiles = new Set([
         ...[...visited].map((file) => relative(repoRoot, file)),
         ...extractSharedConfigDependencies(visited, entry.deployMode),
+        ...extractFileReadDependencies(visited, repoRoot),
       ]);
       const missingRuntimeFiles = [...runtimeFiles]
         .filter((file) => !watched.has(file))
@@ -319,12 +473,23 @@ describe('critical ingestion Railway registry contract', () => {
         `${serviceName} watchPatterns omit runtime dependencies`,
       );
 
+      // The reverse direction. Without it a watch path that drops out of the
+      // import graph lingers forever in a hand-typed 44-entry array, rebuilding
+      // the service on changes it no longer depends on -- the exact cost the
+      // exact-path registry was introduced to eliminate.
+      const staleWatchedFiles = [...watched]
+        .filter((file) => !runtimeFiles.has(file)
+          && file !== entry.dockerfile
+          && !NIXPACKS_BUILD_FILES.includes(file))
+        .sort();
+      assert.deepEqual(
+        staleWatchedFiles,
+        [],
+        `${serviceName} watchPatterns contain paths that are no longer runtime dependencies`,
+      );
+
       if (entry.deployMode === 'nixpacks-root-scripts') {
-        for (const buildFile of [
-          'scripts/package.json',
-          'scripts/package-lock.json',
-          'scripts/nixpacks.toml',
-        ]) {
+        for (const buildFile of NIXPACKS_BUILD_FILES) {
           assert.ok(watched.has(buildFile), `${serviceName} must watch ${buildFile}`);
         }
       }

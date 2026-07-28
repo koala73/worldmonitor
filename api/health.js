@@ -1011,6 +1011,14 @@ function classifyKey(name, redisKey, opts, ctx) {
   else status = 'OK';
 
   const entry = { status, records };
+  // Source-level on-demand marker. The status suffix (`EMPTY_ON_DEMAND`) only
+  // covers the absent/zero-record branches; an on-demand key that HAS data and
+  // goes stale falls through to plain STALE_SEED (and chinaCoverage reaches
+  // CHINA_DEGRADED), so a consumer keying off the status name alone cannot tell
+  // an on-demand source from a strict one. scripts/check-seed-freshness.mjs
+  // needs that distinction to avoid grading RPC-populated keys as ingestion
+  // failures. Emitted for every status, not just the EMPTY_* ones.
+  if (isOnDemand) entry.onDemand = true;
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;

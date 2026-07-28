@@ -22,7 +22,11 @@ describe('cross-Strait activity production registration (#5575)', () => {
     assert.equal(BOOTSTRAP_TIERS.crossStraitActivity, 'slow');
     assert.match(
       read('scripts/seed-bundle-derived-signals.mjs'),
-      /label:\s*'Cross-Strait-Activity'[\s\S]*?seed-cross-strait-activity\.mjs[\s\S]*?requiredEnv:\s*\['JAPAN_MOD_PROXY_URL'\]/,
+      // any-of group: the adapter resolves JAPAN_MOD_PROXY_URL || PROXY_URL, so
+      // the bundle gate must accept either. Gating on the source-specific name
+      // alone hard-failed the section in an environment carrying only the
+      // shared exit, even though the seeder would have run undegraded.
+      /label:\s*'Cross-Strait-Activity'[\s\S]*?seed-cross-strait-activity\.mjs[\s\S]*?requiredEnv:\s*\[\['JAPAN_MOD_PROXY_URL',\s*'PROXY_URL'\]\]/,
     );
     const railwayServices = JSON.parse(
       read('scripts/railway-services.json'),

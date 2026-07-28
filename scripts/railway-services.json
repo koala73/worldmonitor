@@ -45,7 +45,8 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-conflict-intel",
     "requiredEnv": [
-      "HAPI_PROXY_URL"
+      "HAPI_PROXY_URL",
+      "PROXY_URL"
     ],
     "watchPatterns": [
       "scripts/_conflict-gdelt-bulk.mjs",
@@ -64,7 +65,7 @@
       "scripts/nixpacks.toml"
     ],
     "cronSchedule": "*/15 * * * *",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-services-not-bundled"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   },
   {
     "entry": "scripts/seed-gdelt-intel.mjs",
@@ -86,7 +87,7 @@
       "scripts/nixpacks.toml"
     ],
     "cronSchedule": "0 */4 * * *",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-services-not-bundled"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   },
   {
     "entry": "scripts/seed-supply-chain-trade.mjs",
@@ -106,7 +107,7 @@
       "scripts/nixpacks.toml"
     ],
     "cronSchedule": "0 */6 * * *",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-services-not-bundled"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   },
   {
     "entry": "scripts/seed-bundle-resilience-validation.mjs",
@@ -369,7 +370,8 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
     "requiredEnv": [
-      "SZSE_PROXY_URL"
+      "SZSE_PROXY_URL",
+      "PROXY_URL"
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
