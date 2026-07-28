@@ -30,6 +30,7 @@ import {
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
 import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { parseProxyConfig, proxyFetch } from './_proxy-utils.cjs';
 
 loadEnvFile(import.meta.url);
 
@@ -82,6 +83,7 @@ const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
 const HAPI_PAGE_LIMIT = 10_000;
 const HAPI_MAX_PAGES = 3;
+const HAPI_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const PIZZINT_TTL = 600;
 
 export const CONFLICT_COUNTRIES = [
@@ -572,6 +574,75 @@ async function defaultPreserveHapiLastGood() {
   );
 }
 
+function hapiFailureReason(status, providerMessage = '') {
+  if (Number(status) === 429 && /blocked due to bot activity/i.test(providerMessage)) {
+    return 'HAPI_BOT_BLOCK';
+  }
+  if (Number(status) === 429) return 'HAPI_RATE_LIMIT';
+  return Number.isInteger(Number(status)) ? `HTTP_${Number(status)}` : 'HAPI_FETCH_FAILED';
+}
+
+async function hapiResponseError(resp) {
+  let providerMessage = '';
+  try {
+    const rawBody = await resp.text();
+    try {
+      const body = JSON.parse(rawBody);
+      providerMessage = String(body?.error || body?.detail || rawBody);
+    } catch {
+      providerMessage = rawBody;
+    }
+  } catch {
+    // Status and status text remain sufficient when the provider sends no body.
+  }
+  return Object.assign(
+    new Error(`HTTP ${resp.status} ${resp.statusText}${providerMessage ? `: ${providerMessage}` : ''}`),
+    {
+      status: resp.status,
+      reasonCode: hapiFailureReason(resp.status, providerMessage),
+    },
+  );
+}
+
+function hapiProxyFailureReason(error) {
+  if (
+    Number(error?.status) === 407
+    || /Proxy CONNECT:[^\n]*\b407\b/i.test(String(error?.message ?? ''))
+  ) return 'PROXY_AUTH_FAILED';
+  if (error?.reasonCode) return error.reasonCode;
+  if (/PROXY_CONFIG_INVALID/i.test(String(error?.message ?? ''))) return 'PROXY_CONFIG_INVALID';
+  if (
+    error?.code === 'RESPONSE_TOO_LARGE'
+    || /RESPONSE_TOO_LARGE/i.test(String(error?.message ?? ''))
+  ) return 'RESPONSE_TOO_LARGE';
+  return 'PROXY_FETCH_FAILED';
+}
+
+async function fetchHapiViaConfiguredProxy(input, init, {
+  proxyConfig,
+  proxyRequestFn,
+}) {
+  if (!proxyConfig) throw new Error('PROXY_CONFIG_INVALID');
+  const result = await proxyRequestFn(String(input), proxyConfig, {
+    accept: 'application/json',
+    headers: init?.headers,
+    method: init?.method ?? 'GET',
+    maxResponseBytes: HAPI_MAX_RESPONSE_BYTES,
+    timeoutMs: HAPI_REQUEST_TIMEOUT_MS,
+    signal: init?.signal,
+  });
+  if (result.buffer.byteLength > HAPI_MAX_RESPONSE_BYTES) {
+    throw new Error('RESPONSE_TOO_LARGE');
+  }
+  return new Response(result.buffer, {
+    status: result.status,
+    headers: {
+      'Content-Length': String(result.buffer.byteLength),
+      'Content-Type': result.contentType || 'application/json',
+    },
+  });
+}
+
 async function fetchHapiRows({
   fetchFn,
   nowMs,
@@ -594,17 +665,7 @@ async function fetchHapiRows({
       },
     );
     if (!resp.ok) {
-      let providerMessage = '';
-      try {
-        const body = await resp.json();
-        providerMessage = String(body?.error || body?.detail || '');
-      } catch {
-        // Status and status text remain sufficient when the provider sends no JSON.
-      }
-      throw Object.assign(
-        new Error(`HTTP ${resp.status} ${resp.statusText}${providerMessage ? `: ${providerMessage}` : ''}`),
-        { status: resp.status },
-      );
+      throw await hapiResponseError(resp);
     }
 
     const rawData = await resp.json();
@@ -632,10 +693,17 @@ export async function fetchAllHumanitarianSummaries({
   requiredCountryCodes = countryCodes === HAPI_COUNTRIES ? HAPI_REQUIRED_COUNTRIES : countryCodes,
   loadPreviousMarker = () => readSeedSnapshot(HAPI_CACHE_KEY_PREFIX),
   loadFailureBackoff = () => readSeedSnapshot(HAPI_FAILURE_BACKOFF_KEY),
+  proxyUrl = process.env.PROXY_URL ?? '',
+  proxyRequestFn = proxyFetch,
   writeFailureBackoff = (value) => writeExtraKey(
     HAPI_FAILURE_BACKOFF_KEY,
     value,
     Math.ceil(HAPI_FAILURE_BACKOFF_MS / 1000),
+  ),
+  writeFailureMeta = (value) => writeExtraKey(
+    HAPI_SEED_META_KEY,
+    value,
+    HAPI_SEED_META_TTL_SECONDS,
   ),
   preserveLastGood = defaultPreserveHapiLastGood,
 } = {}) {
@@ -661,12 +729,56 @@ export async function fetchAllHumanitarianSummaries({
     return null;
   }
 
+  const proxyConfig = proxyUrl ? parseProxyConfig(proxyUrl) : null;
+  const configuredProxyFetch = proxyUrl
+    ? (input, init) => fetchHapiViaConfiguredProxy(input, init, {
+        proxyConfig,
+        proxyRequestFn,
+      })
+    : null;
+  let useProxy = false;
+  let proxyTriggerFailure = null;
+  const fetchRowsViaProxy = async (options) => {
+    try {
+      return await fetchHapiRows({ ...options, fetchFn: configuredProxyFetch });
+    } catch (proxyFailure) {
+      throw Object.assign(
+        new Error('HAPI proxy fallback failed after direct bot detection'),
+        {
+          status: Number.isFinite(Number(proxyFailure?.status))
+            ? Number(proxyFailure.status)
+            : Number(proxyTriggerFailure?.status),
+          reasonCode: 'HAPI_PROXY_FALLBACK_FAILED',
+          directFailureReason: proxyTriggerFailure?.reasonCode ?? 'HAPI_BOT_BLOCK',
+          proxyFailureReason: hapiProxyFailureReason(proxyFailure),
+        },
+      );
+    }
+  };
+  const fetchRows = async (options) => {
+    if (useProxy) {
+      return fetchRowsViaProxy(options);
+    }
+    try {
+      return await fetchHapiRows({ ...options, fetchFn });
+    } catch (directFailure) {
+      if (
+        !configuredProxyFetch
+        || directFailure?.reasonCode !== 'HAPI_BOT_BLOCK'
+      ) throw directFailure;
+
+      useProxy = true;
+      proxyTriggerFailure = directFailure;
+      console.warn('  HAPI direct request hit provider bot detection — retrying through configured proxy');
+      return fetchRowsViaProxy(options);
+    }
+  };
+
   let failure;
   try {
     // Most countries have national rows, so one global admin-0 request covers
     // them without the old per-country fan-out.
-    const nationalRows = await fetchHapiRows({
-      fetchFn,
+    const nationalRows = await fetchRows({
       nowMs,
       adminLevel: '0',
     });
@@ -681,8 +793,7 @@ export async function fetchAllHumanitarianSummaries({
     for (let i = 0; i < missingCountries.length; i += 1) {
       const countryCode = missingCountries[i];
       try {
-        const rows = await fetchHapiRows({
-          fetchFn,
+        const rows = await fetchRows({
           nowMs,
           countryCode,
           adminLevel: null,
@@ -695,6 +806,7 @@ export async function fetchAllHumanitarianSummaries({
       } catch (error) {
         fallbackFailure = error;
         console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
+        if (error.reasonCode === 'HAPI_PROXY_FALLBACK_FAILED') throw error;
         if (error.status === 429 || error.status === 403) break;
       }
       if (i < missingCountries.length - 1) await pace(HAPI_REQUEST_DELAY_MS);
@@ -707,7 +819,18 @@ export async function fetchAllHumanitarianSummaries({
       // results empty.
       throw Object.assign(
         new Error('bulk response contained no target-country national summaries'),
-        fallbackFailure?.status != null ? { status: fallbackFailure.status } : {},
+        fallbackFailure
+          ? {
+              ...(fallbackFailure.status != null ? { status: fallbackFailure.status } : {}),
+              ...(fallbackFailure.reasonCode ? { reasonCode: fallbackFailure.reasonCode } : {}),
+              ...(fallbackFailure.directFailureReason
+                ? { directFailureReason: fallbackFailure.directFailureReason }
+                : {}),
+              ...(fallbackFailure.proxyFailureReason
+                ? { proxyFailureReason: fallbackFailure.proxyFailureReason }
+                : {}),
+            }
+          : {},
       );
     }
 
@@ -715,6 +838,7 @@ export async function fetchAllHumanitarianSummaries({
       const retryAt = nowMs + HAPI_FAILURE_BACKOFF_MS;
       await writeFailureBackoff({
         status: Number.isFinite(Number(fallbackFailure.status)) ? Number(fallbackFailure.status) : 0,
+        reasonCode: fallbackFailure.reasonCode ?? 'HAPI_FETCH_FAILED',
         failedAt: nowMs,
         retryAt,
       }).catch((error) => console.warn(`  HAPI backoff write failed: ${error.message}`));
@@ -729,9 +853,27 @@ export async function fetchAllHumanitarianSummaries({
   }
 
   const retryAt = nowMs + HAPI_FAILURE_BACKOFF_MS;
+  const reasonCode = failure?.reasonCode ?? 'HAPI_FETCH_FAILED';
   console.warn(`  HAPI bulk failed: ${failure.message} — preserving last-good data and backing off until ${new Date(retryAt).toISOString()}`);
+  await writeFailureMeta({
+    fetchedAt: nowMs,
+    recordCount: Number(previousMarker?.requiredCountriesCovered) || 0,
+    status: 'error',
+    errorReason: reasonCode,
+    failedAt: nowMs,
+    ...(Number.isFinite(Number(previousMarker?.updatedAt))
+      ? { lastSuccessAt: Number(previousMarker.updatedAt) }
+      : {}),
+    ...(failure?.directFailureReason
+      ? { directFailureReason: failure.directFailureReason }
+      : {}),
+    ...(failure?.proxyFailureReason
+      ? { proxyFailureReason: failure.proxyFailureReason }
+      : {}),
+  }).catch((error) => console.warn(`  HAPI failure health write failed: ${error.message}`));
   await writeFailureBackoff({
     status: Number.isFinite(Number(failure.status)) ? Number(failure.status) : 0,
+    reasonCode,
     failedAt: nowMs,
     retryAt,
   }).catch((error) => console.warn(`  HAPI backoff write failed: ${error.message}`));
