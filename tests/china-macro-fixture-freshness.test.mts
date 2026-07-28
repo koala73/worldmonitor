@@ -121,32 +121,77 @@ describe('China macro fixture time-invariance', () => {
     }
   }
 
-  it(`builds a fresh, non-stale snapshot at every one of ${clocks.length} clocks over 30 months`, async () => {
+  // The complete expected outcome, pinned. Asserting freshness only over the
+  // observations that happen to BE fresh would let a clock-specific route or
+  // parsing regression pass unnoticed: the degraded source would simply drop
+  // out of the checked set while its healthy siblings kept the guard green.
+  // The blocked entries are deliberate -- the fixture serves robots.txt
+  // disallow for PBoC and a self-signed certificate for GACC -- so pinning them
+  // also proves the rebase does not accidentally "repair" a source.
+  const EXPECTED_TRANSPORT: ReadonlyArray<readonly [string, string, string]> = [
+    ['nbs_industrial_value_added_yoy', 'fresh', ''],
+    ['nbs_fixed_asset_investment_yoy', 'fresh', ''],
+    ['nbs_real_estate_investment_yoy', 'fresh', ''],
+    ['safe_fx_reserves', 'fresh', ''],
+    ['safe_bank_fx_settlement', 'fresh', ''],
+    ['pboc_aggregate_financing_flow', 'blocked', 'ROBOTS_DISALLOW'],
+    ['pboc_new_rmb_loans', 'blocked', 'ROBOTS_DISALLOW'],
+    ['pboc_m2_yoy', 'blocked', 'ROBOTS_DISALLOW'],
+    ['pboc_policy_liquidity_operation', 'blocked', 'ROBOTS_DISALLOW'],
+    ['gacc_exports', 'blocked', 'TLS_CERTIFICATE_ERROR'],
+    ['gacc_imports', 'blocked', 'TLS_CERTIFICATE_ERROR'],
+    ['gacc_trade_balance', 'blocked', 'TLS_CERTIFICATE_ERROR'],
+  ];
+
+  it(`builds the complete expected snapshot at every one of ${clocks.length} clocks over 30 months`, async () => {
     const failures: string[] = [];
     for (const now of clocks) {
+      const at = new Date(now).toISOString();
       let snapshot: { observations?: Record<string, unknown>[] };
       try {
         snapshot = await buildOfficialChinaMacroFixture(now);
       } catch (error) {
-        failures.push(`${new Date(now).toISOString()} threw ${(error as Error).message}`);
+        failures.push(`${at} threw ${(error as Error).message}`);
         continue;
       }
-      for (const observation of snapshot.observations ?? []) {
+      const observations = snapshot.observations ?? [];
+
+      // 1. The whole observation set, in order, with its exact transport state.
+      const actual = observations.map((o) => [
+        String(o.seriesId), String(o.transportStatus), String(o.transportFailureReason ?? ''),
+      ].join('|'));
+      const expected = EXPECTED_TRANSPORT.map((row) => row.join('|'));
+      if (actual.join('\n') !== expected.join('\n')) {
+        // Pair each row with the actual at the SAME position -- filtering first
+        // and then indexing would report mismatched pairs and send the reader
+        // to the wrong series.
+        const drifted = expected
+          .map((row, index) => (actual[index] === row ? null : `[${index}] want ${row} got ${actual[index] ?? '<missing>'}`))
+          .filter((row): row is string => row !== null);
+        const extra = actual.length > expected.length
+          ? ` (+${actual.length - expected.length} unexpected)`
+          : '';
+        failures.push(`${at} transport set drift${extra}: ${drifted.slice(0, 3).join('; ')}`);
+        continue;
+      }
+
+      // 2. Freshness of the sources that are supposed to be fresh.
+      for (const observation of observations) {
         if (observation.transportStatus !== 'fresh') continue;
         const seriesId = String(observation.seriesId);
         if (isChinaMacroObservationStale(seriesId, String(observation.observationPeriod), now)) {
-          failures.push(`${new Date(now).toISOString()} ${seriesId} content stale`);
+          failures.push(`${at} ${seriesId} content stale`);
         }
         const transportAgeMs = now - Date.parse(String(observation.retrievalTime));
         if (transportAgeMs > 60_000) {
-          failures.push(`${new Date(now).toISOString()} ${seriesId} transport age ${transportAgeMs}ms`);
+          failures.push(`${at} ${seriesId} transport age ${transportAgeMs}ms`);
         }
       }
     }
     assert.deepEqual(
       failures.slice(0, 10),
       [],
-      `The rebased fixture must be valid at any clock; ${failures.length} failed.`,
+      `The rebased fixture must produce the complete expected snapshot at any clock; ${failures.length} failed.`,
     );
   });
 });
