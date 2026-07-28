@@ -102,7 +102,7 @@ export interface CrossStraitActivitySourceHealth {
   transportStatus: 'fresh' | 'error';
   requestCount: number;
   transportPath?: 'direct' | 'proxy';
-  blockedReason?: string;
+  blockedReason?: 'HTTP_403';
   fallbackReason?: string;
   proxyFailureReason?: string;
   proxyFailureDetail?: CrossStraitProxyFailureDetail;

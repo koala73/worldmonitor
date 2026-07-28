@@ -1929,9 +1929,10 @@ function proxyErrorCode(error) {
 
 function blockedJapanProxyReason(directFailureCode, proxyFailureCode) {
   if (directFailureCode !== 'HTTP_403') return null;
-  return proxyFailureCode === 'PROXY_CONNECT_FORBIDDEN' || proxyFailureCode === 'HTTP_403'
-    ? proxyFailureCode
-    : null;
+  // A CONNECT refusal is emitted by the proxy before the TLS tunnel reaches
+  // Japan MOD. Only a 403 response received after CONNECT proves that both
+  // source-facing transport paths are externally blocked.
+  return proxyFailureCode === 'HTTP_403' ? proxyFailureCode : null;
 }
 
 function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {

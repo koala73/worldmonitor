@@ -85,7 +85,7 @@ function sourceRecordCount(snapshot, sourceId) {
 export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
     const healthy = source?.transportStatus === 'fresh';
-    const blocked = typeof source?.blockedReason === 'string';
+    const blocked = source?.blockedReason === 'HTTP_403';
     const fetchedAt = Date.parse(
       blocked ? snapshot?.generatedAt ?? '' : source?.lastSuccessAt ?? '',
     );

@@ -1244,7 +1244,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     );
   });
 
-  it('classifies a proxy CONNECT 403 as a documented blocked Japan MOD path', async () => {
+  it('keeps a proxy CONNECT 403 degraded because the request never reached Japan MOD', async () => {
     const previousSnapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
         () => new Response(fixture('jmod-index.html')),
@@ -1272,10 +1272,11 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
     const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
     assert.equal(japan?.transportStatus, 'error');
-    assert.equal(japan?.blockedReason, 'PROXY_CONNECT_FORBIDDEN');
+    assert.equal(japan?.blockedReason, undefined);
     assert.equal(japan?.fallbackReason, 'HTTP_403');
     assert.equal(japan?.proxyFailureReason, 'PROXY_CONNECT_FORBIDDEN');
     assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'PROXY_CONNECT_FORBIDDEN']);
+    assert.equal(snapshot.status, 'degraded');
     assert.deepEqual(japan?.proxyFailureDetail, {
       stage: 'connect',
       httpStatus: 403,

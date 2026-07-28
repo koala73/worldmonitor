@@ -44,6 +44,21 @@ export interface CrossStraitActivityPanelModel {
   } | null;
 }
 
+type CrossStraitSourceHealthState =
+  NonNullable<CrossStraitActivityPanelModel['sourceHealth']>['state'];
+
+const SOURCE_HEALTH_HEADINGS = {
+  blocked: 'Official activity source blocked',
+  degraded: 'Official activity degraded',
+  unavailable: 'Official activity unavailable',
+} satisfies Record<CrossStraitSourceHealthState, string>;
+
+export function crossStraitSourceHealthHeading(
+  state: CrossStraitSourceHealthState,
+): string {
+  return SOURCE_HEALTH_HEADINGS[state];
+}
+
 const CATEGORY_LABELS: ReadonlyArray<[
   keyof TaiwanMndActivityCategories,
   string,
@@ -208,7 +223,7 @@ function isSourceHealth(value: unknown): boolean {
     )
     && (
       value.blockedReason === undefined
-      || typeof value.blockedReason === 'string'
+      || value.blockedReason === 'HTTP_403'
     )
     && (
       value.fallbackReason === undefined
@@ -347,7 +362,7 @@ export function buildCrossStraitActivityPanelModel(
 
   const progress = `${snapshot.coverage.usableMndReportingDays} usable reporting days`;
   const hasBlockedSource = snapshot.sources.some(
-    (source) => typeof source.blockedReason === 'string',
+    (source) => source.blockedReason === 'HTTP_403',
   );
   const sourceHealth = snapshot.status === 'degraded'
     || snapshot.status === 'unavailable'

@@ -48,14 +48,14 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
       {
         id: 'japan-mod',
         transportStatus: 'error',
-        blockedReason: 'PROXY_CONNECT_FORBIDDEN',
+        blockedReason: 'HTTP_403',
         proxyFailureDetail: {
-          stage: 'connect',
+          stage: 'response',
           httpStatus: 403,
           contentType: null,
           bodyPrefix: null,
           errorCode: null,
-          errorMessage: 'Proxy CONNECT: HTTP/1.1 403 Forbidden',
+          errorMessage: 'HTTP_403',
         },
       },
     ],
@@ -130,7 +130,7 @@ test('a freshly classified blocked source is explicit and does not pin fleet hea
     sources: [{
       id: 'japan-mod',
       transportStatus: 'error',
-      blockedReason: 'PROXY_CONNECT_FORBIDDEN',
+      blockedReason: 'HTTP_403',
       lastSuccessAt: null,
     }],
   };
@@ -234,7 +234,7 @@ test('blocked source health never publishes fresh metadata before its detail rec
       sources: [{
         id: 'japan-mod',
         transportStatus: 'error',
-        blockedReason: 'PROXY_CONNECT_FORBIDDEN',
+        blockedReason: 'HTTP_403',
         lastSuccessAt: null,
       }],
     }, async (key: string) => {
@@ -247,6 +247,32 @@ test('blocked source health never publishes fresh metadata before its detail rec
   );
 
   assert.deepEqual(writes, ['military:cross-strait-activity:v1:source:japan-mod']);
+});
+
+test('a proxy CONNECT refusal remains an operator-visible source error', async () => {
+  const writes = new Map<string, unknown>();
+  await writeSourceHealth({
+    generatedAt: '2026-07-27T20:00:00.000Z',
+    observations: [{ sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      blockedReason: 'PROXY_CONNECT_FORBIDDEN',
+      lastSuccessAt: null,
+    }],
+  }, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  assert.deepEqual(
+    writes.get('seed-meta:military:cross-strait-activity:japan-mod'),
+    {
+      fetchedAt: 0,
+      recordCount: 1,
+      sourceState: 'error',
+      stale: true,
+    },
+  );
 });
 
 test('operator seed-health matches the fail-closed Japan blocked classification', async () => {
