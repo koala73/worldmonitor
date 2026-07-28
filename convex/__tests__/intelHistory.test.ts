@@ -948,11 +948,19 @@ describe("intelHistory.retract", () => {
   }
 
   /**
-   * The characterization that forces the tombstone to exist. A bare delete —
-   * exactly what a Convex console operation does — leaves `append`'s dedupe
-   * lookup finding nothing, so the next seed tick re-inserts the record it was
-   * told to remove. If this ever passes with `retracted: 0` and a surviving
-   * row, the retraction path has become theatre.
+   * Characterization of the PROBLEM, not a guard on the fix — it deliberately
+   * never touches `retract` or the tombstones table, and would keep passing if
+   * all of #5743 were reverted. What it pins is why the feature has to exist:
+   * a bare delete, exactly what a Convex console operation does, leaves
+   * `append`'s dedupe lookup finding nothing, so the next seed tick re-inserts
+   * the record it was told to remove.
+   *
+   * The guard on the fix is "retract removes the row and keeps the seeder from
+   * re-adding it" below; the guard on the concurrent case is "a seed tick
+   * racing a retraction cannot leave the record stored". If this test ever
+   * starts failing, `append` stopped re-inserting deleted rows and the
+   * tombstone may no longer be necessary at all — read it as a signal to
+   * re-derive the design, not as a regression.
    */
   test("a bare row delete is undone by the very next seeder append", async () => {
     const t = await intelHistoryAppendTest();
@@ -1060,6 +1068,15 @@ describe("intelHistory.retract", () => {
 
     expect(res.deleted).toBe(1);
     expect(res.unresolvedIds).toEqual(["not-a-convex-id"]);
+
+    // Confirm the DB actually reached the reported state rather than trusting
+    // the return: the live id's row is gone and its identity is tombstoned,
+    // while the unresolved one contributed no tombstone at all.
+    expect(await t.run((ctx) => ctx.db.query("intelHistory").collect())).toHaveLength(0);
+    const tombstones = await t.run((ctx) =>
+      ctx.db.query("intelHistoryRetractions").collect(),
+    );
+    expect(tombstones.map((row) => row.dedupeKey)).toEqual(["live"]);
   });
 
   test("re-retracting an existing tombstone refreshes it rather than duplicating", async () => {
