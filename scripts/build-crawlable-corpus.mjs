@@ -35,14 +35,18 @@ const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-27';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
+const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
+const META_DESCRIPTION_MIN = 155;
+const META_DESCRIPTION_MAX = 160;
 
 // Hand-authored, human-readable context for each canonical chokepoint, keyed by
 // the registry `id`. `region` describes what the waterway connects (used as the
 // index card subtitle and the "Connects" tile); `blurb` is a factual 2-sentence
-// summary used as the page lede and meta description; `glossarySlug` cross-links
+// summary used as the page lede; `glossarySlug` cross-links
 // to the matching /blog/glossary/ term where one exists. Keeping this beside the
 // registry (rather than in it) keeps the app bundle free of prose it never uses.
 const CHOKEPOINT_CONTENT = {
@@ -301,14 +305,73 @@ function formatCoordinates(lat, lon) {
   return `${latText}, ${lonText}`;
 }
 
-// Clamp a lede down to a search-friendly meta description length without cutting
-// a word in half.
-function metaDescription(text, max = 155) {
-  const clean = String(text ?? '').trim();
-  if (clean.length <= max) return clean;
-  const truncated = clean.slice(0, max - 1);
-  const lastSpace = truncated.lastIndexOf(' ');
-  return `${(lastSpace > 40 ? truncated.slice(0, lastSpace) : truncated).replace(/[\s,;:.]+$/, '')}…`;
+function selectMetaDescription(candidates) {
+  const eligible = [...new Set(candidates)]
+    .map((candidate) => String(candidate ?? '').trim())
+    .filter((candidate) => candidate.length <= META_DESCRIPTION_MAX)
+    .sort((a, b) => b.length - a.length);
+  const selected = eligible[0];
+  if (!selected || selected.length < META_DESCRIPTION_MIN) {
+    throw new Error(
+      `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
+    );
+  }
+  return selected;
+}
+
+function countryMetaDescription({ name, rank, rankedCount }) {
+  const subjects = [
+    `${name} country risk and resilience`,
+    `${name} country risk`,
+    `${name} risk and resilience`,
+  ];
+  const standings = rank == null
+    ? [
+      `a low-confidence listing in World Monitor's Country Resilience Index`,
+      `a low-confidence listing in World Monitor's resilience index`,
+      `a low-confidence listing in World Monitor's index`,
+      `a low-confidence World Monitor index listing`,
+      `a low-confidence index listing`,
+    ]
+    : [
+      `ranked #${rank} of ${rankedCount} in World Monitor's Country Resilience Index`,
+      `ranked #${rank} of ${rankedCount} in World Monitor's resilience index`,
+      `ranked #${rank} of ${rankedCount} in World Monitor's index`,
+      `#${rank} of ${rankedCount} in World Monitor's resilience index`,
+      `#${rank} of ${rankedCount} in World Monitor's index`,
+    ];
+  const signals = [
+    'with live instability, travel advisories, sanctions and security signals.',
+    'with current instability, travel advisories, sanctions and security signals.',
+    'with live instability, travel-advisory and sanctions signals.',
+    'plus live instability, travel advisories, sanctions and security signals.',
+    'with live instability, advisories, sanctions and security signals.',
+    'with instability, travel advisories, sanctions and security signals.',
+    'with current instability, advisories, sanctions and security signals.',
+  ];
+  return selectMetaDescription(
+    subjects.flatMap((subject) => standings.flatMap(
+      (standing) => signals.map((signal) => `${subject}: ${standing}, ${signal}`),
+    )),
+  );
+}
+
+function chokepointMetaDescription(name) {
+  const subjects = [
+    `${name} chokepoint status`,
+    `${name} live chokepoint status`,
+    `${name} maritime chokepoint status`,
+    `${name} live status`,
+  ];
+  const signals = [
+    'monitor live disruption risk, vessel transits, congestion, AIS warnings and key trade routes through this strategic waterway.',
+    'track live disruption risk, vessel transits, congestion, AIS warnings and major trade routes through this strategic waterway.',
+    'track disruption risk, vessel transits, congestion, AIS warnings and major trade routes through this strategic waterway.',
+    'monitor disruption risk, transits, congestion, AIS warnings and trade routes through this strategic waterway.',
+  ];
+  return selectMetaDescription(
+    subjects.flatMap((subject) => signals.map((signal) => `${subject}: ${signal}`)),
+  );
 }
 
 function metricTile(label, value) {
@@ -623,6 +686,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const countriesLastmod = laterDate(
     resilience.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
+    COUNTRY_PAGE_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -632,6 +696,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const chokepointsLastmod = laterDate(
     gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
+    CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
@@ -863,13 +928,11 @@ function renderCountryPage({
   rankedCount,
 }) {
   const path = `/countries/${country.slug}/`;
-  const rankText = country.rank == null ? 'not ranked in the headline table' : `ranked #${country.rank}`;
-  const description = metaDescription(
-    country.rank == null
-      ? `${country.name} country risk: a low-confidence listing in World Monitor's Country Resilience Index, with live instability, travel-advisory and sanctions signals on one page.`
-      : `${country.name} country risk: ranked #${country.rank} of ${rankedCount} in World Monitor's Country Resilience Index, plus live instability, travel-advisory and sanctions signals.`,
-    165,
-  );
+  const description = countryMetaDescription({
+    name: country.name,
+    rank: country.rank,
+    rankedCount,
+  });
   const mapUrl = withUtmSource(
     absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),
     'seo-country',
@@ -993,7 +1056,7 @@ function renderChokepointPage({ chokepoint, baseUrl, lastmod, tradeRoutesById, r
   const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
   const blurb = content.blurb
     || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
-  const description = metaDescription(blurb);
+  const description = chokepointMetaDescription(chokepoint.displayName);
   const mapUrl = withUtmSource(
     absoluteUrl(baseUrl, `/?chokepoint=${encodeURIComponent(chokepoint.id)}`),
     'seo-chokepoint',

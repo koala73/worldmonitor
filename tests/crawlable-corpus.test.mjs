@@ -24,6 +24,21 @@ function jsonLdObjects(html) {
     .map(([, raw]) => JSON.parse(raw));
 }
 
+function decodeHtmlAttribute(value) {
+  return value
+    .replaceAll('&#39;', "'")
+    .replaceAll('&quot;', '"')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+}
+
+function pageMetaDescription(html, route) {
+  const raw = html.match(/<meta name="description" content="([^"]*)">/)?.[1];
+  assert.ok(raw, `${route} must have a meta description`);
+  return decodeHtmlAttribute(raw);
+}
+
 function productionScriptNonce() {
   const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
   const csp = config.headers
@@ -116,8 +131,8 @@ describe('crawlable corpus generator', () => {
         repoRoot,
         publicDir: outDir,
         existingSitemapSource: '',
-        resolveMaterialLastmod: () => '2026-07-27',
-        today: '2026-07-27',
+        resolveMaterialLastmod: () => '2026-07-28',
+        today: '2026-07-28',
       });
       const corpusLocations = new Set(
         sitemapEntries
@@ -142,6 +157,32 @@ describe('crawlable corpus generator', () => {
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
       assert.ok(manifest.sections.glossary.count >= 15, `expected existing glossary manifest entries, got ${manifest.sections.glossary.count}`);
+
+      const searchLandingRoutes = [
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+      ];
+      const descriptions = new Map();
+      for (const route of searchLandingRoutes) {
+        const description = pageMetaDescription(
+          read(outDir, `${route.slice(1)}index.html`),
+          route,
+        );
+        assert.ok(
+          description.length >= 155 && description.length <= 160,
+          `${route} meta description must be 155-160 characters, got ${description.length}`,
+        );
+        assert.doesNotMatch(
+          description,
+          /…$/,
+          `${route} meta description must be a complete sentence, not a truncated lede`,
+        );
+        assert.ok(
+          !descriptions.has(description),
+          `${route} duplicates the meta description for ${descriptions.get(description)}`,
+        );
+        descriptions.set(description, route);
+      }
 
       for (const path of [
         'countries/index.html',
@@ -168,7 +209,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-07-27">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-07-28">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -303,7 +344,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-07-27');
+    assert.equal(data.lastmod.countries, '2026-07-28');
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));

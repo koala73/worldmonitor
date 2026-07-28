@@ -13,7 +13,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListAcledEvents
-            description: ListAcledEvents retrieves armed conflict events from the ACLED dataset.
+            description: ListAcledEvents retrieves ACLED armed-conflict events with country, location, actors, event type and fatalities, filterable by country and inclusive time range.
             operationId: ListAcledEvents
             security: []
             parameters:
@@ -595,7 +595,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListIranEvents
-            description: ListIranEvents retrieves scraped conflict events from LiveUAMap Iran.
+            description: ListIranEvents retrieves recent Iran conflict events from LiveUAMap with titles, categories, severity, locations, coordinates, timestamps and cited source URLs.
             operationId: ListIranEvents
             parameters:
                 - name: jmespath

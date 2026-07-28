@@ -154,7 +154,7 @@ paths:
             tags:
                 - AviationService
             summary: GetAirportOpsSummary
-            description: GetAirportOpsSummary returns operational health metrics for watched airports.
+            description: GetAirportOpsSummary returns watched-airport operational health, including delay percentages, average delay minutes, cancellation rates and closure status.
             operationId: GetAirportOpsSummary
             parameters:
                 - name: airports
@@ -2136,7 +2136,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListAcledEvents
-            description: ListAcledEvents retrieves armed conflict events from the ACLED dataset.
+            description: ListAcledEvents retrieves ACLED armed-conflict events with country, location, actors, event type and fatalities, filterable by country and inclusive time range.
             operationId: ListAcledEvents
             security: []
             parameters:
@@ -2718,7 +2718,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListIranEvents
-            description: ListIranEvents retrieves scraped conflict events from LiveUAMap Iran.
+            description: ListIranEvents retrieves recent Iran conflict events from LiveUAMap with titles, categories, severity, locations, coordinates, timestamps and cited source URLs.
             operationId: ListIranEvents
             parameters:
                 - name: jmespath
@@ -12582,7 +12582,7 @@ paths:
             tags:
                 - MaritimeService
             summary: ListNavigationalWarnings
-            description: ListNavigationalWarnings retrieves active maritime safety warnings from NGA.
+            description: ListNavigationalWarnings retrieves active NGA maritime safety warnings, with issue and expiry times, affected areas, source authority and full warning text.
             operationId: ListNavigationalWarnings
             parameters:
                 - name: page_size
@@ -14938,7 +14938,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryFlights
-            description: ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
+            description: ListMilitaryFlights retrieves paginated military aircraft observations and clusters from OpenSky and Wingbits with callsign, position, altitude and operator.
             operationId: ListMilitaryFlights
             parameters:
                 - name: page_size

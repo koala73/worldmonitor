@@ -13,7 +13,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryFlights
-            description: ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
+            description: ListMilitaryFlights retrieves paginated military aircraft observations and clusters from OpenSky and Wingbits with callsign, position, altitude and operator.
             operationId: ListMilitaryFlights
             parameters:
                 - name: page_size
