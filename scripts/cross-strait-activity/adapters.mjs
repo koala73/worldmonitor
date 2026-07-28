@@ -2053,9 +2053,28 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
       // Only a CONNECT refusal is ambiguous enough to be worth a control
       // tunnel; every other proxy failure already reached Japan MOD or names
       // its own cause, so it must not spend an extra outbound connection.
+      //
+      // The probe is a diagnostic and must never be able to fail the run that
+      // uses it: this sits inside the proxy catch block and the caller awaits
+      // the Japan outcome unguarded, so an escaping throw would take down the
+      // healthy Taiwan MND feed too. Any failure -- rejection, synchronous
+      // throw, or a non-thenable return -- resolves to `unreachable`, which
+      // fails closed and keeps the source degraded and operator-visible.
       const proxyControlProbe = failureCode === 'PROXY_CONNECT_FORBIDDEN' && proxyConnectProbeFn
-        ? await proxyConnectProbeFn(contract.proxyControlProbeHost)
-          .then(() => 'reachable', () => 'unreachable')
+        ? await (async () => {
+            try {
+              const pending = proxyConnectProbeFn(contract.proxyControlProbeHost);
+              // Only an awaited tunnel counts as evidence. A probe that returns
+              // a non-thenable never opened anything, and `await` on it would
+              // resolve immediately and read as `reachable` -- a false green on
+              // exactly the axis this probe exists to guard.
+              if (typeof pending?.then !== 'function') return 'unreachable';
+              await pending;
+              return 'reachable';
+            } catch {
+              return 'unreachable';
+            }
+          })()
         : undefined;
       const blockedReason = blockedJapanProxyReason(
         fallbackReason,

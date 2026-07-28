@@ -121,8 +121,19 @@ export interface CrossStraitActivitySourceHealth {
   blockedReason?: CrossStraitBlockedReason;
   fallbackReason?: string;
   proxyFailureReason?: string;
+  /**
+   * Operator-only. Stripped from the anonymous bootstrap projection, so this is
+   * never populated on a client-hydrated snapshot -- it is modelled here because
+   * this interface describes the durable source-health record the seeder writes,
+   * of which the bootstrap is a narrowed projection.
+   */
   proxyFailureDetail?: CrossStraitProxyFailureDetail;
-  /** Present only when a proxy CONNECT refusal was tested against a control host. */
+  /**
+   * Operator-only, same projection carve-out as `proxyFailureDetail`. Present
+   * only when a proxy CONNECT refusal was tested against a control host:
+   * `reachable` means the proxy tunnels elsewhere and refuses this target
+   * specifically, which is what licenses `PROXY_TARGET_FORBIDDEN`.
+   */
   proxyControlProbe?: 'reachable' | 'unreachable';
   errorCodes: string[];
   lastSuccessAt: string | null;

@@ -50,6 +50,7 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
         id: 'japan-mod',
         transportStatus: 'error',
         blockedReason: 'HTTP_403',
+        proxyControlProbe: 'reachable',
         proxyFailureDetail: {
           stage: 'response',
           httpStatus: 403,
@@ -78,12 +79,27 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
   ]);
   assert.ok(projection.observations.every((row) => !('history' in row)));
   assert.deepEqual(projection.sources, snapshot.sources.map((source) => {
-    const { proxyFailureDetail: _proxyFailureDetail, ...publicSource } = source;
+    const {
+      proxyFailureDetail: _proxyFailureDetail,
+      proxyControlProbe: _proxyControlProbe,
+      ...publicSource
+    } = source;
     return publicSource;
   }));
   assert.equal(
     projection.sources.some((source) => 'proxyFailureDetail' in source),
     false,
+  );
+  // The control probe reports whether OUR egress is working, which is operator
+  // diagnostics, not source disclosure -- and no client surface reads it. The
+  // public reason codes already explain the blocked state on their own.
+  assert.equal(
+    projection.sources.some((source) => 'proxyControlProbe' in source),
+    false,
+  );
+  assert.equal(
+    projection.sources.find((source) => source.id === 'japan-mod')?.blockedReason,
+    'HTTP_403',
   );
   assert.deepEqual(projection.coverage, snapshot.coverage);
   assert.deepEqual(projection.baselines, snapshot.baselines);

@@ -1381,6 +1381,45 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(snapshot.status, 'degraded');
   });
 
+  it('never lets a misbehaving control probe take down the whole cross-Strait run', async () => {
+    // The probe runs inside the proxy catch block and the caller awaits the
+    // Japan outcome unguarded, so a probe that throws synchronously or returns
+    // a non-thenable would reject the entire snapshot -- killing the healthy
+    // Taiwan MND feed because a diagnostic misbehaved. Degrade, never propagate.
+    for (const badProbe of [
+      () => { throw new Error('probe exploded'); },
+      () => 'not a promise',
+      () => null,
+    ] as const) {
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        fetchFn: crossStraitFixtureFetch(
+          () => new Response('Forbidden', { status: 403 }),
+        ),
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        sleepFn: async () => {},
+        proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        proxyRequestFn: async () => {
+          throw Object.assign(
+            new Error('Proxy CONNECT: HTTP/1.1 403 Forbidden'),
+            { status: 403 },
+          );
+        },
+        proxyConnectProbeFn: badProbe as unknown as (host: string) => Promise<void>,
+      });
+
+      const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+      assert.equal(japan?.transportStatus, 'error');
+      assert.equal(japan?.proxyControlProbe, 'unreachable');
+      assert.equal(japan?.blockedReason, undefined);
+      // The rest of the run still published -- the Taiwan MND leg is untouched
+      // by a Japan-side diagnostic and its observations must survive.
+      assert.ok(
+        snapshot.observations.some((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd'),
+      );
+    }
+  });
+
   it('never opens a control tunnel for a proxy failure that is not a CONNECT refusal', async () => {
     for (const proxyError of [
       Object.assign(new Error('Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required'), { status: 407 }),
