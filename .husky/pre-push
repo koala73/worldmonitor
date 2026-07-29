@@ -271,7 +271,38 @@ if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
 # Test files that changed in this push — run these specifically when
 # RUN_ALL didn't fire, so editing a test doesn't escalate to the full
 # 10k-test suite. Matches both .mjs and .mts under tests/.
-TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" | while read -r t; do [ -f "$t" ] && echo "$t"; done || true)
+#
+# tests/dom/ is a vitest + happy-dom project, NOT a node:test suite — handing
+# those files to `tsx --test` fails on the `vitest` imports and reads as a
+# broken DOM test (#5795), so they are partitioned out here and run under their
+# own runner below. scripts/prepush-changed-tests.sh owns the split for both
+# halves (tested in tests/prepush-changed-tests.test.mjs) so the two lists
+# cannot drift into overlapping or, worse, leaving a file in neither.
+#
+# Both partitions must SUCCEED, not merely return output. A helper that is
+# missing or errors would otherwise substitute to an empty list, and empty
+# reads here as "no test files changed" — the gate would sail past every
+# changed test instead of saying anything. Fail loudly instead.
+if ! TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh node); then
+  echo "ERROR: scripts/prepush-changed-tests.sh node failed — cannot decide which tests to run."
+  exit 1
+fi
+if ! DOM_TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh dom); then
+  echo "ERROR: scripts/prepush-changed-tests.sh dom failed — cannot decide which tests to run."
+  exit 1
+fi
+
+# The routing contract spans four files: this hook, the partition script, the
+# vitest project that defines what "a DOM test" is, and the package.json script
+# the DOM half invokes. Its test must run when ANY of them changes, not only
+# when the test file itself is edited — otherwise the assertions are absent
+# exactly when the contract they pin is being rewritten. Same convention as the
+# invariant lints above, which each fire on their own implementation script.
+if echo "$CHANGED_FILES" | grep -qE '^(\.husky/pre-push|scripts/prepush-changed-tests\.sh|vitest\.dom\.config\.mts|package\.json)$' \
+  && [ -f tests/prepush-changed-tests.test.mjs ] \
+  && ! echo "$TESTS_CHANGED" | grep -qxF 'tests/prepush-changed-tests.test.mjs'; then
+  TESTS_CHANGED=$(printf '%s\ntests/prepush-changed-tests.test.mjs\n' "$TESTS_CHANGED" | grep -v '^$')
+fi
 
 # Compute SEED_TESTS and SERVER_TESTS up-front (rather than inside their
 # RUN_* blocks) so the TESTS_CHANGED subtraction below can deduplicate
@@ -336,16 +367,18 @@ if [ "$RUN_ALL" != true ]; then
     # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
     timeout 120 npx tsx --test $SERVER_TESTS || exit 1
   fi
-  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ]; then
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ] && [ -z "$DOM_TESTS_CHANGED" ]; then
     echo "Skipping unit tests (frontend-only changes; CI runs the full suite on PR open)."
   fi
 fi
 
-if [ -n "$TESTS_CHANGED" ]; then
-  echo "Running changed test files only..."
-  # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
-  timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
-fi
+# Both dispatches are UNCONDITIONAL: the "is this list empty" test and the
+# choice of runner live in the script, where a test can execute them against
+# stubbed runners. Held inline here, they could only be guarded by grepping
+# this file's source — and a source grep stays green when `-n` is flipped to
+# `-z` or `|| exit 1` is dropped, which is a silent skip of the whole suite.
+printf '%s\n' "$TESTS_CHANGED" | bash scripts/prepush-changed-tests.sh run-node || exit 1
+printf '%s\n' "$DOM_TESTS_CHANGED" | bash scripts/prepush-changed-tests.sh run-dom || exit 1
 
 echo "Running edge function tests..."
 if [ "$RUN_FRONTEND" = true ] || [ "$RUN_ALL" = true ]; then
