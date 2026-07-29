@@ -23,7 +23,8 @@ async function read(rel: string): Promise<string> {
 }
 
 function serviceBlock(compose: string, serviceName: string): string {
-  const match = compose.match(
+  const normalizedCompose = compose.replaceAll('\r\n', '\n');
+  const match = normalizedCompose.match(
     new RegExp(`^  ${serviceName}:\\n([\\s\\S]*?)(?=^  [a-zA-Z0-9_-]+:\\n|^volumes:)`, 'm'),
   );
   assert.ok(match, `docker-compose.yml must define ${serviceName} service`);
@@ -168,6 +169,18 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     assert.ok(
       /if \[ -n "\$\{REDIS_TOKEN[^}]*}" \]/.test(sh),
       'scripts/run-seeders.sh must unconditionally prefer REDIS_TOKEN when set (PR #3829 P1)',
+    );
+  });
+
+  it('scripts/run-seeders.sh converts MSYS paths before invoking native Windows Node', async () => {
+    const sh = await read('scripts/run-seeders.sh');
+    assert.match(sh, /command -v cygpath/);
+    assert.match(sh, /node_file="\$\(cygpath -w "\$node_file"\)"/);
+    assert.match(sh, /node "\$node_file"/);
+    assert.match(
+      sh,
+      /if caps_seed "\$1"/,
+      'timeout classification must continue to inspect the original POSIX path',
     );
   });
 
