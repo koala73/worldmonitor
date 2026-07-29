@@ -292,6 +292,11 @@ export const CACHE_TOOLS: ToolDef[] = [
           } } },
           fetchedAt: { type: ['number', 'string'] },
           version: { type: ['string', 'number'] },
+          // Newest merged GED Candidate release, or null when the annual base is
+          // serving alone. A `+partial` suffix means the candidate was fetched
+          // incompletely.
+          candidateVersion: { type: ['string', 'null'] },
+          candidateComplete: { type: 'boolean' },
           totalRaw: { type: 'number' },
           filteredCount: { type: 'number' },
         },
