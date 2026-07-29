@@ -34,6 +34,7 @@
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
+import { withPremiumIntent } from './premium-intent';
 import { isDesktopRuntime } from './runtime';
 
 /**
@@ -284,7 +285,39 @@ export async function premiumFetch(
   // attaches wms_) → gateway accepts → 200. For premium paths reached here
   // (no API key, no tester key, no Clerk Bearer) the gateway will return
   // 401, which is correct.
-  const res = await globalThis.fetch(input, withCredentials(requestInit));
+  //
+  // Mark premium-intent requests so the interceptor reads that 401 as the
+  // expected auth denial it is (#5674). Path-listed premium routes already
+  // short-circuit inside the interceptor, so this only changes behaviour for
+  // routes that are premium per REQUEST rather than per path — today
+  // `/api/news/v1/summarize-article` via `forcePremium`, which must stay out
+  // of PREMIUM_RPC_PATHS so its free translate mode keeps receiving the
+  // anonymous wms_ cookie. Unmarked, each denial cost a session mint, a
+  // replay, and a 15-minute blackout of every anonymous API call.
+  //
+  // Steps 1-3 return as soon as any credential resolves, so everything that
+  // reaches this line is unauthenticated by definition — exactly the population
+  // the marker is meant to describe, and never a request that already steps
+  // aside via its own Authorization / X-WorldMonitor-Key header.
+  //
+  // EXCEPT the Pro-fresh cache tape. `forcePremium` carries two meanings, and
+  // only one of them licenses the marker:
+  //
+  //   - summarization.ts  — "this call requires Pro"; a 401 IS the expected
+  //     denial, so suppressing session recovery is correct.
+  //   - proFreshRpcFetch  — "attach a Bearer opportunistically for a fresher
+  //     cache tier". PRO_FRESH_CACHE_RPC_PATHS is explicitly an authentication
+  //     surface, not an authorization gate: anonymous and free callers keep
+  //     access on the ordinary cache policy, and those paths 401 when the wms_
+  //     cookie is rejected (verified against prod). Marking them would strip
+  //     the mint-and-replay that absorbs an HMAC rotation or cache flap, so a
+  //     recoverable blip would surface as a dead price tape instead.
+  const marksPremiumIntent =
+    isPremiumRpcTarget(input, forcePremium) && !isProFreshCacheRpcTarget(input);
+  const unauthenticatedInit = marksPremiumIntent
+    ? withPremiumIntent(withCredentials(requestInit))
+    : withCredentials(requestInit);
+  const res = await globalThis.fetch(input, unauthenticatedInit);
   reportServerError(res, input);
   return res;
 }

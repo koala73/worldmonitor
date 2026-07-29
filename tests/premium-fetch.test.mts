@@ -15,6 +15,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, before, after, mock } from 'node:test';
 import { premiumFetch, proFreshRpcFetch, reportServerError, _setTestProviders } from '@/services/premium-fetch';
+import { hasPremiumIntent } from '@/services/premium-intent';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -313,6 +314,98 @@ describe('premiumFetch', () => {
     assert.equal(tokenCalls, 1, 'anonymous visitors must not pay the retry delay');
     assert.equal(fetchMock.mock.calls.length, 1);
     assert.equal(sentHeaders().get('Authorization'), null);
+  });
+
+  // -------------------------------------------------------------------------
+  // #5674 — the unauthenticated fallback must announce its premium intent.
+  //
+  // Without the marker the wm-session interceptor cannot tell an expected Pro
+  // denial from a rejected anonymous cookie, so it mints a fresh session,
+  // replays, 401s again, and suppresses EVERY anonymous API call for 15
+  // minutes. `forcePremium` targets are the population that matters: their
+  // path is deliberately absent from PREMIUM_RPC_PATHS (see
+  // src/services/premium-intent.ts), so the path check cannot cover them.
+  // -------------------------------------------------------------------------
+
+  const FORCE_PREMIUM_TARGET = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+
+  function fallbackInit(callIndex = 0): RequestInit | undefined {
+    return fetchMock.mock.calls[callIndex].arguments[1] as RequestInit | undefined;
+  }
+
+  it('marks premium intent on the unauthenticated fallback for a forcePremium target', async () => {
+    setup({ clerkToken: null });
+
+    await premiumFetch(FORCE_PREMIUM_TARGET, { method: 'POST', forcePremium: true });
+
+    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(sentHeaders().get('Authorization'), null, 'this is the unauthenticated fallback');
+    assert.equal(
+      hasPremiumIntent(fallbackInit()),
+      true,
+      'an unauthenticated forcePremium request must be marked, or its expected 401 '
+      + 'blacks out anonymous browsing for 15 minutes (#5674)',
+    );
+  });
+
+  it('marks premium intent on the unauthenticated fallback for a path-listed premium target', async () => {
+    // Redundant with the interceptor's path check, but keeps one rule rather
+    // than two: "premiumFetch could not authenticate a premium request".
+    setup({ clerkToken: null });
+
+    await premiumFetch(TARGET);
+
+    assert.equal(hasPremiumIntent(fallbackInit()), true);
+  });
+
+  it('does NOT mark a non-premium target — those still need session recovery', async () => {
+    // The complement, and the one that must not regress: an ordinary
+    // anonymous read depends on the wms_ cookie, so a genuine dead cookie
+    // there must still trigger mint-and-replay.
+    setup({ clerkToken: null });
+
+    await premiumFetch(PUBLIC_TARGET);
+
+    assert.equal(sentHeaders().get('Authorization'), null);
+    assert.equal(
+      hasPremiumIntent(fallbackInit()),
+      false,
+      'non-premium reads must keep full wm-session recovery',
+    );
+  });
+
+  it('does NOT mark the pro-fresh price tape — forcePremium means something else there', async () => {
+    // `forcePremium` is overloaded. On the summarize route it means "this call
+    // requires Pro, so a 401 is an expected denial". In proFreshRpcFetch it
+    // means "attach a Bearer opportunistically for a fresher cache tier" — the
+    // route is NOT Pro-only, anonymous callers use it, and it 401s when the
+    // wms_ cookie is rejected. Marking it would strip wm-session's 401 recovery
+    // from the anonymous price tape and turn a recoverable cookie blip into a
+    // dead panel.
+    setup({ clerkToken: null });
+
+    await proFreshRpcFetch(PRO_FRESH_MARKET_TARGET);
+
+    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(sentHeaders().get('Authorization'), null, 'anonymous: unauthenticated fallback');
+    assert.equal(
+      hasPremiumIntent(fallbackInit()),
+      false,
+      'a pro-fresh market read must keep wm-session 401 recovery',
+    );
+  });
+
+  it('does not leak the marker into an authenticated request', async () => {
+    setup({ clerkToken: 'clerk-jwt' });
+
+    await premiumFetch(TARGET);
+
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer clerk-jwt');
+    assert.equal(
+      hasPremiumIntent(fallbackInit()),
+      false,
+      'an authenticated request already steps aside via its Authorization header',
+    );
   });
 
   it('premium path: signed-in user with a still-null retry falls through unauthenticated', async () => {

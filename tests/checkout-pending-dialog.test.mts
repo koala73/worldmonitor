@@ -98,10 +98,15 @@ function installBrowserGlobals(): void {
       globalThis.__pendingDialogHarness.fetchBodies.push(body);
       // With the override flag the backend skips the pending guard -> 200 + url.
       if (body && body.bypassPendingGuard === true) {
+        // Both json() and text() are modelled: a real Response exposes both,
+        // and the success path reads text() so a non-JSON 200 cannot throw an
+        // engine-specific DOMException (WORLDMONITOR-XV).
         return {
           ok: true,
           status: 200,
           json: async () => ({ checkout_url: BYPASS_URL }),
+          text: async () => JSON.stringify({ checkout_url: BYPASS_URL }),
+          headers: { get: () => null },
         };
       }
       // Otherwise the guard fires: a 409 PAYMENT_IN_PROGRESS block.
@@ -164,7 +169,14 @@ const stubSources: Record<string, string> = {
     export const showCheckoutErrorToast = () => {};
   `,
   './checkout-no-user-policy': `
-    export const decideNoUserPathOutcome = () => ({ kind: 'inline-signin', persist: true });
+    // Mirrors the real module's inline-signin sequencing (persist BEFORE
+    // sign-in); the ordering itself is owned by
+    // tests/checkout-no-user-policy.test.mts against the real function.
+    export const runNoUserPath = (_fallbackToPricingPage, handlers) => {
+      handlers.persistIntent();
+      handlers.persistAttempt();
+      handlers.openSignIn();
+    };
   `,
   './checkout-sentry-policy': `
     export const shouldSkipSentryForAction = () => false;

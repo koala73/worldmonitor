@@ -1,4 +1,7 @@
 ---
+import productFacts from '../../../shared/product-facts.generated.json';
+import TrackedProductLink from '../components/TrackedProductLink.astro';
+
 interface Props {
   title: string;
   description: string;
@@ -15,9 +18,10 @@ interface Props {
   jsonLd?: Record<string, unknown>;
   breadcrumbLd?: Record<string, unknown>;
   faqLd?: Record<string, unknown>;
+  attributionCampaign?: string;
 }
 
-const { title, description, metaTitle, keywords, ogType, ogImage, ogImageAlt, canonicalUrl, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd, faqLd } = Astro.props;
+const { title, description, metaTitle, keywords, ogType, ogImage, ogImageAlt, canonicalUrl, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd, faqLd, attributionCampaign } = Astro.props;
 const pageTitle = metaTitle || title;
 const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
 const resolvedOgImageAlt = ogImageAlt || pageTitle;
@@ -27,6 +31,8 @@ const resolvedOgImageType = resolvedOgImage.toLowerCase().split(/[?#]/)[0].endsW
 const resolvedOgType = ogType || 'website';
 const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6) : [];
 const resolvedCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
+const proCtaUrl = productFacts.product.pricingUrl;
+const proCtaLabel = productFacts.product.primaryCtaLabel;
 
 function stringifyJsonLd(value: Record<string, unknown>): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
@@ -92,7 +98,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
       @import '../styles/global.css';
     </style>
 
-    <script defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>
+    <script defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>
   </head>
   <body>
     <header class="site-header">
@@ -107,14 +113,28 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
         <ul class="nav-links">
           <li><a href="/blog/">Blog</a></li>
           <li><a href="/blog/glossary/">Glossary</a></li>
-          <li><a href="https://www.worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a></li>
-          <li><a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a></li>
+          <li>
+            <TrackedProductLink destination="dashboard" placement="header-dashboard" campaign={attributionCampaign}>
+              Dashboard
+            </TrackedProductLink>
+          </li>
+          <li>
+            <TrackedProductLink destination="pro" placement="header-pro" campaign={attributionCampaign}>
+              Pro
+            </TrackedProductLink>
+          </li>
           <li><a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a></li>
           <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         </ul>
-        <a href="https://www.worldmonitor.app/pro#waitlist" class="nav-cta" target="_blank" rel="noopener noreferrer">
-          Get Early Access
-        </a>
+        <TrackedProductLink
+          destination="pro"
+          href={proCtaUrl}
+          placement="header-primary"
+          campaign={attributionCampaign}
+          class="nav-cta"
+        >
+          {proCtaLabel}
+        </TrackedProductLink>
       </nav>
     </header>
 
@@ -133,8 +153,12 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
         </div>
         <div class="footer-links">
           <a href="/blog/authors/elie-habib/">About</a>
-          <a href="https://www.worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a>
-          <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a>
+          <TrackedProductLink destination="dashboard" placement="footer-dashboard" campaign={attributionCampaign}>
+            Dashboard
+          </TrackedProductLink>
+          <TrackedProductLink destination="pro" placement="footer-pro" campaign={attributionCampaign}>
+            Pro
+          </TrackedProductLink>
           <a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener noreferrer">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>

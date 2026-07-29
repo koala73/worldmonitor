@@ -157,9 +157,17 @@ const GATE_ENTRIES = [
   { kind: 'user_key', context: USER_KEY_CONTEXT },
 ];
 
+/**
+ * Run the gate and unwrap to its VERDICT — the rejection Response, or null when
+ * the caller passes. U3 wrapped the return in a `{ok}` union so a passing
+ * pre-check can also report the plan's MCP daily limit; every case below is
+ * about the verdict alone, so the unwrap keeps those assertions unchanged. The
+ * limit itself is covered by its own describe block further down.
+ */
 async function runGate(context, getEntitlements) {
   const { deps } = makeProDeps({ getEntitlements });
-  return authMod.runContextPreChecks(context, deps, RESOURCE_META_URL, CORS);
+  const res = await authMod.runContextPreChecks(context, deps, RESOURCE_META_URL, CORS);
+  return res.ok ? null : res.response;
 }
 
 async function assertRejected(res, label) {
@@ -255,7 +263,7 @@ describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)',
     let calls = 0;
     const { deps } = makeProDeps({ getEntitlements: async () => { calls += 1; return null; } });
     const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
-    assert.equal(res, null, 'operator env keys are intentionally ungated');
+    assert.equal(res.ok, true, 'operator env keys are intentionally ungated');
     assert.equal(calls, 0, 'env_key must not reach the entitlement gate at all');
   });
 
@@ -275,7 +283,85 @@ describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)',
       getEntitlements: async (userId) => (userId === USER_KEY_USER_ID ? entOk() : null),
     });
     const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
-    assert.equal(res, null, 'entitlement lookup must key on the resolved owner');
+    assert.equal(res.ok, true, 'entitlement lookup must key on the resolved owner');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan-driven MCP daily limit (plan 2026-07-25-001 U3 / KTD6)
+// ---------------------------------------------------------------------------
+// The pre-check is the ONLY place the entitlement object is already in hand, so
+// it is where the daily MCP limit is resolved — dispatch threads the value into
+// `reserveQuota` rather than re-fetching. These cases pin the resolution itself;
+// tests/mcp-quota-plan-driven.test.mjs pins the enforcement it feeds.
+
+const withLimits = (planKey, mcpCallsPerDay, tier = 1) => ({
+  planKey,
+  features: {
+    tier,
+    mcpAccess: true,
+    planLimits: {
+      apiRequestsPerDay: 0,
+      apiBurstRequestsPerMinute: 0,
+      mcpCallsPerDay,
+      mcpBurstRequestsPerMinute: 60,
+    },
+  },
+  validUntil: Date.now() + DAY,
+});
+
+describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / KTD6)', () => {
+  it('pro context carries the plan limit through to the caller (pro_business → 250)', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_business_monthly', 250) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true, 'an entitled Pro Business owner passes the gate');
+    assert.equal(res.mcpDailyLimit, 250, 'the resolved limit rides on the pass result');
+  });
+
+  it('pro context with the Pro plan resolves 50 (the plan value, which happens to equal the default)', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_monthly', 50) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+    assert.equal(res.mcpDailyLimit, 50);
+  });
+
+  it('pro context with an unlimited plan resolves null (distinct from "missing")', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('enterprise', null, 3) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+    assert.equal(res.mcpDailyLimit, null, 'null is the unlimited sentinel, not an absent value');
+  });
+
+  it('pro context on a legacy row without planLimits resolves undefined → caller applies the 50 default', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => entOk() });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+    assert.equal(res.mcpDailyLimit, undefined);
+  });
+
+  it('KTD6: user_key DROPS the plan limit even when the owner is on a 10k plan', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
+    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true, 'the owner is entitled — only the LIMIT is withheld');
+    assert.equal(
+      res.mcpDailyLimit, undefined,
+      'raising API-plan MCP allowances is a deliberate follow-up; user_key keeps the hardcoded cap',
+    );
+  });
+
+  it('env_key passes with no limit at all (never metered by the daily counter)', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
+    const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+    assert.equal(res.mcpDailyLimit, undefined);
+  });
+
+  it('a rejected gate carries the Response and no limit (fail-closed shape is unambiguous)', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => null });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false);
+    assert.ok(res.response instanceof Response);
+    assert.equal(res.mcpDailyLimit, undefined);
   });
 });
 

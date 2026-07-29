@@ -261,7 +261,7 @@ paths:
                                       "name": "WorldMonitor Analyst"
                                 "marketCode": "US"
                                 "range": "7d"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListConsumerPriceCategoriesResponse'
                 "400":

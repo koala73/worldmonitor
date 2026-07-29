@@ -1215,6 +1215,49 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'counter must return to the cap after the rejected reservation rolls back (initialCount=50, no net change)');
   });
 
+  it('auth symmetry extends to the PLAN limit: a Pro Business read is capped at 250, not 50', async () => {
+    // The plan-driven allowance (2026-07-25-001 U3) is resolved by the context
+    // pre-check and threaded through buildResourceResponse into the dispatcher.
+    // If that thread is dropped, a resources/read silently falls back to the
+    // 50/day default while the equivalent tools/call allows 250 — the exact
+    // asymmetry the auth-symmetry contract above exists to forbid, just
+    // pointing the other way (under-serving a paying customer).
+    const proBusiness = async () => ({
+      planKey: 'pro_business_monthly',
+      features: {
+        tier: 1,
+        mcpAccess: true,
+        planLimits: {
+          apiRequestsPerDay: 0,
+          apiBurstRequestsPerMinute: 0,
+          mcpCallsPerDay: 250,
+          mcpBurstRequestsPerMinute: 60,
+        },
+      },
+      validUntil: Date.now() + 86_400_000,
+    });
+
+    const { deps, pipe } = makeProDeps({
+      pipelineOpts: { initialCount: 60 },
+      getEntitlements: proBusiness,
+    });
+    const res = await mcpHandler(proReq('POST', readBody('worldmonitor://countries/de/risk')), deps);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `read at count 60 must succeed on a 250/day plan, got: ${JSON.stringify(body.error)}`);
+    assert.equal(pipe.count, 61);
+
+    const { deps: depsCapped, pipe: pipeCapped } = makeProDeps({
+      pipelineOpts: { initialCount: 250 },
+      getEntitlements: proBusiness,
+    });
+    const capped = await mcpHandler(proReq('POST', readBody('worldmonitor://countries/de/risk')), depsCapped);
+    assert.equal(capped.status, 429, 'the 251st read must still hit the plan cap');
+    const cappedBody = await capped.json();
+    assert.equal(cappedBody.error?.code, -32029);
+    assert.match(cappedBody.error.message, /\(250\/day\)/, 'the re-emitted inner message must quote the plan limit');
+    assert.equal(pipeCapped.count, 250);
+  });
+
   it('cap-exhausted resources/read forwards Retry-After header (parity with tools/call)', async () => {
     // Greptile P1 regression guard. A correctly-implemented MCP client
     // backing off on 429 will retry immediately if Retry-After is absent.

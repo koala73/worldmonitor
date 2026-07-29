@@ -636,6 +636,13 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-size: 0.9rem;
 }
 
+.cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
 .cta-banner a.btn {
   display: inline-block;
   background: var(--wm-green);
@@ -653,6 +660,17 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 .cta-banner a.btn:hover {
   background: #86efac;
   color: var(--wm-bg);
+}
+
+.cta-banner a.btn-secondary {
+  background: transparent;
+  color: var(--wm-green);
+  border: 1px solid var(--wm-green);
+}
+
+.cta-banner a.btn-secondary:hover {
+  background: rgba(74, 222, 128, 0.1);
+  color: #86efac;
 }
 
 /* ─── Author Bio ─── */
@@ -717,4 +735,6 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   .article-content { padding: 0 1.25rem 2rem; }
   .article-header { padding-left: 1.25rem; padding-right: 1.25rem; }
   .related-posts { padding: 0 1.25rem; }
+  .cta-actions { align-items: stretch; flex-direction: column; }
+  .cta-banner a.btn { width: 100%; }
 }

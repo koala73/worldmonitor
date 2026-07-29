@@ -1,4 +1,11 @@
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+
+const {
+  parseProxyConfig,
+  proxyConnectTunnel,
+  proxyFetch,
+} = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 export const CROSS_STRAIT_ACTIVITY_KEY = 'military:cross-strait-activity:v1';
 export const MND_MAX_LIST_PAGES_PER_BACKFILL_RUN = 11;
@@ -8,6 +15,18 @@ export const MND_REQUIRED_REPORTING_DAYS = 91;
 export const MND_RETENTION_REPORTING_DAYS = 365;
 export const MND_MAX_REVISION_VINTAGES_PER_DAY = 20;
 export const CROSS_STRAIT_ACTIVITY_MAX_SERIALIZED_BYTES = 4 * 1024 * 1024;
+/**
+ * Reasons that justify reporting a source as durably blocked rather than
+ * failing. Both mean no configured transport path can reach the publisher, so
+ * retained reviewed records are the best obtainable truth and health must not
+ * be pinned on an outage that will never clear on its own. Every consumer that
+ * branches on `blockedReason` reads this list — widening it in one place only
+ * is how a new reason silently degrades to `error`.
+ */
+export const CROSS_STRAIT_BLOCKED_SOURCE_REASONS = Object.freeze([
+  'HTTP_403',
+  'PROXY_TARGET_FORBIDDEN',
+]);
 
 const USER_AGENT = 'WorldMonitor/2.10 (+https://worldmonitor.app)';
 const MND_LIST_URL = 'https://www.mnd.gov.tw/en/news/plaactlist';
@@ -23,6 +42,7 @@ const MND_REFRESH_ROTATION_INTERVAL_MS = 3 * 60 * 60 * 1_000;
 const DAY_MS = 86_400_000;
 const MAX_PERSISTED_STRING_LENGTH = 2_048;
 const MAX_SOURCE_URL_LENGTH = 512;
+const PROXY_DIAGNOSTIC_MAX_CHARS = 256;
 
 function monotonicNow() {
   return globalThis.performance.now();
@@ -71,16 +91,28 @@ export const CROSS_STRAIT_SOURCE_CONTRACTS = Object.freeze({
     redirectPolicy: 'error',
     maxResponseBytes: JMOD_MAX_RESPONSE_BYTES,
     requestCadenceMs: REQUEST_CADENCE_MS,
+    // Documents the fixed one-direct-then-one-proxy flow hard-coded in
+    // fetchJapanIndexOutcome; these bounds are not read back to drive it.
+    maxRequestsPerRun: 2,
+    maxDirectRequestsPerRun: 1,
+    maxProxyRequestsPerRun: 1,
+    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     documentAdmission: 'manual_review_required',
     runtimePdfRequestsPerRun: 0,
+    // A proxy CONNECT refusal is emitted before the tunnel reaches Japan MOD,
+    // so on its own it cannot separate "this provider forbids this destination"
+    // from "the proxy is down for everything". One CONNECT-only control tunnel
+    // to a host we already contract with settles that, and is torn down without
+    // sending a byte — so it is transport telemetry, not a source request, and
+    // it deliberately targets a host other than the one under test.
+    proxyControlProbeHost: 'www.mnd.gov.tw',
+    maxProxyControlProbesPerRun: 1,
     preflight: Object.freeze({
       environment: 'railway-production',
-      checkedAt: '2026-07-25',
-      reachable: true,
+      checkedAt: '2026-07-26',
+      reachable: false,
       redirectCount: 0,
-      observedIndexStatus: 206,
-      observedPdfStatus: 206,
-      largestObservedBytes: 400_725,
+      observedIndexStatus: 403,
     }),
   }),
 });
@@ -1119,9 +1151,13 @@ function decodeHtml(value) {
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) => decodeNumericEntity(hex, 16))
     .replace(/&#(\d+);/g, (_, digits) => decodeNumericEntity(digits, 10))
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
+    // &amp; must decode LAST so one pass decodes exactly one level
+    // (`&amp;quot;` stays the literal text `&quot;`). Accepted residual,
+    // same as PR #5432: `&#38;quot;` still double-decodes because numerics
+    // run before the named entities.
+    .replace(/&amp;/gi, '&')
     .replace(/\r/g, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s+/g, '\n')
@@ -1417,11 +1453,8 @@ export async function readBoundedTextResponse(response, maxBytes) {
   return Buffer.concat(chunks, total).toString('utf8');
 }
 
-async function fetchBoundedText(fetchFn, url, sourceContract) {
-  if (!isAllowedSourceUrl(url, sourceContract)) {
-    throw new Error('UNSAFE_SOURCE_URL');
-  }
-  const response = await fetchFn(url, {
+function boundedHtmlRequestInit(sourceContract) {
+  return {
     headers: {
       Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
       'Accept-Language': 'en',
@@ -1429,8 +1462,83 @@ async function fetchBoundedText(fetchFn, url, sourceContract) {
     },
     redirect: sourceContract.redirectPolicy,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  };
+}
+
+async function fetchBoundedText(fetchFn, url, sourceContract) {
+  if (!isAllowedSourceUrl(url, sourceContract)) {
+    throw new Error('UNSAFE_SOURCE_URL');
+  }
+  const response = await fetchFn(url, boundedHtmlRequestInit(sourceContract));
   return readBoundedTextResponse(response, sourceContract.maxResponseBytes);
+}
+
+function shouldProxyJapanModFailure(error) {
+  const code = errorCode(error);
+  if (code === 'SOURCE_ERROR' || code === 'TIMEOUT') return true;
+  const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
+  return status === 403
+    || status === 408
+    || status === 425
+    || status === 429
+    || status >= 500;
+}
+
+async function fetchJapanModViaConfiguredProxy(input, init, {
+  proxyUrl,
+  proxyRequestFn,
+}) {
+  const maxResponseBytes = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxResponseBytes;
+  const proxyConfig = parseProxyConfig(proxyUrl);
+  if (!proxyConfig) throw new Error('PROXY_CONFIG_INVALID');
+  const result = await proxyRequestFn(String(input), proxyConfig, {
+    // init.headers (from boundedHtmlRequestInit) always carries an Accept
+    // header, which proxyFetch's header spread applies after its own
+    // `accept` default — so headers.Accept is the actual source of truth.
+    headers: init?.headers,
+    method: init?.method ?? 'GET',
+    maxResponseBytes,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    signal: init?.signal,
+  });
+  const status = Number(result.status);
+  if (!Number.isInteger(status) || status < 200 || status >= 300) {
+    throw Object.assign(
+      new Error(`HTTP_${Number.isInteger(status) ? status : 'UNKNOWN'}`),
+      {
+        status: Number.isInteger(status) ? status : null,
+        contentType: result?.contentType,
+        bodyPrefix: proxyBodyPrefix(result?.buffer),
+        proxyStage: 'response',
+      },
+    );
+  }
+  if (!Buffer.isBuffer(result?.buffer)) {
+    throw Object.assign(new Error('PROXY_RESPONSE_INVALID'), {
+      status,
+      contentType: result?.contentType,
+      proxyStage: 'response',
+    });
+  }
+  if (result.buffer.byteLength > maxResponseBytes) {
+    throw Object.assign(new Error('RESPONSE_TOO_LARGE'), {
+      status,
+      contentType: result.contentType,
+      bodyPrefix: proxyBodyPrefix(result.buffer),
+      proxyStage: 'response',
+    });
+  }
+  return {
+    html: result.buffer.toString('utf8'),
+    detail: buildProxyDiagnosticDetail({
+      stage: 'response',
+      httpStatus: status,
+      contentType: result.contentType,
+      bodyPrefix: proxyBodyPrefix(result.buffer),
+      errorCode: null,
+      errorMessage: null,
+    }),
+  };
 }
 
 function withoutNestedHistory(observation) {
@@ -1678,15 +1786,32 @@ export function buildCrossStraitActivitySnapshot({
         .slice(-MND_MAX_REVISION_VINTAGES_PER_DAY),
     }));
 
+  const previousJapanById = new Map(
+    (previousSnapshot?.observations ?? [])
+      .filter((row) => row?.sourceId === 'japan-mod')
+      .map((row) => [row.id, row]),
+  );
+  const hasCurrentJapanIndex = japanOutcome?.ok === true;
   const availableJapanUrls = new Set(japanOutcome?.availableDocumentUrls ?? []);
   const japan = REVIEWED_JAPAN_MOD_OBSERVATIONS.map((row) => ({
     ...structuredClone(row),
-    indexPresence: availableJapanUrls.has(row.sourceUrl) ? 'present' : 'not_observed_in_current_index',
+    indexPresence: hasCurrentJapanIndex
+      ? (availableJapanUrls.has(row.sourceUrl) ? 'present' : 'not_observed_in_current_index')
+      : (previousJapanById.get(row.id)?.indexPresence ?? 'unknown'),
   }));
   const observations = [...mnd, ...japan];
   const usableMndReportingDays = new Set(mnd.map((row) => row.reportingDay)).size;
   const mndContract = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd;
   const japanContract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
+  const previousJapanSource = previousSnapshot?.sources
+    ?.find((source) => source?.id === japanContract.id);
+  const unreviewedCandidateCount = hasCurrentJapanIndex
+    ? Math.max(
+        0,
+        (japanOutcome?.availableDocumentUrls?.length ?? 0)
+          - REVIEWED_JAPAN_MOD_OBSERVATIONS.filter((row) => availableJapanUrls.has(row.sourceUrl)).length,
+      )
+    : previousJapanSource?.unreviewedCandidateCount;
   const sources = [
     {
       id: mndContract.id,
@@ -1707,19 +1832,35 @@ export function buildCrossStraitActivitySnapshot({
       claimSemantics: 'reviewed_regional_augmentation',
       transportStatus: japanOutcome?.ok ? 'fresh' : 'error',
       requestCount: japanOutcome?.requestCount ?? 0,
+      transportPath: japanOutcome?.transportPath ?? 'direct',
+      ...(japanOutcome?.blockedReason
+        ? { blockedReason: japanOutcome.blockedReason }
+        : {}),
+      ...(japanOutcome?.fallbackReason
+        ? { fallbackReason: japanOutcome.fallbackReason }
+        : {}),
+      ...(japanOutcome?.proxyFailureReason
+        ? { proxyFailureReason: japanOutcome.proxyFailureReason }
+        : {}),
+      ...(japanOutcome?.proxyFailureDetail
+        ? { proxyFailureDetail: japanOutcome.proxyFailureDetail }
+        : {}),
+      ...(japanOutcome?.proxyControlProbe
+        ? { proxyControlProbe: japanOutcome.proxyControlProbe }
+        : {}),
       errorCodes: japanOutcome?.errorCodes ?? [],
       lastSuccessAt: japanOutcome?.ok
         ? generatedAt
         : latestSourceSuccess(previousSnapshot, 'japan-mod'),
       admittedDocumentCount: REVIEWED_JAPAN_MOD_OBSERVATIONS.length,
-      unreviewedCandidateCount: Math.max(
-        0,
-        (japanOutcome?.availableDocumentUrls?.length ?? 0)
-          - REVIEWED_JAPAN_MOD_OBSERVATIONS.filter((row) => availableJapanUrls.has(row.sourceUrl)).length,
-      ),
+      ...(Number.isInteger(unreviewedCandidateCount)
+        ? { unreviewedCandidateCount }
+        : {}),
     },
   ];
-  const anyError = sources.some((source) => source.transportStatus === 'error');
+  const anyError = sources.some(
+    (source) => source.transportStatus === 'error' && !source.blockedReason,
+  );
   return constrainCrossStraitActivitySnapshotSize({
     schemaVersion: 1,
     generatedAt,
@@ -1746,6 +1887,110 @@ function errorCode(error) {
   if (/MND_/.test(value)) return value.match(/MND_[A-Z0-9_]+/)?.[0] ?? 'MND_PARSE_ERROR';
   if (/JMOD_/.test(value)) return value.match(/JMOD_[A-Z0-9_]+/)?.[0] ?? 'JMOD_PARSE_ERROR';
   return 'SOURCE_ERROR';
+}
+
+function boundedDiagnosticString(value, maxChars = PROXY_DIAGNOSTIC_MAX_CHARS) {
+  if (typeof value !== 'string') return null;
+  const normalized = value
+    .replace(/(https?:\/\/)[^@\s/]+@/giu, '$1[redacted]@')
+    .replace(/(Proxy-Authorization:\s*)[^\r\n]+/giu, '$1[redacted]')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return normalized ? normalized.slice(0, maxChars) : null;
+}
+
+function proxyBodyPrefix(value) {
+  if (!Buffer.isBuffer(value)) return null;
+  return boundedDiagnosticString(
+    value.toString('utf8', 0, 1_024),
+  );
+}
+
+function buildProxyDiagnosticDetail({
+  stage,
+  httpStatus = null,
+  contentType = null,
+  bodyPrefix = null,
+  errorCode: detailErrorCode = null,
+  errorMessage = null,
+}) {
+  const status = Number(httpStatus);
+  return {
+    stage,
+    httpStatus: Number.isInteger(status) && status >= 100 && status <= 599
+      ? status
+      : null,
+    contentType: boundedDiagnosticString(contentType, 128),
+    bodyPrefix: boundedDiagnosticString(bodyPrefix),
+    errorCode: boundedDiagnosticString(detailErrorCode, 64),
+    errorMessage: boundedDiagnosticString(errorMessage),
+  };
+}
+
+function proxyFailureDetail(error) {
+  const message = String(error?.message ?? '');
+  return buildProxyDiagnosticDetail({
+    stage: error?.proxyStage === 'response'
+      ? 'response'
+      : (/Proxy CONNECT:/i.test(message) ? 'connect' : 'request'),
+    httpStatus: error?.status,
+    contentType: error?.contentType,
+    bodyPrefix: error?.bodyPrefix,
+    errorCode: error?.code,
+    errorMessage: message,
+  });
+}
+
+function proxyErrorCode(error) {
+  const code = errorCode(error);
+  if (Number(error?.status) === 407
+    || code === 'HTTP_407'
+    || /Proxy CONNECT:[^\n]*\b407\b/i.test(String(error?.message ?? ''))) {
+    return 'PROXY_AUTH_FAILED';
+  }
+  if (Number(error?.status) === 403
+    && /Proxy CONNECT:[^\n]*\b403\b/i.test(String(error?.message ?? ''))) {
+    return 'PROXY_CONNECT_FORBIDDEN';
+  }
+  return String(error?.message ?? '').match(/PROXY_[A-Z0-9_]+/)?.[0] ?? code;
+}
+
+function blockedJapanProxyReason(directFailureCode, proxyFailureCode, proxyControlProbe) {
+  if (directFailureCode !== 'HTTP_403') return null;
+  // A 403 received *after* CONNECT is Japan MOD itself refusing the proxied
+  // request, so both source-facing paths are externally blocked.
+  if (proxyFailureCode === 'HTTP_403') return 'HTTP_403';
+  // A CONNECT refusal never reaches Japan MOD, so it cannot prove a source
+  // block on its own — that is why #5718 left it degraded. What it does prove,
+  // once a control tunnel to a different host succeeds in the same run through
+  // the same credentials, is that the provider forbids this destination
+  // specifically. Direct egress is refused by the source and the only proxy
+  // refuses the target, so no configured transport path exists and the state is
+  // durable rather than an outage awaiting remediation. Without that control
+  // evidence a proxy-wide failure would masquerade as an upstream block, so the
+  // unprobed and probe-failed cases stay degraded and operator-visible.
+  if (proxyFailureCode === 'PROXY_CONNECT_FORBIDDEN' && proxyControlProbe === 'reachable') {
+    return 'PROXY_TARGET_FORBIDDEN';
+  }
+  return null;
+}
+
+/**
+ * Opens a CONNECT tunnel through the configured proxy to the control host and
+ * immediately tears it down. No HTTP request is issued and no application byte
+ * is written, so this measures exactly one thing: whether the proxy is willing
+ * to tunnel anywhere at all.
+ */
+async function probeJapanProxyControlTunnel(host, {
+  proxyUrl,
+  proxyConnectFn,
+}) {
+  const proxyConfig = parseProxyConfig(proxyUrl);
+  if (!proxyConfig) throw new Error('PROXY_CONFIG_INVALID');
+  const tunnel = await proxyConnectFn(host, proxyConfig, {
+    timeoutMs: REQUEST_TIMEOUT_MS,
+  });
+  tunnel?.destroy?.();
 }
 
 function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
@@ -1776,25 +2021,120 @@ function hasMndOutboundBudget({ runStartedAt, nowFn, cadenceMs }) {
   return nowFn() - runStartedAt + cadenceMs + REQUEST_TIMEOUT_MS <= MND_OUTBOUND_BUDGET_MS;
 }
 
-async function fetchJapanIndexOutcome(fetchFn, sleepFn) {
+async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
+  proxyFetchFn = null,
+  proxyConnectProbeFn = null,
+} = {}) {
+  const contract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
+  let html;
+  let requestCount = 1;
+  let transportPath = 'direct';
+  let fallbackReason = null;
+  let proxyResponseDetail = null;
   try {
     await sleepFn(REQUEST_CADENCE_MS);
-    const contract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
-    const html = await fetchBoundedText(fetchFn, contract.indexUrl, contract);
+    html = await fetchBoundedText(fetchFn, contract.indexUrl, contract);
+  } catch (directError) {
+    if (!proxyFetchFn || !shouldProxyJapanModFailure(directError)) {
+      return {
+        ok: false,
+        requestCount,
+        transportPath,
+        availableDocumentUrls: [],
+        errorCodes: [errorCode(directError)],
+      };
+    }
+    fallbackReason = errorCode(directError);
+    requestCount += 1;
+    transportPath = 'proxy';
+    try {
+      await sleepFn(REQUEST_CADENCE_MS);
+      const proxyResult = await proxyFetchFn(contract.indexUrl, boundedHtmlRequestInit(contract));
+      html = proxyResult.html;
+      proxyResponseDetail = proxyResult.detail;
+    } catch (proxyError) {
+      const failureCode = proxyErrorCode(proxyError);
+      // Only a CONNECT refusal is ambiguous enough to be worth a control
+      // tunnel; every other proxy failure already reached Japan MOD or names
+      // its own cause, so it must not spend an extra outbound connection.
+      //
+      // The probe is a diagnostic and must never be able to fail the run that
+      // uses it: this sits inside the proxy catch block and the caller awaits
+      // the Japan outcome unguarded, so an escaping throw would take down the
+      // healthy Taiwan MND feed too. Any failure -- rejection, synchronous
+      // throw, or a non-thenable return -- resolves to `unreachable`, which
+      // fails closed and keeps the source degraded and operator-visible.
+      const proxyControlProbe = failureCode === 'PROXY_CONNECT_FORBIDDEN' && proxyConnectProbeFn
+        ? await (async () => {
+            try {
+              const pending = proxyConnectProbeFn(contract.proxyControlProbeHost);
+              // Only an awaited tunnel counts as evidence. A probe that returns
+              // a non-thenable never opened anything, and `await` on it would
+              // resolve immediately and read as `reachable` -- a false green on
+              // exactly the axis this probe exists to guard.
+              if (typeof pending?.then !== 'function') return 'unreachable';
+              await pending;
+              return 'reachable';
+            } catch {
+              return 'unreachable';
+            }
+          })()
+        : undefined;
+      const blockedReason = blockedJapanProxyReason(
+        fallbackReason,
+        failureCode,
+        proxyControlProbe,
+      );
+      return {
+        ok: false,
+        ...(blockedReason ? { blockedReason } : {}),
+        requestCount,
+        transportPath,
+        fallbackReason,
+        proxyFailureReason: failureCode,
+        proxyFailureDetail: proxyFailureDetail(proxyError),
+        ...(proxyControlProbe ? { proxyControlProbe } : {}),
+        availableDocumentUrls: [],
+        errorCodes: [...new Set([fallbackReason, failureCode])],
+      };
+    }
+  }
+
+  try {
     const rows = parseJapanModIndex(html);
     if (rows.length === 0) throw new Error('JMOD_INDEX_EMPTY');
     return {
       ok: true,
-      requestCount: 1,
+      requestCount,
+      transportPath,
+      ...(fallbackReason ? { fallbackReason } : {}),
       availableDocumentUrls: rows.map((row) => row.sourceUrl),
       errorCodes: [],
     };
   } catch (error) {
+    const failureCode = errorCode(error);
     return {
       ok: false,
-      requestCount: 1,
+      requestCount,
+      transportPath,
+      ...(fallbackReason ? { fallbackReason } : {}),
+      ...(transportPath === 'proxy'
+        ? { proxyFailureReason: failureCode }
+        : {}),
+      ...(transportPath === 'proxy'
+        ? {
+            proxyFailureDetail: buildProxyDiagnosticDetail({
+              ...proxyResponseDetail,
+              stage: 'parse',
+              errorCode: failureCode,
+              errorMessage: error?.message,
+            }),
+          }
+        : {}),
       availableDocumentUrls: [],
-      errorCodes: [errorCode(error)],
+      errorCodes: fallbackReason
+        ? [...new Set([fallbackReason, failureCode])]
+        : [failureCode],
     };
   }
 }
@@ -1806,6 +2146,10 @@ export async function fetchCrossStraitActivitySnapshot({
   previousSnapshot = null,
   mndListUrl = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  proxyUrl = process.env.JAPAN_MOD_PROXY_URL || process.env.PROXY_URL || '',
+  proxyRequestFn = proxyFetch,
+  proxyConnectFn = proxyConnectTunnel,
+  proxyConnectProbeFn = null,
 } = {}) {
   const generatedAt = new Date(now).toISOString();
   const previousMnd = (previousSnapshot?.observations ?? [])
@@ -1819,7 +2163,22 @@ export async function fetchCrossStraitActivitySnapshot({
   const unseenBackfillCandidates = new Map();
   const mndErrors = [];
   const mndContract = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd;
-  const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn);
+  const resolvedJapanProxyFetchFn = proxyUrl
+    ? (input, init) => fetchJapanModViaConfiguredProxy(input, init, {
+        proxyUrl,
+        proxyRequestFn,
+      })
+    : null;
+  const resolvedJapanProxyConnectProbeFn = proxyUrl
+    ? (proxyConnectProbeFn ?? ((host) => probeJapanProxyControlTunnel(host, {
+        proxyUrl,
+        proxyConnectFn,
+      })))
+    : null;
+  const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn, {
+    proxyFetchFn: resolvedJapanProxyFetchFn,
+    proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
+  });
   let discoveredCount = 0;
   let requestCount = 0;
   const runStartedAt = nowFn();

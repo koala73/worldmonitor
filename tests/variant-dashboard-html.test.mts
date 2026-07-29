@@ -9,8 +9,8 @@ import { VARIANT_META } from '../src/config/variant-meta';
 
 // Mirrors the exact markup shapes of the BUILT dist/dashboard.html (index.html
 // after htmlVariantPlugin with the full meta): trailing ` />` on metas,
-// pretty-printed JSON-LD with the WebApplication block first, hreflang cluster
-// with ?lang= suffixes, and the visually-hidden app-heading <h1>. If the real
+// pretty-printed JSON-LD with the WebApplication block first, the English-only
+// hreflang discovery pair, and the visually-hidden app-heading <h1>. If the real
 // markup drifts, renderVariantDashboardHtml throws at build time — this
 // fixture only exercises the transform logic.
 const FULL = VARIANT_META.full;
@@ -23,7 +23,7 @@ const fixture = `<!doctype html>
     <meta name="keywords" content="${FULL.keywords}" />
     <link rel="canonical" href="${FULL.url}" />
     <link rel="alternate" hreflang="x-default" href="${FULL.url}" />
-    <link rel="alternate" hreflang="fr" href="${FULL.url}?lang=fr" />
+    <link rel="alternate" hreflang="en" href="${FULL.url}" />
     <meta name="application-name" content="World Monitor" />
     <meta name="subject" content="${FULL.subject}" />
     <meta name="classification" content="${FULL.classification}" />
@@ -93,7 +93,7 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     }
   });
 
-  it('rewrites brand meta, hreflang cluster, social images, and h1 for tech', () => {
+  it('rewrites brand meta, English discovery links, social images, and h1 for tech', () => {
     const html = renderVariantDashboardHtml(fixture, 'tech');
     const tech = VARIANT_META.tech;
     assert.ok(html.includes(`<title>${escHtml(tech.title)}</title>`), 'title');
@@ -102,13 +102,14 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.ok(html.includes(`<meta name="application-name" content="Tech Monitor" />`), 'application-name');
     assert.ok(html.includes(`<meta name="subject" content="${escHtml(tech.subject)}" />`), 'subject');
     assert.ok(
-      html.includes(`<link rel="alternate" hreflang="fr" href="${tech.url}?lang=fr" />`),
-      'hreflang keeps ?lang suffix on the variant host',
+      html.includes(`<link rel="alternate" hreflang="en" href="${tech.url}" />`),
+      'English alternate moves to the variant host without query-string application state',
     );
     assert.ok(
       html.includes(`<link rel="alternate" hreflang="x-default" href="${tech.url}" />`),
       'x-default alternate moves to the variant host',
     );
+    assert.doesNotMatch(html, /hreflang="[^"]+"\s+href="[^"]*[?&]lang=/);
     assert.ok(
       html.includes('content="https://tech.worldmonitor.app/favico/tech/og-image.png"'),
       'og/twitter image points at the variant OG asset',
@@ -150,6 +151,17 @@ describe('renderVariantDashboardHtml (#4996)', () => {
       `<link rel="canonical" href="${FULL.url}" />\n    <link rel="canonical" href="${FULL.url}" />`,
     );
     assert.throws(() => renderVariantDashboardHtml(doubled, 'tech'), /anchor "canonical" matched 2/);
+  });
+
+  it('throws when a query-string locale is reintroduced as an indexable alternate', () => {
+    const withPseudoLocale = fixture.replace(
+      `<link rel="alternate" hreflang="en" href="${FULL.url}" />`,
+      `<link rel="alternate" hreflang="en" href="${FULL.url}" />\n    <link rel="alternate" hreflang="fr" href="${FULL.url}?lang=fr" />`,
+    );
+    assert.throws(
+      () => renderVariantDashboardHtml(withPseudoLocale, 'tech'),
+      /anchor "hreflang alternates" matched 3 time\(s\), expected 2\.\.2/,
+    );
   });
 
   it('rejects unknown variants and the full variant itself', () => {

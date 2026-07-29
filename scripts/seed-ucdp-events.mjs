@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 
-import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { compactUcdpDashboardPayload } from './_ucdp-dashboard.mjs';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const REDIS_KEY = 'conflict:ucdp-events:v1';
 // Dashboard-sized projection. The bootstrap slow tier hydrates from THIS key so
@@ -30,29 +28,6 @@ const VIOLENCE_TYPE_MAP = {
 };
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-function loadEnvFile() {
-  let envPath = join(__dirname, '..', '.env.local');
-  if (!existsSync(envPath)) {
-    envPath = join('/Users/eliehabib/Documents/GitHub/worldmonitor', '.env.local');
-  }
-  if (!existsSync(envPath)) return;
-  const lines = readFileSync(envPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    let val = trimmed.slice(eqIdx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]) {
-      process.env[key] = val;
-    }
-  }
-}
 
 function maskToken(token) {
   if (!token || token.length < 8) return '***';
@@ -107,7 +82,7 @@ function getMaxDateMs(events) {
 }
 
 async function main() {
-  loadEnvFile();
+  loadEnvFile(import.meta.url);
 
   const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
   const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;

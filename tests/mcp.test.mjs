@@ -12,6 +12,7 @@ import {
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
 import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -433,12 +434,16 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 42 tools with name, description, inputSchema', async () => {
+  it('tools/list returns every registered tool with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 42, `Expected 42 tools, got ${body.result.tools.length}`);
+    assert.equal(
+      body.result.tools.length,
+      TOOL_REGISTRY.length,
+      `Expected ${TOOL_REGISTRY.length} tools, got ${body.result.tools.length}`,
+    );
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -1052,7 +1057,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
-    const macro = await buildOfficialChinaMacroFixture();
+    // Live clock: this test asserts on the MCP projection, which re-derives
+    // transport freshness against Date.now(). A pinned fixture time expires
+    // 72h later and reddens main for every branch (#5762).
+    const macro = await buildOfficialChinaMacroFixture(Date.now());
     const releaseCalendar = {
       events: [{ countryCode: 'CN', event: 'NBS release' }],
     };
@@ -1125,7 +1133,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_economic_data: China MCP projection keeps retained transport failures explicit', async () => {
-    const macro = await buildOfficialChinaMacroFixture();
+    // Live clock: this test asserts on the MCP projection, which re-derives
+    // transport freshness against Date.now(). A pinned fixture time expires
+    // 72h later and reddens main for every branch (#5762).
+    const macro = await buildOfficialChinaMacroFixture(Date.now());
     const nbsDecision = macro.sourceDecisions.find(
       (decision) => decision.publisherId === 'publisher:nbs-cn',
     );

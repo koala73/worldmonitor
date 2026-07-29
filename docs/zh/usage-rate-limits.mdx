@@ -65,7 +65,7 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 
 这些端点大多使用默认公开 API 限制。缓存头因端点而异：
 
-- `GET /api/bootstrap` — 浏览器 / 会话响应保留默认缓存策略：全键响应使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 加上 fast 层 `CDN-Cache-Control`；显式 `?tier=fast` / `?tier=slow` 请求使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。密钥认证响应使用 `Cache-Control: no-store` 且不发出 CDN 缓存头。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
+- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
 - `GET /api/health` — `private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`。
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。
 

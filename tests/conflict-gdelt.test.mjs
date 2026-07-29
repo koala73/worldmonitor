@@ -44,6 +44,26 @@ test('mapGdeltArticlesToEvents emits {country, event_date} in the EMA-readable s
   // event_date is the field the EMA reads — the bug this fixes was its absence
   assert.equal(events[0].event_date, '2026-07-09');
   assert.ok('event_date' in events[0]);
+  assert.equal(events[0].title, 'a');
+  assert.equal(events[0].url, 'https://x/1');
+});
+
+test('mapGdeltArticlesToEvents uses durable identities across reordered and replaced DOC responses', () => {
+  const firstRun = mapGdeltArticlesToEvents([
+    { seendate: '20260709T140000Z', domain: 'reuters.com', url: 'https://example.com/story?b=2&a=1#section', title: 'First story' },
+    { seendate: '20260709T130000Z', domain: 'apnews.com', url: 'https://example.com/other', title: 'Second story' },
+  ], 'SD');
+  const secondRun = mapGdeltArticlesToEvents([
+    { seendate: '20260709T130000Z', domain: 'apnews.com', url: 'https://example.com/other', title: 'Second story' },
+    { seendate: '20260709T140000Z', domain: 'reuters.com', url: 'https://example.com/story?a=1&b=2', title: 'First story' },
+    { seendate: '20260709T120000Z', domain: 'bbc.com', url: 'https://example.com/replacement', title: 'Replacement story' },
+  ], 'SD');
+
+  assert.equal(secondRun[0].id, firstRun[1].id);
+  assert.equal(secondRun[1].id, firstRun[0].id);
+  assert.notEqual(secondRun[2].id, firstRun[0].id);
+  assert.notEqual(secondRun[2].id, firstRun[1].id);
+  assert.match(firstRun[0].id, /^gdelt-SD-[a-f0-9]{16}$/);
 });
 
 test('mapGdeltArticlesToEvents drops articles with an unparseable seendate', () => {

@@ -1,0 +1,66 @@
+name: IndexNow Submission
+
+# Submit the canonical apex MCP URL only after Vercel reports that the exact
+# production deployment succeeded. The changed-file gate avoids resubmitting an
+# unchanged URL on unrelated deploys; workflow_dispatch remains available for
+# an operator-requested recovery submission.
+on:
+  deployment_status:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexnow-production
+  cancel-in-progress: false
+
+jobs:
+  submit-mcp:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment.environment == 'Production' &&
+        github.event.deployment.creator.login == 'vercel[bot]'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Check whether the deployed MCP surface changed
+        id: relevant
+        shell: bash
+        env:
+          DEPLOYED_SHA: ${{ github.event.deployment.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          APEX_KEY_PATH="$(
+            node --input-type=module -e "
+              import { INDEXNOW_BATCHES } from './scripts/seo-indexnow-submit.mjs';
+              const batch = INDEXNOW_BATCHES.find(({ host }) => host === 'worldmonitor.app');
+              process.stdout.write(new URL(batch.keyLocation).pathname.slice(1));
+            "
+          )"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "submit=true" >> "$GITHUB_OUTPUT"
+          elif ! git rev-parse "${DEPLOYED_SHA}^" >/dev/null 2>&1; then
+            echo "submit=true" >> "$GITHUB_OUTPUT"
+          else
+            CHANGED_FILES="$(git diff-tree --no-commit-id --name-only -r "${DEPLOYED_SHA}^" "$DEPLOYED_SHA")"
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|api/mcp(\.ts|/)|middleware\.ts|public/mcp-server\.md|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+              || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
+              echo "submit=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "submit=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - name: Submit the canonical MCP URL
+        if: steps.relevant.outputs.submit == 'true'
+        run: node scripts/seo-indexnow-submit.mjs --host worldmonitor.app

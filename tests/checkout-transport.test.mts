@@ -33,9 +33,11 @@ function makeDeps(outcomes: FetchOutcome[]): {
   deps: CreateCheckoutTransportDeps;
   calls: { url: string; init: RequestInit }[];
   delays: number[];
+  keyCalls: { count: number };
 } {
   const calls: { url: string; init: RequestInit }[] = [];
   const delays: number[] = [];
+  const keyCalls = { count: 0 };
   let i = 0;
   const deps: CreateCheckoutTransportDeps = {
     fetch: async (url, init) => {
@@ -48,10 +50,16 @@ function makeDeps(outcomes: FetchOutcome[]): {
     delay: async (ms) => {
       delays.push(ms);
     },
-    generateIdempotencyKey: () => 'test-key-1234',
+    // DISTINCT key per invocation (#5380): the old constant fixture made the
+    // "same key on retry" assertions tautological — a mutant that regenerated
+    // the key per attempt still returned the same literal and stayed green.
+    generateIdempotencyKey: () => {
+      keyCalls.count += 1;
+      return `test-key-${keyCalls.count}`;
+    },
     createTimeoutSignal: () => new AbortController().signal,
   };
-  return { deps, calls, delays };
+  return { deps, calls, delays, keyCalls };
 }
 
 const ARGS = {
@@ -76,7 +84,7 @@ describe('postCreateCheckout transport', () => {
     assert.equal(delays.length, 0);
     assert.equal(calls[0].url, '/api/create-checkout');
     assert.equal(calls[0].init.method, 'POST');
-    assert.equal(headerOf(calls[0].init, 'Idempotency-Key'), 'test-key-1234');
+    assert.equal(headerOf(calls[0].init, 'Idempotency-Key'), 'test-key-1');
     assert.equal(headerOf(calls[0].init, 'Authorization'), 'Bearer tok_abc');
     assert.equal(headerOf(calls[0].init, 'Content-Type'), 'application/json');
     assert.deepEqual(JSON.parse(String(calls[0].init.body)), { productId: 'pdt_x' });
@@ -85,15 +93,28 @@ describe('postCreateCheckout transport', () => {
   it('retries once on 502 with the SAME idempotency key, after a delay', async () => {
     const bad = new Response('<html>cloudflare 502</html>', { status: 502 });
     const good = new Response('{"checkout_url":"https://x"}', { status: 200 });
-    const { deps, calls, delays } = makeDeps([{ response: bad }, { response: good }]);
+    const { deps, calls, delays, keyCalls } = makeDeps([{ response: bad }, { response: good }]);
 
     const resp = await postCreateCheckout(deps, ARGS);
 
     assert.equal(resp.status, 200);
     assert.equal(calls.length, 2);
     assert.deepEqual(delays, [CHECKOUT_RETRY_DELAY_MS]);
-    assert.equal(headerOf(calls[0].init, 'Idempotency-Key'), 'test-key-1234');
-    assert.equal(headerOf(calls[1].init, 'Idempotency-Key'), 'test-key-1234');
+    // One generator invocation, reused verbatim on the retry — with the
+    // distinct-per-invocation fixture, a per-attempt regeneration would show
+    // up as 'test-key-2' on the second call (#5380 false-pass fix).
+    assert.equal(keyCalls.count, 1, 'idempotency key must be generated exactly once per checkout');
+    assert.equal(headerOf(calls[0].init, 'Idempotency-Key'), 'test-key-1');
+    assert.equal(headerOf(calls[1].init, 'Idempotency-Key'), 'test-key-1');
+    // The retry must be byte-identical to the original request — same URL,
+    // method, headers, and body — or Dodo-side dedup cannot key on it.
+    assert.equal(calls[1].url, calls[0].url);
+    assert.equal(calls[1].init.method, calls[0].init.method);
+    assert.deepEqual(calls[1].init.headers, calls[0].init.headers);
+    assert.equal(String(calls[1].init.body), String(calls[0].init.body));
+    // And the caller must receive the FINAL attempt's Response object.
+    assert.equal(resp, good, 'must resolve with the retry attempt\'s Response identity');
+    assert.equal(await resp.text(), '{"checkout_url":"https://x"}');
   });
 
   it('returns the second failure as-is when the retry also fails', async () => {
@@ -104,6 +125,13 @@ describe('postCreateCheckout transport', () => {
 
     assert.equal(resp.status, 502);
     assert.equal(calls.length, 2);
+  });
+
+  it('retryable set is exactly {502, 503, 504} — pinned, not read back from the code', () => {
+    // #5380: iterating RETRYABLE_CHECKOUT_STATUSES in the test below is
+    // tautological on its own — shrinking or widening the set would silently
+    // reshape the loop. Pin the literal contents here.
+    assert.deepEqual([...RETRYABLE_CHECKOUT_STATUSES].sort(), [502, 503, 504]);
   });
 
   it('treats every status in RETRYABLE_CHECKOUT_STATUSES as retryable', async () => {

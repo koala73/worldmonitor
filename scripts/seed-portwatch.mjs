@@ -52,7 +52,7 @@ function computeWow(history) {
   return Math.round(((thisWeek - lastWeek) / lastWeek) * 1000) / 10;
 }
 
-async function fetchAllPages(portname, sinceEpoch) {
+export async function fetchAllPages(portname, sinceEpoch) {
   const all = [];
   let offset = 0;
   for (;;) {
@@ -75,8 +75,11 @@ async function fetchAllPages(portname, sinceEpoch) {
     const body = await resp.json();
     if (body.error) throw new Error(`ArcGIS error for ${portname}: ${body.error.message}`);
     if (body.features?.length) all.push(...body.features);
-    if (!body.exceededTransferLimit) break;
-    offset += PAGE_SIZE;
+    if (!body.exceededTransferLimit || !body.features?.length) break;
+    // Advance by rows actually returned, not PAGE_SIZE: the layer's server-side
+    // maxRecordCount (1000) is below PAGE_SIZE, so += PAGE_SIZE skips rows once
+    // a query spans more than one server page (latent at 180 days, real beyond).
+    offset += body.features.length;
   }
   return all;
 }

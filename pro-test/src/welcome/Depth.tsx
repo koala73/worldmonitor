@@ -25,7 +25,7 @@ export const Depth = () => (
         subtitle={t('welcome.depth.sub')}
       />
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.6 }}
@@ -43,7 +43,7 @@ export const Depth = () => (
           <motion.a
             key={n}
             href={`${DASHBOARD_PATH}?ref=welcome-depth-n${n}`}
-            initial={{ opacity: 0, y: 16 }}
+            initial={false}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
             transition={{ duration: 0.4, delay: (i % 3) * 0.06 }}

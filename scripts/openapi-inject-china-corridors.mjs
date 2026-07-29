@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  provenanceValueSchema,
   readChinaCorridorWireContract,
   readDecisionSignalProvenanceContract,
   serialize,
@@ -71,156 +72,6 @@ function objectSchema(required, properties) {
   };
 }
 
-function provenanceValueSchemas() {
-  const timeReference = (role) => objectSchema(
-    ['role', 'value', 'precision'],
-    {
-      role: { type: 'string', const: role },
-      value: { type: 'string' },
-      precision: {
-        type: 'string',
-        enum: provenanceContract.timePrecisions,
-      },
-    },
-  );
-  return {
-    publisher: objectSchema(
-      ['id', 'name', 'type', 'registryReference'],
-      {
-        id: { type: 'string' },
-        name: { type: 'string' },
-        type: {
-          type: 'string',
-          enum: provenanceContract.publisherTypes,
-        },
-        registryReference: {
-          oneOf: [
-            objectSchema(
-              ['sourceName', 'sourceType', 'propagandaRisk'],
-              {
-                sourceName: { type: 'string' },
-                sourceType: { type: 'string' },
-                propagandaRisk: { type: 'string' },
-              },
-            ),
-            { type: 'null' },
-          ],
-        },
-      },
-    ),
-    source_url: { type: 'string', format: 'uri' },
-    original_reference: objectSchema(
-      ['kind', 'id'],
-      {
-        kind: {
-          type: 'string',
-          enum: provenanceContract.originalReferenceKinds,
-        },
-        id: { type: 'string' },
-        contentHash: { type: 'string' },
-      },
-    ),
-    original_language: { type: 'string' },
-    translation: objectSchema(
-      ['state'],
-      {
-        state: {
-          type: 'string',
-          enum: provenanceContract.translationStates,
-        },
-        targetLanguage: { type: 'string' },
-      },
-    ),
-    observation_time: timeReference('observation'),
-    effective_time: timeReference('effective'),
-    publication_time: timeReference('publication'),
-    retrieval_time: timeReference('retrieval'),
-    revision: objectSchema(
-      ['vintageId', 'sequence', 'state'],
-      {
-        vintageId: { type: 'string' },
-        sequence: { type: 'integer', minimum: 1 },
-        state: {
-          type: 'string',
-          enum: provenanceContract.revisionStates,
-        },
-      },
-    ),
-    supersession: objectSchema(
-      ['state'],
-      {
-        state: {
-          type: 'string',
-          enum: provenanceContract.supersessionStates,
-        },
-        relatedSignalId: { type: 'string' },
-        reason: { type: 'string' },
-      },
-    ),
-    extraction_confidence: objectSchema(
-      ['score', 'method'],
-      {
-        score: { type: 'number', minimum: 0, maximum: 1 },
-        method: { type: 'string' },
-      },
-    ),
-    classification_confidence: objectSchema(
-      ['score', 'method'],
-      {
-        score: { type: 'number', minimum: 0, maximum: 1 },
-        method: { type: 'string' },
-      },
-    ),
-    corroboration: objectSchema(
-      ['state', 'sourceSignalIds'],
-      {
-        state: {
-          type: 'string',
-          enum: provenanceContract.corroborationStates,
-        },
-        sourceSignalIds: {
-          type: 'array',
-          items: { type: 'string' },
-        },
-      },
-    ),
-    transport_freshness: objectSchema(
-      ['state', 'assessedAt'],
-      {
-        state: {
-          type: 'string',
-          enum: provenanceContract.transportFreshnessStates,
-        },
-        assessedAt: { type: 'string', format: 'date-time' },
-        lastSuccessAt: { type: 'string', format: 'date-time' },
-      },
-    ),
-    content_freshness: objectSchema(
-      ['state', 'assessedAt'],
-      {
-        state: {
-          type: 'string',
-          enum: provenanceContract.contentFreshnessStates,
-        },
-        assessedAt: { type: 'string', format: 'date-time' },
-        contentAsOf: { type: 'string' },
-      },
-    ),
-    derivation: objectSchema(
-      ['methodId', 'methodVersion', 'computedAt', 'inputSignalIds'],
-      {
-        methodId: { type: 'string' },
-        methodVersion: { type: 'string' },
-        computedAt: { type: 'string', format: 'date-time' },
-        inputSignalIds: {
-          type: 'array',
-          items: { type: 'string' },
-        },
-      },
-    ),
-  };
-}
-
 function provenanceClaimSchema(valueSchema, unavailableClaimName) {
   return {
     oneOf: [
@@ -238,12 +89,6 @@ function provenanceClaimSchema(valueSchema, unavailableClaimName) {
 
 function schemas(prefix) {
   const names = schemaNames(prefix);
-  const valueSchemas = provenanceValueSchemas();
-  const valueSchemaDimensions = Object.keys(valueSchemas).sort();
-  const contractDimensions = [...provenanceContract.dimensions].sort();
-  if (JSON.stringify(valueSchemaDimensions) !== JSON.stringify(contractDimensions)) {
-    throw new Error('China corridor provenance value schemas do not match the provenance dimensions');
-  }
   return {
     [names.response]: {
       type: 'object',
@@ -441,7 +286,10 @@ function schemas(prefix) {
           properties: Object.fromEntries(
             provenanceContract.dimensions.map((name) => [
               name,
-              provenanceClaimSchema(valueSchemas[name], names.claim),
+              provenanceClaimSchema(
+                provenanceValueSchema(name, provenanceContract),
+                names.claim,
+              ),
             ]),
           ),
         },

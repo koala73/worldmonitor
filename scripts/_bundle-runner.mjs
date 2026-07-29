@@ -239,13 +239,25 @@ export async function runBundle(label, sections, opts = {}) {
       throw new Error(`[Bundle:${label}] section '${section.label}' requiredEnv must be an array`);
     }
     const missing = [];
-    for (const name of section.requiredEnv) {
-      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
-        throw new Error(`[Bundle:${label}] section '${section.label}' has invalid requiredEnv name '${name}'`);
+    for (const requirement of section.requiredEnv) {
+      // A nested array is an any-of group: the section needs at least one of
+      // those variables, not all of them. Sources that resolve a routing value
+      // as `SOURCE_SPECIFIC || SHARED` must declare it that way, or the gate is
+      // stricter than the runtime it guards and hard-fails a section the seeder
+      // would have run.
+      const alternatives = Array.isArray(requirement) ? requirement : [requirement];
+      if (alternatives.length === 0) {
+        throw new Error(`[Bundle:${label}] section '${section.label}' has an empty requiredEnv group`);
       }
-      if (!String(process.env[name] ?? '').trim()) {
-        missing.push(name);
+      for (const name of alternatives) {
+        if (typeof name !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(name)) {
+          throw new Error(`[Bundle:${label}] section '${section.label}' has invalid requiredEnv name '${name}'`);
+        }
       }
+      const satisfied = alternatives.some(
+        (name) => String(process.env[name] ?? '').trim(),
+      );
+      if (!satisfied) missing.push(alternatives.join(' or '));
     }
     if (missing.length > 0) missingEnvBySection.set(section.label, missing);
   }

@@ -1723,7 +1723,7 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListEarningsCalendarResponse'
                 "400":
@@ -1808,7 +1808,7 @@ paths:
                                       "dealerLong": "1717200000000"
                                       "dealerShort": "1717200000000"
                                 "reportDate": "2026-01-15"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetCotPositioningResponse'
                 "400":
@@ -1983,7 +1983,7 @@ paths:
                                       "pctAbove200d": 1.5
                                       "pctAbove20d": 1.5
                                       "pctAbove50d": 1.5
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetMarketBreadthHistoryResponse'
                 "400":
@@ -2196,7 +2196,7 @@ paths:
                                       "dayNotional": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "ts": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetHyperliquidFlowResponse'
                 "400":

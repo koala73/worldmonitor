@@ -1,11 +1,7 @@
-// @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-import {
-  PRO_DAILY_QUOTA_LIMIT,
-  secondsUntilUtcMidnight,
-} from '../../server/_shared/pro-mcp-token';
+import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
 import { BillingDenialError } from './billing-denial';
 import {
@@ -19,6 +15,7 @@ import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
 import { TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import { McpSourceUnavailableError } from './source-unavailable';
 import {
   emitTelemetry,
   principalIdForLog,
@@ -125,6 +122,11 @@ export async function dispatchToolsCall(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
+  // Daily allowance resolved by the context pre-check (api/mcp/auth.ts) from
+  // the entitlement it already fetched. Omitted → `PRO_DAILY_QUOTA_LIMIT`;
+  // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
+  // caller that skips the pre-check simply inherits the plan default.
+  mcpDailyLimit?: number | null,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
@@ -137,25 +139,28 @@ export async function dispatchToolsCall(
   }
 
   // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
-  // toward the daily 50/day cap — EXCEPT `describe_tool` (v1.5.0), which
+  // toward the caller's daily cap — EXCEPT `describe_tool` (v1.5.0), which
   // is metadata-only and is actively encouraged by SERVER_INSTRUCTIONS
   // when the compressed tools/list entry is ambiguous. Charging quota for
   // schema lookups would (a) discourage the LLM from using it, defeating
   // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
-  // 50/day cap from even seeing tool definitions. Exempt by name; rate-
+  // daily cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
   const isMetadataTool = p.name === 'describe_tool';
   // user_key (#4859) consumes the same per-user daily quota as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
   // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
-  // a deliberate follow-up, not a default.
+  // a deliberate follow-up, not a default — which is why `mcpDailyLimit`
+  // arrives unset for that kind (api/mcp/auth.ts::runUserKeyPreChecks).
   if ((context.kind === 'pro' || context.kind === 'user_key') && !isMetadataTool) {
-    const reservation = await reserveQuota(context.userId, deps.redisPipeline);
+    const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
     if (!reservation.ok) {
       if (reservation.reason === 'cap-exceeded') {
+        // `floor` is the limit the reservation actually enforced, so the copy
+        // can never quote a different number from the one that rejected.
         return new Response(
-          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${PRO_DAILY_QUOTA_LIMIT}/day). Resets at next UTC midnight.` } }),
+          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
           { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
         );
       }
@@ -282,8 +287,9 @@ export async function dispatchToolsCall(
     // expected, handled customer state — warning-level, not error-level, so
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
+    const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
     const downstreamTags = downstreamErrorTags(err);
-    const log = isClient4xx || isExpectedDenial ? console.warn : console.error;
+    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: {
@@ -301,7 +307,7 @@ export async function dispatchToolsCall(
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx || isExpectedDenial ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
     });
     emitTelemetry('mcp.toolcall', {
       tool: tool.name,
@@ -313,7 +319,11 @@ export async function dispatchToolsCall(
       jmespath_used: jmespathUsed,
       jmespath_failed: null,
       ok: false,
-      error_kind: isClient4xx ? 'client_4xx' : 'server_error',
+      error_kind: isClient4xx
+        ? 'client_4xx'
+        : isExpectedSourceOutage
+          ? 'source_unavailable'
+          : 'server_error',
       budget_exceeded: false,
     });
     // #4770: a mid-request billing denial from the gateway keeps its full
@@ -328,6 +338,20 @@ export async function dispatchToolsCall(
         id,
       );
       if (denial) return denial;
+    }
+    if (err instanceof McpSourceUnavailableError) {
+      return rpcError(
+        id,
+        -32003,
+        'Required data inputs are unavailable',
+        corsHeaders,
+        {
+          retryable: true,
+          stale: true,
+          unavailable_inputs: err.unavailableInputs,
+          failed_inputs: err.failedInputs,
+        },
+      );
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }

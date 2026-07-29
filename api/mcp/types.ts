@@ -248,12 +248,19 @@ export interface QuotaReserved {
   /** Roll back the INCR (best-effort). Idempotent — safe to call multiple times. */
   rollback: () => Promise<void>;
 }
-export interface QuotaRejected {
-  ok: false;
-  reason: 'cap-exceeded' | 'redis-unavailable';
-  /** When cap-exceeded: count after the rejected reservation was rolled back (i.e. the floor). */
-  floor?: number;
-}
+export type QuotaRejected =
+  | {
+      ok: false;
+      reason: 'cap-exceeded';
+      /**
+       * Count after the rejected reservation was rolled back (i.e. the floor),
+       * which is also the limit that was ENFORCED. Required — the -32029 copy
+       * interpolates it, so the number a capped caller reads can never drift
+       * from the number the reservation actually applied.
+       */
+      floor: number;
+    }
+  | { ok: false; reason: 'redis-unavailable' };
 
 // ---------------------------------------------------------------------------
 // Auth resolution + handler deps
@@ -263,7 +270,20 @@ export interface McpHandlerDeps {
   validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
   getEntitlements: (userId: string) => Promise<{
     planKey?: string;
-    features: { tier: number; mcpAccess?: boolean };
+    features: {
+      tier: number;
+      mcpAccess?: boolean;
+      // Mirrors `CachedEntitlements.features.planLimits`. Only the MCP daily
+      // allowance is read here (plan 2026-07-25-001 U3); the siblings are
+      // declared so the shape stays recognisable against the catalog and a
+      // future consumer doesn't have to re-widen the dep contract.
+      planLimits?: {
+        apiRequestsPerDay?: number | null;
+        apiBurstRequestsPerMinute?: number | null;
+        mcpCallsPerDay?: number | null;
+        mcpBurstRequestsPerMinute?: number | null;
+      };
+    };
     validUntil: number;
     billingStatus?: BillingVerificationStatus;
     retryAfterSeconds?: number;
@@ -289,6 +309,31 @@ export interface AuthResolutionRejected {
   ok: false;
   response: Response;
 }
+
+// ---------------------------------------------------------------------------
+// Context pre-check result
+// ---------------------------------------------------------------------------
+// The pre-check is the only place on the gated path that already holds the
+// entitlement object, so it also resolves the caller's daily MCP allowance and
+// hands it to the dispatcher — a second lookup would be an extra Convex
+// round-trip on the hot path (plan 2026-07-25-001 KTD6).
+export interface McpPreCheckPassed {
+  ok: true;
+  /**
+   * Daily `tools/call` allowance for this caller, three-way:
+   *   omitted → unknown; the quota layer applies `PRO_DAILY_QUOTA_LIMIT`
+   *   null    → unlimited (no cap, counter still incremented for metering)
+   *   number  → enforced verbatim
+   * Set for the `pro` context only. `user_key` and `env_key` omit it — raising
+   * API-plan MCP allowances is a deliberate follow-up, not a default (KTD6).
+   */
+  mcpDailyLimit?: number | null;
+}
+export interface McpPreCheckRejected {
+  ok: false;
+  response: Response;
+}
+export type McpPreCheckResult = McpPreCheckPassed | McpPreCheckRejected;
 
 // ---------------------------------------------------------------------------
 // Prompts registry types (MCP 2025-03-26 prompts capability)

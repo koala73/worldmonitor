@@ -72,17 +72,33 @@ Railway 的 derived-signals bundle 每 15 分钟刷新一次规范组合。Seede
 投递会保留在持久且去重的 outbox 中，等待下一次 seed 重试；它们不会回滚已发布的
 快照。
 
-发布前运行仓库 parity 审计：
+该审计分为两半，各自由不同的机制强制执行。
+
+**静态部分**通过 `npm run test:data` 下的
+`tests/china-decision-parity-audit.test.mjs` 在每个 pull request 上运行，确认六个
+领域的组合仍然注册在 API、MCP、bootstrap、健康检查、告警、Railway 和文档各个界面
+上。其中大多数注册通过 token 存在性检查，只能证明界面没有被删除或重命名。对于
+静默断线代价最高的界面——网关缓存层级、网关匿名可达性以及三个访问层级——审计会
+读取真实的容器并判断该值是否为其成员，因此被注释掉的条目或残留的重复项会判为
+失败而不是通过。访问层级门禁还会通过对降级层级实际执行已发布快照校验器来证明。
+
+发布前在本地运行：
 
 ```bash
 node scripts/audit-china-decision-parity.mjs
 ```
 
-部署 staging 后，仅添加公共 base URL：
+**实时部分**针对已部署环境运行，因此任何 pull request 都无法执行它。它由
+`china-decision-parity-live.yml` workflow 强制执行：每六小时探测生产环境，在触及
+该审计的 `main` 推送时运行，也可按需手动触发。部署 staging 后，用公共 base URL
+手动运行：
 
 ```bash
-node scripts/audit-china-decision-parity.mjs --url https://api-staging.example
+node scripts/audit-china-decision-parity.mjs --require-live --url https://api-staging.example
 ```
 
-实时探针只输出路由状态、延迟、生成时间和领域状态。它不会打印环境变量、API key、
-Redis 值、来源文档或详细贸易记录。
+`--require-live` 会在没有 URL 传给探针时让命令失败，因此自动化调用方无法报告一次
+从未执行的 staging 审计。base URL 必须是公共主机上的 `https`——回环地址、链路本地
+地址和私有网段都会被拒绝，因为探针会报告它所指向目标的可达性和延迟。实时探针只输出
+路由状态、延迟、生成时间和领域状态。它不会打印环境变量、API key、Redis 值、来源
+文档或详细贸易记录。
