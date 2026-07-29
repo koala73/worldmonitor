@@ -143,6 +143,35 @@ describe('pre-push changed-test partition', () => {
   });
 });
 
+describe('partition stays in step with the vitest DOM project', () => {
+  // The partition hard-codes `tests/dom/` as the vitest-owned prefix. The
+  // config is what actually decides ownership, so widening the DOM project to
+  // another directory without teaching the partition about it would send those
+  // files back to `tsx --test` — #5795 again, in a new directory. Assert
+  // against the real resolved config, not its source text.
+  test('every DOM include glob lives under the prefix the partition claims', async () => {
+    const config = (await import('../vitest.dom.config.mts')).default;
+    const include = config?.test?.include;
+
+    assert.ok(Array.isArray(include) && include.length > 0, 'DOM config must declare test.include');
+    assert.deepEqual(
+      include.filter((glob) => !glob.startsWith('tests/dom/')),
+      [],
+      'a DOM include outside tests/dom/ needs a matching case in scripts/prepush-changed-tests.sh',
+    );
+  });
+
+  test('the partition claims both extensions the DOM config includes', async () => {
+    const config = (await import('../vitest.dom.config.mts')).default;
+    const declared = new Set(
+      config.test.include.flatMap((glob) => [...glob.matchAll(/\b(mts|mjs)\b/g)].map((m) => m[1])),
+    );
+
+    // Mirrors the `\.test\.(mjs|mts)$` alternation in the partition script.
+    assert.deepEqual([...declared].sort(), ['mjs', 'mts']);
+  });
+});
+
 describe('pre-push hook wiring', () => {
   const hook = readFileSync(join(REPO_ROOT, '.husky', 'pre-push'), 'utf8');
 
@@ -154,10 +183,26 @@ describe('pre-push hook wiring', () => {
   test('no longer sweeps tests/ with its own inline glob', () => {
     // The inline sweep is what swallowed tests/dom/; reintroducing one beside
     // the script would resurrect #5795 with the partition still passing.
-    assert.doesNotMatch(hook, /grep -E "\^tests\//);
+    // Quote-agnostic — the original used double quotes, but a single-quoted
+    // rewrite is the same bug.
+    assert.doesNotMatch(hook, /grep -E ['"]\^tests\//);
   });
 
   test('runs the DOM suite under vitest, not the node:test runner', () => {
     assert.match(hook, /npm run test:dom/);
+  });
+
+  test('treats a partition failure as a blocked push, not an empty test list', () => {
+    // Command substitution discards the exit status: a missing or broken
+    // helper would yield an empty list, which the hook reads as "no test files
+    // changed" and skips everything. The gate must fail loudly instead.
+    assert.match(hook, /if ! TESTS_CHANGED=\$\(/);
+    assert.match(hook, /if ! DOM_TESTS_CHANGED=\$\(/);
+  });
+
+  test('runs the partition test when the partition script itself changes', () => {
+    // Every other guardrail in this hook fires on its own implementation file;
+    // the script deciding WHICH tests run must not be the exception.
+    assert.match(hook, /\^scripts\/prepush-changed-tests\\\.sh\$/);
   });
 });

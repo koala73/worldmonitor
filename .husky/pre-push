@@ -278,8 +278,28 @@ if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
 # own runner below. scripts/prepush-changed-tests.sh owns the split for both
 # halves (tested in tests/prepush-changed-tests.test.mjs) so the two lists
 # cannot drift into overlapping or, worse, leaving a file in neither.
-TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh node)
-DOM_TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh dom)
+#
+# Both partitions must SUCCEED, not merely return output. A helper that is
+# missing or errors would otherwise substitute to an empty list, and empty
+# reads here as "no test files changed" — the gate would sail past every
+# changed test instead of saying anything. Fail loudly instead.
+if ! TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh node); then
+  echo "ERROR: scripts/prepush-changed-tests.sh node failed — cannot decide which tests to run."
+  exit 1
+fi
+if ! DOM_TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh dom); then
+  echo "ERROR: scripts/prepush-changed-tests.sh dom failed — cannot decide which tests to run."
+  exit 1
+fi
+
+# The partition decides what runs at all, so a change to it must run its own
+# test even when the test file is untouched — same convention as the invariant
+# lints above, which each fire on their own implementation script.
+if echo "$CHANGED_FILES" | grep -q '^scripts/prepush-changed-tests\.sh$' \
+  && [ -f tests/prepush-changed-tests.test.mjs ] \
+  && ! echo "$TESTS_CHANGED" | grep -qxF 'tests/prepush-changed-tests.test.mjs'; then
+  TESTS_CHANGED=$(printf '%s\ntests/prepush-changed-tests.test.mjs\n' "$TESTS_CHANGED" | grep -v '^$')
+fi
 
 # Compute SEED_TESTS and SERVER_TESTS up-front (rather than inside their
 # RUN_* blocks) so the TESTS_CHANGED subtraction below can deduplicate
