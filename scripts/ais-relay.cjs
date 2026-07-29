@@ -1576,6 +1576,10 @@ const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KE
 const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const UCDP_MAX_PAGES = 6;
+// GED Candidate releases are far thinner than the annual (~1.7k events vs
+// ~418k) — 3 pages of UCDP_PAGE_SIZE comfortably covers a whole candidate
+// release with room to spare, bounding the extra request cost of the merge.
+const UCDP_CANDIDATE_MAX_PAGES = 3;
 const UCDP_MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
 // Retained Redis input window. CII v8's classifier accepts a 2-year window, but
 // this Redis writer fetches the newest pages only and keeps at most UCDP_MAX_EVENTS
@@ -1660,6 +1664,45 @@ async function ucdpDiscoverVersion() {
   return valid[0];
 }
 
+// UCDP also publishes GED Candidate releases monthly ('${year}.0.N'), with "not
+// more than a month's lag globally" per UCDP's docs — unlike the ANNUAL release
+// above, which is finalized once a year and lags ~7 months behind by the time
+// the next one lands. A bounded window around the current month (not a
+// hardcoded version) means a not-yet-published candidate is just a skipped
+// probe, and next month's candidate is picked up automatically. Window is 6
+// wide (current month +1 through -4) so a slow UCDP publish cycle or a late
+// discovery run still finds the newest available candidate.
+function ucdpBuildCandidateVersions() {
+  const now = new Date();
+  const year = now.getFullYear() - 2000;
+  const month = now.getMonth() + 1; // 1-12
+  const out = [];
+  for (let offset = 1; offset >= -4; offset--) {
+    const m = month + offset;
+    if (m >= 1 && m <= 12) out.push(`${year}.0.${m}`);
+    else if (m < 1) out.push(`${year - 1}.0.${m + 12}`);
+  }
+  return out;
+}
+
+// Same allSettled + newest-wins shape as ucdpDiscoverVersion, but returns null
+// instead of throwing when no candidate is up yet — the candidate is an
+// addition on top of the annual base, never a replacement, so its absence is
+// not an error (see the merge comment in seedUcdpEvents below).
+async function ucdpDiscoverCandidateVersion() {
+  const candidates = ucdpBuildCandidateVersions();
+  const DISCOVER_TIMEOUT_MS = 15000;
+  const settled = await Promise.allSettled(candidates.map(async (v) => {
+    const p0 = await ucdpFetchPage(v, 0, DISCOVER_TIMEOUT_MS);
+    if (!Array.isArray(p0?.Result) || p0.Result.length === 0) throw new Error(`${v}: no results`);
+    return { version: v, page0: p0 };
+  }));
+  const valid = settled.filter((s) => s.status === 'fulfilled').map((s) => s.value);
+  if (valid.length === 0) return null;
+  valid.sort((a, b) => (ucdpVersionNewer(a.version, b.version) ? -1 : ucdpVersionNewer(b.version, a.version) ? 1 : 0));
+  return valid[0];
+}
+
 async function seedUcdpEvents() {
   try {
     const { version, page0 } = await ucdpDiscoverVersion();
@@ -1700,7 +1743,50 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const filtered = allEvents.filter((e) => {
+    // Merge the newest GED Candidate release on top of the annual base (ADD,
+    // never replace — see ucdpDiscoverCandidateVersion above for why the
+    // candidate alone is too thin). The annual base is already in allEvents;
+    // append candidate events and dedupe by id so a candidate's revision of an
+    // event also present in the annual release wins (it's the fresher record).
+    let candidateVersion = null;
+    try {
+      const candidate = await ucdpDiscoverCandidateVersion();
+      if (candidate) {
+        candidateVersion = candidate.version;
+        const candidatePages = [candidate.page0];
+        const candidateTotalPages = Math.max(1, Number(candidate.page0?.TotalPages) || 1);
+        for (let pg = 1; pg < Math.min(candidateTotalPages, UCDP_CANDIDATE_MAX_PAGES); pg++) {
+          try {
+            candidatePages.push(await ucdpFetchPage(candidate.version, pg));
+          } catch (err) {
+            console.warn(`[UCDP] candidate ${candidate.version} page ${pg}: ${err.message || err}`);
+            break;
+          }
+        }
+        let candidateEventCount = 0;
+        for (const raw of candidatePages) {
+          const events = Array.isArray(raw?.Result) ? raw.Result : [];
+          candidateEventCount += events.length;
+          allEvents.push(...events);
+          for (const e of events) {
+            const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+            if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+          }
+        }
+        console.log(`[UCDP] Merged candidate ${candidate.version}: +${candidateEventCount} events`);
+      }
+    } catch (err) {
+      console.warn(`[UCDP] Candidate merge skipped: ${err.message || err}`);
+    }
+
+    const byId = new Map();
+    for (const e of allEvents) {
+      const id = e?.id != null ? String(e.id) : '';
+      byId.set(id || Symbol(id), e);
+    }
+    const dedupedEvents = [...byId.values()];
+
+    const filtered = dedupedEvents.filter((e) => {
       if (!Number.isFinite(latestMs)) return true;
       const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
       return Number.isFinite(ms) && ms >= (latestMs - UCDP_TRAILING_WINDOW_MS);
@@ -1728,7 +1814,7 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
+    const payload = { events: mapped, fetchedAt: Date.now(), version, candidateVersion, totalRaw: allEvents.length, filteredCount: mapped.length };
     const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: mapped.length, sourceVersion: 'ucdp' });
     await upstashSet('seed-meta:conflict:ucdp-events', { fetchedAt: Date.now(), recordCount: mapped.length }, 604800);
     console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);

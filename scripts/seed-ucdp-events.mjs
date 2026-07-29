@@ -15,6 +15,10 @@ const BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
 const BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
+// GED Candidate releases are far thinner than the annual (~1.7k events vs
+// ~418k) — 3 pages of UCDP_PAGE_SIZE comfortably covers a whole candidate
+// release with room to spare, bounding the extra request cost of the merge.
+const CANDIDATE_MAX_PAGES = 3;
 const MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
 // Retained Redis input window. CII v8's classifier accepts a 2-year window, but
 // this writer fetches the newest pages only and keeps at most MAX_EVENTS from a
@@ -37,6 +41,27 @@ function maskToken(token) {
 function buildVersionCandidates() {
   const year = new Date().getFullYear() - 2000;
   return [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
+}
+
+// UCDP also publishes GED Candidate releases monthly ('${year}.0.N'), with "not
+// more than a month's lag globally" per UCDP's docs — unlike the ANNUAL release
+// above, which is finalized once a year and lags ~7 months behind by the time
+// the next one lands. A bounded window around the current month (not a
+// hardcoded version) means a not-yet-published candidate is just a skipped
+// probe, and next month's candidate is picked up automatically. Window is 6
+// wide (current month +1 through -4) so a slow UCDP publish cycle or a late
+// cron run still finds the newest available candidate.
+function buildCandidateVersions() {
+  const now = new Date();
+  const year = now.getFullYear() - 2000;
+  const month = now.getMonth() + 1; // 1-12
+  const out = [];
+  for (let offset = 1; offset >= -4; offset--) {
+    const m = month + offset;
+    if (m >= 1 && m <= 12) out.push(`${year}.0.${m}`);
+    else if (m < 1) out.push(`${year - 1}.0.${m + 12}`);
+  }
+  return out;
 }
 
 async function fetchGedPage(version, page, token) {
@@ -64,6 +89,26 @@ async function discoverVersion(token, fetchPage = fetchGedPage, candidates = bui
     }
   }
   throw new Error('No valid UCDP GED version found');
+}
+
+// Same sequential probe as discoverVersion, but returns null instead of
+// throwing when no candidate is up yet — the candidate is an addition on top
+// of the annual base, never a replacement, so its absence is not an error
+// (see the merge comment in main() below).
+async function discoverCandidateVersion(token, fetchPage = fetchGedPage, candidates = buildCandidateVersions()) {
+  console.log(`  Probing candidate versions sequentially: ${candidates.join(', ')}`);
+  for (const version of candidates) {
+    try {
+      const page0 = await fetchPage(version, 0, token);
+      if (!Array.isArray(page0?.Result) || page0.Result.length === 0) continue;
+      console.log(`  Found candidate v${version} with ${page0.Result.length} events on page 0`);
+      return { version, page0 };
+    } catch (err) {
+      console.warn(`  candidate v${version} failed: ${err.message}`);
+    }
+  }
+  console.log('  No candidate release available this cycle — continuing with annual only');
+  return null;
 }
 
 function parseDateMs(value) {
@@ -133,7 +178,54 @@ async function main() {
 
   console.log(`  Raw events: ${allEvents.length} | Failed pages: ${failedPages}`);
 
-  const filtered = allEvents.filter((event) => {
+  // Merge the newest GED Candidate release on top of the annual base (ADD,
+  // never replace — annual is the finalized, authoritative history; replacing
+  // it with a candidate, which is ~1.7k events vs ~418k, would drop nearly
+  // everything outside the CII 2-year conflict recency window and flip
+  // /api/health.riskScores to COVERAGE_PARTIAL — the same class of regression
+  // discoverVersion's Promise.any history above was fixed to avoid).
+  let candidateVersion = null;
+  try {
+    const candidate = await discoverCandidateVersion(ucdpToken);
+    if (candidate) {
+      candidateVersion = candidate.version;
+      const candidatePages = [candidate.page0];
+      const candidateTotalPages = Math.max(1, Number(candidate.page0?.TotalPages) || 1);
+      for (let page = 1; page < Math.min(candidateTotalPages, CANDIDATE_MAX_PAGES); page++) {
+        try {
+          candidatePages.push(await fetchGedPage(candidate.version, page, ucdpToken));
+        } catch (err) {
+          console.warn(`  candidate v${candidate.version} page ${page} failed: ${err.message}`);
+          break;
+        }
+      }
+      let candidateEventCount = 0;
+      for (const rawData of candidatePages) {
+        const events = Array.isArray(rawData?.Result) ? rawData.Result : [];
+        candidateEventCount += events.length;
+        allEvents.push(...events);
+        const pageMaxMs = getMaxDateMs(events);
+        if (Number.isFinite(pageMaxMs) && (!Number.isFinite(latestDatasetMs) || pageMaxMs > latestDatasetMs)) {
+          latestDatasetMs = pageMaxMs;
+        }
+      }
+      console.log(`  Merged candidate v${candidate.version}: +${candidateEventCount} events`);
+    }
+  } catch (err) {
+    console.warn(`  Candidate merge skipped: ${err.message}`);
+  }
+
+  // Dedupe by id: candidate events are appended after the annual base, so a
+  // candidate's revision of an event also present in the annual release wins
+  // (it's the fresher record).
+  const byId = new Map();
+  for (const event of allEvents) {
+    const id = event?.id != null ? String(event.id) : '';
+    byId.set(id || Symbol(id), event);
+  }
+  const dedupedEvents = [...byId.values()];
+
+  const filtered = dedupedEvents.filter((event) => {
     if (!Number.isFinite(latestDatasetMs)) return true;
     const eventMs = parseDateMs(event?.date_start);
     if (!Number.isFinite(eventMs)) return false;
@@ -192,6 +284,7 @@ async function main() {
     events: capped,
     fetchedAt: Date.now(),
     version,
+    candidateVersion,
     totalRaw: allEvents.length,
     filteredCount: mapped.length,
   };
@@ -278,7 +371,7 @@ async function main() {
   console.log('\n=== Done ===');
 }
 
-export { buildVersionCandidates, discoverVersion };
+export { buildVersionCandidates, discoverVersion, buildCandidateVersions, discoverCandidateVersion };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch(err => {
