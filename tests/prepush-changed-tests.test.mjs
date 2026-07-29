@@ -149,10 +149,25 @@ describe('partition stays in step with the vitest DOM project', () => {
   // another directory without teaching the partition about it would send those
   // files back to `tsx --test` — #5795 again, in a new directory. Assert
   // against the real resolved config, not its source text.
-  test('every DOM include glob lives under the prefix the partition claims', async () => {
-    const config = (await import('../vitest.dom.config.mts')).default;
-    const include = config?.test?.include;
+  //
+  // Resolved in a CHILD process on purpose: importing it here would pull
+  // vitest/config (~220MB RSS) into the shared `npm run test:data` runner,
+  // which already OOMs at the tail of its ~390-file single-process run.
+  const include = (() => {
+    const probe = join(mkdtempSync(join(tmpdir(), 'wm-dom-config-probe-')), 'probe.mts');
+    writeFileSync(
+      probe,
+      `const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
+        'console.log(JSON.stringify(m.default?.test?.include ?? null));\n',
+    );
+    const out = execFileSync(join(REPO_ROOT, 'node_modules', '.bin', 'tsx'), [probe], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    return JSON.parse(out.trim().split('\n').at(-1));
+  })();
 
+  test('every DOM include glob lives under the prefix the partition claims', () => {
     assert.ok(Array.isArray(include) && include.length > 0, 'DOM config must declare test.include');
     assert.deepEqual(
       include.filter((glob) => !glob.startsWith('tests/dom/')),
@@ -161,10 +176,9 @@ describe('partition stays in step with the vitest DOM project', () => {
     );
   });
 
-  test('the partition claims both extensions the DOM config includes', async () => {
-    const config = (await import('../vitest.dom.config.mts')).default;
+  test('the partition claims both extensions the DOM config includes', () => {
     const declared = new Set(
-      config.test.include.flatMap((glob) => [...glob.matchAll(/\b(mts|mjs)\b/g)].map((m) => m[1])),
+      include.flatMap((glob) => [...glob.matchAll(/\b(mts|mjs)\b/g)].map((m) => m[1])),
     );
 
     // Mirrors the `\.test\.(mjs|mts)$` alternation in the partition script.
