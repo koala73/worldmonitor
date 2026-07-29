@@ -35,4 +35,11 @@ describe('REST API versioning and deprecation policy', () => {
       assert.match(read(path), /api-versioning/);
     }
   });
+
+  it('keeps the policy in both English and Chinese API navigation', () => {
+    const navigation = read('docs/docs.json');
+
+    assert.match(navigation, /"api-versioning"/);
+    assert.match(navigation, /"zh\/api-versioning"/);
+  });
 });

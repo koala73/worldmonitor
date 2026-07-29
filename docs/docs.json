@@ -719,7 +719,8 @@
               {
                 "group": "概览",
                 "pages": [
-                  "zh/api-reference"
+                  "zh/api-reference",
+                  "zh/api-versioning"
                 ]
               },
               {
