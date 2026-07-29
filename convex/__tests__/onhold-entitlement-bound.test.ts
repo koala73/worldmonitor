@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { getFeaturesForPlan } from "../lib/entitlements";
 import { isCoveringAt } from "../payments/subscriptionHelpers";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -281,5 +282,217 @@ describe("checkout blocking for on_hold subscriptions", () => {
       productId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
     });
     expect(blocking).toMatchObject({ planKey: "pro_monthly", status: "on_hold" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Existing production state repair
+// ---------------------------------------------------------------------------
+
+describe("stale on_hold derived-state repair", () => {
+  test("repairs every affected user and Business grant once without rewriting provider state", async () => {
+    const t = convexTest(schema, modules);
+    const observedAt = AFTER_PERIOD_END;
+
+    await t.run(async (ctx) => {
+      // One user has two stale higher-tier holds plus a genuinely covering Pro
+      // subscription. The pre-fix recompute elected a dead hold and left this
+      // paying customer with an already-expired Enterprise entitlement.
+      for (const [id, planKey, periodEnd] of [
+        ["sub_stale_enterprise", "enterprise", PERIOD_END],
+        // Equality is intentionally stale: isCoveringAt uses a strict > bound.
+        ["sub_boundary_enterprise", "enterprise", observedAt],
+      ] as const) {
+        await ctx.db.insert("subscriptions", {
+          userId: "user-multi-hold",
+          dodoSubscriptionId: id,
+          dodoProductId: `pdt_${id}`,
+          planKey,
+          status: "on_hold",
+          currentPeriodStart: BASE_TIMESTAMP,
+          currentPeriodEnd: periodEnd,
+          rawPayload: {},
+          updatedAt: BASE_TIMESTAMP,
+        });
+      }
+      await ctx.db.insert("subscriptions", {
+        userId: "user-multi-hold",
+        dodoSubscriptionId: "sub_live_pro",
+        dodoProductId: "pdt_live_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: observedAt,
+        currentPeriodEnd: NEW_PERIOD_END,
+        rawPayload: {},
+        updatedAt: observedAt,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "user-multi-hold",
+        planKey: "enterprise",
+        features: getFeaturesForPlan("enterprise"),
+        validUntil: PERIOD_END,
+        updatedAt: BASE_TIMESTAMP,
+      });
+
+      // A stale Business hold has a stranded accepted seat grant. Repair must
+      // preserve the Dodo status but revoke the derived grant and both stale
+      // owner/invitee entitlements.
+      await ctx.db.insert("subscriptions", {
+        userId: "business-owner",
+        dodoSubscriptionId: "sub_stale_business",
+        dodoProductId: "pdt_stale_business",
+        planKey: "api_business",
+        status: "on_hold",
+        currentPeriodStart: BASE_TIMESTAMP,
+        currentPeriodEnd: PERIOD_END,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "business-owner",
+        planKey: "api_business",
+        features: getFeaturesForPlan("api_business"),
+        validUntil: PERIOD_END,
+        updatedAt: BASE_TIMESTAMP,
+      });
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: "sub_stale_business",
+        ownerUserId: "business-owner",
+        inviteeEmail: "invitee@example.com",
+        domain: "example.com",
+        status: "accepted",
+        inviteeUserId: "business-invitee",
+        createdAt: BASE_TIMESTAMP,
+        acceptedAt: BASE_TIMESTAMP,
+        expiresAt: NEW_PERIOD_END,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "business-invitee",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: NEW_PERIOD_END,
+        updatedAt: BASE_TIMESTAMP,
+      });
+
+      // A paid-through hold is not part of the repair set and must be left
+      // byte-for-byte alone.
+      await ctx.db.insert("subscriptions", {
+        userId: "healthy-hold-user",
+        dodoSubscriptionId: "sub_healthy_hold",
+        dodoProductId: "pdt_healthy_hold",
+        planKey: "pro_monthly",
+        status: "on_hold",
+        currentPeriodStart: observedAt,
+        currentPeriodEnd: NEW_PERIOD_END,
+        rawPayload: {},
+        updatedAt: observedAt,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "healthy-hold-user",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: NEW_PERIOD_END,
+        updatedAt: observedAt,
+      });
+    });
+
+    const result = await t.mutation(
+      internal.payments.repairStaleOnHoldDerivedState.run,
+      { observedAt },
+    );
+    expect(result).toEqual({
+      ok: true,
+      alreadyCompleted: false,
+      staleSubscriptions: 3,
+      repairedUsers: 2,
+      grantsChecked: 1,
+      grantsRevoked: 1,
+      completedAt: observedAt,
+    });
+
+    const state = await t.run(async (ctx) => {
+      const subscriptions = await ctx.db.query("subscriptions").collect();
+      const entitlements = await ctx.db.query("entitlements").collect();
+      const grant = await ctx.db.query("businessProGrants").first();
+      return { subscriptions, entitlements, grant };
+    });
+    const entitlementFor = (userId: string) =>
+      state.entitlements.find((entitlement) => entitlement.userId === userId);
+
+    expect(
+      state.subscriptions
+        .filter((subscription) => subscription.dodoSubscriptionId.startsWith("sub_stale"))
+        .map((subscription) => subscription.status),
+    ).toEqual(["on_hold", "on_hold"]);
+    expect(entitlementFor("user-multi-hold")).toMatchObject({
+      planKey: "pro_monthly",
+      validUntil: NEW_PERIOD_END,
+    });
+    expect(entitlementFor("business-owner")).toMatchObject({
+      planKey: "free",
+      validUntil: observedAt,
+    });
+    expect(entitlementFor("business-invitee")).toMatchObject({
+      planKey: "free",
+      validUntil: observedAt,
+    });
+    expect(entitlementFor("healthy-hold-user")).toMatchObject({
+      planKey: "pro_monthly",
+      validUntil: NEW_PERIOD_END,
+      updatedAt: observedAt,
+    });
+    expect(state.grant?.status).toBe("revoked");
+
+    // The deploy workflow invokes this after every Convex deploy. A durable
+    // completion marker makes later runs cheap and prevents repeated cache
+    // churn while retaining a summary that contains no user identifiers.
+    const rerun = await t.mutation(
+      internal.payments.repairStaleOnHoldDerivedState.run,
+      { observedAt: observedAt + 1 },
+    );
+    expect(rerun).toEqual({
+      ok: true,
+      alreadyCompleted: true,
+      staleSubscriptions: 0,
+      repairedUsers: 0,
+      grantsChecked: 0,
+      grantsRevoked: 0,
+      completedAt: observedAt,
+    });
+  });
+
+  test("fails closed without a completion marker when the audited bound is exceeded", async () => {
+    const t = convexTest(schema, modules);
+    const observedAt = AFTER_PERIOD_END;
+
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 501; index += 1) {
+        await ctx.db.insert("subscriptions", {
+          userId: `oversized-user-${index}`,
+          dodoSubscriptionId: `sub_oversized_hold_${index}`,
+          dodoProductId: "pdt_oversized_hold",
+          planKey: "pro_monthly",
+          status: "on_hold",
+          currentPeriodStart: BASE_TIMESTAMP,
+          currentPeriodEnd: PERIOD_END,
+          rawPayload: {},
+          updatedAt: BASE_TIMESTAMP,
+        });
+      }
+    });
+
+    await expect(
+      t.mutation(
+        internal.payments.repairStaleOnHoldDerivedState.run,
+        { observedAt },
+      ),
+    ).rejects.toThrow("repair refused 501+ rows; the audited bound is 500");
+
+    const state = await t.run(async (ctx) => ({
+      entitlements: await ctx.db.query("entitlements").collect(),
+      counters: await ctx.db.query("counters").collect(),
+    }));
+    expect(state.entitlements).toEqual([]);
+    expect(state.counters).toEqual([]);
   });
 });

@@ -1500,7 +1500,7 @@ export async function revokeBusinessProGrantsForSubscription(
   ctx: MutationCtx,
   dodoSubscriptionId: string,
   eventTimestamp: number,
-): Promise<{ revoked: number; failed: number }> {
+): Promise<{ checked: number; revoked: number; failed: number }> {
   const grants = await ctx.db
     .query("businessProGrants")
     .withIndex("by_businessSubscriptionId", (q) =>
@@ -1508,10 +1508,12 @@ export async function revokeBusinessProGrantsForSubscription(
     )
     .collect();
 
+  let checked = 0;
   let revoked = 0;
   let failed = 0;
   for (const grant of grants) {
     if (grant.status !== "accepted" && grant.status !== "pending") continue;
+    checked += 1;
     // Per-invitee error isolation: this whole handler runs inside ONE atomic
     // Convex mutation transaction (shared with the caller's own subscription-
     // status patch). An unguarded throw here would roll back every grant
@@ -1547,7 +1549,7 @@ export async function revokeBusinessProGrantsForSubscription(
       );
     }
   }
-  return { revoked, failed };
+  return { checked, revoked, failed };
 }
 
 /**
