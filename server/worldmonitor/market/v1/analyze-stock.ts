@@ -609,7 +609,7 @@ export function computeRealizedVolatility(closes: number[]): number {
  */
 export function computeAtr(highs: number[], lows: number[], closes: number[], period = ATR_PERIOD): number {
   const length = Math.min(highs.length, lows.length, closes.length);
-  if (length < 2 || period < 1) return 0;
+  if (period < 1 || length < period) return 0;
   const trueRanges: number[] = [];
   for (let i = 0; i < length; i++) {
     const high = highs[i];
@@ -623,9 +623,9 @@ export function computeAtr(highs: number[], lows: number[], closes: number[], pe
     trueRanges.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
   }
   if (trueRanges.length === 0) return 0;
-  const window = Math.min(period, trueRanges.length);
-  let atr = mean(trueRanges.slice(0, window));
-  for (let i = window; i < trueRanges.length; i++) {
+  if (trueRanges.length < period) return 0;
+  let atr = mean(trueRanges.slice(0, period));
+  for (let i = period; i < trueRanges.length; i++) {
     atr = (atr * (period - 1) + (trueRanges[i] ?? 0)) / period;
   }
   return atr;
@@ -843,7 +843,11 @@ export async function fetchYahooHistory(symbol: string): Promise<{ candles: Cand
     const open = opens[i];
     const high = highs[i];
     const low = lows[i];
-    if (![close, open, high, low].every((value) => typeof value === 'number' && Number.isFinite(value))) continue;
+    if (![close, open, high, low].every(
+      (value) => typeof value === 'number' && Number.isFinite(value) && value > 0,
+    )) continue;
+    if ((high as number) < Math.max(open as number, close as number, low as number)
+      || (low as number) > Math.min(open as number, close as number, high as number)) continue;
     candles.push({
       timestamp: (timestamps[i] ?? 0) * 1000,
       open: open as number,
@@ -1647,9 +1651,9 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  // v4 -> v5 (#5467): fundamentals now use normalized leverage and explicit
-  // statement currency. Never replay a pre-contract response into the Pro UI.
-  const cacheKey = `market:analyze-stock:v5:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  // v5 -> v6: risk analytics add required response fields. Never replay a
+  // pre-contract response without them into the Pro UI or API.
+  const cacheKey = `market:analyze-stock:v6:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [history, analystData] = await Promise.all([

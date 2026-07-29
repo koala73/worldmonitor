@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
@@ -9,6 +10,7 @@ import {
   computeMaxDrawdown,
   computeRealizedVolatility,
   fetchYahooAnalystData,
+  fetchYahooHistory,
   getFallbackOverlay,
   selectEarningsForSymbol,
   type AnalystData,
@@ -498,6 +500,35 @@ describe('buildAnalysisResponse earnings surfacing', () => {
 });
 
 describe('risk analytics helpers', () => {
+  it('rejects non-positive OHLC bars before computing risk analytics', async () => {
+    const count = 31;
+    const values = Array.from({ length: count }, (_, index) => 100 + index);
+    const withZero = [...values];
+    withZero[15] = 0;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      chart: {
+        result: [{
+          meta: { currency: 'USD' },
+          timestamp: Array.from({ length: count }, (_, index) => 1_700_000_000 + index * 86_400),
+          indicators: {
+            quote: [{
+              open: withZero,
+              high: withZero.map((value) => value === 0 ? 0 : value + 1),
+              low: withZero.map((value) => value === 0 ? 0 : value - 1),
+              close: withZero,
+              volume: Array.from({ length: count }, () => 1_000_000),
+            }],
+          },
+        }],
+      },
+    }), { status: 200 })) as typeof fetch;
+
+    const history = await fetchYahooHistory('AAPL');
+    assert.ok(history);
+    assert.equal(history.candles.length, 30);
+    assert.ok(history.candles.every((candle) => candle.close > 0));
+  });
+
   it('computeRealizedVolatility returns 0 for insufficient or constant-return series', () => {
     assert.equal(computeRealizedVolatility([100]), 0);
     // Every step is a constant +5%, so log returns are identical and stdev is 0.
@@ -521,13 +552,25 @@ describe('risk analytics helpers', () => {
   });
 
   it('computeAtr uses the max of the three true-range components across gaps', () => {
-    // TR = [10-8, max(12-11, |12-9|, |11-9|), max(11-7, |11-11.5|, |7-11.5|)] = [2, 3, 4.5].
-    const atr = computeAtr([10, 12, 11], [8, 11, 7], [9, 11.5, 8]);
-    assert.ok(Math.abs(atr - (2 + 3 + 4.5) / 3) < 1e-9);
+    // Seed TRs are [2, 3, 4.5, 3, then ten 2s], whose 14-period mean is 32.5/14.
+    const atr = computeAtr(
+      [10, 12, 11, ...Array.from({ length: 11 }, () => 11)],
+      [8, 11, 7, ...Array.from({ length: 11 }, () => 9)],
+      [9, 11.5, 8, ...Array.from({ length: 11 }, () => 10)],
+    );
+    assert.ok(Math.abs(atr - (32.5 / 14)) < 1e-9);
   });
 
-  it('computeAtr returns 0 when fewer than two bars are supplied', () => {
+  it('computeAtr returns 0 before the full seed period is available', () => {
     assert.equal(computeAtr([10], [8], [9]), 0);
+    assert.equal(
+      computeAtr(
+        Array.from({ length: 13 }, () => 10),
+        Array.from({ length: 13 }, () => 8),
+        Array.from({ length: 13 }, () => 9),
+      ),
+      0,
+    );
   });
 
   it('computeMaxDrawdown reports the deepest peak-to-trough decline as a negative ratio', () => {
@@ -539,6 +582,17 @@ describe('risk analytics helpers', () => {
     assert.equal(computeMaxDrawdown([]), 0);
     assert.equal(computeMaxDrawdown([100]), 0);
     assert.equal(computeMaxDrawdown([100, 101, 102, 103]), 0);
+  });
+});
+
+describe('analyzeStock cache contract', () => {
+  it('versions the cache namespace for required risk fields', () => {
+    const source = readFileSync(
+      new URL('../server/worldmonitor/market/v1/analyze-stock.ts', import.meta.url),
+      'utf8',
+    );
+    assert.match(source, /market:analyze-stock:v6:/);
+    assert.doesNotMatch(source, /market:analyze-stock:v5:/);
   });
 });
 
