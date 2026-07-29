@@ -231,8 +231,8 @@
       "ccfiSource": "शंघाई शिपिंग एक्सचेंज",
       "comtradeSource": "UN Comtrade, रिपोर्टर 156",
       "sourceUnavailable": "स्रोत अनुपलब्ध",
-      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
-      "policyPartial": "{{count}} official agencies are temporarily degraded.",
+      "policyUnavailable": "आधिकारिक नीति और प्रवर्तन घटनाएँ वर्तमान में उपलब्ध नहीं हैं।",
+      "policyPartial": "{{count}} आधिकारिक एजेंसियाँ अस्थायी रूप से निम्नीकृत हैं।",
       "status": {
         "loading": "लोड हो रहा है",
         "available": "उपलब्ध",
