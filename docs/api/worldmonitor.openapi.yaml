@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
     title: WorldMonitor API
-    description: Unified OpenAPI bundle spanning all WorldMonitor services.
+    description: 'Unified OpenAPI bundle spanning all WorldMonitor services. Versioning and deprecation policy: https://www.worldmonitor.app/docs/api-versioning'
     contact:
         name: WorldMonitor
         email: support@worldmonitor.app
