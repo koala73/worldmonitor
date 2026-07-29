@@ -361,6 +361,12 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['digest:last-run',
     'operational: digest-notifications cron heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['intel-history:ingest-health:conflict:acled-intel:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['intel-history:ingest-health:military:cross-strait-activity:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['intel-history:ingest-health:energy:intelligence:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
 ]);
 
 // -----------------------------------------------------------------------------

@@ -413,14 +413,14 @@ describe('registry shape validation', () => {
 });
 
 describe('requiredEnv any-of groups', () => {
-  // HAPI, SZSE and Japan MOD all resolve `SOURCE_SPECIFIC || PROXY_URL`. Declared
+  // SZSE and Japan MOD resolve `SOURCE_SPECIFIC || PROXY_URL`. Declared
   // as two flat entries the audit demanded BOTH, so configuring only the
   // source-specific exit — the independently-replaceable state the per-source
   // split exists to deliver — reported drift and threw out of the patch builder,
   // vetoing reconciliation for every OTHER service in the same run.
   const anyOfRegistry = [{
     ...managedRegistry[0],
-    requiredEnv: [['HAPI_PROXY_URL', 'PROXY_URL']],
+    requiredEnv: [['SZSE_PROXY_URL', 'PROXY_URL']],
   }];
 
   it('is satisfied by the source-specific variable alone', () => {
@@ -429,7 +429,7 @@ describe('requiredEnv any-of groups', () => {
         'svc-example': service({
           watchPatterns: managedRegistry[0].watchPatterns,
           cronSchedule: managedRegistry[0].cronSchedule,
-          variables: { HAPI_PROXY_URL: 'http://exit-a' },
+          variables: { SZSE_PROXY_URL: 'http://exit-a' },
         }),
       },
     };
@@ -460,10 +460,10 @@ describe('requiredEnv any-of groups', () => {
       },
     };
     const drift = auditRailwayServiceConfig(config, serviceIds, anyOfRegistry);
-    assert.deepEqual(drift[0].missingRequiredEnv, ['HAPI_PROXY_URL or PROXY_URL']);
+    assert.deepEqual(drift[0].missingRequiredEnv, ['SZSE_PROXY_URL or PROXY_URL']);
     assert.throws(
       () => buildRailwayServiceConfigPatch(drift),
-      /missing required environment: HAPI_PROXY_URL or PROXY_URL/,
+      /missing required environment: SZSE_PROXY_URL or PROXY_URL/,
     );
   });
 
@@ -471,7 +471,7 @@ describe('requiredEnv any-of groups', () => {
     // The env veto is deliberately fail-closed, but the audit REPORT must still
     // name every drifted service so an operator sees the whole picture.
     const registry = [
-      { ...managedRegistry[0], requiredEnv: [['HAPI_PROXY_URL', 'PROXY_URL']] },
+      { ...managedRegistry[0], requiredEnv: [['SZSE_PROXY_URL', 'PROXY_URL']] },
       { service: 'seed-other', deployMode: 'nixpacks-root-scripts', watchPatterns: ['scripts/seed-other.mjs'], cronSchedule: '0 * * * *' },
     ];
     const config = {

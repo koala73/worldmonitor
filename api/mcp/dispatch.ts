@@ -110,7 +110,7 @@ export async function executeTool(
   // the filter so it composes (`country: "DE", summary: true` → counts/samples
   // for DE). Independent of filter success: a thrown filter still pristine-
   // summarises.
-  if (argBool(params.summary)) result = summarizeData(result);
+  if (argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
   return { cached_at, stale, data: result };
 }

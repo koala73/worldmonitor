@@ -22,6 +22,29 @@ import { grantContextHandler } from '../api/internal/mcp-grant-context.ts';
 
 const FIXED_NOW = 1_700_000_000_000; // arbitrary, far past Y2K
 
+/**
+ * These handlers now read the entitlement backend's CONFIGURATION, not just the
+ * row their injected loader returns (#5619 follow-up): an absent row is a plan
+ * verdict only when a lookup could actually run. Default to configured — that
+ * is production, and it keeps `getEntitlements: async () => null` meaning
+ * "Convex confirmed no row", which is what the 403 assertions below are about.
+ * The unconfigured case gets its own explicit test.
+ */
+const ORIGINAL_CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
+const ORIGINAL_CONVEX_SECRET = process.env.CONVEX_SERVER_SHARED_SECRET;
+
+beforeEach(() => {
+  process.env.CONVEX_SITE_URL = 'https://fake.convex.site';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'fake-secret';
+});
+
+afterEach(() => {
+  if (ORIGINAL_CONVEX_SITE_URL === undefined) delete process.env.CONVEX_SITE_URL;
+  else process.env.CONVEX_SITE_URL = ORIGINAL_CONVEX_SITE_URL;
+  if (ORIGINAL_CONVEX_SECRET === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+  else process.env.CONVEX_SERVER_SHARED_SECRET = ORIGINAL_CONVEX_SECRET;
+});
+
 const BASE_NONCE_DATA = {
   client_id: 'client_abc',
   redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
@@ -533,6 +556,66 @@ describe('grantContextHandler', () => {
     assert.equal(res.status, 403);
     const json = await res.json();
     assert.equal(json.error, 'INSUFFICIENT_TIER');
+  });
+
+  /**
+   * #5619 — the consent card is the one Pro gate with no client-side
+   * entitlement subscription to contradict it, so a lookup failure rendered as
+   * "buy Pro" is unanswerable from the page. A Convex 4xx (our own shared
+   * secret / contract, not the user's plan) now arrives here as the
+   * verification marker, and it must keep the retryable vocabulary.
+   */
+  it('#5619: an unverifiable entitlement is 503 TIER_VERIFICATION_UNAVAILABLE, not the upsell', async () => {
+    const { deps } = makeContextDeps({
+      getEntitlements: async () => ({
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        verificationUnavailable: true,
+      }),
+    });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 503);
+    const json = await res.json();
+    assert.equal(json.error, 'TIER_VERIFICATION_UNAVAILABLE');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    assert.ok(Number(res.headers.get('Retry-After')) > 0);
+    // Still leaks nothing — a caller we cannot verify is not a Pro caller.
+    assert.equal(json.client_name, undefined);
+    assert.equal(json.redirect_host, undefined);
+  });
+
+  it('#5619: an UNCONFIGURED backend is 503, not the upsell', async () => {
+    // The consent card is the one Pro gate with no client-side entitlement
+    // subscription to contradict it, and #5619 item 3 named this endpoint
+    // specifically. With CONVEX_SITE_URL / the shared secret missing,
+    // getEntitlements returns null for everyone before attempting a lookup —
+    // so INSUFFICIENT_TIER here tells a paying subscriber to buy the plan they
+    // already own, because of our deploy defect.
+    delete process.env.CONVEX_SITE_URL;
+    delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    const { deps } = makeContextDeps({ getEntitlements: async () => null });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 503);
+    const json = await res.json();
+    assert.equal(json.error, 'TIER_VERIFICATION_UNAVAILABLE');
+    assert.equal(
+      res.headers.get('X-Billing-Verification'),
+      'entitlement_verification_unavailable',
+    );
+    // Still leaks nothing — a caller we cannot verify is not a Pro caller.
+    assert.equal(json.client_name, undefined);
+    assert.equal(json.redirect_host, undefined);
+  });
+
+  it('#5619: a CONFIRMED absent entitlement keeps the honest 403 upsell', async () => {
+    // After #5619 a null reaching this gate means Convex answered and the user
+    // has no row — the one state where "subscribe" is the correct answer.
+    const { deps } = makeContextDeps({ getEntitlements: async () => null });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 403);
+    const json = await res.json();
+    assert.equal(json.error, 'INSUFFICIENT_TIER');
+    assert.equal(res.headers.get('X-Billing-Verification'), null);
   });
 
   it('returns 400 INVALID_NONCE when nonce row is missing', async () => {

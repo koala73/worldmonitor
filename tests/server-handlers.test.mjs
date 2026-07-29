@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
+import { aggregateHapiConflictEvents } from '../scripts/_conflict-hapi.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -27,45 +28,61 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. Humanitarian summary: country fallback + ISO-2 contract
 // ========================================================================
 
-describe('aggregateHapiConflictEvents (scripts/seed-conflict-intel.mjs)', () => {
+describe('aggregateHapiConflictEvents (scripts/_conflict-hapi.mjs)', () => {
   // #5554: server/worldmonitor/conflict/v1/get-humanitarian-summary.ts no longer
   // fetches HAPI at all — it's a cache-only read of what this seeder writes (HDX's
   // app_identifier rate limiting is per-identifier, so a per-request RPC fetch would
   // stack uncoordinated traffic on top of the seeder's bulk refresh). The
   // BLOCKING-1/BLOCKING-2/MEDIUM-1 guards below (originally PR #106, against the old
   // RPC-handler implementation) moved here with the fetch/aggregation logic itself.
-  const src = readSrc('scripts/seed-conflict-intel.mjs');
+  it('rejects unmapped and out-of-scope ISO3 rows and returns the ISO2 proto contract', () => {
+    const updatedAt = Date.parse('2026-07-29T00:00:00Z');
+    const result = aggregateHapiConflictEvents([
+      {
+        location_code: 'ZZZ',
+        location_name: 'Unknown',
+        reference_period_start: '2026-07-01',
+        admin_level: 0,
+        event_type: 'political_violence',
+        events: 500,
+        fatalities: 500,
+      },
+      {
+        location_code: 'USA',
+        location_name: 'United States',
+        reference_period_start: '2026-07-01',
+        admin_level: 0,
+        event_type: 'political_violence',
+        events: 250,
+        fatalities: 250,
+      },
+      {
+        location_code: 'SDN',
+        location_name: 'Sudan',
+        reference_period_start: '2026-07-01',
+        admin_level: 0,
+        event_type: 'political_violence',
+        events: 12,
+        fatalities: 3,
+      },
+    ], { nowMs: updatedAt, countryCodes: ['SD'] });
 
-  it('ignores rows whose ISO3 location has no ISO2 mapping (BLOCKING-1)', () => {
-    assert.match(src, /ISO3_TO_ISO2\.get\(/,
-      'bulk aggregation must translate HAPI ISO3 locations through the canonical map');
-    assert.match(src, /if\s*\(\s*!countryCode\s*\|\|\s*!targetCountries\.has\(countryCode\)\s*\)\s*continue/,
-      'unmapped and out-of-scope HAPI rows must be skipped');
-    assert.doesNotMatch(src, /Object\.values\(byCountry\)\[0\]/,
-      'bulk aggregation must not fall back to an arbitrary country\'s data');
-  });
-
-  it('returns ISO-2 country_code per proto contract (BLOCKING-2)', () => {
-    assert.match(src, /results\[countryCode\]\s*=\s*\{\s*summary:\s*\{\s*countryCode,/,
-      'Should publish the ISO-2 key produced by the reverse mapping');
-  });
-
-  it('uses renamed conflict-event proto fields (MEDIUM-1)', () => {
-    assert.match(src, /conflictEventsTotal/,
-      'Should use conflictEventsTotal field');
-    assert.match(src, /conflictPoliticalViolenceEvents/,
-      'Should use conflictPoliticalViolenceEvents field');
-    assert.match(src, /conflictFatalities/,
-      'Should use conflictFatalities field');
-    assert.match(src, /referencePeriod/,
-      'Should use referencePeriod field');
-    assert.match(src, /conflictDemonstrations/,
-      'Should use conflictDemonstrations field');
-    // Old field names must not appear
-    assert.doesNotMatch(src, /populationAffected/,
-      'Should not reference old populationAffected field');
-    assert.doesNotMatch(src, /peopleInNeed/,
-      'Should not reference old peopleInNeed field');
+    assert.deepEqual(result, {
+      SD: {
+        summary: {
+          countryCode: 'SD',
+          countryName: 'Sudan',
+          conflictEventsTotal: 12,
+          conflictPoliticalViolenceEvents: 12,
+          conflictFatalities: 3,
+          referencePeriod: '2026-07-01',
+          conflictDemonstrations: 0,
+          updatedAt,
+        },
+      },
+    });
+    assert.equal('populationAffected' in result.SD.summary, false);
+    assert.equal('peopleInNeed' in result.SD.summary, false);
   });
 });
 

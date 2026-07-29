@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
   analyzeStock,
   buildAnalysisResponse,
   buildTechnicalSnapshot,
+  computeAtr,
+  computeMaxDrawdown,
+  computeRealizedVolatility,
   fetchYahooAnalystData,
+  fetchYahooHistory,
   getFallbackOverlay,
+  normalizeNewsSentiment,
   selectEarningsForSymbol,
   type AnalystData,
 } from '../server/worldmonitor/market/v1/analyze-stock.ts';
@@ -107,6 +113,9 @@ afterEach(() => {
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.OLLAMA_API_URL;
   delete process.env.OLLAMA_MODEL;
+  delete process.env.LLM_API_URL;
+  delete process.env.LLM_API_KEY;
+  delete process.env.LLM_MODEL;
 });
 
 describe('analyzeStock handler', () => {
@@ -355,6 +364,7 @@ describe('fetchYahooAnalystData', () => {
                 newsSummary: 'Coverage is stable.',
                 bullishFactors: ['Profitable'],
                 riskFactors: ['Leverage'],
+                newsSentiment: 0.42,
               }),
             },
             finish_reason: 'stop',
@@ -375,9 +385,12 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(response.fundamentals?.debtToEquity, 1.5);
     assert.equal(response.fundamentals?.financialCurrency, 'CNY');
 
+    assert.equal(response.newsSentiment, 0.42);
+
     const systemPrompt = llmRequestBody?.messages?.find((message) => message.role === 'system')?.content || '';
     assert.match(systemPrompt, /debtToEquity 1\.5 means debt is 1\.5x equity/);
     assert.match(systemPrompt, /fundamentals\.financialCurrency/);
+    assert.match(systemPrompt, /newsSentiment/);
 
     const userMessage = llmRequestBody?.messages?.find((message) => message.role === 'user')?.content || '{}';
     const userPayload = JSON.parse(userMessage) as {
@@ -386,6 +399,57 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(userPayload.fundamentals?.debtToEquity, 1.5);
     assert.equal(userPayload.fundamentals?.financialCurrency, 'CNY');
     assert.equal(userPayload.fundamentals?.freeCashflow, -49_000_000);
+  });
+
+  it('falls through to the next provider when headline sentiment is missing', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+    process.env.LLM_API_URL = 'https://generic.example/v1/chat/completions';
+    process.env.LLM_API_KEY = 'test-generic-key';
+    const llmPostUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+      }
+      if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+        return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+      }
+      if (url.includes('news.google.com')) {
+        return new Response(mockNewsXml, { status: 200 });
+      }
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('ok', { status: 200 });
+      }
+      llmPostUrls.push(url);
+      const newsSentiment = url.includes('openrouter.ai') ? undefined : -0.35;
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              summary: 'Fallback provider response.',
+              action: 'Hold',
+              newsSentiment,
+            }),
+          },
+          finish_reason: 'stop',
+        }],
+        usage: { total_tokens: 20, prompt_tokens: 15, completion_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const response = await analyzeStock({} as never, {
+      symbol: 'BABA',
+      name: 'Alibaba',
+      includeNews: true,
+    });
+
+    assert.equal(response.provider, 'generic');
+    assert.equal(response.newsSentiment, -0.35);
+    assert.deepEqual(llmPostUrls, [
+      'https://openrouter.ai/api/v1/chat/completions',
+      'https://generic.example/v1/chat/completions',
+    ]);
   });
 });
 
@@ -491,5 +555,175 @@ describe('buildAnalysisResponse earnings surfacing', () => {
     assert.equal(resp.nextEarningsDate, '2026-07-30');
     assert.ok(!('consensusEps' in resp));
     assert.ok(!('consensusRevenue' in resp));
+  });
+
+  const headline = { title: 'Earnings beat', source: 'Reuters', publishedAt: '2026-07-25T00:00:00Z' };
+
+  it('surfaces a provided overlay news sentiment when headlines were analyzed', () => {
+    const resp = buildAnalysisResponse({ ...base, headlines: [headline], overlay: { ...overlay, newsSentiment: -0.3 } });
+    assert.equal(resp.newsSentiment, -0.3);
+  });
+
+  it('omits newsSentiment when no headlines were analyzed (avoids a synthetic neutral)', () => {
+    const resp = buildAnalysisResponse({ ...base, headlines: [], overlay: { ...overlay, newsSentiment: 0 } });
+    assert.ok(!('newsSentiment' in resp));
+  });
+
+  it('omits newsSentiment when the overlay carries none (rules fallback)', () => {
+    const resp = buildAnalysisResponse({ ...base, headlines: [headline] });
+    assert.ok(!('newsSentiment' in resp));
+  });
+});
+
+describe('normalizeNewsSentiment', () => {
+  it('rounds an in-range reading to two decimals', () => {
+    assert.equal(normalizeNewsSentiment(0.4237), 0.42);
+    assert.equal(normalizeNewsSentiment(-0.5), -0.5);
+    assert.equal(normalizeNewsSentiment(0), 0);
+  });
+
+  it('clamps out-of-range readings into [-1, 1]', () => {
+    assert.equal(normalizeNewsSentiment(1.4), 1);
+    assert.equal(normalizeNewsSentiment(-3), -1);
+  });
+
+  it('returns undefined for missing or non-finite values', () => {
+    assert.equal(normalizeNewsSentiment(undefined), undefined);
+    assert.equal(normalizeNewsSentiment('0.5'), undefined);
+    assert.equal(normalizeNewsSentiment(Number.NaN), undefined);
+    assert.equal(normalizeNewsSentiment(Number.POSITIVE_INFINITY), undefined);
+  });
+});
+
+describe('risk analytics helpers', () => {
+  it('rejects non-positive OHLC bars before computing risk analytics', async () => {
+    const count = 31;
+    const values = Array.from({ length: count }, (_, index) => 100 + index);
+    const withZero = [...values];
+    withZero[15] = 0;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      chart: {
+        result: [{
+          meta: { currency: 'USD' },
+          timestamp: Array.from({ length: count }, (_, index) => 1_700_000_000 + index * 86_400),
+          indicators: {
+            quote: [{
+              open: withZero,
+              high: withZero.map((value) => value === 0 ? 0 : value + 1),
+              low: withZero.map((value) => value === 0 ? 0 : value - 1),
+              close: withZero,
+              volume: Array.from({ length: count }, () => 1_000_000),
+            }],
+          },
+        }],
+      },
+    }), { status: 200 })) as typeof fetch;
+
+    const history = await fetchYahooHistory('AAPL');
+    assert.ok(history);
+    assert.equal(history.candles.length, 30);
+    assert.ok(history.candles.every((candle) => candle.close > 0));
+  });
+
+  it('computeRealizedVolatility returns 0 for insufficient or constant-return series', () => {
+    assert.equal(computeRealizedVolatility([100]), 0);
+    // Every step is a constant +5%, so log returns are identical and stdev is 0.
+    assert.equal(computeRealizedVolatility([100, 105, 110.25, 115.7625]), 0);
+  });
+
+  it('computeRealizedVolatility annualizes the sample stdev of log returns by sqrt(252)', () => {
+    // Closes chosen so daily log returns are exactly +0.1, -0.1, +0.1, -0.1.
+    const closes = [100, 100 * Math.exp(0.1), 100, 100 * Math.exp(0.1), 100];
+    // Sample stdev of four ±0.1 values is 0.1 * sqrt(4 / 3); annualize by sqrt(252).
+    const expected = 0.1 * Math.sqrt(4 / 3) * Math.sqrt(252);
+    assert.ok(Math.abs(computeRealizedVolatility(closes) - expected) < 1e-9);
+  });
+
+  it('computeAtr returns the constant true range for flat candles', () => {
+    const highs = Array.from({ length: 20 }, () => 101);
+    const lows = Array.from({ length: 20 }, () => 99);
+    const closes = Array.from({ length: 20 }, () => 100);
+    // Every true range is high - low = 2, so Wilder's ATR is exactly 2.
+    assert.equal(computeAtr(highs, lows, closes), 2);
+  });
+
+  it('computeAtr uses the max of the three true-range components across gaps', () => {
+    // Seed TRs are [2, 3, 4.5, 3, then ten 2s], whose 14-period mean is 32.5/14.
+    const atr = computeAtr(
+      [10, 12, 11, ...Array.from({ length: 11 }, () => 11)],
+      [8, 11, 7, ...Array.from({ length: 11 }, () => 9)],
+      [9, 11.5, 8, ...Array.from({ length: 11 }, () => 10)],
+    );
+    assert.ok(Math.abs(atr - (32.5 / 14)) < 1e-9);
+  });
+
+  it('computeAtr returns 0 before the full seed period is available', () => {
+    assert.equal(computeAtr([10], [8], [9]), 0);
+    assert.equal(
+      computeAtr(
+        Array.from({ length: 13 }, () => 10),
+        Array.from({ length: 13 }, () => 8),
+        Array.from({ length: 13 }, () => 9),
+      ),
+      0,
+    );
+  });
+
+  it('computeMaxDrawdown reports the deepest peak-to-trough decline as a negative ratio', () => {
+    // Peak 120, trough 90 -> (90 - 120) / 120 = -0.25.
+    assert.equal(computeMaxDrawdown([100, 120, 90, 110]), -0.25);
+  });
+
+  it('computeMaxDrawdown returns 0 for empty, single-point, or rising series', () => {
+    assert.equal(computeMaxDrawdown([]), 0);
+    assert.equal(computeMaxDrawdown([100]), 0);
+    assert.equal(computeMaxDrawdown([100, 101, 102, 103]), 0);
+  });
+});
+
+describe('analyzeStock cache contract', () => {
+  it('versions the cache namespace for required risk fields', () => {
+    const source = readFileSync(
+      new URL('../server/worldmonitor/market/v1/analyze-stock.ts', import.meta.url),
+      'utf8',
+    );
+    assert.match(source, /market:analyze-stock:v6:/);
+    assert.doesNotMatch(source, /market:analyze-stock:v5:/);
+  });
+});
+
+describe('buildAnalysisResponse risk-analytics surfacing', () => {
+  // 40 rising bars then 20 falling bars guarantees a real drawdown and volatility.
+  const candles = Array.from({ length: 60 }, (_, i) => {
+    const close = i < 40 ? 100 + i * 2 : 180 - (i - 39) * 3;
+    return {
+      timestamp: 1_700_000_000_000 + i * 86_400_000,
+      open: close, high: close + 1, low: close - 1, close, volume: 1_000_000,
+    };
+  });
+  const technical = buildTechnicalSnapshot(candles);
+  const overlay = getFallbackOverlay('Test', technical, []);
+  const emptyAnalystData: AnalystData = {
+    analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
+    priceTarget: { numberOfAnalysts: 0 },
+    recentUpgrades: [],
+    fundamentals: {},
+  };
+  const resp = buildAnalysisResponse({
+    symbol: 'AAPL', name: 'Apple', currency: 'USD', technical, headlines: [],
+    overlay, analystData: emptyAnalystData, includeNews: false,
+    analysisAt: Date.now(), generatedAt: new Date().toISOString(),
+  });
+
+  it('passes the snapshot risk metrics straight through to the response', () => {
+    assert.equal(resp.realizedVolatility, technical.realizedVolatility);
+    assert.equal(resp.atr, technical.atr);
+    assert.equal(resp.maxDrawdown, technical.maxDrawdown);
+  });
+
+  it('produces finite metrics with the expected signs', () => {
+    assert.ok(Number.isFinite(resp.realizedVolatility) && resp.realizedVolatility > 0);
+    assert.ok(Number.isFinite(resp.atr) && resp.atr > 0);
+    assert.ok(Number.isFinite(resp.maxDrawdown) && resp.maxDrawdown < 0);
   });
 });

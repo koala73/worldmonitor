@@ -746,6 +746,14 @@ export function createDomainGateway(
     };
     function recordUsageEntitlement(ent: CachedEntitlements | null): void {
       if (!ent) return;
+      // The synthesized verification marker is not an answer about this
+      // caller's plan — it is free-SHAPED so the gates deny, nothing more.
+      // Copying its tier-0/'free' fields into usage telemetry would durably
+      // label unverifiable paying callers as free in Axiom, and it would do so
+      // precisely during the outage window this data exists to diagnose. Leave
+      // both fields null, which is what an unanswered lookup used to record
+      // back when this state arrived as a null (#5619 follow-up).
+      if (ent.verificationUnavailable) return;
       usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
       usage.planKey = ent.planKey;
     }

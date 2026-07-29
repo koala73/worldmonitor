@@ -265,6 +265,28 @@ A seed is considered stale when its age exceeds **2x the configured interval**. 
 | GPS jamming, displacement | 360 | 720 |
 | Iran events, UCDP | 210-5040 | 420-10080 |
 
+### History ingestion (`intel-history:*`)
+
+Domains prefixed `intel-history:` do **not** describe a seeder's canonical publish. They track whether that collector's post-publish append to the historical intelligence store is still landing:
+
+| Domain | Tracks |
+|--------|--------|
+| `intel-history:conflict:acled-intel` | history appends from `seed-conflict-intel` |
+| `intel-history:military:cross-strait-activity` | history appends from `seed-cross-strait-activity` |
+| `intel-history:energy:intelligence` | history appends from `seed-energy-intelligence` |
+
+The append is fail-open by design — the canonical publish has already committed when it runs, so a failure must never fail the run. That means the collector's own entry (`conflict:acled-intel`, …) stays `ok` while history silently stops accumulating. These entries are the separate signal:
+
+- `fetchedAt` is the last **healthy** append, never the last attempt. A run that reached the relay advances it; a run that delivered nothing (every chunk rejected, or the wall-clock budget died before the first request) does not. So a broken relay freezes it and the entry goes `stale` on the ordinary 2x-interval rule.
+- `status: "error"` means the append failed on two consecutive runs — or, on the very first tick, that a relay credential present during an earlier successful append has since been removed.
+- `lastErrorCode` names the cause when there is one: `http_401`, `budget_exhausted`, `all_chunks_failed`, `config_removed`, or a clamped error-class name. Absent when the ingest has never failed.
+- `status: "not_configured"` means this deployment has **never** had relay credentials. It is visible but never an alarm — no operator action clears it except provisioning the relay. Losing credentials after a successful append is not this state; it reports `error` with `lastErrorCode: "config_removed"`.
+- `recordCount` is the volume the relay accepted on the last successful append. Zero is valid: a run whose records were all deduped still proves the pipeline works.
+
+The richer per-run detail — `lastErrorReason`, `consecutiveFailures`, `missingConfig`, and the inserted/deduped/abandoned counts — is **not** returned by either endpoint. It lives in the Redis record `intel-history:ingest-health:<domain>:<resource>:v1`, which the endpoints project from.
+
+A `stale` or `error` here alongside an `ok` collector means canonical data is fine and the history store is the thing to investigate.
+
 ### Example Request
 
 ```bash

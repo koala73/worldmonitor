@@ -75,12 +75,18 @@ export function getHydratedData(key: string): unknown | undefined {
 // for the same key in the same tick, and we want one request, not two.
 const onDemandInflight = new Map<string, Promise<unknown | undefined>>();
 
-// The set of keys `/api/bootstrap?keys=<name>&public=1` will serve without
-// credentials. Derived from the SAME registry call the server uses to build its
-// allowlist (ON_DEMAND_KEYS, api/bootstrap.js) and the wm-session interceptor
-// uses to decide which credential-less reads may bypass session recovery
-// (PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS, wm-session.ts:63) — all three read
-// `bootstrapTierKeyNames('on-demand')`, so they cannot drift apart.
+// The on-demand keys `/api/bootstrap?keys=<name>&public=1` will serve without
+// credentials. The ON-DEMAND PORTION cannot drift: this set, the server's
+// allowlist (ON_DEMAND_KEYS, api/bootstrap.js) and the wm-session interceptor's
+// bypass set (PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS, wm-session.ts) all derive it
+// from the same `bootstrapTierKeyNames('on-demand')` call.
+//
+// The other two additionally accept PUBLIC_WEATHER_BOOTSTRAP_KEY on that URL
+// shape (#5386), so they are supersets of this one — that difference is
+// intentional, not drift. weatherAlerts rides the fast tier, so ensureHydrated's
+// tier-hydration path already covers it and its direct reader is
+// src/services/weather.ts; adding it here would only enable a fetch no caller
+// makes.
 const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand'));
 
 /**
@@ -106,7 +112,8 @@ export async function ensureHydrated(key: string): Promise<unknown | undefined> 
   // through to validateApiKey, which sees no credential — this request omits
   // them — and answers 401. Issuing it anyway is not merely wasted: the
   // wm-session interceptor waves through credential-less bootstrap reads only
-  // for on-demand keys (PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS, wm-session.ts:63), so
+  // for keys on the public single-key URL shape (PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS,
+  // wm-session.ts), so
   // a non-on-demand key enters session recovery, which mints a fresh cookie and
   // replays a request that still omits credentials, draws the same 401, and
   // reports `wm_session_route_401` — blaming the anonymous session for a

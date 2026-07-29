@@ -30,8 +30,10 @@ import {
   pickMapKeysLike,
   pickNestedMap,
   selectDatasets,
+  summarizeData,
 } from '../filters';
 import type { ToolDef } from '../types';
+import { utf8ByteLength } from '../utils';
 import {
   CHOKEPOINT_MONITOR_UI_URI,
   CONFLICT_EVENTS_UI_URI,
@@ -48,6 +50,101 @@ import {
 // The output schema still documents an iran-events field (harmless when absent).
 // Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+// Leave headroom for the cache envelope (`cached_at`, `stale`, and `data`) so
+// the dispatcher never replaces a useful conflict response with the generic
+// `_budget_exceeded` envelope.
+const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
+const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
+const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
+
+function fitConflictEventsToBudget(data: Record<string, unknown>): void {
+  const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
+    const parent = data[label];
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [];
+    const events = (parent as Record<string, unknown>).events;
+    return Array.isArray(events) ? [{ label, events }] : [];
+  });
+  const originalEventCount = lists.reduce((sum, { events }) => sum + events.length, 0);
+  if (originalEventCount === 0) return;
+
+  const byteLength = () => utf8ByteLength(JSON.stringify(data));
+  if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) return;
+
+  data.partial = true;
+  const truncation = {
+    reason: 'output_budget',
+    original_event_count: originalEventCount,
+    returned_event_count: 0,
+  };
+  data.truncation = truncation;
+
+  const caps = new Map(lists.map(({ label }) => [label, 0]));
+  const applyCaps = () => {
+    let returnedEventCount = 0;
+    for (const { label, events } of lists) {
+      const parent = data[label] as Record<string, unknown>;
+      const bounded = events.slice(0, caps.get(label) ?? 0);
+      parent.events = bounded;
+      returnedEventCount += bounded.length;
+    }
+    truncation.returned_event_count = returnedEventCount;
+  };
+
+  let low = 0;
+  let high = Math.max(...lists.map(({ events }) => events.length));
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    for (const { label } of lists) caps.set(label, mid);
+    applyCaps();
+    if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) low = mid;
+    else high = mid - 1;
+  }
+  for (const { label } of lists) caps.set(label, low);
+  applyCaps();
+
+  // Spend any remaining budget per feed. This preserves the fair common
+  // prefix above while ensuring one oversized feed cannot force every other
+  // source to return zero usable events.
+  for (const { label, events } of lists) {
+    let feedLow = caps.get(label) ?? 0;
+    let feedHigh = events.length;
+    while (feedLow < feedHigh) {
+      const mid = Math.ceil((feedLow + feedHigh) / 2);
+      caps.set(label, mid);
+      applyCaps();
+      if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) feedLow = mid;
+      else feedHigh = mid - 1;
+    }
+    caps.set(label, feedLow);
+    applyCaps();
+  }
+}
+
+function summarizeConflictEvents(data: Record<string, unknown>): Record<string, unknown> {
+  const summary = summarizeData(data);
+  if (utf8ByteLength(JSON.stringify(summary)) <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) return summary;
+
+  const samples = CONFLICT_EVENT_LISTS.flatMap((label) => {
+    const parent = summary[label];
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [];
+    const events = (parent as Record<string, unknown>).events;
+    if (!events || typeof events !== 'object' || Array.isArray(events)) return [];
+    const sample = (events as Record<string, unknown>).sample;
+    return Array.isArray(sample) ? [{ sample, original: [...sample] }] : [];
+  });
+
+  for (const { sample } of samples) sample.length = 0;
+  const maxSampleLength = Math.max(0, ...samples.map(({ original }) => original.length));
+  for (let index = 0; index < maxSampleLength; index++) {
+    for (const { sample, original } of samples) {
+      if (index >= original.length) continue;
+      sample.push(original[index]);
+      if (utf8ByteLength(JSON.stringify(summary)) > CONFLICT_EVENTS_DATA_BUDGET_BYTES) sample.pop();
+    }
+  }
+
+  return summary;
+}
 
 function addNewsSourceProvenance(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
@@ -262,7 +359,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_conflict_events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
-    _outputBudgetBytes: 131072,
+    _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
     description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
     inputSchema: {
       type: 'object',
@@ -323,8 +420,18 @@ export const CACHE_TOOLS: ToolDef[] = [
           strategicRisks: { type: ['array', 'object', 'null'] },
         },
       },
+      partial: { type: 'boolean', description: 'True when event lists were shortened to fit the MCP output budget.' },
+      truncation: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+          original_event_count: { type: 'number' },
+          returned_event_count: { type: 'number' },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _summarize: summarizeConflictEvents,
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const minFatal = argNum(params.min_fatalities);
@@ -338,7 +445,8 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'ucdp-events', 'events', (e) => (argNum(e.deathsBest) ?? 0) >= minFatal);
         narrowNested(data, 'events', 'events', (e) => (argNum(e.fatalities) ?? 0) >= minFatal);
       }
-      for (const label of ['ucdp-events', 'iran-events', 'events']) capNested(data, label, 'events', limit);
+      for (const label of CONFLICT_EVENT_LISTS) capNested(data, label, 'events', limit);
+      if (!argBool(params.summary) && !argStr(params.jmespath)) fitConflictEventsToBudget(data);
       return data;
     },
     _cacheKeys: [

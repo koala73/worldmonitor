@@ -55,7 +55,7 @@ X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
 
 `X-WorldMonitor-Key` 是规范请求头。API 密钥认证的端点也接受 `X-Api-Key` 作为别名，以兼容通用 API 客户端，包括使用 `validateApiKey()` 的独立边缘函数和网关支持的路由。除非端点明确文档化该形式，否则请勿将用户 API 密钥作为 bearer 令牌或查询字符串参数发送。
 
-对于 `/api/bootstrap`，服务器端调用方应使用 `https://api.worldmonitor.app/api/bootstrap` 配合上述任一 API 密钥请求头。标准服务器到服务器访问无需独立网关主机、令牌交换步骤、激活步骤或 IP 白名单要求。该端点的匿名天气路径（`?keys=weatherAlerts`）仅在**未发送密钥请求头时**公开 — 一旦附加 `X-WorldMonitor-Key`/`X-Api-Key`，即使是天气请求也会被校验，因此无当前 API 访问权限的密钥会返回 `403` 而非回退到匿名数据。
+对于 `/api/bootstrap`，服务器端调用方应使用 `https://api.worldmonitor.app/api/bootstrap` 配合上述任一 API 密钥请求头。标准服务器到服务器访问无需独立网关主机、令牌交换步骤、激活步骤或 IP 白名单要求。该端点的匿名天气路径（`?keys=weatherAlerts`）仅在**未发送密钥请求头时**公开 — 一旦附加 `X-WorldMonitor-Key`/`X-Api-Key`，即使是天气请求也会被校验，因此无当前 API 访问权限的密钥会返回 `403` 而非回退到匿名数据。该 URL 返回 `no-store` 正是为了保证这一点：它不会被缓存，因此无效密钥始终会抵达源站。若需要经 CDN 缓存的天气读取，请改用显式公开的 `?keys=weatherAlerts&public=1`，它对所有调用方返回同一份共享负载，并按设计忽略凭据。
 
 ### 服务端校验
 

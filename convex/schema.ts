@@ -1128,4 +1128,42 @@ export default defineSchema({
       dimensions: 512,
       filterFields: ["domain", "country"],
     }),
+
+  // Retraction tombstones for `intelHistory` (#5743).
+  //
+  // Deleting a poisoned or wrong history row is not enough on its own. The
+  // producing seeders republish a rolling window every run, and `append`
+  // decides "already stored?" by looking for a row with the same `dedupeKey` —
+  // so a bare delete is undone by the next seed tick, usually within the hour.
+  // A retraction therefore writes a tombstone keyed on the same `dedupeKey`
+  // the delete removed, and `append` skips any record that matches one.
+  //
+  // Tombstones, not a soft-delete flag on `intelHistory`: the row must
+  // genuinely leave the vector index (that is the whole point of a retraction,
+  // and a filtered-out row still costs index space and can still be ranked),
+  // while the identity has to survive it. They age out on the same 180-day
+  // clock as the history itself — by `retractedAt`, so the window starts when
+  // the operator acted rather than when the event happened.
+  intelHistoryRetractions: defineTable({
+    // Matches `intelHistory.dedupeKey` exactly. One row per retracted
+    // identity; re-retracting the same key refreshes it rather than
+    // accumulating duplicates.
+    dedupeKey: v.string(),
+    // When suppression was last ASSERTED — not when the operator first acted.
+    // `retract` sets it, and every `append` this tombstone suppresses refreshes
+    // it, because a record still arriving from the producer is evidence the
+    // feed has not stopped serving it and expiry would be premature. Expiry is
+    // therefore measured from the producer's last attempt, so `listRetractions`
+    // orders by "most recently still-live" rather than by when someone typed
+    // the command. The original action time lives in the `reason` an operator
+    // is required to supply and in the `intel_history_retracted` breadcrumb.
+    retractedAt: v.number(),
+    // Free text from the operator, e.g. "poisoned RSS item, #5743". Required
+    // at the relay boundary: a tombstone with no stated cause is unreviewable
+    // six weeks later, when the only question that matters is whether it is
+    // still deserved.
+    reason: v.string(),
+  })
+    .index("by_dedupeKey", ["dedupeKey"])
+    .index("by_retractedAt", ["retractedAt"]),
 });

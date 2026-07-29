@@ -235,6 +235,10 @@ export interface AnalyzeStockResponse {
   nextEarningsDate?: string;
   consensusEps?: number;
   consensusRevenue?: number;
+  newsSentiment?: number;
+  realizedVolatility: number;
+  atr: number;
+  maxDrawdown: number;
 }
 
 export interface StockAnalysisHeadline {

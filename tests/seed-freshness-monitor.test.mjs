@@ -15,7 +15,9 @@ import {
 } from '../scripts/check-seed-freshness.mjs';
 
 const COMMITTED_BASELINE_URL = new URL('../scripts/seed-freshness-baseline.json', import.meta.url);
+const RAILWAY_SERVICES_URL = new URL('../scripts/railway-services.json', import.meta.url);
 const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
+const readRailwayServices = () => JSON.parse(readFileSync(RAILWAY_SERVICES_URL, 'utf8'));
 
 describe('scheduled seed freshness monitor', () => {
   it('grades every actionable status, not only STALE_SEED', () => {
@@ -139,6 +141,51 @@ describe('scheduled seed freshness monitor', () => {
     assert.deepEqual(result.blocking.map((problem) => problem.name), [name]);
   });
 
+  it('binds stale shipping health to the producer heartbeat and cadence', () => {
+    const { SEED_META, STANDALONE_KEYS, classifyKey } = healthTesting;
+    const name = 'shippingRates';
+    const dataKey = STANDALONE_KEYS[name];
+    const expectedMeta = {
+      key: 'seed-meta:supply_chain:shipping',
+      maxStaleMin: 420,
+    };
+    const now = Date.parse('2026-07-28T21:00:00Z');
+
+    assert.deepEqual(
+      SEED_META[name],
+      expectedMeta,
+      'health must read the heartbeat written by the scheduled shipping producer',
+    );
+    const service = readRailwayServices().find((entry) => entry.service === 'seed-supply-chain-trade');
+    assert.equal(service?.cronSchedule, '0 */6 * * *');
+    assert.equal(
+      expectedMeta.maxStaleMin,
+      6 * 60 + 60,
+      'health must allow one hour of headroom beyond the six-hour cron',
+    );
+
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true }, {
+      keyStrens: new Map([[dataKey, 1]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[expectedMeta.key, JSON.stringify({
+        fetchedAt: now - (expectedMeta.maxStaleMin + 1) * 60 * 1000,
+        recordCount: 9,
+      })]]),
+      keyMetaErrors: new Map(),
+      activatedNames: new Set(),
+      now,
+    });
+    const result = applyAcceptanceBaseline(
+      findOperationalProblems({ status: 'WARNING', problems: { [name]: entry } }),
+      readCommittedBaseline(),
+      now,
+    );
+
+    assert.equal(entry.status, 'STALE_SEED');
+    assert.equal(entry.maxStaleMin, expectedMeta.maxStaleMin);
+    assert.deepEqual(result.blocking.map((problem) => problem.name), [name]);
+  });
+
   it('treats an all-absent on-demand payload as clean', () => {
     assert.deepEqual(
       findOperationalProblems({
@@ -255,6 +302,10 @@ describe('scheduled seed freshness monitor', () => {
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
       const issues = committed.acknowledged.map((entry) => entry.issue);
+      assert.ok(
+        !issues.includes(5771),
+        'recovered chinaCoverage degradation must not remain acknowledged',
+      );
       assert.equal(
         new Set(issues).size,
         issues.length,

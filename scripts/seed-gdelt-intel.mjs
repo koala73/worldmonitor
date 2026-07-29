@@ -19,7 +19,7 @@ const CANONICAL_KEY = 'intelligence:gdelt-intel:v1';
 const SEED_DOMAIN_RESOURCE = 'intelligence:gdelt-intel';
 const SEED_META_KEY = `seed-meta:${SEED_DOMAIN_RESOURCE}`;
 const SEED_META_TTL = 86400 * 7;
-const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron so verifySeedKey always has a prior snapshot to merge from when GDELT 429s all topics
+const CACHE_TTL = 86400; // 24h — intentionally much longer than the 4h cron so verifySeedKey always has a prior snapshot to merge from when GDELT is unavailable
 // 7d — brownout-scale, NOT one-missed-tick-scale. The per-run EXPIRE-extend in
 // afterPublish keeps last-good timelines alive up to this TTL while GDELT is
 // unreachable; at the previous 12h (2× cron) the 2026-07 brownout expired all
@@ -27,34 +27,26 @@ const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron s
 // re-seeds it until GDELT answers again (issue #5478). Consumers get the
 // stored fetchedAt alongside the data to judge staleness.
 export const TIMELINE_TTL = 604800;
-const TIMELINE_REPAIR_DELAY_MS = 5_500;
+const GDELT_REQUEST_DELAY_MS = 5_500;
 // Both entrypoints mutate the same canonical/timeline cohort, so their shared
 // ownership lease must cover the full bounded retry envelope, not just healthy
 // latency. Under simultaneous GDELT and Upstash throttling, 12 sequential
 // timeline reads/fetches/writes plus metadata reconciliation can take roughly
 // 75 minutes (Retry-After is capped at 60s in the shared Redis helpers). Two
-// hours preserves a wide scheduling margin without blocking the next 6h cron
+// hours preserves a wide scheduling margin without blocking the next 4h cron
 // tick if a process dies before its owner-token release runs.
 export const GDELT_LOCK_TTL_MS = 2 * 60 * 60_000;
 const RUN_SEED_FETCH_PHASE_TIMEOUT_MS = 270_000;
 const TIMELINE_ERROR_REASON = 'timeline_keys_missing_or_unconfirmed';
+const GDELT_UPSTREAM_ERROR_REASON = 'gdelt_upstream_unavailable';
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
-const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics on success
-const POST_EXHAUST_DELAY_MS = 120_000; // 2min extra cooldown after a topic exhausts all retries
-
-// Wall-clock soft budget for the whole fetch phase (issue #4864). Kept well
-// under runSeed's explicit 270s hard #4786 deadline, while the 10min lock also
-// covers canonical/timeline publication after the 150s fetch budget, so
-// that under a GDELT/Decodo throttle storm the loop stops fetching and falls
-// through to the cached-snapshot merge below — publishing partial+cached data
-// and exiting 0 — instead of two independent budget-blowers pushing the phase
-// past 240s and tripping the deadline into a graceful exit-75 "crash" email:
-//   1. a single topic's fetchGdeltJson can churn ~3.5min under full retry
-//      exhaustion (4×15s direct + 60s backoff + 5×15s proxy + 20s backoff);
-//   2. the inter-topic (20s×5) + post-exhaust (120s) cooldowns alone exceed 240s.
-// The 24h CACHE_TTL guarantees a prior snapshot exists to merge from.
-const FETCH_SOFT_BUDGET_MS = 150_000; // 2.5min — >80s headroom under the 240s hard deadline for merge + publish
-const MIN_TOPIC_BUDGET_MS = 25_000;   // don't start a topic we can't plausibly finish before the budget
+// Wall-clock soft budget for the whole fetch phase (issue #4864). The transport
+// now selects one route and attempts it once. This remains as a final guard for
+// an injected/hung implementation, but a budget timeout opens the run circuit:
+// the abandoned promise is allowed to settle and no timeline or later-topic
+// request is launched alongside it.
+const FETCH_SOFT_BUDGET_MS = 180_000; // 3min — 90s headroom under the 270s hard deadline for merge + publish
+const MIN_REQUEST_BUDGET_MS = 25_000; // don't start a curl that cannot finish before the budget
 
 const INTEL_TOPICS = [
   { id: 'military',     query: '(military exercise OR troop deployment OR airstrike OR "naval exercise") sourcelang:eng' },
@@ -95,7 +87,8 @@ function normalizeArticle(raw) {
   };
 }
 
-async function fetchTopicArticles(topic) {
+export async function fetchTopicArticles(topic, opts = {}) {
+  const { _fetchJson = fetchGdeltJson } = opts;
   const url = new URL(GDELT_DOC_API);
   url.searchParams.set('query', topic.query);
   url.searchParams.set('mode', 'artlist');
@@ -104,10 +97,11 @@ async function fetchTopicArticles(topic) {
   url.searchParams.set('sort', 'date');
   url.searchParams.set('timespan', '24h');
 
-  // fetchGdeltJson does direct retry + curl proxy multi-retry internally.
-  // Throws on exhaustion with HTTP 429 in message — outer fetchWithRetry's
-  // is429 substring match still works against the new error format.
-  const data = await fetchGdeltJson(url.toString(), { label: topic.id });
+  const data = await _fetchJson(url.toString(), {
+    label: topic.id,
+    maxRetries: 0,
+    proxyMaxAttempts: 1,
+  });
   const articles = (data.articles || [])
     .map(normalizeArticle)
     .filter(Boolean);
@@ -127,7 +121,7 @@ function normalizeTimeline(data, mode) {
   })).filter((pt) => pt.date);
 }
 
-export async function fetchTopicTimeline(topic, mode, opts = {}) {
+export async function fetchTopicTimelineResult(topic, mode, opts = {}) {
   const {
     strict = false,
     _fetchJson = fetchGdeltJson,
@@ -139,54 +133,47 @@ export async function fetchTopicTimeline(topic, mode, opts = {}) {
   url.searchParams.set('timespan', '14d');
 
   try {
-    // Best-effort: timelines degrade silently to [] on any failure.
-    // Pre-helper code did a single direct fetch with no retry. The
-    // article-fetch defaults (3 direct retries + 5 proxy attempts ≈ 90s)
-    // are too aggressive for discarded-on-failure data — would burn up to
-    // ~18 min/seed-run across 12 timeline calls under GDELT 429 storms.
-    //
-    // Compromise: 1 direct + 2 proxy (Decodo session rotation) attempts.
-    // Worst case ~25s per call × 12 = ~5 min ceiling. Gives timelines a
-    // realistic chance to succeed via proxy without blocking the seeder
-    // for the full article-fetch budget.
     const data = await _fetchJson(url.toString(), {
       label: `${topic.id}/${mode}`,
       maxRetries: 0,
-      proxyMaxAttempts: 2,
+      proxyMaxAttempts: 1,
     });
-    return normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value');
+    return {
+      points: normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value'),
+      errorCode: null,
+    };
   } catch (err) {
     if (strict) throw err;
-    return [];
+    return {
+      points: [],
+      errorCode: typeof err?.code === 'string' ? err.code : 'GDELT_TIMELINE_FETCH_FAILED',
+    };
   }
 }
 
-async function fetchWithRetry(topic) {
-  // Pre-helper: this function did 3 outer retries with 60/120/240s backoff
-  // on top of fetchTopicArticles. Now fetchGdeltJson handles ALL retry +
-  // proxy multi-retry internally (3 direct retries + 5 curl proxy attempts
-  // per call), so the outer loop is gone. This function's only remaining
-  // job is to translate thrown exhaustion into the {exhausted, articles:[]}
-  // shape that fetchAllTopics expects (used to drive POST_EXHAUST_DELAY_MS
-  // cooldown decisions).
+export async function fetchTopicTimeline(topic, mode, opts = {}) {
+  return (await fetchTopicTimelineResult(topic, mode, opts)).points;
+}
+
+async function fetchArticlesOnce(topic) {
   try {
     return await fetchTopicArticles(topic);
   } catch (err) {
-    // Helper's exhausted-throw includes "HTTP 429" in the message when
-    // 429 was the upstream signal — substring match preserved.
-    const is429 = err.message?.includes('429');
     console.warn(`    ${topic.id}: giving up (${err.message})`);
-    return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
+    return {
+      id: topic.id,
+      articles: [],
+      fetchedAt: new Date().toISOString(),
+      failureCode: typeof err?.code === 'string' ? err.code : 'GDELT_ARTICLE_FETCH_FAILED',
+    };
   }
 }
 
-// Resolve `promise` but never let it run past `budgetMs`; on timeout resolve to
-// `fallback` (and run `onTimeout` for a log line). Unlike raceFetchDeadline this
-// RESOLVES rather than rejects, because a topic that overruns is not a failure —
-// the caller backfills it from the cached snapshot. The abandoned fetch keeps
-// running but every socket underneath it is bounded by AbortSignal.timeout /
-// curl --max-time, so it settles and is GC'd (no leak).
-function withBudget(promise, budgetMs, fallback, onTimeout) {
+// Start `operation` only when budget remains, and never let it run past
+// `budgetMs`; on timeout resolve to `fallback` (and run `onTimeout` for a log
+// line). The fallback opens the run-scoped circuit below, so the abandoned
+// bounded request is never overlapped by timeline or later-topic calls.
+function withBudget(operation, budgetMs, fallback, onTimeout) {
   if (!(budgetMs > 0)) return Promise.resolve(fallback);
   let timer;
   const budget = new Promise((resolve) => {
@@ -195,7 +182,8 @@ function withBudget(promise, budgetMs, fallback, onTimeout) {
       resolve(fallback);
     }, budgetMs);
   });
-  return Promise.race([Promise.resolve(promise), budget]).finally(() => clearTimeout(timer));
+  const pending = Promise.resolve().then(operation);
+  return Promise.race([pending, budget]).finally(() => clearTimeout(timer));
 }
 
 // Exported for tests. Deps are injectable so the soft-budget + cache-merge
@@ -204,8 +192,8 @@ export async function fetchAllTopics(deps = {}) {
   const {
     _now = () => Date.now(),
     _sleep = sleep,
-    _fetchArticles = fetchWithRetry,
-    _fetchTimeline = fetchTopicTimeline,
+    _fetchArticles = fetchArticlesOnce,
+    _fetchTimeline = fetchTopicTimelineResult,
     // The cache-merge fallback is what keeps seed-meta fresh through a GDELT
     // outage — when this read dies the run degrades to a no-write skip and
     // freshness silently rots (21h stale before the gate fired, issue #5437),
@@ -215,57 +203,91 @@ export async function fetchAllTopics(deps = {}) {
       return null;
     }),
     _softBudgetMs = FETCH_SOFT_BUDGET_MS,
-    _minTopicBudgetMs = MIN_TOPIC_BUDGET_MS,
-    _interTopicDelayMs = INTER_TOPIC_DELAY_MS,
-    _postExhaustDelayMs = POST_EXHAUST_DELAY_MS,
+    _minRequestBudgetMs = MIN_REQUEST_BUDGET_MS,
+    _interRequestDelayMs = GDELT_REQUEST_DELAY_MS,
   } = deps;
   const deadlineAt = _now() + _softBudgetMs;
   const remaining = () => deadlineAt - _now();
 
   const topics = [];
+  let failureCode = null;
+  let freshTopicCount = 0;
+  let requestCount = 0;
+  const paceNextRequest = async () => {
+    if (requestCount > 0 && _interRequestDelayMs > 0) {
+      const delay = Math.min(
+        _interRequestDelayMs,
+        Math.max(0, remaining() - _minRequestBudgetMs),
+      );
+      if (delay > 0) await _sleep(delay);
+    }
+    if (remaining() < _minRequestBudgetMs) return false;
+    requestCount += 1;
+    return true;
+  };
+
   for (let i = 0; i < INTEL_TOPICS.length; i++) {
     // Stop fetching once we can't plausibly finish another topic in time — the
     // cache-merge below backfills every topic we skip from the prior snapshot,
     // so the run publishes partial+cached data and exits 0 instead of churning
     // past the hard #4786 deadline into a graceful exit-75 crash (issue #4864).
-    if (remaining() < _minTopicBudgetMs) {
+    if (remaining() < _minRequestBudgetMs) {
       console.log(`  Soft budget (${Math.round(_softBudgetMs / 1000)}s) reached after ${i}/${INTEL_TOPICS.length} topic(s) — remaining ${INTEL_TOPICS.length - i} will fall back to cached snapshot`);
+      failureCode = 'GDELT_FETCH_BUDGET_EXCEEDED';
       break;
     }
-    if (i > 0) await _sleep(Math.min(_interTopicDelayMs, Math.max(0, remaining() - _minTopicBudgetMs)));
+    if (!(await paceNextRequest())) {
+      failureCode = 'GDELT_FETCH_BUDGET_EXCEEDED';
+      break;
+    }
     console.log(`  Fetching ${INTEL_TOPICS[i].id}...`);
-    // Bound this single topic against the remaining budget: its own retry ladder
-    // can reach ~3.5min under a 429 storm, which alone would blow the phase.
     const emptyTopic = () => ({ id: INTEL_TOPICS[i].id, articles: [], fetchedAt: new Date().toISOString() });
     const result = await withBudget(
-      _fetchArticles(INTEL_TOPICS[i]),
+      () => _fetchArticles(INTEL_TOPICS[i]),
       remaining(),
       { ...emptyTopic(), budgetExceeded: true },
       () => console.warn(`    ${INTEL_TOPICS[i].id}: article budget reached — falling back to cached`),
     );
     console.log(`    ${result.articles.length} articles`);
-    // Fetch tone/vol timelines in parallel — best-effort, 429s silently return [].
-    // Also bounded so a slow timeline pair can't overrun the phase.
-    const timelines = await withBudget(
-      Promise.all(TIMELINE_SERIES.map(
-        (series) => _fetchTimeline(INTEL_TOPICS[i], series.mode),
-      )),
-      remaining(),
-      [[], []],
-      () => console.warn(`    ${INTEL_TOPICS[i].id}: timeline budget reached — skipping timelines`),
-    );
-    for (let j = 0; j < TIMELINE_SERIES.length; j++) {
-      result[TIMELINE_SERIES[j].topicField] = timelines[j];
+    topics.push(result);
+
+    if (result.budgetExceeded || result.failureCode) {
+      failureCode = result.failureCode || 'GDELT_FETCH_BUDGET_EXCEEDED';
+      console.warn(`    ${INTEL_TOPICS[i].id}: opening run circuit (${failureCode}); remaining DOC requests will use cached data`);
+      break;
+    }
+
+    if (result.articles.length > 0) freshTopicCount += 1;
+
+    // Timeline calls are sequential. A failed route opens the same run circuit
+    // as an article failure, so Tone and Vol cannot simultaneously hammer an
+    // already failing proxy and no later topic is launched.
+    for (const series of TIMELINE_SERIES) {
+      const timelineFallback = { points: [], errorCode: 'GDELT_FETCH_BUDGET_EXCEEDED' };
+      const hasBudget = await paceNextRequest();
+      const outcome = hasBudget
+        ? await withBudget(
+            () => _fetchTimeline(INTEL_TOPICS[i], series.mode),
+            remaining(),
+            timelineFallback,
+            () => console.warn(`    ${INTEL_TOPICS[i].id}: ${series.id} timeline budget reached`),
+          )
+        : timelineFallback;
+      const normalized = Array.isArray(outcome)
+        ? { points: outcome, errorCode: null }
+        : outcome;
+      result[series.topicField] = Array.isArray(normalized?.points) ? normalized.points : [];
+      if (normalized?.errorCode) {
+        failureCode = normalized.errorCode;
+        console.warn(`    ${INTEL_TOPICS[i].id}: opening run circuit (${failureCode}); remaining DOC requests will use cached data`);
+        break;
+      }
+    }
+    for (const series of TIMELINE_SERIES) {
+      if (!Array.isArray(result[series.topicField])) result[series.topicField] = [];
     }
     console.log(`    timeline: ${result._tone.length} tone pts, ${result._vol.length} vol pts`);
-    topics.push(result);
-    // After a topic exhausts all retries, give GDELT a longer cooldown before hitting
-    // it again with the next topic — the rate limit window for popular queries exceeds 50s.
-    // Skip the cooldown when it would eat the remaining budget.
-    if (result.exhausted && i < INTEL_TOPICS.length - 1 && remaining() - _postExhaustDelayMs >= _minTopicBudgetMs) {
-      console.log(`    Rate-limit cooldown: waiting ${_postExhaustDelayMs / 1000}s before next topic...`);
-      await _sleep(_postExhaustDelayMs);
-    }
+    if (failureCode) break;
   }
 
   // Represent every topic so the cache-merge can backfill both the ones we
@@ -298,8 +320,16 @@ export async function fetchAllTopics(deps = {}) {
   // Restore canonical topic order (backfilled entries were appended out of order).
   const order = new Map(INTEL_TOPICS.map((t, idx) => [t.id, idx]));
   topics.sort((a, b) => (order.get(a.id) ?? INTEL_TOPICS.length) - (order.get(b.id) ?? INTEL_TOPICS.length));
+  if (!failureCode && freshTopicCount === 0) {
+    failureCode = 'GDELT_EMPTY_ARTICLE_RESULTS';
+  }
 
-  return { topics, fetchedAt: new Date().toISOString() };
+  return {
+    topics,
+    fetchedAt: new Date().toISOString(),
+    _gdeltFailureCode: failureCode,
+    _freshTopicCount: freshTopicCount,
+  };
 }
 
 function validate(data) {
@@ -308,11 +338,23 @@ function validate(data) {
   return populated.length >= 3; // at least 3 of 6 topics must have articles; partial 429s handled by per-topic merge above
 }
 
-// Strip private fields (_tone, _vol, exhausted) before writing to the canonical Redis key.
+// Strip transport/timeline implementation fields before writing the canonical
+// Redis payload. They are consumed only by afterPublish and seed-meta.
 function publishTransform(data) {
+  const {
+    _gdeltFailureCode: _failure,
+    _freshTopicCount: _fresh,
+    ...publicData
+  } = data;
   return {
-    ...data,
-    topics: (data.topics ?? []).map(({ _tone: _t, _vol: _v, exhausted: _e, ...rest }) => rest),
+    ...publicData,
+    topics: (data.topics ?? []).map(({
+      _tone: _t,
+      _vol: _v,
+      failureCode: _failureCode,
+      budgetExceeded: _budgetExceeded,
+      ...rest
+    }) => rest),
   };
 }
 
@@ -373,16 +415,26 @@ export async function afterPublish(data, _meta) {
       + `run \`node scripts/seed-gdelt-intel.mjs --repair-timelines\` to restore them outside the article-fetch budget`,
     );
   }
-  const completionState = missingOrUnconfirmedKeys.length > 0 ? 'DEGRADED' : 'OK';
+  const upstreamFailed = typeof data?._gdeltFailureCode === 'string';
+  const completionState = upstreamFailed || missingOrUnconfirmedKeys.length > 0
+    ? 'DEGRADED'
+    : 'OK';
+  const freshnessMetaPatch = completionState === 'DEGRADED'
+    ? {
+        status: 'error',
+        errorReason: upstreamFailed ? GDELT_UPSTREAM_ERROR_REASON : TIMELINE_ERROR_REASON,
+        ...(upstreamFailed ? { errorCode: data._gdeltFailureCode } : {}),
+        ...(Number.isInteger(data?._freshTopicCount)
+          ? { freshTopicCount: data._freshTopicCount }
+          : {}),
+        ...(missingOrUnconfirmedKeys.length > 0
+          ? { missingTimelineKeys: missingOrUnconfirmedKeys }
+          : {}),
+      }
+    : null;
   return {
     completionState,
-    freshnessMetaPatch: completionState === 'DEGRADED'
-      ? {
-          status: 'error',
-          errorReason: TIMELINE_ERROR_REASON,
-          missingTimelineKeys: missingOrUnconfirmedKeys,
-        }
-      : null,
+    freshnessMetaPatch,
   };
 }
 
@@ -391,10 +443,10 @@ function hasTimelineData(value) {
   return Array.isArray(points) && points.length > 0;
 }
 
-// Dedicated operator repair path for issue #5712. The regular seed's 150s
-// article budget is intentionally unable to walk all 12 timeline requests
-// during a GDELT throttle storm. This path does no article work, paces each
-// timeline request independently, and writes every missing key with SET.
+// Dedicated operator repair path for issue #5712. Healthy requests are paced,
+// but the first transport failure opens a run-scoped circuit. Remaining keys
+// are still read/preserved and reported as failed without repeating the same
+// blocked route up to eleven more times.
 export async function repairTimelines(deps = {}) {
   const {
     _readTimeline = verifySeedKey,
@@ -402,13 +454,14 @@ export async function repairTimelines(deps = {}) {
     _writeTimeline = writeExtraKey,
     _extendTtl = extendExistingTtl,
     _sleep = sleep,
-    _interRequestDelayMs = TIMELINE_REPAIR_DELAY_MS,
+    _interRequestDelayMs = GDELT_REQUEST_DELAY_MS,
     _now = () => Date.now(),
   } = deps;
   const repairedKeys = [];
   const preservedKeys = [];
   const failedKeys = [];
   let fetchCount = 0;
+  let failureCode = null;
 
   for (const topic of INTEL_TOPICS) {
     for (const series of TIMELINE_SERIES) {
@@ -425,6 +478,11 @@ export async function repairTimelines(deps = {}) {
         continue;
       }
 
+      if (failureCode) {
+        failedKeys.push(key);
+        continue;
+      }
+
       if (fetchCount > 0 && _interRequestDelayMs > 0) {
         await _sleep(_interRequestDelayMs);
       }
@@ -435,6 +493,9 @@ export async function repairTimelines(deps = {}) {
         timeline = await _fetchTimeline(topic, series.mode);
       } catch (err) {
         failedKeys.push(key);
+        failureCode = typeof err?.code === 'string'
+          ? err.code
+          : 'GDELT_TIMELINE_FETCH_FAILED';
         console.warn(`  ${key}: repair fetch failed (${err?.message || err})`);
         continue;
       }
@@ -465,6 +526,7 @@ export async function repairTimelines(deps = {}) {
     repairedKeys,
     preservedKeys,
     failedKeys,
+    ...(failureCode ? { errorCode: failureCode } : {}),
   };
   return result;
 }
@@ -502,6 +564,7 @@ export async function reconcileTimelineRepairMetadata(repairResult, deps = {}) {
     if (!unrelatedErrorOwnsRecord) {
       nextMeta.status = 'error';
       nextMeta.errorReason = TIMELINE_ERROR_REASON;
+      nextMeta.errorCode = repairResult.errorCode || 'GDELT_TIMELINE_REPAIR_INCOMPLETE';
     }
     nextMeta.missingTimelineKeys = failedKeys;
   } else {
@@ -509,6 +572,7 @@ export async function reconcileTimelineRepairMetadata(repairResult, deps = {}) {
     if (nextMeta.errorReason === TIMELINE_ERROR_REASON) {
       delete nextMeta.status;
       delete nextMeta.errorReason;
+      delete nextMeta.errorCode;
     }
   }
   await _writeMeta(nextMeta, SEED_META_TTL);
@@ -522,6 +586,7 @@ function logTimelineRepairResult(result) {
     repairedCount: result.repairedCount,
     preservedCount: result.preservedCount,
     failedCount: result.failedKeys?.length ?? 0,
+    errorCode: result.errorCode,
     metadataReconciled: result.metadataReconciled === true,
     lockReason: result.lockReason,
     repairError: result.repairError,
@@ -659,7 +724,7 @@ export const RUN_SEED_OPTS = {
   schemaVersion: 1,
   maxStaleMin: 420,
   contentMeta,
-  // 24h = 4× the 6h cadence. Normal runs refresh at least topic[0] every
+  // 24h = 6× the 4h cadence. Normal runs refresh at least topic[0] every
   // tick, so only a real brownout (every topic failing every run for a day)
   // flips health to STALE_CONTENT (warn).
   maxContentAgeMin: 1440,

@@ -78,7 +78,7 @@ describe('worktree bootstrap helper', () => {
     assert.equal(existsSync(join(root, '.env')), false);
   });
 
-  it('rejects forbidden local Vercel env dumps even when they are symlinks', (t) => {
+  it('rejects forbidden local env dumps even when they are symlinks', (t) => {
     const root = makeTempDir();
 
     try {
@@ -93,7 +93,7 @@ describe('worktree bootstrap helper', () => {
 
     assert.throws(
       () => assertNoForbiddenEnvDumps(root),
-      /local Vercel env dump files are present/,
+      /local environment dump files are present/,
     );
   });
 

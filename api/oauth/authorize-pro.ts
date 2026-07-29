@@ -72,6 +72,7 @@ export const config = { runtime: 'edge' };
 import { verifyGrant, GrantConfigError } from '../_mcp-grant-hmac';
 import {
   getEntitlements,
+  isEntitlementBackendConfigured,
   type BillingVerificationDenial,
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess, type ProMcpEntitlement } from '../../server/_shared/pro-mcp-gate';
@@ -429,7 +430,9 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   // tools/call fail at the gateway — and an entitlement that could not be
   // VERIFIED renders the retryable page rather than the terminal upsell (#5622).
   const ent = await deps.getEntitlements(userId);
-  const gate = checkProMcpAccess(ent, deps.now());
+  const gate = checkProMcpAccess(ent, deps.now(), {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
   if (gate) {
     if (gate.kind === 'billing_verification') return billingVerificationPage(gate.denial);
     return htmlError(

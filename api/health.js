@@ -346,6 +346,16 @@ const STANDALONE_KEYS = {
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
+  // #5736 — historical-intelligence ingest health, one record per collector.
+  // These are NOT the collectors' canonical keys: scripts/_seed-history.mjs
+  // appends to the Convex intel-history store fail-open, so a permanently
+  // broken relay leg (missing RELAY_SHARED_SECRET, rejecting relay, dead
+  // embedder) left every canonical key fresh and the store empty. The paired
+  // seed-meta below carries the last HEALTHY append, so "history stopped
+  // accumulating" ages into STALE_SEED while canonical publication stays OK.
+  intelHistoryIngestConflictAcled:    'intel-history:ingest-health:conflict:acled-intel:v1',
+  intelHistoryIngestMilitaryCrossStrait: 'intel-history:ingest-health:military:cross-strait-activity:v1',
+  intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',
 };
 
 const SEED_META = {
@@ -620,6 +630,16 @@ const SEED_META = {
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
+  // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
+  // last HEALTHY append (success, or a correctly-detected unconfigured run),
+  // NEVER the last attempt, so a relay that rejects every chunk ages this out
+  // while the collector's own seed-meta stays fresh. Budgets mirror each
+  // collector's canonical maxStaleMin above — the hook runs once per successful
+  // publish, so a tighter budget would alarm on the parent's cadence, not on
+  // history. Keep in step with api/seed-health.js (intervalMin = maxStaleMin/2).
+  intelHistoryIngestConflictAcled:       { key: 'seed-meta:intel-history:conflict:acled-intel',            maxStaleMin: 38 },  // mirrors acledIntel
+  intelHistoryIngestMilitaryCrossStrait: { key: 'seed-meta:intel-history:military:cross-strait-activity',  maxStaleMin: 720 }, // mirrors crossStraitActivity
+  intelHistoryIngestEnergyIntelligence:  { key: 'seed-meta:intel-history:energy:intelligence',             maxStaleMin: 720 }, // mirrors energyIntelligence
 };
 
 // Iran-events sunset: when disabled (default), drop it from all health
@@ -722,6 +742,14 @@ const ON_DEMAND_KEYS = new Set([
                                    // behind). STALE_SEED still fires if data goes stale after first seed.
                                    // Remove from this set after ~7 days of clean cron runs so
                                    // never-provisioned Railway promotes EMPTY_ON_DEMAND → EMPTY (CRIT).
+  // #5736 deployment-order bridge, activation-gated like chinaCoverage: Vercel
+  // ships this registry the moment the PR merges, but the record only exists
+  // after the collector's next Railway tick (up to 6h for energy/intelligence).
+  // Softening is revoked the instant the durable marker appears — after the
+  // first report, an absent record is EMPTY and a stalled one is STALE_SEED.
+  'intelHistoryIngestConflictAcled',
+  'intelHistoryIngestMilitaryCrossStrait',
+  'intelHistoryIngestEnergyIntelligence',
 ]);
 
 // Legacy broad empty-data exemptions. classifyKey uses this set in both the
@@ -739,6 +767,12 @@ const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
+  // Written by scripts/_seed-history.mjs on every ingest-health report,
+  // including an `unconfigured` one — "the hook ran" is the activation signal,
+  // not "the relay answered". See historyIngestActivationKey there.
+  intelHistoryIngestConflictAcled: 'seed-activated:intel-history:conflict:acled-intel',
+  intelHistoryIngestMilitaryCrossStrait: 'seed-activated:intel-history:military:cross-strait-activity',
+  intelHistoryIngestEnergyIntelligence: 'seed-activated:intel-history:energy:intelligence',
 };
 
 const EMPTY_DATA_OK_KEYS = new Set([
@@ -810,6 +844,14 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // exists after a successful query, but a quiet 90-day window can validly
   // contain zero owned-category events.
   'chinaCorporateDisclosures',
+  // #5736 ingest-health records. `recordCount` is the volume the relay accepted
+  // on the last successful append, and zero is legitimate — a run whose records
+  // were all deduped, or one with no noteworthy records at all. The record key
+  // itself must still exist, so this is the NARROW set: a vanished record is a
+  // real gap, not a quiet period.
+  'intelHistoryIngestConflictAcled',
+  'intelHistoryIngestMilitaryCrossStrait',
+  'intelHistoryIngestEnergyIntelligence',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -876,8 +918,24 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // true envelope reads at the canonical-key layer; this import establishes
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
+  const metaCount = meta?.count ?? meta?.recordCount ?? null;
+  const errorCode = typeof meta?.errorCode === 'string'
+    && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
+    ? meta.errorCode
+    : null;
   if (meta?.status === 'error') {
-    return { hasMeta: true, seedAge: null, seedStale: true, seedError: true, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return {
+      hasMeta: true,
+      seedAge: null,
+      seedStale: true,
+      seedError: true,
+      sourceUnavailable: false,
+      sourceBlocked: false,
+      metaReadFailed: false,
+      metaCount,
+      contentAge: null,
+      errorCode,
+    };
   }
   let seedAge = null;
   let seedStale = true;
@@ -886,7 +944,6 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     seedAge = Math.round((now - fetchedAt) / 60_000);
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
-  const metaCount = meta?.count ?? meta?.recordCount ?? null;
   // `unavailable` is the one sourceState that means "this deployment never opted
   // into the adapter" (the producer had no credential to try with), as opposed to
   // "the adapter was tried and is broken" (`stale`/`error`). Grading the two the
@@ -931,7 +988,18 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  return { hasMeta: meta != null, seedAge, seedStale, seedError: sourceDegraded, sourceUnavailable, sourceBlocked, metaReadFailed: false, metaCount, contentAge };
+  return {
+    hasMeta: meta != null,
+    seedAge,
+    seedStale,
+    seedError: sourceDegraded,
+    sourceUnavailable,
+    sourceBlocked,
+    metaReadFailed: false,
+    metaCount,
+    contentAge,
+    errorCode,
+  };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -966,7 +1034,17 @@ function classifyKey(name, redisKey, opts, ctx) {
 
   const strlen = keyStrens.get(redisKey) ?? 0;
   const hasData = keyHasData(redisKey, strlen);
-  const { hasMeta, seedAge, seedStale, seedError, sourceUnavailable, sourceBlocked, metaCount, contentAge } = meta;
+  const {
+    hasMeta,
+    seedAge,
+    seedStale,
+    seedError,
+    sourceUnavailable,
+    sourceBlocked,
+    metaCount,
+    contentAge,
+    errorCode,
+  } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -1033,6 +1111,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
+  if (status === 'SEED_ERROR' && errorCode) entry.errorCode = errorCode;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.
@@ -1705,4 +1784,8 @@ export const __testing__ = {
   EMPTY_DATA_OK_KEYS,
   MISSING_DATA_IS_FAILURE_KEYS,
   ZERO_RECORD_DATA_OK_KEYS,
+  // Exposed so a registration test can prove a key's deployment-order softening
+  // is actually wired — membership here is what keeps a not-yet-published key
+  // out of CRIT, and nothing could assert it before (#5736).
+  ON_DEMAND_KEYS,
 };

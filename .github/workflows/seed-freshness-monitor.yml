@@ -13,14 +13,17 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
 
-      - name: Require green main for scheduled alerts
+      - name: Require green main for scheduled acceptance
         id: gate
         if: github.event_name == 'schedule'
         env:
@@ -29,13 +32,34 @@ jobs:
           gate_state=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status" \
             --jq '[.statuses[] | select(.context == "gate")] | sort_by(.updated_at) | last | .state // "missing"')
           echo "gate_state=$gate_state"
-          if [ "$gate_state" = "success" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping seed freshness alert because main gate is $gate_state."
+          if [ "$gate_state" != "success" ]; then
+            echo "::error::Cannot establish ingestion operational acceptance because main gate is $gate_state."
+            exit 1
           fi
+          echo "Exact main revision passed repository gates."
+
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - name: Link Railway production context
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_PRODUCTION_TOKEN is required for the read-only production config audit."
+            exit 1
+          fi
+          if [ -z "$RAILWAY_PROJECT_ID" ]; then
+            echo "::error::RAILWAY_PROJECT_ID Actions environment variable is required for the production config audit."
+            exit 1
+          fi
+          railway link --project "$RAILWAY_PROJECT_ID" --environment production --json
+
+      - name: Audit Railway ingestion deployment controls
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+        run: node scripts/audit-railway-watch-paths.mjs
 
       - name: Check ingestion operational acceptance
-        if: github.event_name == 'workflow_dispatch' || steps.gate.outputs.should_run == 'true'
         run: node scripts/check-seed-freshness.mjs

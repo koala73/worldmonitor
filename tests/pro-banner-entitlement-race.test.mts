@@ -298,13 +298,27 @@ describe('wiring contracts (#5728)', () => {
     assert.doesNotMatch(failureFn, /\.splice\(/);
   });
 
-  it('resetEntitlementState notifies listeners so free surfaces re-evaluate', () => {
-    const src = readFileSync(resolve(root, 'src/services/entitlements.ts'), 'utf-8');
-    assert.match(
-      src,
-      /export function resetEntitlementState\(\): void \{[\s\S]*?for \(const cb of listeners\)/,
+  it('resetEntitlementState notifies listeners so free surfaces re-evaluate', async () => {
+    // Was a source grep for `for (const cb of listeners)` inside
+    // resetEntitlementState. That pinned the loop's LOCATION, not its
+    // behaviour, so hoisting the fan-out into a shared helper reddened it
+    // while the guarantee was intact. Driving the real functions covers the
+    // same regression and also catches a fan-out that runs but delivers the
+    // wrong value — which the grep could not see.
+    const { onEntitlementChange, resetEntitlementState } = await import(
+      '@/services/entitlements'
     );
-    assert.match(src, /cb\(null\)/);
+
+    resetEntitlementState(); // normalise: a null currentState means no replay on subscribe
+    const seen: Array<unknown> = [];
+    const off = onEntitlementChange((state) => seen.push(state));
+    try {
+      resetEntitlementState();
+    } finally {
+      off();
+    }
+
+    assert.deepEqual(seen, [null]);
   });
 
   it('checkout success paths write the pro banner entitlement hint', () => {

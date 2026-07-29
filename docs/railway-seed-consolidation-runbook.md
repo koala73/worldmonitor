@@ -68,6 +68,25 @@ publisher, while still auditing their watch paths and required environment.
 Run the audit after adding or replacing a standalone seeder, changing a bundle
 dependency, or changing a production cron.
 
+The scheduled operational-acceptance workflow performs the same audit in
+read-only mode before checking compact health. Create the dedicated GitHub
+Actions environment `ingestion-acceptance-production`, restrict its deployment
+branch policy to `main`, and configure:
+
+- environment secret `RAILWAY_PRODUCTION_TOKEN`: a Railway project token scoped
+  to the production environment;
+- environment variable `RAILWAY_PROJECT_ID`: the `world-monitor` project ID.
+
+Do not define the Railway token as a repository or organization secret:
+`workflow_dispatch` can target another ref, while the environment's server-side
+branch policy keeps the production credential unavailable there. The workflow
+references the environment with deployment tracking disabled, maps the project
+token to the CLI's standard `RAILWAY_TOKEN` variable only for the link and audit
+steps, links only inside the ephemeral runner, and never passes `--apply`. Do not
+use the broader account-scoped `RAILWAY_API_TOKEN`. Missing or inaccessible
+context intentionally fails the acceptance run rather than silently skipping
+the live audit.
+
 ### Bootstrap R2 publisher contract
 
 The public bootstrap tiers use the dedicated private bucket
@@ -124,13 +143,18 @@ incident note.
 
 `.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
 default branch. Scheduled runs first require the latest `main` commit's `gate`
-status to be green; manual runs execute directly. The monitor checks public
-compact health and fails on every actionable problem, including `SEED_ERROR`,
-`STALE_SEED`, `STALE_CONTENT`, and degraded composed coverage. Statuses that
-explicitly end in `_ON_DEMAND` remain informational. It deliberately does not
-run on an ingestion push because Railway may not have deployed or executed that
-revision yet. This is the operational acceptance gate for the "merged and
-green, but production data is still unhealthy" gap.
+status to be green; a missing, pending, or failed gate makes the workflow fail
+closed instead of producing a green skipped run. Manual runs execute directly.
+After the repository gate, the workflow checks live Railway watch paths, cron
+schedules, required routing variables, and service presence against
+`scripts/railway-services.json`, then checks public compact health. It fails on
+every actionable problem, including `SEED_ERROR`, `STALE_SEED`,
+`STALE_CONTENT`, and degraded composed coverage. Statuses that explicitly end
+in `_ON_DEMAND` remain informational. It deliberately does not run on an
+ingestion push because Railway may not have deployed or executed that revision
+yet. This is the operational acceptance gate for the "merged and green, but
+production data is still unhealthy or running under stale deployment
+controls" gap.
 
 Do not use `railway redeploy` to recover a bad or stale source deployment.
 Railway documents redeploy as rebuilding the most recent deployment with the
@@ -467,8 +491,8 @@ continuous metric.
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 5 services |
 | **Net savings** | 4 slots |
-| **Members** | Crypto Quotes (5min), Stablecoin Markets (10min), ETF Flows (15min), Gulf Quotes (10min), Token Panels (30min), SEC CIK Map (daily), SEC 8-K Stream (30min) |
-| **Required env** | `SZSE_PROXY_URL` (China corporate disclosures) and `PROXY_URL` (Gulf Quotes / ETF Flows reach it bare through `_yahoo-fetch.mjs`) |
+| **Members** | Crypto Quotes (5min), Hyperliquid Flow (5min), Stablecoin Markets (10min), ETF Flows (15min), China Corporate Disclosures (30min), Gulf Quotes (10min), Token Panels (30min), Gold ETF Flows (2h), Gold CB Reserves (daily), SEC CIK Map (daily), SEC 8-K Stream (30min) |
+| **Required env** | `PROXY_URL` (Gulf Quotes / ETF Flows require it and SZSE uses it when `SZSE_PROXY_URL` is unset) and `RELAY_SHARED_SECRET` (authenticates China Corporate Disclosures' fixed `https://api.worldmonitor.app/api/internal/china-exchange-egress` fallback after direct/proxy failures). This is the deployment contract; production provisioning and live fallback acceptance require separate verification. |
 | **Note** | These are BACKUP for ais-relay inline loops. ais-relay is the primary seeder. The bundle provides redundancy if relay goes down. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). SEC CIK Map + SEC 8-K Stream (#5695) are primary (not backups): the ticker→CIK registry and the material-events stream for the corporate-intelligence endpoints. |
 
 ### Bundle 11: seed-bundle-relay-backup

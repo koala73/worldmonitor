@@ -863,7 +863,7 @@ paths:
                                     "period": "daily"
                                     "sell": 1
                                     "strongBuy": 1
-                                "available": true
+                                "atr": 1.5
                             schema:
                                 $ref: '#/components/schemas/AnalyzeStockResponse'
                 "400":
@@ -983,7 +983,7 @@ paths:
                                               "period": "daily"
                                               "sell": 1
                                               "strongBuy": 1
-                                          "available": true
+                                          "atr": 1.5
                                       "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetStockAnalysisHistoryResponse'
@@ -3016,6 +3016,40 @@ components:
                 consensusRevenue:
                     type: number
                     format: double
+                newsSentiment:
+                    type: number
+                    format: double
+                    description: |-
+                        LLM-derived news sentiment for the analyzed symbol: a signed score in
+                         [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),
+                         emitted by the same overlay model that already reads the headlines — no
+                         extra call. Omitted when the analysis falls back to rules (no LLM overlay).
+                         (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals
+                         into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight
+                         risk-analytics PR.)
+                realizedVolatility:
+                    type: number
+                    format: double
+                    description: |-
+                        Risk analytics computed from the 6-month daily candles already fetched for
+                         the technical snapshot (no extra upstream call).
+                         (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that
+                         blends fundamentals into the rating, and 63-65 by the merged earnings join.)
+
+                         Annualized realized volatility — sample stdev of daily log returns × √252 —
+                         as a fractional ratio where 0.25 means 25%. 0 when history is insufficient.
+                atr:
+                    type: number
+                    format: double
+                    description: |-
+                        Wilder's 14-period Average True Range, in the response currency's price
+                         units. 0 when history is insufficient.
+                maxDrawdown:
+                    type: number
+                    format: double
+                    description: |-
+                        Maximum peak-to-trough drawdown over the window, as a non-positive fractional
+                         ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
         StockAnalysisHeadline:
             type: object
             properties:

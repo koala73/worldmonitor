@@ -45,11 +45,15 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-conflict-intel",
     "requiredEnv": [
-      "PROXY_URL"
+      [
+        "GDELT_PROXY_URL",
+        "PROXY_URL"
+      ]
     ],
     "watchPatterns": [
       "scripts/_conflict-gdelt-bulk.mjs",
       "scripts/_conflict-gdelt.mjs",
+      "scripts/_conflict-hapi.mjs",
       "scripts/_country-resolver.mjs",
       "scripts/_gdelt-fetch.mjs",
       "scripts/_proxy-utils.cjs",
@@ -79,7 +83,10 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-gdelt-intel",
     "requiredEnv": [
-      "PROXY_URL"
+      [
+        "GDELT_PROXY_URL",
+        "PROXY_URL"
+      ]
     ],
     "watchPatterns": [
       "scripts/_gdelt-fetch.mjs",
@@ -387,7 +394,8 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
     "requiredEnv": [
-      "PROXY_URL"
+      "PROXY_URL",
+      "RELAY_SHARED_SECRET"
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",

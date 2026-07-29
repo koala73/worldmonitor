@@ -169,7 +169,14 @@ const stubSources: Record<string, string> = {
     export const showCheckoutErrorToast = () => {};
   `,
   './checkout-no-user-policy': `
-    export const decideNoUserPathOutcome = () => ({ kind: 'inline-signin', persist: true });
+    // Mirrors the real module's inline-signin sequencing (persist BEFORE
+    // sign-in); the ordering itself is owned by
+    // tests/checkout-no-user-policy.test.mts against the real function.
+    export const runNoUserPath = (_fallbackToPricingPage, handlers) => {
+      handlers.persistIntent();
+      handlers.persistAttempt();
+      handlers.openSignIn();
+    };
   `,
   './checkout-sentry-policy': `
     export const shouldSkipSentryForAction = () => false;

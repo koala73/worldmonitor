@@ -68,8 +68,8 @@ function resolveProxyConfigWithFallback() {
  * Decodo: gate.decodo.com → us.decodo.com (curl endpoint differs from CONNECT endpoint).
  * Returns empty string if no proxy configured.
  */
-function resolveProxyString() {
-  const cfg = resolveProxyConfigWithFallback();
+function resolveProxyString(raw = process.env.PROXY_URL || '') {
+  const cfg = parseProxyConfig(raw);
   if (!cfg) return '';
   const host = cfg.host.replace(/^gate\./, 'us.');
   return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;

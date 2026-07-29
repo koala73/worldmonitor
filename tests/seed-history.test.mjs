@@ -181,13 +181,33 @@ describe('normalizeHistoryRecords', () => {
     assert.equal(out.at(-1).dedupeKey, `conflict:acled:evt-60`);
   });
 
-  it('truncates title to 500 chars and summary to 2000 chars', () => {
+  it('preserves accepted title and summary text byte-for-byte', () => {
+    const title = '  Départ annoncé  \n';
+    const summary = '\t Source says “unchanged” 🙂  ';
     const [out] = normalizeHistoryRecords([
-      record(1, { title: 'T'.repeat(900), summary: 'S'.repeat(4000) }),
+      record(1, { title, summary }),
     ]);
 
-    assert.equal(out.title.length, 500);
-    assert.equal(out.summary.length, 2000);
+    assert.equal(out.title, title);
+    assert.equal(out.summary, summary);
+    assert.deepEqual(Buffer.from(out.title), Buffer.from(title));
+    assert.deepEqual(Buffer.from(out.summary), Buffer.from(summary));
+  });
+
+  it('drops blank titles and records whose raw title or summary exceeds the wire limit', () => {
+    const out = normalizeHistoryRecords([
+      record(1, { title: ' \t\n ' }),
+      record(2, { title: 'T'.repeat(501) }),
+      record(3, { summary: 'S'.repeat(2001) }),
+      record(4, { title: 'T'.repeat(500), summary: 'S'.repeat(2000) }),
+    ]);
+
+    assert.deepEqual(
+      out.map((r) => r.dedupeKey),
+      ['conflict:acled:evt-4'],
+    );
+    assert.equal(out[0].title.length, 500);
+    assert.equal(out[0].summary.length, 2000);
   });
 
   it('passes the wire fields through and drops unknown keys', () => {
@@ -229,7 +249,7 @@ describe('buildHistoryEmbeddingText', () => {
 // ── appendSeedHistory — env guard ─────────────────────────────────────────────
 
 describe('appendSeedHistory env guard', () => {
-  it('returns { skipped: "unconfigured" } with exactly one warn and no fetch', async () => {
+  it('returns the unconfigured skip plus the missing names, with one warn and no fetch', async () => {
     const { fetchImpl, calls } = stubFetch({ body: { inserted: 1, skipped: 0 } });
     const { embed, batches } = stubEmbed();
 
@@ -240,7 +260,12 @@ describe('appendSeedHistory env guard', () => {
       ),
     );
 
-    assert.deepEqual(result, { skipped: 'unconfigured' });
+    // `missing` feeds the ingest-health record's `missingConfig` (#5736), so an
+    // operator reading /api/health learns WHICH variable is absent.
+    assert.deepEqual(result, {
+      skipped: 'unconfigured',
+      missing: ['CONVEX_SITE_URL (or CONVEX_URL)', 'RELAY_SHARED_SECRET', 'OPENROUTER_API_KEY'],
+    });
     assert.equal(calls.length, 0);
     assert.equal(batches.length, 0);
     assert.equal(warns.length, 1);
@@ -280,7 +305,7 @@ describe('appendSeedHistory env guard', () => {
       },
     );
 
-    assert.deepEqual(result, { inserted: 1, skipped: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 1, skipped: 0, retracted: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
     assert.equal(calls[0].url, 'https://fearless-otter-42.convex.site/relay/intel-history');
   });
 });
@@ -302,7 +327,7 @@ describe('appendSeedHistory', () => {
       { fetchImpl, embed, env: ENV },
     );
 
-    assert.deepEqual(result, { inserted: 0, skipped: 0, chunks: 0, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 0, skipped: 0, retracted: 0, chunks: 0, abandoned: 0, failedChunks: 0 });
     assert.equal(calls.length, 0);
     assert.equal(batches.length, 0);
   });
@@ -326,7 +351,7 @@ describe('appendSeedHistory', () => {
       { fetchImpl, embed, env: ENV },
     );
 
-    assert.deepEqual(result, { inserted: 103, skipped: 17, chunks: 3, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 103, skipped: 17, retracted: 0, chunks: 3, abandoned: 0, failedChunks: 0 });
     assert.equal(calls.length, 3);
     assert.deepEqual(
       calls.map((c) => c.body.records.length),
@@ -462,6 +487,7 @@ describe('appendSeedHistory', () => {
     assert.deepEqual(result, {
       inserted: 0,
       skipped: 0,
+      retracted: 0,
       chunks: 0,
       abandoned: 1,
       failedChunks: 0,
@@ -503,6 +529,7 @@ describe('appendSeedHistory', () => {
     assert.deepEqual(result, {
       inserted: 0,
       skipped: 0,
+      retracted: 0,
       chunks: 0,
       abandoned: 1,
       failedChunks: 0,
@@ -576,7 +603,7 @@ describe('appendSeedHistory', () => {
       ),
     );
 
-    assert.deepEqual(result, { inserted: 3, skipped: 1, chunks: 1, abandoned: 0, failedChunks: 0 });
+    assert.deepEqual(result, { inserted: 3, skipped: 1, retracted: 0, chunks: 1, abandoned: 0, failedChunks: 0 });
     assert.equal(calls.length, 2, 'one failed attempt + one successful retry');
   });
 

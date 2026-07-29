@@ -124,6 +124,7 @@ test('validate-skip path: seed-meta mirror write exhausting retries degrades to 
 
 test('validate-skip path calls the completion hook after last-good preservation succeeds', async () => {
   let completed = 0;
+  let rejected = 0;
   const { exitCode, threw } = await runWithExitTrap(() =>
     runSeed('test', 'preserved-complete', 'test:preserved-complete:v1',
       async () => ({ items: [] }),
@@ -134,6 +135,10 @@ test('validate-skip path calls the completion hook after last-good preservation 
         sourceVersion: 'test-v1',
         schemaVersion: 1,
         maxStaleMin: 720,
+        afterValidationSkip: async (_data, context) => {
+          rejected += 1;
+          assert.equal(context.preservationSucceeded, true);
+        },
         afterPreservedValidationSkip: async (_data, context) => {
           completed += 1;
           assert.equal(context.canonicalKey, 'test:preserved-complete:v1');
@@ -144,11 +149,13 @@ test('validate-skip path calls the completion hook after last-good preservation 
 
   assert.equal(threw, null);
   assert.equal(exitCode, 0);
+  assert.equal(rejected, 1);
   assert.equal(completed, 1);
 });
 
-test('validate-skip path does not complete a run when last-good preservation fails', async () => {
+test('validate-skip path reports rejection but does not complete when last-good preservation fails', async () => {
   let completed = 0;
+  let rejected = 0;
   const fetchWithCanonical = globalThis.fetch;
   globalThis.fetch = async (url, opts = {}) => {
     const u = String(url);
@@ -169,11 +176,61 @@ test('validate-skip path does not complete a run when last-good preservation fai
           sourceVersion: 'test-v1',
           schemaVersion: 1,
           maxStaleMin: 720,
+          afterValidationSkip: async (_data, context) => {
+            rejected += 1;
+            assert.equal(context.canonicalKey, 'test:preserve-failed:v1');
+            assert.equal(context.preservationSucceeded, false);
+          },
           afterPreservedValidationSkip: async () => { completed += 1; },
         }),
     );
     assert.equal(threw, null);
     assert.equal(exitCode, 0);
+    assert.equal(rejected, 1);
+    assert.equal(completed, 0);
+  } finally {
+    globalThis.fetch = fetchWithCanonical;
+  }
+});
+
+test('validate-skip path reports rejection when only part of the preservation cohort exists', async () => {
+  let completed = 0;
+  let rejected = 0;
+  const fetchWithCanonical = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    if (u.includes('/get/')) {
+      return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    }
+    if (u.endsWith('/pipeline')) {
+      return jsonResponse(body.map((_command, index) => ({ result: index === 0 ? 1 : 0 })));
+    }
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'preserve-partial', 'test:preserve-partial:v1',
+        async () => ({ items: [] }),
+        {
+          validateFn: () => false,
+          ttlSeconds: 3600,
+          declareRecords: () => 1,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterValidationSkip: async (_data, context) => {
+            rejected += 1;
+            assert.equal(context.canonicalKey, 'test:preserve-partial:v1');
+            assert.equal(context.preservationSucceeded, false);
+          },
+          afterPreservedValidationSkip: async () => { completed += 1; },
+        }),
+    );
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(rejected, 1);
     assert.equal(completed, 0);
   } finally {
     globalThis.fetch = fetchWithCanonical;

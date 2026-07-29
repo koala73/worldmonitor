@@ -205,6 +205,28 @@ curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?
 | GPS 干扰、流离失所 | 360 | 720 |
 | 伊朗事件、UCDP | 210-5040 | 420-10080 |
 
+### 历史情报写入（`intel-history:*`）
+
+以 `intel-history:` 为前缀的领域**不**描述种子的规范化发布，而是跟踪该采集器在发布之后向历史情报库追加数据的链路是否仍然正常：
+
+| 领域 | 跟踪对象 |
+|--------|--------|
+| `intel-history:conflict:acled-intel` | 来自 `seed-conflict-intel` 的历史追加 |
+| `intel-history:military:cross-strait-activity` | 来自 `seed-cross-strait-activity` 的历史追加 |
+| `intel-history:energy:intelligence` | 来自 `seed-energy-intelligence` 的历史追加 |
+
+该追加按设计为「失败即放行」：它运行时规范化发布已经提交，因此追加失败绝不能让整次运行失败。这意味着采集器自身的条目（`conflict:acled-intel` 等）会保持 `ok`，而历史数据却在悄悄停止累积。这些条目就是那个独立信号：
+
+- `fetchedAt` 是最近一次**成功**追加的时间，而不是最近一次尝试的时间。抵达了中继的运行会推进它；什么都没送达的运行（所有分块被拒，或整体时间预算在首个请求发出前就耗尽）则不会。因此中继一旦损坏该时间戳就会冻结，于是条目按通常的 2 倍间隔规则变为 `stale`。
+- `status: "error"` 表示追加已连续两次运行失败——或者在首个刻度上，表示此前成功追加时存在的中继凭据现已被移除。
+- `lastErrorCode` 在存在失败原因时给出原因：`http_401`、`budget_exhausted`、`all_chunks_failed`、`config_removed`，或一个截断后的错误类名。若该写入链路从未失败过则不存在此字段。
+- `status: "not_configured"` 表示该部署**从未**拥有过中继凭据。它可见但绝不告警——除了配置中继之外，没有任何运维操作能消除该状态。成功追加之后再丢失凭据不属于此状态，那会报告 `error` 并附带 `lastErrorCode: "config_removed"`。
+- `recordCount` 是最近一次成功追加时中继接受的记录量。零是合法值：一次记录全部被去重的运行同样证明链路是通的。
+
+更细粒度的单次运行详情——`lastErrorReason`、`consecutiveFailures`、`missingConfig`，以及写入/去重/放弃的计数——**不会**由任一端点返回。它们保存在 Redis 记录 `intel-history:ingest-health:<domain>:<resource>:v1` 中，端点正是从该记录投影而来。
+
+若此处为 `stale` 或 `error` 而采集器条目为 `ok`，说明规范化数据没有问题，需要排查的是历史情报库。
+
 ### 示例请求
 
 ```bash

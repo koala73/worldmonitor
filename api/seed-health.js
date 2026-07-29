@@ -165,6 +165,31 @@ const SEED_DOMAINS = {
   'economic:eurostat-industrial-production': { key: 'seed-meta:economic:eurostat-industrial-production', intervalMin: 3600 }, // daily cron, monthly data; intervalMin = health.js maxStaleMin / 2 (7200 / 2)
   'resilience:recovery:reexport-share':   { key: 'seed-meta:resilience:recovery:reexport-share',   intervalMin: 43200 }, // monthly bundle cron (30d); intervalMin*2 = 60d matches health.js maxStaleMin
   'resilience:recovery:sovereign-wealth': { key: 'seed-meta:resilience:recovery:sovereign-wealth', intervalMin: 43200 }, // monthly bundle cron (30d); intervalMin*2 = 60d matches health.js maxStaleMin
+  // #5736 — historical-intelligence ingest health. Distinct from each
+  // collector's own seed key above: scripts/_seed-history.mjs appends to the
+  // Convex intel-history store fail-open, so a permanently broken relay leg
+  // used to leave the collector green and the store empty. `fetchedAt` on these
+  // keys is the last HEALTHY append, so a prolonged rejection reads `stale`
+  // here while the collector stays `ok`; `sourceState: 'unavailable'` reports
+  // an un-provisioned relay as `not_configured` rather than an eternal warn.
+  // activationKey: the record only exists after the collector's next Railway
+  // tick, so absence before the first report is pending-activation, not a
+  // degraded 503. intervalMin*2 mirrors api/health.js maxStaleMin.
+  'intel-history:conflict:acled-intel': {
+    key: 'seed-meta:intel-history:conflict:acled-intel',
+    intervalMin: 19,
+    activationKey: 'seed-activated:intel-history:conflict:acled-intel',
+  },
+  'intel-history:military:cross-strait-activity': {
+    key: 'seed-meta:intel-history:military:cross-strait-activity',
+    intervalMin: 360,
+    activationKey: 'seed-activated:intel-history:military:cross-strait-activity',
+  },
+  'intel-history:energy:intelligence': {
+    key: 'seed-meta:intel-history:energy:intelligence',
+    intervalMin: 360,
+    activationKey: 'seed-activated:intel-history:energy:intelligence',
+  },
 };
 
 // Iran-events sunset (war ended 2026-07); mirrors api/health.js. Default OFF:
@@ -441,6 +466,16 @@ export default async function handler(req) {
     };
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (probe) seeds[domain].dataProbe = probe;
+    // #5736: without this, `status: "error"` names no cause and an operator has
+    // to read raw Redis to learn WHY — which is the log-diving the issue exists
+    // to end. Bounded, producer-controlled vocabulary only (`http_401`,
+    // `budget_exhausted`, `config_removed`, a clamped error-class name); the
+    // free-text `lastErrorReason` carries a relay-controlled body snippet and
+    // is deliberately NOT echoed. Emitted only when present, so every existing
+    // seed entry keeps its exact shape.
+    if (typeof meta.lastErrorCode === 'string' && meta.lastErrorCode) {
+      seeds[domain].lastErrorCode = meta.lastErrorCode;
+    }
   }
 
   const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';

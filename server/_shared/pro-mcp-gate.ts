@@ -40,6 +40,7 @@
 
 import {
   classifyBillingVerification,
+  unverifiableEntitlementDenial,
   type BillingVerificationDenial,
   type BillingVerificationInput,
 } from './entitlement-check';
@@ -82,6 +83,7 @@ export type ProMcpGateDenial =
 export function checkProMcpAccess(
   entitlements: ProMcpEntitlement | null | undefined,
   now: number,
+  opts?: { backendConfigured?: boolean },
 ): ProMcpGateDenial | null {
   if (
     entitlements &&
@@ -91,6 +93,20 @@ export function checkProMcpAccess(
     entitlements.validUntil >= now
   ) {
     return null;
+  }
+
+  // An absent row is a verdict only when a lookup could actually run. With the
+  // entitlement backend unconfigured, getEntitlements returns null before
+  // attempting one — for everyone — and INSUFFICIENT_TIER then tells a paying
+  // subscriber to buy the plan they own, on the OAuth consent card that has no
+  // client-side entitlement snapshot to contradict it (#5619 item 3).
+  //
+  // Passed in rather than read from the environment so this stays a pure
+  // predicate: the gateway's internal-MCP re-check and this file's unit tests
+  // keep their deterministic behavior, and a caller opts in by supplying it.
+  // Omitting the option preserves the previous behavior exactly.
+  if (!entitlements && opts?.backendConfigured === false) {
+    return { kind: 'billing_verification', denial: unverifiableEntitlementDenial() };
   }
 
   // Spread, never a hand-copied field list: every member of

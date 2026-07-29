@@ -7,6 +7,7 @@ import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import {
   INTEL_HISTORY_EMBED_DIMS,
   INTEL_HISTORY_MAX_APPEND_RECORDS,
+  INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
 } from "./intelHistory";
 
 const TRUSTED = [
@@ -1661,6 +1662,34 @@ function intelJson(body: unknown, status: number): Response {
   });
 }
 
+/**
+ * Bearer check shared by every `/relay/intel-history*` route. A missing
+ * configured secret is a rejection, not an open door — an unconfigured
+ * deployment must not accept writes from anyone who guesses the path.
+ *
+ * DEDICATED RETRACTION CREDENTIAL (#5743). `RELAY_SHARED_SECRET` is held by
+ * every Railway seeder that appends history — a wide distribution that was
+ * fine when the worst a leak could do was write false intelligence, since the
+ * real rows survived alongside it. The retraction routes delete rows and
+ * permanently suppress their identities, and that direction does not undo:
+ * `restore` cannot resurrect a row whose embedding is gone. Setting
+ * `RELAY_RETRACT_SECRET` keeps those three routes on their own credential
+ * that the seeder fleet does not carry. There is deliberately no shared-secret
+ * fallback: an unconfigured deployment fails closed instead of granting every
+ * seeder archive-deletion authority.
+ */
+async function intelRelayUnauthorized(
+  request: Request,
+  { retraction = false }: { retraction?: boolean } = {},
+): Promise<boolean> {
+  const secret = retraction
+    ? (process.env.RELAY_RETRACT_SECRET ?? "")
+    : (process.env.RELAY_SHARED_SECRET ?? "");
+  const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+  if (!secret) return true;
+  return !(await timingSafeEqualStrings(provided, secret));
+}
+
 type IntelHistoryIngestRecord = {
   dedupeKey: string;
   country?: string;
@@ -1835,9 +1864,7 @@ http.route({
   path: "/relay/intel-history",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+    if (await intelRelayUnauthorized(request)) {
       return intelJson({ error: "UNAUTHORIZED" }, 401);
     }
 
@@ -1903,6 +1930,192 @@ http.route({
       return intelJson(result, 200);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "intel history append failed";
+      return intelJson({ error: msg }, 500);
+    }
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Retraction (#5743)
+//
+// The history store is agent-facing and durable for 180 days, so a poisoned or
+// factually wrong feed item is retrievable long after the live snapshot that
+// produced it has rolled over. These two routes are the supported way to take
+// one back and to undo that — the alternative was a hand-run Convex console
+// operation, which is not a path anyone should be following during an
+// incident.
+//
+// Same shared secret as ingest, deliberately: it is the credential the
+// operator tooling already holds, and both directions of this pair only ever
+// affect rows that credential's own seeders wrote. What keeps its blast radius
+// small is the SHAPE of the arguments — explicit ids and dedupe keys, capped
+// per call, with nothing pattern- or scope-shaped that could sweep the table.
+// ---------------------------------------------------------------------------
+
+const INTEL_HISTORY_MAX_REASON_LEN = 500;
+const INTEL_HISTORY_MAX_ID_LEN = 128;
+
+/**
+ * Read an optional array of non-empty identifier strings. Absent → []. Any
+ * malformed member fails the whole request: a retraction that silently drops
+ * one of the identifiers an operator listed would report success while leaving
+ * the record it was called about live.
+ */
+function readIdentifierList(
+  value: unknown,
+  max: number,
+): FieldResult<string[]> {
+  if (value === undefined || value === null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false };
+  for (const entry of value) {
+    if (typeof entry !== "string" || entry.length === 0 || entry.length > max) {
+      return { ok: false };
+    }
+    // Reject anything that is not already trimmed, rather than trimming it
+    // here. A stray space from a copy-paste makes the retraction look up an
+    // identity that does not exist, so it deletes nothing, writes a tombstone
+    // for the typo, and returns 200 — the operator reads "tombstoned: 1" while
+    // the poisoned record stays live and retrievable. Silently trimming would
+    // fix that one case and hide the class; rejecting makes the typo visible.
+    if (entry !== entry.trim()) return { ok: false };
+  }
+  return { ok: true, value: value as string[] };
+}
+
+http.route({
+  path: "/relay/intel-history/retract",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (await intelRelayUnauthorized(request, { retraction: true })) {
+      return intelJson({ error: "UNAUTHORIZED" }, 401);
+    }
+
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body) return intelJson({ error: "INVALID_JSON" }, 400);
+
+    const ids = readIdentifierList(body.ids, INTEL_HISTORY_MAX_ID_LEN);
+    if (!ids.ok) return intelJson({ error: "INVALID_IDS" }, 400);
+    const dedupeKeys = readIdentifierList(
+      body.dedupeKeys,
+      INTEL_HISTORY_MAX_DEDUPE_KEY_LEN,
+    );
+    if (!dedupeKeys.ok) return intelJson({ error: "INVALID_DEDUPE_KEYS" }, 400);
+
+    if (ids.value.length + dedupeKeys.value.length === 0) {
+      return intelJson(
+        { error: "MISSING_IDENTIFIERS", required: ["ids", "dedupeKeys"], mode: "any_of" },
+        400,
+      );
+    }
+    if (
+      ids.value.length + dedupeKeys.value.length >
+      INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS
+    ) {
+      return intelJson(
+        {
+          error: "TOO_MANY_IDENTIFIERS",
+          max: INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
+          got: ids.value.length + dedupeKeys.value.length,
+        },
+        400,
+      );
+    }
+
+    // Required, not defaulted. A tombstone outlives the incident that produced
+    // it by up to 180 days, and "why is this key suppressed?" is unanswerable
+    // from the row alone unless the caller was made to say so here.
+    const reason =
+      typeof body.reason === "string" ? body.reason.trim() : "";
+    if (!reason || reason.length > INTEL_HISTORY_MAX_REASON_LEN) {
+      return intelJson(
+        {
+          error: "MISSING_REASON",
+          reason: `reason must be a non-empty string of at most ${INTEL_HISTORY_MAX_REASON_LEN} chars`,
+        },
+        400,
+      );
+    }
+
+    try {
+      const result = await ctx.runMutation(internal.intelHistory.retract, {
+        ids: ids.value,
+        dedupeKeys: dedupeKeys.value,
+        reason,
+      });
+      return intelJson(result, 200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "intel history retract failed";
+      return intelJson({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/relay/intel-history/restore",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (await intelRelayUnauthorized(request, { retraction: true })) {
+      return intelJson({ error: "UNAUTHORIZED" }, 401);
+    }
+
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body) return intelJson({ error: "INVALID_JSON" }, 400);
+
+    // Only dedupe keys: the document ids are gone with the rows they named, so
+    // accepting one here would be an argument that can never resolve.
+    const dedupeKeys = readIdentifierList(
+      body.dedupeKeys,
+      INTEL_HISTORY_MAX_DEDUPE_KEY_LEN,
+    );
+    if (!dedupeKeys.ok) return intelJson({ error: "INVALID_DEDUPE_KEYS" }, 400);
+    if (dedupeKeys.value.length === 0) {
+      return intelJson({ error: "MISSING_IDENTIFIERS", required: ["dedupeKeys"] }, 400);
+    }
+    if (dedupeKeys.value.length > INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS) {
+      return intelJson(
+        {
+          error: "TOO_MANY_IDENTIFIERS",
+          max: INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
+          got: dedupeKeys.value.length,
+        },
+        400,
+      );
+    }
+
+    try {
+      const result = await ctx.runMutation(internal.intelHistory.restore, {
+        dedupeKeys: dedupeKeys.value,
+      });
+      return intelJson(result, 200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "intel history restore failed";
+      return intelJson({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/relay/intel-history/retractions",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (await intelRelayUnauthorized(request, { retraction: true })) {
+      return intelJson({ error: "UNAUTHORIZED" }, 401);
+    }
+
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body) return intelJson({ error: "INVALID_JSON" }, 400);
+
+    const limit = readOptionalNumber(body.limit);
+    if (!limit.ok) return intelJson({ error: "INVALID_LIMIT" }, 400);
+
+    try {
+      const result = await ctx.runQuery(internal.intelHistory.listRetractions, {
+        limit: limit.value,
+      });
+      return intelJson(result, 200);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "intel history retractions read failed";
       return intelJson({ error: msg }, 500);
     }
   }),

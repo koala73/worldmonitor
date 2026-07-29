@@ -279,8 +279,8 @@ test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bu
   );
 });
 
-// #5140: the sweep's worst case (20 countries × direct+proxy retries ÷ 4
-// concurrency ≈ 375s+) exceeded runSeed's fetch deadline, so a GDELT brownout
+// #5140: the sweep's former retry fanout exceeded runSeed's fetch deadline, so
+// a GDELT brownout
 // crashed the seeder (exit 75) instead of reaching the caught coverage-floor →
 // aux-only → exit 0 path. The sweep must stop launching batches once its
 // launch cutoff passes, regardless of per-country outcome. (The deadline
@@ -296,22 +296,23 @@ test('fetchGdeltConflictEvents stops launching batches once the launch cutoff pa
       fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
-        // Each batch of 4 consumes 40s of fake wall clock — a degraded-GDELT batch.
+        // Each request consumes 10s. The route canary is one request; healthy
+        // coverage then widens to batches of four.
         fakeTime += 40_000 / 4;
         return { country: cc, ok: true, events: [] };
       },
     }),
     /coverage below floor.*sweep budget exhausted/s,
   );
-  // Cutoff at 75s: batch 1 ends at 40s (< 75s → batch 2 launches), batch 2 ends
-  // at 80s (≥ 75s → stop). Only 8 of 20 countries may be attempted.
-  assert.equal(calls, 8);
+  // Cutoff at 75s: canary ends at 10s, batches end at 50s and 90s, then stop.
+  assert.equal(calls, 9);
 });
 
 test('fetchGdeltConflictEvents launches nothing when the phase cutoff already passed at entry (#5140)', async () => {
-  // fetchAll anchors deadlineAt at fetch-phase START; if slow aux feeds (HAPI is
-  // sequential, ~306s worst) consume the window first, the sweep must not add a
-  // single batch on top — it degrades instantly to the caught floor throw.
+  // fetchAll anchors deadlineAt at fetch-phase START; if slow aux feeds (HAPI's
+  // January snapshot fallback is bounded at ~315s) consume the window first,
+  // the sweep must not add a single batch on top — it degrades instantly to the
+  // caught floor throw.
   let calls = 0;
   await assert.rejects(
     fetchGdeltConflictEvents({
@@ -341,8 +342,9 @@ test('fetchGdeltConflictEvents stops sweeping once the coverage floor is unreach
     }),
     /coverage below floor/,
   );
-  // After 2 all-failed batches: 0 successes + 12 remaining < 16 floor → no third batch.
-  assert.equal(calls, 8);
+  // With no successful canary, requests stay sequential. After 5 failures:
+  // 0 successes + 15 remaining < the 16-country floor.
+  assert.equal(calls, 5);
 });
 
 test('early-stop reason names BOTH conditions when budget and floor trip together (#5140)', async (t) => {
@@ -354,12 +356,12 @@ test('early-stop reason names BOTH conditions when budget and floor trip togethe
     fetchGdeltConflictEvents({
       pace: async () => {},
       now: () => fakeTime,
-      deadlineAt: 115_000,
+      deadlineAt: 85_000,
       fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         fakeTime += 10_000;
-        // Batch 1 succeeds; later batches fail → the floor drifts out of reach
+        // Canary/first batch succeed; the next batch fails → the floor drifts out of reach
         // while the clock runs out, so both stop conditions hold at once.
         return calls <= 4
           ? { country: cc, ok: true, events: [] }
@@ -368,8 +370,9 @@ test('early-stop reason names BOTH conditions when budget and floor trip togethe
     }),
     /coverage below floor/,
   );
-  // Before batch 4: clock 120s ≥ 115s cutoff AND 4 successes + 8 remaining < 16.
-  assert.equal(calls, 12);
+  // Before the next batch: clock 90s ≥ 85s cutoff AND
+  // 4 successes + 11 remaining < 16.
+  assert.equal(calls, 9);
   assert.ok(
     warns.some((w) => w.includes('sweep budget exhausted + coverage floor unreachable')),
     `expected combined stop reason in warns: ${warns.join(' | ')}`,
