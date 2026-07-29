@@ -108,6 +108,9 @@ afterEach(() => {
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.OLLAMA_API_URL;
   delete process.env.OLLAMA_MODEL;
+  delete process.env.LLM_API_URL;
+  delete process.env.LLM_API_KEY;
+  delete process.env.LLM_MODEL;
 });
 
 describe('analyzeStock handler', () => {
@@ -391,6 +394,57 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(userPayload.fundamentals?.debtToEquity, 1.5);
     assert.equal(userPayload.fundamentals?.financialCurrency, 'CNY');
     assert.equal(userPayload.fundamentals?.freeCashflow, -49_000_000);
+  });
+
+  it('falls through to the next provider when headline sentiment is missing', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+    process.env.LLM_API_URL = 'https://generic.example/v1/chat/completions';
+    process.env.LLM_API_KEY = 'test-generic-key';
+    const llmPostUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+      }
+      if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+        return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+      }
+      if (url.includes('news.google.com')) {
+        return new Response(mockNewsXml, { status: 200 });
+      }
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('ok', { status: 200 });
+      }
+      llmPostUrls.push(url);
+      const newsSentiment = url.includes('openrouter.ai') ? undefined : -0.35;
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              summary: 'Fallback provider response.',
+              action: 'Hold',
+              newsSentiment,
+            }),
+          },
+          finish_reason: 'stop',
+        }],
+        usage: { total_tokens: 20, prompt_tokens: 15, completion_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const response = await analyzeStock({} as never, {
+      symbol: 'BABA',
+      name: 'Alibaba',
+      includeNews: true,
+    });
+
+    assert.equal(response.provider, 'generic');
+    assert.equal(response.newsSentiment, -0.35);
+    assert.deepEqual(llmPostUrls, [
+      'https://openrouter.ai/api/v1/chat/completions',
+      'https://generic.example/v1/chat/completions',
+    ]);
   });
 });
 

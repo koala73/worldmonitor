@@ -1324,7 +1324,10 @@ async function buildAiOverlay(
     validate: (content) => {
       try {
         const parsed = JSON.parse(content) as Record<string, unknown>;
-        return typeof parsed.summary === 'string' && typeof parsed.action === 'string';
+        return typeof parsed.summary === 'string'
+          && typeof parsed.action === 'string'
+          && (headlines.length === 0
+            || (typeof parsed.newsSentiment === 'number' && Number.isFinite(parsed.newsSentiment)));
       } catch {
         return false;
       }
@@ -1556,9 +1559,9 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  // v4 -> v5 (#5467): fundamentals now use normalized leverage and explicit
-  // statement currency. Never replay a pre-contract response into the Pro UI.
-  const cacheKey = `market:analyze-stock:v5:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  // v5 -> v6 (#5656): headline-backed LLM overlays now carry news sentiment.
+  // Never replay a pre-contract response into the Pro UI.
+  const cacheKey = `market:analyze-stock:v6:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [history, analystData] = await Promise.all([
