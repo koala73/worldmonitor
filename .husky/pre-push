@@ -271,7 +271,15 @@ if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
 # Test files that changed in this push — run these specifically when
 # RUN_ALL didn't fire, so editing a test doesn't escalate to the full
 # 10k-test suite. Matches both .mjs and .mts under tests/.
-TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" | while read -r t; do [ -f "$t" ] && echo "$t"; done || true)
+#
+# tests/dom/ is a vitest + happy-dom project, NOT a node:test suite — handing
+# those files to `tsx --test` fails on the `vitest` imports and reads as a
+# broken DOM test (#5795), so they are partitioned out here and run under their
+# own runner below. scripts/prepush-changed-tests.sh owns the split for both
+# halves (tested in tests/prepush-changed-tests.test.mjs) so the two lists
+# cannot drift into overlapping or, worse, leaving a file in neither.
+TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh node)
+DOM_TESTS_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | bash scripts/prepush-changed-tests.sh dom)
 
 # Compute SEED_TESTS and SERVER_TESTS up-front (rather than inside their
 # RUN_* blocks) so the TESTS_CHANGED subtraction below can deduplicate
@@ -336,7 +344,7 @@ if [ "$RUN_ALL" != true ]; then
     # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
     timeout 120 npx tsx --test $SERVER_TESTS || exit 1
   fi
-  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ]; then
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ] && [ -z "$DOM_TESTS_CHANGED" ]; then
     echo "Skipping unit tests (frontend-only changes; CI runs the full suite on PR open)."
   fi
 fi
@@ -345,6 +353,16 @@ if [ -n "$TESTS_CHANGED" ]; then
   echo "Running changed test files only..."
   # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
   timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
+fi
+
+if [ -n "$DOM_TESTS_CHANGED" ]; then
+  echo "Running DOM tests (tests/dom/ changed)..."
+  # Whole project rather than the changed files: vitest treats positional args
+  # as regex filters over paths, so a literal filename carrying a regex
+  # metacharacter can match nothing and fail the push as "No test files found".
+  # The suite is a handful of files and happy-dom boots per file in
+  # milliseconds (see vitest.dom.config.mts), so scoping buys nothing here.
+  timeout 120 npm run test:dom || exit 1
 fi
 
 echo "Running edge function tests..."

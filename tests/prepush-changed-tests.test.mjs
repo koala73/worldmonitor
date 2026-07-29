@@ -1,0 +1,163 @@
+// Which runner owns a changed test file (#5795).
+//
+// `tests/dom/` is a vitest + happy-dom project (vitest.dom.config.mts), every
+// other `tests/*.test.{mjs,mts}` file belongs to the node:test runner. The
+// pre-push hook used to sweep BOTH into `tsx --test`, so any push touching a
+// DOM test failed on unresolvable `vitest` imports and read as "your DOM test
+// is broken" — a gate nobody could pass without `--no-verify`.
+//
+// The partition now lives in scripts/prepush-changed-tests.sh, and this suite
+// executes that real script against real files on disk. Two failure modes are
+// equally bad and both are asserted below:
+//
+//   - a DOM file leaking into the node list  -> the loud false failure (#5795)
+//   - a test file in NEITHER list            -> a silent coverage gap
+//
+// The tail of the file adds a (weaker) source-level check that .husky/pre-push
+// actually calls the script in both modes. That guard can only prove the
+// wiring exists, not that it behaves — the executable cases above carry that.
+
+import { strict as assert } from 'node:assert';
+import { describe, test } from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-changed-tests.sh');
+
+/** Files that exist on disk in the fixture worktree. */
+const EXISTING = [
+  'tests/handlers.test.mts',
+  'tests/resilience-fetch.test.mjs',
+  'tests/dom/gate-action.test.mts',
+  'tests/dom/legacy-panel.test.mjs',
+  'tests/dom/nested/deep-panel.test.mts',
+  'tests/dom/helpers/render.mts',
+  'tests/fixtures/sample.json',
+  'src/services/thing.ts',
+];
+
+/** Changed-file list handed to the script — a superset of what exists. */
+const CHANGED = [...EXISTING, 'tests/removed.test.mjs', 'tests/dom/removed.test.mts'];
+
+/** Every changed path that is a test file the repo expects to run somewhere. */
+const RUNNABLE_TESTS = EXISTING.filter((f) => /\.test\.(mjs|mts)$/.test(f));
+
+function makeFixtureWorktree() {
+  const root = mkdtempSync(join(tmpdir(), 'wm-prepush-partition-'));
+  for (const file of EXISTING) {
+    mkdirSync(join(root, dirname(file)), { recursive: true });
+    writeFileSync(join(root, file), '// fixture\n');
+  }
+  return root;
+}
+
+function partition(mode, { cwd, changed = CHANGED } = {}) {
+  const out = execFileSync('bash', [SCRIPT, mode], {
+    cwd,
+    input: `${changed.join('\n')}\n`,
+    encoding: 'utf8',
+  });
+  return out.split('\n').filter(Boolean);
+}
+
+describe('pre-push changed-test partition', () => {
+  const cwd = makeFixtureWorktree();
+
+  test('node mode never hands a tests/dom/ file to the node:test runner', () => {
+    const nodeTests = partition('node', { cwd });
+    assert.deepEqual(
+      nodeTests.filter((f) => f.startsWith('tests/dom/')),
+      [],
+      'tests/dom/ is a vitest project — `tsx --test` cannot resolve its `vitest` imports',
+    );
+  });
+
+  test('node mode still sweeps the ordinary node:test files', () => {
+    assert.deepEqual(partition('node', { cwd }), [
+      'tests/handlers.test.mts',
+      'tests/resilience-fetch.test.mjs',
+    ]);
+  });
+
+  test('dom mode claims every tests/dom/ test file, .mts and .mjs alike', () => {
+    // vitest.dom.config.mts includes `tests/dom/**/*.test.{mts,mjs}` — an
+    // .mts-only carve-out would strand a file named after the repo's more
+    // common .mjs convention in neither runner.
+    assert.deepEqual(partition('dom', { cwd }), [
+      'tests/dom/gate-action.test.mts',
+      'tests/dom/legacy-panel.test.mjs',
+      'tests/dom/nested/deep-panel.test.mts',
+    ]);
+  });
+
+  test('the two modes partition the runnable tests — no overlap, no gap', () => {
+    const nodeTests = partition('node', { cwd });
+    const domTests = partition('dom', { cwd });
+
+    assert.deepEqual(
+      nodeTests.filter((f) => domTests.includes(f)),
+      [],
+      'a file claimed by both runners would run twice per push',
+    );
+    assert.deepEqual(
+      [...nodeTests, ...domTests].sort(),
+      [...RUNNABLE_TESTS].sort(),
+      'every changed test file must be claimed by exactly one runner',
+    );
+  });
+
+  test('drops non-test files and files deleted by the push', () => {
+    for (const mode of ['node', 'dom']) {
+      const picked = partition(mode, { cwd });
+      assert.deepEqual(
+        picked.filter((f) => !/\.test\.(mjs|mts)$/.test(f)),
+        [],
+        `${mode} mode must not run helpers or fixtures`,
+      );
+      assert.deepEqual(
+        picked.filter((f) => f.endsWith('removed.test.mjs') || f.endsWith('removed.test.mts')),
+        [],
+        `${mode} mode must skip paths the push deleted`,
+      );
+    }
+  });
+
+  test('an unknown mode fails loudly instead of silently emitting nothing', () => {
+    // A typo'd mode that exits 0 with empty output reads exactly like "no test
+    // files changed", which is how a coverage gap hides.
+    assert.throws(
+      () => partition('dmo', { cwd }),
+      (err) => err.status === 2,
+      'unknown mode must exit non-zero',
+    );
+  });
+
+  test('exits 0 when nothing in the push is a test file', () => {
+    for (const mode of ['node', 'dom']) {
+      assert.deepEqual(partition(mode, { cwd, changed: ['src/services/thing.ts'] }), []);
+    }
+  });
+});
+
+describe('pre-push hook wiring', () => {
+  const hook = readFileSync(join(REPO_ROOT, '.husky', 'pre-push'), 'utf8');
+
+  test('routes both partitions through the shared script', () => {
+    assert.match(hook, /prepush-changed-tests\.sh node/);
+    assert.match(hook, /prepush-changed-tests\.sh dom/);
+  });
+
+  test('no longer sweeps tests/ with its own inline glob', () => {
+    // The inline sweep is what swallowed tests/dom/; reintroducing one beside
+    // the script would resurrect #5795 with the partition still passing.
+    assert.doesNotMatch(hook, /grep -E "\^tests\//);
+  });
+
+  test('runs the DOM suite under vitest, not the node:test runner', () => {
+    assert.match(hook, /npm run test:dom/);
+  });
+});
