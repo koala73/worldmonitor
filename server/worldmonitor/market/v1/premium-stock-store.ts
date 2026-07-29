@@ -20,26 +20,27 @@ function compareAnalysisDesc<T extends { analysisAt: number; generatedAt: string
 }
 
 function analysisHistoryIndexKey(symbol: string, includeNews: boolean): string {
-  // v3: bumped to rotate pre-PR snapshots missing new dividend fields.
-  // Live analyze-stock cache is also v3 (see analyze-stock.ts).
-  return `market:stock-analysis-history:index:v3:${sanitizeSymbol(symbol)}:${includeNews ? 'news' : 'core'}`;
+  // v5: rotate retained snapshots written before the backward-compatible
+  // ratingSignal/compositeScore pair became the surfaced rating contract.
+  return `market:stock-analysis-history:index:v5:${sanitizeSymbol(symbol)}:${includeNews ? 'news' : 'core'}`;
 }
 
 function analysisItemKey(analysisId: string): string {
-  // v3: see analysisHistoryIndexKey note.
-  return `market:stock-analysis-history:item:v3:${analysisId}`;
+  // v5: see analysisHistoryIndexKey note.
+  return `market:stock-analysis-history:item:v5:${analysisId}`;
 }
 
 function backtestSnapshotKey(symbol: string, evalWindowDays: number): string {
-  return `market:stock-backtest-store:v2:${sanitizeSymbol(symbol)}:${evalWindowDays}`;
+  // v3: stored responses explicitly identify the technical-only rating basis.
+  return `market:stock-backtest-store:v3:${sanitizeSymbol(symbol)}:${evalWindowDays}`;
 }
 
 function backtestLedgerIndexKey(symbol: string): string {
-  return `market:stock-analysis-ledger:index:v1:${sanitizeSymbol(symbol)}`;
+  return `market:stock-analysis-ledger:index:v2:${sanitizeSymbol(symbol)}`;
 }
 
 function backtestLedgerItemKey(analysisId: string): string {
-  return `market:stock-analysis-ledger:item:v1:${analysisId}`;
+  return `market:stock-analysis-ledger:item:v2:${analysisId}`;
 }
 
 function normalizeSymbolList(symbols: string[]): string[] {

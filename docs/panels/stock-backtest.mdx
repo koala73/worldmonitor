@@ -1,9 +1,9 @@
 ---
 title: "Premium Backtesting"
-description: "Historical return and percent-change visualisation for previously-analysed tickers, so you can see how the panel's past signals would have played out."
+description: "Historical return and percent-change visualisation for the technical stock signal model."
 ---
 
-The **Premium Backtesting** panel (internal id `stock-backtest`) renders a compact list of backtested results — one row per ticker — showing how previous Stock Analysis signals fared over their horizon. It's the longitudinal complement to [Premium Stock Analysis](/panels/stock-analysis)'s point-in-time view.
+The **Premium Backtesting** panel (internal id `stock-backtest`) renders a compact list of technical-signal backtests — one row per ticker. Point-in-time fundamentals are not available in the historical Yahoo bars, so this panel does not replay the fundamentals-blended rating shown by [Premium Stock Analysis](/panels/stock-analysis).
 
 ## What the panel shows
 
@@ -20,7 +20,7 @@ Panel id is `stock-backtest`; canonical component is `src/components/StockBackte
 
 ## Data sources
 
-Backtests are produced by a Railway cron that replays previous analysis signals against historical price series. Results are stored in the premium-stock store and fetched via `@/services/stock-backtest`; stale or missing stored rows can be recomputed on demand.
+Backtests are produced by a Railway cron that reconstructs technical-only signals from historical price series and evaluates them against later bars. Responses declare `ratingBasis: "technical_only"` and use a distinct engine version. Results are stored in the premium-stock store and fetched via `@/services/stock-backtest`; stale or missing stored rows can be recomputed on demand.
 
 | Method + route | Feeds |
 |---|---|

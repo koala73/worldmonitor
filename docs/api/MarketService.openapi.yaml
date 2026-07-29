@@ -1045,7 +1045,7 @@ paths:
             tags:
                 - MarketService
             summary: BacktestStock
-            description: BacktestStock replays premium stock-analysis signals over recent price history. PRO-gated. Requires entitlement tier >= 1.
+            description: BacktestStock replays the technical-only stock signal over recent price history. PRO-gated. Requires entitlement tier >= 1.
             operationId: BacktestStock
             security:
                 - WorldMonitorKey: []
@@ -2854,8 +2854,14 @@ components:
                 signalScore:
                     type: number
                     format: double
+                    description: |-
+                        Technical-analysis score (0-100), retained as a stable pair with signal
+                         for clients that predate the fundamentals-blended rating.
                 signal:
                     type: string
+                    description: |-
+                        Technical-only signal paired with signal_score. New clients should use
+                         rating_signal with composite_score for the surfaced investment rating.
                 trendStatus:
                     type: string
                 volumeStatus:
@@ -3014,8 +3020,8 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Blend of signal_score (technicals) and fundamental_score that drives the
-                         signal rating, so a Strong buy/sell no longer fires on price action alone.
+                        Blend of signal_score (technicals) and fundamental_score that drives
+                         rating_signal, so a Strong buy/sell no longer fires on price action alone.
                          Equals signal_score when fundamental_score is unset.
                 nextEarningsDate:
                     type: string
@@ -3064,6 +3070,46 @@ components:
                     description: |-
                         Maximum peak-to-trough drawdown over the window, as a non-positive fractional
                          ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
+                ratingSignal:
+                    type: string
+                    description: |-
+                        Fundamentals-blended signal paired with composite_score. Kept separate
+                         from the legacy technical-only signal/signal_score pair so already-loaded
+                         web, desktop, and API clients never render a mixed-version rating.
+                ratingSummary:
+                    type: string
+                    description: |-
+                        Fundamentals-blended narrative paired with rating_signal/composite_score.
+                         Legacy summary remains paired with signal/signal_score during rollout.
+                ratingAction:
+                    type: string
+                    description: |-
+                        Fundamentals-blended action paired with rating_signal/composite_score.
+                         Legacy action remains paired with signal/signal_score during rollout.
+                ratingConfidence:
+                    type: string
+                    description: |-
+                        Fundamentals-blended confidence paired with rating_signal/composite_score.
+                         Legacy confidence remains paired with signal/signal_score during rollout.
+                ratingWhyNow:
+                    type: string
+                    description: |-
+                        Fundamentals-blended explanation paired with rating_signal/composite_score.
+                         Legacy why_now remains paired with signal/signal_score during rollout.
+                ratingBullishFactors:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Fundamentals-aware positive factors supporting the composite rating.
+                             Legacy bullish_factors remain technical-only during rollout.
+                ratingRiskFactors:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Fundamentals-aware risks supporting the composite rating.
+                             Legacy risk_factors remain technical-only during rollout.
         StockAnalysisHeadline:
             type: object
             properties:
@@ -3294,6 +3340,12 @@ components:
                         $ref: '#/components/schemas/BacktestStockEvaluation'
                 engineVersion:
                     type: string
+                ratingBasis:
+                    type: string
+                    description: |-
+                        "technical_only": historical Yahoo bars do not include point-in-time
+                         fundamentals, so this result must not be presented as a replay of the
+                         fundamentals-blended live rating.
         BacktestStockEvaluation:
             type: object
             properties:

@@ -39,7 +39,11 @@ message AnalyzeStockResponse {
 
   double current_price = 6;
   double change_percent = 7;
+  // Technical-analysis score (0-100), retained as a stable pair with signal
+  // for clients that predate the fundamentals-blended rating.
   double signal_score = 8;
+  // Technical-only signal paired with signal_score. New clients should use
+  // rating_signal with composite_score for the surfaced investment rating.
   string signal = 9;
   string trend_status = 10;
   string volume_status = 11;
@@ -113,8 +117,8 @@ message AnalyzeStockResponse {
   // fundamentals above. Unset when too few fundamentals are available to score,
   // in which case composite_score falls back to signal_score.
   optional double fundamental_score = 61;
-  // Blend of signal_score (technicals) and fundamental_score that drives the
-  // signal rating, so a Strong buy/sell no longer fires on price action alone.
+  // Blend of signal_score (technicals) and fundamental_score that drives
+  // rating_signal, so a Strong buy/sell no longer fires on price action alone.
   // Equals signal_score when fundamental_score is unset.
   double composite_score = 62;
 
@@ -149,6 +153,29 @@ message AnalyzeStockResponse {
   // Maximum peak-to-trough drawdown over the window, as a non-positive fractional
   // ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
   double max_drawdown = 68;
+
+  // Fundamentals-blended signal paired with composite_score. Kept separate
+  // from the legacy technical-only signal/signal_score pair so already-loaded
+  // web, desktop, and API clients never render a mixed-version rating.
+  string rating_signal = 70;
+  // Fundamentals-blended narrative paired with rating_signal/composite_score.
+  // Legacy summary remains paired with signal/signal_score during rollout.
+  string rating_summary = 71;
+  // Fundamentals-blended action paired with rating_signal/composite_score.
+  // Legacy action remains paired with signal/signal_score during rollout.
+  string rating_action = 72;
+  // Fundamentals-blended confidence paired with rating_signal/composite_score.
+  // Legacy confidence remains paired with signal/signal_score during rollout.
+  string rating_confidence = 73;
+  // Fundamentals-blended explanation paired with rating_signal/composite_score.
+  // Legacy why_now remains paired with signal/signal_score during rollout.
+  string rating_why_now = 74;
+  // Fundamentals-aware positive factors supporting the composite rating.
+  // Legacy bullish_factors remain technical-only during rollout.
+  repeated string rating_bullish_factors = 75;
+  // Fundamentals-aware risks supporting the composite rating.
+  // Legacy risk_factors remain technical-only during rollout.
+  repeated string rating_risk_factors = 76;
 }
 
 message Fundamentals {
