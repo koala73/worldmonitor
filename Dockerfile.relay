@@ -51,6 +51,10 @@ COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refre
 # closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
 # logic importable/testable for ais-relay.cjs. Missing it = startup crash.
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
+# ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
+# scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
+# startup (the require is top-level in the UCDP section).
+COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
