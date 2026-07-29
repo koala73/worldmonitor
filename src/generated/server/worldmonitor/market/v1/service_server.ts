@@ -236,6 +236,9 @@ export interface AnalyzeStockResponse {
   consensusEps?: number;
   consensusRevenue?: number;
   newsSentiment?: number;
+  realizedVolatility: number;
+  atr: number;
+  maxDrawdown: number;
 }
 
 export interface StockAnalysisHeadline {

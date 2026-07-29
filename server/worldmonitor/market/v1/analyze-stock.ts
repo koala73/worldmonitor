@@ -65,6 +65,9 @@ export type TechnicalSnapshot = {
   signalScore: number;
   bullishFactors: string[];
   riskFactors: string[];
+  realizedVolatility: number;
+  atr: number;
+  maxDrawdown: number;
 };
 
 export type AiOverlay = {
@@ -569,6 +572,97 @@ function uniqueRounded(values: number[]): number[] {
   return out;
 }
 
+// ── Risk analytics ──────────────────────────────────────────────────────────
+// Pure functions over the daily candles already fetched by fetchYahooHistory —
+// no extra upstream call. Exported for unit tests.
+
+const TRADING_DAYS_PER_YEAR = 252;
+const ATR_PERIOD = 14;
+
+/**
+ * Sample standard deviation (Bessel-corrected, n − 1). Returns 0 for a series
+ * with fewer than two values.
+ */
+function stdev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const avg = mean(values);
+  const variance = values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+/**
+ * Annualized realized volatility: the sample standard deviation of daily log
+ * returns scaled by √252, expressed as a fractional ratio (0.25 means 25%).
+ * Returns 0 when fewer than two usable closes are supplied.
+ * @param closes Chronological close prices.
+ */
+export function computeRealizedVolatility(closes: number[]): number {
+  const logReturns: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    const prev = closes[i - 1];
+    const curr = closes[i];
+    if (prev === undefined || curr === undefined || prev <= 0 || curr <= 0) continue;
+    logReturns.push(Math.log(curr / prev));
+  }
+  if (logReturns.length < 2) return 0;
+  return stdev(logReturns) * Math.sqrt(TRADING_DAYS_PER_YEAR);
+}
+
+/**
+ * Wilder's Average True Range over `period` bars, in the candles' price units.
+ * True range is max(high − low, |high − prevClose|, |low − prevClose|); the
+ * first bar seeds on high − low. The window is seeded with the simple average
+ * of the first `period` true ranges, then Wilder-smoothed. Returns 0 when fewer
+ * than two aligned bars are supplied.
+ * @param highs Chronological high prices.
+ * @param lows Chronological low prices, index-aligned with `highs`.
+ * @param closes Chronological close prices, index-aligned with `highs`.
+ * @param period Averaging window (defaults to 14).
+ */
+export function computeAtr(highs: number[], lows: number[], closes: number[], period = ATR_PERIOD): number {
+  const length = Math.min(highs.length, lows.length, closes.length);
+  if (period < 1 || length < period) return 0;
+  const trueRanges: number[] = [];
+  for (let i = 0; i < length; i++) {
+    const high = highs[i];
+    const low = lows[i];
+    if (high === undefined || low === undefined) continue;
+    const prevClose = i > 0 ? closes[i - 1] : undefined;
+    if (i === 0 || prevClose === undefined) {
+      trueRanges.push(high - low);
+      continue;
+    }
+    trueRanges.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  if (trueRanges.length === 0) return 0;
+  if (trueRanges.length < period) return 0;
+  let atr = mean(trueRanges.slice(0, period));
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = (atr * (period - 1) + (trueRanges[i] ?? 0)) / period;
+  }
+  return atr;
+}
+
+/**
+ * Maximum peak-to-trough drawdown over the series, as a non-positive fractional
+ * ratio (−0.25 means a 25% decline from a prior peak). Returns 0 for an empty,
+ * single-point, or monotonically non-decreasing series.
+ * @param closes Chronological close prices.
+ */
+export function computeMaxDrawdown(closes: number[]): number {
+  let peak = -Infinity;
+  let maxDrawdown = 0;
+  for (const close of closes) {
+    if (!Number.isFinite(close)) continue;
+    if (close > peak) peak = close;
+    if (peak > 0) {
+      const drawdown = (close - peak) / peak;
+      if (drawdown < maxDrawdown) maxDrawdown = drawdown;
+    }
+  }
+  return maxDrawdown;
+}
+
 // ── US-equity market session (#4922d) ───────────────────────────────────────
 // TypeScript twin of scripts/shared/market-hours.cjs — the single source of
 // truth for relays/seeders. Server code must NOT import that .cjs (Vercel
@@ -761,7 +855,11 @@ export async function fetchYahooHistory(symbol: string): Promise<{ candles: Cand
     const open = opens[i];
     const high = highs[i];
     const low = lows[i];
-    if (![close, open, high, low].every((value) => typeof value === 'number' && Number.isFinite(value))) continue;
+    if (![close, open, high, low].every(
+      (value) => typeof value === 'number' && Number.isFinite(value) && value > 0,
+    )) continue;
+    if ((high as number) < Math.max(open as number, close as number, low as number)
+      || (low as number) > Math.min(open as number, close as number, high as number)) continue;
     candles.push({
       timestamp: (timestamps[i] ?? 0) * 1000,
       open: open as number,
@@ -886,6 +984,7 @@ export async function fetchYahooAnalystData(symbol: string): Promise<AnalystData
 export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
   const closes = candles.map((candle) => candle.close);
   const highs = candles.map((candle) => candle.high);
+  const lows = candles.map((candle) => candle.low);
   const volumes = candles.map((candle) => candle.volume);
 
   const ma5Series = smaSeries(closes, 5);
@@ -1151,6 +1250,10 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
   else if (signalScore >= 30) signal = 'Watch';
   else if (trendStatus === 'Bear' || trendStatus === 'Strong bear') signal = 'Strong sell';
 
+  const realizedVolatility = computeRealizedVolatility(closes);
+  const atr = computeAtr(highs, lows, closes);
+  const maxDrawdown = computeMaxDrawdown(closes);
+
   return {
     currentPrice: round(currentPrice),
     changePercent: round(((currentPrice - previousClose) / Math.max(previousClose, 0.0001)) * 100),
@@ -1186,6 +1289,9 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
     signalScore,
     bullishFactors: bullishFactors.slice(0, 6),
     riskFactors: riskFactors.slice(0, 6),
+    realizedVolatility: round(realizedVolatility, 4),
+    atr: round(atr, 2),
+    maxDrawdown: round(maxDrawdown, 4),
   };
 }
 
@@ -1446,6 +1552,9 @@ export function buildAnalysisResponse(params: {
     macdDif: technical.macdDif,
     macdDea: technical.macdDea,
     macdBar: technical.macdBar,
+    realizedVolatility: technical.realizedVolatility,
+    atr: technical.atr,
+    maxDrawdown: technical.maxDrawdown,
     provider: overlay.provider,
     model: overlay.model,
     fallback: overlay.fallback,
@@ -1518,6 +1627,9 @@ function buildEmptyAnalysisResponse(symbol: string, name: string, includeNews: b
     macdDif: 0,
     macdDea: 0,
     macdBar: 0,
+    realizedVolatility: 0,
+    atr: 0,
+    maxDrawdown: 0,
     provider: '',
     model: '',
     fallback: true,
@@ -1559,8 +1671,9 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  // v5 -> v6 (#5656): headline-backed LLM overlays now carry news sentiment.
-  // Never replay a pre-contract response into the Pro UI.
+  // v5 -> v6: risk analytics add required response fields and headline-backed
+  // LLM overlays add news sentiment. Never replay a pre-contract response
+  // without them into the Pro UI or API.
   const cacheKey = `market:analyze-stock:v6:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
