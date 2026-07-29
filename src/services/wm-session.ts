@@ -17,7 +17,7 @@ import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 import { hasPremiumIntent } from './premium-intent';
 import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
+import { PUBLIC_WEATHER_BOOTSTRAP_KEY, bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
 
 const STORAGE_KEY = 'wm-session-exp';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
@@ -60,7 +60,15 @@ const SESSION_DEAD_CORROBORATION_MS = 60 * 1000;
 // question ("how long to stop paying mints for this endpoint" vs "how long to
 // blank the whole surface") — tuning one must not silently retune the other.
 const SESSION_DEAD_ROUTE_STRIKE_TTL_MS = SESSION_DEAD_COOLDOWN_MS;
-const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand'));
+// Every logical key that `/api/bootstrap?keys=<name>&public=1` serves without
+// credentials: the on-demand tier plus weatherAlerts, which rides the fast tier
+// but has its own public URL (#5386). A credential-less read of one of these is
+// public by contract, so a denial there is NOT evidence the anonymous session
+// cookie is dead and must not trigger session recovery.
+const PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS = new Set([
+  ...bootstrapTierKeyNames('on-demand'),
+  PUBLIC_WEATHER_BOOTSTRAP_KEY,
+]);
 export const WM_SESSION_DEGRADED_EVENT = 'wm-session-degraded';
 
 type WmSessionDeadReason = 'mint_failed' | 'retry_401' | 'cookie_not_persisted';
@@ -616,7 +624,7 @@ function isCredentiallessPublicDataRequest(
     return true;
   }
 
-  // Public on-demand hydration uses one registered key per CDN URL. Reuse the
+  // Single-key public hydration uses one registered key per CDN URL. Reuse the
   // shared tier registry so a credentials:'omit' request cannot escape the
   // session guard merely by presenting an arbitrary single-key shape.
   if (params.some((key) => key !== 'keys' && key !== 'public')) return false;
@@ -624,7 +632,7 @@ function isCredentiallessPublicDataRequest(
   const key = keys[0];
   return keys.length === 1
     && typeof key === 'string'
-    && PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS.has(key)
+    && PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS.has(key)
     && publicFlags.length === 1
     && publicFlags[0] === '1';
 }

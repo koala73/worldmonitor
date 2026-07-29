@@ -620,6 +620,13 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       const onDemand = await wrappedFetch(onDemandRequest);
       assert.equal(onDemand.status, 200, 'public on-demand hydration must not participate in wm-session state');
 
+      // weatherAlerts rides the fast tier but has its own public URL (#5386),
+      // so it is a single-key public read like the on-demand keys above.
+      const publicWeather = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1', {
+        credentials: 'omit',
+      });
+      assert.equal(publicWeather.status, 200, 'public weather hydration must not participate in wm-session state');
+
       const digest = await wrappedFetch('https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en&public=1', {
         credentials: 'omit',
       });
@@ -648,17 +655,25 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       const nonPublicKey = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes&public=1', {
         credentials: 'omit',
       });
-      assert.equal(nonPublicKey.status, 503, 'a single key outside the on-demand registry must remain session-gated');
+      assert.equal(nonPublicKey.status, 503, 'a single key outside the public single-key registry must remain session-gated');
+
+      // The marker is what makes the read public. Without it the same key is the
+      // credentialed URL, where a 401 IS ordinary session evidence (#5386).
+      const unmarkedWeather = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts', {
+        credentials: 'omit',
+      });
+      assert.equal(unmarkedWeather.status, 503, 'the unmarked weather URL must remain session-gated');
     } finally {
       console.warn = originalWarn;
     }
 
     assert.deepEqual(
-      forwarded.slice(-5),
+      forwarded.slice(-6),
       [
         { url: 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1', credentials: 'omit' },
         { url: 'https://api.worldmonitor.app/api/bootstrap?public=1&tier=slow', credentials: 'omit' },
         { url: 'https://api.worldmonitor.app/api/bootstrap?keys=chinaPolicyEvents&public=1', credentials: 'omit' },
+        { url: 'https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1', credentials: 'omit' },
         { url: 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en&public=1', credentials: 'omit' },
         { url: 'https://api.worldmonitor.app/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1', credentials: 'omit' },
       ],
