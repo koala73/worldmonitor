@@ -46,8 +46,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get Early Access",
-      "href": "https://www.worldmonitor.app/pro#waitlist"
+      "label": "View Pro plans",
+      "href": "https://www.worldmonitor.app/pro#pricing"
     }
   },
   "navigation": {
@@ -233,6 +233,7 @@
                   "health-endpoints",
                   "relay-parameters",
                   "decision-signal-provenance",
+                  "china-decision-signals",
                   "data-sources"
                 ]
               },
@@ -462,8 +463,8 @@
           ],
           "primary": {
             "type": "button",
-            "label": "获取早期访问权限",
-            "href": "https://www.worldmonitor.app/pro#waitlist"
+            "label": "查看 Pro 方案",
+            "href": "https://www.worldmonitor.app/pro#pricing"
           }
         },
         "footer": {

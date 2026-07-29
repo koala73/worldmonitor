@@ -123,8 +123,12 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
     const { initI18n } = await import('/src/services/i18n.ts');
     await initI18n();
     const mod = await import('/src/components/ProActivationInterstitial.ts');
-    const w = window as unknown as { __proEvents: CapturedProEvent[] };
+    const w = window as unknown as {
+      __proEvents: CapturedProEvent[];
+      __proSearchOpened: boolean;
+    };
     w.__proEvents = [];
+    w.__proSearchOpened = false;
     const options: Record<string, unknown> = {
       accountUserId: 'e2e-user',
       accountEmail: 'e2e@worldmonitor.app',
@@ -134,6 +138,9 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
       },
     };
     if (openers) {
+      options.openSearch = () => {
+        w.__proSearchOpened = true;
+      };
       options.openWidgetBuilder = () => {};
       options.openAiAnalyst = () => {};
       options.openMcpClients = () => {};
@@ -1075,22 +1082,24 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
       stage: 'brief-confirm',
       activation_path: 'day0',
     });
-    // Assert the message this harness actually produces. It fails at
-    // assertExpectedAccount (src/services/notification-channels.ts:55) — no Clerk
+    // Assert the message this harness actually produces. It fails in
+    // `assertExpectedAccount` (src/services/notification-channels.ts) — no Clerk
     // user in the harness — so there is no HTTP status to carry here; the
     // `set email channel: <status>` shape lives on the post-auth path. A bare
     // length check passed on literally any string, including an empty-ish one.
+    // Matched on the thrown message rather than a line number so the reference
+    // survives edits to that module (#5622 moved the function).
     expect(briefCapture?.message).toContain('Authenticated account changed during notification setup');
   });
 
-  test('power-toolkit pointer confirms the step and fires step-confirmed telemetry', async ({
+  test('power-toolkit command search teaches the shortcut and invokes the app opener', async ({
     page,
   }) => {
     await gotoHarness(page);
     await openFlow(page, /* withOpeners */ true);
 
     // Skip forward until the power step's injected pointer is on screen.
-    const pointer = page.locator('.pro-activation-pointer[data-pointer="widgets"]');
+    const pointer = page.locator('.pro-activation-pointer[data-pointer="search"]');
     for (let i = 0; i < 5; i += 1) {
       if (await pointer.count()) break;
       const skip = page.locator(SKIP_BTN);
@@ -1098,6 +1107,10 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
       else break;
     }
     await expect(pointer).toBeVisible();
+    await expect(pointer).toContainText('Search the entire dashboard');
+    await expect(pointer.locator('kbd')).toHaveCount(2);
+    await expect(pointer).toHaveAttribute('aria-label', /Search the entire dashboard \((?:⌘K|Ctrl\+K)\)/);
+    await expect(page.locator('.pro-activation-pointer').first()).toHaveAttribute('data-pointer', 'search');
 
     // #5607: Pro is apiAccess:false / mcpAccess:true, so the third pointer sells
     // MCP setup — never "API & MCP keys" deep-linked at the API-plan upsell.
@@ -1106,10 +1119,13 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
     ).toContainText('Set up MCP');
     await expect(page.locator('.pro-activation-pointer[data-pointer="apiKeys"]')).toHaveCount(0);
 
-    // Clicking a pointer confirms the power step (stepConfirmed) and finishes
-    // the flow (a deep-link closes the full-screen overlay first).
-    await pointer.click();
+    // The advertised keyboard shortcut must work while the full-screen
+    // interstitial is still open, not launch an invisible search layer behind it.
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+K`);
     await expect(page.locator(OVERLAY)).toHaveCount(0);
+    await expect.poll(
+      () => page.evaluate(() => (window as unknown as { __proSearchOpened: boolean }).__proSearchOpened),
+    ).toBe(true);
 
     const events = await readCapturedEvents(page);
     expect(events[0]?.event).toBe('pro-activation-entered');

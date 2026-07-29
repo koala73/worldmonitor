@@ -27,7 +27,8 @@ export interface McpClientInfo {
 
 export interface McpQuota {
   used: number;
-  limit: number;
+  /** Plan-resolved daily allowance. `null` = unlimited (plan 2026-07-25-001 U3b). */
+  limit: number | null;
   resetsAt: string;
 }
 
@@ -104,12 +105,27 @@ export async function fetchMcpQuota(): Promise<McpQuota> {
     const data = (await resp.json()) as Partial<McpQuota>;
     return {
       used: typeof data.used === 'number' && data.used >= 0 ? data.used : 0,
-      limit: typeof data.limit === 'number' && data.limit > 0 ? data.limit : 50,
+      limit: normalizeQuotaLimit(data.limit),
       resetsAt: typeof data.resetsAt === 'string' ? data.resetsAt : fallback.resetsAt,
     };
   } catch {
     return fallback;
   }
+}
+
+/**
+ * `null` is a real value on the wire — the plan is unlimited — so it must
+ * survive normalisation instead of collapsing into the 50/day fallback. `0` is
+ * likewise a real allowance, not a missing one. Anything else (absent field,
+ * malformed type, negative) falls back to the plan default.
+ *
+ * Exported so tests/mcp-quota.test.mjs can pin the client end of the same wire
+ * contract the endpoint's own cases pin: a truthiness check here would put
+ * "50 / 50" back in front of an unlimited caller.
+ */
+export function normalizeQuotaLimit(raw: McpQuota['limit'] | undefined): number | null {
+  if (raw === null) return null;
+  return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : 50;
 }
 
 function nextUtcMidnightIso(): string {

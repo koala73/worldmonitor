@@ -14,7 +14,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from '../../_cors.js';
 import { validateBearerToken } from '../../../server/auth-session';
-import { getBillingVerificationDenial, getEntitlements } from '../../../server/_shared/entitlement-check';
+import { checkTierProEntitlement } from '../../../server/_shared/pro-entitlement';
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? '';
 const SLACK_REDIRECT_URI = process.env.SLACK_REDIRECT_URI ?? '';
@@ -48,15 +48,15 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
-  const ent = await getEntitlements(session.userId);
-  if (!ent || ent.features.tier < 1) {
+  const proAccess = await checkTierProEntitlement(session.userId, corsHeaders);
+  if (!proAccess.allowed) {
     // #5600: an entitlement the backend could not VERIFY is not a confirmed
     // free user. Answer the shared retryable contract (503 + Retry-After) for
     // those states before falling back to the terminal upsell. Note this covers
     // lookup failure and renewal verification only — the day-0 poisoned-marker
     // cohort arrives as a plain tier-0 answer and still gets the 403; that
     // window is bounded by NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead.
-    const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
+    const { billingDenial } = proAccess;
     if (billingDenial) return billingDenial;
     return new Response(JSON.stringify({ error: 'pro_required', message: 'Slack notifications are available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }

@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
 import {
+  CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS,
   CHINA_CORPORATE_DISCLOSURE_KEY,
   DISCLOSURE_TYPES,
   EMPTY_RESULT_DEGRADE_AFTER,
@@ -17,6 +18,7 @@ import {
   normalizeSseAnnouncements,
   normalizeSzseAnnouncements,
   readBoundedJsonResponse,
+  resolveChinaExchangeEdgeEgress,
 } from '../scripts/china-corporate-disclosures/adapters.mjs';
 import {
   chinaCorporateDisclosureContentMeta,
@@ -80,6 +82,23 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.match(hkex.termsUrl, /^https:/);
   });
 
+  it('keeps the worst-case network budget below the Railway section timeout', () => {
+    const bundleSource = readFileSync(
+      resolve(import.meta.dirname, '../scripts/seed-bundle-market-backup.mjs'),
+      'utf8',
+    );
+    const timeoutMatch = /label:\s*'China-Corporate-Disclosures'[^\n]*timeoutMs:\s*([\d_]+)/u
+      .exec(bundleSource);
+    assert.ok(timeoutMatch, 'China disclosure bundle section must declare timeoutMs');
+    const sectionTimeoutMs = Number(timeoutMatch[1].replaceAll('_', ''));
+
+    assert.equal(CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS, 115_250);
+    assert.ok(
+      sectionTimeoutMs - CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS >= 20_000,
+      'network attempts must leave at least 20s for startup, parsing, publication, and shutdown',
+    );
+  });
+
   it('classifies the seven owned categories without collision inflation', () => {
     assert.deepEqual(DISCLOSURE_TYPES, [
       'halt',
@@ -94,6 +113,16 @@ describe('official China corporate disclosures (#5577)', () => {
     for (const row of fixture('collisions.json') as Array<{ title: string; expected: string | null }>) {
       assert.equal(classifyDisclosureTitle(row.title), row.expected, row.title);
     }
+    assert.equal(
+      classifyDisclosureTitle('董事会秘书工作细则'),
+      null,
+      'routine governance rules are not market-moving disclosure events',
+    );
+    assert.equal(
+      classifyDisclosureTitle('修订公司制度'),
+      null,
+      'routine system revisions remain outside the owned event taxonomy',
+    );
   });
 
   it('normalizes official metadata, rejects unreviewed issuers, and never fetches document bodies', () => {
@@ -737,6 +766,636 @@ describe('official China corporate disclosures (#5577)', () => {
       saturatedDecisions.filter((decision) => decision.reason === 'PAGE_LIMIT_REACHED').length,
       2,
     );
+  });
+
+  it('falls back to a bounded proxy request when the direct SZSE transport fails', async () => {
+    const directCalls: Array<{ url: string; init?: RequestInit }> = [];
+    const proxyCalls: Array<{
+      url: string;
+      proxyConfig: Record<string, unknown>;
+      options: Record<string, unknown>;
+    }> = [];
+    const decisions: Array<{
+      sourceId: string;
+      status: string;
+      requestCount: number;
+      transportPath?: string;
+      fallbackReason?: string;
+    }> = [];
+
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input, init) => {
+        const url = String(input);
+        directCalls.push({ url, init });
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('connect timed out'), {
+            code: 'UND_ERR_CONNECT_TIMEOUT',
+          }),
+        });
+      },
+      proxyRequestFn: async (input, proxyConfig, options) => {
+        proxyCalls.push({
+          url: String(input),
+          proxyConfig,
+          options,
+        });
+        return {
+          buffer: Buffer.from(JSON.stringify(fixture('szse.json'))),
+          status: 200,
+          contentType: 'application/json',
+        };
+      },
+    });
+
+    assert.equal(snapshot.status, 'healthy');
+    assert.equal(directCalls.filter((call) => call.url.includes('www.szse.cn')).length, 1);
+    assert.equal(proxyCalls.length, 1);
+    assert.match(proxyCalls[0].url, /^https:\/\/www\.szse\.cn\/api\/disc\/announcement\/annList/);
+    assert.deepEqual(proxyCalls[0].proxyConfig, {
+      host: 'proxy.test',
+      port: 443,
+      auth: 'proxy-user:proxy-secret',
+      tls: true,
+    });
+    assert.equal(proxyCalls[0].options.method, 'POST');
+    assert.equal(
+      proxyCalls[0].options.maxResponseBytes,
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
+    );
+    assert.deepEqual(
+      JSON.parse(String(proxyCalls[0].options.body)),
+      {
+        seDate: ['2026-04-26', '2026-07-25'],
+        channelCode: ['listedNotice_disc'],
+        stock: ['300750'],
+        pageSize: 50,
+        pageNum: 1,
+      },
+    );
+
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal(szse?.transportStatus, 'fresh');
+    assert.equal(szse?.contentStatus, 'current');
+    assert.equal(szse?.requestCount, 2);
+    assert.equal(szse?.transportPath, 'proxy');
+    assert.equal(szse?.fallbackReason, 'UND_ERR_CONNECT_TIMEOUT');
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun, 4);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun, 1);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun, 2);
+    assert.equal(
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun,
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun
+        + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun
+        + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxEdgeRequestsPerRun,
+    );
+    assert.equal(
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.fallbackPolicy,
+      'direct_then_proxy_then_edge_on_transport_failure',
+    );
+
+    const szseDecision = decisions.find((decision) => decision.sourceId === 'szse');
+    assert.deepEqual(szseDecision, {
+      sourceId: 'szse',
+      status: 'accepted',
+      requestCount: 2,
+      emptyResultCount: 0,
+      transportPath: 'proxy',
+      fallbackReason: 'UND_ERR_CONNECT_TIMEOUT',
+      checkedAt: retrievedAt,
+    });
+    assert.doesNotMatch(JSON.stringify(decisions), /proxy-user|proxy-secret/);
+  });
+
+  it('retries one transient proxy transport failure before degrading SZSE coverage', async () => {
+    const transientProxyErrorCodes = [
+      'EAI_AGAIN',
+      'ECONNABORTED',
+      'ECONNREFUSED',
+      'ECONNRESET',
+      'EHOSTUNREACH',
+      'ENETUNREACH',
+      'ENOTFOUND',
+      'EPIPE',
+      'ERR_SOCKET_CLOSED',
+      'ERR_STREAM_PREMATURE_CLOSE',
+      'ERR_TLS_HANDSHAKE_TIMEOUT',
+      'ETIMEDOUT',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_SOCKET',
+    ];
+    const transientProxyErrors = [
+      ...transientProxyErrorCodes.map((code) => Object.assign(new Error(code), { code })),
+      Object.assign(new Error('Proxy CONNECT: HTTP/1.1 502 Bad Gateway'), { status: 502 }),
+      new Error('CONNECT tunnel timeout'),
+      new TypeError('fetch failed'),
+    ];
+
+    for (const transientProxyError of transientProxyErrors) {
+      let proxyCalls = 0;
+      const decisions: Array<Record<string, unknown>> = [];
+      const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        onDecision: (decision) => decisions.push(decision),
+        fetchFn: async (input) => {
+          const url = String(input);
+          if (url.includes('query.sse.com.cn')) {
+            return new Response(JSON.stringify({
+              pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+              result: [],
+            }), { status: 200 });
+          }
+          throw Object.assign(new TypeError('fetch failed'), {
+            cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+          });
+        },
+        proxyRequestFn: async () => {
+          proxyCalls += 1;
+          if (proxyCalls === 1) throw transientProxyError;
+          return {
+            buffer: Buffer.from(JSON.stringify(fixture('szse.json'))),
+            status: 200,
+            contentType: 'application/json',
+          };
+        },
+      });
+
+      const szse = snapshot.sources.find((source) => source.id === 'szse');
+      assert.equal(snapshot.status, 'healthy');
+      assert.equal(proxyCalls, 2);
+      assert.equal(szse?.transportStatus, 'fresh');
+      assert.equal(szse?.contentStatus, 'current');
+      assert.equal(szse?.requestCount, 3);
+      assert.equal(szse?.transportPath, 'proxy');
+      assert.equal(szse?.fallbackReason, 'ETIMEDOUT');
+      assert.deepEqual(
+        decisions.find((decision) => decision.sourceId === 'szse'),
+        {
+          sourceId: 'szse',
+          status: 'accepted',
+          requestCount: 3,
+          emptyResultCount: 0,
+          transportPath: 'proxy',
+          fallbackReason: 'ETIMEDOUT',
+          checkedAt: retrievedAt,
+        },
+      );
+    }
+  });
+
+  it('uses the authenticated edge egress after direct and proxy transports are exhausted', async () => {
+    let proxyCalls = 0;
+    const edgeCalls: Array<{ url: string; init?: RequestInit }> = [];
+    const decisions: Array<Record<string, unknown>> = [];
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      edgeEgress: {
+        url: 'https://api.example.test/api/internal/china-exchange-egress',
+        secret: 'edge-relay-secret',
+      },
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+        });
+      },
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        throw Object.assign(new Error('Proxy upstream timeout'), { status: 522 });
+      },
+      edgeRequestFn: async (input, init) => {
+        edgeCalls.push({ url: String(input), init });
+        return new Response(JSON.stringify(fixture('szse.json')), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    });
+
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal(snapshot.status, 'healthy');
+    assert.equal(proxyCalls, 2);
+    assert.equal(edgeCalls.length, 1);
+    assert.equal(
+      edgeCalls[0].url,
+      'https://api.example.test/api/internal/china-exchange-egress',
+    );
+    assert.equal(
+      new Headers(edgeCalls[0].init?.headers).get('Authorization'),
+      'Bearer edge-relay-secret',
+    );
+    assert.deepEqual(
+      JSON.parse(String(edgeCalls[0].init?.body)),
+      {
+        seDate: ['2026-04-26', '2026-07-25'],
+        channelCode: ['listedNotice_disc'],
+        stock: ['300750'],
+        pageSize: 50,
+        pageNum: 1,
+      },
+    );
+    assert.equal(szse?.transportStatus, 'fresh');
+    assert.equal(szse?.contentStatus, 'current');
+    assert.equal(szse?.requestCount, 4);
+    assert.equal(szse?.transportPath, 'edge');
+    assert.equal(szse?.fallbackReason, 'ETIMEDOUT');
+    assert.equal(szse?.proxyFailureReason, 'HTTP_522');
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun, 4);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxEdgeRequestsPerRun, 1);
+    assert.equal(
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun,
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun
+        + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun
+        + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxEdgeRequestsPerRun,
+    );
+    assert.equal(
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.fallbackPolicy,
+      'direct_then_proxy_then_edge_on_transport_failure',
+    );
+    assert.deepEqual(
+      decisions.find((decision) => decision.sourceId === 'szse'),
+      {
+        sourceId: 'szse',
+        status: 'accepted',
+        requestCount: 4,
+        emptyResultCount: 0,
+        transportPath: 'edge',
+        fallbackReason: 'ETIMEDOUT',
+        proxyFailureReason: 'HTTP_522',
+        checkedAt: retrievedAt,
+      },
+    );
+    assert.doesNotMatch(JSON.stringify(decisions), /proxy-secret|edge-relay-secret/);
+  });
+
+  it('preserves only allowlisted bounded edge error reasons', async () => {
+    const cases = [
+      {
+        name: 'timeout',
+        body: JSON.stringify({ error: 'upstream_timeout' }),
+        expected: 'upstream_timeout',
+      },
+      {
+        name: 'fetch failure',
+        body: JSON.stringify({ error: 'upstream_fetch_failed' }),
+        expected: 'upstream_fetch_failed',
+      },
+      {
+        name: 'oversized upstream response',
+        body: JSON.stringify({ error: 'upstream_response_too_large' }),
+        expected: 'upstream_response_too_large',
+      },
+      {
+        name: 'unknown JSON error',
+        body: JSON.stringify({
+          error: 'untrusted_edge_error',
+          detail: 'edge-response-secret',
+        }),
+        expected: 'HTTP_502',
+      },
+      {
+        name: 'malformed JSON error',
+        body: 'not-json edge-response-secret',
+        expected: 'HTTP_502',
+      },
+      {
+        name: 'oversized internal error envelope',
+        body: JSON.stringify({
+          error: 'upstream_fetch_failed',
+          detail: `${'x'.repeat(
+            OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
+          )}edge-response-secret`,
+        }),
+        expected: 'HTTP_502',
+      },
+    ];
+
+    for (const testCase of cases) {
+      const decisions: Array<Record<string, unknown>> = [];
+      const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        proxyUrl: '',
+        edgeEgress: {
+          url: 'https://api.example.test/api/internal/china-exchange-egress',
+          secret: 'edge-relay-secret',
+        },
+        onDecision: (decision) => decisions.push(decision),
+        fetchFn: async (input) => {
+          const url = String(input);
+          if (url.includes('query.sse.com.cn')) {
+            return new Response(JSON.stringify({
+              pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+              result: [],
+            }), { status: 200 });
+          }
+          throw Object.assign(new TypeError('fetch failed'), {
+            cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+          });
+        },
+        edgeRequestFn: async () => new Response(testCase.body, {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      });
+
+      const szse = snapshot.sources.find((source) => source.id === 'szse');
+      assert.equal(szse?.requestCount, 2, testCase.name);
+      assert.equal(szse?.transportPath, 'edge', testCase.name);
+      assert.equal(szse?.fallbackReason, 'ETIMEDOUT', testCase.name);
+      assert.equal(szse?.edgeFailureReason, testCase.expected, testCase.name);
+      assert.equal(szse?.errorCode, testCase.expected, testCase.name);
+      assert.doesNotMatch(
+        JSON.stringify({ snapshot, decisions }),
+        /edge-relay-secret|edge-response-secret|untrusted_edge_error/,
+        testCase.name,
+      );
+    }
+  });
+
+  it('retains last-good SZSE data and all transport reasons after edge failure', async () => {
+    const healthy = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      onDecision: () => {},
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify(fixture('szse.json')), { status: 200 });
+      },
+    });
+    const decisions: Array<Record<string, unknown>> = [];
+    let proxyCalls = 0;
+    let edgeCalls = 0;
+
+    const degradedAt = '2026-07-25T11:00:00.000Z';
+    const degraded = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(degradedAt),
+      previousSnapshot: healthy,
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      edgeEgress: {
+        url: 'https://api.example.test/api/internal/china-exchange-egress',
+        secret: 'edge-relay-secret',
+      },
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }),
+        });
+      },
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('proxy DNS failed'), { code: 'EAI_AGAIN' }),
+        });
+      },
+      edgeRequestFn: async () => {
+        edgeCalls += 1;
+        return new Response(JSON.stringify({
+          error: 'upstream_fetch_failed',
+          detail: 'edge-response-secret',
+        }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    });
+
+    const szse = degraded.sources.find((source) => source.id === 'szse');
+    assert.equal(degraded.status, 'degraded');
+    assert.equal(szse?.transportStatus, 'error');
+    assert.equal(szse?.contentStatus, 'stale');
+    assert.equal(szse?.lastSuccessAt, retrievedAt);
+    assert.equal(proxyCalls, 2);
+    assert.equal(edgeCalls, 1);
+    assert.equal(szse?.requestCount, 4);
+    assert.equal(szse?.transportPath, 'edge');
+    assert.equal(szse?.fallbackReason, 'ECONNRESET');
+    assert.equal(szse?.proxyFailureReason, 'EAI_AGAIN');
+    assert.equal(szse?.edgeFailureReason, 'upstream_fetch_failed');
+    assert.equal(szse?.errorCode, 'upstream_fetch_failed');
+    assert.deepEqual(
+      decisions.find((decision) => decision.sourceId === 'szse'),
+      {
+        sourceId: 'szse',
+        status: 'degraded',
+        requestCount: 4,
+        reason: 'upstream_fetch_failed',
+        emptyResultCount: 0,
+        transportPath: 'edge',
+        fallbackReason: 'ECONNRESET',
+        proxyFailureReason: 'EAI_AGAIN',
+        edgeFailureReason: 'upstream_fetch_failed',
+        checkedAt: degradedAt,
+      },
+    );
+    const withoutProvenance = (events: typeof healthy.events) => JSON.parse(
+      JSON.stringify(events, (key, value) => (key === 'provenance' ? undefined : value)),
+    );
+    assert.deepEqual(
+      withoutProvenance(degraded.events.filter((event) => event.exchange === 'SZSE')),
+      withoutProvenance(healthy.events.filter((event) => event.exchange === 'SZSE')),
+    );
+    assert.doesNotMatch(
+      JSON.stringify({ degraded, decisions }),
+      /proxy-user|proxy-secret|edge-relay-secret|edge-response-secret/,
+    );
+  });
+
+  it('pins edge egress to the canonical endpoint for Railway production', () => {
+    assert.equal(resolveChinaExchangeEdgeEgress({}), null);
+    assert.equal(resolveChinaExchangeEdgeEgress({
+      RAILWAY_ENVIRONMENT: 'production',
+    }), null);
+    assert.deepEqual(resolveChinaExchangeEdgeEgress({
+      RAILWAY_ENVIRONMENT_NAME: 'production',
+      RELAY_SHARED_SECRET: 'relay-secret',
+    }), {
+      url: 'https://api.worldmonitor.app/api/internal/china-exchange-egress',
+      secret: 'relay-secret',
+    });
+    assert.equal(resolveChinaExchangeEdgeEgress({
+      CHINA_EXCHANGE_EDGE_URL: 'https://preview.example.test/api/internal/china-exchange-egress',
+      RELAY_SHARED_SECRET: 'relay-secret',
+    }), null);
+    assert.deepEqual(resolveChinaExchangeEdgeEgress({
+      RAILWAY_ENVIRONMENT: 'production',
+      CHINA_EXCHANGE_EDGE_URL: 'https://attacker.example/internal-egress',
+      RELAY_SHARED_SECRET: 'relay-secret',
+    }), {
+      url: 'https://api.worldmonitor.app/api/internal/china-exchange-egress',
+      secret: 'relay-secret',
+    });
+  });
+
+  it('does not retry a non-transport SZSE proxy rejection', async () => {
+    let proxyCalls = 0;
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      onDecision: () => {},
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+        });
+      },
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        throw Object.assign(
+          new Error('Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required'),
+          { status: 407 },
+        );
+      },
+    });
+
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal(snapshot.status, 'degraded');
+    assert.equal(proxyCalls, 1);
+    assert.equal(szse?.transportStatus, 'error');
+    assert.equal(szse?.requestCount, 2);
+    assert.equal(szse?.transportPath, 'proxy');
+    assert.equal(szse?.fallbackReason, 'ETIMEDOUT');
+    assert.equal(szse?.proxyFailureReason, 'HTTP_407');
+    assert.equal(szse?.errorCode, 'HTTP_407');
+  });
+
+  it('keeps last-good SZSE data and records both transport failures when the proxy also fails', async () => {
+    const healthy = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      onDecision: () => {},
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify(fixture('szse.json')), { status: 200 });
+      },
+    });
+    const decisions: Array<Record<string, unknown>> = [];
+    let proxyCalls = 0;
+
+    const degraded = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse('2026-07-25T11:00:00.000Z'),
+      previousSnapshot: healthy,
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }),
+        });
+      },
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('proxy DNS failed'), { code: 'EAI_AGAIN' }),
+        });
+      },
+    });
+
+    const szse = degraded.sources.find((source) => source.id === 'szse');
+    assert.equal(degraded.status, 'degraded');
+    assert.equal(szse?.transportStatus, 'error');
+    assert.equal(szse?.contentStatus, 'stale');
+    assert.equal(szse?.lastSuccessAt, retrievedAt);
+    assert.equal(proxyCalls, 2);
+    assert.equal(szse?.requestCount, 3);
+    assert.equal(szse?.transportPath, 'proxy');
+    assert.equal(szse?.fallbackReason, 'ECONNRESET');
+    assert.equal(szse?.proxyFailureReason, 'EAI_AGAIN');
+    assert.equal(szse?.errorCode, 'FETCH_FAILED');
+    const withoutProvenance = (events: typeof healthy.events) => JSON.parse(
+      JSON.stringify(events, (key, value) => (key === 'provenance' ? undefined : value)),
+    );
+    assert.deepEqual(
+      withoutProvenance(degraded.events.filter((event) => event.exchange === 'SZSE')),
+      withoutProvenance(healthy.events.filter((event) => event.exchange === 'SZSE')),
+    );
+    assert.doesNotMatch(JSON.stringify(decisions), /proxy-user|proxy-secret/);
+  });
+
+  it('does not proxy malformed SZSE responses', async () => {
+    let proxyCalls = 0;
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      onDecision: () => {},
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        return {
+          buffer: Buffer.from(JSON.stringify(fixture('szse.json'))),
+          status: 200,
+          contentType: 'application/json',
+        };
+      },
+    });
+
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal(proxyCalls, 0);
+    assert.equal(szse?.transportStatus, 'error');
+    assert.equal(szse?.errorCode, 'MALFORMED_RESPONSE');
+    assert.equal(szse?.requestCount, 1);
   });
 
   it('rejects malformed HTTP-200 exchange envelopes instead of refreshing stale content', async () => {

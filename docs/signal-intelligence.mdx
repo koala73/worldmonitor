@@ -457,7 +457,9 @@ Total Signals: 47
 
 | Signal family | Endpoint | Notes |
 |---|---|---|
-| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` | Aggregates GitHub, SEC, Hacker News, and inferred stack context for one company. |
-| Company activity signals | `GET /api/intelligence/v1/list-company-signals` | Funding, hiring, expansion, executive, and open-source activity cards. |
+| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` | SEC EDGAR identity + recent filings (via ticker→CIK resolution), market profile, earnings surprises, and news mentions for one company. |
+| Company activity signals | `GET /api/intelligence/v1/list-company-signals` | Classified timestamped signals from SEC 8-K material events and news mentions. Earnings surprises stay in enrichment because fiscal period end is not report time. |
+| SEC filing search | `GET /api/intelligence/v1/search-sec-filings` | Full-text search over SEC EDGAR filings with form-type and date-range filters. |
+| Material events stream | `GET /api/intelligence/v1/list-material-events` | Market-wide stream of recent SEC 8-K material-event filings (M&A, executive changes, restatements). |
 | GDELT topic timeline | `GET /api/intelligence/v1/get-gdelt-topic-timeline` | Tone and volume timeline for an intelligence topic. |
 | Market-implication cards | `GET /api/intelligence/v1/list-market-implications` | AI-generated implication cards from live world state; documented here to avoid duplicating market-domain panel ownership. |

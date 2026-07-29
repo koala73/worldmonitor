@@ -52,7 +52,20 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
       return hydrated.alerts.map(mapAlert);
     }
 
-    const resp = await fetch(toApiUrl('/api/bootstrap?keys=weatherAlerts'), { signal: AbortSignal.timeout(8000) });
+    // `&public=1` + credentials:'omit' is the CDN-shielded read (#5386). The
+    // bare `?keys=weatherAlerts` URL still answers anonymously but is no-store,
+    // because it is also the URL credentialed callers use and a cached entry
+    // there would answer an invalid key with this anonymous 200. The map embed
+    // has no tier hydration, so this fetch — not getHydratedData — is its
+    // primary path and the one that needs the cache entry.
+    // The literal matches getHydratedData('weatherAlerts') above and is pinned by
+    // tests/weather-public-bootstrap-url.test.mts. Deliberately NOT imported from
+    // shared/bootstrap-tier-keys.js: this module is in the embed bundle, and that
+    // import would pull the whole 127-entry registry in for one 13-char string.
+    const resp = await fetch(
+      toApiUrl('/api/bootstrap?keys=weatherAlerts&public=1'),
+      { credentials: 'omit', signal: AbortSignal.timeout(8000) },
+    );
     if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
     const json = await resp.json() as { data?: { weatherAlerts?: { alerts?: BootstrapAlert[] } } };
     const alerts = json.data?.weatherAlerts?.alerts;

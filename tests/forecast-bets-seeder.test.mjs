@@ -1,9 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenEnsembleIds } from '../scripts/seed-forecast-bets.mjs';
+import {
+  buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenEnsembleIds,
+  ENSEMBLE_TOP_K_DEFAULT,
+} from '../scripts/seed-forecast-bets.mjs';
 import { ingestHistory, resolveDueEntries, shapeResolutionFeed } from '../scripts/seed-forecast-resolutions.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
+import { MARKET_SLOT_COUNT } from '../scripts/_bet-templates-markets.mjs';
+import { MARKET_GEO_SLOT_COUNT } from '../scripts/_bet-templates-markets-geo.mjs';
 import { resolveHardSpec } from '../scripts/_forecast-resolution-eval.mjs';
 import { createEnsembleCache } from '../scripts/_forecast-ensemble.mjs';
 
@@ -229,17 +234,69 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
     for (const bet of snap.predictions) assert.equal(bet.probabilitySource, 'base_rate');
   });
 
-  it('skips bets whose open ledger window already holds an ensemble probability', async () => {
+  it('skips open-ensemble ids without consuming a top-K slot (backfills lower ranks)', async () => {
     const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW }, data: eiaFixture() } }, NOW, {});
-    const first = [...snap.predictions].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0))[0];
+    const ranked = [...snap.predictions].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0));
+    const first = ranked[0];
+    const second = ranked[1];
+    assert.ok(first && second && first.id !== second.id);
     const callLLM = llmDouble(0.7);
     const stats = await attachEnsembleProbabilities(snap, {
       callLLM, topK: 1, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache(),
       openEnsembleIds: new Set([first.id]),
     });
+    // Open-ensemble skip frees the slot so the next-ranked bet is ensembled.
     assert.equal(stats.skipped, 1);
-    assert.equal(stats.attempted, 0);
-    assert.equal(callLLM.calls.length, 0);
+    assert.equal(stats.attempted, 1);
+    assert.equal(stats.ensembled, 1);
+    assert.equal(first.probabilitySource, 'base_rate');
+    assert.equal(second.probabilitySource, 'ensemble');
+    assert.equal(callLLM.calls.length, 3); // 3 passes × 1 new attempt
+  });
+
+  it('ENSEMBLE_TOP_K default leaves room for Gate-2 lanes after full geo+general slates', () => {
+    // 6 geo (0.9) + 6 general (0.8) must not exhaust K; energy (0.75) needs a seat.
+    assert.equal(ENSEMBLE_TOP_K_DEFAULT, MARKET_GEO_SLOT_COUNT + MARKET_SLOT_COUNT + 6);
+    assert.ok(ENSEMBLE_TOP_K_DEFAULT > MARKET_GEO_SLOT_COUNT + MARKET_SLOT_COUNT);
+  });
+
+  it('multi-family ranking: topK=12 starves energy; default K admits energy under full geo+general', async () => {
+    // Synthetic scores mirror production families without needing live market feeds.
+    const bets = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        id: `geo-${i}`, title: `geo ${i}`, userValueScore: 0.9,
+        baselineProbability: 0.4, probability: 0.4, probabilitySource: 'base_rate',
+        resolution: { operator: 'crosses', threshold: 50, baselineValue: 20 },
+      })),
+      ...Array.from({ length: 6 }, (_, i) => ({
+        id: `mkt-${i}`, title: `market ${i}`, userValueScore: 0.8,
+        baselineProbability: 0.4, probability: 0.4, probabilitySource: 'base_rate',
+        resolution: { operator: 'crosses', threshold: 50, baselineValue: 20 },
+      })),
+      {
+        id: 'energy-wti', title: 'WTI rise', userValueScore: 0.75,
+        baselineProbability: 0.4, probability: 0.4, probabilitySource: 'base_rate',
+        resolution: { operator: 'gte', threshold: 80, baselineValue: 78 },
+      },
+    ];
+    const callLLMStarved = llmDouble(0.66);
+    const starved = await attachEnsembleProbabilities(
+      { predictions: bets.map((b) => ({ ...b })) },
+      { callLLM: callLLMStarved, topK: 12, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache() },
+    );
+    assert.equal(starved.attempted, 12);
+    assert.equal(starved.ensembled, 12);
+    // Rebuild — previous call mutated copies only; fresh list for the default-K case.
+    const bets2 = bets.map((b) => ({ ...b }));
+    const callLLMRoom = llmDouble(0.66);
+    const room = await attachEnsembleProbabilities(
+      { predictions: bets2 },
+      { callLLM: callLLMRoom, topK: ENSEMBLE_TOP_K_DEFAULT, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache() },
+    );
+    assert.equal(room.attempted, 13); // 6 geo + 6 general + 1 energy
+    assert.equal(room.ensembled, 13);
+    const energy = bets2.find((b) => b.id === 'energy-wti');
+    assert.equal(energy.probabilitySource, 'ensemble');
   });
 
   it('collectOpenEnsembleIds indexes only pending FULL-ensemble entries — partials retry (review #3)', () => {

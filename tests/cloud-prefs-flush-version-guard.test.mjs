@@ -57,32 +57,32 @@ describe('cloud prefs flush version guardrails', () => {
     );
   });
 
-  it('only claims synced when nothing newer is pending or in flight', () => {
-    // The debounce callback nulls _debounceTimer synchronously BEFORE
-    // uploadNow starts awaiting, so the timer alone cannot distinguish
-    // "idle" from "upload mid-flight" — a late flush response would flash
-    // 'synced' during an active upload (Greptile P2 on PR #4267).
+  it('queues hidden-tab snapshots behind an active preference writer', () => {
     assert.match(
       flushBody,
-      /isIdle: \(\) => _debounceTimer === null && _uploadsInFlight === 0,[\s\S]*setSynced: \(\) => setState\('synced'\)/,
-      'flushOnUnload must not claim synced while a debounce is armed or an upload is in flight',
-    );
-    const uploadNowBody = (() => {
-      const start = cloudSyncSrc.indexOf('async function uploadNow');
-      assert.notEqual(start, -1, 'uploadNow must exist in cloud-prefs-sync.ts');
-      const end = cloudSyncSrc.indexOf('function schedulePrefUpload', start);
-      assert.notEqual(end, -1, 'uploadNow must precede schedulePrefUpload');
-      return cloudSyncSrc.slice(start, end);
-    })();
-    assert.match(
-      uploadNowBody,
-      /_uploadsInFlight \+= 1;/,
-      'uploadNow must mark itself in flight before any async work',
+      /if \(_syncOperations\.busy\) \{[\s\S]*void uploadNow\(_currentVariant\);[\s\S]*return;[\s\S]*\}/,
+      'flushOnUnload must fold its latest snapshot into the serialized upload drain when another writer is active',
     );
     assert.match(
-      uploadNowBody,
-      /\} finally \{\s*_uploadsInFlight -= 1;\s*\}/,
-      'uploadNow must balance the in-flight counter on every exit path',
+      flushBody,
+      /void _syncOperations\.run\(async \(\) => \{[\s\S]*await fetch\('\/api\/user-prefs'/,
+      'an idle keepalive flush must own the same serialized write queue as sign-in and normal uploads',
+    );
+  });
+
+  it('only claims synced when nothing newer is pending or in flight', () => {
+    // The debounce callback nulls _debounceTimer synchronously BEFORE
+    // uploadNow starts awaiting, and an upload can also be queued behind the
+    // flush itself. The shared promise covers both active and queued phases.
+    assert.match(
+      flushBody,
+      /isIdle: \(\) => _debounceTimer === null && _activeUploadPromise === null,[\s\S]*setSynced: \(\) => setState\('synced'\)/,
+      'flushOnUnload must not claim synced while a debounce is armed or an upload is active or queued',
+    );
+    assert.doesNotMatch(
+      cloudSyncSrc,
+      /_uploadsInFlight/,
+      'a perform-only counter cannot represent an upload waiting in the serialized queue',
     );
   });
 });

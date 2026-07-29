@@ -128,6 +128,105 @@ test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is p
   assert.equal(entry.records, 1);
 });
 
+test('classifyKey: gdelt timeline repair metadata → SEED_ERROR while canonical articles remain available', () => {
+  const entry = classifyKey('gdeltIntel', BOOTSTRAP_KEYS.gdeltIntel, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.gdeltIntel]: 4096 },
+      metaValues: {
+        'seed-meta:intelligence:gdelt-intel': seedMeta({
+          recordCount: 6,
+          status: 'error',
+          errorReason: 'timeline_keys_missing_or_unconfirmed',
+          missingTimelineKeys: ['gdelt:intel:vol:military'],
+        }),
+      },
+    }));
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(entry.records, 1,
+    'SEED_ERROR preserves the canonical data-presence signal while surfacing the timeline outage');
+});
+
+test('classifyKey: degraded source with a non-positive or invalid fetchedAt exposes unknown age', () => {
+  const name = 'crossStraitActivityJapanMod';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+
+  for (const fetchedAt of [0, -1, 'invalid']) {
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+      makeCtx({
+        strens: { [dataKey]: 396 },
+        metaValues: {
+          [metaKey]: seedMeta({
+            fetchedAt,
+            recordCount: 2,
+            sourceState: 'error',
+            stale: true,
+          }),
+        },
+      }));
+
+    assert.equal(entry.status, 'SEED_ERROR', String(fetchedAt));
+    assert.equal(entry.records, 2, String(fetchedAt));
+    assert.equal(
+      Object.hasOwn(entry, 'seedAgeMin'),
+      false,
+      `${String(fetchedAt)} must remain unknown instead of fabricating an age`,
+    );
+  }
+});
+
+test('classifyKey: missing corporate-disclosure payload cannot be hidden by fresh zero-record metadata', () => {
+  const name = 'chinaCorporateDisclosures';
+  const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+    makeCtx({
+      metaValues: {
+        [metaKey]: seedMeta({ recordCount: 0 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(entry.records, 0);
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: present current corporate-disclosure payload may contain zero admitted events', () => {
+  const name = 'chinaCorporateDisclosures';
+  const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+    makeCtx({
+      strens: { [dataKey]: 512 },
+      metaValues: {
+        [metaKey]: seedMeta({ recordCount: 0 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 0);
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('classifyKey: a permanently blocked humanitarian provider surfaces as SEED_ERROR', () => {
+  const dataKey = STANDALONE_KEYS.humanitarianSummary;
+  const metaKey = SEED_META.humanitarianSummary.key;
+  const entry = classifyKey('humanitarianSummary', dataKey, { allowOnDemand: false },
+    makeCtx({
+      strens: { [dataKey]: 1234 },
+      metaValues: {
+        [metaKey]: seedMeta({
+          status: 'error',
+          errorReason: 'HAPI_PROXY_FALLBACK_FAILED',
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh at 300min → OK', () => {
   // Cadence dropped 1h→3h (ScrapeCreators), so maxStaleMin was raised 180→540.
   // A healthy seed-meta aged 300min (5h, inside 540) must NOT false-alarm.
@@ -197,7 +296,7 @@ const ISSUE_5055_HEALTH_REGISTRATIONS = [
   ['defensePatents', 'patents:defense:latest', 'seed-meta:military:defense-patents', 25200],
   ['acledIntel', 'conflict:acled:v1:all:0:0', 'seed-meta:conflict:acled-intel', 38],
   ['portwatchDisruptions', 'portwatch:disruptions:active:v1', 'seed-meta:portwatch:disruptions', 150],
-  ['comtradeBilateralHs4', 'seed-meta:comtrade:bilateral-hs4', 'seed-meta:comtrade:bilateral-hs4', 34560],
+  ['comtradeBilateralHs4', 'seed-meta:comtrade:bilateral-hs4', 'seed-meta:comtrade:bilateral-hs4', 50400],
   ['sharedFxRates', 'shared:fx-rates:v1', 'seed-meta:shared:fx-rates', 3600],
   ['submarineCables', 'infrastructure:submarine-cables:v1', 'seed-meta:infrastructure:submarine-cables', 25200],
 ];
@@ -263,7 +362,7 @@ test('classifyKey: issue #5055 Comtrade bilateral probe is explicitly meta-only'
   assert.equal(STANDALONE_KEYS.comtradeBilateralHs4, metaKey);
   assert.equal(entry.status, 'OK');
   assert.equal(entry.records, 180);
-  assert.equal(entry.maxStaleMin, 34560);
+  assert.equal(entry.maxStaleMin, 50400);
 });
 
 test('classifyKey: empty on-demand standalone key → EMPTY_ON_DEMAND (warn)', () => {

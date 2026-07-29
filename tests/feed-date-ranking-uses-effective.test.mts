@@ -33,6 +33,12 @@ const repoRoot = resolve(__dirname, '..');
 
 const SCAN_DIRS = ['src/services', 'src/app'];
 
+// Individual files outside SCAN_DIRS that host ranking/recency comparators.
+// shared/news-clustering-core.js holds clusterNewsCore + effectivePubDateMs
+// after the #5697 port; without this the guardrail silently lost reach over
+// the very comparators it was written to protect.
+const SCAN_FILES = ['shared/news-clustering-core.js'];
+
 // Files (path, line number) that legitimately use raw .pubDate.getTime()
 // for NON-ranking purposes — metadata storage, identity key generation,
 // embedding index timestamps. Each entry MUST carry a reason. The audit
@@ -51,39 +57,47 @@ const ALLOW_LIST: AllowEntry[] = [
     line: 337,
     reason: 'mlWorker.vectorStoreIngest stores pubDate as embedding metadata; not used as a freshness comparator.',
   },
+  // effectivePubDateMs implementation moved to shared/news-clustering-core.js
+  // (issue #5697, outside this scan's src/services + src/app scope);
+  // feed-date.ts re-exports it, so its former implementation entries are gone.
   {
     file: 'src/services/feed-date.ts',
-    line: 72,
-    reason: 'effectivePubDateMs implementation — the helper itself necessarily calls .getTime() on the underlying Date.',
-  },
-  {
-    file: 'src/services/feed-date.ts',
-    line: 83,
-    reason: 'effectivePubDateMs implementation — string-input branch reconstructs Date and reads getTime; covered by NaN/Infinity guard immediately below.',
-  },
-  {
-    file: 'src/services/feed-date.ts',
-    line: 91,
+    line: 77,
     reason: 'displayPubDateMs implementation — preserves display timestamps for cache serialization; not used as a freshness comparator.',
   },
   {
     file: 'src/services/feed-date.ts',
-    line: 98,
+    line: 84,
     reason: 'displayPubDateMs implementation — string-input branch reconstructs a display timestamp; not used as a freshness comparator.',
   },
+  // generateClusterId + cluster date aggregation moved with clusterNewsCore to
+  // shared/news-clustering-core.js (#5697); the shared implementation still
+  // routes its ranking comparators through effectivePubDateMs (pinned by
+  // tests/clustering-cap.test.mjs asserting the re-export, and the port was
+  // characterized behavior-identical).
   {
-    file: 'src/services/analysis-core.ts',
-    line: 208,
+    file: 'shared/news-clustering-core.js',
+    line: 55,
+    reason: 'effectivePubDateMs implementation — the helper itself necessarily calls .getTime() on the underlying Date.',
+  },
+  {
+    file: 'shared/news-clustering-core.js',
+    line: 66,
+    reason: 'effectivePubDateMs implementation — string-input branch reconstructs Date and reads getTime; covered by the finite guard on the same line.',
+  },
+  {
+    file: 'shared/news-clustering-core.js',
+    line: 107,
     reason: 'generateClusterId sort produces a stable identity string from earliest pubDate; not a freshness comparator.',
   },
   {
-    file: 'src/services/analysis-core.ts',
-    line: 210,
+    file: 'shared/news-clustering-core.js',
+    line: 109,
     reason: 'generateClusterId uses earliest pubDate.getTime() in the identity string prefix.',
   },
   {
-    file: 'src/services/analysis-core.ts',
-    line: 309,
+    file: 'shared/news-clustering-core.js',
+    line: 205,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
@@ -93,12 +107,12 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 276,
+    line: 246,
     reason: 'headlineKey identity computation — used for dedupe, not freshness ranking.',
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 395,
+    line: 338,
     reason: 'publishedAt record-keeping in headline registry; not a freshness comparator.',
   },
 ];
@@ -159,11 +173,15 @@ describe('feed-date freshness guardrail — effectivePubDateMs usage', () => {
     );
   });
 
-  it('every .pubDate.getTime() in src/services + src/app is helper-routed or explicitly allow-listed', () => {
+  it('every .pubDate.getTime() in src/services + src/app + shared ranking modules is helper-routed or explicitly allow-listed', () => {
     const violations: Array<{ file: string; line: number; text: string }> = [];
 
-    for (const dir of SCAN_DIRS) {
-      for (const file of listTsFiles(dir)) {
+    const scanTargets = [
+      ...SCAN_DIRS.flatMap((dir) => listTsFiles(dir)),
+      ...SCAN_FILES,
+    ];
+    {
+      for (const file of scanTargets) {
         const src = readFileSync(resolve(repoRoot, file), 'utf8');
         const lines = src.split(/\r?\n/);
         for (let i = 0; i < lines.length; i++) {

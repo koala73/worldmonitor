@@ -90,7 +90,11 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { onEntitlementChange } from '@/services/entitlements';
+import { primeExportGateActivation } from '@/services/export-gate';
+import { evaluateExportGate, exportLockToGateReason, resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
+import { ExportGateControl } from '@/components/ExportGateControl';
+import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
@@ -1723,26 +1727,107 @@ export class EventHandlerManager implements AppModule {
       return this.exportPanelLoad;
     };
 
-    let currentIsPro = getAuthState().user?.role === 'pro';
-    const applyProGate = (isPro: boolean, initial = false) => {
-      currentIsPro = isPro;
-      if (!isPro) {
-        const el = this.ctx.exportPanel?.getElement();
-        if (el) el.style.display = 'none';
-        if (initial) trackGateHit('export');
+    // --- Data-export gate (plan 2026-07-25-001, U5) -------------------------
+    // Replaces the old Clerk-role check plus display:none toggle. The `role`
+    // field is written by nothing in our webhook pipeline, so that check hid
+    // the export button from every paying subscriber. The control is now
+    // visible to everyone and only its MENU changes: format rows when
+    // entitled, a single locked row (reason + CTA) otherwise.
+    let lockedControl: ExportGateControl | null = null;
+    let lockedReason: PanelGateReason | null = null;
+    let isUnlocked = false;
+
+    // Created up front and empty: an aria-live region only announces content
+    // injected AFTER it is in the accessibility tree.
+    const liveRegion = h('span', { className: 'wm-visually-hidden', role: 'status' });
+    liveRegion.setAttribute('aria-live', 'polite');
+    const initialHeaderRight = this.ctx.container.querySelector('.header-right');
+    initialHeaderRight?.appendChild(liveRegion);
+
+    const removeLockedControl = (): void => {
+      lockedControl?.destroy();
+      lockedControl = null;
+      lockedReason = null;
+    };
+
+    const showLocked = (reason: PanelGateReason): void => {
+      isUnlocked = false;
+      const panelEl = this.ctx.exportPanel?.getElement();
+      if (panelEl) panelEl.style.display = 'none';
+      lockedReason = reason;
+      if (lockedControl) {
+        lockedControl.update(reason);
         return;
       }
+      lockedControl = new ExportGateControl({
+        reason,
+        onOpen: () => trackGateHit('export'),
+        onAction: () => {
+          if (lockedReason === null) return;
+          resolveGateAction(lockedReason, { openAuthModal: () => this.ctx.authModal?.open() })();
+        },
+      });
+      const headerRight = this.ctx.container.querySelector('.header-right');
+      headerRight?.insertBefore(lockedControl.getElement(), headerRight.firstChild);
+    };
 
+    const unlock = (): void => {
+      const wasLocked = lockedControl !== null;
+      // Change-detection guard: gating re-fires on every auth AND entitlement
+      // emission, most with an unchanged verdict — skip the re-import/DOM
+      // write when already unlocked (same pattern as Panel.showGatedCta's
+      // repeat-verdict skip).
+      if (!wasLocked && isUnlocked) return;
+      isUnlocked = true;
+      removeLockedControl();
       void ensureExportPanel()
         .then((panel) => {
-          panel.getElement().style.display = currentIsPro ? '' : 'none';
+          if (this.ctx.isDestroyed) return;
+          // The verdict can flip back while the chunk is in flight (sign-out
+          // mid-load); the locked control winning is the safe resolution.
+          if (lockedControl) {
+            panel.getElement().style.display = 'none';
+            return;
+          }
+          panel.getElement().style.display = '';
+          if (wasLocked) liveRegion.textContent = t('components.exportGate.unlockedAnnouncement');
         })
         .catch((err) => {
+          // Allow the next emission to retry the import — the guard above
+          // must not latch an unlocked state the chunk never delivered.
+          isUnlocked = false;
           console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
         });
     };
-    applyProGate(currentIsPro, true);
-    this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
+
+    const applyGate = (): void => {
+      if (this.ctx.isDestroyed) return;
+      const verdict = evaluateExportGate(getAuthState());
+      if (verdict.locked) {
+        showLocked(exportLockToGateReason(verdict.reason));
+        return;
+      }
+      // Only a would-be-locked user pays for the catalog probe; the gate stays
+      // inactive (export available) until it proves Pro Business is
+      // purchasable, so the takeaway and the tier flip together (R10).
+      if (verdict.pendingActivation) {
+        void primeExportGateActivation().then((active) => {
+          if (active) applyGate();
+        });
+      }
+      unlock();
+    };
+
+    applyGate();
+    // BOTH subscriptions: auth alone misses the entitlement snapshot landing
+    // after sign-in (documented at src/app/panel-layout.ts:2470-2485), which is
+    // exactly the post-checkout unlock path.
+    this.proGateUnsubscribers.push(subscribeAuthState(() => applyGate()));
+    this.proGateUnsubscribers.push(onEntitlementChange(() => applyGate()));
+    this.proGateUnsubscribers.push(() => {
+      removeLockedControl();
+      liveRegion.remove();
+    });
   }
 
   setupUnifiedSettings(): void {

@@ -1,5 +1,86 @@
 import { unwrapEnvelope } from './_seed-envelope.js';
 
+/**
+ * Envelope-aware Redis read that preserves the difference between a cache
+ * miss and an infrastructure/parse failure. Analysis composites use this
+ * status to avoid turning a lost input into a fresh-looking empty feed.
+ *
+ * @param {string} key
+ * @param {number} [timeoutMs=3000]
+ * @returns {Promise<{ status: 'hit' | 'miss' | 'error'; value: unknown | null }>}
+ */
+export async function readJsonFromUpstashWithStatus(key, timeoutMs = 3_000) {
+  try {
+    const value = await readRawJsonFromUpstash(key, timeoutMs);
+    if (value === null) return { status: 'miss', value: null };
+    const unwrapped = unwrapEnvelope(value).data;
+    if (unwrapped === undefined) {
+      throw new Error(`readJsonFromUpstashWithStatus: ${key} has a seed envelope without data`);
+    }
+    return { status: 'hit', value: unwrapped };
+  } catch {
+    return { status: 'error', value: null };
+  }
+}
+
+/**
+ * Read several envelope-backed JSON values in one Upstash pipeline request.
+ * Each command retains its own hit/miss/error result so one malformed cache
+ * cannot make the remaining inputs look unavailable.
+ *
+ * @param {readonly string[]} keys
+ * @param {number} [timeoutMs=3000]
+ * @returns {Promise<Array<{ status: 'hit' | 'miss' | 'error'; value: unknown | null }>>}
+ */
+export async function readJsonBatchFromUpstashWithStatus(keys, timeoutMs = 3_000) {
+  if (keys.length === 0) return [];
+
+  const creds = getRedisCredentials();
+  if (!creds) return keys.map(() => ({ status: 'error', value: null }));
+
+  try {
+    const resp = await fetch(`${creds.url}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${creds.token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-edge/1.0',
+      },
+      body: JSON.stringify(keys.map((key) => ['GET', key])),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) return keys.map(() => ({ status: 'error', value: null }));
+
+    const entries = await resp.json();
+    if (!Array.isArray(entries) || entries.length !== keys.length) {
+      return keys.map(() => ({ status: 'error', value: null }));
+    }
+
+    return entries.map((entry) => {
+      if (
+        !entry
+        || typeof entry !== 'object'
+        || !Object.prototype.hasOwnProperty.call(entry, 'result')
+        || Object.prototype.hasOwnProperty.call(entry, 'error')
+      ) {
+        return { status: 'error', value: null };
+      }
+      if (entry.result === null) return { status: 'miss', value: null };
+      try {
+        const parsed = typeof entry.result === 'string' ? JSON.parse(entry.result) : entry.result;
+        const value = unwrapEnvelope(parsed).data;
+        return value === undefined
+          ? { status: 'error', value: null }
+          : { status: 'hit', value };
+      } catch {
+        return { status: 'error', value: null };
+      }
+    });
+  } catch {
+    return keys.map(() => ({ status: 'error', value: null }));
+  }
+}
+
 export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -12,13 +93,9 @@ export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   if (!resp.ok) return null;
 
   const data = await resp.json();
-  if (!data.result) return null;
+  if (data.result == null) return null;
 
   try {
-    // Envelope-aware: contract-mode canonical keys are stored as {_seed, data}.
-    // MCP tool outputs and RPC consumers must see the bare payload only.
-    // unwrapEnvelope is a no-op on legacy bare-shape values and on seed-meta
-    // keys (which remain top-level {fetchedAt, recordCount, ...}).
     return unwrapEnvelope(JSON.parse(data.result)).data;
   } catch {
     return null;
@@ -60,7 +137,10 @@ export async function readRawJsonFromUpstash(key, timeoutMs = 3_000) {
     throw new Error(`readRawJsonFromUpstash: Upstash GET ${key} returned HTTP ${resp.status}`);
   }
   const data = await resp.json();
-  if (data.result == null) return null; // genuine miss
+  if (!data || typeof data !== 'object' || !Object.prototype.hasOwnProperty.call(data, 'result')) {
+    throw new Error(`readRawJsonFromUpstash: Upstash GET ${key} returned a malformed response`);
+  }
+  if (data.result === null) return null; // genuine miss
   try {
     return JSON.parse(data.result);
   } catch (err) {

@@ -172,7 +172,7 @@ import type {
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
-import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
+import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
@@ -184,13 +184,9 @@ import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
-const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
-  THREAT_LEVEL_UNSPECIFIED: 'info',
-  THREAT_LEVEL_LOW: 'low',
-  THREAT_LEVEL_MEDIUM: 'medium',
-  THREAT_LEVEL_HIGH: 'high',
-  THREAT_LEVEL_CRITICAL: 'critical',
-};
+// The proto-level -> label map lives in shared/news-clustering-core.js so the
+// client digest loader and the server-side MCP tools cannot drift (#5697).
+import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
 
 const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
   STORY_PHASE_BREAKING:   'breaking',
@@ -200,7 +196,7 @@ const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
 };
 
 function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
-  const level = PROTO_TO_CLIENT_LEVEL[p.threat?.level ?? 'THREAT_LEVEL_UNSPECIFIED'];
+  const level: ClientThreatLevel = protoThreatLevelToLabel(p.threat?.level);
   return {
     source: p.source,
     title: p.title,

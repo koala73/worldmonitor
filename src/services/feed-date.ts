@@ -62,27 +62,13 @@ export function parseFeedDate(value: string | null | undefined): ParsedFeedDate 
  * helper accepts items from non-RSS producers (synthesized items from
  * analysis/prediction paths) without forcing every construction site to
  * set it.
+ *
+ * Implementation lives in shared/news-clustering-core.js (issue #5697): the
+ * shared clusterNewsCore's recency sort depends on it, and server + client
+ * must agree. Re-exported here so every existing ranking consumer keeps its
+ * import path.
  */
-export function effectivePubDateMs(item: {
-  pubDate: Date | string | number;
-  pubDateMissing?: boolean;
-}): number {
-  if (item.pubDateMissing === true) return 0;
-  if (item.pubDate instanceof Date) {
-    const ms = item.pubDate.getTime();
-    return Number.isFinite(ms) ? ms : 0;
-  }
-  if (typeof item.pubDate === 'number') {
-    // Filter NaN / Infinity. Cache-deserialized entries or future numeric
-    // pubDate constructors should never claim freshness with a non-finite
-    // stamp — sort comparators on NaN have unspecified behavior per the
-    // JS spec.
-    return Number.isFinite(item.pubDate) ? item.pubDate : 0;
-  }
-  // String case (serialized form, e.g. from cache deserialization).
-  const ms = new Date(item.pubDate).getTime();
-  return Number.isFinite(ms) ? ms : 0;
-}
+export { effectivePubDateMs } from '../../shared/news-clustering-core.js';
 
 export function displayPubDateMs(item: {
   pubDate?: Date | string | number | null;

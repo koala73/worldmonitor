@@ -6,7 +6,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
 import { checkRateLimit } from './_rate-limit.js';
-import { issueSessionToken } from './_session.js';
+import { issueSessionToken, validateSessionToken } from './_session.js';
 import { emitWmSessionUsage } from './_usage-telemetry.js';
 
 export const config = { runtime: 'edge' };
@@ -23,6 +23,7 @@ const SESSION_RATE_LIMIT_WINDOW = '60 s';
 function jsonResponse(body, status, headers) {
   const out = headers instanceof Headers ? headers : new Headers(headers);
   out.set('Content-Type', 'application/json');
+  out.set('Cache-Control', 'no-store');
   return new Response(JSON.stringify(body), {
     status,
     headers: out,
@@ -33,6 +34,46 @@ function appendHeader(headers, name, value) {
   const next = new Headers(headers);
   next.append(name, value);
   return next;
+}
+
+/**
+ * Read one cookie off the request. Mirrors the reader in `_api-key.js`; kept
+ * local because this endpoint is the only other consumer and `_api-key.js`
+ * does not export it.
+ */
+function readCookie(req, name) {
+  const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
+  if (!raw) return '';
+  const prefix = `${name}=`;
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed.startsWith(prefix)) continue;
+    try {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    } catch {
+      return trimmed.slice(prefix.length);
+    }
+  }
+  return '';
+}
+
+/**
+ * Did THIS request arrive already carrying a usable session cookie?
+ *
+ * The client cannot answer this itself — the cookie is HttpOnly, so JS can
+ * neither read it nor tell "the server rejected my cookie" apart from "my
+ * browser never stored it." Those two need opposite responses: the first is
+ * worth a re-mint, the second makes every re-mint useless because no route can
+ * ever succeed. Reporting it back lets the client stop after one wasted mint
+ * instead of spending one per route and blaming the API for a browser-side
+ * storage failure (WORLDMONITOR-WG/XP).
+ *
+ * Computed from the INCOMING request, before this response's Set-Cookie.
+ */
+async function hadValidSessionCookie(req) {
+  const presented = readCookie(req, SESSION_COOKIE);
+  if (!presented) return false;
+  return validateSessionToken(presented);
 }
 
 function shouldUseSharedCookieDomain(req) {
@@ -147,6 +188,15 @@ export default async function handler(req, ctx) {
     return rl;
   }
 
+  // Before the new Set-Cookie: whether the caller's browser gave the previous
+  // cookie back. Never fails the request — it is diagnostic, not a gate.
+  let hadSession = false;
+  try {
+    hadSession = await hadValidSessionCookie(req);
+  } catch {
+    hadSession = false;
+  }
+
   let issued;
   try {
     issued = await issueSessionToken();
@@ -180,5 +230,15 @@ export default async function handler(req, ctx) {
     headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, PRO_KEY_COOKIE, proKey));
   }
 
-  return respond({ ok: true, exp: issued.exp }, 200, headers, 'ok');
+  // The HttpOnly cookie remains the primary transport. The anonymous token is
+  // also returned so browsers that demonstrably refuse the shared-domain
+  // cookie can use the existing X-WorldMonitor-Key validation path. This does
+  // not expose user or premium authority: wms_ tokens are freely mintable,
+  // anonymous-only, and forceKey routes reject them.
+  return respond({
+    ok: true,
+    exp: issued.exp,
+    hadSession,
+    token: issued.token,
+  }, 200, headers, 'ok');
 }

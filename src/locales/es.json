@@ -134,10 +134,7 @@
     "china": {
       "title": "Panorama de país: China",
       "description": "Situación actual de macro, mercado, comercio, energía y disponibilidad operativa a partir de los contratos de datos públicos existentes.",
-      "macroPolicy": "Macro y política",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "Mercado y crédito",
-      "tradeSupply": "Comercio y cadena de suministro",
       "energy": "Energía",
       "availability": "Riesgos y aviación",
       "observed": "A fecha de:",
@@ -154,8 +151,6 @@
       "gasDemand": "Demanda de gas",
       "energyMix": "Mix eléctrico",
       "coal": "carbón",
-      "aviationAvailability": "Disponibilidad aérea",
-      "hazardAvailability": "Disponibilidad de riesgos",
       "noMajorDisruptions": "Sin interrupciones importantes notificadas",
       "activeDisruptions_one": "{{count}} interrupción activa",
       "activeDisruptions_many": "{{count}} interrupciones activas",
@@ -169,11 +164,6 @@
       "ccfiSource": "Bolsa de Transporte Marítimo de Shanghái",
       "comtradeSource": "UN Comtrade, declarante 156",
       "sourceUnavailable": "Fuente no disponible",
-      "macroUnavailable": "Los datos macro y de política no están disponibles actualmente.",
-      "marketUnavailable": "Los datos de mercado y crédito no están disponibles actualmente.",
-      "tradeUnavailable": "Los datos de comercio y cadena de suministro no están disponibles actualmente.",
-      "energyUnavailable": "Los datos de energía no están disponibles actualmente.",
-      "availabilityUnavailable": "Los datos de disponibilidad de riesgos y aviación no están disponibles actualmente.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -182,7 +172,13 @@
         "partial": "Parcial",
         "stale": "Desactualizado",
         "unavailable": "No disponible"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -1086,7 +1082,7 @@
           "macroWaterways": "Puntos de estrangulamiento estratégicos para el transporte de mercancías",
           "weatherAlertsMarket": "Eventos climáticos severos con relevancia para el mercado",
           "naturalEventsMacro": "Terremotos, incendios, inundaciones y otras perturbaciones naturales",
-          "timeRecent": "Filtrar datos basados ​​en el tiempo a horas recientes",
+          "timeRecent": "Filtrar datos basados en el tiempo a horas recientes",
           "timeExtended": "Mostrar datos de la semana pasada, el mes o todo el tiempo",
           "geoConflicts": "Zonas de guerra activas (Ucrania, Gaza, etc.) con fronteras",
           "geoHotspots": "Regiones de tensión: codificadas por colores según el nivel de actividad de las noticias",
@@ -2268,6 +2264,7 @@
           "summaryVerified": "Desbloqueado y listo cuando tú lo estés.",
           "channelsNote": "¿Prefieres Telegram, Slack, Discord o un webhook?",
           "pointers": {
+            "search": "Buscar en todo el panel",
             "widgets": "Crear un widget personalizado",
             "analyst": "Preguntar al analista de IA",
             "mcpClients": "Configurar MCP",
@@ -2524,6 +2521,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {

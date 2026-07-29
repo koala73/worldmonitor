@@ -19,7 +19,7 @@ import {
   getIdempotencyKey,
 } from './_idempotency.js';
 import { validateBearerToken } from '../server/auth-session';
-import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { checkTierProEntitlement } from '../server/_shared/pro-entitlement';
 
 const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
 const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert']);
@@ -56,15 +56,15 @@ export default async function handler(req: Request): Promise<Response> {
 
   const idempotencyRequest = req.clone();
 
-  const ent = await getEntitlements(session.userId);
-  if (!ent || ent.features.tier < 1) {
+  const proAccess = await checkTierProEntitlement(session.userId, cors);
+  if (!proAccess.allowed) {
     // #5600: an entitlement the backend could not VERIFY is not a confirmed
     // free user. Answer the shared retryable contract (503 + Retry-After) for
     // those states before falling back to the terminal upsell. Note this covers
     // lookup failure and renewal verification only — the day-0 poisoned-marker
     // cohort arrives as a plain tier-0 answer and still gets the 403; that
     // window is bounded by NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead.
-    const billingDenial = getBillingVerificationDenial(ent, cors, 1);
+    const { billingDenial } = proAccess;
     if (billingDenial) return billingDenial;
     return jsonResponse({ error: 'pro_required', message: 'Event publishing is available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }, 403, cors);
   }

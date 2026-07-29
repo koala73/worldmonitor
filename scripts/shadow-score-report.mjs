@@ -7,8 +7,10 @@
 //        SHADOW_SCORE_KEY=shadow:score-log:v2 to read pre-weight-rebalance data
 //        SHADOW_SCORE_KEY=shadow:score-log:v1 to read pre-PR #3069 data
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+import { loadEnvFile } from './_seed-utils.mjs';
 
 // v2 is the post-fix key (JSON members). v1 is the legacy key (compact strings).
 // Override with SHADOW_SCORE_KEY=shadow:score-log:v2 (pre-weight-rebalance) or v1 (pre-PR #3069).
@@ -18,18 +20,12 @@ const GATE_MIN = 40;     // current IMPORTANCE_SCORE_MIN default
 const HIGH = 65;         // current shouldNotify "high" sensitivity threshold
 const CRITICAL = 85;     // current shouldNotify "critical" sensitivity threshold
 
-function loadEnv() {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) return;
-  const envPath = resolve(process.cwd(), '.env.local');
-  if (!existsSync(envPath)) return;
-  // Only hydrate the two Upstash creds we actually need — don't bulk-import
-  // every uppercase var from .env.local into this process.
-  const NEEDED = new Set(['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*"?([^"\n]+)"?\s*$/);
-    if (m && NEEDED.has(m[1]) && !process.env[m[1]]) process.env[m[1]] = m[2];
-  }
-}
+// Only the two Upstash creds we actually need — not every var in .env.local.
+// `only` on the shared helper preserves that narrowing; a private loader here
+// used to, but it also opted out of the test-runtime guard and the checkout
+// scoping, and this file runs at module scope with no direct-run guard (#5767).
+const NEEDED = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'];
+const loadEnv = () => loadEnvFile(import.meta.url, { only: NEEDED });
 
 async function redis(cmd) {
   const res = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/${cmd.join('/')}`, {

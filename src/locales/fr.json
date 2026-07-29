@@ -134,10 +134,7 @@
     "china": {
       "title": "Aperçu pays : Chine",
       "description": "Situation actuelle macro, marchés, commerce, énergie et disponibilité opérationnelle à partir des contrats de données publics existants.",
-      "macroPolicy": "Macro & politique",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "Marché & crédit",
-      "tradeSupply": "Commerce & chaîne d'approvisionnement",
       "energy": "Énergie",
       "availability": "Risques & aviation",
       "observed": "Au :",
@@ -154,8 +151,6 @@
       "gasDemand": "Demande de gaz",
       "energyMix": "Mix électrique",
       "coal": "charbon",
-      "aviationAvailability": "Disponibilité aérienne",
-      "hazardAvailability": "Disponibilité des aléas",
       "noMajorDisruptions": "Aucune perturbation majeure signalée",
       "activeDisruptions_one": "{{count}} perturbation active",
       "activeDisruptions_many": "{{count}} perturbations actives",
@@ -169,11 +164,6 @@
       "ccfiSource": "Bourse maritime de Shanghai",
       "comtradeSource": "ONU Comtrade, déclarant 156",
       "sourceUnavailable": "Source indisponible",
-      "macroUnavailable": "Les données macro et politiques sont actuellement indisponibles.",
-      "marketUnavailable": "Les données de marché et de crédit sont actuellement indisponibles.",
-      "tradeUnavailable": "Les données de commerce et de chaîne d'approvisionnement sont actuellement indisponibles.",
-      "energyUnavailable": "Les données énergétiques sont actuellement indisponibles.",
-      "availabilityUnavailable": "Les données de disponibilité aléas et aviation sont actuellement indisponibles.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -182,7 +172,13 @@
         "partial": "Partiel",
         "stale": "Obsolète",
         "unavailable": "Indisponible"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -2268,6 +2264,7 @@
           "summaryVerified": "Débloquée et prête quand vous le serez.",
           "channelsNote": "Vous préférez Telegram, Slack, Discord ou un webhook ?",
           "pointers": {
+            "search": "Rechercher dans tout le tableau de bord",
             "widgets": "Créer un widget personnalisé",
             "analyst": "Interroger l'analyste IA",
             "mcpClients": "Configurer MCP",
@@ -2524,6 +2521,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {

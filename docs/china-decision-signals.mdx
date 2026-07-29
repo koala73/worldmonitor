@@ -1,0 +1,132 @@
+---
+title: "China Decision Signals"
+description: "The bounded six-domain China summary shared by the country brief, public RPC, MCP, bootstrap, alerts, and operator health."
+---
+
+WorldMonitor's China decision-signal surface is a composition boundary, not a
+new source or scoring method. It publishes the reviewed outputs of six existing
+domain lanes in one stable order:
+
+1. `macro`
+2. `policy-enforcement`
+3. `cross-strait-activity`
+4. `corporate-disclosures`
+5. `corridor-conditions`
+6. `activity-nowcast`
+
+Every group reports `available`, `partial`, `stale`, or `unavailable`. An
+outage or invalid provenance envelope fails closed inside that group without
+hiding unrelated healthy groups. Public responses include at most four items
+per group and state how many additional valid items were omitted.
+
+## One contract across surfaces
+
+The same `china-decision-signals/v1` JSON contract backs:
+
+- the China country brief;
+- `GET /api/intelligence/v1/get-china-decision-signals`;
+- the Pro MCP tool `get_china_decision_signals`;
+- the on-demand bootstrap key `chinaDecisionSignals`;
+- the Railway canonical cache key
+  `intelligence:china-decision-signals:v1`; and
+- the operator-only freshness entries in `/api/health` and
+  `/api/seed-health`.
+
+Anonymous dashboard and public-RPC readers receive the bounded summary. Pro
+MCP readers receive the same items and provenance rather than a higher-risk
+source expansion. Detailed cache names, request health, and freshness
+thresholds remain operator-only.
+
+| Access contract | Surface |
+| --- | --- |
+| `bounded_public_summary` | Anonymous country brief and public RPC |
+| `same_provenance_via_mcp` | Pro MCP tool |
+| `source_health_only` | Operator health endpoints |
+
+## Provenance and missingness
+
+Each item carries the complete decision-signal provenance envelope: publisher
+class, evidence URL or explicit non-applicability, original reference,
+language and translation state, distinct observation/publication/effective/
+retrieval times, revision and supersession, extraction and classification
+confidence, corroboration, transport/content freshness, and derivation.
+
+Government ministries, state-controlled media, exchanges, independent
+observations, market publishers, and derived outputs remain distinct. Official
+publication is not treated as independent corroboration. The activity nowcast
+is a deterministic directional comparison with named input signal IDs; it is
+not an opaque China risk score.
+
+The public surface does not expose detailed bilateral trade rows, broad
+military identity ranges, raw ADS-B/AIS arrivals, or source-health internals.
+Missing values remain explicit instead of being converted to zero, normal, or
+current.
+
+## Alert policy
+
+Alerts are narrower than the snapshot:
+
+- the first canonical snapshot never fans out historical records;
+- consultation drafts, guidance, unknown policy classifications, and raw
+  cross-Strait arrivals do not alert;
+- reviewed policy/enforcement and corporate events alert only for a new stable
+  lineage;
+- revisions, corrections, and repeat ingests retain that lineage and dedupe;
+- cross-Strait alerts require a transition between transparent 30/90-day
+  median bands; and
+- activity-nowcast alerts require a deterministic comparison-state transition.
+
+This surface emits only low or medium severity. Typed events use a 24-hour
+dedupe cooldown; baseline and nowcast transitions use 12 hours. High or
+critical escalation remains the responsibility of a separately reviewed alert
+policy, not source arrival volume.
+
+## Deployment audit
+
+The derived-signals Railway bundle refreshes the canonical composition every
+15 minutes. The seeder reads the public RPC, validates the six ordered groups,
+publishes the canonical key, and then writes
+`seed-meta:intelligence:china-decision-signals`. Alert delivery runs only after
+canonical publication. Failed deliveries remain in a durable deduplicated
+outbox for the next seed run; they never roll back the published snapshot.
+
+The audit has two halves, and each one is enforced somewhere different.
+
+The **static half** runs on every pull request through
+`tests/china-decision-parity-audit.test.mjs` under `npm run test:data`. It
+confirms the six-domain composition is still registered across the API, MCP,
+bootstrap, health, alert, Railway, and documentation surfaces. Most of those
+registrations are checked by token presence, which proves a surface was not
+deleted or renamed. For the surfaces where a silent unwiring costs the most —
+gateway cache tier, anonymous gateway reachability, and the three access tiers —
+the audit instead reads the real container and asks whether the value is a
+member of it, so a commented-out entry or a dead duplicate reads as a failure
+rather than a pass. The access-tier gate is additionally proven by executing the
+published-snapshot validator against downgraded tiers.
+
+Run it locally before release:
+
+```bash
+node scripts/audit-china-decision-parity.mjs
+```
+
+The **live half** runs against a deployment, so no pull request can exercise it.
+It is enforced by the `china-decision-parity-live.yml` workflow, which probes
+production every six hours, on pushes to `main` that touch the audit, and on
+demand. Run it manually against a freshly deployed staging environment with the
+public base URL:
+
+```bash
+node scripts/audit-china-decision-parity.mjs --require-live --url https://api-staging.example
+```
+
+`--require-live` makes the command fail when no URL reaches the probe, so an
+automated caller cannot report a staging audit it never performed. The base URL
+must be `https` on a public host — loopback, link-local, and private ranges are
+rejected, because the probe reports reachability and latency for whatever it is
+pointed at. The live probe validates both the composition RPC and the public
+`chinaDecisionSignals`
+bootstrap projection, including a one-hour maximum canonical age. It prints only
+route status, latency, generation time, and group states. It never prints
+environment variables, API keys, Redis values, source documents, or detailed
+trade records.

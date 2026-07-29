@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Guards two OpenAPI completeness invariants restored by the #4599 follow-ups:
@@ -127,8 +127,116 @@ describe('OpenAPI deprecated + operation-description contract', () => {
       }
     }
 
-    assert.ok(deprecatedByFamily.get('json') >= 1, 'expected at least one deprecated operation in JSON specs');
-    assert.ok(deprecatedByFamily.get('yaml') >= 1, 'expected at least one deprecated operation in service YAML specs');
-    assert.ok(deprecatedByFamily.get('bundle') >= 1, 'expected at least one deprecated operation in the bundled YAML spec');
+    // The injector canary: each artifact family must carry exactly as many
+    // deprecated operations as the proto sources declare. A regen that drops
+    // scripts/openapi-inject-deprecated.mjs fails here whenever any RPC is
+    // deprecated; with zero declared (the state since #5695 re-enabled the two
+    // company RPCs) every family must also carry zero.
+    const declared = countDeprecatedRpcDeclarations();
+    assert.equal(deprecatedByFamily.get('json'), declared, 'JSON specs must carry exactly the proto-declared deprecated operations');
+    assert.equal(deprecatedByFamily.get('yaml'), declared, 'service YAML specs must carry exactly the proto-declared deprecated operations');
+    assert.equal(deprecatedByFamily.get('bundle'), declared, 'the bundled YAML spec must carry exactly the proto-declared deprecated operations');
+  });
+
+  it('propagates deprecated corporate-intelligence fields to every generated contract', () => {
+    const json = JSON.parse(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.json'), 'utf8'));
+    const enrichment = json.components.schemas.GetCompanyEnrichmentResponse.properties;
+    const company = json.components.schemas.EnrichedCompany.properties;
+    const signals = json.components.schemas.ListCompanySignalsResponse.properties;
+    assert.equal(json.components.schemas.GetCompanyEnrichmentRequest.properties.domain.deprecated, true);
+    assert.equal(enrichment.github.deprecated, true);
+    assert.equal(enrichment.techStack.deprecated, true);
+    assert.equal(enrichment.hackerNewsMentions.deprecated, true);
+    assert.equal(company.founded.deprecated, true);
+    assert.equal(signals.domain.deprecated, true);
+
+    for (const path of [
+      '/api/intelligence/v1/get-company-enrichment',
+      '/api/intelligence/v1/list-company-signals',
+    ]) {
+      const domain = json.paths[path].get.parameters.find(parameter => parameter.name === 'domain');
+      assert.equal(domain?.deprecated, true, `${path} domain query param must be machine-readable as deprecated`);
+    }
+
+    for (const file of ['IntelligenceService.openapi.yaml', 'worldmonitor.openapi.yaml']) {
+      const yaml = readFileSync(resolve(apiDir, file), 'utf8');
+      const responseBlock = yamlSchemaBlock(yaml, 'GetCompanyEnrichmentResponse');
+      assert.match(responseBlock, /^\s{16}github:\n\s{20}deprecated: true/m, `${file} github field`);
+      assert.match(responseBlock, /^\s{16}techStack:\n\s{20}deprecated: true/m, `${file} techStack field`);
+      assert.match(responseBlock, /^\s{16}hackerNewsMentions:\n\s{20}deprecated: true/m, `${file} HN field`);
+      assert.match(yamlSchemaBlock(yaml, 'EnrichedCompany'), /^\s{16}founded:\n\s{20}deprecated: true/m, `${file} founded field`);
+      assert.match(yamlSchemaBlock(yaml, 'ListCompanySignalsResponse'), /^\s{16}domain:\n\s{20}deprecated: true/m, `${file} signal domain field`);
+      assert.match(
+        yamlPathBlock(yaml, '/api/intelligence/v1/get-company-enrichment'),
+        /^\s{16}- name: domain\n\s{18}deprecated: true/m,
+        `${file} enrichment domain query`,
+      );
+      assert.match(
+        yamlPathBlock(yaml, '/api/intelligence/v1/list-company-signals'),
+        /^\s{16}- name: domain\n\s{18}deprecated: true/m,
+        `${file} signals domain query`,
+      );
+    }
+
+    for (const family of ['client', 'server']) {
+      const generated = readFileSync(
+        resolve(root, `src/generated/${family}/worldmonitor/intelligence/v1/service_${family}.ts`),
+        'utf8',
+      );
+      assert.match(generated, /export interface GetCompanyEnrichmentRequest \{\n  \/\*\* @deprecated \*\/\n  domain: string;/);
+      assert.match(generated, /export interface GetCompanyEnrichmentResponse \{[\s\S]*?  \/\*\* @deprecated \*\/\n  github\?: EnrichedGithub;/);
+      assert.match(generated, /export interface EnrichedCompany \{[\s\S]*?  \/\*\* @deprecated \*\/\n  founded: number;/);
+      assert.match(generated, /export interface ListCompanySignalsResponse \{[\s\S]*?  \/\*\* @deprecated \*\/\n  domain: string;/);
+    }
+  });
+
+  it('keeps the enrichment example truthful about deprecated compatibility fields', () => {
+    const json = JSON.parse(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.json'), 'utf8'));
+    const media = json.paths['/api/intelligence/v1/get-company-enrichment'].get.responses['200'].content['application/json'];
+    const example = media.example;
+    assert.equal(example.company.founded, 0);
+    assert.equal('github' in example, false);
+    assert.deepEqual(example.techStack, []);
+    assert.deepEqual(example.hackerNewsMentions, []);
+    assert.ok(example.secFilings.recentFilings[0].items.length > 0);
   });
 });
+
+function yamlSchemaBlock(text, name) {
+  const match = new RegExp(`\\n {8}(?:[A-Za-z0-9]+_)*${name}:\\n`).exec(text);
+  const start = match?.index ?? -1;
+  assert.notEqual(start, -1, `missing YAML schema ${name}`);
+  const remainder = text.slice(start + 1);
+  const next = remainder.slice(1).search(/\n {8}\w+:\n/);
+  return next === -1 ? remainder : remainder.slice(0, next + 1);
+}
+
+function yamlPathBlock(text, path) {
+  const start = text.indexOf(`\n    ${path}:\n`);
+  assert.notEqual(start, -1, `missing YAML path ${path}`);
+  const remainder = text.slice(start + 1);
+  const next = remainder.slice(1).search(/\n {4}\/\S+:\n/);
+  return next === -1 ? remainder : remainder.slice(0, next + 1);
+}
+
+// Counts `option deprecated = true;` declarations inside rpc bodies across all
+// service protos — the single upstream source both the sebuf generator and the
+// deprecated-flag injector read.
+function countDeprecatedRpcDeclarations() {
+  let count = 0;
+  for (const file of walkProtoFiles(resolve(root, 'proto/worldmonitor'))) {
+    const text = readFileSync(file, 'utf8');
+    count += (text.match(/^\s*option\s+deprecated\s*=\s*true\s*;/gm) ?? []).length;
+  }
+  return count;
+}
+
+function walkProtoFiles(dir) {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...walkProtoFiles(full));
+    else if (name.endsWith('.proto')) out.push(full);
+  }
+  return out;
+}

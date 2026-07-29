@@ -230,10 +230,14 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
 
 const NEG_SENTINEL = '__WM_NEG__';
 const FETCH_ERROR_NEGATIVE_TTL_SECONDS = 30;
+/** Short isolate-local backoff when error negative-caching is disabled. Distinct from NEG_SENTINEL. */
+const FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS = 3;
 const REDIS_FAILURE_POSITIVE_TTL_SECONDS = 30;
 const LOCAL_FALLBACK_MAX_ENTRIES = 5000;
 
 const localNegativeUntil = new Map<string, number>();
+/** Per-key unavailable backoff used only when `cacheFetcherErrors: false` (no Redis NEG_SENTINEL). */
+const localUnavailableUntil = new Map<string, number>();
 const localPositiveFallback = new Map<string, { value: unknown; expiresAt: number }>();
 
 function evictOldestLocalFallbackEntries<T>(map: Map<string, T>): void {
@@ -259,6 +263,25 @@ function hasLocalNegativeCooldown(key: string): boolean {
   if (expiresAt > Date.now()) return true;
   localNegativeUntil.delete(key);
   return false;
+}
+
+function armLocalUnavailableBackoff(key: string, ttlSeconds: number): void {
+  localUnavailableUntil.set(key, Date.now() + ttlSeconds * 1000);
+  evictOldestLocalFallbackEntries(localUnavailableUntil);
+}
+
+function hasLocalUnavailableBackoff(key: string): boolean {
+  const expiresAt = localUnavailableUntil.get(key);
+  if (expiresAt === undefined) return false;
+  if (expiresAt > Date.now()) return true;
+  localUnavailableUntil.delete(key);
+  return false;
+}
+
+// Test-only: clear the short unavailable backoff so recovery paths can be exercised
+// without sleeping FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS.
+export function __clearLocalUnavailableBackoffForTests(): void {
+  localUnavailableUntil.clear();
 }
 
 function effectiveRedisFailurePositiveTtlSeconds(ttlSeconds: number): number {
@@ -496,9 +519,18 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
  *   value above the caller's internal timeout (LLM `timeoutMs`, aggregated
  *   `UPSTREAM_TIMEOUT_MS` sum) so the cache layer doesn't pre-empt the
  *   caller's own bound. The cache safety net should be the LAST resort.
+ * - `cacheFetcherErrors`: Cache a short negative sentinel when the fetcher
+ *   rejects. Defaults to true. Disable only when an upstream error must remain
+ *   distinguishable from a definitive negative result. The disabled path also
+ *   delegates error logging to the caller so sensitive cache keys are not
+ *   exposed by the helper's default log, and arms a short isolate-local
+ *   unavailable backoff (not NEG_SENTINEL) so a sustained outage does not
+ *   re-fan-out to upstream at full request rate. Applies to both
+ *   `cachedFetchJson` and `cachedFetchJsonWithMeta`.
  */
 export interface CachedFetchOpts {
   timeoutMs?: number;
+  cacheFetcherErrors?: boolean;
 }
 
 /**
@@ -530,6 +562,11 @@ export async function cachedFetchJson<T extends object>(
     logCacheReadError(key, cached.error);
     if (hasLocalNegativeCooldown(key)) return null;
   }
+  // Unavailable backoff (cacheFetcherErrors: false path): rethrow without
+  // hitting upstream again until the short isolate-local window expires.
+  if (hasLocalUnavailableBackoff(key)) {
+    throw new Error(`cachedFetchJson unavailable backoff active for "${key}"`);
+  }
 
   const existing = inflight.get(key);
   if (existing) return existing as Promise<T | null>;
@@ -558,10 +595,16 @@ export async function cachedFetchJson<T extends object>(
       return result;
     })
     .catch(async (err: unknown) => {
-      const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
-      armLocalNegativeCooldown(key, errorTtlSeconds);
-      await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
-      console.warn(`[redis] cachedFetchJson fetcher failed for "${key}":`, errMsg(err));
+      if (opts?.cacheFetcherErrors !== false) {
+        const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
+        armLocalNegativeCooldown(key, errorTtlSeconds);
+        await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
+        console.warn(`[redis] cachedFetchJson fetcher failed for "${key}":`, errMsg(err));
+      } else {
+        // No Redis NEG_SENTINEL — keep definitive-invalid distinct — but still
+        // rate-limit retries with a short local-only unavailable backoff.
+        armLocalUnavailableBackoff(key, FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS);
+      }
       throw err;
     })
     .finally(() => {
@@ -616,7 +659,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   ttlSeconds: number,
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds = 120,
-  opts?: { usage?: UsageHook; timeoutMs?: number },
+  opts?: CachedFetchOpts & { usage?: UsageHook },
 ): Promise<{ data: T | null; source: 'cache' | 'fresh'; leader: boolean }> {
   const cached = await readCachedJson(key);
   if (cached.status === 'hit') {
@@ -629,6 +672,9 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   if (cached.status === 'error') {
     logCacheReadError(key, cached.error);
     if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache', leader: false };
+  }
+  if (hasLocalUnavailableBackoff(key)) {
+    throw new Error(`cachedFetchJsonWithMeta unavailable backoff active for "${key}"`);
   }
 
   const existing = inflight.get(key);
@@ -676,11 +722,15 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     })
     .catch(async (err: unknown) => {
       upstreamStatus = 0;
-      cacheStatus = 'neg-sentinel';
-      const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
-      armLocalNegativeCooldown(key, errorTtlSeconds);
-      await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
-      console.warn(`[redis] cachedFetchJsonWithMeta fetcher failed for "${key}":`, errMsg(err));
+      if (opts?.cacheFetcherErrors !== false) {
+        cacheStatus = 'neg-sentinel';
+        const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
+        armLocalNegativeCooldown(key, errorTtlSeconds);
+        await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
+        console.warn(`[redis] cachedFetchJsonWithMeta fetcher failed for "${key}":`, errMsg(err));
+      } else {
+        armLocalUnavailableBackoff(key, FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS);
+      }
       throw err;
     })
     .finally(() => {

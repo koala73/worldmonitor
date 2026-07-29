@@ -19,7 +19,12 @@ const PHONE_RE = /^[+(]?\d[\d\s()./-]{4,23}\d$/;
 const MAX_FIELD = 500;
 const MAX_MESSAGE = 2000;
 
-const FREE_EMAIL_DOMAINS = new Set<string>([
+type ConvexPolicyErrorData = {
+  kind?: string;
+  message?: string;
+};
+
+export const FREE_EMAIL_DOMAINS = new Set<string>([
   'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.fr', 'yahoo.co.uk', 'yahoo.co.jp',
   'hotmail.com', 'hotmail.fr', 'hotmail.co.uk', 'outlook.com', 'outlook.fr',
   'live.com', 'live.fr', 'msn.com', 'aol.com', 'icloud.com', 'me.com', 'mac.com',
@@ -42,6 +47,25 @@ function escapeHtml(str: string): string {
 
 function sanitizeForSubject(str: string, maxLen = 50): string {
   return str.replace(/[\r\n\0]/g, '').slice(0, maxLen);
+}
+
+function getConvexPolicyErrorData(error: { data: unknown }): ConvexPolicyErrorData | null {
+  const rawData = error.data;
+  if (rawData && typeof rawData === 'object') {
+    return rawData as ConvexPolicyErrorData;
+  }
+  if (typeof rawData !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawData);
+    return parsed && typeof parsed === 'object'
+      ? parsed as ConvexPolicyErrorData
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function sendNotificationEmail(
@@ -165,12 +189,17 @@ export async function submitContact(
       source: safeSource,
     });
   } catch (err) {
-    // Translate the Convex per-email throttle into a proper 429 so the
-    // browser can show "try again in an hour" instead of an opaque 500.
+    // Preserve policy failures from direct Convex enforcement at the HTTP seam
+    // instead of turning expected client errors into opaque 500 responses.
     // Convex serializes ConvexError payloads onto err.data.
-    const data = (err as { data?: { kind?: string; message?: string } } | null)?.data;
-    if (err instanceof ConvexError && data?.kind === 'rate_limited') {
-      throw new ApiError(429, data.message || 'Too many requests', '');
+    if (err instanceof ConvexError) {
+      const data = getConvexPolicyErrorData(err);
+      if (data?.kind === 'rate_limited') {
+        throw new ApiError(429, data.message || 'Too many requests', '');
+      }
+      if (data?.kind === 'FREE_EMAIL_NOT_ALLOWED') {
+        throw new ApiError(422, data.message || 'Please use your work email address', '');
+      }
     }
     throw err;
   }

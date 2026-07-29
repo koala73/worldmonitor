@@ -18,6 +18,8 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
+export const ANALYTICS_CANARY_WEBSITE_ID = '373c80a2-1109-42a7-868b-565bcf7bf168';
+const ANALYTICS_CANARY_HOSTNAME = 'analytics-canary.worldmonitor.app';
 
 /**
  * Cloudflare's WAF 403s a bare `curl/*` User-Agent on this host (verified
@@ -26,6 +28,8 @@ const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
  * not cosmetic.
  */
 const USER_AGENT = 'worldmonitor-analytics-collector-monitor/1.0';
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const ATTEMPTS = 3;
@@ -52,13 +56,50 @@ export const COLLECTOR_PROBES = Object.freeze([
   Object.freeze({
     name: 'ingest-route',
     path: '/api/send',
-    // The write path. GET is the wrong verb on purpose: a mounted route
-    // rejects it (405/400) without recording anything, while a dead origin
-    // returns 5xx. Never POST here — that would pollute production analytics
-    // with synthetic monitor traffic.
+    // Keeps the original no-write route-mount check from #5565. The canary
+    // below separately proves that the database-backed write path succeeds.
     okStatuses: Object.freeze([400, 405]),
   }),
+  Object.freeze({
+    name: 'write-canary',
+    path: '/api/send',
+    method: 'POST',
+    okStatuses: Object.freeze([200]),
+    userAgent: BROWSER_USER_AGENT,
+    receiptFields: Object.freeze(['cache', 'sessionId', 'visitId']),
+    // This website is deliberately separate from World Monitor's production
+    // website id, so one synthetic event every 5 minutes cannot contaminate
+    // product funnels or pageview counts.
+    body: Object.freeze({
+      type: 'event',
+      payload: Object.freeze({
+        website: ANALYTICS_CANARY_WEBSITE_ID,
+        hostname: ANALYTICS_CANARY_HOSTNAME,
+        url: '/__monitor__/analytics-collector',
+        title: 'World Monitor analytics collector canary',
+        referrer: '',
+        screen: '1x1',
+        language: 'en-US',
+        name: 'collector-write-canary',
+        data: Object.freeze({ source: 'github-actions' }),
+      }),
+    }),
+  }),
 ]);
+
+/** Build the request shape for one probe without performing network I/O. */
+export function buildProbeRequest(probe) {
+  const headers = { 'User-Agent': probe.userAgent || USER_AGENT };
+  const request = {
+    method: probe.method || 'GET',
+    headers,
+  };
+  if (probe.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    request.body = JSON.stringify(probe.body);
+  }
+  return request;
+}
 
 /**
  * Classify one completed probe attempt. Returns null when healthy, otherwise a
@@ -91,6 +132,20 @@ export function evaluateProbeResult(probe, result) {
     return `HTTP ${result.status} but body did not contain ${probe.mustInclude}`;
   }
 
+  if (probe.receiptFields) {
+    let receipt;
+    try {
+      receipt = JSON.parse(result.body);
+    } catch {
+      return `HTTP ${result.status} but write receipt was not valid JSON`;
+    }
+    for (const field of probe.receiptFields) {
+      if (typeof receipt?.[field] !== 'string' || receipt[field].trim() === '') {
+        return `HTTP ${result.status} but write receipt missing non-empty string ${field}`;
+      }
+    }
+  }
+
   return null;
 }
 
@@ -106,12 +161,12 @@ async function runProbe(origin, probe) {
   const url = new URL(probe.path, origin).toString();
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      ...buildProbeRequest(probe),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    // Only read the body when a probe actually asserts on it — the tracker is
-    // ~4.6 KB, but /api/send responses are not worth buffering.
-    const body = probe.mustInclude ? await response.text() : '';
+    // Only read bodies asserted by a probe — the tracker is ~4.6 KB and the
+    // write canary needs its receipt, while the other /api/send probe does not.
+    const body = probe.mustInclude || probe.receiptFields ? await response.text() : '';
     return { status: response.status, body };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
@@ -138,10 +193,14 @@ async function runProbeWithRetries(origin, probe) {
 async function main() {
   const origin = process.env.ANALYTICS_COLLECTOR_ORIGIN || DEFAULT_COLLECTOR_ORIGIN;
 
-  const resultsByName = {};
-  for (const probe of COLLECTOR_PROBES) {
-    resultsByName[probe.name] = await runProbeWithRetries(origin, probe);
-  }
+  const resultsByName = Object.fromEntries(
+    await Promise.all(
+      COLLECTOR_PROBES.map(async (probe) => [
+        probe.name,
+        await runProbeWithRetries(origin, probe),
+      ]),
+    ),
+  );
 
   const failures = summarizeProbeFailures(COLLECTOR_PROBES, resultsByName);
   if (failures.length === 0) {

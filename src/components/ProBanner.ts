@@ -1,9 +1,19 @@
 import { trackGateHit } from '@/services/analytics';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import { onEntitlementChange, getEntitlementState, isEntitled } from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
-import { getCurrentClerkUser } from '@/services/clerk';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { getCurrentClerkUser, isClerkAuthEnabled } from '@/services/clerk';
+import { getSecretState } from '@/services/runtime-config';
+import { isProWidgetEnabled, isWidgetFeatureEnabled } from '@/services/widget-store';
+import {
+  applyProBannerEntitlementHint,
+  decideProBannerMount,
+  isPremiumEntitlementHint,
+  resolveBannerPremium,
+  PRO_BANNER_ENTITLEMENT_HINT_KEY,
+} from '@/services/pro-banner-policy';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -84,6 +94,59 @@ function dismiss(): void {
   }
 }
 
+/**
+ * Optimistic pre-paint premium signal shared with index.html.
+ * UX-only — never an authz source of truth. Written only for account-backed
+ * premium (Convex/Clerk), not desktop API keys or browser tester keys, so a
+ * local pro tooling session cannot suppress the free upsell strip for the
+ * next web visitor on the same machine.
+ */
+function readPremiumHint(): boolean {
+  try {
+    return isPremiumEntitlementHint(localStorage.getItem(PRO_BANNER_ENTITLEMENT_HINT_KEY));
+  } catch {
+    return false;
+  }
+}
+
+function writePremiumHint(premium: boolean): void {
+  try {
+    applyProBannerEntitlementHint(localStorage, premium);
+  } catch {
+    // Storage is optional; live signals still gate the banner this session.
+  }
+}
+
+function hasLocalUnlockPremium(): boolean {
+  return (
+    getSecretState('WORLDMONITOR_API_KEY').present ||
+    isProWidgetEnabled() ||
+    isWidgetFeatureEnabled()
+  );
+}
+
+function hasAccountBackedPremium(): boolean {
+  const clerkUser = getCurrentClerkUser();
+  const auth = getAuthState();
+  return (
+    isEntitled() ||
+    auth.user?.role === 'pro' ||
+    clerkUser?.plan === 'pro'
+  );
+}
+
+function resolveEffectiveBannerPremium(): ReturnType<typeof resolveBannerPremium> {
+  const auth = getAuthState();
+  const signedIn = getCurrentClerkUser() !== null || auth.user !== null;
+  return resolveBannerPremium({
+    authPending: auth.isPending,
+    signedIn,
+    localUnlockPremium: hasLocalUnlockPremium(),
+    rawPremium: hasPremiumAccess(auth),
+    accountBackedPremium: hasAccountBackedPremium(),
+  });
+}
+
 export function showProBanner(container: HTMLElement): void {
   // Cache container even on early-return paths so the entitlement-change
   // listener can re-mount on a downgrade. App.ts calls this once at init
@@ -95,37 +158,45 @@ export function showProBanner(container: HTMLElement): void {
     bannerEl = null;
   }
   if (bannerEl) return;
-  if (window.self !== window.top) {
+
+  const auth = getAuthState();
+  const { premium, accountBacked } = resolveEffectiveBannerPremium();
+  // Persist only account-backed premium. Local unlock keys suppress the
+  // banner this session via `premium` without poisoning pre-paint for free web.
+  if (accountBacked) {
+    writePremiumHint(true);
+  } else if (!auth.isPending && !premium) {
+    // Settled free (incl. sign-out): drop a stale pro hint immediately so
+    // the next cold load re-reserves the free strip.
+    writePremiumHint(false);
+  }
+
+  const decision = decideProBannerMount({
+    inIframe: window.self !== window.top,
+    dismissed: isDismissed(),
+    hasPremiumAccess: premium,
+    premiumHint: readPremiumHint(),
+    authPending: auth.isPending,
+    clerkConfigured: isClerkAuthEnabled(),
+    signedIn: getCurrentClerkUser() !== null || auth.user !== null,
+    entitlementLoaded: getEntitlementState() !== null,
+  });
+
+  if (decision === 'suppress') {
     setReservation(false);
     return;
   }
-  if (isDismissed()) {
-    setReservation(false);
+  if (decision === 'defer') {
+    // Keep the pre-paint reservation for free users (CLS). Entitled users
+    // without a hint still defer the *copy* but may briefly hold the strip
+    // until the first entitlement snapshot — better than flashing "Upgrade".
+    // Post-checkout reloads write the hint before navigation (checkout.ts)
+    // so the first paid load usually skips reservation entirely.
     return;
   }
-  // Don't pitch Pro to users who already have it. hasPremiumAccess() is the
-  // authoritative signal — unions API key, tester key, Clerk pro role, AND
-  // Convex Dodo entitlement (panel-gating.ts:11-27). A paying user shouldn't
-  // see "Upgrade to Pro" at the top of every dashboard refresh.
-  if (hasPremiumAccess()) {
-    setReservation(false);
-    return;
-  }
-  // Defer the initial mount when entitlement state hasn't loaded yet for a
-  // signed-in user. App.ts:923 calls showProBanner() synchronously during
-  // init Phase 1, but App.ts:868's `void initEntitlementSubscription()` is
-  // non-awaited — the Convex snapshot can take up to ~10s on a cold start.
-  // hasPremiumAccess() reads isEntitled() against currentState===null in
-  // that window and returns false, which would mount an "Upgrade to Pro"
-  // banner for a paying Convex-only user that the onEntitlementChange
-  // listener then has to dismiss seconds later. The flash is jarring and
-  // misleading; better to render nothing until we know the user's tier.
-  //
-  // The skip is gated on "signed in", because anonymous users will never
-  // have a Convex entitlement and would otherwise wait forever. The
-  // listener handles re-mounting once the first snapshot confirms the
-  // user is actually free.
-  if (getCurrentClerkUser() && getEntitlementState() === null) return;
+
+  // Definitive free (or settled signed-out): drop any leftover stale hint.
+  writePremiumHint(false);
 
   trackGateHit('pro-banner');
   setReservation(true);
@@ -178,9 +249,10 @@ export function isProBannerVisible(): boolean {
   return bannerEl !== null;
 }
 
-// Reactive sync with entitlement state. App.ts calls showProBanner() ONCE at
-// init, so any later free↔pro flip (Dodo webhook lands mid-session, plan
-// cancelled, billing grace expires) needs an explicit re-render here —
+// Reactive sync with entitlement / subscription / auth state. App.ts calls
+// showProBanner() ONCE at init, so any later free↔pro flip (Dodo webhook lands
+// mid-session, plan cancelled, billing grace expires) OR Clerk hydration after
+// the deferred-load window (#5728) needs an explicit re-render here —
 // otherwise the banner stays at whatever state the init call computed for
 // the rest of the SPA session.
 //
@@ -195,8 +267,9 @@ export function isProBannerVisible(): boolean {
 //     → re-mount via showProBanner. Same gate set as the initial mount path,
 //       so we can never surface a banner the user has already ✕'d this week.
 function syncProBanner(): void {
-  const premium = hasPremiumAccess();
+  const { premium, accountBacked } = resolveEffectiveBannerPremium();
   if (premium) {
+    if (accountBacked) writePremiumHint(true);
     if (!bannerEl) {
       setReservation(false);
       return;
@@ -204,6 +277,12 @@ function syncProBanner(): void {
     bannerEl.classList.add('pro-banner-out');
     scheduleBannerRemoval();
     return;
+  }
+  // Settled free / sign-out: clear a stale pro hint even when the banner was
+  // never mounted (premium branch above would re-affirm it before #5728 fix).
+  const auth = getAuthState();
+  if (!auth.isPending) {
+    writePremiumHint(false);
   }
   // A premium snapshot may have started the fade-out immediately before a
   // non-premium snapshot arrived. Keep the banner visible for the restored
@@ -230,3 +309,7 @@ function syncProBanner(): void {
 
 onEntitlementChange(syncProBanner);
 onSubscriptionChange(syncProBanner);
+// Clerk hydrates after first paint via requestIdleCallback. The init-time
+// showProBanner() call often runs while auth is still pending; without this
+// subscription the deferred mount would never retry once the session settles.
+subscribeAuthState(syncProBanner);

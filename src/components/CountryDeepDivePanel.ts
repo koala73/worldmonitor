@@ -50,9 +50,11 @@ import type {
   MultiSectorShockResponse,
   MultiSectorShock,
 } from '@/services/supply-chain';
+import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 import { exportCountryEvidenceMarkdown } from '@/utils/export';
@@ -444,7 +446,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         top.append(riskBadge);
       }
 
-      const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
+      const title = this.el('div', 'cdp-news-title', decodeHtmlEntities(item.title));
       const metaText = extraSources.length > 0
         ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
         : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
@@ -2619,14 +2621,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       card.classList.add('cdp-china-summary');
       card.setAttribute('aria-label', t('countryBrief.china.title'));
       this.chinaSummaryBody = body;
-      this.renderChinaCountrySummary([
-        'macro-policy',
-        'policy-enforcement',
-        'market-credit',
-        'trade-supply',
-        'energy',
-        'availability',
-      ].map((id) => ({ id: id as ChinaCountrySummaryGroupId, state: 'loading', signals: [] })));
+      this.renderChinaCountrySummary(
+        CHINA_DECISION_SIGNAL_GROUP_IDS.map((id) => ({
+          id,
+          state: 'loading',
+          signals: [],
+        })),
+      );
       chinaSummaryCard = card;
     }
     this.housingBody = housingBody;
@@ -3029,12 +3030,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private chinaSummaryGroupLabel(id: ChinaCountrySummaryGroupId): string {
     const keys: Record<ChinaCountrySummaryGroupId, string> = {
-      'macro-policy': 'macroPolicy',
+      macro: 'macroSignals',
       'policy-enforcement': 'policyEvents',
-      'market-credit': 'marketCredit',
-      'trade-supply': 'tradeSupply',
-      energy: 'energy',
-      availability: 'availability',
+      'cross-strait-activity': 'crossStraitActivity',
+      'corporate-disclosures': 'corporateDisclosures',
+      'corridor-conditions': 'corridorConditions',
+      'activity-nowcast': 'activityNowcast',
     };
     return t(`countryBrief.china.${keys[id]}`);
   }
@@ -3226,17 +3227,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (trend === 'up') return '↑';
     if (trend === 'down') return '↓';
     return '→';
-  }
-
-  private decodeEntities(text: string): string {
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#x27;/g, "'")
-      .replace(/&#x2F;/g, '/');
   }
 
   private toThreatLevel(level: string | undefined): ThreatLevel {

@@ -114,6 +114,16 @@ jobs:
         continue-on-error: true
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - id: seed_intel_history_append_lock
+        name: Seed intelligence-history append lock (idempotent)
+        # `intelHistory.append` fails closed with APPEND_LOCK_NOT_SEEDED until
+        # this document-backed OCC lock exists. Seed it immediately after
+        # deploy so concurrent first-seen appends cannot fall back to an empty
+        # index-range check, which Convex does not serialize.
+        run: npx convex run --prod intelHistory:_seedAppendLock
+        continue-on-error: true
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       - id: seed_followed_countries_shards
         name: Seed followedCountries shards (idempotent)
         # The `followCountry` / `unfollowCountry` / `mergeAnonymousLocal`
@@ -144,6 +154,7 @@ jobs:
         if: always() && steps.deploy.outcome == 'success'
         run: |
           if [ "${{ steps.seed_dodo_webhook_failure_summary.outcome }}" != "success" ] \
+            || [ "${{ steps.seed_intel_history_append_lock.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_shards.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_country_locks.outcome }}" != "success" ]; then
             echo "::error::One or more post-deploy seeds failed; inspect the seed steps above"

@@ -28,7 +28,10 @@ import {
   classifySyntheticCheckoutError,
   classifyThrownCheckoutError,
   parseCheckoutErrorBody,
+  parseCheckoutSuccessBody,
+  snapshotUpstreamBodyKeys,
   snapshotUpstreamResponse,
+  UNUSABLE_SUCCESS_BODY_MESSAGE,
   type CheckoutError,
   type CheckoutErrorCode,
   type UpstreamSnapshot,
@@ -38,7 +41,7 @@ import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
-import { decideNoUserPathOutcome } from './checkout-no-user-policy';
+import { runNoUserPath } from './checkout-no-user-policy';
 import { shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
@@ -55,6 +58,7 @@ import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
 import { saveAnonClaimToken } from './anonymous-identity-storage';
+import { applyProBannerEntitlementHint } from './pro-banner-policy';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -103,6 +107,13 @@ function markPostCheckout(): void {
   } catch {
     // Storage denied — the reload will still run; transition detector will
     // fall back to its null baseline, matching the pre-flag behavior.
+  }
+  // Optimistic pre-paint pro hint so the reloaded dashboard does not reserve
+  // an empty Upgrade strip for a just-paid account (#5728 first-session strip).
+  try {
+    applyProBannerEntitlementHint(localStorage, true);
+  } catch {
+    // Storage optional — live entitlement still suppresses the banner.
   }
 }
 
@@ -739,6 +750,30 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
 let _checkoutInFlight = false;
 
 /**
+ * True when the checkout being blocked was for a Pro Business product — the
+ * one duplicate-subscription 409 that needs guided upgrade copy instead of the
+ * billing-portal line (Pro and Pro Business are separate Dodo products, so the
+ * portal cannot perform the change).
+ *
+ * The product ids arrive via a DYNAMIC import on purpose: this module sits in
+ * the eager dashboard graph (panel-layout imports it statically) and
+ * tests/dashboard-eager-chunks.test.mjs requires the `products` chunk to stay
+ * off that graph — the same reason every other client consumer lazy-loads it.
+ * A failed load falls back to the generic copy rather than blocking the dialog.
+ */
+async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return (
+      productId === DODO_PRODUCTS.PRO_BUSINESS_MONTHLY ||
+      productId === DODO_PRODUCTS.PRO_BUSINESS_ANNUAL
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * High-level checkout entry point for UI code.
  *
  * Creates a checkout session via the /api/create-checkout edge endpoint
@@ -770,23 +805,22 @@ export async function startCheckout(
       classifySyntheticCheckoutError('unauthorized'),
       { productId, action: 'no-user' },
     );
-    // Pure policy decision lives in checkout-no-user-policy.ts; tested
-    // against regression in tests/checkout-no-user-policy.test.mts. The
-    // contract: redirect path MUST NOT write sessionStorage (would
+    // Both the decision AND the effect sequencing live in
+    // checkout-no-user-policy.ts, exercised in
+    // tests/checkout-no-user-policy.test.mts against a recording double.
+    // The contract: redirect path MUST NOT write sessionStorage (would
     // create a stale dashboard intent that a later unrelated sign-in
-    // would auto-resume); inline path MUST write so the post-auth
-    // Clerk listener can resume the exact checkout.
-    const outcome = decideNoUserPathOutcome(fallbackToPricingPage);
-    if (outcome.kind === 'redirect-pro') {
-      window.location.assign(outcome.redirectUrl);
-    } else {
-      savePendingCheckoutIntent(intent);
-      saveCheckoutAttempt({
-        ...intent,
-        startedAt: Date.now(),
-      });
-      openSignIn();
-    }
+    // would auto-resume); inline path MUST write BEFORE openSignIn so the
+    // post-auth Clerk listener can resume the exact checkout. Keeping that
+    // ordering in the policy module (not this if/else) is deliberate —
+    // #5380-High-3 proved a source-grep guard over this file stays green
+    // with either contract violated.
+    runNoUserPath(fallbackToPricingPage, {
+      navigate: (url) => window.location.assign(url),
+      persistIntent: () => savePendingCheckoutIntent(intent),
+      persistAttempt: () => saveCheckoutAttempt({ ...intent, startedAt: Date.now() }),
+      openSignIn: () => openSignIn(),
+    });
     return false;
   }
 
@@ -868,6 +902,9 @@ export async function startCheckout(
         const planDisplayName = resolvePlanDisplayName(planKey);
         showDuplicateSubscriptionDialog({
           planDisplayName,
+          // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
+          // pairing; every other pairing keeps the portal line.
+          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress
@@ -932,8 +969,44 @@ export async function startCheckout(
       return false;
     }
 
-    const result = await resp.json();
-    if (typeof result?.anonymous_claim_token === 'string' && result.anonymous_claim_token.length > 0) {
+    // Read the success body as TEXT first, for the same reason the !ok
+    // branch above does: a 200 whose body is not valid JSON (edge
+    // interstitial, empty payload, mid-transit truncation) made the old
+    // bare `resp.json()` throw an engine-specific DOMException — Safari's
+    // is `SyntaxError: The string did not match the expected pattern.` —
+    // which skipped the contract-violation reporter below, discarded the
+    // upstream snapshot that would name the emitter, and split one bug
+    // across a Sentry fingerprint per browser engine. WORLDMONITOR-XV.
+    // Let body-stream failures reach the outer exception path. Replacing a
+    // rejected read with an empty string discards the original error, stack,
+    // and cause, and falsely reports that the server sent an empty body.
+    const rawSuccessText = await resp.text();
+    const parsedSuccess = parseCheckoutSuccessBody(rawSuccessText);
+    if (parsedSuccess.kind !== 'object') {
+      // A 200 we cannot use is a different contract violation from a
+      // well-formed payload missing checkout_url below: it points at
+      // transport corruption or a middlebox rather than a relay payload
+      // bug, so it carries its own action tag. The upstream snapshot is
+      // what makes the next one self-diagnosing — it says whether the
+      // body was HTML, empty, or truncated, and which layer emitted it.
+      const unparsableBodyError: CheckoutError = {
+        code: 'service_unavailable',
+        userMessage: 'Checkout is temporarily unavailable. Please try again in a moment.',
+        serverMessage: UNUSABLE_SUCCESS_BODY_MESSAGE[parsedSuccess.kind],
+        httpStatus: resp.status,
+        retryable: true,
+      };
+      reportCheckoutError(
+        unparsableBodyError,
+        { productId, action: 'unparsable-success-body' },
+        undefined,
+        snapshotUpstreamResponse(resp, rawSuccessText),
+      );
+      renderCheckoutErrorSurface(unparsableBodyError, fallbackToPricingPage);
+      return false;
+    }
+    const result = parsedSuccess.body;
+    if (typeof result.anonymous_claim_token === 'string' && result.anonymous_claim_token.length > 0) {
       saveAnonClaimToken(result.anonymous_claim_token);
     }
     // #4449: navigate the top window to Dodo's HOSTED checkout instead of
@@ -946,7 +1019,7 @@ export async function startCheckout(
     // returns the customer to /dashboard?wm_checkout=return to reconcile. The
     // overlay machinery (openCheckout / ensureCheckoutOverlayInitialized / the
     // event handler / watchdog) is left dormant pending removal.
-    const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
+    const hostedCheckoutUrl = safeHostedCheckoutUrl(result.checkout_url);
     if (hostedCheckoutUrl) {
       window.location.assign(hostedCheckoutUrl);
       return true;
@@ -967,7 +1040,17 @@ export async function startCheckout(
       httpStatus: resp.status,
       retryable: true,
     };
-    reportCheckoutError(missingUrlError, { productId, action: 'missing-checkout-url' });
+    reportCheckoutError(
+      missingUrlError,
+      { productId, action: 'missing-checkout-url' },
+      undefined,
+      // Names the emitter (cf-ray / server / x-vercel-id) and the payload's
+      // KEY NAMES — "had session_id, no checkout_url" is the whole finding
+      // here, so values are withheld. The payload is a wholesale spread of
+      // the Dodo SDK's response, whose field set we do not control, and a
+      // redaction deny-list would silently outrun any schema change.
+      snapshotUpstreamBodyKeys(resp, result),
+    );
     renderCheckoutErrorSurface(missingUrlError, fallbackToPricingPage);
     return false;
   } catch (err) {

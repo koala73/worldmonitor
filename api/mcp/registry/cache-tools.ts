@@ -2047,4 +2047,177 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
 
+  {
+    name: 'get_temporal_anomalies',
+    _outputBudgetBytes: 65536,
+    description:
+      'Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. ' +
+      'Surfaces where activity is statistically abnormal right now — news velocity, satellite fire detections, and other tracked ' +
+      'streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared ' +
+      'to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a ' +
+      'severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty ' +
+      'anomaly list with fresh data means activity is within normal bounds — that is itself signal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: 'Filter to one tracked stream type (e.g. "news", "satellite_fires"); see trackedTypes in the response for what is currently baselined.',
+        },
+        region: { type: 'string', description: 'Filter to one region label (case-insensitive exact match).' },
+        min_severity: {
+          type: 'string',
+          enum: ['medium', 'high', 'critical'],
+          description: 'Drop anomalies below this severity band.',
+        },
+        limit: { type: 'number', description: 'Cap the anomaly list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      snapshot: {
+        type: ['object', 'null'],
+        properties: {
+          anomalies: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string' }, region: { type: 'string' },
+                currentCount: { type: 'number' }, expectedCount: { type: 'number' },
+                zScore: { type: 'number' }, severity: { type: 'string' },
+                multiplier: { type: 'number' }, message: { type: 'string' },
+              },
+            },
+          },
+          trackedTypes: { type: 'array', items: { type: 'string' } },
+          computedAt: { type: 'string' },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const type = argStr(params.type);
+      const region = argStr(params.region);
+      const minSeverity = argStr(params.min_severity);
+      const severityRank: Record<string, number> = { medium: 1, high: 2, critical: 3 };
+      const floor = minSeverity ? (severityRank[minSeverity] ?? 0) : 0;
+      narrowNested(data, 'snapshot', 'anomalies', (a) => {
+        if (type && String(a.type ?? '').toLowerCase() !== type) return false;
+        if (region && String(a.region ?? '').toLowerCase() !== region) return false;
+        if (floor && (severityRank[String(a.severity ?? '')] ?? 0) < floor) return false;
+        return true;
+      });
+      capNested(data, 'snapshot', 'anomalies', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      return data;
+    },
+    _cacheKeys: ['temporal:anomalies:v1'],
+    _cacheLabels: { 'temporal:anomalies:v1': 'snapshot' },
+    _seedMetaKey: 'seed-meta:temporal:anomalies',
+    _maxStaleMin: 45,
+    _apiPaths: [],
+  },
+
+  {
+    name: 'get_test_site_seismicity',
+    _outputBudgetBytes: 65536,
+    description:
+      'Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. ' +
+      'Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the ' +
+      'Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0-100 from magnitude, ' +
+      'proximity, and depth — shallow events close to a site score highest, since underground tests are shallow by nature. ' +
+      'Concern bands: low, moderate, elevated, critical. Includes a per-site rollup (event count, max concern, max magnitude). ' +
+      'An empty list with fresh data means no seismicity near any monitored site in the current feed window.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        site: { type: 'string', description: 'Filter to one test site by name substring (e.g. "Punggye", "Lop Nur", case-insensitive).' },
+        min_concern: {
+          type: 'string',
+          enum: ['low', 'moderate', 'elevated', 'critical'],
+          description: 'Drop events below this concern band.',
+        },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      earthquakes: {
+        type: ['object', 'null'],
+        properties: {
+          earthquakes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, place: { type: 'string' },
+                magnitude: { type: 'number' }, depthKm: { type: 'number' },
+                location: {
+                  type: 'object',
+                  properties: { latitude: { type: 'number' }, longitude: { type: 'number' } },
+                },
+                occurredAt: { type: 'number' },
+                nearTestSite: { type: 'boolean' }, testSiteName: { type: 'string' },
+                concernScore: { type: 'number' }, concernLevel: { type: 'string' },
+              },
+            },
+          },
+          siteSummary: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                site: { type: 'string' }, eventCount: { type: 'number' },
+                maxConcernScore: { type: 'number' }, maxConcernLevel: { type: 'string' },
+                maxMagnitude: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const site = argStr(params.site);
+      const minConcern = argStr(params.min_concern);
+      const concernRank: Record<string, number> = { low: 1, moderate: 2, elevated: 3, critical: 4 };
+      const floor = minConcern ? (concernRank[minConcern] ?? 0) : 0;
+      narrowNested(data, 'earthquakes', 'earthquakes', (q) => {
+        const siteName = typeof q.testSiteName === 'string' ? q.testSiteName : '';
+        if (!q.nearTestSite && !siteName && typeof q.concernScore !== 'number') return false;
+        if (site && !siteName.toLowerCase().includes(site)) return false;
+        if (floor && (concernRank[String(q.concernLevel ?? '')] ?? 0) < floor) return false;
+        return true;
+      });
+      const payload = data.earthquakes as {
+        earthquakes?: Array<Record<string, unknown>>;
+        siteSummary?: Array<Record<string, unknown>>;
+      } | null;
+      if (payload && Array.isArray(payload.earthquakes)) {
+        const bySite = new Map<string, { site: string; eventCount: number; maxConcernScore: number; maxConcernLevel: string; maxMagnitude: number }>();
+        for (const q of payload.earthquakes) {
+          const name = (typeof q.testSiteName === 'string' && q.testSiteName) || 'Unattributed';
+          const entry = bySite.get(name) ?? { site: name, eventCount: 0, maxConcernScore: 0, maxConcernLevel: '', maxMagnitude: 0 };
+          entry.eventCount += 1;
+          const score = typeof q.concernScore === 'number' ? q.concernScore : 0;
+          if (score >= entry.maxConcernScore) {
+            entry.maxConcernScore = score;
+            entry.maxConcernLevel = typeof q.concernLevel === 'string' ? q.concernLevel : entry.maxConcernLevel;
+          }
+          const mag = typeof q.magnitude === 'number' ? q.magnitude : 0;
+          if (mag > entry.maxMagnitude) entry.maxMagnitude = mag;
+          bySite.set(name, entry);
+        }
+        payload.siteSummary = [...bySite.values()].sort((a, b) => b.maxConcernScore - a.maxConcernScore);
+      }
+      capNested(data, 'earthquakes', 'earthquakes', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      return data;
+    },
+    _cacheKeys: ['seismology:earthquakes:v1'],
+    _cacheLabels: { 'seismology:earthquakes:v1': 'earthquakes' },
+    _seedMetaKey: 'seed-meta:seismology:earthquakes',
+    _maxStaleMin: 30,
+    _apiPaths: [],
+  },
+
 ];
