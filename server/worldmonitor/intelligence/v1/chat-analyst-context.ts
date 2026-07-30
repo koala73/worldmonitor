@@ -645,16 +645,17 @@ export function extractKeywords(query: string): string[] {
 // returning '' for weeks; the per-user fan-out from Vercel egress IPs is the
 // uncoordinated-consumer pattern #5843 exists to remove; and even a healthy
 // GDELT taxed every request 2.5s for marginal context. Headlines now come from
-// the canonical key scripts/seed-gdelt-intel.mjs materializes — Railway writes,
-// Vercel reads, same as every other source in this assembler.
+// the canonical key scripts/seed-gdelt-bulk-materializer.mjs materializes —
+// Railway writes, Vercel reads, same as every other source in this assembler.
 
 const GDELT_INTEL_KEY = 'intelligence:gdelt-intel:v1';
 const MAX_LIVE_HEADLINES = 5;
 
-// The seeder's topic ids (INTEL_TOPICS in scripts/seed-gdelt-intel.mjs) are the
-// vocabulary for topic scoping below. Exported so tests pin it against the
-// seeder's INTEL_TOPIC_IDS (#5856 review) — do not import the seeder here:
-// its transitive _seed-utils graph is not edge-runtime-safe.
+// The bulk materializer's topic ids (GDELT_BULK_TOPICS in
+// scripts/_gdelt-bulk-materializer.mjs) are the vocabulary for topic scoping
+// below. Exported so tests pin it against the active producer (#5856 review) —
+// do not import the materializer here: its Node-only graph is not
+// edge-runtime-safe.
 export const ALL_TOPIC_IDS = ['military', 'cyber', 'nuclear', 'sanctions', 'intelligence', 'maritime'] as const;
 
 // Which materialized topics are in scope per analyst domain focus, mapped from

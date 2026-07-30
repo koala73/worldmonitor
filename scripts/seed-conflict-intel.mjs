@@ -30,6 +30,7 @@ import {
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
 import { fetchGdeltBulkConflictEvents, GDELT_BULK_WORST_NETWORK_MS, GDELT_ROLLING_WINDOW_MS, gdeltTimestampToMs, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { GDELT_BULK_CONFLICT_KEY } from './_gdelt-bulk-contract.mjs';
 import {
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
@@ -170,6 +171,10 @@ const GDELT_BULK_COLD_START_MIN_COUNTRIES = 3;
 // publication gap, far under the 24h rolling window. An unparseable newest
 // export timestamp fails closed (treated as stale).
 export const GDELT_BULK_MAX_EXPORT_AGE_MS = 3 * 60 * 60 * 1000;
+// Materialized exports come from the same 15-minute Railway cadence, so they
+// should never lead this consumer's clock materially. Allow a small deployment
+// clock skew, then fail closed instead of pinning a future export as fresh.
+export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // The shared GDELT transport enforces one selected-route attempt. These explicit
 // values pin that contract at this high-fanout caller. timeoutMs is pinned too:
 // _gdelt-fetch.mjs's default rose from 15s to 30s for seed-gdelt-intel's slow
@@ -600,6 +605,44 @@ export async function fetchGdeltConflictEvents({
   };
 }
 
+// The bulk materializer owns GDELT downloads and the 24h rolling window.
+// Conflict remains the publisher of the established ACLED-compatible key, but
+// its no-credentials fallback is now a single Redis read instead of a second
+// bulk download followed by a 20-country DOC sweep.
+export async function readMaterializedGdeltConflictEvents({
+  readSnapshot = () => readSeedSnapshot(GDELT_BULK_CONFLICT_KEY, { strict: true }),
+  now = Date.now,
+} = {}) {
+  const snapshot = await readSnapshot();
+  if (
+    snapshot?.source !== 'gdelt-bulk'
+    || !Array.isArray(snapshot?.events)
+    || snapshot.events.length === 0
+  ) {
+    throw new Error(`${GDELT_BULK_CONFLICT_KEY} missing or empty`);
+  }
+  const exportTimestamp = snapshot?.pagination?.exportTimestamp;
+  const exportMs = gdeltTimestampToMs(exportTimestamp);
+  const nowMs = now();
+  if (!Number.isFinite(exportMs)) {
+    throw new Error(`${GDELT_BULK_CONFLICT_KEY} export timestamp is unparseable: ${exportTimestamp}`);
+  }
+  const ageMs = nowMs - exportMs;
+  if (ageMs > GDELT_BULK_MAX_EXPORT_AGE_MS) {
+    throw new Error(
+      `${GDELT_BULK_CONFLICT_KEY} stale export ${exportTimestamp}`
+      + ` (${Math.round(ageMs / 60000)}min old; max ${GDELT_BULK_MAX_EXPORT_AGE_MS / 60000}min)`,
+    );
+  }
+  if (ageMs < -GDELT_BULK_MAX_FUTURE_SKEW_MS) {
+    throw new Error(
+      `${GDELT_BULK_CONFLICT_KEY} future export ${exportTimestamp}`
+      + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
+    );
+  }
+  return snapshot;
+}
+
 // ─── Humanitarian Summary (HAPI) ───
 
 async function defaultPreserveHapiLastGood() {
@@ -965,7 +1008,9 @@ async function fetchGdeltTensions() {
 // runSeed invokes this as `fetchFn()` with no arguments, so the injected dep is for tests
 // only — the GDELT fallback reaches its proxy through a `curl` child process, which no
 // global-fetch stub can intercept, so it must be injectable to keep tests hermetic.
-export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents } = {}) {
+export async function fetchAll({
+  fetchGdeltFallback = readMaterializedGdeltConflictEvents,
+} = {}) {
   // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
   // not at sweep entry — the aux feeds below and the sweep share runSeed's
   // single fetch deadline, so time the aux stage burns must come out of the

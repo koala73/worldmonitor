@@ -1735,6 +1735,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
+    // Opt-in companion keys whose write TTL differs from the canonical key.
+    // Each declaration is preserved at its own TTL; preserveKeys keeps its
+    // existing canonical-TTL behavior for backward compatibility.
+    preserveKeyTtls = [],
     beforePublish,
     afterPublish,
     afterValidationSkip,
@@ -1776,14 +1780,72 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       process.exit(1);
     }
   }
+  if (!Array.isArray(preserveKeyTtls)) {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} preserveKeyTtls must be an array`);
+    process.exit(1);
+  }
+  const normalizedPreserveKeyTtls = [];
+  const declaredTtlByKey = new Map();
+  for (const declaration of preserveKeyTtls) {
+    const key = declaration?.key;
+    const declaredTtl = declaration?.ttlSeconds;
+    if (
+      !declaration
+      || typeof declaration !== 'object'
+      || Array.isArray(declaration)
+      || typeof key !== 'string'
+      || key.trim().length === 0
+      || !Number.isInteger(declaredTtl)
+      || declaredTtl <= 0
+    ) {
+      console.error(
+        `  CONTRACT VIOLATION: ${domain}:${resource} preserveKeyTtls entries must be `
+        + `{ key: non-empty string, ttlSeconds: positive integer }`,
+      );
+      process.exit(1);
+    }
+    if (declaredTtlByKey.has(key) && declaredTtlByKey.get(key) !== declaredTtl) {
+      console.error(
+        `  CONTRACT VIOLATION: ${domain}:${resource} preserveKeyTtls declares conflicting TTLs for ${key}`,
+      );
+      process.exit(1);
+    }
+    declaredTtlByKey.set(key, declaredTtl);
+    normalizedPreserveKeyTtls.push({ key, ttlSeconds: declaredTtl });
+  }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const startMs = Date.now();
-  const preservationKeys = () => [...new Set([
+  const defaultPreservationTtl = ttlSeconds || 600;
+  const defaultPreservationKeys = [...new Set([
     canonicalKey,
     `seed-meta:${domain}:${resource}`,
     ...(extraKeys || []).map((ek) => ek.key),
     ...preserveKeys,
   ].filter((key) => typeof key === 'string' && key.length > 0))];
+
+  // Single preservation seam for fetch failure, fetch-phase SIGTERM, contract
+  // RETRY, validation skip, and per-extra-key empty skips. Grouping keys by TTL
+  // keeps one Redis pipeline per TTL while allowing explicit declarations to
+  // override a key that also appears in the default canonical-TTL cohort.
+  const preserveExistingKeys = async (targets) => {
+    const ttlByKey = new Map();
+    if (targets) {
+      for (const target of targets) ttlByKey.set(target.key, target.ttlSeconds);
+    } else {
+      for (const key of defaultPreservationKeys) ttlByKey.set(key, defaultPreservationTtl);
+      for (const target of normalizedPreserveKeyTtls) ttlByKey.set(target.key, target.ttlSeconds);
+    }
+
+    const keysByTtl = new Map();
+    for (const [key, targetTtl] of ttlByKey) {
+      if (!keysByTtl.has(targetTtl)) keysByTtl.set(targetTtl, []);
+      keysByTtl.get(targetTtl).push(key);
+    }
+    const results = await Promise.all(
+      [...keysByTtl].map(([targetTtl, keys]) => extendExistingTtl(keys, targetTtl)),
+    );
+    return results.every(Boolean);
+  };
 
   console.log(`=== ${domain}:${resource} Seed ===`);
   console.log(`  Run ID:  ${runId}`);
@@ -1828,10 +1890,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
     try {
       if (currentPhase === 'fetch') {
-        const ttl = ttlSeconds || 600;
         await Promise.allSettled([
           releaseLock(`${domain}:${resource}`, runId),
-          extendExistingTtl(preservationKeys(), ttl),
+          preserveExistingKeys(),
         ]);
       } else {
         await releaseLock(`${domain}:${resource}`, runId);
@@ -1876,8 +1937,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error(`  FETCH FAILED: ${err.message || err}${cause}`);
 
-    const ttl = ttlSeconds || 600;
-    await extendExistingTtl(preservationKeys(), ttl);
+    await preserveExistingKeys();
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
@@ -1968,7 +2028,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // and /api/health already carries the alarm).
     if (contractState === 'RETRY') {
       const durationMs = Date.now() - startMs;
-      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await preserveExistingKeys();
 
       // #5256: the RETRY-FAILED exit below assumes A LATER TICK CAN RESTORE THE DATA. When
       // the seeder reports it had no usable source at all (primary unconfigured AND every
@@ -2019,7 +2079,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
-      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await preserveExistingKeys();
       const strictFailure = Boolean(opts.emptyDataIsFailure);
       const validationSkipContext = {
         canonicalKey,
@@ -2160,7 +2220,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // whose IDs the upstream dropped this cycle). Preserve last-good by
           // extending the existing key's TTL instead.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
-            await extendExistingTtl([ek.key], ek.ttl || ttlSeconds || 600);
+            await preserveExistingKeys([{
+              key: ek.key,
+              ttlSeconds: ek.ttl || ttlSeconds || 600,
+            }]);
             console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
             continue;
           }

@@ -3,9 +3,9 @@
  * #4920 (c): external recall benchmark.
  *
  * Daily job (runs in the feed-validation GitHub Actions workflow, after
- * validation — no Railway slot): pulls the current top articles from
- * GDELT's public DOC API across broad news verticals, checks whether each
- * appears anywhere in the digest we actually ingested
+ * validation — no Railway slot): reads the current article index produced
+ * from GDELT's mirrored bulk GKG files, checks whether each appears anywhere
+ * in the digest we actually ingested
  * (news:digest:v1:full:en), and publishes the recall percentage + the
  * missed headlines to news:recall-benchmark:v1.
  *
@@ -20,37 +20,19 @@
  * skip silently (local runs).
  */
 
-import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { computeRecall } from './_recall-benchmark-core.mjs';
 import { pathToFileURL } from 'node:url';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
+import { GDELT_BULK_ARTICLES_KEY } from './_gdelt-bulk-contract.mjs';
 
 const RECALL_KEY = 'news:recall-benchmark:v1';
 const META_KEY = 'seed-meta:news:recall-benchmark';
 const DIGEST_KEY = 'news:digest:v1:full:en';
-
-// Broad verticals, not niche topics — the benchmark asks "are we carrying
-// the big stories", so the reference set must be what a general reader
-// would consider top news. maxrecords kept modest: 25×4 ≈ 100 external
-// stories/day is plenty of signal without hammering GDELT.
-const REFERENCE_QUERIES = [
-  { label: 'conflict', q: '(conflict OR military OR war OR strike)' },
-  { label: 'economy', q: '(economy OR markets OR inflation OR "central bank")' },
-  { label: 'disaster', q: '(earthquake OR flood OR hurricane OR wildfire OR disaster)' },
-  { label: 'diplomacy', q: '(summit OR sanctions OR treaty OR election)' },
-];
-
-export function gdeltUrl(query) {
-  const params = new URLSearchParams({
-    query: `${query} sourcelang:eng`,
-    mode: 'ArtList',
-    format: 'json',
-    sort: 'HybridRel',
-    timespan: '24h',
-    maxrecords: '25',
-  });
-  return `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
-}
+// The reference index is a 15-minute bulk product. A 3h budget tolerates
+// routine missed materializer cycles without letting a preserved snapshot be
+// laundered into a newly checked recall publication.
+export const GDELT_BULK_REFERENCE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 export function unwrapEnvelope(parsed) {
   // Canonical keys may be stored as { data, fetchedAt, ... } envelopes or
@@ -61,84 +43,106 @@ export function unwrapEnvelope(parsed) {
   return parsed;
 }
 
-async function main() {
-  const creds = getOptionalUpstashCreds();
+export function materializedReferenceItems(payload) {
+  const seenUrls = new Set();
+  return (Array.isArray(payload?.articles) ? payload.articles : []).flatMap((article) => {
+    const title = typeof article?.title === 'string' ? article.title.trim() : '';
+    const url = typeof article?.url === 'string' && /^https?:\/\//.test(article.url)
+      ? article.url
+      : undefined;
+    if (title.length < 10 || (url && seenUrls.has(url))) return [];
+    if (url) seenUrls.add(url);
+    return [{ title, url, vertical: 'gdelt-bulk' }];
+  });
+}
+
+export function requireFreshMaterializedReference(reference, nowMs = Date.now()) {
+  const fetchedAtMs = typeof reference?.fetchedAt === 'number'
+    ? reference.fetchedAt
+    : Date.parse(reference?.fetchedAt);
+  if (!Number.isFinite(fetchedAtMs)) {
+    throw new Error(`${GDELT_BULK_ARTICLES_KEY} fetchedAt is unparseable: ${reference?.fetchedAt}`);
+  }
+  const ageMs = nowMs - fetchedAtMs;
+  if (ageMs > GDELT_BULK_REFERENCE_MAX_AGE_MS) {
+    throw new Error(
+      `${GDELT_BULK_ARTICLES_KEY} stale reference`
+      + ` (${Math.round(ageMs / 60000)}min old; max ${GDELT_BULK_REFERENCE_MAX_AGE_MS / 60000}min)`,
+    );
+  }
+  if (ageMs < -GDELT_BULK_MAX_FUTURE_SKEW_MS) {
+    throw new Error(
+      `${GDELT_BULK_ARTICLES_KEY} future reference`
+      + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
+    );
+  }
+  return reference;
+}
+
+export async function runRecallBenchmark({
+  _getCreds = getOptionalUpstashCreds,
+  _redisCommand = upstashCommand,
+  _now = Date.now,
+  _logger = console,
+} = {}) {
+  const creds = _getCreds();
   if (!creds) {
-    console.log('recall-benchmark skipped (no UPSTASH_REDIS_REST_URL/TOKEN in env)');
+    _logger.log('recall-benchmark skipped (no UPSTASH_REDIS_REST_URL/TOKEN in env)');
     return;
   }
+  const nowMs = _now();
 
   // 1. Digest titles — what we actually ingested.
-  const got = await upstashCommand(creds, ['GET', DIGEST_KEY]);
-  if (typeof got?.result !== 'string' || got.result.length === 0) {
-    console.warn(`WARN: ${DIGEST_KEY} missing/empty — cannot benchmark, skipping`);
+  const [digestResponse, referenceResponse] = await Promise.all([
+    _redisCommand(creds, ['GET', DIGEST_KEY]),
+    _redisCommand(creds, ['GET', GDELT_BULK_ARTICLES_KEY]),
+  ]);
+  if (typeof digestResponse?.result !== 'string' || digestResponse.result.length === 0) {
+    _logger.warn(`WARN: ${DIGEST_KEY} missing/empty — cannot benchmark, skipping`);
     return;
   }
-  const digest = unwrapEnvelope(JSON.parse(got.result));
+  const digest = unwrapEnvelope(JSON.parse(digestResponse.result));
   const digestTitles = Object.values(digest?.categories ?? {})
     .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
     .map((item) => item?.title)
     .filter((title) => typeof title === 'string' && title.length > 0);
   if (digestTitles.length === 0) {
-    console.warn('WARN: digest carried zero titles — skipping');
+    _logger.warn('WARN: digest carried zero titles — skipping');
     return;
   }
 
-  // 2. External reference set from GDELT.
-  const seenUrls = new Set();
-  const externalItems = [];
-  // #4929 external review: partial reference sets are fine, a hung workflow
-  // is not. The shared GDELT transport now enforces one selected-route attempt,
-  // and the first route failure opens a circuit across the remaining queries.
-  // The wall-clock deadline remains a final bound for a healthy but slow route.
-  const GDELT_DEADLINE_MS = 4 * 60 * 1000;
-  const gdeltStartedAt = Date.now();
-  for (const { label, q } of REFERENCE_QUERIES) {
-    if (Date.now() - gdeltStartedAt > GDELT_DEADLINE_MS) {
-      console.warn(`  [gdelt:${label}] skipped — shared 4-min GDELT deadline exhausted`);
-      continue;
-    }
-    try {
-      const json = await fetchGdeltJson(gdeltUrl(q), {
-        label: `recall-${label}`,
-        timeoutMs: 10_000,
-        maxRetries: 0,
-        proxyMaxAttempts: 1,
-      });
-      const articles = Array.isArray(json?.articles) ? json.articles : [];
-      for (const article of articles) {
-        const title = article?.title;
-        const url = article?.url;
-        if (typeof title !== 'string' || title.length < 10) continue;
-        if (url && seenUrls.has(url)) continue;
-        if (url) seenUrls.add(url);
-        externalItems.push({ title, url, vertical: label });
-      }
-      console.log(`  [gdelt:${label}] ${articles.length} articles`);
-    } catch (err) {
-      console.warn(`  [gdelt:${label}] failed: ${err.message} — opening GDELT circuit; remaining verticals skipped`);
-      break;
-    }
+  // 2. External reference set from the bulk materializer. The daily workflow
+  // does no GDELT network I/O; it consumes the same bounded 24h article index
+  // the 15-minute Railway materializer already produced.
+  if (typeof referenceResponse?.result !== 'string' || referenceResponse.result.length === 0) {
+    _logger.warn(`WARN: ${GDELT_BULK_ARTICLES_KEY} missing/empty — cannot benchmark, skipping`);
+    return;
   }
+  const reference = requireFreshMaterializedReference(
+    unwrapEnvelope(JSON.parse(referenceResponse.result)),
+    nowMs,
+  );
+  const externalItems = materializedReferenceItems(reference);
   if (externalItems.length < 20) {
-    console.warn(`WARN: only ${externalItems.length} external articles — too thin to publish, skipping`);
+    _logger.warn(`WARN: only ${externalItems.length} external articles — too thin to publish, skipping`);
     return;
   }
 
   // 3. Recall.
   const result = computeRecall(externalItems, digestTitles);
-  console.log(
+  _logger.log(
     `recall: ${result.recallPct}% (${result.matched}/${result.total} external stories present; ` +
       `${digestTitles.length} digest titles; ${result.unvectorizable} unvectorizable)`,
   );
   for (const miss of result.missed) {
-    console.log(`  MISSED (best ${miss.bestScore}): ${miss.title}`);
+    _logger.log(`  MISSED (best ${miss.bestScore}): ${miss.title}`);
   }
 
   // 4. Publish.
   const payload = {
     v: 1,
-    checkedAt: Date.now(),
+    checkedAt: nowMs,
+    referenceFetchedAt: reference.fetchedAt,
     recallPct: result.recallPct,
     matched: result.matched,
     total: result.total,
@@ -153,21 +157,21 @@ async function main() {
       url: typeof m.url === 'string' && /^https?:\/\//.test(m.url) ? m.url.slice(0, 300) : undefined,
     })),
   };
-  await upstashCommand(creds, ['SET', RECALL_KEY, JSON.stringify(payload), 'EX', String(3 * 86400)]);
-  await upstashCommand(creds, ['SET', META_KEY, JSON.stringify({
+  await _redisCommand(creds, ['SET', RECALL_KEY, JSON.stringify(payload), 'EX', String(3 * 86400)]);
+  await _redisCommand(creds, ['SET', META_KEY, JSON.stringify({
     fetchedAt: payload.checkedAt,
     recordCount: result.total,
     sourceVersion: 'recall-benchmark-v1',
   }), 'EX', String(7 * 86400)]);
   // Durable activation marker — NO TTL by design (#4927 re-review P1); see
   // validate-rss-feeds.mjs for the rationale.
-  await upstashCommand(creds, ['SET', 'seed-activated:news:recall-benchmark', '1']);
-  console.log(`published ${RECALL_KEY}`);
+  await _redisCommand(creds, ['SET', 'seed-activated:news:recall-benchmark', '1']);
+  _logger.log(`published ${RECALL_KEY}`);
 }
 
 // Importable for tests; only run when executed directly.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((err) => {
+  runRecallBenchmark().catch((err) => {
     // Analysis job: never redden the workflow on upstream jitter.
     console.warn(`recall-benchmark failed (non-fatal): ${err.message}`);
   });

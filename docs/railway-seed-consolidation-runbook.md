@@ -596,7 +596,7 @@ entries.
 | 19 | seed-forecasts | `9bcbf89e-2785-452b-b59f-144b4863bd95` | LLM-heavy, long runtime |
 | 20 | seed-fuel-prices | `8d966e58-e01c-42cf-8d28-b85fd5d45460` | EU XLSX download |
 | 21 | seed-fx-rates | `5221253d-a22e-4560-a3db-ea4634c2049a` | Shared dependency for other seeds |
-| 22 | seed-gdelt-intel | `3472577e-dff4-49f9-bc17-f32c2f366f75` | 6 topics with 20s delays |
+| 22 | seed-gdelt-intel | `3472577e-dff4-49f9-bc17-f32c2f366f75` | 15-minute bulk GKG/export materializer |
 | 23 | seed-gpsjam | `16949dc7-b908-4740-bfbe-74a213db7c0b` | GPS interference monitoring |
 | 24 | seed-grocery-basket | `c8438692-843d-46ae-bee7-8c19e6847fa4` | Web scraping via Exa |
 | 25 | seed-hormuz | `e6156007-e917-4139-90bd-71b6333a6d0e` | Power BI scraping |
@@ -616,7 +616,7 @@ entries.
 | 39 | seed-supply-chain-trade | `d7cc29f0-691b-40fd-84f2-ce8e8f12b567` | Already multi-section |
 | 40 | seed-thermal-escalation | `71d124d5-a4fb-42c3-9c5b-2fb0e5645e5b` | Derived from fire detections |
 | 41 | seed-trade-flows | `dd3097f7-df65-4b0e-89ca-86a5fac7d558` | UN Comtrade, 6 reporters |
-| 42 | seed-unrest-events | `33c8c2a1-ad66-45ec-ac7e-609d69a59455` | GDELT + ACLED |
+| 42 | seed-unrest-events | `33c8c2a1-ad66-45ec-ac7e-609d69a59455` | ACLED + materialized GDELT bulk events |
 | 43 | seed-webcams | `2bf93afa-1922-4f9c-936d-f5054051b8a5` | Paginated across 8 regions |
 
 **Inventory check:** 4 infra + 4 long-running + 3 consumer + 46 delete + 43 standalone = **100**

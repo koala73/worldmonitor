@@ -712,8 +712,9 @@ describe('api/chat-analyst handler — edge wiring + pre-auth gates', () => {
 // straight from Vercel, with a 2.5s hot-path timeout and a bare `catch {}`.
 // GDELT's DOC API is supply-side load-shed, so that fetch had been silently
 // returning '' for weeks while every request still paid the latency. Headlines
-// now come from the seed-owned canonical key that scripts/seed-gdelt-intel.mjs
-// materializes (Railway writes, Vercel reads).
+// now come from the seed-owned canonical key that
+// scripts/seed-gdelt-bulk-materializer.mjs materializes (Railway writes,
+// Vercel reads).
 // ---------------------------------------------------------------------------
 
 const GDELT_INTEL_KEY = 'intelligence:gdelt-intel:v1';
@@ -1165,10 +1166,10 @@ describe('assembleAnalystContext — production payload shapes (#5856 review rou
   });
 });
 
-describe('topic-id vocabulary stays pinned to the seeder (#5856 review round)', () => {
-  it('ALL_TOPIC_IDS matches scripts/seed-gdelt-intel.mjs INTEL_TOPICS ids exactly', async () => {
-    const seeder = await import('../scripts/seed-gdelt-intel.mjs');
-    assert.deepEqual([...ALL_TOPIC_IDS], seeder.INTEL_TOPIC_IDS,
-      'a seeder topic rename would silently drop articles from analyst scoping — keep these in lockstep');
+describe('topic-id vocabulary stays pinned to the active bulk materializer (#5856 review round)', () => {
+  it('ALL_TOPIC_IDS matches GDELT_BULK_TOPICS ids exactly', async () => {
+    const materializer = await import('../scripts/_gdelt-bulk-materializer.mjs');
+    assert.deepEqual([...ALL_TOPIC_IDS], materializer.GDELT_BULK_TOPICS.map((topic) => topic.id),
+      'a bulk-materializer topic rename would silently drop articles from analyst scoping — keep these in lockstep');
   });
 });
