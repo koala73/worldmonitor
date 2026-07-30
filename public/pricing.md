@@ -29,8 +29,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 ## Pro
 
 - Price: $39.99/month
-- Annual price: $399.99/year
-- Annual savings: 2 months free versus monthly billing
+- Annual price: $359.99/year
+- Annual savings: 3 months free versus monthly billing
 - Best for: Investors, analysts, researchers, traders and operators who need the decision layer on top of the free dashboard
 - Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, MCP access and 59 tools under one key
 - License: Personal use
@@ -53,8 +53,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 ## API Starter
 
 - Price: $99.99/month
-- Annual price: $999/year
-- Annual savings: about 17 percent versus monthly billing
+- Annual price: $899/year
+- Annual savings: about 25 percent versus monthly billing
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
 - Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
 - License: Commercial license for your organization — build internal tools and reporting on the data; redistributing it to your own customers requires API Business
@@ -112,7 +112,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
     {
       "name": "Pro",
       "price_usd_monthly": 39.99,
-      "price_usd_yearly": 399.99,
+      "price_usd_yearly": 359.99,
       "features": [
         "WM Analyst",
         "Scenario Engine",
@@ -140,7 +140,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
     {
       "name": "API",
       "price_usd_monthly": 99.99,
-      "price_usd_yearly": 999,
+      "price_usd_yearly": 899,
       "features": [
         "REST API",
         "license / API key included",

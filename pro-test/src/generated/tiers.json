@@ -26,7 +26,7 @@
     "name": "Pro",
     "localeKey": "pro",
     "monthlyPrice": 39.99,
-    "annualPrice": 399.99,
+    "annualPrice": 359.99,
     "description": "Full intelligence dashboard",
     "features": [
       "Everything in Free",
@@ -82,7 +82,7 @@
     "name": "API Starter",
     "localeKey": "api",
     "monthlyPrice": 99.99,
-    "annualPrice": 999,
+    "annualPrice": 899,
     "description": "Build internal tools on live intelligence data",
     "features": [
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",

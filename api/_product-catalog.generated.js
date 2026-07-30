@@ -47,7 +47,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "tierGroup": "pro",
       "billingPeriod": "annual",
       "billingDuration": "P1Y",
-      "price": 399.99,
+      "price": 359.99,
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock",
       "url": "https://www.worldmonitor.app/pro#pricing",
@@ -103,7 +103,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "tierGroup": "api_starter",
       "billingPeriod": "annual",
       "billingDuration": "P1Y",
-      "price": 999,
+      "price": 899,
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock",
       "url": "https://www.worldmonitor.app/pro#pricing",
@@ -344,10 +344,10 @@ export const PUBLIC_TIER_GROUPS = [
 
 export const FALLBACK_PRICES = {
   "pdt_0Nbtt71uObulf7fGXhQup": 3999,
-  "pdt_0NbttMIfjLWC10jHQWYgJ": 39999,
+  "pdt_0NbttMIfjLWC10jHQWYgJ": 35999,
   "pdt_0NjyFDbhURh2oROgPIU3G": 4999,
   "pdt_0Nk072fxPUcHWivZRtlQW": 44900,
   "pdt_0NbttVmG1SERrxhygbbUq": 9999,
-  "pdt_0Nbu2lawHYE3dv2THgSEV": 99900,
+  "pdt_0Nbu2lawHYE3dv2THgSEV": 89900,
   "pdt_0Nbttg7NuOJrhbyBGCius": 29999
 };
