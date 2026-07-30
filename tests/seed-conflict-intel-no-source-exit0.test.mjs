@@ -190,6 +190,21 @@ test('fetchAll: no ACLED creds but GDELT fallback WORKS -> not sourceUnavailable
   );
 });
 
+test('fetchAll: a programming defect in the GDELT fallback escapes to runSeed instead of degrading to sourceUnavailable (#5855 review)', async () => {
+  delete process.env.ACLED_EMAIL;
+  delete process.env.ACLED_PASSWORD;
+  delete process.env.ACLED_ACCESS_TOKEN;
+  globalThis.fetch = async () => new Response('rate limited', { status: 429 });
+
+  await assert.rejects(
+    fetchAll({
+      fetchGdeltFallback: async () => { throw new TypeError('bulk.events.map is not a function'); },
+    }),
+    TypeError,
+    'a deploy defect must fail the fetch phase attributably, not impersonate an upstream outage',
+  );
+});
+
 // ─── SECURITY: proxy credentials must never reach the logs ───
 
 test('redactProxyCredentials scrubs inline proxy user:pass from surfaced errors', () => {

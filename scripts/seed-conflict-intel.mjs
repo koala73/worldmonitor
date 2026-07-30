@@ -402,6 +402,16 @@ export async function fetchGdeltCountryEvents(cc) {
   return { country: cc, ok: true, events: mapGdeltArticlesToEvents(data?.articles, cc) };
 }
 
+// #5855 review: a programming defect in our own code must crash loud and
+// attributable to the deploy — never be reclassified as an upstream outage and
+// quietly degraded to sourceUnavailable/exit 0 under the mirror-outage runbook.
+function isProgrammingDefect(error) {
+  return error instanceof TypeError
+    || error instanceof ReferenceError
+    || error instanceof RangeError
+    || error instanceof SyntaxError;
+}
+
 export async function fetchGdeltConflictEvents({
   fetchCountryEvents = fetchGdeltCountryEvents,
   fetchBulkEvents = fetchGdeltBulkConflictEvents,
@@ -418,9 +428,11 @@ export async function fetchGdeltConflictEvents({
     const bulk = await fetchBulkEvents();
     if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
     let previousSnapshot = null;
+    let previousSnapshotReadFailed = false;
     try {
       previousSnapshot = await loadPreviousSnapshot();
     } catch (snapshotError) {
+      previousSnapshotReadFailed = true;
       console.warn(
         '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
         + ` ${snapshotError?.message || snapshotError}`,
@@ -429,6 +441,16 @@ export async function fetchGdeltConflictEvents({
     const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
     if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
     const countriesWithEvents = new Set(rolling.events.map(event => event.country)).size;
+    if (bulk.exportsSucceeded < bulk.exportsRequested) {
+      // Partial mirror degradation normally still publishes (each 15-min slice
+      // gets ~RECENT_EXPORT_COUNT retries before aging out of the manifest
+      // tail, and the rolling merge retains prior events), but say so — a
+      // silent thin tick is how a persistent asymmetric outage hides (#5849
+      // review). Logged ahead of the cold-start floor so a thin cold-start
+      // tick — exactly the degraded-mirror shape — still reports the ratio
+      // (#5855 review).
+      console.warn(`  GDELT bulk exports partially degraded: ${bulk.exportsSucceeded}/${bulk.exportsRequested} export files fetched`);
+    }
     // Cold-start coverage floor (#5849 review, flagged independently by two
     // reviewers): with no retained rolling window, an implausibly thin bulk
     // result — a partially-degraded mirror serving one usable export — must not
@@ -436,18 +458,18 @@ export async function fetchGdeltConflictEvents({
     // both-fail, to runSeed's sourceUnavailable last-good preservation) instead.
     // Steady-state ticks always retain prior-window events, so this never fires
     // there; a genuine 2h window of material violence spans many countries.
-    if (rolling.retainedPreviousEvents === 0 && countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES) {
+    // A transient snapshot-read failure must NOT arm the floor (#5855 review):
+    // retained=0 then means "could not read", not "first-ever run", and
+    // publishing the fresh bulk window beats routing to the load-shed sweep.
+    if (
+      !previousSnapshotReadFailed
+      && rolling.retainedPreviousEvents === 0
+      && countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES
+    ) {
       throw new Error(
         `cold-start bulk window too thin: ${countriesWithEvents} countries with events`
         + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
       );
-    }
-    if (bulk.exportsSucceeded < bulk.exportsRequested) {
-      // Partial mirror degradation still publishes (each 15-min slice gets
-      // ~RECENT_EXPORT_COUNT retries before aging out of the manifest tail, and
-      // the rolling merge retains prior events), but say so — a silent thin
-      // tick is how a persistent asymmetric outage hides (#5849 review).
-      console.warn(`  GDELT bulk exports partially degraded: ${bulk.exportsSucceeded}/${bulk.exportsRequested} export files fetched`);
     }
     console.log(
       `  GDELT bulk conflict-events: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
@@ -468,6 +490,10 @@ export async function fetchGdeltConflictEvents({
       source: 'gdelt-bulk',
     };
   } catch (bulkError) {
+    // Reclassified as a "bulk failure", a code defect would route to the
+    // load-shed DOC sweep and end in a quiet sourceUnavailable exit 0,
+    // sending operators down the mirror-outage runbook (#5855 review).
+    if (isProgrammingDefect(bulkError)) throw bulkError;
     bulkFailure = `GDELT bulk event export failed: ${bulkError?.message || bulkError}`;
     console.warn(`  ${bulkFailure}; falling back to the DOC country sweep`);
   }
@@ -1009,6 +1035,9 @@ export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents }
       // credentialed-but-empty ACLED result is trusted (returns `ac`) rather than
       // overwritten by GDELT volume.
       const gdeltEvents = await fetchGdeltFallback({ deadlineAt: sweepDeadlineAt }).catch((e) => {
+        // Outages degrade to sourceUnavailable below; our own defects must
+        // escape to runSeed and fail attributably (#5855 review).
+        if (isProgrammingDefect(e)) throw e;
         console.warn(`  GDELT conflict-events fallback failed: ${e.message}`);
         return null;
       });

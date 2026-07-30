@@ -574,3 +574,105 @@ test('early-stop reason names BOTH conditions when budget and floor trip togethe
     `expected combined stop reason in warns: ${warns.join(' | ')}`,
   );
 });
+
+test('a transient snapshot-read failure does not arm the cold-start floor (#5855 review)', async () => {
+  // readSeedSnapshot(strict:true) throwing on a Redis blip must not be
+  // conflated with a true first-ever run: the thin-but-real bulk window still
+  // publishes instead of falling through to the load-shed DOC sweep.
+  let docCalls = 0;
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
+    loadPreviousSnapshot: async () => { throw new Error('redis read failed: HTTP 500'); },
+    fetchCountryEvents: async (cc) => {
+      docCalls += 1;
+      return { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] };
+    },
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'thin-but-real', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+  });
+
+  assert.equal(docCalls, 0, 'a snapshot-read blip must not route a healthy bulk tick to the DOC sweep');
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.deepEqual(result.events.map(event => event.id), ['thin-but-real']);
+});
+
+test('partial mirror degradation is reported even when the cold-start floor rejects the tick (#5855 review)', async (t) => {
+  // The 1-usable-export cold start is exactly the partially-degraded-mirror
+  // shape the warning exists to expose; the floor throw must not silence it.
+  const warns = [];
+  t.mock.method(console, 'warn', (...args) => { warns.push(args.join(' ')); });
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
+    loadPreviousSnapshot: async () => null,
+    fetchCountryEvents: async (cc) => (
+      { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] }
+    ),
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'thin-degraded', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 1,
+    }),
+  });
+
+  assert.equal(result.source, 'gdelt', 'thin cold start still falls through to the sweep');
+  assert.ok(
+    warns.some((w) => w.includes('partially degraded: 1/8')),
+    `expected the degradation warn to fire before the floor throw, got: ${warns.join(' | ')}`,
+  );
+});
+
+test('the sweep-budget credit is clamped to GDELT_BULK_WORST_NETWORK_MS on a bulk overrun (#5855 review)', async () => {
+  // Bulk burns 100s against a 60s worst-case budget. The clamped credit moves
+  // the 20s-old cutoff to 80s — already expired when the sweep starts at 100s —
+  // so nothing launches. An unclamped credit (raw elapsed) would resurrect a
+  // 120s cutoff and launch the sweep: this test goes red under that mutant.
+  let fakeTime = 0;
+  let docCalls = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      now: () => fakeTime,
+      deadlineAt: 20_000,
+      loadPreviousSnapshot: async () => null,
+      fetchBulkEvents: async () => {
+        fakeTime += 100_000;
+        throw new Error('mirror hanging');
+      },
+      fetchCountryEvents: async (cc) => {
+        docCalls += 1;
+        fakeTime += 2_000;
+        return { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] };
+      },
+    }),
+    /sweep budget exhausted/,
+  );
+  assert.equal(docCalls, 0, 'the clamped credit must not resurrect the pre-bulk sweep window');
+});
+
+test('a programming defect in the bulk block crashes loud instead of impersonating a mirror outage (#5855 review)', async () => {
+  // With DOC load-shed, "bulk failed" routes to a dead sweep and a quiet
+  // sourceUnavailable exit 0 — the wrong runbook for a shipped code defect.
+  // TypeError/ReferenceError/RangeError/SyntaxError must escape the bulk catch.
+  let docCalls = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      now: () => BULK_FIXTURE_NOW,
+      loadPreviousSnapshot: async () => null,
+      fetchCountryEvents: async (cc) => {
+        docCalls += 1;
+        return { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] };
+      },
+      fetchBulkEvents: async () => { throw new TypeError('bulk.events.map is not a function'); },
+    }),
+    TypeError,
+  );
+  assert.equal(docCalls, 0, 'a code defect must not be reclassified as a bulk outage and routed to the sweep');
+});
