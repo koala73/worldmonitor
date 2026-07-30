@@ -462,6 +462,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
+    // Per-key budgets (#5864): unrest:events:v1 is materializer-backed since
+    // #5863 and was invisible to this envelope — a dead 15-min pipeline still
+    // reported stale:false to agents.
+    _freshnessChecks: [
+      { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 30 },  // 15min cron × 2
+      { key: 'seed-meta:unrest:events',        maxStaleMin: 120 }, // matches api/health.js unrestEvents
+    ],
     // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
     // The audit-time hint matched only this tool's conflict/risk cache keys,
     // but the handler at server/worldmonitor/intelligence/v1/get-risk-scores.ts
@@ -615,6 +622,15 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:news:insights',
     _maxStaleMin: 30,
+    // Per-key budgets (#5864): the envelope used to gate on the insights meta
+    // alone, so a stalled GDELT materializer left agents reading stale:false
+    // for hours. Every bundled key now carries its own freshness budget,
+    // matching api/health.js.
+    _freshnessChecks: [
+      { key: 'seed-meta:news:insights',                    maxStaleMin: 30 },  // 15min cron × 2
+      { key: 'seed-meta:intelligence:gdelt-intel',         maxStaleMin: 45 },  // 15min materializer; matches api/health.js
+      { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 60 }, // 30min cron × 2
+    ],
     _apiPaths: [
       "GET /api/intelligence/v1/list-cross-source-signals",
       "GET /api/intelligence/v1/search-gdelt-documents",

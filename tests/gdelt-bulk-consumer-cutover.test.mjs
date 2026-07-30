@@ -207,3 +207,48 @@ describe('GDELT consumers read materialized Redis products', () => {
     assert.doesNotMatch(source, /fetchGdeltJson|api\.gdeltproject\.org/);
   });
 });
+
+// #5864: the #5855 cold-start floor must survive the materializer cutover —
+// it previously lived only in the now-unwired DOC seam, so a thin cold-start
+// snapshot could become the entire conflict feed.
+describe('materialized conflict cold-start floor (#5864)', () => {
+  const nowMs = Date.parse('2026-07-30T15:00:00.000Z');
+  const thin = {
+    source: 'gdelt-bulk',
+    events: [{ id: 'a', country: 'Sudan' }, { id: 'b', country: 'Sudan' }],
+    pagination: { exportTimestamp: '20260730144500', rollingWindowComplete: false },
+  };
+
+  it('rejects a thin snapshot while the rolling window is still incomplete', async () => {
+    await assert.rejects(
+      readMaterializedGdeltConflictEvents({
+        readSnapshot: async () => thin,
+        now: () => nowMs,
+      }),
+      /cold-start window too thin: 1 countries/,
+    );
+  });
+
+  it('accepts a thin snapshot once the rolling window is complete (steady state)', async () => {
+    const snapshot = await readMaterializedGdeltConflictEvents({
+      readSnapshot: async () => ({ ...thin, pagination: { ...thin.pagination, rollingWindowComplete: true } }),
+      now: () => nowMs,
+    });
+    assert.equal(snapshot.events.length, 2, 'steady-state ticks are never floored');
+  });
+
+  it('accepts a cold start that spans enough countries', async () => {
+    const snapshot = await readMaterializedGdeltConflictEvents({
+      readSnapshot: async () => ({
+        ...thin,
+        events: [
+          { id: 'a', country: 'Sudan' },
+          { id: 'b', country: 'Yemen' },
+          { id: 'c', country: 'Ukraine' },
+        ],
+      }),
+      now: () => nowMs,
+    });
+    assert.equal(snapshot.events.length, 3);
+  });
+});

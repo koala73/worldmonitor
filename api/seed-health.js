@@ -105,7 +105,7 @@ const SEED_DOMAINS = {
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
   'research:arxiv-hn-trending': { key: 'seed-meta:research:arxiv-hn-trending', intervalMin: 75 },
-  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // seed-health alerts at 420min; /api/health uses a wider 720min freshness budget.
+  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
   // Corporate intelligence (#5695): intervalMin = maxStaleMin / 2 (api/health.js: 2880 / 120).

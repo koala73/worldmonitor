@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
@@ -752,5 +753,71 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
     });
     assert.equal(outcome.completionState, 'DEGRADED');
     assert.equal(outcome.freshnessMetaPatch.errorReason, 'gdelt_bulk_cursor_write_failed');
+  });
+});
+
+// #5864: three constants must stay in lockstep or the zero-headroom class
+// returns — the cron cadence, the seeder's own staleness budget, and the two
+// alerting surfaces that read the same seed-meta key.
+describe('gdelt materializer freshness constants stay in lockstep (#5864)', () => {
+  const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+
+  it('cron cadence, RUN_SEED_OPTS.maxStaleMin, health and seed-health agree', () => {
+    const registry = JSON.parse(read('../scripts/railway-services.json'));
+    const entry = registry.find((service) => service.service === 'seed-gdelt-intel');
+    assert.ok(entry, 'the materializer service entry must exist');
+    assert.match(entry.cronSchedule, /^\*\/15 /, 'the materializer runs every 15 minutes');
+    assert.equal(
+      entry.entry,
+      'scripts/seed-gdelt-bulk-materializer.mjs',
+      'the service must run the materializer, not the retired DOC seeder',
+    );
+
+    const cronMin = 15;
+    const maxStaleMin = RUN_SEED_OPTS.maxStaleMin;
+    assert.ok(
+      maxStaleMin >= cronMin * 2,
+      `maxStaleMin ${maxStaleMin} must allow at least one missed tick (2x ${cronMin}min)`,
+    );
+
+    const healthSrc = read('../api/health.js');
+    const healthEntry = healthSrc.match(
+      /gdeltIntel:\s*\{\s*key:\s*'seed-meta:intelligence:gdelt-intel',\s*maxStaleMin:\s*(\d+)/,
+    );
+    assert.ok(healthEntry, 'api/health.js must gate gdeltIntel on the seed-meta key');
+    assert.equal(
+      Number(healthEntry[1]),
+      maxStaleMin,
+      'api/health.js and RUN_SEED_OPTS must use the same staleness budget',
+    );
+
+    const seedHealthSrc = read('../api/seed-health.js');
+    const seedHealthEntry = seedHealthSrc.match(
+      /'intelligence:gdelt-intel':\s*\{[^}]*intervalMin:\s*(\d+)/,
+    );
+    assert.ok(seedHealthEntry, 'api/seed-health.js must track the materializer');
+    const intervalMin = Number(seedHealthEntry[1]);
+    assert.ok(
+      intervalMin * 2 >= maxStaleMin && intervalMin * 2 <= maxStaleMin + cronMin,
+      `seed-health intervalMin ${intervalMin} (alerts at ${intervalMin * 2}min) must track`
+      + ` the ${maxStaleMin}min health budget, not the retired 4h cron`,
+    );
+  });
+
+  it('every published product outlives the staleness budget that gates it', () => {
+    // A TTL at or under its gate expires the payload before the staleness warn
+    // can fire, paging EMPTY/crit for a merely-late tick (#5309 / #5864).
+    const ttlByKey = new Map(
+      RUN_SEED_OPTS.preserveKeyTtls.map(({ key, ttlSeconds }) => [key, ttlSeconds]),
+    );
+    const positiveTtl = ttlByKey.get(POSITIVE_EVENTS_BOOTSTRAP_KEY);
+    assert.ok(positiveTtl, 'the bootstrap key must carry a preserved TTL');
+    const healthSrc = read('../api/health.js');
+    const gate = healthSrc.match(/positiveGeoEvents:\s*\{[^}]*maxStaleMin:\s*(\d+)/);
+    assert.ok(gate, 'api/health.js must gate positiveGeoEvents');
+    assert.ok(
+      positiveTtl > Number(gate[1]) * 60,
+      `positive-events TTL ${positiveTtl}s must outlive its ${gate[1]}min health gate`,
+    );
   });
 });

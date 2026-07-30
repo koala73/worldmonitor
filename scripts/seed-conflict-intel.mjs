@@ -640,6 +640,24 @@ export async function readMaterializedGdeltConflictEvents({
       + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
     );
   }
+  // Cold-start coverage floor, carried onto the materialized path (#5864).
+  // #5855 added this so an implausibly thin window could not become the whole
+  // conflict feed; after the #5863 cutover it survived only in the unwired DOC
+  // seam. It arms ONLY before the rolling window is complete — steady-state
+  // ticks always carry a full 24h window and are never floored. Throwing here
+  // routes to fetchAll's sourceUnavailable path, which preserves last-good.
+  if (snapshot?.pagination?.rollingWindowComplete === false) {
+    const countriesWithEvents = new Set(
+      snapshot.events.map((event) => event?.country).filter(Boolean),
+    ).size;
+    if (countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES) {
+      throw new Error(
+        `${GDELT_BULK_CONFLICT_KEY} cold-start window too thin:`
+        + ` ${countriesWithEvents} countries with events`
+        + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
+      );
+    }
+  }
   return snapshot;
 }
 

@@ -85,7 +85,7 @@ export function parseGdeltRecentExports(manifest, limit = RECENT_EXPORT_COUNT) {
     .slice(-Math.max(1, limit));
 }
 
-export function extractGdeltExportCsv(zipBytes) {
+export function extractGdeltExportCsv(zipBytes, expectedTimestamp = '') {
   const zip = Buffer.isBuffer(zipBytes) ? zipBytes : Buffer.from(zipBytes || []);
   if (zip.length < 30 || zip.readUInt32LE(0) !== 0x04034b50) {
     throw new Error('invalid GDELT event export ZIP header');
@@ -114,6 +114,15 @@ export function extractGdeltExportCsv(zipBytes) {
   const filename = zip.subarray(30, 30 + filenameLength).toString('utf8');
   if (!/^\d{14}\.export\.CSV$/.test(filename)) {
     throw new Error(`unexpected GDELT event export filename: ${filename}`);
+  }
+  // Exact-match the descriptor when the caller has one (#5864): the pattern
+  // above accepts ANY well-formed timestamp, so a substituted-but-valid entry
+  // would pass. The bulk materializer's copy of this transport already pins the
+  // exact name; both copies now agree.
+  if (expectedTimestamp && filename !== `${expectedTimestamp}.export.CSV`) {
+    throw new Error(
+      `GDELT event export filename ${filename} does not match descriptor ${expectedTimestamp}`,
+    );
   }
 
   const compressed = zip.subarray(dataStart, dataEnd);
@@ -278,7 +287,9 @@ export async function fetchGdeltBulkConflictEvents({ fetchImpl = globalThis.fetc
       const actualMd5 = createHash('md5').update(zipBytes).digest('hex');
       if (actualMd5 !== descriptor.md5) throw new Error('checksum mismatch');
       return {
-        events: mapGdeltExportToConflictEvents(extractGdeltExportCsv(zipBytes)),
+        events: mapGdeltExportToConflictEvents(
+          extractGdeltExportCsv(zipBytes, descriptor.exportTimestamp),
+        ),
         exportTimestamp: descriptor.exportTimestamp,
       };
     },

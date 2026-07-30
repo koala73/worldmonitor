@@ -11,7 +11,11 @@ const TIMELINE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_ARTICLES_PER_TOPIC = 10;
 const MAX_SOURCE_URLS = 5;
 const MAX_GKG_ZIP_BYTES = 15_000_000;
-const MAX_GKG_CSV_BYTES = 100_000_000;
+// A real 15-minute GKG cohort measures ~17.7MB uncompressed (5.7MB zipped,
+// measured 2026-07-30). 40MB keeps >2x headroom for spike days while cutting
+// the worst-case catch-up footprint (8 files at concurrency 4) from ~400MB to
+// ~160MB — the exit-137 class this cap exists to bound (#5864).
+const MAX_GKG_CSV_BYTES = 40_000_000;
 const MAX_EXPORT_ZIP_BYTES = 5_000_000;
 const MAX_EXPORT_CSV_BYTES = 30_000_000;
 
@@ -58,6 +62,10 @@ export function isGdeltGeoMaterializationRecord(record) {
   return record.tone > 2 && record.themes.some((theme) => POSITIVE_THEMES.has(theme));
 }
 
+// Keep in sync with CATEGORY_KEYWORDS in src/services/positive-classifier.ts —
+// the two lists have ALREADY diverged (the TS copy carries extra terms such as
+// 'therapy', 'cancer', 'disease', 'reef'), so identical source text can be
+// labelled differently by the producer and the client classifier (#5864).
 const POSITIVE_CATEGORY_KEYWORDS = [
   ['clinical trial', 'science-health'], ['study finds', 'science-health'],
   ['researchers', 'science-health'], ['scientists', 'science-health'],

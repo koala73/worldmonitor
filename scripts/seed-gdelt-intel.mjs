@@ -1,5 +1,16 @@
 #!/usr/bin/env node
 
+// DEPRECATED — ROLLBACK SEAM ONLY. No Railway service runs this script since
+// the #5843 bulk-materializer cutover repointed the `seed-gdelt-intel` service
+// at scripts/seed-gdelt-bulk-materializer.mjs. It is retained (with its tests)
+// so the DOC-API path stays diagnosable and revertible; it is NOT the producer
+// of intelligence:gdelt-intel:v1 in production.
+//
+// Reactivating it requires restoring the registry entry in
+// scripts/railway-services.json AND the GDELT_PROXY_URL / PROXY_URL env the
+// repurposed service entry dropped. Note the DOC API is supply-side load-shed
+// (#5843), so this path is not expected to succeed. Tracked by #5864.
+
 import {
   acquireLockSafely,
   extendExistingTtl,
