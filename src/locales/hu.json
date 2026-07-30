@@ -1760,6 +1760,8 @@
       "summaryFailed": "Összegzés sikertelen",
       "sources": "{{count}} forrás",
       "relatedAssetsNear": "Kapcsolódó eszközök a közelben: {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} forrás",
+      "sourceCoverageHint": "{{total}} engedélyezett forrásból {{covered}} látszik — ez a panel minden frissítéskor váltogatja a forrásait",
       "sortBy": "Rendezés:",
       "sortNewest": "Legújabb",
       "sortRelevance": "Relevancia"

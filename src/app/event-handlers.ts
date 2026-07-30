@@ -91,8 +91,9 @@ import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
-import { evaluateExportGate, exportLockToGateReason } from '@/services/gates/export';
+import { evaluateAvailableExportFormats, evaluateExportGate, exportLockToGateReason } from '@/services/gates/export';
 import { primeExportGateActivation } from '@/services/gates/export-resolver';
+import type { DataExportFormat } from '@/services/gates/export-resolver';
 import { evaluatePlaybackGate } from '@/services/gates/playback';
 import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
 import { ExportGateControl } from '@/components/ExportGateControl';
@@ -1710,8 +1711,11 @@ export class EventHandlerManager implements AppModule {
       }
     };
 
+    let currentExportFormats: readonly DataExportFormat[] = [];
+
     const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
       if (this.ctx.exportPanel) {
+        this.ctx.exportPanel.setAvailableFormats(currentExportFormats);
         attachExportPanel(this.ctx.exportPanel);
         return Promise.resolve(this.ctx.exportPanel);
       }
@@ -1722,7 +1726,7 @@ export class EventHandlerManager implements AppModule {
           if (this.ctx.isDestroyed) {
             throw new Error('EventHandlerManager destroyed before export panel loaded');
           }
-          const panel = new ExportPanel(getExportData);
+          const panel = new ExportPanel(getExportData, currentExportFormats);
           this.ctx.exportPanel = panel;
           attachExportPanel(panel);
           return panel;
@@ -1779,13 +1783,17 @@ export class EventHandlerManager implements AppModule {
       headerRight?.insertBefore(lockedControl.getElement(), headerRight.firstChild);
     };
 
-    const unlock = (): void => {
+    const unlock = (formats: readonly DataExportFormat[]): void => {
+      currentExportFormats = formats;
       const wasLocked = lockedControl !== null;
       // Change-detection guard: gating re-fires on every auth AND entitlement
       // emission, most with an unchanged verdict — skip the re-import/DOM
       // write when already unlocked (same pattern as Panel.showGatedCta's
       // repeat-verdict skip).
-      if (!wasLocked && isUnlocked) return;
+      if (!wasLocked && isUnlocked) {
+        this.ctx.exportPanel?.setAvailableFormats(currentExportFormats);
+        return;
+      }
       isUnlocked = true;
       removeLockedControl();
       void ensureExportPanel()
@@ -1797,6 +1805,7 @@ export class EventHandlerManager implements AppModule {
             panel.getElement().style.display = 'none';
             return;
           }
+          panel.setAvailableFormats(currentExportFormats);
           panel.getElement().style.display = '';
           if (wasLocked) liveRegion.textContent = t('components.exportGate.unlockedAnnouncement');
         })
@@ -1810,7 +1819,8 @@ export class EventHandlerManager implements AppModule {
 
     const applyGate = (): void => {
       if (this.ctx.isDestroyed) return;
-      const verdict = evaluateExportGate(getAuthState());
+      const authState = getAuthState();
+      const verdict = evaluateExportGate(authState);
       if (verdict.locked) {
         showLocked(exportLockToGateReason(verdict.reason));
         return;
@@ -1823,7 +1833,7 @@ export class EventHandlerManager implements AppModule {
           if (active) applyGate();
         });
       }
-      unlock();
+      unlock(evaluateAvailableExportFormats(authState));
     };
 
     applyGate();

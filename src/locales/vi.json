@@ -1619,6 +1619,8 @@
       "summaryFailed": "Tóm tắt thất bại",
       "sources": "{{count}} nguồn",
       "relatedAssetsNear": "Tài sản liên quan gần {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} nguồn",
+      "sourceCoverageHint": "Đang hiển thị {{covered}} trong {{total}} nguồn đã bật — bảng này luân phiên các nguồn của nó sau mỗi lần làm mới",
       "sortBy": "Sắp xếp theo",
       "sortNewest": "Mới nhất",
       "sortRelevance": "Mức độ liên quan"

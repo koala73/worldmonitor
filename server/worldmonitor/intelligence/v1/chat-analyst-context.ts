@@ -7,7 +7,15 @@ import { getCachedJson, readCachedJson } from '../../../_shared/redis';
 // phrases verbatim. We accept that legitimate "Anthropic warns: ignore previous
 // instructions…" headlines will be partly mangled in the analyst context — the
 // asymmetric cost favours hard sanitization at the prompt boundary.
-import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
+// Second policy, orthogonal to the one above (#5850, #5857): EVERY block this
+// file builds is newline-delimited, and sanitizeForPrompt deliberately
+// preserves a lone newline (it collapses only runs of 2+ whitespace). So every
+// feed-derived string here goes through sanitizeForPromptLine — sanitizing the
+// content is not enough when the delimiter is part of the content's alphabet.
+// The rule is uniform on purpose: this file has no free-prose sink (even the
+// worldBrief and countryBrief bodies render under structural headers), so a
+// plain sanitizeForPrompt call site would be the bug, not an exception.
+import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 // Pure, import-safe helper module (no Redis, no network, no top-level exec) —
@@ -88,7 +96,11 @@ export function buildWorldBrief(data: unknown): string {
   // payload variations. sanitizeForPrompt protects against feed-side prompt
   // injection — both the brief and the headlines are untrusted upstream text
   // that flows into the analyst's system prompt.
-  const briefText = sanitizeForPrompt(safeStr(d.worldBrief || d.brief || d.summary || d.content || d.text));
+  // Line-collapsed, not just sanitized: production `worldBrief` is a single
+  // lead paragraph (composeSynthesizedBrief caps it at 2-3 sentences / 80
+  // words) or a single headline, so it has no newlines to lose — while an
+  // injected one would let the feed open its own `Top Events:` block below.
+  const briefText = sanitizeForPromptLine(safeStr(d.worldBrief || d.brief || d.summary || d.content || d.text));
   if (briefText) lines.push(briefText.slice(0, 600));
 
   const stories = Array.isArray(d.topStories) ? d.topStories : Array.isArray(d.stories) ? d.stories : [];
@@ -96,7 +108,7 @@ export function buildWorldBrief(data: unknown): string {
     lines.push('Top Events:');
     for (const s of stories.slice(0, 12)) {
       const story = s as Record<string, unknown>;
-      const title = sanitizeForPrompt(safeStr(story.primaryTitle || story.headline || story.title || s));
+      const title = sanitizeForPromptLine(safeStr(story.primaryTitle || story.headline || story.title || s));
       if (title) lines.push(`- ${title}`);
     }
   }
@@ -120,7 +132,7 @@ export function buildRiskScores(data: unknown): string {
 
   const lines = top15.map((s: unknown) => {
     const sc = s as Record<string, unknown>;
-    const country = safeStr(sc.countryName || sc.name || sc.country);
+    const country = sanitizeForPromptLine(safeStr(sc.countryName || sc.name || sc.country));
     const score = safeNum(sc.score ?? sc.cii ?? sc.value);
     if (!country) return null;
     return `- ${country}: ${score.toFixed(1)}`;
@@ -129,7 +141,7 @@ export function buildRiskScores(data: unknown): string {
   return lines.length ? `Top Risk Countries:\n${lines.join('\n')}` : '';
 }
 
-function buildMarketImplications(data: unknown): string {
+export function buildMarketImplications(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const cards = Array.isArray(d.cards) ? d.cards : [];
@@ -137,10 +149,10 @@ function buildMarketImplications(data: unknown): string {
 
   const lines = cards.slice(0, 8).map((c: unknown) => {
     const card = c as Record<string, unknown>;
-    const ticker = safeStr(card.ticker);
-    const title = safeStr(card.title);
-    const direction = safeStr(card.direction);
-    const confidence = safeStr(card.confidence);
+    const ticker = sanitizeForPromptLine(safeStr(card.ticker));
+    const title = sanitizeForPromptLine(safeStr(card.title));
+    const direction = sanitizeForPromptLine(safeStr(card.direction));
+    const confidence = sanitizeForPromptLine(safeStr(card.confidence));
     if (!ticker || !title) return null;
     return `- ${ticker} ${direction} (${confidence}): ${title}`;
   }).filter((l): l is string => l !== null);
@@ -156,8 +168,8 @@ export function buildForecasts(data: unknown): string {
 
   const lines = predictions.slice(0, 8).map((p: unknown) => {
     const pred = p as Record<string, unknown>;
-    const title = safeStr(pred.title || pred.event);
-    const domain = safeStr(pred.domain || pred.category);
+    const title = sanitizeForPromptLine(safeStr(pred.title || pred.event));
+    const domain = sanitizeForPromptLine(safeStr(pred.domain || pred.category));
     const prob = safeNum(pred.probability ?? pred.prob);
     if (!title) return null;
     const probStr = prob > 0 ? ` — ${formatPct(prob > 1 ? prob : prob * 100)}` : '';
@@ -175,7 +187,7 @@ export function buildMarketData(stocks: unknown, commodities: unknown): string {
     const quotes = Array.isArray(d.quotes) ? d.quotes : [];
     const stockLines = quotes.slice(0, 6).map((q: unknown) => {
       const quote = q as Record<string, unknown>;
-      const sym = safeStr(quote.symbol || quote.ticker);
+      const sym = sanitizeForPromptLine(safeStr(quote.symbol || quote.ticker));
       const price = safeNum(quote.price ?? quote.regularMarketPrice);
       const chg = safeNum(quote.changePercent ?? quote.regularMarketChangePercent);
       if (!sym || !price) return null;
@@ -189,7 +201,7 @@ export function buildMarketData(stocks: unknown, commodities: unknown): string {
     const quotes = Array.isArray(d.quotes) ? d.quotes : [];
     const commLines = quotes.slice(0, 4).map((q: unknown) => {
       const quote = q as Record<string, unknown>;
-      const sym = safeStr(quote.symbol || quote.ticker || quote.name);
+      const sym = sanitizeForPromptLine(safeStr(quote.symbol || quote.ticker || quote.name));
       const price = safeNum(quote.price ?? quote.regularMarketPrice);
       const chg = safeNum(quote.changePercent ?? quote.regularMarketChangePercent);
       if (!sym || !price) return null;
@@ -204,19 +216,19 @@ export function buildMarketData(stocks: unknown, commodities: unknown): string {
 export function buildMacroSignals(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
-  const verdict = safeStr(d.verdict || d.regime || d.signal);
+  const verdict = sanitizeForPromptLine(safeStr(d.verdict || d.regime || d.signal));
   const active = Array.isArray(d.activeSignals) ? d.activeSignals : Array.isArray(d.signals) ? d.signals : [];
   const lines: string[] = [];
   if (verdict) lines.push(`Regime: ${verdict}`);
   for (const s of active.slice(0, 4)) {
     const sig = s as Record<string, unknown>;
-    const name = safeStr(sig.name || sig.label);
+    const name = sanitizeForPromptLine(safeStr(sig.name || sig.label));
     if (name) lines.push(`- ${name}`);
   }
   return lines.length ? `Macro Signals:\n${lines.join('\n')}` : '';
 }
 
-function buildPredictionMarkets(data: unknown): string {
+export function buildPredictionMarkets(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const all = [
@@ -229,7 +241,7 @@ function buildPredictionMarkets(data: unknown): string {
 
   const lines = all.map((m: unknown) => {
     const market = m as Record<string, unknown>;
-    const title = sanitizeForPrompt(safeStr(market.title));
+    const title = sanitizeForPromptLine(safeStr(market.title));
     const yes = safeNum(market.yesPrice);
     if (!title) return null;
     return `- "${title}" Yes: ${formatPct(yes > 1 ? yes : yes * 100)}`;
@@ -238,7 +250,7 @@ function buildPredictionMarkets(data: unknown): string {
   return lines.length ? `Prediction Markets:\n${lines.join('\n')}` : '';
 }
 
-function buildEnergyExposure(data: unknown): string {
+export function buildEnergyExposure(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const year = typeof d.year === 'number' ? d.year : '';
@@ -258,7 +270,7 @@ function buildEnergyExposure(data: unknown): string {
       : [];
     if (!entries.length) continue;
     const formatted = entries
-      .map((e) => `${safeStr(e.name)} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%`)
+      .map((e) => `${sanitizeForPromptLine(safeStr(e.name))} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%`)
       .join(', ');
     lines.push(`${label}: ${formatted}`);
   }
@@ -299,7 +311,14 @@ async function buildGasStorage(): Promise<string | undefined> {
           if (data && typeof data === 'object') {
             const d = data as Record<string, unknown>;
             if (typeof d.fillPct === 'number') {
-              entries.push({ iso2: safeStr(d.iso2) || iso2, fillPct: d.fillPct, trend: safeStr(d.trend) || undefined });
+              entries.push({
+                // Both sides of the fallback are Redis-derived — the loop's
+                // iso2 comes from the seeded countries list, so it needs the
+                // same guard as the payload's own field.
+                iso2: sanitizeForPromptLine(safeStr(d.iso2)) || sanitizeForPromptLine(iso2),
+                fillPct: d.fillPct,
+                trend: sanitizeForPromptLine(safeStr(d.trend)) || undefined,
+              });
             }
           }
         } catch {
@@ -326,10 +345,10 @@ async function buildElectricityPrices(): Promise<string | undefined> {
       .slice(0, 5);
     if (entries.length === 0) return undefined;
     const parts = entries.map((e) => {
-      const region = safeStr(e.region);
+      const region = sanitizeForPromptLine(safeStr(e.region));
       const price = (e.price as number).toFixed(1);
       const currency = safeStr(e.currency);
-      const unit = safeStr(e.unit) || 'MWh';
+      const unit = sanitizeForPromptLine(safeStr(e.unit)) || 'MWh';
       const sym = currency === 'GBP' ? '£' : currency === 'USD' ? '$' : '€';
       return `${region}: ${sym}${price}/${unit}`;
     });
@@ -351,8 +370,8 @@ async function buildEnergyIntelligence(): Promise<string | undefined> {
       .slice(0, 3);
     if (recent.length === 0) return undefined;
     return recent.map((item) => {
-      const source = safeStr(item.source);
-      const title = sanitizeForPrompt(safeStr(item.title));
+      const source = sanitizeForPromptLine(safeStr(item.source));
+      const title = sanitizeForPromptLine(safeStr(item.title));
       return source ? `${source}: ${title}` : title;
     }).join(' · ');
   } catch {
@@ -397,7 +416,7 @@ async function buildProductSupply(iso2: string): Promise<string | undefined> {
     if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiOil) {
       const oil = spine.oil as Record<string, unknown> | undefined;
       const src = spine.sources as Record<string, unknown> | undefined;
-      const month = safeStr(src?.jodiOilMonth);
+      const month = sanitizeForPromptLine(safeStr(src?.jodiOilMonth));
       if (!oil) return undefined;
       const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
       const parts: string[] = [];
@@ -414,7 +433,7 @@ async function buildProductSupply(iso2: string): Promise<string | undefined> {
     const data = await getCachedJson(`energy:jodi-oil:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
-    const month = safeStr(d.dataMonth);
+    const month = sanitizeForPromptLine(safeStr(d.dataMonth));
     const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
     const parts: string[] = [];
     for (const [key, label] of [['diesel', 'diesel'], ['jet', 'jet fuel'], ['gasoline', 'gasoline']] as [string, string][]) {
@@ -527,11 +546,12 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
         : sprPolicy.regime === 'spare_capacity' ? 'spare production capacity (no stockpile)'
         : sprPolicy.regime === 'commercial_only' ? 'commercial stocks only (no government reserve)'
         : sprPolicy.regime === 'none' ? 'no strategic reserve program'
-        : sprPolicy.regime as string;
+        // Unknown regimes fall through verbatim from the registry payload.
+        : sanitizeForPromptLine(safeStr(sprPolicy.regime));
       const capacity = typeof sprPolicy.capacityMb === 'number' && sprPolicy.capacityMb > 0
         ? ` (${sprPolicy.capacityMb}Mb capacity)` : '';
-      const operator = typeof sprPolicy.operator === 'string' && sprPolicy.operator
-        ? `, ${sprPolicy.operator}` : '';
+      const operatorName = sanitizeForPromptLine(safeStr(sprPolicy.operator));
+      const operator = operatorName ? `, ${operatorName}` : '';
       parts.push(`Reserve policy: ${regime}${operator}${capacity}`);
     }
 
@@ -588,8 +608,13 @@ async function buildElectricityMix(iso2: string): Promise<string | undefined> {
 export function buildCountryBrief(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
-  const brief = safeStr(d.brief || d.analysis || d.content || d.summary);
-  const country = safeStr(d.countryName || d.country || d.name);
+  // Line-collapsed like buildWorldBrief's paragraph, not left as free prose:
+  // this body renders under a `## Country Focus` header, so an embedded
+  // newline lets the payload open its own `## section` / `- bullet` in the
+  // system prompt. Nothing writes intelligence:country-brief:v1:* today, so
+  // there is no multi-paragraph producer whose formatting this would lose.
+  const brief = sanitizeForPromptLine(safeStr(d.brief || d.analysis || d.content || d.summary));
+  const country = sanitizeForPromptLine(safeStr(d.countryName || d.country || d.name));
   if (!brief) return '';
   return `Country Focus${country ? ` — ${country}` : ''}:\n${brief.slice(0, 500)}`;
 }
@@ -683,20 +708,6 @@ interface SeededGdeltTopic {
 }
 
 /**
- * Collapse every whitespace run — newlines included — to a single space.
- *
- * sanitizeForPrompt deliberately preserves lone newlines (it only collapses
- * runs of 2+ whitespace), which is fine for prose blocks but not here: this
- * block is newline-delimited, so a single `\n` inside a feed-supplied title or
- * source domain would forge an extra `- headline` line that the analyst reads
- * as a real story. Sanitizing content is not enough when the delimiter is
- * itself part of the content's alphabet.
- */
-function toSingleLine(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-/**
  * Coarse age label so the analyst can discount a 3-day-old headline instead of
  * treating every line in the block as breaking news.
  */
@@ -742,7 +753,7 @@ export function buildHeadlinesFromGdeltIntel(
 
     for (const rawArticle of rawTopic.articles as SeededGdeltArticle[]) {
       if (!rawArticle || typeof rawArticle !== 'object') continue;
-      const title = toSingleLine(sanitizeForPrompt(safeStr(rawArticle.title)));
+      const title = sanitizeForPromptLine(safeStr(rawArticle.title));
       if (!title) continue;
       const seenAt = gdeltSeenDateToMs(safeStr(rawArticle.date));
       const at = Number.isFinite(seenAt)
@@ -751,10 +762,10 @@ export function buildHeadlinesFromGdeltIntel(
       candidates.push({
         title,
         // Sanitized like the title: the #3724 policy at the top of this file is
-        // that ALL feed-derived text reaching the system prompt goes through
-        // sanitizeForPrompt, and the source domain is feed-derived. (`topic` is
-        // not — it can only be one of the ids in the allowlist above.)
-        source: toSingleLine(sanitizeForPrompt(safeStr(rawArticle.source))).slice(0, 40),
+        // that ALL feed-derived text reaching the system prompt is sanitized,
+        // and the source domain is feed-derived. (`topic` is not — it can only
+        // be one of the ids in the allowlist above.)
+        source: sanitizeForPromptLine(safeStr(rawArticle.source)).slice(0, 40),
         topic: topicId,
         at,
         score: keywords.length > 0 ? scoreArticle(title, keywords) : 0,
@@ -916,8 +927,8 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
   if (scored.length === 0) return '';
 
   const lines = scored.map(({ item }) => {
-    const title = sanitizeForPrompt(safeStr(item.title));
-    const source = safeStr(item.source).slice(0, 40);
+    const title = sanitizeForPromptLine(safeStr(item.title));
+    const source = sanitizeForPromptLine(safeStr(item.source)).slice(0, 40);
     const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     const meta = [source, ts].filter(Boolean).join(', ');
     return `- ${title}${meta ? ` (${meta})` : ''}`;

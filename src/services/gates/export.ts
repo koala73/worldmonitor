@@ -22,8 +22,10 @@ import { PanelGateReason } from '../panel-gating';
 import { getSecretState } from '../runtime-config';
 import {
   isExportGateActive,
+  resolveAvailableExportFormats,
   resolveExportGate,
   resolveTabCap,
+  type DataExportFormat,
   type ExportGateInputs,
   type ExportGateLockReason,
   type ExportGateVerdict,
@@ -50,7 +52,7 @@ export function exportLockToGateReason(reason: ExportGateLockReason): PanelGateR
  * The decisions themselves live in the pure `export-resolver` leaf so they can
  * be unit-tested without a DOM; this function only reads the reactive sources.
  *
- * Module-private: both public entry points below wrap it, and no caller outside
+ * Module-private: the public entry points below wrap it, and no caller outside
  * this file has ever needed the raw inputs.
  */
 function readExportGateInputs(authState: AuthSession): ExportGateInputs {
@@ -64,6 +66,7 @@ function readExportGateInputs(authState: AuthSession): ExportGateInputs {
       ? {
           tier: entitlement.features.tier,
           dataExport: entitlement.features.dataExport,
+          exportFormats: entitlement.features.exportFormats,
           maxDashboards: entitlement.features.maxDashboards,
         }
       : null,
@@ -74,6 +77,11 @@ function readExportGateInputs(authState: AuthSession): ExportGateInputs {
 /** Current data-export verdict for the given auth session. */
 export function evaluateExportGate(authState: AuthSession): ExportGateVerdict {
   return resolveExportGate(readExportGateInputs(authState));
+}
+
+/** Formats the unlocked export menu may expose for this live session. */
+export function evaluateAvailableExportFormats(authState: AuthSession): DataExportFormat[] {
+  return resolveAvailableExportFormats(readExportGateInputs(authState));
 }
 
 /**

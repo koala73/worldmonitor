@@ -1619,6 +1619,8 @@
       "summaryFailed": "要約に失敗しました",
       "sources": "{{count}}件のソース",
       "relatedAssetsNear": "{{location}}付近の関連アセット",
+      "sourceCoverage": "{{covered}}/{{total}} ソース",
+      "sourceCoverageHint": "有効な {{total}} 件のソースのうち {{covered}} 件を表示中 — このパネルは更新のたびにソースを入れ替えて取得します",
       "sortBy": "並び替え",
       "sortNewest": "最新",
       "sortRelevance": "関連性"

@@ -1622,6 +1622,8 @@
       "summaryFailed": "Rezumatul a eșuat",
       "sources": "surse {{count}}",
       "relatedAssetsNear": "Materiale similare lângă {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} surse",
+      "sourceCoverageHint": "Se afișează {{covered}} din {{total}} surse active — acest panou își rotește sursele la fiecare reîmprospătare",
       "sortBy": "Sortează după",
       "sortNewest": "Cel mai recent",
       "sortRelevance": "Relevanță"

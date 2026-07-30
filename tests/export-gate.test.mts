@@ -20,6 +20,7 @@ import {
   catalogExposesProBusiness,
   isExportGateActive,
   primeExportGateActivation,
+  resolveAvailableExportFormats,
   resolveExportGate,
   resolveExportLock,
   __resetExportGateActivationForTests,
@@ -100,6 +101,66 @@ describe('resolveExportGate — KTD2 decision chain', () => {
     assert.deepEqual(
       resolveExportGate(inputs({ features: { tier: 2, dataExport: false } })),
       { locked: true, reason: 'free_tier' },
+    );
+  });
+});
+
+describe('resolveAvailableExportFormats — catalog-backed export menu', () => {
+  it('uses the loaded entitlement row to expose only its declared formats', () => {
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({
+        features: { tier: 1, dataExport: true, maxDashboards: 25, exportFormats: ['pdf', 'csv'] },
+      })),
+      ['csv', 'pdf'],
+    );
+  });
+
+  it('does not turn a pre-activation or pending snapshot into an export lockout', () => {
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({ gateActive: false })),
+      ['csv', 'json', 'pdf'],
+    );
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({ features: null })),
+      ['csv', 'json', 'pdf'],
+    );
+  });
+
+  it('keeps every format for an entitled legacy row without exportFormats', () => {
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({
+        features: { tier: 1, dataExport: true, maxDashboards: 25 },
+      })),
+      ['csv', 'json', 'pdf'],
+    );
+  });
+
+  it('keeps every format for a legacy tier-2 row without dataExport', () => {
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({
+        features: { tier: 2, maxDashboards: 50 },
+      })),
+      ['csv', 'json', 'pdf'],
+    );
+  });
+
+  it('filters unsupported catalog values and cannot expose formats to a known free row', () => {
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({
+        features: {
+          tier: 1,
+          dataExport: true,
+          maxDashboards: 25,
+          exportFormats: ['xlsx', 'json', 'json'],
+        },
+      })),
+      ['json'],
+    );
+    assert.deepEqual(
+      resolveAvailableExportFormats(inputs({
+        features: { tier: 0, dataExport: false, maxDashboards: 3, exportFormats: ['csv'] },
+      })),
+      [],
     );
   });
 });
@@ -238,7 +299,10 @@ describe('setupExportPanel wiring', () => {
   });
 
   it('routes the verdict through the shared resolver and gate action', () => {
-    assert.match(exportPanelBody, /evaluateExportGate\(getAuthState\(\)\)/);
+    assert.match(exportPanelBody, /evaluateExportGate\(authState\)/);
+    assert.match(exportPanelBody, /evaluateAvailableExportFormats\(authState\)/);
+    assert.match(exportPanelBody, /currentExportFormats = formats/);
+    assert.match(exportPanelBody, /setAvailableFormats\(currentExportFormats\)/);
     assert.match(exportPanelBody, /exportLockToGateReason\(verdict\.reason\)/);
     assert.match(exportPanelBody, /resolveGateAction\(/);
   });

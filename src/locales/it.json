@@ -1141,6 +1141,8 @@
       "relatedAssetsNear": "Asset correlati vicino a {{location}}",
       "summaryError": "Impossibile generare il riepilogo",
       "summaryFailed": "Riepilogo fallito",
+      "sourceCoverage": "{{covered}}/{{total}} fonti",
+      "sourceCoverageHint": "Mostra {{covered}} di {{total}} fonti attive — questo pannello ruota tra le sue fonti a ogni aggiornamento",
       "sortBy": "Ordina per",
       "sortNewest": "Più recenti",
       "sortRelevance": "Rilevanza"

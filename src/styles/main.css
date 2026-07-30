@@ -9643,6 +9643,10 @@ a.prediction-link:hover {
   cursor: pointer;
 }
 
+.export-option[hidden] {
+  display: none;
+}
+
 .export-option:hover {
   background: var(--border);
 }
@@ -21961,6 +21965,10 @@ body.has-breaking-alert .panels-grid {
   text-align: left;
   border-radius: 6px;
   cursor: pointer;
+}
+
+.cb-export-option[hidden] {
+  display: none;
 }
 
 .cb-export-option:hover {

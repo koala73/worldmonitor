@@ -1,6 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
+import { hasPanelSettingEntry, newsPanelKeyForCategory, newsPanelKeyLookupsFor } from '@/app/news-panel-keys';
 import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
@@ -140,7 +141,27 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
   'latest-brief',
 ]);
 
-const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
+/**
+ * Panel keys a dedicated panel owns but registers for AFTER the CANONICAL_FEEDS
+ * NewsPanel pass — the one thing that pass cannot derive for itself.
+ *
+ * Everything else it needs is live by the time it runs: `ctx.panels` and
+ * `lazyPanelRegistrations` already hold every panel registered above it, which is
+ * what lets the news/data key collision be derived instead of enumerated (#5871).
+ * A registration BELOW it is invisible to both.
+ *
+ * `live-news` is the only one. CANONICAL_FEEDS['live-news'] exists to seed the
+ * energy variant's headline sources, not to render a panel; the key belongs to
+ * LiveNewsPanel (24/7 video), registered near the end of createPanels(). Letting
+ * the pass claim it registers a generic NewsPanel first, and lazyPanel()'s dedup
+ * guard then blocks the real video panel — regression #4382, which shipped
+ * "LIVE NEWS / No items in the last 7 days" to the live dashboard. Declaring it
+ * claimed remaps it to `live-news-news`, which has no settings entry, so no panel
+ * is created on any variant. Guarded by tests/live-news-panel-guard.test.mts, and
+ * tests/news-panel-key-reachability.test.mts fails if a SECOND feed-category panel
+ * ever moves below the pass without being listed here.
+ */
+const LATE_REGISTERED_PANEL_KEYS = new Set(['live-news']);
 
 const DASHBOARD_REFERENCE_LINKS = [
   { label: 'Countries', path: '/countries/' },
@@ -1517,7 +1538,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private shouldCreatePanel(key: string): boolean {
-    return Object.prototype.hasOwnProperty.call(this.ctx.panelSettings, key);
+    return hasPanelSettingEntry(this.ctx.panelSettings, key);
   }
 
   private static readonly NEWS_PANEL_TOOLTIPS: Record<string, string> = {
@@ -1983,29 +2004,28 @@ export class PanelLayoutManager implements AppModule {
     // Iterate CANONICAL_FEEDS (union of all variants), not just the active
     // variant's FEEDS preset — so a news panel the user customized in from
     // another variant (e.g. Finance `forex` added to a `full` session) still
-    // gets a NewsPanel created. The panelSettings gate below ensures only
-    // panels the user actually enabled are instantiated.
+    // gets a NewsPanel created. The panelSettings gate inside
+    // newsPanelKeyForCategory ensures only panels the user actually has an entry
+    // for are instantiated.
+    //
+    // Every registration above has already run, so `isPanelKeyClaimed` is the
+    // live answer to "does a data panel already own this feed-category key?" —
+    // the fact the collision remap is derived from, instead of the hardcoded
+    // `markets`/`crypto`/`economic` set that silently omitted `commodities`
+    // (#5871). See src/app/news-panel-keys.ts.
+    const newsPanelKeyLookups = newsPanelKeyLookupsFor({
+      canonicalFeeds: CANONICAL_FEEDS,
+      panels: this.ctx.panels,
+      lazyPanelRegistrations: this.lazyPanelRegistrations,
+      newsCategoryPanelKeys: this.ctx.newsCategoryPanelKeys,
+      panelSettings: this.ctx.panelSettings,
+      lateRegisteredPanelKeys: LATE_REGISTERED_PANEL_KEYS,
+    });
     for (const key of Object.keys(CANONICAL_FEEDS)) {
-      if (this.ctx.newsPanels[key]) continue;
-      if (!Array.isArray((CANONICAL_FEEDS as Record<string, unknown>)[key])) continue;
-      // 'live-news' is the dedicated LiveNewsPanel (24/7 video) key, registered
-      // lazily below — NOT a generic RSS feed panel. CANONICAL_FEEDS['live-news']
-      // exists only to feed the energy variant's headlines; if we let it spawn a
-      // NewsPanel here it registers first and lazyPanel()'s dedup guard then
-      // blocks the real video panel (regression #4382 → "LIVE NEWS / No items in
-      // the last 7 days" on the live dashboard). Skip it so the video panel owns
-      // the key on every variant (happy has no 'live-news' panel at all).
-      if (key === 'live-news') continue;
-      const panelKey = COLLIDING_NEWS_PANEL_KEYS.has(key) && !this.ctx.newsPanels[key] ? `${key}-news` : key;
-      if (this.ctx.panels[panelKey]) continue;
-      // Gate on panelKey, NOT key. When `key` collided with a non-news data
-      // panel (panelKey became `${key}-news` — e.g. `markets`/`crypto`/`economic`
-      // in the full variant), that data panel's own settings entry must NOT
-      // spawn a phantom news panel: the remapped key has to be explicitly
-      // enabled. When there's no collision, panelKey === key so this is unchanged.
+      const panelKey = newsPanelKeyForCategory(key, newsPanelKeyLookups);
+      if (!panelKey) continue;
       const panelConfig = this.ctx.panelSettings[panelKey];
-      if (!panelConfig) continue;
-      const label = panelConfig.name ?? key.charAt(0).toUpperCase() + key.slice(1);
+      const label = panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
       const tooltip = PanelLayoutManager.NEWS_PANEL_TOOLTIPS[panelKey] ?? PanelLayoutManager.NEWS_PANEL_TOOLTIPS[key];
       this.createNewsPanelWithLabel(panelKey, label, tooltip, key);
     }

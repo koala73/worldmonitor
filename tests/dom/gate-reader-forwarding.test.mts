@@ -33,10 +33,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AuthSession } from '@/services/auth-state';
+import type { SubscriptionInfo } from '@/services/billing';
 import type { EntitlementState } from '@/services/entitlements';
 
 /** Mutable stand-ins for the reactive sources the reader snapshots. */
 let entitlement: EntitlementState | null = null;
+let subscription: SubscriptionInfo | null = null;
 let desktopKeyPresent = false;
 let gateActive = true;
 
@@ -45,13 +47,11 @@ vi.mock('@/services/entitlements', async (importOriginal) => ({
   getEntitlementState: () => entitlement,
 }));
 
-// No subscription row: `deriveBillingUxState(null, ent, now)` then resolves to
-// 'active' for an entitled row and 'free' otherwise. Both carry a null billing
-// gate override, so a denial surfaces as the generic 'free_tier' reason and the
-// cases below isolate the forwarding rather than the #4771 refinement.
+// Mutable so the suite can prove the reader forwards billing evidence rather
+// than only exercising the generic free-tier path.
 vi.mock('@/services/billing', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/billing')>()),
-  getSubscription: () => null,
+  getSubscription: () => subscription,
 }));
 
 vi.mock('@/services/runtime-config', async (importOriginal) => ({
@@ -70,7 +70,9 @@ vi.mock('@/services/gates/export-resolver', async (importOriginal) => ({
   isExportGateActive: () => gateActive,
 }));
 
-const { evaluateExportGate, evaluateTabCap } = await import('@/services/gates/export');
+const { evaluateAvailableExportFormats, evaluateExportGate, evaluateTabCap } = await import(
+  '@/services/gates/export'
+);
 
 const SIGNED_IN: AuthSession = {
   isPending: false,
@@ -100,6 +102,7 @@ function snapshot(features: Partial<EntitlementState['features']> = {}): Entitle
 
 beforeEach(() => {
   entitlement = null;
+  subscription = null;
   desktopKeyPresent = false;
   gateActive = true;
 });
@@ -159,6 +162,14 @@ describe('evaluateTabCap — the reader forwards the dashboard allowance', () =>
     });
   });
 
+  it('leaves a settled signed-in session uncapped while its snapshot is missing', () => {
+    expect(evaluateTabCap(SIGNED_IN, 99)).toEqual({
+      allowed: true,
+      cap: null,
+      pendingActivation: false,
+    });
+  });
+
   it('forwards signedIn — an anonymous session gets the free cap, not the snapshot one', () => {
     // Deliberately paired with a loaded 25-dashboard snapshot: a reader that
     // hardcoded signedIn:true would read that allowance for a signed-out
@@ -174,12 +185,53 @@ describe('evaluateTabCap — the reader forwards the dashboard allowance', () =>
 });
 
 describe('evaluateExportGate — the reader forwards the entitlement + activation fields', () => {
+  it('leaves a settled signed-in session unlocked while its snapshot is missing', () => {
+    expect(evaluateExportGate(SIGNED_IN)).toEqual({
+      locked: false,
+      pendingActivation: false,
+    });
+  });
+
   it('unlocks on an explicit dataExport grant', () => {
     entitlement = snapshot({ tier: 2, dataExport: true });
 
     expect(evaluateExportGate(SIGNED_IN)).toEqual({
       locked: false,
       pendingActivation: false,
+    });
+  });
+
+  it('forwards tier for the legacy missing-dataExport fail-open', () => {
+    entitlement = snapshot({ tier: 2, dataExport: undefined });
+
+    expect(evaluateExportGate(SIGNED_IN)).toEqual({
+      locked: false,
+      pendingActivation: false,
+    });
+  });
+
+  it('keeps the legacy missing-dataExport fail-open bounded to tier 2+', () => {
+    entitlement = snapshot({ tier: 1, dataExport: undefined });
+
+    expect(evaluateExportGate(SIGNED_IN)).toEqual({
+      locked: true,
+      reason: 'free_tier',
+    });
+  });
+
+  it('forwards billing evidence into the denial reason', () => {
+    entitlement = snapshot({ tier: 0, dataExport: false });
+    subscription = {
+      planKey: 'pro',
+      displayName: 'Pro',
+      status: 'on_hold',
+      currentPeriodEnd: Date.now() + 86_400_000,
+      renewalVerificationState: null,
+    };
+
+    expect(evaluateExportGate(SIGNED_IN)).toEqual({
+      locked: true,
+      reason: 'payment_on_hold',
     });
   });
 
@@ -203,5 +255,17 @@ describe('evaluateExportGate — the reader forwards the entitlement + activatio
       locked: false,
       pendingActivation: true,
     });
+  });
+});
+
+describe('evaluateAvailableExportFormats — the reader forwards format capability', () => {
+  it('exposes only declared supported formats from the loaded snapshot', () => {
+    entitlement = snapshot({
+      tier: 2,
+      dataExport: true,
+      exportFormats: ['pdf', 'csv', 'xlsx'],
+    });
+
+    expect(evaluateAvailableExportFormats(SIGNED_IN)).toEqual(['csv', 'pdf']);
   });
 });

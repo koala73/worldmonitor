@@ -35,7 +35,14 @@ afterEach(() => {
   }
 });
 
-function installSeedHealthPipelineMock(chinaMeta: { fetchedAt: number; recordCount: number }) {
+type ChinaMeta = {
+  fetchedAt: number;
+  recordCount: number;
+  groupStates?: Record<string, string>;
+  groupCounts?: Record<string, number>;
+};
+
+function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
   process.env.WORLDMONITOR_VALID_KEYS = OPERATOR_KEY;
@@ -78,7 +85,7 @@ function installSeedHealthPipelineMock(chinaMeta: { fetchedAt: number; recordCou
   };
 }
 
-function classifyMainHealth(chinaMeta: { fetchedAt: number; recordCount: number }) {
+function classifyMainHealth(chinaMeta: ChinaMeta) {
   return healthTesting.classifyKey(
     'chinaDecisionSignals',
     CHINA_DATA_KEY,
@@ -93,7 +100,7 @@ function classifyMainHealth(chinaMeta: { fetchedAt: number; recordCount: number 
   );
 }
 
-async function readSeedHealth(chinaMeta: { fetchedAt: number; recordCount: number }) {
+async function readSeedHealth(chinaMeta: ChinaMeta) {
   installSeedHealthPipelineMock(chinaMeta);
   const response = await seedHealthHandler(new Request(
     'https://api.worldmonitor.app/api/seed-health',
@@ -192,6 +199,106 @@ describe('China decision-signal access tiers (#5580)', () => {
       assert.equal(seedEntry.stale, expectation.seedStale);
       assert.equal(seedEntry.recordCount, expectation.recordCount);
       assert.equal(seedEntry.minRecordCount, 6);
+    }
+  });
+
+  it('projects bounded per-group diagnostics only through operator seed health', async () => {
+    const groupStates = {
+      macro: 'available',
+      'policy-enforcement': 'partial',
+      'cross-strait-activity': 'stale',
+      'corporate-disclosures': 'unavailable',
+      'corridor-conditions': 'available',
+      'activity-nowcast': 'unavailable',
+    };
+    const groupCounts = {
+      populated: 4,
+      partial: 1,
+      stale: 1,
+      unavailable: 2,
+    };
+    const { body } = await readSeedHealth({
+      fetchedAt: Date.now() - 60_000,
+      recordCount: 4,
+      groupStates,
+      groupCounts,
+    });
+
+    assert.deepEqual(
+      body.seeds['intelligence:china-decision-signals'].groupStates,
+      groupStates,
+    );
+    assert.deepEqual(
+      body.seeds['intelligence:china-decision-signals'].groupCounts,
+      groupCounts,
+    );
+  });
+
+  it('omits both per-group diagnostics when either bounded projection is malformed', async () => {
+    const validGroupStates = {
+      macro: 'available',
+      'policy-enforcement': 'partial',
+      'cross-strait-activity': 'stale',
+      'corporate-disclosures': 'unavailable',
+      'corridor-conditions': 'available',
+      'activity-nowcast': 'unavailable',
+    };
+    const validGroupCounts = {
+      populated: 4,
+      partial: 1,
+      stale: 1,
+      unavailable: 2,
+    };
+    const malformedDiagnostics = [
+      {
+        name: 'invalid state',
+        groupStates: { ...validGroupStates, macro: 'healthy' },
+        groupCounts: validGroupCounts,
+      },
+      {
+        name: 'missing canonical group',
+        groupStates: {
+          macro: 'available',
+          'policy-enforcement': 'partial',
+          'cross-strait-activity': 'stale',
+          'corporate-disclosures': 'unavailable',
+          'corridor-conditions': 'available',
+        },
+        groupCounts: validGroupCounts,
+      },
+      {
+        name: 'fractional count',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, populated: 1.5 },
+      },
+      {
+        name: 'negative count',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, partial: -1 },
+      },
+      {
+        name: 'count above group total',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, unavailable: 7 },
+      },
+    ];
+
+    for (const malformed of malformedDiagnostics) {
+      const { response, body } = await readSeedHealth({
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 4,
+        groupStates: malformed.groupStates,
+        groupCounts: malformed.groupCounts,
+      });
+      const seedEntry = body.seeds['intelligence:china-decision-signals'];
+
+      assert.equal(response.status, 200, malformed.name);
+      assert.equal(body.overall, 'warning', malformed.name);
+      assert.equal(seedEntry.status, 'coverage_partial', malformed.name);
+      assert.equal(seedEntry.recordCount, 4, malformed.name);
+      assert.equal(seedEntry.minRecordCount, 6, malformed.name);
+      assert.equal(Object.hasOwn(seedEntry, 'groupStates'), false, malformed.name);
+      assert.equal(Object.hasOwn(seedEntry, 'groupCounts'), false, malformed.name);
     }
   });
 });

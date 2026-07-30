@@ -1619,6 +1619,8 @@
       "summaryFailed": "摘要失败",
       "sources": "{{count}}个来源",
       "relatedAssetsNear": "{{location}}附近的相关资产",
+      "sourceCoverage": "{{covered}}/{{total}} 个来源",
+      "sourceCoverageHint": "已显示 {{total}} 个已启用来源中的 {{covered}} 个 — 该面板每次刷新会轮换抓取不同来源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相关性"

@@ -1,7 +1,7 @@
 // U1 (plan 2026-07-25-001) — Pro Business catalog entries + the `dataExport`
-// entitlement flag. `dataExport` is the ENFORCEMENT field for data export
-// (KTD1); `exportFormats` stays display metadata that gates nothing. These
-// assertions are the source-of-truth guard for both, mirroring the
+// entitlement flag. `dataExport` controls the locked state and
+// `exportFormats` controls the unlocked export actions. These assertions are
+// the source-of-truth guard for both, mirroring the
 // apiDailyAllowance guard in product-catalog-api-allowance.test.mts.
 
 import { describe, it } from 'node:test';
@@ -89,7 +89,7 @@ describe('U1 — dataExport is the export enforcement field', () => {
     assert.equal(getEntitlementFeatures('enterprise').dataExport, true);
   });
 
-  it('exportFormats stays display metadata that agrees with dataExport', () => {
+  it('exportFormats agrees with dataExport and the menu capabilities it grants', () => {
     for (const [planKey, entry] of Object.entries(PRODUCT_CATALOG)) {
       const { dataExport, exportFormats } = entry.features;
       assert.deepEqual(

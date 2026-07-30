@@ -66,13 +66,11 @@ export type PlanFeatures = {
   planLimits?: PlanLimits;
   prioritySupport: boolean;
   /**
-   * Display metadata ONLY — the formats a tier ADVERTISES. As of #4974 NO
-   * code consumes this array to gate any behavior, and formats listed here
-   * are not guaranteed to have exporters ("xlsx" was advertised for months
-   * with zero implementation). The enforcement field for data export is
-   * `dataExport` below: gate on that, never on this array's contents or
-   * length. Keep the two in agreement — a tier with `dataExport: false`
-   * advertises nothing.
+   * Format allowlist for an entitled export surface. `dataExport` below is
+   * the first-stage lock: when it is false the entire surface is unavailable.
+   * Once that gate is open, consumers expose only supported CSV/JSON/PDF
+   * values declared here and ignore unknown values. Keep the two fields in
+   * agreement — a tier with `dataExport: false` advertises no formats.
    */
   exportFormats: string[];
   /**
@@ -102,10 +100,11 @@ export type PlanFeatures = {
    */
   apiDailyAllowance?: number;
   /**
-   * Data-export entitlement — the ENFORCEMENT field for CSV/JSON/PDF export
-   * (plan 2026-07-25-001). Distinct from `exportFormats`, which only says
-   * what a tier advertises. `tier` cannot stand in for it: Pro Business
-   * shares `tier: 1` with Pro but exports, and Pro does not.
+   * First-stage data-export entitlement for CSV/JSON/PDF export (plan
+   * 2026-07-25-001). Once this gate is open, `exportFormats` narrows the
+   * actions exposed by each export surface. `tier` cannot stand in for this
+   * field: Pro Business shares `tier: 1` with Pro but exports, and Pro does
+   * not.
    *
    * Optional for the same reason as `apiDailyAllowance`: rows written before
    * the field existed omit it. Consumers treat `undefined` on a `tier >= 2`

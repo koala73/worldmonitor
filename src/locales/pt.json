@@ -730,6 +730,8 @@
       "relatedAssetsNear": "Ativos relacionados próximos a {{location}}",
       "summaryError": "Não foi possível gerar o resumo",
       "summaryFailed": "Resumo falhado",
+      "sourceCoverage": "{{covered}}/{{total}} fontes",
+      "sourceCoverageHint": "A mostrar {{covered}} de {{total}} fontes ativas — este painel alterna entre as suas fontes a cada atualização",
       "sortBy": "Ordenar por",
       "sortNewest": "Mais recente",
       "sortRelevance": "Relevância"

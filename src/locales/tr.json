@@ -1619,6 +1619,8 @@
       "summaryFailed": "Özet başarısız",
       "sources": "{{count}} kaynak",
       "relatedAssetsNear": "{{location}} yakinindaki ilgili varliklar",
+      "sourceCoverage": "{{covered}}/{{total}} kaynak",
+      "sourceCoverageHint": "Etkin {{total}} kaynaktan {{covered}} tanesi gösteriliyor — bu panel her yenilemede kaynaklarını sırayla çekiyor",
       "sortBy": "Sırala",
       "sortNewest": "En Yeni",
       "sortRelevance": "İlgili"

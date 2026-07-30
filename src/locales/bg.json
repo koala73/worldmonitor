@@ -1619,6 +1619,8 @@
       "summaryFailed": "Неуспешно резюме",
       "sources": "{{count}} върши",
       "relatedAssetsNear": "Свързани активи близо до {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} източника",
+      "sourceCoverageHint": "Показва {{covered}} от {{total}} активни източника — този панел редува източниците си при всяко обновяване",
       "sortBy": "Сортиране по",
       "sortNewest": "Най-нови",
       "sortRelevance": "Релевантност"

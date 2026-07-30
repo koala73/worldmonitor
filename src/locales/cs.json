@@ -1604,6 +1604,8 @@
       "relatedAssetsNear": "Související aktiva blízko {{location}}",
       "summaryError": "Shrnutí se nepodařilo vytvořit",
       "summaryFailed": "Shrnutí selhalo",
+      "sourceCoverage": "{{covered}}/{{total}} zdrojů",
+      "sourceCoverageHint": "Zobrazeno {{covered}} z {{total}} zapnutých zdrojů — tento panel své zdroje při každé aktualizaci střídá",
       "sortBy": "Seřadit podle",
       "sortNewest": "Nejnovější",
       "sortRelevance": "Relevance"

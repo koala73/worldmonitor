@@ -21,6 +21,15 @@
 
 import { getBillingGateOverride, type BillingUxState } from '../billing-state';
 
+/** Formats the dashboard can genuinely produce. Keep this list aligned with
+ * `src/utils/export.ts`; unknown catalog values must never become UI actions. */
+export const SUPPORTED_EXPORT_FORMATS = ['csv', 'json', 'pdf'] as const;
+export type DataExportFormat = (typeof SUPPORTED_EXPORT_FORMATS)[number];
+
+function allExportFormats(): DataExportFormat[] {
+  return [...SUPPORTED_EXPORT_FORMATS];
+}
+
 /**
  * Locked-state reasons. Values mirror the `PanelGateReason` string enum in
  * panel-gating.ts (kept as plain strings here so this module stays a leaf —
@@ -44,6 +53,11 @@ export interface ExportGateFeatures {
    * fail-open below.
    */
   dataExport?: boolean;
+  /**
+   * Formats this plan may expose. Optional only for legacy entitlement rows;
+   * the current schema requires it.
+   */
+  exportFormats?: readonly string[];
   /**
    * Per-plan dashboard allowance (KTD8). Required in the schema, the cache
    * validator and the client type, so unlike `dataExport` there is no legacy
@@ -120,6 +134,39 @@ export function resolveExportGate(input: ExportGateInputs): ExportGateVerdict {
   if (reason === null) return { locked: false, pendingActivation: false };
   if (!input.gateActive) return { locked: false, pendingActivation: true };
   return { locked: true, reason };
+}
+
+/**
+ * Resolve the export actions the menu may expose. This deliberately follows
+ * the same affirmative-denial rule as `resolveExportGate`: before the
+ * Pro-Business catalog is live, and while identity or entitlement data is
+ * unknown, preserve the pre-gate menu instead of turning a transient read
+ * failure into a paid-user lockout.
+ *
+ * Once the gate is active and a paid row is loaded, `exportFormats` is the
+ * source of truth. `dataExport` still owns the locked-versus-unlocked decision
+ * because it distinguishes Pro Business from Pro even though both are tier 1.
+ */
+export function resolveAvailableExportFormats(input: ExportGateInputs): DataExportFormat[] {
+  if (!input.gateActive || input.desktopKeyPresent || input.authPending) {
+    return allExportFormats();
+  }
+  if (!input.signedIn) return [];
+
+  const features = input.features;
+  if (features === null) return allExportFormats();
+
+  if (features.dataExport === true) {
+    // `exportFormats` predates this gate. A legacy paid row that lacks it must
+    // retain all currently supported exports until its next entitlement write.
+    const declaredFormats = features.exportFormats;
+    if (!Array.isArray(declaredFormats)) return allExportFormats();
+    return SUPPORTED_EXPORT_FORMATS.filter((format) => declaredFormats.includes(format));
+  }
+  if (features.dataExport === undefined && features.tier >= 2) {
+    return allExportFormats();
+  }
+  return [];
 }
 
 // ---------------------------------------------------------------------------
