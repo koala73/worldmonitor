@@ -1,0 +1,75 @@
+---
+title: "Supply Chain"
+description: "Shipping-stress composite, carrier and ETF tracking, critical minerals, chokepoint cards, and the Scenario Engine trigger — one command surface."
+---
+
+The **Supply Chain** panel (internal id `supply-chain`) is the main entry point for everything supply-chain related: a composite shipping-stress score, carrier and ETF rows with price movement, a minerals concentration view, and — most importantly — the **[Scenario Engine](/scenario-engine)** trigger buttons that let PRO users activate pre-built disruption scenarios across the map and the panel state.
+
+## What the panel shows
+
+Across the composite:
+
+- **Shipping-stress header** — a composite-stress score (0–100) with a tinted gauge, colour-bucketed by level (`critical` / `elevated` / `moderate` / `normal`).
+- **Carrier / ETF / index rows** — per-symbol price, per-cent change (`▲`/`▼` arrow with bullish/bearish tint), a compact sparkline, and a type badge (`ETF` / `IDX` / `CARR`).
+- **Critical minerals rows** — per-mineral top-3 producer concentration, HHI, and risk rating (`critical` / `high` / `moderate` / `low`).
+- **Scenario Engine trigger cards** — per-scenario trigger buttons (`sc-scenario-trigger` / `sc-scenario-btn`) that dispatch a template id to the scenario worker. Free users see the buttons but hit the PRO gate at activation. Scope-all scenario runs use the v1 seeded reporter set (`US`, `CN`, `RU`, `IR`, `IN`, `TW`). See [Scenario Engine](/scenario-engine) for the full workflow.
+- **Active-scenario banner** (when a scenario is running) — icon, scenario name, optional params chip (duration + cost bump), top impacted countries, dismiss ×. When template parameters are populated, an additional "Simulating …" tagline renders. Banner construction lives in `renderScenarioBanner()` in `src/components/SupplyChainPanel.ts`.
+
+Panel id is `supply-chain`; canonical component is `src/components/SupplyChainPanel.ts`. Title per variant: "Supply Chain" (full/finance) or "Supply Chain & Logistics" (commodity).
+
+## How you reach it
+
+- **Cmd+K**: type *supply chain*, *shipping*, or *logistics*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (priority 1), **finance** (priority 1), and **commodity** (priority 1) variants. Not present in the tech or happy variants. Source: `'supply-chain'` entries in `FULL_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS`. On desktop the full-variant registration additionally layers `premium: 'enhanced'` (`_desktop &&` clause in `src/config/panels.ts`).
+
+## Data sources
+
+The panel and adjacent supply-chain workflows mix generated sebuf REST RPCs, bootstrap/shared-store first paint, and special platform routes. The main Supply Chain panel reads cached bootstrap payloads for composite stress, chokepoints, shipping rates, and minerals when available, then refreshes through the generated `SupplyChainService` RPCs.
+
+| Surface | Method + route | Feeds |
+|---|---|---|
+| Shipping stress header and carrier rows | `GET /api/supply-chain/v1/get-shipping-stress` | Composite stress score plus carrier / ETF / index rows; bootstrap-first via `shippingStress`. |
+| Shipping rates | `GET /api/supply-chain/v1/get-shipping-rates` | FRED freight indices and spike detection; bootstrap-first via `shippingRates`. |
+| Chokepoint cards and strip | `GET /api/supply-chain/v1/get-chokepoint-status` | Current chokepoint status, warnings, AIS disruption counts, and compact transit summaries; bootstrap-first via `chokepoints`. |
+| Expanded chokepoint card | `GET /api/supply-chain/v1/get-chokepoint-history` | Lazy transit-count history for one chokepoint. |
+| Critical minerals rows | `GET /api/supply-chain/v1/get-critical-minerals` | Mineral concentration, HHI, top producers, and risk rating; bootstrap-first via `minerals`. |
+| Country exposure | `GET /api/supply-chain/v1/get-country-chokepoint-index` | PRO country + HS2 exposure scores used by Country Brief and route-risk surfaces. |
+| Bypass corridors | `GET /api/supply-chain/v1/get-bypass-options` | PRO ranked maritime and land bypass options for a chokepoint / cargo type. |
+| Country cost shock | `GET /api/supply-chain/v1/get-country-cost-shock` | PRO cost-shock and war-risk estimates for a country + chokepoint + HS2 slice. |
+| Country import basket | `GET /api/supply-chain/v1/get-country-products` | PRO seeded bilateral-HS4 import basket for country drill-downs. |
+| Multi-sector shock | `GET /api/supply-chain/v1/get-multi-sector-cost-shock` | PRO sector-level cost-shock estimates over a closure window. |
+| Sector dependency | `GET /api/supply-chain/v1/get-sector-dependency` | PRO dependency flags, primary exporter share, and primary chokepoint exposure. |
+| Route Explorer lane | `GET /api/supply-chain/v1/get-route-explorer-lane` | PRO primary route geometry, chokepoint exposures, bypass geometry, war-risk tier, and disruption score. |
+| Route Explorer impact | `GET /api/supply-chain/v1/get-route-impact` | PRO country-impact metrics for selected lane + HS2 commodity. |
+| Pipeline registry | `GET /api/supply-chain/v1/list-pipelines` | Pipeline Status panel and Energy Atlas PathLayer; bootstrap/shared-store first, RPC refresh after render. |
+| Pipeline drawer | `GET /api/supply-chain/v1/get-pipeline-detail` | Lazy evidence bundle and revision log for one pipeline. |
+| Storage registry | `GET /api/supply-chain/v1/list-storage-facilities` | Strategic Storage Atlas and Energy Atlas ScatterplotLayer; bootstrap/shared-store first, RPC refresh after render. |
+| Storage drawer | `GET /api/supply-chain/v1/get-storage-facility-detail` | Lazy evidence bundle and revision log for one storage facility. |
+| Fuel shortage registry | `GET /api/supply-chain/v1/list-fuel-shortages` | Fuel-shortage alert panel and energy-intelligence summaries. |
+| Fuel shortage drawer | `GET /api/supply-chain/v1/get-fuel-shortage-detail` | Lazy citation timeline and evidence bundle for one shortage. |
+| Energy disruptions | `GET /api/supply-chain/v1/list-energy-disruptions` | Energy Disruptions panel, Pipeline / Storage drawer timelines, and active-disruption count in Global Energy Risk Overview. |
+
+Special platform routes used from this surface:
+
+| Surface | Method + route | Feeds |
+|---|---|---|
+| Scenario activation | `POST /api/scenario/v1/run-scenario` | PRO Scenario Engine trigger buttons dispatch a template id and parameters. |
+| Scenario status | `GET /api/scenario/v1/get-scenario-status` | Scenario Engine polling paints the active-scenario banner after worker completion. |
+
+See [Scenarios API](/api-scenarios) for the full async job contract.
+
+## Refresh cadence
+
+Panel reads on mount and on user-triggered refresh. Scenario Engine jobs are async; the panel polls the job status endpoint and paints the banner once the worker writes `status: "done"`.
+
+## Tier & gating
+
+The Supply Chain panel itself is **free** on web (full / finance / commodity variants). On desktop, the full-variant registration layers `premium: 'enhanced'`. **The Scenario Engine activation is PRO** regardless of web vs desktop — free users see the trigger buttons but hit the `scenario-engine` gate on activation.
+
+## Related
+
+- [Scenario Engine](/scenario-engine) — the activation workflow + template catalogue.
+- [Route Explorer](/route-explorer) — per-lane chokepoint + bypass analysis.
+- [Supply Chain service](/api/SupplyChainService.openapi.yaml) — the backing RPC family.
+- [Scenarios API](/api-scenarios) — async job contract for scenario runs.
+- [Hormuz Trade Tracker](/panels/hormuz-tracker) — chokepoint-specific drill-down.

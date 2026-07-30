@@ -1,0 +1,125 @@
+---
+title: "智能体发现"
+description: "只需将任何 AI 智能体、代码生成工具或 MCP 客户端指向 worldmonitor.app 根 URL，即可通过标准化的 well-known 发现机制自动定位全部 REST API、OpenAPI 规范、MCP 服务器与 OAuth 端点，实现零配置的智能体集成、自动化调用与工具链接入。"
+---
+
+WorldMonitor 的构建理念是**智能体原生**。一个自主智能体——Claude、Cursor、MCP 客户端，或你自己的 LangChain / LangGraph 工作流——可以从一个根 URL 开始，发现它所需的一切：REST 架构、MCP 传输、OAuth 流程、技能包和人类可读的简报。
+
+无需任何先验知识。只需 `GET https://worldmonitor.app/`。
+
+## 唯一需要记住的 URL
+
+```
+https://worldmonitor.app/
+```
+
+HTTP 响应携带一个 [RFC 8288](https://datatracker.ietf.org/doc/html/rfc8288) `Link:` 头部，其 `rel` 值指向下方每一个机器可读的接口。一个跟随链接的智能体无需硬编码任何路径即可解析全貌。
+
+```bash
+curl -sI https://worldmonitor.app/ | grep -i '^link:'
+```
+
+你会看到类似以下的条目：
+
+```
+Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json",
+      </openapi.json>; rel="service-desc"; type="application/json",
+      </openapi.yaml>; rel="service-desc"; type="application/vnd.oai.openapi",
+      </docs/documentation>; rel="service-doc"; type="text/html",
+      </api/health>; rel="status"; type="application/json",
+      </.well-known/oauth-protected-resource>; rel="...oauth-protected-resource",
+      </.well-known/oauth-authorization-server>; rel="...oauth-authorization-server",
+      </.well-known/mcp/server-card.json>; rel="mcp-server-card"; anchor="/mcp",
+      </.well-known/agent-skills/index.json>; rel="agent-skills-index"; type="application/json"
+```
+
+## 发现端点
+
+| 端点 | 标准 | 返回内容 |
+|---|---|---|
+| [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON 链接集，打包了所有其他发现 URL——如果你只想要一次请求和一张地图，从这里开始 |
+| [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | 单一打包规范，覆盖**所有** REST 服务（Conflict、Resilience、Market、Economic、Maritime、Aviation、Climate……）——可喂给任何代码生成器 |
+| [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | 字节一致的压缩 JSON 打包——与 `/openapi.yaml` 同一份规范，面向只解析 JSON 的工具与扫描器 |
+| [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | 传输方式（`streamableHttp`）、端点、OAuth 资源、作用域、流式、能力标志 |
+| [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 授权服务器元数据（PKCE、DCR、令牌端点） |
+| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | `https://worldmonitor.app/mcp` 的资源元数据 |
+| [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | （自定义） | 预打包智能体技能索引（`fetch-country-brief`、`fetch-resilience-score`……）——每个技能都是一份自包含的配方 |
+| [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
+| [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | （扩展） | 长格式变体，覆盖所有数据层、面板和数据源 |
+| [`/api/health`](https://api.worldmonitor.app/api/health) | （自定义） | 按密钥的种子状态、新鲜度、记录计数——智能体可据此门控抓取 |
+
+头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
+
+## 智能体演练
+
+### 为每个服务代码生成 REST 客户端
+
+```bash
+# 1. Discover the bundled OpenAPI URL (linkset[0] enumerates every API via
+#    RFC 9727 `item` links; select the REST API context object by anchor)
+curl -s https://worldmonitor.app/.well-known/api-catalog \
+  | jq -r '.linkset[] | select(.anchor == "https://api.worldmonitor.app/")."service-desc"[0].href'
+# → https://www.worldmonitor.app/openapi.yaml
+
+# 2. Generate clients
+curl -s https://www.worldmonitor.app/openapi.yaml -o worldmonitor.openapi.yaml
+npx @openapitools/openapi-generator-cli generate \
+  -i worldmonitor.openapi.yaml -g typescript-fetch -o ./client
+```
+
+打包的规范在单个文档中覆盖了全部 35 个服务，因此一次代码生成即可为所有服务生成带类型的客户端。偏好维护好的包而非代码生成？[官方 SDK](/zh/sdks) 提供 Python、Ruby、Go 和 JavaScript 版本。
+
+### 将 MCP 客户端连接到实时数据
+
+```bash
+# 1. Read the server card — this is the canonical descriptor for MCP
+curl -s https://worldmonitor.app/.well-known/mcp/server-card.json
+# → endpoint (https://worldmonitor.app/mcp), transport, OAuth scopes,
+#   streaming support, and authorization_servers: ["https://api.worldmonitor.app"]
+
+# 2. Fetch authorization-server metadata from that host
+curl -s https://api.worldmonitor.app/.well-known/oauth-authorization-server
+# → token / authorize / registration endpoints, PKCE required, etc.
+```
+
+`/.well-known/oauth-protected-resource` 也可用，但其 `authorization_servers` 字段是从请求的 `Host` 头派生的，因此每个源（apex、www、api）都报告自身——同源元数据，满足严格的 MCP 扫描器。实际 MCP 端点期望的跨源 auth-server URL 请使用 **MCP 服务器卡片**。
+
+或者完全跳过手动流程——大多数客户端（Claude Desktop、claude.ai、Cursor、MCP Inspector、Claude Code）直接接受 MCP URL 并自动运行发现 + OAuth：
+
+```
+https://worldmonitor.app/mcp
+```
+
+有关客户端特定的配置片段，请参见 [MCP Server](/zh/mcp-overview)。
+
+### 使用直接 API 密钥的服务端调用
+
+如果你不想用 OAuth，REST 端点和 MCP 端点接受用户 API 密钥或运营商签发的企业密钥，置于 `X-WorldMonitor-Key` 中：
+
+```bash
+curl -s https://api.worldmonitor.app/api/resilience/v1/get-resilience-ranking \
+  -H "X-WorldMonitor-Key: $WM_KEY"
+```
+
+PRO 订阅者可从 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 获取密钥。请参见[身份验证](/zh/usage-auth)。
+
+### 即插即用智能体技能
+
+`/.well-known/agent-skills/index.json` 列出了预打包的技能——每个都是一份自包含配方，智能体无需阅读 OpenAPI 即可消化。适用于你宁愿让智能体"获取国家简报"而非"阅读 30 个 OpenAPI 规范然后自己搞清楚"的窄任务。请参见 [Agent Skills Catalog](/zh/agent-skills) 获取每份配方的人类可读列表。当前目录涵盖 25 个可安装配方，涉及国家简报、风险与韧性、咽喉要道、市场、网络、制裁、航空、军用航班、海上交通、能源冲击、贸易流、动荡、网络摄像头、气候灾害、健康告警和预报。
+
+## 为什么这很重要
+
+重点不在于新颖性——RFC 8414、8288、9727、9728 都很旧了。重点在于 WorldMonitor 的**每一个**接口（REST、MCP、OAuth、技能、LLM 简报）都可通过众所周知的约定从一个根 URL 访问，无需带外设置。一个智能体可以：
+
+- 无需阅读我们的文档即可发现 API。
+- 无需我们告知使用哪个 OAuth 流程即可完成身份验证。
+- 根据自身偏好选择正确的传输方式（REST vs MCP）。
+- 保持最新——当我们发布新服务时，打包的 `/openapi.yaml` 和 api-catalog 会在下次部署时反映出来。无需版本锁定，无需等待 SDK 发布周期（不过当维护好的包更合适时，也存在[官方 SDK](/zh/sdks)）。
+
+## 相关
+
+- [MCP Server](/zh/mcp-overview)——完整客户端设置（Claude Desktop、Cursor、claude.ai、MCP Inspector、Claude Code）
+- [Agent Skills Catalog](/zh/agent-skills)——25 个公开智能体配方的人类可读目录
+- [API 参考](/zh/api-reference)——人类可读的服务目录和 MCP→REST 工具映射
+- [身份验证](/zh/usage-auth)——浏览器、API 密钥和 OAuth 模式
+- [快速入门](/zh/usage-quickstart)——一分钟内完成首次调用

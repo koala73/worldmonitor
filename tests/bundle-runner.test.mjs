@@ -1,0 +1,548 @@
+// Verifies _bundle-runner.mjs streams child stdio live, reports timeout with
+// a clear reason, and escalates SIGTERM → SIGKILL when a child ignores SIGTERM.
+//
+// Uses a real spawn of a small bundle against ephemeral scripts under scripts/
+// because the runner joins __dirname with section.script.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
+import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+
+const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
+
+test('requireCanonical ignores fresh legacy meta when a new canonical envelope is absent', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') return null;
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('an explicit freshness meta key gates from source transport success', async () => {
+  const reads = [];
+  const transportFetchedAt = Date.now() - 29 * 60 * 60 * 1000;
+  const completedAt = transportFetchedAt + 60_000;
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: completedAt } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: transportFetchedAt };
+    }
+    if (key === 'seed-meta:economic:china-macro-complete') {
+      return { fetchedAt: completedAt };
+    }
+    return null;
+  });
+  assert.deepEqual(freshness, { fetchedAt: transportFetchedAt });
+  assert.deepEqual(reads, [
+    'economic:china:macro:v2',
+    'seed-meta:economic:china-macro-transport',
+    'seed-meta:economic:china-macro-complete',
+  ]);
+});
+
+test('a missing explicit freshness meta key does not fall back to publish time', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'seed-meta:economic:china-macro-transport') return null;
+    if (key === 'economic:china:macro:v2') return { _seed: { fetchedAt: Date.now() } };
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, [
+    'economic:china:macro:v2',
+    'seed-meta:economic:china-macro-transport',
+  ]);
+});
+
+test('explicit freshness still requires the canonical envelope when configured', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    return null;
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('a prior completion cannot attest a newer transport-only run', async () => {
+  const transportFetchedAt = Date.now();
+  const previousCompletionAt = transportFetchedAt - 60 * 60 * 1000;
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: transportFetchedAt } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: transportFetchedAt };
+    }
+    if (key === 'seed-meta:economic:china-macro-complete') {
+      return { fetchedAt: previousCompletionAt };
+    }
+    return null;
+  });
+  assert.equal(freshness, null);
+});
+
+test('a missing completion marker keeps an explicit-freshness section due', async () => {
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: Date.now() } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: Date.now() };
+    }
+    return null;
+  });
+  assert.equal(freshness, null);
+});
+
+function runBundleWith(sections, opts = {}, env = {}) {
+  const runPath = join(SCRIPTS_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  writeFileSync(
+    runPath,
+    `import { runBundle } from './_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
+      sections,
+    )}, ${JSON.stringify(opts)});\n`,
+  );
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.stderr.on('data', (c) => { stderr += c; });
+    child.on('close', (code) => {
+      try { unlinkSync(runPath); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+function writeFixture(name, body) {
+  const path = join(SCRIPTS_DIR, name);
+  writeFileSync(path, body);
+  return () => { try { unlinkSync(path); } catch {} };
+}
+
+test('streams child stdout live and reports Done on success', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-fast.mjs',
+    `console.log('line-one'); console.log('line-two');\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'FAST', script: '_bundle-fixture-fast.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0);
+    assert.match(stdout, /\[FAST\] line-one/);
+    assert.match(stdout, /\[FAST\] line-two/);
+    assert.match(stdout, /\[FAST\] Done \(/);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('timeout emits terminal reason BEFORE SIGTERM/SIGKILL grace (survives container kill)', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-hang.mjs',
+    // Ignore SIGTERM so the runner must SIGKILL. Handler registers FIRST
+    // (synchronously, before any I/O) so even a slow cold-start gets the
+    // SIGTERM-ignore behaviour as soon as Node finishes parsing this line.
+    `process.on('SIGTERM', () => {}); console.log('hung'); setInterval(() => {}, 1000);\n`,
+  );
+  try {
+    const t0 = Date.now();
+    // Cold-Node startup on slow CI runners (GitHub-hosted, under load)
+    // can exceed 1s before user code parses + executes. A 1s timeout
+    // produced a real flake on PR #3617's post-merge run: SIGTERM
+    // arrived before the fixture's `process.on('SIGTERM', () => {})`
+    // handler registered, so the child died via default SIGTERM
+    // handling before logging 'hung' or surviving to SIGKILL — total
+    // elapsed 1.1s instead of the expected ~11s (1s + 10s grace), and
+    // the `[HANG] hung` assertion failed.
+    //
+    // 3000ms gives generous cold-start margin (typical Node startup
+    // is 50-200ms; even loaded CI shouldn't exceed 1-2s) while still
+    // exercising the same timeout → SIGTERM → grace → SIGKILL flow
+    // the test is here to validate. The 20s cap below remains
+    // comfortably above 3s + 10s grace + overhead.
+    const TIMEOUT_MS = 3000;
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'HANG', script: '_bundle-fixture-hang.mjs', intervalMs: 1, timeoutMs: TIMEOUT_MS },
+    ]);
+    const elapsedMs = Date.now() - t0;
+    assert.equal(code, 1, 'bundle must exit non-zero on failure');
+    const combined = stdout + stderr;
+    assert.match(combined, /\[HANG\] hung/, 'child stdout should stream before kill');
+    // Critical: terminal "Failed ... timeout" line must appear in-line with the
+    // SIGTERM send, not after SIGKILL — this is what survives a container kill
+    // landing inside the 10s grace window.
+    const failIdx = combined.indexOf('Failed after');
+    assert.ok(failIdx >= 0, 'must emit Failed line');
+    if (process.platform !== 'win32') {
+      const sigkillIdx = combined.indexOf('SIGKILL');
+      assert.ok(sigkillIdx > failIdx, 'Failed line must precede SIGKILL escalation');
+    }
+    // Match the timeout-seconds value loosely so a future bump doesn't
+    // require a coordinated regex update — the assertion's purpose is
+    // "Failed line names the timeout-after-N pattern", not the literal N.
+    assert.match(combined, /Failed after .*s: timeout after \d+s — sending SIGTERM/);
+    if (process.platform !== 'win32') {
+      assert.match(combined, /Did not exit on SIGTERM.*SIGKILL/);
+    }
+    // timeout + 10s SIGTERM grace + overhead; cap well above that to avoid flake.
+    assert.ok(elapsedMs < 20_000, `timeout escalation took ${elapsedMs}ms — too slow`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('budget check accounts for SIGKILL grace when deferring', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-sleep.mjs',
+    `console.log('ok');\n`,
+  );
+  try {
+    // timeoutMs (15s) + grace (10s) = 25s worst-case. Budget 20s must defer.
+    const { code, stdout } = await runBundleWith(
+      [{ label: 'GATED', script: '_bundle-fixture-sleep.mjs', intervalMs: 1, timeoutMs: 15_000 }],
+      { maxBundleMs: 20_000 },
+    );
+    assert.equal(code, 0, 'deferred sections are not failures');
+    assert.match(stdout, /\[GATED\] Deferred, needs 25s \(timeout\+grace\)/);
+    assert.match(stdout, /deferred:1/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('non-zero exit without timeout reports exit code', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-fail.mjs',
+    `console.error('boom'); process.exit(2);\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'FAIL', script: '_bundle-fixture-fail.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 1);
+    const combined = stdout + stderr;
+    assert.match(combined, /\[FAIL\] boom/);
+    assert.match(combined, /Failed after .*s: exit 2/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('missing required environment configuration hard-fails only the affected section', async () => {
+  const cleanup = writeFixture('_bundle-fixture-config-sibling.mjs', `console.log('sibling-ran');\n`);
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      {
+        label: 'OK_SIBLING',
+        script: '_bundle-fixture-config-sibling.mjs',
+        intervalMs: 1,
+        timeoutMs: 5000,
+      },
+      {
+        label: 'REQUIRES_SECRET',
+        script: '_bundle-fixture-must-not-run.mjs',
+        intervalMs: 1,
+        timeoutMs: 5000,
+        requiredEnv: ['WM_BUNDLE_TEST_REQUIRED_SECRET'],
+      },
+    ]);
+
+    assert.equal(code, 1, 'deployment misconfiguration must fail the bundle');
+    assert.match(stdout, /\[OK_SIBLING\] sibling-ran/);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 .* failed:1/);
+    assert.doesNotMatch(stdout + stderr, /spawn error|must-not-run/);
+    assert.match(
+      stderr,
+      /section=REQUIRES_SECRET status=CONFIG_ERROR reason=missing required environment configuration: WM_BUNDLE_TEST_REQUIRED_SECRET/,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test('an any-of requiredEnv group is satisfied by either alternative', async () => {
+  // A section whose seeder resolves `SOURCE_SPECIFIC || SHARED` must be able to
+  // say so. Gating on the source-specific name alone made the runner stricter
+  // than the code it guards: it hard-failed Cross-Strait-Activity in an
+  // environment carrying only PROXY_URL, even though the adapter would have run
+  // undegraded (#5756 review).
+  const cleanup = writeFixture('_bundle-fixture-anyof.mjs', `console.log('anyof-ran');\n`);
+  try {
+    const section = {
+      label: 'ANY_OF',
+      script: '_bundle-fixture-anyof.mjs',
+      intervalMs: 1,
+      timeoutMs: 5000,
+      requiredEnv: [['WM_BUNDLE_TEST_SPECIFIC', 'WM_BUNDLE_TEST_SHARED']],
+    };
+
+    const viaFallback = await runBundleWith([section], {}, {
+      WM_BUNDLE_TEST_SHARED: 'http://shared:1',
+    });
+    assert.equal(viaFallback.code, 0, 'the shared alternative alone must satisfy the group');
+    assert.match(viaFallback.stdout, /\[ANY_OF\] anyof-ran/);
+
+    const viaSpecific = await runBundleWith([section], {}, {
+      WM_BUNDLE_TEST_SPECIFIC: 'http://specific:2',
+    });
+    assert.equal(viaSpecific.code, 0, 'the source-specific alternative alone must satisfy the group');
+
+    const neither = await runBundleWith([section]);
+    assert.equal(neither.code, 1, 'neither alternative set must still fail the section');
+    assert.match(
+      neither.stderr,
+      /section=ANY_OF status=CONFIG_ERROR reason=missing required environment configuration: WM_BUNDLE_TEST_SPECIFIC or WM_BUNDLE_TEST_SHARED/,
+    );
+    assert.doesNotMatch(neither.stdout, /anyof-ran/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('graceful-only fetch failure exits 0 (no data lost) but still logs the skip', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-graceful-fail.mjs',
+    `console.error('FETCH FAILED: upstream unavailable');\nconsole.log('=== Failed gracefully (42ms) ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'GRACEFUL', script: '_bundle-fixture-graceful-fail.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const combined = stdout + stderr;
+    // A child exit 75 is a *graceful* fetch failure: the last-good TTL is
+    // extended and no data is lost. It must NOT crash the whole bundle — one
+    // flaky member (e.g. a rate-limited source returning 429) otherwise fires a
+    // spurious Railway "Deploy Crashed!" alert for a benign skip. Only HARD
+    // failures (real errors / timeouts / non-75 exits) make the bundle exit 1.
+    assert.equal(code, 0, 'graceful-only fetch failure must exit 0 (benign skip, no data lost)');
+    // The skip stays fully observable — the per-section GRACEFUL_FAIL line and a
+    // bundle-level explanation are emitted, so it is silenced but never silent.
+    assert.match(combined, /\[GRACEFUL\] FETCH FAILED: upstream unavailable/);
+    assert.match(combined, new RegExp(`Failed after .*s: graceful fetch failure \\(exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE}\\)`));
+    assert.match(combined, new RegExp(`\\[Bundle:test\\] section=GRACEFUL status=GRACEFUL_FAIL .*reason=graceful fetch failure \\(exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE}\\)`));
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:0 failed:0 graceful:1/);
+    assert.match(stdout, /\[Bundle:test\] 1 graceful fetch skip\(s\), no hard failures — no data lost, exiting 0/);
+    assert.doesNotMatch(combined, /\[Bundle:test\] section=GRACEFUL status=OK/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a hard failure alongside a graceful skip still exits 1 (graceful never masks a real crash)', async () => {
+  const cleanupG = writeFixture(
+    '_bundle-fixture-graceful-mixed.mjs',
+    `console.log('=== Failed gracefully ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  const cleanupH = writeFixture(
+    '_bundle-fixture-hard-mixed.mjs',
+    `console.error('boom');\nprocess.exit(2);\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'GRACE', script: '_bundle-fixture-graceful-mixed.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'HARD', script: '_bundle-fixture-hard-mixed.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 1, 'a hard failure must still crash the bundle even when another member skipped gracefully');
+    assert.match(stdout, /\[Bundle:test\] Finished .* failed:1 graceful:1/);
+    assert.doesNotMatch(stdout, /no data lost, exiting 0/);
+  } finally {
+    cleanupG();
+    cleanupH();
+  }
+});
+
+test('a graceful skip alongside a successful member exits 0', async () => {
+  const cleanupG = writeFixture(
+    '_bundle-fixture-graceful-ok.mjs',
+    `console.log('=== Failed gracefully ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
+  );
+  const cleanupOk = writeFixture(
+    '_bundle-fixture-ok-mem.mjs',
+    `console.log('did work');\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'OKMEM', script: '_bundle-fixture-ok-mem.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'GRACE', script: '_bundle-fixture-graceful-ok.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0, 'graceful skip must not crash a bundle that otherwise did work');
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:0 deferred:0 failed:0 graceful:1/);
+  } finally {
+    cleanupG();
+    cleanupOk();
+  }
+});
+
+test('lock-skip-like exit zero remains OK even without seed_complete', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-lock-skip.mjs',
+    `console.log('SKIPPED: another seed run in progress');\nprocess.exit(0);\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'LOCK_SKIP', script: '_bundle-fixture-lock-skip.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const combined = stdout + stderr;
+    assert.equal(code, 0, 'lock-skip exit zero must remain a successful bundle outcome');
+    assert.match(combined, /\[LOCK_SKIP\] SKIPPED: another seed run in progress/);
+    assert.match(combined, /\[Bundle:test\] section=LOCK_SKIP status=OK elapsed=/);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:0 deferred:0 failed:0/);
+    assert.doesNotMatch(combined, /GRACEFUL_FAIL/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bounds', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-env.mjs',
+    `console.log('BUNDLE_RUN_STARTED_AT_MS=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  const before = Date.now();
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'ENV', script: '_bundle-fixture-env.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const after = Date.now();
+    assert.equal(code, 0);
+    const match = stdout.match(/BUNDLE_RUN_STARTED_AT_MS=(\d+)/);
+    assert.ok(match, `expected env var in child stdout; got:\n${stdout}`);
+    const injected = Number(match[1]);
+    assert.ok(Number.isInteger(injected), 'injected value must be an integer');
+    // Parent captured t0 at bundle start (before this test's `before` call) and
+    // child ran before `after`. So: before - tolerance <= injected <= after.
+    assert.ok(injected >= before - 5000 && injected <= after,
+      `injected=${injected} out of bounds [${before - 5000}, ${after}]`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('sibling sections share the same BUNDLE_RUN_STARTED_AT_MS (one-shot per bundle)', async () => {
+  const cleanupA = writeFixture(
+    '_bundle-fixture-env-a.mjs',
+    `console.log('TS_A=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  const cleanupB = writeFixture(
+    '_bundle-fixture-env-b.mjs',
+    `await new Promise((r) => setTimeout(r, 200));\nconsole.log('TS_B=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'A', script: '_bundle-fixture-env-a.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'B', script: '_bundle-fixture-env-b.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0);
+    const tsA = Number(stdout.match(/TS_A=(\d+)/)?.[1]);
+    const tsB = Number(stdout.match(/TS_B=(\d+)/)?.[1]);
+    assert.ok(tsA && tsB, `both timestamps present; stdout:\n${stdout}`);
+    // Both children read the same bundle-level t0, so the injected value is
+    // identical across siblings (NOT spawn time). This is the critical
+    // property Phase 2's bundle-freshness guard relies on.
+    assert.equal(tsA, tsB, 'siblings must share one bundle-level timestamp');
+  } finally {
+    cleanupA();
+    cleanupB();
+  }
+});
+
+test('dependsOn: throws when a dep appears later in the sections array', async () => {
+  // Consumer (depends on Producer) is at index 0 — violates the contract.
+  const cleanupC = writeFixture('_bundle-fixture-dep-consumer.mjs', `console.log('consumer');\n`);
+  const cleanupP = writeFixture('_bundle-fixture-dep-producer.mjs', `console.log('producer');\n`);
+  try {
+    const { code, stderr } = await runBundleWith([
+      { label: 'Consumer', script: '_bundle-fixture-dep-consumer.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['Producer'] },
+      { label: 'Producer', script: '_bundle-fixture-dep-producer.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.notEqual(code, 0, 'out-of-order dependsOn must cause non-zero exit');
+    assert.match(stderr, /dependsOn 'Producer' but 'Producer' is at index 1/,
+      `expected topological violation error; stderr:\n${stderr}`);
+  } finally {
+    cleanupC();
+    cleanupP();
+  }
+});
+
+test('dependsOn: passes when deps appear earlier in the sections array', async () => {
+  const cleanupP = writeFixture('_bundle-fixture-dep-producer-ok.mjs', `console.log('producer');\n`);
+  const cleanupC = writeFixture('_bundle-fixture-dep-consumer-ok.mjs', `console.log('consumer');\n`);
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'Producer', script: '_bundle-fixture-dep-producer-ok.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'Consumer', script: '_bundle-fixture-dep-consumer-ok.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['Producer'] },
+    ]);
+    assert.equal(code, 0);
+    assert.match(stdout, /\[Producer\] producer/);
+    assert.match(stdout, /\[Consumer\] consumer/);
+  } finally {
+    cleanupP();
+    cleanupC();
+  }
+});
+
+test('dependsOn: throws on unknown label reference', async () => {
+  const cleanup = writeFixture('_bundle-fixture-dep-orphan.mjs', `console.log('orphan');\n`);
+  try {
+    const { code, stderr } = await runBundleWith([
+      { label: 'Orphan', script: '_bundle-fixture-dep-orphan.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['DoesNotExist'] },
+    ]);
+    assert.notEqual(code, 0);
+    assert.match(stderr, /dependsOn unknown label 'DoesNotExist'/,
+      `expected unknown-label error; stderr:\n${stderr}`);
+  } finally {
+    cleanup();
+  }
+});

@@ -1,36 +1,36 @@
-import { DEFAULT_UPGRADE_PRODUCT } from '@/config/products';
 import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { openSignIn } from '@/services/clerk';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
-import { isDesktopRuntime } from '@/services/runtime';
-import { invokeTauri } from '@/services/tauri-bridge';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import {
+  type DimensionConfidence,
+  LOCKED_PREVIEW,
   RESILIENCE_VISUAL_LEVEL_COLORS,
+  collectDimensionConfidences,
+  formatBaselineStress,
+  formatResilienceMethodologyHelpTitle,
   formatResilienceChange30d,
   formatResilienceConfidence,
+  formatResilienceDataVersion,
+  formatResilienceScoreInterval,
+  getResilienceOverallDisplay,
+  getImputationClassIcon,
+  getImputationClassLabel,
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  getStalenessIcon,
+  getStalenessLabel,
+  shouldRenderResilienceBaselineStress,
 } from './resilience-widget-utils';
+import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
-const LOCKED_PREVIEW: ResilienceScoreResponse = {
-  countryCode: 'US',
-  overallScore: 73,
-  level: 'high',
-  domains: [
-    { id: 'economic', score: 82, weight: 0.22, dimensions: [] },
-    { id: 'infrastructure', score: 68, weight: 0.2, dimensions: [] },
-    { id: 'energy', score: 88, weight: 0.15, dimensions: [] },
-    { id: 'social-governance', score: 71, weight: 0.25, dimensions: [] },
-    { id: 'health-food', score: 54, weight: 0.18, dimensions: [] },
-  ],
-  cronbachAlpha: 0.74,
-  trend: 'rising',
-  change30d: 2.4,
-  lowConfidence: false,
-};
+// LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
+// other non-Vite consumers can import it without dragging in the
+// full ResilienceWidget class transitive graph (the class indirectly
+// depends on import.meta.env.DEV via proxy.ts, which breaks plain
+// node test runners). Moved in the PR #2949 review round.
+const METHODOLOGY_HELP_TITLE = formatResilienceMethodologyHelpTitle();
 
 function normalizeCountryCode(countryCode: string | null | undefined): string | null {
   const normalized = String(countryCode || '').trim().toUpperCase();
@@ -51,6 +51,7 @@ export class ResilienceWidget {
   private loading = false;
   private errorMessage: string | null = null;
   private requestVersion = 0;
+  private energyMixData: CountryEnergyProfileData | null = null;
 
   constructor(countryCode?: string | null) {
     this.element = document.createElement('section');
@@ -58,7 +59,9 @@ export class ResilienceWidget {
     this.unsubscribeAuth = subscribeAuthState((state) => {
       this.authState = state;
       const gateReason = this.getGateReason();
-      if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && this.currentData?.countryCode !== this.currentCountryCode) {
+      const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
+      const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
+      if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
         void this.refresh();
         return;
       }
@@ -78,6 +81,7 @@ export class ResilienceWidget {
 
     this.currentCountryCode = normalized;
     this.currentData = null;
+    this.energyMixData = null;
     this.errorMessage = null;
     this.loading = false;
     this.requestVersion += 1;
@@ -122,6 +126,11 @@ export class ResilienceWidget {
     }
   }
 
+  public setEnergyMix(data: CountryEnergyProfileData | null): void {
+    this.energyMixData = data;
+    this.render();
+  }
+
   public destroy(): void {
     this.requestVersion += 1;
     this.unsubscribeAuth?.();
@@ -146,7 +155,7 @@ export class ResilienceWidget {
           'span',
           {
             className: 'resilience-widget__help',
-            title: 'Composite resilience score derived from economic, infrastructure, energy, social/governance, and health/food domains.',
+            title: METHODOLOGY_HELP_TITLE,
             'aria-label': 'Resilience score methodology',
           },
           '?',
@@ -198,10 +207,14 @@ export class ResilienceWidget {
       className: 'panel-locked-cta resilience-widget__cta',
       onclick: () => {
         if (gateReason === PanelGateReason.ANONYMOUS) {
-          openSignIn();
+          void import('@/services/clerk')
+            .then((module) => module.openSignIn())
+            .catch(() => this.showAuthUnavailable());
           return;
         }
-        this.openUpgradeFlow();
+        void this.openUpgradeFlow().catch(() => {
+          window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+        });
       },
     }, cta) as HTMLButtonElement;
 
@@ -212,6 +225,17 @@ export class ResilienceWidget {
       h('div', { className: 'panel-locked-desc resilience-widget__gate-desc' }, description),
       button,
     );
+  }
+
+  private async showAuthUnavailable(): Promise<void> {
+    const message = 'Sign-in is temporarily unavailable. Please try again.';
+    try {
+      const { showCheckoutErrorToast } = await import('@/services/checkout-error-toast');
+      showCheckoutErrorToast(message);
+      return;
+    } catch {
+      window.alert(message);
+    }
   }
 
   private renderError(message: string): HTMLElement {
@@ -232,9 +256,9 @@ export class ResilienceWidget {
   }
 
   private renderScoreCard(data: ResilienceScoreResponse, preview = false): HTMLElement {
-    const visualLevel = getResilienceVisualLevel(data.overallScore);
-    const levelLabel = visualLevel.replace('_', ' ').toUpperCase();
-    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[visualLevel];
+    const overallDisplay = getResilienceOverallDisplay(data);
+    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[overallDisplay.visualLevel];
+    const scoreInterval = overallDisplay.hasScore ? formatResilienceScoreInterval(data.scoreInterval) : null;
 
     return h(
       'div',
@@ -243,22 +267,53 @@ export class ResilienceWidget {
         'div',
         { className: 'resilience-widget__overall' },
         this.renderBarBlock(
-          clampScore(data.overallScore),
+          overallDisplay.scoreForBar,
           levelColor,
           h(
             'div',
             { className: 'resilience-widget__overall-meta' },
-            h('span', { className: 'resilience-widget__overall-score' }, String(Math.round(clampScore(data.overallScore)))),
-            h('span', { className: 'resilience-widget__overall-level', style: { color: levelColor } }, levelLabel),
-            h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`),
+            h('span', { className: 'resilience-widget__overall-score' }, overallDisplay.scoreLabel),
+            ...(scoreInterval
+              ? [h('span', {
+                  className: 'resilience-widget__overall-interval',
+                  title: scoreInterval.title,
+                }, scoreInterval.label)]
+              : []),
+            h(
+              'span',
+              {
+                className: 'resilience-widget__overall-level',
+                style: { color: levelColor },
+                title: overallDisplay.serverLevelLabel,
+              },
+              overallDisplay.visualLevelLabel,
+            ),
+            ...(overallDisplay.hasScore
+              ? [h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`)]
+              : []),
           ),
         ),
       ),
+      ...(shouldRenderResilienceBaselineStress(data, overallDisplay)
+        ? [h(
+            'div',
+            { className: 'resilience-widget__baseline-stress' },
+            h('span', { className: 'resilience-widget__baseline-stress-text' },
+              formatBaselineStress(data.baselineScore, data.stressScore)),
+          )]
+        : []),
       h(
         'div',
         { className: 'resilience-widget__domains' },
-        ...data.domains.map((domain) => this.renderDomainRow(domain)),
+        ...data.domains.map((domain) => this.renderDomainRow(domain, preview)),
       ),
+      // T1.6 Phase 1 of the country-resilience reference-grade upgrade plan:
+      // per-dimension confidence grid. Uses only the existing `coverage`,
+      // `observedWeight`, `imputedWeight` fields on ResilienceDimension so
+      // this ships without proto changes. Imputation class icons (T1.7)
+      // and freshness badges (T1.5 full pass) land as additional columns
+      // once the schema exposes those fields through the response type.
+      this.renderDimensionConfidenceGrid(data),
       h(
         'div',
         { className: 'resilience-widget__footer' },
@@ -266,22 +321,120 @@ export class ResilienceWidget {
           'span',
           {
             className: `resilience-widget__confidence${data.lowConfidence ? ' resilience-widget__confidence--low' : ''}`,
-            title: preview ? 'Preview only' : 'Cronbach alpha and coverage-based confidence signal.',
+            title: preview ? 'Preview only' : 'Coverage and imputation-based confidence signal.',
           },
           formatResilienceConfidence(data),
         ),
         h('span', { className: 'resilience-widget__delta' }, formatResilienceChange30d(data.change30d)),
+        ...(() => {
+          // Hoisted so the formatter (which runs a regex + Date parse) is
+          // only invoked once per render instead of twice (guard + child).
+          // Raised in review of PR #2943 for consistency with the existing
+          // scoreInterval / baselineScore blocks in this file.
+          const dataVersionLabel = formatResilienceDataVersion(data.dataVersion);
+          return dataVersionLabel
+            ? [h(
+                'span',
+                {
+                  className: 'resilience-widget__data-version',
+                  title: 'Date the static-seed bundle (Railway job) was last refreshed. Individual live inputs (conflict events, sanctions, prices) can be newer — see the per-dimension freshness badge for those.',
+                },
+                dataVersionLabel,
+              )]
+            : [];
+        })(),
       ),
     );
   }
 
-  private renderDomainRow(domain: ResilienceDomain): HTMLElement {
-    const score = clampScore(domain.score);
-    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[getResilienceVisualLevel(score)];
+  private renderDimensionConfidenceGrid(data: ResilienceScoreResponse): HTMLElement {
+    const dimensions = collectDimensionConfidences(data.domains);
+    return h(
+      'div',
+      {
+        className: 'resilience-widget__dimension-grid',
+        title: 'Per-dimension data coverage. Hover a cell for the coverage percentage and observation provenance.',
+      },
+      ...dimensions.map((dim) => this.renderDimensionConfidenceCell(dim)),
+    );
+  }
+
+  private renderDimensionConfidenceCell(dim: DimensionConfidence): HTMLElement {
+    // Compose the tooltip from three independent fragments so the order
+    // is stable regardless of which optional fields the scorer
+    // populated. Imputation class + freshness are added by T1.7 / T1.5
+    // and may both be null (observed + unknown cadence), in which case
+    // only the base coverage string is shown.
+    const titleParts: string[] = [
+      dim.absent ? `${dim.label}: no data` : `${dim.label}: ${dim.coveragePct}% coverage, ${dim.status}`,
+    ];
+    if (dim.imputationClass) titleParts.push(getImputationClassLabel(dim.imputationClass));
+    if (dim.staleness) titleParts.push(getStalenessLabel(dim.staleness));
+    const title = titleParts.join(' | ');
+
+    const imputationClassName = dim.imputationClass
+      ? `resilience-widget__dimension-imputation resilience-widget__dimension-imputation--${dim.imputationClass}`
+      : 'resilience-widget__dimension-imputation';
+    const freshnessClassName = dim.staleness
+      ? `resilience-widget__dimension-freshness resilience-widget__dimension-freshness--${dim.staleness}`
+      : 'resilience-widget__dimension-freshness';
 
     return h(
       'div',
-      { className: 'resilience-widget__domain-row' },
+      {
+        className: `resilience-widget__dimension-cell resilience-widget__dimension-cell--${dim.status}`,
+        title,
+      },
+      h('span', { className: 'resilience-widget__dimension-label' }, dim.label),
+      h(
+        'div',
+        { className: 'resilience-widget__dimension-bar-track' },
+        h('div', {
+          className: 'resilience-widget__dimension-bar-fill',
+          style: { width: `${dim.coveragePct}%` },
+        }),
+      ),
+      h(
+        'span',
+        {
+          className: imputationClassName,
+          'aria-label': dim.imputationClass ? getImputationClassLabel(dim.imputationClass) : undefined,
+        },
+        dim.imputationClass ? getImputationClassIcon(dim.imputationClass) : '',
+      ),
+      h('span', { className: 'resilience-widget__dimension-pct' }, dim.absent ? 'n/a' : `${dim.coveragePct}%`),
+      h(
+        'span',
+        {
+          className: freshnessClassName,
+          'aria-label': dim.staleness ? getStalenessLabel(dim.staleness) : undefined,
+        },
+        getStalenessIcon(dim.staleness),
+      ),
+    );
+  }
+
+  private renderDomainRow(domain: ResilienceDomain, preview = false): HTMLElement {
+    const score = clampScore(domain.score);
+    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[getResilienceVisualLevel(score)];
+
+    const attrs: Record<string, string> = { className: 'resilience-widget__domain-row' };
+
+    if (!preview && domain.id === 'energy' && this.energyMixData?.mixAvailable) {
+      const d = this.energyMixData;
+      const parts = [
+        `Import dep: ${d.importShare.toFixed(1)}%`,
+        `Gas: ${d.gasShare.toFixed(1)}%`,
+        `Coal: ${d.coalShare.toFixed(1)}%`,
+        `Renew: ${d.renewShare.toFixed(1)}%`,
+      ];
+      if (d.gasStorageAvailable) parts.push(`EU storage: ${d.gasStorageFillPct.toFixed(1)}%`);
+      attrs['title'] = parts.join(' | ');
+    }
+
+    return h(
+      'div',
+      attrs,
       h('span', { className: 'resilience-widget__domain-label' }, getResilienceDomainLabel(domain.id)),
       this.renderBarBlock(score, levelColor),
       h('span', { className: 'resilience-widget__domain-score' }, String(Math.round(score))),
@@ -321,17 +474,23 @@ export class ResilienceWidget {
     return h('div', { className: 'cdp-empty' }, text);
   }
 
-  private openUpgradeFlow(): void {
+  private async openUpgradeFlow(): Promise<void> {
+    const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
+      import('@/config/products'),
+      import('@/services/runtime'),
+    ]);
+
     if (isDesktopRuntime()) {
-      void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' })
-        .catch(() => window.open('https://worldmonitor.app/pro', '_blank'));
+      const { invokeTauri } = await import('@/services/tauri-bridge');
+      await invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' })
+        .catch(() => { window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer'); });
       return;
     }
 
-    import('@/services/checkout')
+    await import('@/services/checkout')
       .then((module) => module.startCheckout(DEFAULT_UPGRADE_PRODUCT))
       .catch(() => {
-        window.open('https://worldmonitor.app/pro', '_blank');
+        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       });
   }
 }

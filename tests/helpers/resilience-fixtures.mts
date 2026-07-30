@@ -4,12 +4,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:NO': {
     wgi: {
       indicators: {
-        VA: { value: 1.9, year: 2025 },
-        PV: { value: 1.7, year: 2025 },
-        GE: { value: 1.8, year: 2025 },
-        RQ: { value: 1.9, year: 2025 },
-        RL: { value: 1.8, year: 2025 },
-        CC: { value: 1.9, year: 2025 },
+        'VA.EST': { value: 1.9, year: 2025 },
+        'PV.EST': { value: 1.7, year: 2025 },
+        'GE.EST': { value: 1.8, year: 2025 },
+        'RQ.EST': { value: 1.9, year: 2025 },
+        'RL.EST': { value: 1.8, year: 2025 },
+        'CC.EST': { value: 1.9, year: 2025 },
       },
     },
     infrastructure: {
@@ -17,30 +17,36 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
         'EG.ELC.ACCS.ZS': { value: 100, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 90, year: 2025 },
         'EG.USE.ELEC.KH.PC': { value: 23000, year: 2025 },
+        'IT.NET.BBND.P2': { value: 42, year: 2025 },
       },
     },
     gpi: { score: 1.5, rank: 12, year: 2025 },
-    rsf: { score: 92, rank: 4, year: 2025 },
+    rsf: { score: 7, rank: 4, year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: 3.5, year: 2024 },
         uhcIndex: { value: 88, year: 2024 },
         measlesCoverage: { value: 97, year: 2024 },
+        physiciansPer1k: { value: 5.0, year: 2024 },
+        healthExpPerCapitaUsd: { value: 8000, year: 2024 },
       },
     },
     fao: { peopleInCrisis: 10, phase: 'IPC Phase 1', year: 2025 },
     aquastat: { indicator: 'Renewable water availability', value: 4000, year: 2024 },
     iea: { energyImportDependency: { value: 15, year: 2024, source: 'IEA' } },
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 70, year: 2023 },
+    fxReservesMonths: { source: 'worldbank', months: 10.5, year: 2023 },
+    appliedTariffRate: { source: 'worldbank', value: 1.5, year: 2023 },
   },
   'resilience:static:US': {
     wgi: {
       indicators: {
-        VA: { value: 0.9, year: 2025 },
-        PV: { value: 0.6, year: 2025 },
-        GE: { value: 1.1, year: 2025 },
-        RQ: { value: 1.2, year: 2025 },
-        RL: { value: 1.0, year: 2025 },
-        CC: { value: 1.1, year: 2025 },
+        'VA.EST': { value: 0.9, year: 2025 },
+        'PV.EST': { value: 0.6, year: 2025 },
+        'GE.EST': { value: 1.1, year: 2025 },
+        'RQ.EST': { value: 1.2, year: 2025 },
+        'RL.EST': { value: 1.0, year: 2025 },
+        'CC.EST': { value: 1.1, year: 2025 },
       },
     },
     infrastructure: {
@@ -48,30 +54,36 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
         'EG.ELC.ACCS.ZS': { value: 100, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 74, year: 2025 },
         'EG.USE.ELEC.KH.PC': { value: 12000, year: 2025 },
+        'IT.NET.BBND.P2': { value: 35, year: 2025 },
       },
     },
     gpi: { score: 2.4, rank: 132, year: 2025 },
-    rsf: { score: 70, rank: 45, year: 2025 },
+    rsf: { score: 30, rank: 45, year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: 2.8, year: 2024 },
         uhcIndex: { value: 82, year: 2024 },
         measlesCoverage: { value: 91, year: 2024 },
+        physiciansPer1k: { value: 2.6, year: 2024 },
+        healthExpPerCapitaUsd: { value: 12000, year: 2024 },
       },
     },
     fao: { peopleInCrisis: 5000, phase: 'IPC Phase 2', year: 2025 },
     aquastat: { indicator: 'Renewable water availability', value: 1500, year: 2024 },
     iea: { energyImportDependency: { value: 25, year: 2024, source: 'IEA' } },
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 25, year: 2023 },
+    fxReservesMonths: { source: 'worldbank', months: 2.5, year: 2023 },
+    appliedTariffRate: { source: 'worldbank', value: 3.5, year: 2023 },
   },
   'resilience:static:YE': {
     wgi: {
       indicators: {
-        VA: { value: -1.9, year: 2025 },
-        PV: { value: -2.3, year: 2025 },
-        GE: { value: -1.8, year: 2025 },
-        RQ: { value: -1.7, year: 2025 },
-        RL: { value: -2.0, year: 2025 },
-        CC: { value: -2.1, year: 2025 },
+        'VA.EST': { value: -1.9, year: 2025 },
+        'PV.EST': { value: -2.3, year: 2025 },
+        'GE.EST': { value: -1.8, year: 2025 },
+        'RQ.EST': { value: -1.7, year: 2025 },
+        'RL.EST': { value: -2.0, year: 2025 },
+        'CC.EST': { value: -2.1, year: 2025 },
       },
     },
     infrastructure: {
@@ -79,20 +91,26 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
         'EG.ELC.ACCS.ZS': { value: 60, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 20, year: 2025 },
         'EG.USE.ELEC.KH.PC': { value: 300, year: 2025 },
+        'IT.NET.BBND.P2': { value: 1, year: 2025 },
       },
     },
     gpi: { score: 3.8, rank: 160, year: 2025 },
-    rsf: { score: 25, rank: 150, year: 2025 },
+    rsf: { score: 75, rank: 150, year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: 0.7, year: 2024 },
         uhcIndex: { value: 45, year: 2024 },
         measlesCoverage: { value: 58, year: 2024 },
+        physiciansPer1k: { value: 0.5, year: 2024 },
+        healthExpPerCapitaUsd: { value: 100, year: 2024 },
       },
     },
     fao: { peopleInCrisis: 2_000_000, phase: 'IPC Phase 4', year: 2025 },
     aquastat: { indicator: 'Water stress', value: 85, year: 2024 },
     iea: { energyImportDependency: { value: 95, year: 2024, source: 'IEA' } },
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 30, year: 2023 },
+    fxReservesMonths: { source: 'worldbank', months: 1.2, year: 2022 },
+    appliedTariffRate: { source: 'worldbank', value: 8.0, year: 2023 },
   },
   'energy:mix:v1:NO': {
     iso2: 'NO',
@@ -146,12 +164,27 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { iso3: 'YEM', debtToGdp: 180, annualGrowth: 12 },
     ],
   },
-  'economic:bis:credit:v1': {
-    entries: [
-      { countryCode: 'NO', creditGdpRatio: 85 },
-      { countryCode: 'US', creditGdpRatio: 150 },
-      { countryCode: 'YE', creditGdpRatio: 220 },
-    ],
+  // IMF WEO indicators: CPI inflation (PCPIPCH) and current account balance % GDP (BCA_NGDPD).
+  // Covers ~185 sovereign states — replaces BIS credit (~40 economies) in scoreMacroFiscal,
+  // and provides tier-2 currency stability proxy for non-BIS countries in scoreCurrencyExternal.
+  'economic:imf:macro:v2': {
+    countries: {
+      // govRevenuePct = General Government Revenue % GDP (IMF GGR_NGDP).
+      // Replaces debtToGdp as primary fiscal metric in scoreMacroFiscal — raw debt/GDP
+      // is gamed by HIPC relief (Somalia 5% debt ≠ prudence; it reflects credit exclusion).
+      NO: { inflationPct: 3.2, currentAccountPct: 20.0, govRevenuePct: 57.0, year: 2024 },
+      US: { inflationPct: 3.5, currentAccountPct: -3.3, govRevenuePct: 33.0, year: 2024 },
+      YE: { inflationPct: 22.0, currentAccountPct: -6.0, govRevenuePct: 8.0, year: 2024 },
+    },
+  },
+  // IMF WEO labor (issue #3027) — LUR sub-metric for scoreMacroFiscal.
+  // Coverage ~150 countries; null-tolerant in the scorer.
+  'economic:imf:labor:v1': {
+    countries: {
+      NO: { unemploymentPct: 3.7, populationMillions: 5.5, year: 2024 },
+      US: { unemploymentPct: 4.1, populationMillions: 333.3, year: 2024 },
+      YE: { unemploymentPct: 18.0, populationMillions: 33.7, year: 2024 },
+    },
   },
   'economic:bis:eer:v1': {
     rates: [
@@ -169,37 +202,21 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { countryCode: 'YE', realChange: -18.0, realEer: 145, date: '2025-11' },
     ],
   },
-  'sanctions:pressure:v1': {
-    countries: [
-      { countryCode: 'NO', countryName: 'Norway', entryCount: 0, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 },
-      { countryCode: 'US', countryName: 'United States', entryCount: 40, newEntryCount: 4, vesselCount: 2, aircraftCount: 1 },
-      { countryCode: 'YE', countryName: 'Yemen', entryCount: 160, newEntryCount: 8, vesselCount: 10, aircraftCount: 6 },
-    ],
-  },
+  // Full ISO2→entryCount map from sanctions:country-counts:v1 (all countries, no top-N truncation).
+  'sanctions:country-counts:v1': { NO: 2, US: 45, YE: 180, LB: 30 },
   'trade:restrictions:v1:tariff-overview:50': {
     restrictions: [
-      { reportingCountry: 'United States', status: 'IN_FORCE' },
-      { reportingCountry: 'United States', status: 'IN_FORCE' },
-      { affectedCountry: 'United States', status: 'PLANNED' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { reportingCountry: 'Yemen', status: 'IN_FORCE' },
-      { affectedCountry: 'Yemen', status: 'PLANNED' },
-      { affectedCountry: 'Yemen', status: 'PLANNED' },
+      { reportingCountry: 'Norway', status: 'low' },
+      { reportingCountry: 'United States', status: 'low' },
     ],
+    _reporterCountries: ['NO', 'US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'trade:barriers:v1:tariff-gap:50': {
     barriers: [
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'United States' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
-      { notifyingCountry: 'Yemen' },
+      { notifyingCountry: 'Norway', status: 'high' },
+      { notifyingCountry: 'United States', status: 'low' },
     ],
+    _reporterCountries: ['NO', 'US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'cyber:threats:v2': {
     threats: [
@@ -291,9 +308,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     ],
   },
   'news:threat:summary:v1': {
-    NO: { critical: 0, high: 0, medium: 0, low: 1 },
-    US: { critical: 0, high: 2, medium: 4, low: 2 },
-    YE: { critical: 4, high: 6, medium: 5, low: 1 },
+    byCountry: {
+      NO: { critical: 0, high: 0, medium: 0, low: 1 },
+      US: { critical: 0, high: 2, medium: 4, low: 2 },
+      YE: { critical: 4, high: 6, medium: 5, low: 1 },
+    },
+    generatedAt: '2026-04-06T00:00:00.000Z',
   },
   // Lebanon: used to test that null IEA (Eurostat EU-only) + crisis-level electricity
   // consumption produces an energy score < 50, not artificially high (~89 pre-fix).
@@ -313,6 +333,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
         'EG.ELC.ACCS.ZS': { value: 99, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 85, year: 2025 },
         'EG.USE.ELEC.KH.PC': { value: 1200, year: 2024 },
+        'IT.NET.BBND.P2': { value: 8, year: 2024 },
       },
     },
     gpi: { score: 2.9, rank: 108, year: 2025 },
@@ -327,6 +348,8 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fao: { peopleInCrisis: 1_500_000, phase: 'IPC Phase 3', year: 2025 },
     aquastat: { indicator: 'Water stress', value: 72, year: 2024 },
     iea: null, // Eurostat is EU-only — Lebanon absent → energy import dependency unknown
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 95, year: 2023 },
+    fxReservesMonths: { source: 'worldbank', months: 1.5, year: 2022 },
   },
   'energy:mix:v1:LB': {
     iso2: 'LB',
@@ -348,7 +371,109 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     failedDatasets: [],
     seedYear: 2025,
     seededAt: '2026-04-03T00:00:00.000Z',
-    sourceVersion: 'resilience-static-v1',
+    sourceVersion: 'resilience-static-v7',
+  },
+  'seed-meta:resilience:static': {
+    fetchedAt: 1712102400000,
+    recordCount: 196,
+  },
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure seed-meta + data
+  // fixtures. The scorer preflights all 3 seed-meta envelopes (fail-closed)
+  // before per-component reads; absence of any of these throws
+  // ResilienceConfigurationError and routes to source-failure imputation.
+  'seed-meta:economic:wb-external-debt:v1': {
+    fetchedAt: 1714694400000,
+    recordCount: 125,
+  },
+  'seed-meta:economic:bis-lbs:v1': {
+    fetchedAt: 1714694400000,
+    recordCount: 200,
+  },
+  'seed-meta:economic:fatf-listing:v1': {
+    fetchedAt: 1714694400000,
+    recordCount: 200,
+  },
+  'economic:wb-external-debt:v1': {
+    countries: {
+      NO: { value: 2, year: 2024 },     // 2% GNI — Norway low external debt → score ~87
+      US: { value: 0, year: 2024 },     // HIC, WB IDS doesn't publish — fixture treats as 0 for the test triple
+      YE: { value: 14, year: 2023 },    // ~14% GNI — fragile state near worst goalpost → score ~7
+    },
+    seededAt: '2026-04-25T00:00:00.000Z',
+  },
+  'economic:bis-lbs:v1': {
+    countries: {
+      NO: { totalXborderPctGdp: 18, parentCount: 8 },  // sweet spot + diverse parents → high score
+      US: { totalXborderPctGdp: 22, parentCount: 9 },  // sweet spot + diverse parents → high score
+      YE: { totalXborderPctGdp: 2, parentCount: 1 },   // financial isolation → low score
+    },
+    seededAt: '2026-04-25T00:00:00.000Z',
+  },
+  'economic:fatf-listing:v1': {
+    listings: {
+      NO: 'compliant',
+      US: 'compliant',
+      YE: 'gray',
+    },
+    publicationDate: '2026-02-13',
+    seededAt: '2026-04-25T00:00:00.000Z',
+  },
+  'resilience:recovery:fiscal-space:v1': {
+    countries: {
+      // NO: full gap inputs — strong fiscal position, debt path declining
+      // (gap ≈ +11.4 → clamps to 100 against -5/+3 goalposts).
+      NO: {
+        govRevenuePct: 42, fiscalBalancePct: 10, debtToGdpPct: 40, year: 2025,
+        primaryBalancePct: 11, realGdpGrowthPct: 1, inflationPct: 2.5,
+        debtSustainabilityGapPct: 11.4, gapYear: 2025,
+      },
+      // US: full gap inputs — near debt-stabilizing point (gap ≈ 0.02 →
+      // normalized score ≈ 63 against -5/+3 goalposts).
+      US: {
+        govRevenuePct: 30, fiscalBalancePct: -6, debtToGdpPct: 122, year: 2025,
+        primaryBalancePct: -3, realGdpGrowthPct: 2, inflationPct: 3,
+        debtSustainabilityGapPct: 0.02, gapYear: 2025,
+      },
+      // YE: fiscal-3 only, no gap inputs (realistic for data-sparse country).
+      // Scorer's weightedBlend redistributes weight across the 3 populated
+      // indicators, demonstrating null-gap fallback behavior.
+      YE: { govRevenuePct: 8, fiscalBalancePct: -10, debtToGdpPct: 80, year: 2024 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'resilience:recovery:reserve-adequacy:v1': {
+    countries: {
+      NO: { reserveMonths: 14, year: 2024 },
+      US: { reserveMonths: 3, year: 2024 },
+      YE: { reserveMonths: 0.5, year: 2023 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'resilience:recovery:external-debt:v1': {
+    countries: {
+      NO: { debtToReservesRatio: 0.2, year: 2024 },
+      US: { debtToReservesRatio: 1.5, year: 2024 },
+      YE: { debtToReservesRatio: 4.0, year: 2023 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  // HHI on 0..1 scale (seeder output). Scorer multiplies by 10000 for normalization.
+  // NO: 0.03 = very diversified, US: 0.06 = diversified, YE: 0.35 = concentrated
+  'resilience:recovery:import-hhi:v1': {
+    countries: {
+      NO: { hhi: 0.03, concentrated: false, partnerCount: 120 },
+      US: { hhi: 0.06, concentrated: false, partnerCount: 180 },
+      YE: { hhi: 0.35, concentrated: true, partnerCount: 15 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  // Fuel-stocks: fuelStockDays (not stockDays), matching seeder output shape
+  'resilience:recovery:fuel-stocks:v1': {
+    countries: {
+      NO: { fuelStockDays: 90, meetsObligation: true, belowObligation: false },
+      US: { fuelStockDays: 60, meetsObligation: false, belowObligation: true },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
   },
 };
 

@@ -72,6 +72,7 @@ basket:
       substitutionGroup: tomatoes
       minBaseQty: 800
       maxBaseQty: 1200
+      negativeTokens: ["chopped", "peeled", "sauce", "paste", "canned", "puree", "sundried"]
 
     - id: onions_1kg
       category: onions
@@ -81,6 +82,7 @@ basket:
       substitutionGroup: onions
       minBaseQty: 1000
       maxBaseQty: 1600
+      negativeTokens: ["powder", "flakes", "rings", "pickled", "seeds", "sets"]
 
     - id: water_1_5l
       category: water
@@ -90,6 +92,7 @@ basket:
       substitutionGroup: water_still
       minBaseQty: 6000
       maxBaseQty: 10000
+      negativeTokens: ["sparkling", "flavored", "flavoured"]
 
     - id: sugar_1kg
       category: sugar
@@ -99,6 +102,7 @@ basket:
       substitutionGroup: sugar_white
       minBaseQty: 1600
       maxBaseQty: 2000
+      negativeTokens: ["brown", "baby", "mascavo", "sachets", "powdered"]
 
     - id: cheese_cheddar_200g
       category: dairy
@@ -117,3 +121,4 @@ basket:
       substitutionGroup: yogurt_plain
       minBaseQty: 800
       maxBaseQty: 1000
+      negativeTokens: ["drink", "drinking", "plant-based", "vegan", "greek", "fruit"]

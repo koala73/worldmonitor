@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+// TriggerSimulationRequest enqueues a simulation task for the current
+// SIMULATION_PACKAGE_LATEST_KEY package pointer. Caller-supplied
+// run_id is intentionally absent — the runId is server-derived from
+// the package pointer (avoids lock-key collision, queue stuffing, and
+// race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
+// feat-simulation-trigger-and-runid-filter-plan.md D1.
+message TriggerSimulationRequest {
+  // Optional opaque client-version string for debugging (e.g., "claude-
+  // desktop/0.6.1", "mcp-client/0.2"). Server LOGS this with the success
+  // breadcrumb but never persists or branches on it. Present primarily so
+  // the generated client/server code has at least one field to reference
+  // (sebuf v0.11.1 emits a typecheck-broken POST client for fully-empty
+  // request messages). Safe to omit; default empty string.
+  string client_version = 1;
+}
+
+// TriggerSimulationResponse carries the outcome of an enqueue attempt.
+// On error states (premium gate, queue capacity, Redis transport), the
+// handler throws ApiError with the appropriate HTTP status — there is
+// NO error field on this message. All paths that return this message
+// represent HTTP 200.
+message TriggerSimulationResponse {
+  // True when the task was newly enqueued; false on idempotency hit or
+  // no_package.
+  bool queued = 1;
+  // Server-derived runId from SIMULATION_PACKAGE_LATEST_KEY. Empty
+  // string when reason='no_package' (no package pointer was available).
+  string run_id = 2;
+  // Opaque fingerprint of the simulation package input (first 16 hex
+  // chars of sha256 over the package's R2 object key). Stable identifier
+  // for drift detection across trigger/read calls — clients can compare
+  // this against the fingerprint inside the by-run outcome payload to
+  // detect cron rotation. Do NOT decode. Returns empty string when
+  // reason='no_package'.
+  string pkg_fingerprint = 3;
+  // External reason taxonomy:
+  //   ''                  - happy path (queued=true)
+  //   'no_package'        - SIMULATION_PACKAGE_LATEST_KEY pointer absent
+  //   'already-handled'   - idempotency hit (covers both "already queued"
+  //                         and "already completed this cycle"; collapsed
+  //                         externally to avoid a cron-timing oracle —
+  //                         server logs retain the distinction).
+  string reason = 4;
+}

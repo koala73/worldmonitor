@@ -253,8 +253,11 @@ describe('Fix 3: hasReasoningPreamble', () => {
 describe('Fix 4: cache version bump', () => {
   const src = readSrc('src/utils/summary-cache-key.ts');
 
-  it('CACHE_VERSION is v5', () => {
-    assert.match(src, /CACHE_VERSION\s*=\s*'v5'/,
-      'CACHE_VERSION must be v5 to invalidate entries from old conflating prompts');
+  it('CACHE_VERSION is v8', () => {
+    // Bumped v7 → v8 on 2026-07-06 (#4944): summarize chain moved to
+    // OpenRouter deepseek-v4-flash-first; v7 rows carry old-model voice and
+    // must age out. (v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
+    assert.match(src, /CACHE_VERSION\s*=\s*'v8'/,
+      'CACHE_VERSION must be v8 to retire pre-DeepSeek cached summaries');
   });
 });

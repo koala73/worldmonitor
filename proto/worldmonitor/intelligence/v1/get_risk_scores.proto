@@ -17,4 +17,10 @@ message GetRiskScoresResponse {
   repeated CiiScore cii_scores = 1;
   // Strategic risk assessments.
   repeated StrategicRisk strategic_risks = 2;
+  // True when upstream scoring inputs failed and the response is served from
+  // a stale cache or from the baseline-only cold fallback.
+  bool degraded = 3;
+  // True when degraded=true because a stale cached score payload was served.
+  // Baseline-only cold fallback sets degraded=true and stale=false.
+  bool stale = 4;
 }

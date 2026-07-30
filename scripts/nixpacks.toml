@@ -1,5 +1,6 @@
 [phases.setup]
-aptPkgs = ["curl"]
+# aptPkgs = ["curl"]  — same workaround as root nixpacks.toml; see comment there.
+cmds = ["sudo apt-get update -o Acquire::AllowInsecureRepositories=false || true", "sudo apt-get install -y --no-install-recommends --fix-missing curl || echo 'apt curl install failed; curl may already be present'"]
 
 [variables]
 NODE_OPTIONS = "--dns-result-order=ipv4first"

@@ -1,0 +1,296 @@
+{
+  "generatedAt": 1779975045168,
+  "_formula": "pc",
+  "methodologyFormula": "pillar-combined-penalized-v1",
+  "license": "INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex vulnerability component (HDX) CC-BY 4.0. Internal validation only.",
+  "hypotheses": [
+    {
+      "index": "INFORM",
+      "pillar": "overall",
+      "direction": "negative",
+      "expected": 0.6,
+      "actual": -0.7769,
+      "pass": true
+    },
+    {
+      "index": "HDI",
+      "pillar": "overall",
+      "direction": "positive",
+      "expected": 0.65,
+      "actual": 0.7608,
+      "pass": true
+    },
+    {
+      "index": "WorldRiskIndex",
+      "pillar": "overall",
+      "direction": "negative",
+      "expected": 0.55,
+      "actual": -0.7005,
+      "pass": true
+    }
+  ],
+  "correlations": {
+    "INFORM": {
+      "spearman": -0.7769,
+      "pearson": -0.8076,
+      "n": 169
+    },
+    "HDI": {
+      "spearman": 0.7608,
+      "pearson": 0.7831,
+      "n": 169
+    },
+    "WorldRiskIndex": {
+      "spearman": -0.7005,
+      "pearson": -0.731,
+      "n": 169
+    }
+  },
+  "outliers": [
+    {
+      "countryCode": "PE",
+      "wmScore": 70.81,
+      "externalScore": 5.2,
+      "residual": 2.53,
+      "index": "INFORM",
+      "commentary": "PE: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "CO",
+      "wmScore": 68.23,
+      "externalScore": 5.3,
+      "residual": 2.33,
+      "index": "INFORM",
+      "commentary": "CO: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "GT",
+      "wmScore": 65.41,
+      "externalScore": 5.8,
+      "residual": 2.15,
+      "index": "INFORM",
+      "commentary": "GT: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "PG",
+      "wmScore": 64.43,
+      "externalScore": 6.3,
+      "residual": 2.19,
+      "index": "INFORM",
+      "commentary": "PG: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "MV",
+      "wmScore": 64.39,
+      "externalScore": 2.1,
+      "residual": -2.05,
+      "index": "INFORM",
+      "commentary": "MV: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "SG",
+      "wmScore": 64.32,
+      "externalScore": 0.7,
+      "residual": -2.66,
+      "index": "INFORM",
+      "commentary": "SG: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "MT",
+      "wmScore": 64.2,
+      "externalScore": 1.7,
+      "residual": -2.47,
+      "index": "INFORM",
+      "commentary": "MT: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "KR",
+      "wmScore": 64.16,
+      "externalScore": 2,
+      "residual": -2.22,
+      "index": "INFORM",
+      "commentary": "KR: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure"
+    },
+    {
+      "countryCode": "MU",
+      "wmScore": 64.03,
+      "externalScore": 2.1,
+      "residual": -2.17,
+      "index": "INFORM",
+      "commentary": "MU: WM scores low (limited structural buffers); INFORM rates risk lower than WM resilience inversion"
+    },
+    {
+      "countryCode": "BS",
+      "wmScore": 60.54,
+      "externalScore": 2.5,
+      "residual": -2.33,
+      "index": "INFORM",
+      "commentary": "BS: WM scores low (limited structural buffers); INFORM rates risk lower than WM resilience inversion"
+    },
+    {
+      "countryCode": "BH",
+      "wmScore": 57.71,
+      "externalScore": 1.7,
+      "residual": -3.46,
+      "index": "INFORM",
+      "commentary": "BH: WM scores low (limited structural buffers); INFORM rates risk lower than WM resilience inversion"
+    },
+    {
+      "countryCode": "WS",
+      "wmScore": 74.58,
+      "externalScore": 0.708,
+      "residual": -2.5,
+      "index": "HDI",
+      "commentary": "WS: WM resilience tracks HDI human-development levels; external rank lower than expected"
+    },
+    {
+      "countryCode": "SR",
+      "wmScore": 74.57,
+      "externalScore": 0.722,
+      "residual": -2.22,
+      "index": "HDI",
+      "commentary": "SR: WM resilience tracks HDI human-development levels; external rank lower than expected"
+    },
+    {
+      "countryCode": "BT",
+      "wmScore": 73.47,
+      "externalScore": 0.698,
+      "residual": -2.44,
+      "index": "HDI",
+      "commentary": "BT: WM resilience tracks HDI human-development levels; external rank lower than expected"
+    },
+    {
+      "countryCode": "VU",
+      "wmScore": 69.2,
+      "externalScore": 0.621,
+      "residual": -2.39,
+      "index": "HDI",
+      "commentary": "VU: WM resilience tracks HDI human-development levels; external rank lower than expected"
+    },
+    {
+      "countryCode": "LA",
+      "wmScore": 67.57,
+      "externalScore": 0.617,
+      "residual": -2.11,
+      "index": "HDI",
+      "commentary": "LA: WM resilience tracks HDI human-development levels; external rank lower than expected"
+    },
+    {
+      "countryCode": "SG",
+      "wmScore": 64.32,
+      "externalScore": 0.946,
+      "residual": 2.22,
+      "index": "HDI",
+      "commentary": "SG: WM resilience tracks HDI human-development levels; external rank higher than expected"
+    },
+    {
+      "countryCode": "KR",
+      "wmScore": 64.16,
+      "externalScore": 0.937,
+      "residual": 2.09,
+      "index": "HDI",
+      "commentary": "KR: WM resilience tracks HDI human-development levels; external rank higher than expected"
+    },
+    {
+      "countryCode": "BH",
+      "wmScore": 57.71,
+      "externalScore": 0.899,
+      "residual": 2.5,
+      "index": "HDI",
+      "commentary": "BH: WM resilience and HDI diverge — HDI weights health/education/income; WM weights stress buffers"
+    },
+    {
+      "countryCode": "TR",
+      "wmScore": 57.09,
+      "externalScore": 0.853,
+      "residual": 2.19,
+      "index": "HDI",
+      "commentary": "TR: WM resilience and HDI diverge — HDI weights health/education/income; WM weights stress buffers"
+    },
+    {
+      "countryCode": "IR",
+      "wmScore": 49.68,
+      "externalScore": 0.799,
+      "residual": 2.17,
+      "index": "HDI",
+      "commentary": "IR: WM resilience and HDI diverge — HDI weights health/education/income; WM weights stress buffers"
+    },
+    {
+      "countryCode": "PE",
+      "wmScore": 70.81,
+      "externalScore": 40.02,
+      "residual": 2.72,
+      "index": "WorldRiskIndex",
+      "commentary": "PE: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently"
+    },
+    {
+      "countryCode": "TJ",
+      "wmScore": 68.82,
+      "externalScore": 36.56,
+      "residual": 2.37,
+      "index": "WorldRiskIndex",
+      "commentary": "TJ: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently"
+    },
+    {
+      "countryCode": "CO",
+      "wmScore": 68.23,
+      "externalScore": 48.86,
+      "residual": 2.63,
+      "index": "WorldRiskIndex",
+      "commentary": "CO: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently"
+    },
+    {
+      "countryCode": "PH",
+      "wmScore": 66.34,
+      "externalScore": 54.2,
+      "residual": 2.31,
+      "index": "WorldRiskIndex",
+      "commentary": "PH: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently"
+    },
+    {
+      "countryCode": "SG",
+      "wmScore": 64.32,
+      "externalScore": 2.99,
+      "residual": -2.35,
+      "index": "WorldRiskIndex",
+      "commentary": "SG: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently"
+    },
+    {
+      "countryCode": "MT",
+      "wmScore": 64.2,
+      "externalScore": 7.21,
+      "residual": -2.14,
+      "index": "WorldRiskIndex",
+      "commentary": "MT: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently"
+    },
+    {
+      "countryCode": "TM",
+      "wmScore": 59.47,
+      "externalScore": 9.43,
+      "residual": -2.44,
+      "index": "WorldRiskIndex",
+      "commentary": "TM: WM rates resilience low; WRI vulnerability weighting drives rank lower"
+    },
+    {
+      "countryCode": "BH",
+      "wmScore": 57.71,
+      "externalScore": 5.45,
+      "residual": -3.04,
+      "index": "WorldRiskIndex",
+      "commentary": "BH: WM rates resilience low; WRI vulnerability weighting drives rank lower"
+    },
+    {
+      "countryCode": "GW",
+      "wmScore": 50.6,
+      "externalScore": 14.84,
+      "residual": -2.28,
+      "index": "WorldRiskIndex",
+      "commentary": "GW: WM rates resilience low; WRI vulnerability weighting drives rank lower"
+    }
+  ],
+  "sourceStatus": {
+    "INFORM": "live",
+    "HDI": "live",
+    "WorldRiskIndex": "live"
+  }
+}

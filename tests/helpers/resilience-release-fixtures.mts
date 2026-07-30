@@ -167,7 +167,7 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
       fao: null,
       aquastat: null,
       iea: null,
-      coverage: { availableDatasets: 0, totalDatasets: 8, ratio: 0 },
+      coverage: { availableDatasets: 0, totalDatasets: 9, ratio: 0 },
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
     };
@@ -191,10 +191,11 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
         // Exponential scale: fragile (~600 kWh) → stressed (~2200) → strong (~8000) → elite (~9500)
         // Reflects that energy consumption per capita collapses in conflict/crisis states.
         'EG.USE.ELEC.KH.PC': { value: Math.round(300 * 10 ** (quality / 60)), year: 2025 },
+        'IT.NET.BBND.P2': { value: round(clamp(quality * 0.5, 0.1, 46), 1), year: 2025 },
       },
     },
     gpi: { score: round(clamp(4.1 - quality * 0.03, 1.2, 4.2), 2), rank: Math.round(190 - quality * 1.5), year: 2025 },
-    rsf: { score: round(clamp(8 + quality * 0.92, 10, 95), 1), rank: Math.round(180 - quality * 1.6), year: 2025 },
+    rsf: { score: round(clamp(97 - quality, 5, 90), 1), rank: Math.round(180 - quality * 1.6), year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: round(clamp(0.2 + quality * 0.045, 0.3, 8), 1), year: 2024 },
@@ -217,7 +218,12 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
         source: 'release-gate-fixture',
       },
     },
-    coverage: { availableDatasets: 8, totalDatasets: 8, ratio: 1 },
+    appliedTariffRate: {
+      value: round(clamp(20 - quality * 0.2, 1, 18), 1),
+      year: 2024,
+      source: 'release-gate-fixture',
+    },
+    coverage: { availableDatasets: 9, totalDatasets: 9, ratio: 1 },
     seedYear: 2025,
     seededAt: '2026-04-04T00:00:00.000Z',
   };
@@ -236,7 +242,7 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
       failedDatasets: [],
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
-      sourceVersion: 'resilience-static-v1',
+      sourceVersion: 'resilience-static-v7',
     },
     'supply_chain:shipping_stress:v1': { stressScore: 18 },
     'supply_chain:transit-summaries:v1': {
@@ -388,6 +394,19 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
     };
   }
 
+  // Plan 2026-04-26-002 §U7 (PR 6) — IMF labor seed must carry
+  // population for the headline-eligible gate's "population >= 200k"
+  // branch. Without this fixture, every release-gate country would
+  // fall through to the coverage>=0.85 conjunct only; G20+EU27
+  // members are by definition large states (well above 0.2M) so a
+  // uniform 50M placeholder satisfies the gate without distorting
+  // any other test that reads this seed.
+  fixtures['economic:imf:labor:v1'] = {
+    countries: Object.fromEntries(
+      descriptors.map(({ code }) => [code, { unemploymentPct: 5.0, populationMillions: 50, year: 2025 }]),
+    ),
+    seededAt: '2026-04-04T00:00:00.000Z',
+  };
   fixtures['economic:national-debt:v1'] = { entries: debtEntries };
   fixtures['economic:bis:credit:v1'] = { entries: bisCreditEntries };
   fixtures['economic:bis:eer:v1'] = { rates: bisExchangeRates };
@@ -402,6 +421,46 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
   fixtures[`displacement:summary:v1:${new Date().getFullYear()}`] = { summary: { countries: displacementCountries } };
   fixtures['intelligence:social:reddit:v1'] = { posts: socialPosts };
   fixtures['news:threat:summary:v1'] = threatSummary;
+
+  const recoveryFiscalCountries: Record<string, Record<string, unknown>> = {};
+  const recoveryReserveCountries: Record<string, Record<string, unknown>> = {};
+  const recoveryDebtCountries: Record<string, Record<string, unknown>> = {};
+  const recoveryImportCountries: Record<string, Record<string, unknown>> = {};
+  const recoveryFuelCountries: Record<string, Record<string, unknown>> = {};
+
+  for (const descriptor of descriptors) {
+    const quality = qualityFor(descriptor.profile);
+    recoveryFiscalCountries[descriptor.code] = {
+      govRevenuePct: round(clamp(quality * 0.4 + 5, 5, 45), 1),
+      fiscalBalancePct: round(clamp(quality * 0.2 - 12, -15, 5), 1),
+      debtToGdpPct: round(clamp(200 - quality * 1.7, 15, 180), 1),
+      year: 2025,
+    };
+    recoveryReserveCountries[descriptor.code] = {
+      reserveMonths: round(clamp(quality * 0.16 + 0.5, 0.5, 18), 1),
+      year: 2024,
+    };
+    recoveryDebtCountries[descriptor.code] = {
+      debtToReservesRatio: round(clamp(5 - quality * 0.045, 0.1, 5), 3),
+      year: 2024,
+    };
+    recoveryImportCountries[descriptor.code] = {
+      hhi: Math.round(clamp(5500 - quality * 50, 100, 5000)),
+      year: 2024,
+    };
+    if (quality > 60) {
+      recoveryFuelCountries[descriptor.code] = {
+        stockDays: Math.round(clamp(quality * 1.1 + 10, 20, 120)),
+        year: 2025,
+      };
+    }
+  }
+
+  fixtures['resilience:recovery:fiscal-space:v1'] = { countries: recoveryFiscalCountries, seededAt: '2026-04-04T00:00:00.000Z' };
+  fixtures['resilience:recovery:reserve-adequacy:v1'] = { countries: recoveryReserveCountries, seededAt: '2026-04-04T00:00:00.000Z' };
+  fixtures['resilience:recovery:external-debt:v1'] = { countries: recoveryDebtCountries, seededAt: '2026-04-04T00:00:00.000Z' };
+  fixtures['resilience:recovery:import-hhi:v1'] = { countries: recoveryImportCountries, seededAt: '2026-04-04T00:00:00.000Z' };
+  fixtures['resilience:recovery:fuel-stocks:v1'] = { countries: recoveryFuelCountries, seededAt: '2026-04-04T00:00:00.000Z' };
 
   return fixtures;
 }

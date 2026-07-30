@@ -140,6 +140,29 @@
   font-weight: 600;
 }
 
+.fires-explosion-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--threat-critical);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.fires-explosion-alert {
+  padding: 6px 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--threat-critical) 12%, transparent);
+  color: var(--threat-critical);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .fires-footer {
   display: flex;
   justify-content: space-between;
@@ -697,207 +720,203 @@
 }
 
 /* ----------------------------------------------------------
-   Giving Panel (Global Giving Activity Index)
+   Giving Panel (published benchmarks and provenance)
    ---------------------------------------------------------- */
 .giving-panel-content {
   font-size: 12px;
+  min-width: 0;
+}
+
+.giving-status {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.giving-status-cached-refresh-unavailable,
+.giving-status-available-but-legacy {
+  border-color: color-mix(in srgb, var(--semantic-elevated) 35%, var(--border));
+  background: color-mix(in srgb, var(--semantic-elevated) 9%, transparent);
 }
 
 .giving-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: 6px;
   margin-bottom: 8px;
 }
 
 .giving-stat-box {
-  background: var(--overlay-subtle);
+  min-width: 0;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px 6px;
-  text-align: center;
+  background: var(--overlay-subtle);
+  text-align: left;
 }
 
-.giving-stat-value {
+.giving-stat-value,
+.giving-benchmark-value {
   display: block;
+  color: var(--text-secondary);
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.giving-stat-label {
+.giving-stat-headline .giving-stat-value {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.giving-stat-label,
+.giving-benchmark-kind {
   display: block;
-  font-size: 9px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
 }
 
-.giving-stat-index .giving-stat-value {
-  font-size: 22px;
+.giving-source-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-/* giving-tabs: now uses shared .panel-tabs / .panel-tab */
+.giving-source-meta a,
+.giving-methodology-source a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.giving-source-meta a:hover,
+.giving-methodology-source a:hover {
+  text-decoration: underline;
+}
 
 .giving-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .giving-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 10px;
-  text-transform: uppercase;
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.giving-table th:first-child,
+.giving-table td:first-child {
+  width: 30%;
 }
 
 .giving-table td {
-  padding: 5px 8px;
+  min-width: 0;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .giving-row:hover {
   background: var(--surface-hover);
 }
 
-.giving-platform-name {
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.giving-platform-vol {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-}
-
-.giving-platform-vel {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.giving-platform-fresh {
-  text-align: right;
-}
-
-.giving-fresh-badge {
-  font-size: 9px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.5px;
-}
-
-.giving-fresh-live {
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 15%, transparent);
-  color: var(--semantic-positive, #44ff88);
-}
-
-.giving-fresh-daily {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-}
-
-.giving-fresh-weekly {
-  background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
-  color: var(--semantic-elevated);
-}
-
-.giving-fresh-annual {
-  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
-  color: var(--text-muted);
-}
-
-.giving-cat-table th:nth-child(2) {
-  text-align: right;
-}
-
+.giving-platform-name,
 .giving-cat-name {
-  white-space: nowrap;
+  font-weight: 600;
+  white-space: normal;
 }
 
-.giving-share-bar {
-  display: inline-block;
-  width: 60px;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-
-.giving-share-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--accent);
-}
-
-.giving-share-label {
-  font-variant-numeric: tabular-nums;
+.giving-unverified {
+  display: block;
+  color: var(--semantic-elevated);
   font-size: 11px;
-}
-
-.giving-trending-badge {
-  font-size: 8px;
-  font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 12%, transparent);
-  color: var(--semantic-positive, #44ff88);
-  letter-spacing: 0.5px;
-  vertical-align: middle;
-  margin-left: 4px;
-}
-
-.giving-crypto-content {}
-
-.giving-crypto-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.giving-crypto-receivers {}
-
-.giving-section-title {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
   font-weight: 600;
 }
-
-.giving-receiver-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.giving-receiver-list li {
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.giving-receiver-list li:last-child {
-  border-bottom: none;
-}
-
-.giving-inst-content {}
 
 .giving-inst-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+}
+
+.giving-methodology {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.giving-methodology summary {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.giving-methodology p {
+  margin: 7px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.giving-methodology ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.giving-methodology-item {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.giving-methodology-source {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.giving-methodology-note {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .giving-stats-grid,
+  .giving-inst-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .giving-table th:first-child,
+  .giving-table td:first-child {
+    width: 36%;
+  }
+
+  .giving-table th,
+  .giving-table td {
+    padding-inline: 5px;
+  }
 }
 
 /* ----------------------------------------------------------
@@ -1153,6 +1172,21 @@
   background: var(--semantic-critical);
   animation: oref-pulse-anim 1.2s ease-in-out infinite;
   flex-shrink: 0;
+  position: relative;
+  overflow: visible;
+}
+
+.oref-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--semantic-critical) 60%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  transform: scale(1);
+  opacity: 0.6;
+  animation: oref-pulse-ring 1.2s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes oref-pulse-anim {
@@ -1160,12 +1194,24 @@
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--semantic-critical) 60%, transparent);
   }
 
   50% {
     opacity: 0.6;
-    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@keyframes oref-pulse-ring {
+
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0;
+    transform: scale(2.2);
   }
 }
 
@@ -2188,6 +2234,22 @@
   z-index: 5;
 }
 
+.map-bottom-grid:empty {
+  flex: 0 0 0;
+  min-height: 0;
+  padding: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+body.panel-drag-active .map-bottom-grid:empty {
+  flex: 0 0 120px;
+  min-height: 120px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+}
+
 /* Base state for placeholder */
 .map-bottom-grid::after {
   content: 'Drop panels here to move them below the map';
@@ -2210,6 +2272,14 @@
   opacity: 0.4;
   pointer-events: none;
   transition: opacity 0.2s;
+}
+
+.map-bottom-grid:empty::after {
+  opacity: 0;
+}
+
+body.panel-drag-active .map-bottom-grid:empty::after {
+  opacity: 0.4;
 }
 
 /* Hide placeholder if there are panels */
@@ -2822,4 +2892,329 @@ a.hub-top-story {
   line-height: 1.3;
   color: var(--text-muted);
   opacity: 0.7;
+}
+
+/* ── Latest Brief panel ───────────────────────────────────────────── */
+
+.latest-brief-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #222);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+.latest-brief-card--ready:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent, #4ade80);
+}
+
+.latest-brief-cover {
+  background: #0a0a0a;
+  color: #f2ede4;
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.latest-brief-cover-logo {
+  width: 32px;
+  height: 32px;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+.latest-brief-cover-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.latest-brief-cover-issue {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.latest-brief-cover-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.latest-brief-cover-kicker {
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8b3a1f;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.latest-brief-meta {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel-bg, #161616);
+}
+.latest-brief-greeting {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-primary, #eee);
+  line-height: 1.3;
+}
+.latest-brief-cta {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent, #4ade80);
+  white-space: nowrap;
+}
+
+/* Share button row (Phase 9 / Todo #223) */
+.latest-brief-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  background: var(--panel-bg, #161616);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.latest-brief-share {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text-primary, #eee);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.latest-brief-share:hover:not(:disabled) {
+  border-color: var(--accent, #4ade80);
+  background-color: rgba(74, 222, 128, 0.08);
+}
+.latest-brief-share:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.latest-brief-share-status {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.latest-brief-card--composing {
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--panel-bg, #161616);
+}
+.latest-brief-logo {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  opacity: 0.6;
+  color: var(--text-muted, #888);
+}
+.latest-brief-logo svg,
+.latest-brief-empty-title {
+  display: block;
+}
+.latest-brief-empty-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--text-primary, #eee);
+}
+.latest-brief-empty-body {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  line-height: 1.5;
+  max-width: 36ch;
+  margin: 0 auto;
+}
+.latest-brief-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------
+   Watchlist Table View (StockAnalysisPanel, StockBacktestPanel)
+   Option B from watchlist-panel-playground.html — replaces the
+   one-long-card-per-symbol scroll with a sortable summary table
+   that expands inline on row click. Scales to 50+ symbols.
+   ---------------------------------------------------------- */
+.watchlist-table-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watchlist-intro {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.watchlist-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.watchlist-search {
+  width: 100%;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.watchlist-search:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.watchlist-control-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.watchlist-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.watchlist-pill {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+}
+.watchlist-pill:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.watchlist-pill-active {
+  color: var(--accent);
+  background: var(--overlay-medium);
+  border-color: var(--border-strong);
+}
+
+.watchlist-sort {
+  margin-left: auto;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+
+.watchlist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.watchlist-table-scroll {
+  /* Source of truth for the virtual row height. MUST equal
+     VIRTUAL_ROW_HEIGHT_PX in WatchlistTableView.ts — the spacer pixel math and
+     the scroll→index mapping there assume every data row is exactly this tall. */
+  --watchlist-row-height: 33px;
+  max-height: min(58vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.watchlist-table thead th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
+}
+.watchlist-table thead th.watchlist-th-right {
+  text-align: right;
+}
+.watchlist-table thead th.watchlist-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.watchlist-table thead th.watchlist-th-sortable:hover {
+  color: var(--text);
+}
+.watchlist-table tbody tr.watchlist-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s ease;
+  /* Pin each data row to exactly one virtual row height so the virtualization
+     spacer math and scroll→index mapping cannot drift with cell content (e.g.
+     a wrapped long name on a narrow/mobile viewport). */
+  height: var(--watchlist-row-height, 33px);
+}
+.watchlist-table tbody tr.watchlist-row > td {
+  /* Keep cells single-line so a row can never grow past --watchlist-row-height. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+.watchlist-table tbody tr.watchlist-row:hover {
+  background: var(--overlay-subtle);
+}
+.watchlist-table tbody tr.watchlist-row-expanded {
+  background: var(--overlay-light);
+}
+.watchlist-table tbody td {
+  padding: 6px 4px;
+}
+.watchlist-table tbody td.watchlist-td-right {
+  text-align: right;
+}
+.watchlist-table tbody tr.watchlist-detail-row > td {
+  padding: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.watchlist-table tbody tr.watchlist-virtual-spacer > td {
+  pointer-events: none;
+}
+.watchlist-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
 }

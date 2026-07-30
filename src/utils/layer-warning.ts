@@ -1,5 +1,7 @@
 import { t } from '@/services/i18n';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const DISMISS_KEY = 'wm-layer-warning-dismissed';
 let activeDialog: HTMLElement | null = null;
@@ -12,7 +14,7 @@ export function showLayerWarning(threshold: number): void {
 
   const overlay = document.createElement('div');
   overlay.className = 'layer-warn-overlay';
-  overlay.innerHTML = `
+  setTrustedHtml(overlay, trustedHtml(`
     <div class="layer-warn-dialog">
       <div class="layer-warn-icon">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -29,7 +31,7 @@ export function showLayerWarning(threshold: number): void {
         <span>${t('components.deckgl.layerWarningDismiss')}</span>
       </label>
       <button class="layer-warn-ok">${t('components.deckgl.layerWarningOk')}</button>
-    </div>`;
+    </div>`, "legacy direct innerHTML migration"));
 
   const close = () => {
     const cb = overlay.querySelector<HTMLInputElement>('.layer-warn-dismiss input');

@@ -54,14 +54,26 @@ message SearchFlightPricesRequest {
 
 // SearchFlightPricesResponse contains flight price offers.
 message SearchFlightPricesResponse {
-  // Price quotes matching the search.
+  // Price quotes matching the search. Empty when degraded or no results.
   repeated PriceQuote quotes = 1;
-  // Provider name (e.g., "amadeus", "demo").
+  // Provider name: "travelpayouts_data", "demo", or "none" when no live
+  // provider is configured.
   string provider = 2;
-  // Whether results are from demo/simulated mode.
+  // Whether results are from demo/simulated mode. Requires explicit
+  // AVIATION_DEMO_PRICES=1 opt-in on the server. Never true in default
+  // self-host / production runs. See issue #3756.
   bool is_demo_mode = 3;
   // Last update time as Unix epoch milliseconds.
   int64 updated_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Whether returned prices are indicative (subject to change).
   bool is_indicative = 5;
+  // True when the live provider could not satisfy the request — missing
+  // credentials, upstream failure, or zero results. Mirrors the
+  // searchGoogleFlights pattern so clients can render distinct messages
+  // for each error class.
+  bool degraded = 6;
+  // Discriminator for the degraded state: "" (ok), "missing_credentials"
+  // (TRAVELPAYOUTS_API_TOKEN unset), "upstream_error" (provider call
+  // threw), "no_results" (provider returned empty for this route).
+  string error = 7;
 }

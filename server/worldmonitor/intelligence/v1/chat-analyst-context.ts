@@ -1,5 +1,13 @@
 import { getCachedJson } from '../../../_shared/redis';
-import { sanitizeForPrompt, sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
+// Issue #3724: all LLM-bound headline content goes through sanitizeForPrompt
+// (semantic + structural). The lighter sanitizeHeadline only strips structural
+// delimiters and was designed to preserve security-news semantics for display
+// surfaces — but here every string feeds the analyst's SYSTEM PROMPT, so a
+// compromised or attacker-influenced feed could embed instruction-override
+// phrases verbatim. We accept that legitimate "Anthropic warns: ignore previous
+// instructions…" headlines will be partly mangled in the analyst context — the
+// asymmetric cost favours hard sanitization at the prompt boundary.
+import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { CHROME_UA } from '../../../_shared/constants';
 import { tokenizeForMatch, findMatchingKeywords } from '../../../../src/utils/keyword-match';
 import {
@@ -8,7 +16,10 @@ import {
   ELECTRICITY_INDEX_KEY,
   ENERGY_INTELLIGENCE_KEY,
   SPR_KEY,
-  REFINERY_UTIL_KEY,
+  SPR_POLICIES_KEY,
+  REFINERY_INPUTS_KEY,
+  ENERGY_SPINE_KEY_PREFIX,
+  CII_RISK_SCORE_CACHE_KEYS,
 } from '../../../_shared/cache-keys';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
@@ -48,6 +59,7 @@ export interface AnalystContext {
   productSupply?: string;
   gasFlows?: string;
   oilStocksCover?: string;
+  electricityMix?: string;
 }
 
 function safeStr(v: unknown): string {
@@ -66,26 +78,35 @@ function formatChange(n: number): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
-function buildWorldBrief(data: unknown): string {
+export function buildWorldBrief(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const lines: string[] = [];
 
-  const briefText = safeStr(d.brief || d.summary || d.content || d.text);
+  // Production payload (news:insights:v1, see scripts/seed-insights.mjs) uses
+  // `worldBrief` for the LLM-generated paragraph and `topStories[].primaryTitle`
+  // for headlines. Pre-issue-#3724 review this code only read brief/headline,
+  // so production callers silently rendered an empty string. Fallback shapes
+  // (brief/summary/headline/title) retained for test fixtures and future
+  // payload variations. sanitizeForPrompt protects against feed-side prompt
+  // injection — both the brief and the headlines are untrusted upstream text
+  // that flows into the analyst's system prompt.
+  const briefText = sanitizeForPrompt(safeStr(d.worldBrief || d.brief || d.summary || d.content || d.text));
   if (briefText) lines.push(briefText.slice(0, 600));
 
   const stories = Array.isArray(d.topStories) ? d.topStories : Array.isArray(d.stories) ? d.stories : [];
   if (stories.length > 0) {
     lines.push('Top Events:');
     for (const s of stories.slice(0, 12)) {
-      const title = sanitizeHeadline(safeStr((s as Record<string, unknown>).headline || (s as Record<string, unknown>).title || s));
+      const story = s as Record<string, unknown>;
+      const title = sanitizeForPrompt(safeStr(story.primaryTitle || story.headline || story.title || s));
       if (title) lines.push(`- ${title}`);
     }
   }
   return lines.join('\n');
 }
 
-function buildRiskScores(data: unknown): string {
+export function buildRiskScores(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const scores = Array.isArray(d.scores) ? d.scores : Array.isArray(d.countries) ? d.countries : [];
@@ -130,7 +151,7 @@ function buildMarketImplications(data: unknown): string {
   return lines.length ? `AI Market Signals:\n${lines.join('\n')}` : '';
 }
 
-function buildForecasts(data: unknown): string {
+export function buildForecasts(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const predictions = Array.isArray(d.predictions) ? d.predictions : [];
@@ -149,7 +170,7 @@ function buildForecasts(data: unknown): string {
   return lines.length ? `Active Forecasts:\n${lines.join('\n')}` : '';
 }
 
-function buildMarketData(stocks: unknown, commodities: unknown): string {
+export function buildMarketData(stocks: unknown, commodities: unknown): string {
   const parts: string[] = [];
 
   if (stocks && typeof stocks === 'object') {
@@ -183,7 +204,7 @@ function buildMarketData(stocks: unknown, commodities: unknown): string {
   return parts.length ? `Market Data:\n${parts.join('\n')}` : '';
 }
 
-function buildMacroSignals(data: unknown): string {
+export function buildMacroSignals(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const verdict = safeStr(d.verdict || d.regime || d.signal);
@@ -211,7 +232,7 @@ function buildPredictionMarkets(data: unknown): string {
 
   const lines = all.map((m: unknown) => {
     const market = m as Record<string, unknown>;
-    const title = sanitizeHeadline(safeStr(market.title));
+    const title = sanitizeForPrompt(safeStr(market.title));
     const yes = safeNum(market.yesPrice);
     if (!title) return null;
     return `- "${title}" Yes: ${formatPct(yes > 1 ? yes : yes * 100)}`;
@@ -334,7 +355,7 @@ async function buildEnergyIntelligence(): Promise<string | undefined> {
     if (recent.length === 0) return undefined;
     return recent.map((item) => {
       const source = safeStr(item.source);
-      const title = sanitizeHeadline(safeStr(item.title));
+      const title = sanitizeForPrompt(safeStr(item.title));
       return source ? `${source}: ${title}` : title;
     }).join(' · ');
   } catch {
@@ -359,7 +380,7 @@ async function buildSprLevel(): Promise<string | undefined> {
 
 async function buildRefineryUtil(): Promise<string | undefined> {
   try {
-    const data = await getCachedJson(REFINERY_UTIL_KEY, true);
+    const data = await getCachedJson(REFINERY_INPUTS_KEY, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
     if (typeof d.inputsMbblpd !== 'number') return undefined;
@@ -374,6 +395,25 @@ async function buildRefineryUtil(): Promise<string | undefined> {
 
 async function buildProductSupply(iso2: string): Promise<string | undefined> {
   try {
+    // Try spine first — single key read
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiOil) {
+      const oil = spine.oil as Record<string, unknown> | undefined;
+      const src = spine.sources as Record<string, unknown> | undefined;
+      const month = safeStr(src?.jodiOilMonth);
+      if (!oil) return undefined;
+      const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
+      const parts: string[] = [];
+      for (const [key, label] of [['dieselDemandKbd', 'diesel'], ['jetDemandKbd', 'jet fuel'], ['gasolineDemandKbd', 'gasoline']] as [string, string][]) {
+        const demand = fmt(oil[key]);
+        if (demand == null) continue;
+        parts.push(`${label} ${demand} kbd demand`);
+      }
+      if (parts.length === 0) return undefined;
+      return `Oil product supply${month ? ` (${month})` : ''}: ${parts.join('; ')}`;
+    }
+
+    // Fallback to direct key
     const data = await getCachedJson(`energy:jodi-oil:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
@@ -400,11 +440,39 @@ async function buildProductSupply(iso2: string): Promise<string | undefined> {
 
 async function buildGasFlows(iso2: string): Promise<string | undefined> {
   try {
+    // Try spine first
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiGas) {
+      const gas = spine.gas as Record<string, unknown> | undefined;
+      if (!gas) return undefined;
+      const pipeImports = typeof gas.pipeImportsTj === 'number' ? gas.pipeImportsTj as number : null;
+      const lngImports = typeof gas.lngImportsTj === 'number' ? gas.lngImportsTj as number : null;
+      const totalImports = (pipeImports ?? 0) + (lngImports ?? 0);
+      if (!totalImports) {
+        const totalDemand = typeof gas.totalDemandTj === 'number' ? Math.round((gas.totalDemandTj as number) / 1000) : null;
+        if (totalDemand != null && totalDemand > 0) {
+          return `Gas: domestic supply covers demand (${totalDemand} PJ total demand, no LNG or pipeline imports recorded)`;
+        }
+        return undefined;
+      }
+      const totalPj = Math.round(totalImports / 1000);
+      const lngShare = typeof gas.lngShareOfImports === 'number' ? Math.round((gas.lngShareOfImports as number) * 100) : null;
+      const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
+      return `Gas: total imports ${totalPj} PJ${split}`;
+    }
+
+    // Fallback to direct key
     const data = await getCachedJson(`energy:jodi-gas:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
     const totalTj = typeof d.totalImportsTj === 'number' ? d.totalImportsTj as number : null;
-    if (!totalTj) return undefined;
+    if (!totalTj) {
+      const demandTj = typeof d.totalDemandTj === 'number' ? d.totalDemandTj as number : null;
+      if (demandTj != null && demandTj > 0) {
+        return `Gas: domestic supply covers demand (${Math.round(demandTj / 1000)} PJ total demand, no LNG or pipeline imports recorded)`;
+      }
+      return undefined;
+    }
     const totalPj = Math.round(totalTj / 1000);
     const lngShare = typeof d.lngShareOfImports === 'number' ? Math.round((d.lngShareOfImports as number) * 100) : null;
     const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
@@ -416,21 +484,111 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
 
 async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
   try {
-    const data = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true);
-    if (!data || typeof data !== 'object') return undefined;
-    const d = data as Record<string, unknown>;
-    if (d.netExporter === true) return 'IEA oil stocks: net exporter';
-    const days = typeof d.daysOfCover === 'number' ? d.daysOfCover as number : null;
-    if (days == null) return undefined;
-    const threshold = typeof d.obligationThreshold === 'number' ? d.obligationThreshold as number : 90;
-    const breach = d.belowObligation === true ? ' (below obligation)' : '';
-    return `IEA oil stocks: ${days} days of cover (obligation: ${threshold} days)${breach}`;
+    const parts: string[] = [];
+
+    // Parallel-fetch spine + SPR registry
+    const [spineRaw, registryRaw] = await Promise.allSettled([
+      getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true),
+      getCachedJson(SPR_POLICIES_KEY, true),
+    ]);
+    const spine = spineRaw.status === 'fulfilled' ? spineRaw.value as Record<string, unknown> | null : null;
+    const registry = registryRaw.status === 'fulfilled' ? registryRaw.value as Record<string, unknown> | null : null;
+
+    // IEA part (existing logic: try spine first, fallback to direct key)
+    if (spine != null && typeof spine === 'object') {
+      const cov = spine.coverage as Record<string, unknown> | undefined;
+      const oil = spine.oil as Record<string, unknown> | undefined;
+      if (oil?.netExporter === true) {
+        const crudeImports = typeof oil.crudeImportsKbd === 'number' ? Math.round(oil.crudeImportsKbd as number) : null;
+        const importNote = crudeImports != null && crudeImports > 0
+          ? ` (still imports ${crudeImports} kbd crude for refinery feedstock)`
+          : '';
+        parts.push(`IEA oil stocks: net oil exporter${importNote}`);
+      } else if (cov?.hasIeaStocks && typeof oil?.daysOfCover === 'number') {
+        parts.push(`IEA oil stocks: ${oil.daysOfCover as number} days of cover`);
+      }
+    } else {
+      // Fallback to direct IEA key when spine is absent
+      const ieaDirect = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true).catch(() => null) as Record<string, unknown> | null;
+      if (ieaDirect != null && typeof ieaDirect === 'object') {
+        if (ieaDirect.netExporter === true) {
+          parts.push('IEA oil stocks: net oil exporter');
+        } else if (typeof ieaDirect.daysOfCover === 'number') {
+          const threshold = typeof ieaDirect.obligationThreshold === 'number' ? ieaDirect.obligationThreshold as number : 90;
+          const breach = ieaDirect.belowObligation === true ? ' (below obligation)' : '';
+          parts.push(`IEA oil stocks: ${ieaDirect.daysOfCover as number} days of cover (obligation: ${threshold} days)${breach}`);
+        }
+      }
+    }
+
+    // SPR part (new: enrich from policy registry)
+    const policies = (registry as { policies?: Record<string, Record<string, unknown>> } | null)?.policies;
+    const sprPolicy = policies?.[iso2];
+    if (sprPolicy && sprPolicy.regime !== 'unknown') {
+      const regime = sprPolicy.regime === 'government_spr' ? 'government strategic reserve'
+        : sprPolicy.regime === 'mandatory_stockholding' ? 'IEA mandatory stockholding'
+        : sprPolicy.regime === 'spare_capacity' ? 'spare production capacity (no stockpile)'
+        : sprPolicy.regime === 'commercial_only' ? 'commercial stocks only (no government reserve)'
+        : sprPolicy.regime === 'none' ? 'no strategic reserve program'
+        : sprPolicy.regime as string;
+      const capacity = typeof sprPolicy.capacityMb === 'number' && sprPolicy.capacityMb > 0
+        ? ` (${sprPolicy.capacityMb}Mb capacity)` : '';
+      const operator = typeof sprPolicy.operator === 'string' && sprPolicy.operator
+        ? `, ${sprPolicy.operator}` : '';
+      parts.push(`Reserve policy: ${regime}${operator}${capacity}`);
+    }
+
+    return parts.length > 0 ? parts.join('. ') : undefined;
   } catch {
     return undefined;
   }
 }
 
-function buildCountryBrief(data: unknown): string {
+function formatMixParts(src: Record<string, unknown>): string[] {
+  const pct = (key: string) => {
+    const v = src[key];
+    return typeof v === 'number' && (v as number) > 1 ? Math.round(v as number) : null;
+  };
+  const parts: string[] = [];
+  const fossilPct = pct('fossilShare');
+  if (fossilPct != null) {
+    const coalPct = pct('coalShare');
+    const gasPct = pct('gasShare');
+    const breakdown = [coalPct != null ? `coal ${coalPct}%` : null, gasPct != null ? `gas ${gasPct}%` : null]
+      .filter(Boolean).join(', ');
+    parts.push(`fossil ${fossilPct}%${breakdown ? ` (${breakdown})` : ''}`);
+  }
+  const renewPct = pct('renewShare');
+  if (renewPct != null) parts.push(`renewable ${renewPct}%`);
+  const nuclearPct = pct('nuclearShare');
+  if (nuclearPct != null) parts.push(`nuclear ${nuclearPct}%`);
+  return parts;
+}
+
+async function buildElectricityMix(iso2: string): Promise<string | undefined> {
+  try {
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object') {
+      const elec = spine.electricity as Record<string, unknown> | undefined;
+      if (elec && typeof elec.fossilShare === 'number') {
+        const parts = formatMixParts(elec);
+        if (parts.length === 0) return undefined;
+        const demandTwh = typeof elec.demandTwh === 'number' ? ` (${Math.round(elec.demandTwh as number)} TWh/month)` : '';
+        return `Electricity generation mix: ${parts.join(', ')}${demandTwh}`;
+      }
+    }
+    const ember = await getCachedJson(`energy:ember:v1:${iso2}`, true) as Record<string, unknown> | null;
+    if (!ember || typeof ember.fossilShare !== 'number') return undefined;
+    const parts = formatMixParts(ember as Record<string, unknown>);
+    if (parts.length === 0) return undefined;
+    const demandTwh = typeof ember.demandTwh === 'number' ? ` (${Math.round(ember.demandTwh as number)} TWh/month)` : '';
+    return `Electricity generation mix: ${parts.join(', ')}${demandTwh}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildCountryBrief(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const brief = safeStr(d.brief || d.analysis || d.content || d.summary);
@@ -597,7 +755,7 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
   if (scored.length === 0) return '';
 
   const lines = scored.map(({ item }) => {
-    const title = sanitizeHeadline(safeStr(item.title));
+    const title = sanitizeForPrompt(safeStr(item.title));
     const source = safeStr(item.source).slice(0, 40);
     const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     const meta = [source, ts].filter(Boolean).join(', ');
@@ -631,6 +789,7 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['productSupply', 'JODIOil'],
   ['gasFlows', 'JODIGas'],
   ['oilStocksCover', 'IEAStocks'],
+  ['electricityMix', 'ElecMix'],
 ];
 
 export async function assembleAnalystContext(
@@ -640,7 +799,7 @@ export async function assembleAnalystContext(
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
-    riskScores: 'risk:scores:sebuf:stale:v1',
+    riskScores: CII_RISK_SCORE_CACHE_KEYS.stale,
     marketImplications: 'intelligence:market-implications:v1',
     forecasts: 'forecast:predictions:v2',
     stocks: 'market:stocks-bootstrap:v1',
@@ -673,6 +832,7 @@ export async function assembleAnalystContext(
   const needsProductSupply = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsGasFlows = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsOilStocksCover = iso2 != null && new Set(['economic', 'all']).has(resolvedDomain);
+  const needsElectricityMix = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
 
   const [
     insightsResult,
@@ -695,6 +855,7 @@ export async function assembleAnalystContext(
     productSupplyResult,
     gasFlowsResult,
     oilStocksCoverResult,
+    electricityMixResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -716,6 +877,7 @@ export async function assembleAnalystContext(
     needsProductSupply ? buildProductSupply(iso2!) : Promise.resolve(undefined),
     needsGasFlows ? buildGasFlows(iso2!) : Promise.resolve(undefined),
     needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
+    needsElectricityMix ? buildElectricityMix(iso2!) : Promise.resolve(undefined),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -763,6 +925,7 @@ export async function assembleAnalystContext(
     productSupply: getOptStr(productSupplyResult),
     gasFlows: getOptStr(gasFlowsResult),
     oilStocksCover: getOptStr(oilStocksCoverResult),
+    electricityMix: getOptStr(electricityMixResult),
   };
 
   ctx.activeSources = SOURCE_LABELS

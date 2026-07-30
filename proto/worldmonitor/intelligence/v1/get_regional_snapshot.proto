@@ -1,0 +1,266 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GetRegionalSnapshotRequest asks for the latest persisted RegionalSnapshot
+// for a given region. See shared/geography.ts for the canonical region ids.
+message GetRegionalSnapshotRequest {
+  // Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+  // Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+  // trailing or consecutive hyphens.
+  string region_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32,
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+    (sebuf.http.query) = {name: "region_id"}
+  ];
+}
+
+// GetRegionalSnapshotResponse returns the latest RegionalSnapshot for the
+// requested region. The snapshot is written by scripts/seed-regional-snapshots.mjs
+// on a 6h cron; this handler only reads canonical state.
+message GetRegionalSnapshotResponse {
+  RegionalSnapshot snapshot = 1;
+}
+
+// RegionalSnapshot is the canonical intelligence object for one region.
+// See docs/internal/pro-regional-intelligence-upgrade.md for the full spec
+// and shared/regions.types.d.ts for the authoritative TypeScript contract.
+message RegionalSnapshot {
+  string region_id = 1;
+  int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  SnapshotMeta meta = 3;
+  RegimeState regime = 4;
+  BalanceVector balance = 5;
+  repeated ActorState actors = 6;
+  repeated LeverageEdge leverage_edges = 7;
+  repeated ScenarioSet scenario_sets = 8;
+  repeated TransmissionPath transmission_paths = 9;
+  TriggerLadder triggers = 10;
+  MobilityState mobility = 11;
+  repeated EvidenceItem evidence = 12;
+  RegionalNarrative narrative = 13;
+}
+
+// SnapshotMeta carries the trust trail (versions, confidence, input freshness,
+// narrative provenance, idempotency id).
+message SnapshotMeta {
+  string snapshot_id = 1;
+  string model_version = 2;
+  string scoring_version = 3;
+  string geography_version = 4;
+  double snapshot_confidence = 5;
+  repeated string missing_inputs = 6;
+  repeated string stale_inputs = 7;
+  int64 valid_until = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // trigger_reason: scheduled_6h | regime_shift | trigger_activation |
+  //                 corridor_break | leverage_shift
+  string trigger_reason = 9;
+  string narrative_provider = 10;
+  string narrative_model = 11;
+}
+
+// RegimeState captures the current regime label and transition history.
+message RegimeState {
+  // label: calm | stressed_equilibrium | coercive_stalemate |
+  //        fragmentation_risk | managed_deescalation | escalation_ladder
+  string label = 1;
+  string previous_label = 2;
+  int64 transitioned_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string transition_driver = 4;
+}
+
+// BalanceVector is the 7-axis regional balance score with pressures/buffers
+// split. See docs/internal/pro-regional-intelligence-appendix-scoring.md for
+// the per-axis formulas.
+message BalanceVector {
+  // Pressures (high = bad)
+  double coercive_pressure = 1;
+  double domestic_fragility = 2;
+  double capital_stress = 3;
+  double energy_vulnerability = 4;
+  // Buffers (high = good)
+  double alliance_cohesion = 5;
+  double maritime_access = 6;
+  double energy_leverage = 7;
+  // Derived: mean(buffers) - mean(pressures), range [-1, +1]
+  double net_balance = 8;
+  // Decomposition
+  repeated BalanceDriver pressures = 9;
+  repeated BalanceDriver buffers = 10;
+}
+
+// BalanceDriver is one contributor to an axis score. Links back to evidence.
+message BalanceDriver {
+  string axis = 1;
+  string description = 2;
+  double magnitude = 3;
+  repeated string evidence_ids = 4;
+  // orientation: "pressure" | "buffer"
+  string orientation = 5;
+}
+
+// ActorState is one geopolitical actor's leverage score in the region.
+message ActorState {
+  string actor_id = 1;
+  string name = 2;
+  // role: aggressor | stabilizer | swing | broker
+  string role = 3;
+  // leverage_domains: energy | military | diplomatic | economic | maritime
+  repeated string leverage_domains = 4;
+  double leverage_score = 5;
+  double delta = 6;
+  repeated string evidence_ids = 7;
+}
+
+// LeverageEdge is a directed influence relationship between two actors.
+message LeverageEdge {
+  string from_actor_id = 1;
+  string to_actor_id = 2;
+  // mechanism: sanctions | naval_posture | energy_supply | alliance_shift | trade_friction
+  string mechanism = 3;
+  double strength = 4;
+  repeated string evidence_ids = 5;
+}
+
+// ScenarioSet bundles scenario lanes for one time horizon. Lane probabilities
+// sum to 1.0 within a set.
+message ScenarioSet {
+  // horizon: 24h | 7d | 30d
+  string horizon = 1;
+  repeated ScenarioLane lanes = 2;
+}
+
+// ScenarioLane is one outcome branch within a horizon set.
+message ScenarioLane {
+  // name: base | escalation | containment | fragmentation
+  string name = 1;
+  double probability = 2;
+  repeated string trigger_ids = 3;
+  repeated string consequences = 4;
+  repeated TransmissionPath transmissions = 5;
+}
+
+// TransmissionPath describes how a regional event propagates to markets,
+// logistics, mobility, or other domains. Typed for ranking and calibration.
+message TransmissionPath {
+  string start = 1;
+  string mechanism = 2;
+  string end = 3;
+  // severity: critical | high | medium | low
+  string severity = 4;
+  string corridor_id = 5;
+  double confidence = 6;
+  int32 latency_hours = 7;
+  // impacted_asset_class: crude | lng | container | fx | equity | agri | metals | ...
+  string impacted_asset_class = 8;
+  repeated string impacted_regions = 9;
+  double magnitude_low = 10;
+  double magnitude_high = 11;
+  // magnitude_unit: usd_bbl | pct | usd_teu | basis_points | ...
+  string magnitude_unit = 12;
+  string template_id = 13;
+  string template_version = 14;
+}
+
+// TriggerLadder buckets triggers by activation state.
+message TriggerLadder {
+  repeated Trigger active = 1;
+  repeated Trigger watching = 2;
+  repeated Trigger dormant = 3;
+}
+
+// Trigger is a structured threshold assertion against a named metric.
+message Trigger {
+  string id = 1;
+  string description = 2;
+  TriggerThreshold threshold = 3;
+  bool activated = 4;
+  int64 activated_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // scenario_lane: base | escalation | containment | fragmentation
+  string scenario_lane = 6;
+  repeated string evidence_ids = 7;
+}
+
+// TriggerThreshold defines the metric/operator/value/window/baseline for
+// deterministic trigger evaluation.
+message TriggerThreshold {
+  string metric = 1;
+  // operator: gt | gte | lt | lte | delta_gt | delta_lt
+  string operator = 2;
+  double value = 3;
+  int32 window_minutes = 4;
+  // baseline: trailing_7d | trailing_30d | fixed
+  string baseline = 5;
+}
+
+// MobilityState captures airspace, flight corridor, and airport node status
+// for the region. Phase 0 ships empty; Phase 2 wires the data plane.
+message MobilityState {
+  repeated AirspaceStatus airspace = 1;
+  repeated FlightCorridorStress flight_corridors = 2;
+  repeated AirportNodeStatus airports = 3;
+  double reroute_intensity = 4;
+  repeated string notam_closures = 5;
+}
+
+// AirspaceStatus captures FIR-level airspace state.
+message AirspaceStatus {
+  string airspace_id = 1;
+  // status: open | restricted | closed
+  string status = 2;
+  string reason = 3;
+}
+
+// FlightCorridorStress captures per-corridor reroute intensity.
+message FlightCorridorStress {
+  string corridor = 1;
+  double stress_level = 2;
+  int32 rerouted_flights_24h = 3;
+}
+
+// AirportNodeStatus captures airport-level disruption state.
+message AirportNodeStatus {
+  string icao = 1;
+  string name = 2;
+  // status: normal | disrupted | closed
+  string status = 3;
+  string disruption_reason = 4;
+}
+
+// EvidenceItem is one upstream data point linked from balance drivers,
+// narrative sections, and triggers.
+message EvidenceItem {
+  string id = 1;
+  // type: vessel_track | flight_surge | news_headline | cii_spike |
+  //       chokepoint_status | sanctions_move | market_signal | mobility_disruption
+  string type = 2;
+  // source: AIS | ADSB | GDELT | ACLED | Yahoo | OREF | NOTAM | ...
+  string source = 3;
+  string summary = 4;
+  double confidence = 5;
+  int64 observed_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string theater = 7;
+  string corridor = 8;
+}
+
+// RegionalNarrative is the LLM-synthesized narrative layer. Every section
+// links back to evidence via evidence_ids.
+message RegionalNarrative {
+  NarrativeSection situation = 1;
+  NarrativeSection balance_assessment = 2;
+  NarrativeSection outlook_24h = 3;
+  NarrativeSection outlook_7d = 4;
+  NarrativeSection outlook_30d = 5;
+  repeated NarrativeSection watch_items = 6;
+}
+
+// NarrativeSection is one block of narrative text plus its supporting evidence.
+message NarrativeSection {
+  string text = 1;
+  repeated string evidence_ids = 2;
+}

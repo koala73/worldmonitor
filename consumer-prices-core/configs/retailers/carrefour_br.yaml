@@ -10,7 +10,24 @@ retailer:
   searchConfig:
     numResults: 5
     queryTemplate: "{canonicalName} supermercado brasil {currency} preço"
-    urlPathContains: /p/
+    # mercado.carrefour.com.br is a VTEX storefront. Two valid product URL
+    # shapes coexist: legacy `/produto/<slug>` and modern `<slug>/p` (no
+    # trailing slash). The previous single substring `/p/` matched neither
+    # and rejected every Exa result for years (logged 2026-05-09: "5 URLs
+    # from Exa, 0 passed domain check" for every basket item).
+    #
+    # Tradeoff: `/p` is a deliberately loose substring that also matches
+    # non-product paths like `/promo/`, `/pages/`, `/popular/`, `/help/`.
+    # That's tolerable because (a) `isAllowedHost` already pins us to
+    # mercado.carrefour.com.br, and (b) the false-positive cost is bounded:
+    # any rejected non-product URL gets rejected at the next stage when
+    # Firecrawl extraction returns no price/title — at worst we waste an
+    # extra Firecrawl call per item. Tightening to a regex anchored at
+    # end-of-URL (`/p$`) would require schema/code support for regex
+    # patterns; deferred until empirical waste justifies it.
+    urlPathContains:
+      - "/produto/"
+      - "/p"
 
   rateLimit:
     requestsPerMinute: 10

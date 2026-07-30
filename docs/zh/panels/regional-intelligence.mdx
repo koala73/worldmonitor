@@ -1,0 +1,73 @@
+---
+title: "区域情报"
+description: "区域情报面板为每个宏观区域提供结构化情报快照，涵盖当前政治军事态势、力量平衡评估、关键参与者档案、潜在情景演变、经济与安全传导路径以及关注事件列表，由 Intelligence service 的规范化 RegionalSnapshot 数据模型支撑，帮助分析师系统化理解区域动态。"
+---
+
+**Regional Intelligence** 面板（内部 id `regional-intelligence`）渲染一个完整的区域级情报看板：态势、平衡、关键参与者、场景、传导路径和活动关注列表。它以面向分析师的六个结构化板块格式回答"该区域当前画面是什么样的？"，而非滚动叙述。
+
+## 面板显示内容
+
+顶部一个区域选择器，下方六个结构化板块，以及可选的叙述段落：
+
+### 区域选择器
+
+从七个规范区域中选择一个：
+
+- 中东与北非（`mena`，默认）
+- 东亚与太平洋（`east-asia`）
+- 欧洲与中亚（`europe`）
+- 北美（`north-america`）
+- 南亚（`south-asia`）
+- 拉丁美洲与加勒比（`latam`）
+- 撒哈拉以南非洲（`sub-saharan-africa`）
+
+（来源：`src/components/regional-intelligence-board-utils.ts:23` 中的 `BOARD_REGIONS`。默认为 `DEFAULT_REGION_ID = 'mena'`。）
+
+### 六个板块
+
+1. **态势** — 当前标签、上一个标签、上次转换背后的驱动因素。
+2. **平衡** — 7 轴力量对比柱状图，附净平衡指标。
+3. **参与者** — 按杠杆分数排名的前 5 个参与者，附变动差值。
+4. **场景** — 3 个时间范围（24h / 7d / 30d）× 4 条通道，附概率柱。
+5. **传导** — 连接区域信号到下游结果的前 5 条传导路径。
+6. **关注列表** — 活动触发器以及来自种子 LLM 层的叙述性关注条目。
+
+### 每周简报
+
+在六个核心板块渲染完成后，面板可追加一个**每周简报**板块，包含局势回顾、态势轨迹、最多五条关键进展和风险展望。它由 `scripts/seed-regional-briefs.mjs` 生成，设计为每周 Railway 节奏，而非 6 小时的区域快照包。提示词立场中立且具分析性：禁止戏剧化、政策建议以及超出快照/态势历史数据的推测。
+
+### 叙述段落
+
+当种子填充了叙述内容时，可选的内联板块渲染在六个板块之上：`situation`、`balance_assessment`，以及按时间范围的 `outlook`（24h / 7d / 30d）。空的叙述字段会被隐藏而非显示为占位符。
+
+区域切换触发一次即时快照 RPC（`get-regional-snapshot`）。该快照绘制完成后，面板并行启动两个扩充 RPC：`get-regime-history` 和 `get-regional-brief`。请求序列仲裁器防止用户快速切换区域时的过期渲染。
+
+面板 id 为 `regional-intelligence`；规范组件为 `src/components/RegionalIntelligenceBoard.ts`。标题见 `src/config/panels.ts:110`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *regional* 或 *intelligence board*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册，且**默认禁用**（`src/config/panels.ts:110` 处的 `enabled: false, premium: 'locked'`）。PRO 用户需手动启用。在 tech、finance、commodity 或 happy 变体中不存在。
+
+## 数据来源
+
+- 通过生成的 `IntelligenceServiceClient` 调用 `GET /api/intelligence/v1/get-regional-snapshot`。
+- `GET /api/intelligence/v1/get-regime-history` 用于近期转换板块。
+- `GET /api/intelligence/v1/get-regional-brief` 用于每周简报板块。
+- 网关缓存处理按区域的缓存；面板在每次区域切换时发起一次快照调用，随后在首次渲染后发起两个扩充调用。
+
+关于共享的新闻/简报过滤、LLM 接地与偏差控制，请参见 [News Digest and Briefing Methodology](/zh/methodology/news-digest-and-briefing)。
+
+## 刷新频率
+
+面板本身不轮询 — 在挂载和区域切换时获取。底层种子在情报 cron 上刷新区域快照。
+每周简报独立于快照刷新，设计为在 Railway 上每周播种。
+
+## 层级与门控
+
+**PRO（硬锁定）且需手动启用。** `src/config/panels.ts:110` 中的 `enabled: false, premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`regional-intelligence` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。
+
+## API 参考
+
+- [Intelligence service](/api/IntelligenceService.openapi.yaml) — `GetRegionalSnapshot` 及相关 RPC。
+- [News Digest and Briefing Methodology](/zh/methodology/news-digest-and-briefing) — 相邻摘要/简报面的方法论。

@@ -25,7 +25,8 @@ function clampMaxItems(value: number): number {
 function emptyResponse(): ListRadiationObservationsResponse {
   return {
     observations: [],
-    fetchedAt: Date.now(),
+    fetchedAt: 0,
+    dataAvailable: false,
     epaCount: 0,
     safecastCount: 0,
     anomalyCount: 0,
@@ -45,9 +46,10 @@ export const listRadiationObservations: RadiationServiceHandler['listRadiationOb
   const maxItems = clampMaxItems(req.maxItems);
   try {
     const data = await getCachedJson(REDIS_CACHE_KEY, true) as ListRadiationObservationsResponse | null;
-    if (!data?.observations?.length) return emptyResponse();
+    if (!Array.isArray(data?.observations)) return emptyResponse();
     return {
       ...data,
+      dataAvailable: true,
       observations: (data.observations ?? []).slice(0, maxItems),
     };
   } catch {

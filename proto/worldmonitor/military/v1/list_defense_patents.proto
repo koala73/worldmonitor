@@ -18,7 +18,8 @@ message DefensePatentFiling {
   string cpc_code = 5;
   // CPC class description.
   string cpc_desc = 6;
-  // Patent abstract (truncated to 500 chars).
+  // Compatibility field retained for existing clients. Always empty because
+  // USPTO Open Data Portal Patent File Wrapper records do not include abstracts.
   string abstract = 7;
   // USPTO patent URL.
   string url = 8;

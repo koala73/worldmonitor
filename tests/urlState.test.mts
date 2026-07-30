@@ -15,6 +15,20 @@ const EMPTY_LAYERS = {
 };
 
 describe('parseMapUrlState expanded param', () => {
+  it('parses legacy root dashboard deep links with disabled layers', () => {
+    const state = parseMapUrlState(
+      '?lat=24.5564&lon=11.9743&zoom=2.65&view=global&timeRange=7d&layers=none',
+      EMPTY_LAYERS,
+    );
+    assert.equal(state.lat, 24.5564);
+    assert.equal(state.lon, 11.9743);
+    assert.equal(state.zoom, 2.65);
+    assert.equal(state.view, 'global');
+    assert.equal(state.timeRange, '7d');
+    assert.ok(state.layers);
+    assert.ok(Object.values(state.layers).every((enabled) => enabled === false));
+  });
+
   it('parses expanded=1 as true', () => {
     const state = parseMapUrlState('?country=IR&expanded=1', EMPTY_LAYERS);
     assert.equal(state.country, 'IR');
@@ -33,8 +47,30 @@ describe('parseMapUrlState expanded param', () => {
   });
 });
 
+describe('parseMapUrlState chokepoint param', () => {
+  it('parses a canonical chokepoint id', () => {
+    const state = parseMapUrlState('?chokepoint=bab_el_mandeb', EMPTY_LAYERS);
+    assert.equal(state.chokepoint, 'bab_el_mandeb');
+  });
+
+  it('lowercases the chokepoint id', () => {
+    const state = parseMapUrlState('?chokepoint=Hormuz_Strait', EMPTY_LAYERS);
+    assert.equal(state.chokepoint, 'hormuz_strait');
+  });
+
+  it('rejects malformed or oversized chokepoint ids', () => {
+    assert.equal(parseMapUrlState('?chokepoint=', EMPTY_LAYERS).chokepoint, undefined);
+    assert.equal(parseMapUrlState('?chokepoint=../etc/passwd', EMPTY_LAYERS).chokepoint, undefined);
+    assert.equal(parseMapUrlState(`?chokepoint=${'a'.repeat(60)}`, EMPTY_LAYERS).chokepoint, undefined);
+  });
+
+  it('leaves chokepoint undefined when absent', () => {
+    assert.equal(parseMapUrlState('?country=IR', EMPTY_LAYERS).chokepoint, undefined);
+  });
+});
+
 describe('buildMapUrl expanded param', () => {
-  const base = 'https://worldmonitor.app/';
+  const base = 'https://worldmonitor.app/dashboard';
   const baseState = {
     view: 'global' as const,
     zoom: 2,
@@ -62,10 +98,16 @@ describe('buildMapUrl expanded param', () => {
     const params = new URL(url).searchParams;
     assert.equal(params.has('expanded'), false);
   });
+
+  it('includes chokepoint when present', () => {
+    const url = buildMapUrl(base, { ...baseState, chokepoint: 'hormuz_strait' });
+    const params = new URL(url).searchParams;
+    assert.equal(params.get('chokepoint'), 'hormuz_strait');
+  });
 });
 
 describe('expanded param round-trip', () => {
-  const base = 'https://worldmonitor.app/';
+  const base = 'https://worldmonitor.app/dashboard';
   const baseState = {
     view: 'global' as const,
     zoom: 2,
@@ -86,5 +128,11 @@ describe('expanded param round-trip', () => {
     const parsed = parseMapUrlState(new URL(url).search, EMPTY_LAYERS);
     assert.equal(parsed.country, 'IR');
     assert.equal(parsed.expanded, undefined);
+  });
+
+  it('round-trips chokepoint deep links', () => {
+    const url = buildMapUrl(base, { ...baseState, chokepoint: 'hormuz_strait' });
+    const parsed = parseMapUrlState(new URL(url).search, EMPTY_LAYERS);
+    assert.equal(parsed.chokepoint, 'hormuz_strait');
   });
 });

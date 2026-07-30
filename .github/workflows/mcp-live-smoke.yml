@@ -1,0 +1,52 @@
+name: MCP Live Smoke
+
+# Anonymous strict-client walk of the PRODUCTION MCP surface on both hosts
+# (apex + www) — the regression net for #4937/#4938, two outages that were
+# structurally invisible to unit tests:
+#   #4937 — an advertised-but-gated method (prompts/list) hung strict SDK
+#           clients (Claude Desktop via mcp-remote) and got the server marked
+#           unstable. Unit tests only exercised the method with credentials.
+#   #4938 — the Cloudflare apex→www 301 excluded /mcp but not /oauth/*, so
+#           OAuth dynamic client registration died (POST→GET on redirect →
+#           405). No in-process test can see a CDN redirect rule.
+#
+# The script (scripts/mcp-live-smoke.mjs) initializes anonymously, walks every
+# capability the handshake advertises (200 + id echo required on each hop),
+# asserts the tools/call auth wall answers 401 fast, and probes the declared
+# OAuth endpoints for the #4938 redirect fingerprints with side-effect-free
+# malformed POSTs. Dependency-free — no npm ci.
+#
+# Triggers:
+#   - schedule (every 6h): catches prod-layer drift (CDN rules, deploy config,
+#     host-split) on a cadence operators can act on. The probes are ~40 cheap
+#     requests per run — well under the anon 60/min/IP MCP limit.
+#   - push to main touching the script/workflow: validates edits on merge.
+#   - workflow_dispatch: manual re-runs from the Actions UI.
+# NOT pull_request: the target is live production, not PR code — a PR run
+# could neither exercise its own changes nor fail for reasons the PR caused.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/mcp-live-smoke.mjs'
+      - '.github/workflows/mcp-live-smoke.yml'
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    # ~40 requests × 15s worst-case timeout each ≈ 10min absolute ceiling;
+    # nominal runs finish in well under a minute.
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - run: node scripts/mcp-live-smoke.mjs

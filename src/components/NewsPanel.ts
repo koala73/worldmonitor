@@ -3,12 +3,18 @@ import { WindowedList } from './VirtualList';
 import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAssetContext } from '@/types';
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
-import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { computeNewSinceVisit } from '@/utils/new-since-visit';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { track } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  renderCorroboratingSourceRisk,
+  renderPrimarySourceProvenance,
+} from './news/source-provenance';
+
 
 type SortMode = 'relevance' | 'newest';
 
@@ -34,6 +40,9 @@ export class NewsPanel extends Panel {
   private onRelatedAssetsFocus?: (assets: RelatedAsset[], originLabel: string) => void;
   private onRelatedAssetsClear?: () => void;
   private isFirstRender = true;
+  /** Cluster ids that arrived while the user was away (#4923) — their NEW
+   * ribbons persist until seen instead of expiring with the 2-min window. */
+  private newSinceAwayIds = new Set<string>();
   private windowedList: WindowedList<PreparedCluster> | null = null;
   private useVirtualScroll = true;
   private renderRequestId = 0;
@@ -45,11 +54,16 @@ export class NewsPanel extends Panel {
   private sortBtn: HTMLButtonElement | null = null;
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
+  private relatedAssetTableRefreshPending = false;
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
   private currentHeadlines: string[] = [];
+  // RSS descriptions paired 1:1 with currentHeadlines. Used to ground the
+  // SummarizeArticle LLM (U7) so it stops hallucinating across unrelated
+  // headlines. Empty strings preserve today headline-only behavior (R6).
+  private currentBodies: string[] = [];
   private lastHeadlineSignature = '';
   private isSummarizing = false;
 
@@ -181,7 +195,7 @@ export class NewsPanel extends Panel {
       ? t('components.newsPanel.sortNewest') || 'Newest'
       : t('components.newsPanel.sortRelevance') || 'Relevance';
     const tooltip = `${t('components.newsPanel.sortBy') || 'Sort by'}: ${label}`;
-    this.sortBtn.innerHTML = icon;
+    setTrustedHtml(this.sortBtn, trustedHtml(icon, "legacy direct innerHTML migration"));
     this.sortBtn.title = tooltip;
     this.sortBtn.setAttribute('aria-label', tooltip);
   }
@@ -204,7 +218,7 @@ export class NewsPanel extends Panel {
     // Create summarize button
     this.summaryBtn = document.createElement('button');
     this.summaryBtn.className = 'panel-summarize-btn';
-    this.summaryBtn.innerHTML = '✨';
+    setTrustedHtml(this.summaryBtn, trustedHtml('✨', "legacy direct innerHTML migration"));
     this.summaryBtn.title = t('components.newsPanel.summarize');
     this.summaryBtn.addEventListener('click', () => {
       track('news-summarize', { panelId: this.panelId });
@@ -235,15 +249,21 @@ export class NewsPanel extends Panel {
 
     // Show loading state
     this.isSummarizing = true;
-    this.summaryBtn.innerHTML = '<span class="panel-summarize-spinner"></span>';
+    setTrustedHtml(this.summaryBtn, trustedHtml('<span class="panel-summarize-spinner"></span>', "legacy direct innerHTML migration"));
     this.summaryBtn.disabled = true;
     this.summaryContainer.style.display = 'block';
-    this.summaryContainer.innerHTML = `<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`;
+    setTrustedHtml(this.summaryContainer, trustedHtml(`<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`, "legacy direct innerHTML migration"));
 
     const sigAtStart = this.lastHeadlineSignature;
 
     try {
-      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
+      const result = await generateSummary(
+        this.currentHeadlines.slice(0, 8),
+        undefined,
+        this.panelId,
+        currentLang,
+        { bodies: this.currentBodies.slice(0, 8) },
+      );
       if (!this.element?.isConnected) return;
       if (this.lastHeadlineSignature !== sigAtStart) {
         this.hideSummary();
@@ -253,17 +273,17 @@ export class NewsPanel extends Panel {
         this.setCachedSummary(cacheKey, result.summary);
         this.showSummary(result.summary);
       } else {
-        this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryError')}</div>`;
+        setTrustedHtml(this.summaryContainer, trustedHtml(`<div class="panel-summary-error">${t('components.newsPanel.summaryError')}</div>`, "legacy direct innerHTML migration"));
         setTimeout(() => this.hideSummary(), 3000);
       }
     } catch {
       if (!this.element?.isConnected) return;
-      this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryFailed')}</div>`;
+      setTrustedHtml(this.summaryContainer, trustedHtml(`<div class="panel-summary-error">${t('components.newsPanel.summaryFailed')}</div>`, "legacy direct innerHTML migration"));
       setTimeout(() => this.hideSummary(), 3000);
     } finally {
       this.isSummarizing = false;
       if (this.summaryBtn) {
-        this.summaryBtn.innerHTML = '✨';
+        setTrustedHtml(this.summaryBtn, trustedHtml('✨', "legacy direct innerHTML migration"));
         this.summaryBtn.disabled = false;
       }
     }
@@ -279,7 +299,7 @@ export class NewsPanel extends Panel {
     const originalText = titleEl.textContent || '';
 
     // Visual feedback
-    element.innerHTML = '...';
+    setTrustedHtml(element, trustedHtml('...', "legacy direct innerHTML migration"));
     element.style.pointerEvents = 'none';
 
     try {
@@ -288,17 +308,17 @@ export class NewsPanel extends Panel {
       if (translated) {
         titleEl.textContent = translated;
         titleEl.dataset.original = originalText;
-        element.innerHTML = '✓';
+        setTrustedHtml(element, trustedHtml('✓', "legacy direct innerHTML migration"));
         element.title = 'Original: ' + originalText;
         element.classList.add('translated');
       } else {
-        element.innerHTML = '文';
+        setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
         // Shake animation or error state could be added here
       }
     } catch (e) {
       if (!this.element?.isConnected) return;
       console.error('Translation failed', e);
-      element.innerHTML = '文';
+      setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
     } finally {
       if (element.isConnected) {
         element.style.pointerEvents = 'auto';
@@ -309,23 +329,26 @@ export class NewsPanel extends Panel {
   private showSummary(summary: string): void {
     if (!this.summaryContainer || !this.element?.isConnected) return;
     this.summaryContainer.style.display = 'block';
-    this.summaryContainer.innerHTML = `
+    setTrustedHtml(this.summaryContainer, trustedHtml(`
       <div class="panel-summary-content">
         <span class="panel-summary-text">${escapeHtml(summary)}</span>
         <button class="panel-summary-close" title="${t('components.newsPanel.close')}" aria-label="${t('components.newsPanel.close')}">×</button>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
     // Close button click is handled via event delegation on summaryContainer (set up in constructor)
   }
 
   private hideSummary(): void {
     if (!this.summaryContainer) return;
     this.summaryContainer.style.display = 'none';
-    this.summaryContainer.innerHTML = '';
+    setTrustedHtml(this.summaryContainer, trustedHtml('', "legacy direct innerHTML migration"));
   }
 
   private getHeadlineSignature(): string {
-    return JSON.stringify(this.currentHeadlines.slice(0, 5).sort());
+    return JSON.stringify([
+      this.currentHeadlines.slice(0, 5).sort(),
+      this.currentBodies.slice(0, 5), // NOT sorted — paired with headlines
+    ]);
   }
 
   private updateHeadlineSignature(): void {
@@ -411,8 +434,9 @@ export class NewsPanel extends Panel {
     this.setCount(0);
     this.relatedAssetContext.clear();
     this.currentHeadlines = [];
+    this.currentBodies = [];
     this.updateHeadlineSignature();
-    this.setContent(`<div class="panel-empty">${escapeHtml(message)}</div>`);
+    this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${escapeHtml(message)}</div>`, 'legacy Panel.setContent() migration'));
   }
 
   private async renderClustersAsync(items: NewsItem[]): Promise<void> {
@@ -447,10 +471,13 @@ export class NewsPanel extends Panel {
     }
 
     this.setCount(sorted.length);
-    this.currentHeadlines = sorted
+    const topItems = sorted
       .slice(0, 5)
-      .map(item => item.title)
-      .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
+      .filter((item) => typeof item.title === 'string' && item.title.trim().length > 0);
+    this.currentHeadlines = topItems.map((item) => item.title);
+    // Paired RSS descriptions for LLM grounding; empty string falls back to
+    // headline-only on the server (R6).
+    this.currentBodies = topItems.map((item) => typeof item.snippet === 'string' ? item.snippet : '');
 
     this.updateHeadlineSignature();
 
@@ -467,6 +494,7 @@ export class NewsPanel extends Panel {
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+        ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
           ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
@@ -476,7 +504,7 @@ export class NewsPanel extends Panel {
       )
       .join('');
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
@@ -502,6 +530,11 @@ export class NewsPanel extends Panel {
 
     // Store headlines for summarization (cap at 5 to reduce entity conflation in small models)
     this.currentHeadlines = sorted.slice(0, 5).map(c => c.primaryTitle);
+    // Cluster objects don't carry a description (news:insights:v1 producer
+    // doesn't plumb it yet). Passing empty bodies preserves today behavior
+    // (R6); when the producer adds a primarySnippet, this falls through to
+    // grounded mode without further code change.
+    this.currentBodies = sorted.slice(0, 5).map(() => '');
 
     this.updateHeadlineSignature();
 
@@ -509,10 +542,22 @@ export class NewsPanel extends Panel {
     let newItemIds: Set<string>;
 
     if (this.isFirstRender) {
-      // First render: mark all items as seen
+      // #4923: returning-user continuity. Stories that first appeared
+      // AFTER the previous visit stay NEW on the first render; everything
+      // older is marked seen. First-ever visits (no persisted state)
+      // keep the old mark-everything-seen behavior. Partition logic lives
+      // in computeNewSinceVisit (pure, unit-tested).
       activityTracker.updateItems(this.panelId, clusterIds);
-      activityTracker.markAsSeen(this.panelId);
-      newItemIds = new Set();
+      const { newIds, seenIds } = computeNewSinceVisit(
+        sorted,
+        activityTracker.getPreviousVisitTime(),
+      );
+      newItemIds = new Set(newIds);
+      // Away-item NEW ribbons persist until actually seen — NOT limited to
+      // the 2-minute arrival window that gates streaming-item tags (the
+      // badge and ribbon would otherwise diverge after 2 minutes).
+      for (const id of newIds) this.newSinceAwayIds.add(id);
+      activityTracker.markItemsSeen(this.panelId, seenIds);
       this.isFirstRender = false;
     } else {
       // Subsequent renders: track new items
@@ -524,7 +569,8 @@ export class NewsPanel extends Panel {
     const prepared: PreparedCluster[] = sorted.map(cluster => {
       const isNew = newItemIds.has(cluster.id);
       const shouldHighlight = activityTracker.shouldHighlight(this.panelId, cluster.id);
-      const showNewTag = activityTracker.isNewItem(this.panelId, cluster.id) && isNew;
+      const showNewTag = isNew
+        && (activityTracker.isNewItem(this.panelId, cluster.id) || this.newSinceAwayIds.has(cluster.id));
 
       return {
         cluster,
@@ -542,8 +588,25 @@ export class NewsPanel extends Panel {
       const html = prepared
         .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
-      this.setContent(html);
+      this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
     }
+    this.refreshRelatedAssetsAfterLazyTables(sorted);
+  }
+
+  private refreshRelatedAssetsAfterLazyTables(clusters: ClusteredEvent[]): void {
+    if (this.relatedAssetTableRefreshPending) return;
+    const titles = clusters.flatMap(cluster => cluster.allItems.map(item => item.title));
+    this.relatedAssetTableRefreshPending = true;
+    void preloadRelatedAssetTables(titles)
+      .then((shouldRefresh) => {
+        this.relatedAssetTableRefreshPending = false;
+        if (shouldRefresh && this.lastRawClusters) {
+          this.renderClusters(this.lastRawClusters);
+        }
+      })
+      .catch(() => {
+        this.relatedAssetTableRefreshPending = false;
+      });
   }
 
   private renderClusterHtmlSafely(
@@ -594,29 +657,18 @@ export class NewsPanel extends Panel {
       ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
       : '';
 
-    // Propaganda risk indicator for primary source
-    const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
-    const primaryPropBadge = primaryPropRisk.risk !== 'low'
-      ? `<span class="propaganda-badge ${primaryPropRisk.risk}" title="${escapeHtml(primaryPropRisk.note || `State-affiliated: ${primaryPropRisk.stateAffiliated || 'Unknown'}`)}">${primaryPropRisk.risk === 'high' ? '⚠ State Media' : '! Caution'}</span>`
-      : '';
-
-    // Source credibility badge for primary source (T1=Wire, T2=Verified outlet)
-    const primaryTier = getSourceTier(cluster.primarySource);
-    const primaryType = getSourceType(cluster.primarySource);
-    const tierLabel = primaryTier === 1 ? 'Wire' : ''; // Don't show "Major" - confusing with story importance
-    const tierBadge = primaryTier <= 2
-      ? `<span class="tier-badge tier-${primaryTier}" title="${primaryType === 'wire' ? 'Wire Service - Highest reliability' : primaryType === 'gov' ? 'Official Government Source' : 'Verified News Outlet'}">${primaryTier === 1 ? '★' : '●'}${tierLabel ? ` ${tierLabel}` : ''}</span>`
-      : '';
+    // Unknown provenance is always visible; "Wire" is reserved for reviewed wire types.
+    const {
+      riskBadge: primaryPropBadge,
+      tierBadge,
+    } = renderPrimarySourceProvenance(cluster.primarySource);
 
     // Build "Also reported by" section for multi-source confirmation
     const otherSources = cluster.topSources.filter(s => s.name !== cluster.primarySource);
     const topSourcesHtml = otherSources.length > 0
       ? `<span class="also-reported">Also:</span>` + otherSources
         .map(s => {
-          const propRisk = getSourcePropagandaRisk(s.name);
-          const propBadge = propRisk.risk !== 'low'
-            ? `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`
-            : '';
+          const propBadge = renderCorroboratingSourceRisk(s.name);
           return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
         })
         .join('')
@@ -653,7 +705,7 @@ export class NewsPanel extends Panel {
     const threatVarMap: Record<string, string> = { critical: '--threat-critical', high: '--threat-high', medium: '--threat-medium', low: '--threat-low', info: '--threat-info' };
     const catColor = cluster.threat ? getCSSColor(threatVarMap[cluster.threat.level] || '--text-dim') : '';
     const categoryBadge = catLabel
-      ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
+      ? `<span class="category-tag" style="--category-color:${catColor};--category-background:${catColor}20">${catLabel}</span>`
       : '';
 
     // Numeric risk score badge (0-100): from external getter or fallback to threat-level derivation

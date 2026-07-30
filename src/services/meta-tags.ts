@@ -12,9 +12,10 @@ interface StoryMeta {
 }
 
 const variantMeta = VARIANT_META[SITE_VARIANT] ?? VARIANT_META.full;
-const BASE_URL = variantMeta.url.replace(/\/$/, '');
+const CANONICAL_URL = variantMeta.url;
+const PUBLIC_ORIGIN = new URL(variantMeta.url).origin;
 const API_ORIGIN = getCanonicalApiOrigin();
-const DEFAULT_IMAGE = `${BASE_URL}/favico/${SITE_VARIANT === 'full' ? '' : SITE_VARIANT + '/'}og-image.png`;
+const DEFAULT_IMAGE = `${PUBLIC_ORIGIN}/favico/${SITE_VARIANT === 'full' ? '' : SITE_VARIANT + '/'}og-image.png`;
 
 export function updateMetaTagsForStory(meta: StoryMeta): void {
   const { countryCode, countryName, ciiScore, ciiLevel, trend, type } = meta;
@@ -40,7 +41,11 @@ export function updateMetaTagsForStory(meta: StoryMeta): void {
   setMetaTag('twitter:url', storyUrl);
   setMetaTag('twitter:image', imageUrl);
 
-  sessionStorage.setItem('storyMeta', JSON.stringify(meta));
+  try {
+    sessionStorage.setItem('storyMeta', JSON.stringify(meta));
+  } catch {
+    // Story metadata remains correct for the current document without persistence.
+  }
 }
 
 export function resetMetaTags(): void {
@@ -48,17 +53,21 @@ export function resetMetaTags(): void {
 
   setMetaTag('title', variantMeta.title);
   setMetaTag('description', variantMeta.description);
-  setCanonicalLink(BASE_URL + '/');
+  setCanonicalLink(CANONICAL_URL);
   setMetaTag('og:title', variantMeta.title);
   setMetaTag('og:description', variantMeta.description);
-  setMetaTag('og:url', BASE_URL + '/');
+  setMetaTag('og:url', CANONICAL_URL);
   setMetaTag('og:image', DEFAULT_IMAGE);
   setMetaTag('twitter:title', variantMeta.title);
   setMetaTag('twitter:description', variantMeta.description);
-  setMetaTag('twitter:url', BASE_URL + '/');
+  setMetaTag('twitter:url', CANONICAL_URL);
   setMetaTag('twitter:image', DEFAULT_IMAGE);
 
-  sessionStorage.removeItem('storyMeta');
+  try {
+    sessionStorage.removeItem('storyMeta');
+  } catch {
+    // Resetting the current document must not depend on storage availability.
+  }
 }
 
 function generateDescription(
@@ -98,7 +107,7 @@ function setMetaTag(property: string, content: string): void {
   if (existing) existing.remove();
 
   const meta = document.createElement('meta');
-  if (property.startsWith('og:') || property.startsWith('twitter:')) {
+  if (property.startsWith('og:')) {
     meta.setAttribute('property', property);
   } else {
     meta.setAttribute('name', property);

@@ -40,9 +40,17 @@ async function getEntitlementsHandler(
     return FREE_TIER_DEFAULTS;
   }
 
+  // Read-time merge with the canonical product catalog so feature flags added
+  // to PRODUCT_CATALOG since the row was last written by the Dodo webhook
+  // are surfaced immediately — no need to wait for the next subscription
+  // event to rewrite the row. Stored row's `features` win on conflict
+  // (preserves any per-user overrides). New fields the row lacks (e.g.
+  // `mcpAccess` post-plan-2026-05-10-001 U10) inherit the catalog default
+  // for the user's plan.
+  const catalogDefaults = getFeaturesForPlan(entitlement.planKey);
   return {
     planKey: entitlement.planKey,
-    features: entitlement.features,
+    features: { ...catalogDefaults, ...entitlement.features },
     validUntil: entitlement.validUntil,
   };
 }

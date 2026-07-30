@@ -1,0 +1,101 @@
+---
+title: "Errors"
+description: "Standard World Monitor API error shape, common HTTP status codes, JSON-RPC error envelopes, and safe retry strategies for transient failures."
+---
+
+## Error shape
+
+All error responses are JSON with `Content-Type: application/json`:
+
+```json
+{ "error": "brief_not_found" }
+```
+
+Some endpoints include additional fields:
+
+```json
+{
+  "error": "invalid_request",
+  "error_description": "iso2 must be a 2-letter uppercase country code",
+  "field": "iso2"
+}
+```
+
+OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) error codes: `invalid_request`, `invalid_client`, `invalid_grant`, `unsupported_grant_type`, `invalid_scope`.
+
+## Status codes
+
+| Code | Meaning | Retry? |
+|------|---------|--------|
+| `200` | OK | — |
+| `202` | Accepted — job enqueued. Poll for terminal status. | — |
+| `304` | Not Modified (conditional cache hit) | — |
+| `400` | Bad request — validation error | No — fix input |
+| `401` | Missing / invalid auth | No — fix auth |
+| `403` | Authenticated but not entitled (usually `pro_required`), or `subscription_lapsed` — a lapse confirmed with the billing provider (`X-Billing-Verification` header set) | No — upgrade / resubscribe |
+| `404` | Resource / tool / brief / entity not found | No |
+| `405` | Method not allowed | No |
+| `409` | `Idempotency-Key` request still in progress, or another conflict such as duplicate webhook registration. | Yes for keyed in-flight requests — honor `Retry-After: 2`; otherwise no |
+| `422` | `Idempotency-Key` reused with a different request body. | No — resend the original body or use a new key |
+| `413` | Payload too large | No |
+| `429` | Rate limited | Yes — honor `Retry-After` |
+| `500` | Server bug | Yes — with backoff, then report |
+| `502` | Upstream / Convex / Dodo failure | Yes — exponential backoff |
+| `503` | Service unavailable — missing env or dependency down; billing verification in progress (`renewal_verification_pending` / `renewal_verification_failed` — dynamic `Retry-After`, 1-60s); or billing backend unreachable (`entitlement_verification_unavailable` — fixed `Retry-After: 5`) | Yes — honor `Retry-After`, else exponential backoff |
+| `504` | Upstream timeout | Yes — with backoff |
+
+### Reading `X-Billing-Verification`
+
+On JSON gateway surfaces, `X-Billing-Verification` generally mirrors the response body's billing `code`. The Pro-MCP OAuth flow deliberately has two different response shapes: its grant-handshake endpoints keep the stable body codes `TIER_VERIFICATION_UNAVAILABLE` for retryable verification failures and `INSUFFICIENT_TIER` for terminal tier denials, while the header carries the underlying billing reason; `/oauth/authorize-pro` renders HTML, so the header remains its machine-readable billing reason. The header is listed in `Access-Control-Expose-Headers`, so browser clients can read it cross-origin. Branch on it rather than on the status alone: a `503` from these surfaces can also mean "required env not configured", which is **not** retryable, and a `403` can be either a plain `pro_required` upsell or a `subscription_lapsed` verdict.
+
+Among the billing reasons carried by `X-Billing-Verification`, only `subscription_lapsed` is terminal. It never carries `Retry-After` — the absence of that header is the signal that renewal, not retry, is the way out. At the grant-handshake endpoints, treat the body code `INSUFFICIENT_TIER` as terminal even when there is no billing header, and `TIER_VERIFICATION_UNAVAILABLE` as retryable.
+
+### Generated RPC billing denials
+
+Generated RPC handlers preserve the same billing decision in their native error shape. `summarizeArticle` reports errors inside a successful RPC envelope, so a retryable billing state uses `status: SUMMARIZE_STATUS_ERROR`, `errorType: ServiceError`, and the billing code in `statusDetail`; a provider-confirmed lapse uses `errorType: AuthError`. The scenario, shipping-v2, and forecast-simulation handlers use generated `ApiError` exceptions instead, so retryable states surface as HTTP `503` with `Retry-After`, `X-Billing-Verification`, and the same body `code`. A confirmed free caller still receives the existing Pro-required `403`.
+
+## Common error strings
+
+| `error` value | Meaning |
+|---------------|---------|
+| `UNAUTHENTICATED` | No valid Clerk JWT or API key. |
+| `pro_required` | Authenticated, but account is not PRO. |
+| `invalid_payload` | Body failed schema validation. |
+| `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
+| `brief_not_found` | No composed brief for the requested `{userId, issueSlot}`. |
+| `Too many requests` | 429 fired; honor `Retry-After`. |
+| `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
+| `service_unavailable` | Signing secret / required env not configured. |
+| `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
+| `subscription_lapsed` | The subscription lapse was confirmed with the billing provider. Re-authenticating will not help — resubscribe to restore access. Response carries `X-Billing-Verification: subscription_lapsed`. |
+| `renewal_verification_pending` | Your subscription recently expired locally and the server is re-confirming it with the billing provider. Retryable 503 — honor `Retry-After` (1-60s); a renewed subscription typically recovers within one or two retries. |
+| `renewal_verification_failed` | The provider re-check could not complete and is in a short cooldown. Retryable 503 — honor `Retry-After`. |
+| `entitlement_verification_unavailable` | The billing backend produced no answer about your access — unreachable, erroring, or rejecting the server's own credential — so the denial states nothing about your plan and must never be read as one. Emitted on every authenticated surface (`wm_` API keys, bootstrap, session/bearer tier checks, MCP). Retryable 503 with `Retry-After: 5` and `X-Billing-Verification: entitlement_verification_unavailable`. |
+| `TIER_VERIFICATION_UNAVAILABLE` | The Pro-MCP OAuth handshake (`POST /api/internal/mcp-grant-mint`, `GET /api/internal/mcp-grant-context`) could not verify the caller's subscription. Retryable 503 carrying `Retry-After` and `X-Billing-Verification`; the handshake keeps its own SCREAMING_SNAKE vocabulary, and `INSUFFICIENT_TIER` remains the terminal 403 (including for a provider-confirmed lapse, which additionally sets `X-Billing-Verification: subscription_lapsed`). |
+| `idempotency_conflict` | A POST with this `Idempotency-Key` is still processing. Retry after `Retry-After: 2`. |
+| `idempotency_key_reused` | The same `Idempotency-Key` was already used with a different request body. |
+| `invalid_idempotency_key` | The `Idempotency-Key` header is too long or contains non-printable characters. Generated OpenAPI POSTs also reject an empty key. |
+
+## Idempotency-Key
+
+All generated OpenAPI POST operations and these standalone write endpoints accept an optional `Idempotency-Key` request header: `POST /api/create-checkout`, `POST /api/customer-portal`, `POST /api/notify`, `POST /api/user-prefs`, and `POST /api/notification-channels`. Use a client-generated key for any POST that your client may retry after a network timeout or retryable 5xx.
+
+Retrying a POST with the same key and an identical request body replays the original completed response instead of re-executing the operation. The replay contract reproduces the original status, body, and Content-Type; success responses echo `Idempotency-Key` and set `Idempotent-Replayed: false` on the first response or `Idempotent-Replayed: true` on replay. Keys are scoped per authenticated caller, fall back to the source IP for unauthenticated endpoints, and are retained for 24 hours after a completed response unless the endpoint documents a shorter replay window.
+
+If the first request is still running, the retry returns `409 idempotency_conflict` with `Retry-After: 2`; retry after that delay with the same key and identical body. If the same key is reused with a different request body, the API returns `422 idempotency_key_reused`; do not retry unchanged, because the client must either send the original body or choose a new key for the new operation.
+
+For mutations this avoids duplicating the side effect, including async enqueues such as `POST /api/scenario/v1/run-scenario`. For batch-read POSTs, replay returns the cached snapshot and that snapshot can be up to 24 hours stale. A `409 idempotency_conflict` means the original keyed request is still running and keeps its in-flight lock until it completes. If the original execution itself returns a retryable status (`408`, `409`, `429`, or 5xx), that response is not cached and the processing lock is released, so a later retry may re-execute the operation and should only be sent when the endpoint contract is safe for that retry or the client can tolerate re-execution.
+
+## Retry strategy
+
+**Idempotent reads** (`GET`): retry 429/5xx with exponential backoff (1s, 2s, 4s, cap 30s, 5 attempts). Most GET responses are cached at the edge, so the retry usually goes faster.
+
+**Writes**: send `Idempotency-Key` on any POST you may retry. Never auto-retry most 4xx responses; the exception is `409 idempotency_conflict`, which means a keyed request is still in flight and can be retried after `Retry-After: 2` with the same key and identical body. 5xx responses are not cached for replay even when a key is present; retry with exponential backoff only when the endpoint contract is safe for a repeated execution or the client can tolerate that possibility. Without a key, inspect the endpoint contract before retrying because an unkeyed repeat can duplicate the side effect.
+
+**MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
+
+## Debugging
+
+- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues.
+- Sentry alerts forward to [status.worldmonitor.app](https://status.worldmonitor.app/).
+- `GET /api/health` and `GET /api/seed-health` show per-seed freshness; a stale seed is the most common root cause of unexpected empty payloads.

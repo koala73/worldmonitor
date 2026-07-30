@@ -1,0 +1,64 @@
+---
+title: "Thermal Escalation Methodology"
+description: "How WorldMonitor clusters FIRMS/VIIRS thermal detections, compares them with local baselines, and assigns thermal escalation status and relevance."
+---
+
+## Overview
+
+Thermal Escalation turns FIRMS/VIIRS hotspot detections into clustered, baseline-aware watch items for the `thermal-escalation` panel. The implementation lives in `scripts/lib/thermal-escalation.mjs`.
+
+## Clustering
+
+Detections are sorted by observation time and grouped by region label. A detection joins the nearest existing cluster in the same region when it falls within `20km`; otherwise it starts a new cluster. Cluster centroids are updated incrementally as detections are added.
+
+Each cluster is assigned to a 0.5-degree baseline cell by rounding latitude and longitude to the nearest 0.5 degrees.
+
+## Baseline and Persistence
+
+The scorer keeps 30 days of cell history and uses the last 7 days as the comparison baseline. For each cluster it computes:
+
+| Metric | Meaning |
+| --- | --- |
+| `baselineExpectedCount` | Average prior observation count in the cell |
+| `baselineExpectedFrp` | Average prior total fire radiative power in the cell |
+| `countDelta` | Current observation count minus baseline count |
+| `frpDelta` | Current total FRP minus baseline FRP |
+| `zScore` | Count delta divided by baseline count standard deviation |
+| `persistenceHours` | Duration since the first current or recent prior observation |
+
+Prior observations within 18 hours extend persistence. The panel display window is 24 hours.
+
+## Status Rules
+
+| Status | Rule |
+| --- | --- |
+| `persistent` | `persistenceHours >= 12` and either `countDelta >= 3` or `totalFrp >= 80` |
+| `spike` | `zScore >= 2.5`, `countDelta >= 6`, `frpDelta >= 120`, or `observationCount >= 8` with `totalFrp >= 150` |
+| `elevated` | `zScore >= 1.5`, `countDelta >= 3`, `frpDelta >= 50`, or no baseline with `observationCount >= 5` |
+| `normal` | None of the above |
+
+## Context and Relevance
+
+Conflict adjacency is determined from the cluster's region label, not from a live distance join against conflict events. The current conflict-region allowlist is:
+
+Ukraine, Russia, Israel/Gaza, Syria, Iran, Taiwan, North Korea, Yemen, Myanmar, Sudan, South Sudan, Ethiopia, Somalia, Democratic Republic of the Congo, Libya, Mali, Burkina Faso, Niger, Iraq, and Pakistan.
+
+Strategic relevance is assigned as:
+
+| Relevance | Rule |
+| --- | --- |
+| `high` | Conflict-adjacent and status is `spike` or `persistent` |
+| `medium` | Status is `persistent`, total FRP is at least `120`, or persistence is at least 12 hours |
+| `low` | None of the above |
+
+The current implementation does not perform infrastructure-proximity matching. `nearbyAssets` is emitted as an empty array until an asset matcher is wired into the seeder.
+
+## Confidence
+
+| Confidence | Rule |
+| --- | --- |
+| `high` | At least 8 observations, at least 2 unique satellite sources, and at least 4 baseline samples |
+| `medium` | At least 4 observations and at least 2 baseline samples |
+| `low` | Anything below the medium threshold |
+
+Rows are sorted by relevance, then status severity, total FRP, and observation count.

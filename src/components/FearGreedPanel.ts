@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 
 interface FearGreedData {
@@ -293,6 +293,6 @@ export class FearGreedPanel extends Panel {
         ${catRows}
       </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

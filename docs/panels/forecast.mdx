@@ -1,0 +1,146 @@
+---
+title: "AI Forecasts"
+description: "AI-generated geopolitical forecasts across conflict, markets, supply chain, cyber, and infrastructure — calibrated against prediction-market anchors."
+---
+
+The **AI Forecasts** panel (internal id `forecast`) surfaces forecasts produced by WorldMonitor's forecasting pipeline. Each forecast is a structured prediction with a probability, a domain classification, a time horizon, and supporting signals; the panel exposes two axes of filtering (domain and macro-region) so you can home in on the slice that matters to you.
+
+## What the panel shows
+
+A list of active forecasts, filtered by two pill rows:
+
+### Domain filter
+
+`All` / `Conflict` / `Market` / `Supply Chain` / `Political` / `Military` / `Cyber` / `Infra`
+
+### Region filter
+
+`All Regions` / `MENA` / `East Asia` / `Europe` / `South Asia` / `Africa` / `LatAm` / `N. America`
+
+Forecasts whose region does not classify (unknown or `global`) only appear under **All Regions**. The panel's minimum-probability floor is `0.1` (10%) — predictions below that threshold are suppressed from the panel view.
+
+Each forecast row shows the prediction text, the event probability, the domain (color-coded), the time horizon, and a compact provenance trail. Deep-simulation path confidence is shown separately as confidence, not as event probability.
+
+## Calibration & Projection Notes
+
+Forecast probabilities come from deterministic, rule-based signal detectors in `scripts/seed-forecasts.mjs`, with an optional prediction-market blend when a matching market anchor exists. LLM calls do not set the numeric probability. They generate the narrative scenario, case-file, branches, and perspective text around the already-scored forecast. The default source-backed LLM routes in the seeder are OpenRouter `deepseek/deepseek-v4-flash` (primary, reasoning disabled) and Groq `llama-3.3-70b-versatile` (fallback). One tracked exception: the critical-signals extraction stage contributes signal strength/confidence into the deterministic scoring of state-derived (market/supply-chain) forecasts, so that stage stays pinned to its legacy models until the calibration question is settled (see issue #4963).
+
+Forecast probabilities are market-calibrated only when the seeder can match the forecast to a prediction-market anchor. In those cases the `calibration` object includes the market title, market price, drift, and source, and the displayed probability is blended with that market anchor. Forecasts with `calibration: null` are internal/legacy estimates derived from WorldMonitor signal rules rather than externally market-calibrated probabilities.
+
+The seeder also publishes horizon projections (`24h`, `7d`, `30d`) from domain-specific projection curves in `scripts/seed-forecasts.mjs`. Market forecasts are normalized against the strongest multiplier in their domain curve before the three horizons are expanded, so a 30-day market emission does not inflate the 24-hour projection. Other domains preserve the emitted horizon as the semantic anchor. Projected probabilities are then clamped to a 1% floor and 95% cap (`0.01` / `0.95`) as a presentation heuristic, so projection endpoints should be interpreted as bounded scenario paths rather than unconstrained calibrated probabilities.
+
+The `GET /api/forecast/v1/get-forecasts` response includes `degraded`, `stale`, and `error` fields so clients can distinguish a backend/cache outage from a healthy empty forecast set.
+
+Panel id is `forecast`; canonical component is `src/components/ForecastPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *forecast*, *ai forecast*, or *predictions ai*. The command palette label is "AI Forecasts" even though the internal panel id is `forecast`.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. Not present in the tech, finance, commodity, or happy variants. Source: `FULL_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+Primary RPC: `GET /api/forecast/v1/get-forecasts`. The panel also consumes adjacent RPCs for the richer deep-simulation surface:
+
+- `GET /api/forecast/v1/get-simulation-package` — the most recent simulation inputs bundle.
+- `GET /api/forecast/v1/get-simulation-outcome` — the most recent simulation result.
+- `POST /api/forecast/v1/trigger-simulation` — starts a fresh simulation run outside the cached cron output.
+
+The forecasting pipeline runs as a Railway cron that pulls recent conflict, intelligence, markets, and supply-chain signals, runs them through the forecasting model, and writes the aggregated result at `forecast:predictions:v2` in Redis. Macro-region classification comes from `shared/forecast-macro-regions.js`.
+
+## Scoring and calibration
+
+Published forecasts are capped and deduplicated before they reach the panel:
+
+| Rule | Cap |
+| --- | --- |
+| Forecasts per situation | 3 |
+| Forecasts per situation/domain pair | 2 |
+| Forecasts per family | 4 |
+| Forecasts per family/domain pair | 2 |
+| Target published count | 10-14 |
+| Conflict base detector probability ceiling (before velocity spike) | 0.90 |
+| UCDP conflict-zone gate floor at 10 events (before velocity spike) | 0.35 |
+| UCDP conflict-zone base probability ceiling (before velocity spike) | 0.85 |
+| Conflict velocity-spike override ceiling | 0.99 |
+| Market probability ceiling | 0.85 |
+| Supply-chain / maritime probability ceiling | 0.85 |
+| GPS supply-chain detector probability ceiling | 0.60 |
+| Political probability ceiling | 0.80 |
+| Military probability ceiling | 0.90 |
+| Infrastructure probability ceiling | 0.85 |
+| Cyber probability ceiling | 0.72 |
+
+When a forecast can be matched to a geopolitical prediction market, the seeder records the market title, market price, drift from the internal probability, and market source. The final probability is then blended as `0.4 * market_probability + 0.6 * internal_probability`.
+
+Market-bucket scenario calibration is an editorial calibration layer in `scripts/seed-forecasts.mjs`, not a learned market model. It biases how market-context simulation states contribute to forecast pressure and confidence so that direct energy/freight transmission receives more lift, broad macro buckets stay moderate, and defense repricing is damped unless the evidence is strong.
+
+| Bucket | Simulation bias: confirmation / pressure / edge / contradiction | State calibration: edgeLift / macroLift / confidenceLift / dampener | Rationale |
+| --- | --- | --- | --- |
+| Energy | `0.20 / 0.12 / 0.10 / 0.14` | `0.08 / 0.14 / 0.05 / -` | Strong direct route, commodity, and macro pass-through. |
+| Freight | `0.18 / 0.12 / 0.10 / 0.14` | `0.09 / 0.12 / 0.04 / -` | Shipping-cost shocks are treated as high-signal supply-chain pressure. |
+| Sovereign risk | `0.17 / 0.11 / 0.09 / 0.15` | `0.07 / 0.10 / 0.04 / -` | Macro stress matters, but confirmation still needs country/market evidence. |
+| Rates / inflation | `0.16 / 0.10 / 0.08 / 0.16` | `0.06 / 0.12 / 0.05 / -` | Policy and inflation transmission is broad but less event-specific. |
+| FX stress | `0.15 / 0.09 / 0.08 / 0.14` | `0.05 / 0.10 / 0.04 / -` | Currency pressure is allowed to lift risk, with moderate confidence. |
+| Semis | `0.13 / 0.08 / 0.09 / 0.12` | `0.04 / 0.04 / 0.02 / -` | Semiconductor shocks need targeted infrastructure or shipping evidence. |
+| Crypto / stablecoins | `0.11 / 0.07 / 0.08 / 0.12` | `0.03 / 0.05 / 0.02 / -` | Digital-asset stress is useful context but gets a lighter macro lift. |
+| Defense | `0.08 / 0.04 / 0.05 / 0.10` | `-0.03 / 0 / -0.03 / 0.12` | Defense signals are intentionally damped to avoid over-reacting to noisy security headlines. |
+
+The conflict and UCDP conflict-zone rows are base detector caps. UCDP conflict-zone counts begin at the 10-event publish gate with a `0.35` base probability and ramp to the `0.85` base cap at 100 events. When the matching EMA risk score has `velocitySpike`, the seeder adds a `+0.08` probability override after the base cap and clamps the result to `0.99`.
+
+Defense state calibration has additional direct-confirmation terms outside the table: each unit of direct `defense_repricing` confirmation adds `+0.12` pressure and `+0.08` confidence. When that direct defense confirmation is absent, pressure subtracts the table-driven `dampener` (`0.12`) and confidence subtracts a separate `0.04` absence penalty.
+
+Probability projections are expanded to 24h, 7d, and 30d with domain curves. Market projections use the curve's peak multiplier as the anchor; other domains use the forecast's emitted horizon:
+
+| Domain | 24h | 7d | 30d |
+| --- | ---: | ---: | ---: |
+| Conflict | 0.91 | 1.00 | 0.78 |
+| Market | 1.00 | 0.58 | 0.42 |
+| Supply chain | 0.91 | 1.00 | 0.64 |
+| Political | 0.83 | 0.87 | 1.00 |
+| Military | 1.00 | 0.91 | 0.65 |
+| Cyber | 1.00 | 0.78 | 0.40 |
+| Infrastructure | 1.00 | 0.50 | 0.25 |
+
+Trend is serialized as a string, not an enum. The current values are `rising`, `falling`, and `stable`, based on a +/- `0.05` probability delta versus the prior forecast snapshot.
+
+## Resolution spec
+
+Every published forecast carries a **resolution spec** — a machine-checkable contract that defines what "came true" means at resolution time. The spec is either `hard` (auto-resolvable by comparing a metric from the same WorldMonitor feed the detector scored from) or `judged` (a resolution question for a later LLM judge, still with a hard deadline). The deadline is always present, encoded in epoch milliseconds: emission time plus the forecast's stated horizon — except prediction-market forecasts, which resolve at the market's own end date when it has one.
+
+**Hard specs** apply to forecasts with clean metric backing:
+
+- **Conflict**: UCDP conflict-event counts in the forecast's region.
+- **UCDP zones**: UCDP conflict-zone event counts.
+- **Market**: commodity-future price moves measured from the emission-time baseline.
+- **Prediction-market**: the market's own resolution; deadline is the market's end date, falling back to the horizon deadline if the market has no settlement date.
+- **Supply chain**: chokepoint disruption scores.
+- **GPS interference**: jamming-activity counts over a region.
+- **Infrastructure**: reported outage events for the forecast's country.
+
+**Judged specs** apply to forecasts in domains where signal-to-outcome mapping is editorial or composite:
+
+- **Political**: regime stability, negotiations, policy shifts.
+- **Military**: posture transitions, deployment patterns.
+- **Cyber**: attribution and impact severity.
+- All **state-derived** forecasts, which blend multiple signal sources and carry composite provenance (if signals alone yielded a clean metric, origin-precedence still routes them to judged rather than hard).
+- Hard-family forecasts that cannot derive a finite threshold despite their domain (e.g., a market forecast with no tradeable anchor).
+
+The resolution spec does not change which forecasts are published or their order — it only *adds* machine-checkable ground truth to each forecast, the substrate for a future public track record that scores forecasts against what actually happened.
+
+## Refresh cadence
+
+The seeder runs approximately **hourly**. The key is allowed up to **90 minutes** in `api/health.js` (`maxStaleMin: 90`) before the health surface escalates.
+
+## Resolution & track record
+
+Published forecasts carry machine-checkable resolution specs. A daily resolver pre-registers those specs into `forecast:resolutions:v1`, samples hard-source metrics until their deadlines, then resolves each published forecast to YES, NO, or VOID with evidence. The derived `forecast:scorecard:v1` reports Brier score, log score, calibration buckets, VOID rate, publication coverage, and market-anchor skill. Judged specs are tracked as pending for a fast-follow judge and are excluded from the first hard-source scorecard until resolved.
+
+## Tier & gating
+
+On **web**, AI Forecasts is currently in **trial** — free to anyone, including unauthenticated readers. On **desktop**, the same panel ships with `premium: 'locked'` in `src/config/panels.ts` so it is gated there. This split reflects the product's current trial positioning; expect the web gating to tighten over time.
+
+## API reference
+
+- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-forecast-scorecard`, `get-simulation-outcome`, `get-simulation-package`, and `trigger-simulation`.
+- For **programmatic prediction generation** (fresh probabilities outside the cached cron output), see the [MCP `generate_forecasts` tool](/mcp-overview#ai-intelligence-live-llm).

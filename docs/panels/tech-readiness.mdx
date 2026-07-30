@@ -1,0 +1,36 @@
+---
+title: "Tech Readiness Index"
+description: "Country-level tech-readiness rankings with flag-labelled rows, sourced from bootstrap-hydrated World Bank indicator caches. Refreshed every 6 hours."
+---
+
+The **Tech Readiness Index** panel (internal id `tech-readiness`) ranks countries by a composite tech-readiness score — the kind of comparative view you want when sizing up "which markets are structurally well-positioned on tech infrastructure, talent, and adoption?"
+
+## What the panel shows
+
+A ranked list of countries with flag, ISO-3 code, and score. Flag emojis come from a built-in map of ~60 ISO-3 codes in `src/components/TechReadinessPanel.ts:6`; countries outside that list still appear in the ranking but without a flag.
+
+The panel holds the full `TechReadinessScore[]` in memory and re-renders on refresh. A count badge in the panel header shows how many countries are in the ranking (`showCount: true`).
+
+Panel id is `tech-readiness`; canonical component is `src/components/TechReadinessPanel.ts`. Title resolves from i18n (`panels.techReadiness`).
+
+## How you reach it
+
+- **Cmd+K**: type *tech readiness* or *tech index*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (`priority: 2`) and **tech** (`priority: 1`) variants. Not present in the finance, commodity, or happy variants. Source: `'tech-readiness'` in `FULL_PANELS` (`:105`) and `TECH_PANELS` (`:276`) of `src/config/panels.ts`.
+
+## Data sources
+
+- `getTechReadinessRankings()` in `@/services/economic` — reads bootstrap-hydrated `techReadiness` data when available, then falls back to `GET /api/bootstrap?keys=techReadiness`.
+- The data is precomputed by the World Bank indicator seed pipeline; the frontend does not call the World Bank API directly.
+
+## Refresh cadence
+
+**6 hours** in-panel (`REFRESH_INTERVAL = 6 * 60 * 60 * 1000` in `src/components/TechReadinessPanel.ts:26`). The panel skips refetch if the ranking is non-empty and less than 6 hours old; explicit refresh is re-triggered after the interval.
+
+## Tier & gating
+
+**Free.** No `premium` flag in either variant registration. The bootstrap hydration/fallback path is public.
+
+## API reference
+
+- [Platform endpoints](/api-platform#bootstrap) — covers `/api/bootstrap`, including keyed hydration such as `techReadiness`.

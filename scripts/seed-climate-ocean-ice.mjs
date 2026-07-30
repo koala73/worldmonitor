@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -48,16 +50,38 @@ function midYearMs(yearWithFraction) {
   return Math.round(yearStart + fraction * 365.2425 * 24 * 60 * 60 * 1000);
 }
 
-async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
-  const resp = await fetch(url, {
-    headers: {
-      Accept: 'text/plain,text/csv,application/json,text/html;q=0.9,*/*;q=0.8',
-      'User-Agent': CHROME_UA,
-    },
-    signal: AbortSignal.timeout(timeoutMs),
+export async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
+  // AbortSignal.timeout cancels the connect/read phase but NOT a hung DNS
+  // lookup: getaddrinfo runs on libuv's threadpool and is uncancellable, so a
+  // slow/flapping resolver sails straight past timeoutMs (measured: a dead
+  // resolver stalls ~22s regardless of a 3s AbortSignal). Race the whole
+  // fetch+read against a real wall-clock deadline as a backstop — set slightly
+  // above timeoutMs so the AbortSignal stays the primary path for ordinary
+  // connection stalls. A lookup thread left running after the deadline is
+  // reaped when runSeed exits the process.
+  let deadlineId;
+  const deadline = new Promise((_resolve, reject) => {
+    deadlineId = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs + 1_000}ms (DNS backstop)`)),
+      timeoutMs + 1_000,
+    );
   });
-  if (!resp.ok) throw new Error(`${label} HTTP ${resp.status}`);
-  return resp.text();
+  const read = (async () => {
+    const resp = await fetch(url, {
+      headers: {
+        Accept: 'text/plain,text/csv,application/json,text/html;q=0.9,*/*;q=0.8',
+        'User-Agent': CHROME_UA,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`${label} HTTP ${resp.status}`);
+    return resp.text();
+  })();
+  try {
+    return await Promise.race([read, deadline]);
+  } finally {
+    clearTimeout(deadlineId);
+  }
 }
 
 export function parseSeaIceDailyRows(text) {
@@ -443,7 +467,7 @@ async function readPriorCache() {
     });
     if (!resp.ok) return null;
     const data = await resp.json();
-    return data.result ? JSON.parse(data.result) : null;
+    return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
   } catch {
     return null;
   }
@@ -491,13 +515,21 @@ function validate(data) {
   return countIndicators(data) > 0;
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+export function declareRecords(data) {
+  return typeof countIndicators === "function" ? countIndicators(data) : 0;
+}
+
 if (isMain) {
   runSeed('climate', 'ocean-ice', CLIMATE_OCEAN_ICE_KEY, fetchOceanIceData, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     recordCount: countIndicators,
     sourceVersion: 'nsidc-sea-ice_v4-climatology-noaa-ohc-nasa-gmsl-noaa-global-ocean-v6-v51-baseline-v3',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

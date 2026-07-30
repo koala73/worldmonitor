@@ -1,7 +1,11 @@
 import type { StoryData } from '@/services/story-data';
-import { renderStoryToCanvas } from '@/services/story-renderer';
+// renderStoryToCanvas is dynamic-imported at its call site (#4486) so story-renderer
+// stays off the eager boot graph; this is the second of its two eager edges (the
+// other is country-intel). renderAndDisplay runs on story-modal open (interaction).
 import { generateStoryDeepLink, getShareUrls, shareTexts } from '@/services/story-share';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 let modalEl: HTMLElement | null = null;
 let currentDataUrl: string | null = null;
@@ -18,7 +22,9 @@ export function openStoryModal(data: StoryData): void {
 
   modalEl = document.createElement('div');
   modalEl.className = 'story-modal-overlay';
-  modalEl.innerHTML = `
+  modalEl.setAttribute('role', 'dialog');
+  modalEl.setAttribute('aria-modal', 'true');
+  setTrustedHtml(modalEl, trustedHtml(`
     <div class="story-modal">
       <button class="story-close-x" aria-label="${t('modals.story.close')}">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -52,7 +58,7 @@ export function openStoryModal(data: StoryData): void {
         </button>
       </div>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   modalEl.addEventListener('click', (e) => {
     if (e.target === modalEl) closeStoryModal();
@@ -74,12 +80,13 @@ export function openStoryModal(data: StoryData): void {
     } catch (err) {
       console.error('[StoryModal] Render error:', err);
       const content = modalEl?.querySelector('.story-modal-content');
-      if (content) content.innerHTML = `<div class="story-error">${t('modals.story.error')}</div>`;
+      if (content) setTrustedHtml(content, trustedHtml(`<div class="story-error">${t('modals.story.error')}</div>`, "legacy direct innerHTML migration"));
     }
   });
 }
 
 async function renderAndDisplay(data: StoryData): Promise<void> {
+  const { renderStoryToCanvas } = await import('@/services/story-renderer');
   const canvas = await renderStoryToCanvas(data);
   currentDataUrl = canvas.toDataURL('image/png');
 
@@ -90,7 +97,7 @@ async function renderAndDisplay(data: StoryData): Promise<void> {
 
   const content = modalEl?.querySelector('.story-modal-content');
   if (content) {
-    content.innerHTML = '';
+    setTrustedHtml(content, trustedHtml('', "legacy direct innerHTML migration"));
     const img = document.createElement('img');
     img.className = 'story-image';
     img.src = currentDataUrl;
@@ -150,18 +157,18 @@ async function shareWhatsApp(data: StoryData): Promise<void> {
     downloadStory();
     flashButton('.story-whatsapp', t('modals.story.saved'), t('modals.story.whatsapp'));
   }
-  window.open(urls.whatsapp, '_blank');
+  window.open(urls.whatsapp, '_blank', 'noopener,noreferrer');
 }
 
 async function shareTwitter(data: StoryData): Promise<void> {
   const urls = getShareUrls(data);
-  window.open(urls.twitter, '_blank');
+  window.open(urls.twitter, '_blank', 'noopener,noreferrer');
   flashButton('.story-twitter', t('modals.story.opening'), t('modals.story.twitter'));
 }
 
 async function shareLinkedIn(data: StoryData): Promise<void> {
   const urls = getShareUrls(data);
-  window.open(urls.linkedin, '_blank');
+  window.open(urls.linkedin, '_blank', 'noopener,noreferrer');
   flashButton('.story-linkedin', t('modals.story.opening'), t('modals.story.linkedin'));
 }
 

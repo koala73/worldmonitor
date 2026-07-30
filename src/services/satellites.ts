@@ -11,9 +11,28 @@
 // - Historical Pass Log: which sats passed over a location in the last 24h
 //   (useful for identifying imaging windows after events)
 
-import { toApiUrl } from '@/services/runtime';
-import { twoline2satrec, propagate, eciToGeodetic, gstime, degreesLong, degreesLat } from 'satellite.js';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
+
 import type { SatRec } from 'satellite.js';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
+
+// satellite.js (~20KB) is only needed once the satellite layer fetches TLEs — never at
+// boot. Lazy-load + cache the module so it ships off the eager main entry. initSatRecs
+// (async) resolves the lib before propagatePositions (sync) runs in the loop.
+type SatelliteLib = typeof import('satellite.js');
+let satLib: SatelliteLib | null = null;
+let satLibPromise: Promise<SatelliteLib> | null = null;
+async function ensureSatelliteLib(): Promise<SatelliteLib> {
+  if (satLib) return satLib;
+  if (!satLibPromise) {
+    satLibPromise = import('satellite.js')
+      .then((m) => { satLib = m; return m; })
+      .catch((err) => { satLibPromise = null; throw err; });
+  }
+  return satLibPromise;
+}
+
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) }));
 
 export interface SatelliteTLE {
   noradId: string;
@@ -57,13 +76,25 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
   try {
-    const resp = await fetch(toApiUrl('/api/satellites'), {
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!resp.ok) return cachedData;
-
-    const raw = await resp.json();
-    const satellites = (raw.satellites ?? []) as SatelliteTLE[];
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    let resp;
+    try {
+      resp = await getIntelligenceClient().listSatellites({ country: '' }, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    // Proto returns `id` (the NORAD identifier); local SatelliteTLE uses `noradId`.
+    // `alt`/`velocity`/`inclination` in the proto are unused by the propagation
+    // client — we compute them ourselves from the TLE via satellite.js.
+    const satellites: SatelliteTLE[] = (resp.satellites ?? []).map((s) => ({
+      noradId: s.id,
+      name: s.name,
+      line1: s.line1,
+      line2: s.line2,
+      type: s.type,
+      country: s.country,
+    }));
     cachedData = satellites;
     cachedAt = now;
     failures = 0;
@@ -77,7 +108,8 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   }
 }
 
-export function initSatRecs(tles: SatelliteTLE[]): SatRecEntry[] {
+export async function initSatRecs(tles: SatelliteTLE[]): Promise<SatRecEntry[]> {
+  const { twoline2satrec } = await ensureSatelliteLib();
   const entries: SatRecEntry[] = [];
   for (const tle of tles) {
     try {
@@ -92,6 +124,10 @@ export function initSatRecs(tles: SatelliteTLE[]): SatRecEntry[] {
 }
 
 export function propagatePositions(satRecs: SatRecEntry[], date?: Date): SatellitePosition[] {
+  // satellite.js is loaded by initSatRecs before any propagation runs; if it has not
+  // resolved yet (propagatePositions called before init), yield no positions this tick.
+  if (!satLib) return [];
+  const { gstime, propagate, eciToGeodetic, degreesLat, degreesLong } = satLib;
   const now = date || new Date();
   const gmst = gstime(now);
   const positions: SatellitePosition[] = [];

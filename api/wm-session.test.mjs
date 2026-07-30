@@ -1,0 +1,667 @@
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, test } from 'node:test';
+
+const SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+
+const { default: handler } = await import('./wm-session.js');
+const { validateSessionToken } = await import('./_session.js');
+const { __resetRateLimitForTest } = await import('./_rate-limit.js');
+const { __resetWmSessionTelemetryForTests } = await import('./_usage-telemetry.js');
+
+function restoreEnv() {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+}
+
+function configureDefaultEnv() {
+  process.env.WM_SESSION_SECRET = SECRET;
+  process.env.WIDGET_AGENT_KEY = 'widget-secret';
+  process.env.PRO_WIDGET_KEY = 'pro-secret';
+  process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-secret';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+}
+
+function mockUpstashRateLimit({ remaining = 29, limit = 30 } = {}) {
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(
+        JSON.stringify([{ result: [remaining, limit] }]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return originalFetch(input, init);
+  };
+}
+
+beforeEach(() => {
+  configureDefaultEnv();
+  __resetRateLimitForTest();
+  __resetWmSessionTelemetryForTests();
+  mockUpstashRateLimit();
+});
+
+afterEach(() => {
+  __resetRateLimitForTest();
+  __resetWmSessionTelemetryForTests();
+  globalThis.fetch = originalFetch;
+  restoreEnv();
+});
+
+function makeReq(method, { origin, referer } = {}) {
+  const headers = new Headers();
+  if (origin) headers.set('origin', origin);
+  if (referer) headers.set('referer', referer);
+  return new Request('https://api.worldmonitor.app/api/wm-session', { method, headers });
+}
+
+function makeLocalReq(method, { origin } = {}) {
+  const headers = new Headers();
+  if (origin) headers.set('origin', origin);
+  return new Request('http://localhost:5173/api/wm-session', { method, headers });
+}
+
+function setCookies(resp) {
+  return resp.headers.getSetCookie ? resp.headers.getSetCookie() : [resp.headers.get('set-cookie')].filter(Boolean);
+}
+
+function cookieValue(cookies, name) {
+  const prefix = `${name}=`;
+  const found = cookies.find((cookie) => cookie.startsWith(prefix));
+  if (!found) return '';
+  return decodeURIComponent(found.slice(prefix.length).split(';')[0]);
+}
+
+function finalCookieJar(cookies) {
+  const jar = new Map();
+  for (const cookie of cookies) {
+    const [nameValue, ...attrs] = cookie.split(';').map((part) => part.trim());
+    const [name, encodedValue = ''] = nameValue.split('=');
+    const domainAttr = attrs.find((attr) => attr.toLowerCase().startsWith('domain='));
+    const pathAttr = attrs.find((attr) => attr.toLowerCase().startsWith('path='));
+    const maxAgeAttr = attrs.find((attr) => attr.toLowerCase().startsWith('max-age='));
+    const domain = domainAttr ? domainAttr.slice('domain='.length).toLowerCase() : 'api.worldmonitor.app';
+    const path = pathAttr ? pathAttr.slice('path='.length) : '/';
+    const key = `${name};${domain};${path}`;
+    if (maxAgeAttr && Number(maxAgeAttr.slice('max-age='.length)) <= 0) {
+      jar.delete(key);
+      continue;
+    }
+    jar.set(key, decodeURIComponent(encodedValue));
+  }
+  return jar;
+}
+
+function makeWaitUntilCtx() {
+  const pending = [];
+  return {
+    ctx: { waitUntil: (promise) => pending.push(promise) },
+    settle: async () => {
+      for (let index = 0; index < pending.length; index += 1) {
+        await Promise.allSettled([pending[index]]);
+      }
+    },
+  };
+}
+
+test('POST sets a valid HttpOnly cookie and returns the anonymous-only fallback token', async () => {
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.match(body.token, /^wms_/);
+  assert.equal(await validateSessionToken(body.token), true);
+  assert.equal(typeof body.exp, 'number');
+  assert.equal(resp.headers.get('cache-control'), 'no-store');
+  const cookies = setCookies(resp);
+  const token = cookieValue(cookies, 'wm-session');
+  assert.match(token, /^wms_/);
+  assert.equal(body.token, token, 'cookie and fallback header must carry the same anonymous token');
+  assert.equal(await validateSessionToken(token), true);
+  assert.match(cookies.join('\n'), /wm-session=.*HttpOnly/);
+  assert.match(cookies.join('\n'), /wm-session=.*Domain=\.worldmonitor\.app/);
+});
+
+test('POST emits one anonymous mint usage event without exposing cookie material', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  const events = [];
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [29, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      events.push(...JSON.parse(init.body));
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+  const { ctx, settle } = makeWaitUntilCtx();
+
+  const request = makeReq('POST', {
+    origin: 'https://worldmonitor.app',
+    referer: 'https://worldmonitor.app/reset-password?token=must-not-be-logged#also-not-logged',
+  });
+  request.headers.set('x-forwarded-for', '203.0.113.99, attacker-controlled');
+  const resp = await handler(request, ctx);
+  assert.equal(resp.status, 200);
+  await settle();
+
+  assert.equal(events.length, 1);
+  assert.deepEqual(
+    {
+      event_type: events[0].event_type,
+      route: events[0].route,
+      status: events[0].status,
+      auth_kind: events[0].auth_kind,
+      origin_kind: events[0].origin_kind,
+      ip: events[0].ip,
+      referer: events[0].referer,
+      reason: events[0].reason,
+    },
+    {
+      event_type: 'request',
+      route: '/api/wm-session',
+      status: 200,
+      auth_kind: 'anon',
+      origin_kind: 'browser-cross-origin',
+      ip: null,
+      referer: 'https://worldmonitor.app/reset-password',
+      reason: 'ok',
+    },
+  );
+  assert.equal(JSON.stringify(events[0]).includes('wms_'), false, 'never telemeter the minted session token');
+});
+
+test('session usage telemetry records verified Cloudflare client attribution and rejects forged headers', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+  const events = [];
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [29, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      events.push(...JSON.parse(init.body));
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+
+  const verified = makeReq('POST', { origin: 'https://worldmonitor.app' });
+  verified.headers.set('cf-connecting-ip', '203.0.113.7');
+  verified.headers.set('cf-ipcountry', 'FR');
+  verified.headers.set('x-real-ip', '192.0.2.5');
+  verified.headers.set('x-vercel-ip-country', 'ZA');
+  verified.headers.set('x-wm-edge-proof', 'edge-secret-xyz');
+  const verifiedCtx = makeWaitUntilCtx();
+  assert.equal((await handler(verified, verifiedCtx.ctx)).status, 200);
+  await verifiedCtx.settle();
+
+  const forged = makeReq('POST', { origin: 'https://worldmonitor.app' });
+  forged.headers.set('cf-connecting-ip', '203.0.113.7');
+  forged.headers.set('cf-ipcountry', 'FR');
+  forged.headers.set('x-real-ip', '192.0.2.5');
+  forged.headers.set('x-vercel-ip-country', 'ZA');
+  const forgedCtx = makeWaitUntilCtx();
+  assert.equal((await handler(forged, forgedCtx.ctx)).status, 200);
+  await forgedCtx.settle();
+
+  const tor = makeReq('POST', { origin: 'https://worldmonitor.app' });
+  tor.headers.set('cf-connecting-ip', '203.0.113.7');
+  tor.headers.set('cf-ipcountry', 'T1');
+  tor.headers.set('x-real-ip', '192.0.2.5');
+  tor.headers.set('x-vercel-ip-country', 'ZA');
+  tor.headers.set('x-wm-edge-proof', 'edge-secret-xyz');
+  const torCtx = makeWaitUntilCtx();
+  assert.equal((await handler(tor, torCtx.ctx)).status, 200);
+  await torCtx.settle();
+
+  assert.equal(events.length, 3);
+  assert.deepEqual(
+    events.map(({ ip, country }) => ({ ip, country })),
+    [
+      { ip: '203.0.113.7', country: 'FR' },
+      { ip: '192.0.2.5', country: 'ZA' },
+      { ip: '203.0.113.7', country: 'ZA' },
+    ],
+  );
+});
+
+test('localhost session cookie remains host-only for dev', async () => {
+  const resp = await handler(makeLocalReq('POST', { origin: 'http://localhost:5173' }));
+  assert.equal(resp.status, 200);
+  const cookies = setCookies(resp);
+  const session = cookies.find((cookie) => cookie.startsWith('wm-session='));
+  assert.ok(session, 'wm-session cookie should be set');
+  assert.doesNotMatch(session, /Domain=/);
+});
+
+test('OPTIONS preflight returns 204 with CORS', async () => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  __resetRateLimitForTest();
+  const resp = await handler(makeReq('OPTIONS', { origin: 'https://worldmonitor.app' }));
+  assert.equal(resp.status, 204);
+  assert.equal(resp.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
+test('POST fail-closed limiter receives Vercel ctx for degraded telemetry', () => {
+  const src = readFileSync(new URL('./wm-session.js', import.meta.url), 'utf8');
+
+  assert.match(src, /export\s+default\s+async\s+function\s+handler\s*\(\s*req\s*,\s*ctx\s*\)/);
+  // Extract the wm-session checkRateLimit options block and assert every
+  // required property lives inside it. This avoids the overmatch bug where a
+  // later `ctx,` in the source file satisfied a looser regex.
+  const match = src.match(/checkRateLimit\(req,\s*cors,\s*\{([\s\S]*?)\}\);/);
+  assert.ok(match, 'expected one checkRateLimit(req, cors, {...}) call');
+  const opts = match[1];
+  assert.match(opts, /failClosed:\s*true/, 'rate limiter must be fail-closed');
+  assert.match(opts, /ctx,/, 'must pass Vercel ctx for waitUntil/Sentry telemetry');
+  assert.match(opts, /scope:\s*SESSION_RATE_LIMIT_SCOPE/, 'must scope to wm-session');
+  assert.match(opts, /limit:\s*SESSION_RATE_LIMIT_PER_MINUTE/, 'must use production limit constant');
+  assert.match(opts, /window:\s*SESSION_RATE_LIMIT_WINDOW/, 'must use production window constant');
+});
+
+test('GET method is rejected with 405', async () => {
+  const resp = await handler(makeReq('GET', { origin: 'https://worldmonitor.app' }));
+  assert.equal(resp.status, 405);
+});
+
+test('Disallowed origin gets 403', async () => {
+  const resp = await handler(makeReq('POST', { origin: 'https://evil.example.com' }));
+  assert.equal(resp.status, 403);
+});
+
+test('No origin (curl) is allowed (rate limit + token TTL are the throttles)', async () => {
+  const resp = await handler(makeReq('POST', {}));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  const cookieToken = cookieValue(setCookies(resp), 'wm-session');
+  assert.match(body.token, /^wms_/);
+  assert.equal(body.token, cookieToken);
+  assert.equal(await validateSessionToken(body.token), true);
+});
+
+test('POST returns degraded 503 without issuing a token when Redis limiter config is missing', async () => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  __resetRateLimitForTest();
+
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+
+  assert.equal(resp.status, 503);
+  assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+  assert.equal(resp.headers.get('Retry-After'), '5');
+  assert.equal(resp.headers.get('access-control-allow-origin'), 'https://worldmonitor.app');
+  assert.equal(cookieValue(setCookies(resp), 'wm-session'), '');
+  const body = await resp.json();
+  assert.match(body.error, /rate-limit service temporarily unavailable/i);
+});
+
+test('POST returns 429 without issuing a token when the wm-session issuance budget is exhausted', async () => {
+  mockUpstashRateLimit({ remaining: -1, limit: 30 });
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+
+  assert.equal(resp.status, 429);
+  assert.equal(resp.headers.get('X-RateLimit-Limit'), '30');
+  assert.equal(resp.headers.get('X-RateLimit-Remaining'), '0');
+  assert.equal(cookieValue(setCookies(resp), 'wm-session'), '');
+  const body = await resp.json();
+  assert.equal(body.error, 'Too many requests');
+});
+
+test('failed mint outcomes emit their terminal status', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  const events = [];
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [-1, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      events.push(...JSON.parse(init.body));
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+  const { ctx, settle } = makeWaitUntilCtx();
+
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), ctx);
+  assert.equal(resp.status, 429);
+  await settle();
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].status, 429);
+  assert.equal(events[0].reason, 'rate_limit_429');
+});
+
+test('telemetry stops delivery attempts when the Axiom sink is repeatedly unavailable', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  let axiomAttempts = 0;
+  globalThis.fetch = async (input) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [29, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      axiomAttempts += 1;
+      throw new Error('Axiom unavailable');
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+
+  for (let index = 0; index < 20; index += 1) {
+    const { ctx, settle } = makeWaitUntilCtx();
+    const response = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), ctx);
+    assert.equal(response.status, 200);
+    await settle();
+  }
+  assert.equal(axiomAttempts, 20);
+
+  const { ctx, settle } = makeWaitUntilCtx();
+  const response = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), ctx);
+  assert.equal(response.status, 200);
+  await settle();
+  assert.equal(axiomAttempts, 20, 'open circuit breaker drops later telemetry delivery attempts');
+});
+
+test('telemetry probes and closes the circuit after the outage window elapses', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  const originalDateNow = Date.now;
+  let now = 1_000_000;
+  let axiomAttempts = 0;
+  let axiomAvailable = false;
+  Date.now = () => now;
+  globalThis.fetch = async (input) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [29, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      axiomAttempts += 1;
+      if (!axiomAvailable) throw new Error('Axiom unavailable');
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+
+  try {
+    for (let index = 0; index < 20; index += 1) {
+      const { ctx, settle } = makeWaitUntilCtx();
+      await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), ctx);
+      await settle();
+    }
+    now += 5 * 60 * 1000 + 1;
+    axiomAvailable = true;
+
+    const recovered = makeWaitUntilCtx();
+    await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), recovered.ctx);
+    await recovered.settle();
+    assert.equal(axiomAttempts, 21, 'a single half-open delivery probes the recovered sink');
+
+    const resumed = makeWaitUntilCtx();
+    await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), resumed.ctx);
+    await resumed.settle();
+    assert.equal(axiomAttempts, 22, 'a successful probe closes the circuit for later events');
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
+test('no-key session refresh preserves existing HttpOnly key cookies', async () => {
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+  assert.equal(resp.status, 200);
+  const cookies = setCookies(resp);
+  assert.ok(cookies.some((cookie) => cookie.startsWith('wm-session=')));
+  assert.equal(cookies.some((cookie) => cookie.startsWith('wm-widget-key=')), false);
+  assert.equal(cookies.some((cookie) => cookie.startsWith('wm-pro-key=')), false);
+});
+
+test('legacy widget/pro keys are moved into short-lived HttpOnly cookies', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/wm-session', {
+    method: 'POST',
+    headers: {
+      origin: 'https://worldmonitor.app',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ widgetKey: 'widget-secret', proKey: 'pro-secret' }),
+  });
+  const resp = await handler(req);
+  assert.equal(resp.status, 200);
+  const cookies = setCookies(resp);
+  const joined = cookies.join('\n');
+  assert.match(joined, /wm-widget-key=widget-secret;.*HttpOnly/);
+  assert.match(joined, /wm-pro-key=pro-secret;.*HttpOnly/);
+  assert.match(joined, /wm-widget-key=widget-secret;.*Domain=\.worldmonitor\.app/);
+  assert.match(joined, /wm-pro-key=pro-secret;.*Domain=\.worldmonitor\.app/);
+  assert.match(joined, /Max-Age=43200/);
+});
+
+test('enterprise key can be exchanged into a short-lived HttpOnly pro cookie', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/wm-session', {
+    method: 'POST',
+    headers: {
+      origin: 'https://worldmonitor.app',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ proKey: 'enterprise-secret' }),
+  });
+  const resp = await handler(req);
+  assert.equal(resp.status, 200);
+  const cookies = setCookies(resp);
+  assert.match(cookies.join('\n'), /wm-pro-key=enterprise-secret;.*HttpOnly/);
+});
+
+test('legacy widget/pro secret checks reject prefix and length mismatches', async () => {
+  const previousWidget = process.env.WIDGET_AGENT_KEY;
+  const previousPro = process.env.PRO_WIDGET_KEY;
+  const previousEnterprise = process.env.WORLDMONITOR_VALID_KEYS;
+  process.env.WIDGET_AGENT_KEY = 'widget-secret-with-a-distinct-length';
+  process.env.PRO_WIDGET_KEY = 'pro-secret-with-a-longer-distinct-length';
+  process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-short,enterprise-secret-with-a-longer-length';
+
+  try {
+    const accepted = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct-length',
+        proKey: 'enterprise-secret-with-a-longer-length',
+      }),
+    }));
+    assert.equal(accepted.status, 200);
+
+    const prefixOnly = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct',
+        proKey: 'enterprise-secret-with-a-longer',
+      }),
+    }));
+    assert.equal(prefixOnly.status, 401);
+
+    const differentLength = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct-length-extra',
+        proKey: 'enterprise-short-extra',
+      }),
+    }));
+    assert.equal(differentLength.status, 401);
+  } finally {
+    process.env.WIDGET_AGENT_KEY = previousWidget;
+    process.env.PRO_WIDGET_KEY = previousPro;
+    process.env.WORLDMONITOR_VALID_KEYS = previousEnterprise;
+  }
+});
+
+test('legacy key length boundary: 512 accepted, 513 rejected', async () => {
+  const previousEnterprise = process.env.WORLDMONITOR_VALID_KEYS;
+  const key512 = 'a'.repeat(512);
+  const key513 = 'b'.repeat(513);
+  process.env.WORLDMONITOR_VALID_KEYS = `${key512}`;
+
+  try {
+    const accepted = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ proKey: key512 }),
+    }));
+    assert.equal(accepted.status, 200);
+
+    const rejected = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ proKey: key513 }),
+    }));
+    assert.equal(rejected.status, 401);
+  } finally {
+    process.env.WORLDMONITOR_VALID_KEYS = previousEnterprise;
+  }
+});
+
+test('invalid legacy keys are rejected and not persisted as HttpOnly cookies', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/wm-session', {
+    method: 'POST',
+    headers: {
+      origin: 'https://worldmonitor.app',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ widgetKey: 'wrong-widget-key', proKey: 'wrong-pro-key' }),
+  });
+  const resp = await handler(req);
+  assert.equal(resp.status, 401);
+  const body = await resp.json();
+  assert.equal(body.error, 'Invalid session key');
+  const joined = setCookies(resp).join('\n');
+  assert.doesNotMatch(joined, /wm-widget-key=wrong-widget-key/);
+  assert.doesNotMatch(joined, /wm-pro-key=wrong-pro-key/);
+});
+
+test('legacy cookie tombstones do not delete replacement HttpOnly key cookies', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/wm-session', {
+    method: 'POST',
+    headers: {
+      origin: 'https://worldmonitor.app',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ widgetKey: 'widget-secret', proKey: 'pro-secret' }),
+  });
+  const resp = await handler(req);
+  assert.equal(resp.status, 200);
+  const jar = finalCookieJar(setCookies(resp));
+  assert.equal(jar.get('wm-widget-key;.worldmonitor.app;/'), 'widget-secret');
+  assert.equal(jar.get('wm-pro-key;.worldmonitor.app;/'), 'pro-secret');
+});
+
+test('Returns 503 when WM_SESSION_SECRET is missing', async () => {
+  const stash = process.env.WM_SESSION_SECRET;
+  delete process.env.WM_SESSION_SECRET;
+  try {
+    const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+    assert.equal(resp.status, 503);
+    const body = await resp.json();
+    assert.match(body.error, /Session service not configured/);
+  } finally {
+    process.env.WM_SESSION_SECRET = stash;
+  }
+});
+
+// --- hadSession: does the caller's browser give the cookie back? -------------
+// The client cannot answer this itself (HttpOnly), so it could not tell "the
+// server rejected my cookie" from "my browser never stored it" — and re-minted
+// forever on the second, reporting it as a server-side retry_401. See
+// WORLDMONITOR-WG/XP.
+
+function makeReqWithCookie(cookie) {
+  const headers = new Headers({ origin: 'https://worldmonitor.app' });
+  if (cookie) headers.set('cookie', cookie);
+  return new Request('https://api.worldmonitor.app/api/wm-session', { method: 'POST', headers });
+}
+
+test('mint reports hadSession:false when the request carries no session cookie', async () => {
+  const resp = await handler(makeReqWithCookie(null));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, false, 'a first-ever visitor presents no cookie');
+});
+
+test('mint reports hadSession:true when the browser returns the cookie it was issued', async () => {
+  const first = await handler(makeReqWithCookie(null));
+  const token = cookieValue(setCookies(first), 'wm-session');
+  assert.match(token, /^wms_/);
+
+  // Exactly what a browser that stored the cookie sends on the next mint.
+  const resp = await handler(makeReqWithCookie(`wm-session=${encodeURIComponent(token)}`));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, true, 'a cookie that made the round trip must be reported');
+});
+
+test('mint reports hadSession:false for a tampered or foreign session cookie', async () => {
+  // A cookie that exists but does not verify is not evidence of a working
+  // round trip — it must not suppress the client's re-mint.
+  const first = await handler(makeReqWithCookie(null));
+  const token = cookieValue(setCookies(first), 'wm-session');
+  const tampered = `${token.slice(0, -2)}${token.slice(-2) === 'AA' ? 'BB' : 'AA'}`;
+
+  const resp = await handler(makeReqWithCookie(`wm-session=${encodeURIComponent(tampered)}`));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, false);
+});
+
+test('mint still succeeds when the cookie header is malformed', async () => {
+  // hadSession is diagnostic, never a gate: a junk Cookie header must not
+  // turn a routine mint into an error.
+  const resp = await handler(makeReqWithCookie('wm-session=%%%not-a-token%%%; other=1'));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, false);
+  assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
+});

@@ -1,0 +1,4 @@
+{
+  "note": "Baseline of legacy direct innerHTML/outerHTML assignments for scripts/enforce-safe-html.mjs. Do not add entries for new code; route through src/utils/dom-utils.ts, Panel.setSafeContent(), or add a wm-safe-html audited comment for narrow exceptions.",
+  "entries": []
+}

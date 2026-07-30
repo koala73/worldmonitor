@@ -14,6 +14,8 @@ import {
 } from '../../../../src/config/airports';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 export { parseStringArray } from '../../../_shared/parse-string-array';
 
 // ---------- Constants ----------
@@ -155,8 +157,12 @@ export function toProtoSeverity(s: string): FlightDelaySeverity {
     moderate: 'FLIGHT_DELAY_SEVERITY_MODERATE',
     major: 'FLIGHT_DELAY_SEVERITY_MAJOR',
     severe: 'FLIGHT_DELAY_SEVERITY_SEVERE',
+    unknown: 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
   };
-  return map[s] || 'FLIGHT_DELAY_SEVERITY_NORMAL';
+  // #3707: default to UNKNOWN (not NORMAL) for unrecognised input — the whole
+  // point of the fix is to refuse to render uncovered/unmappable airports as
+  // healthy.
+  return map[s] || 'FLIGHT_DELAY_SEVERITY_UNKNOWN';
 }
 
 export function toProtoRegion(r: string): AirportRegion {
@@ -172,6 +178,7 @@ export function toProtoRegion(r: string): AirportRegion {
 
 export function toProtoSource(s: string): FlightDelaySource {
   const map: Record<string, FlightDelaySource> = {
+    unspecified: 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
     faa: 'FLIGHT_DELAY_SOURCE_FAA',
     eurocontrol: 'FLIGHT_DELAY_SOURCE_EUROCONTROL',
     computed: 'FLIGHT_DELAY_SOURCE_COMPUTED',
@@ -510,7 +517,10 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
       notamResult = seedNotam;
       fromSeed = true;
     }
-  } catch {}
+  } catch (err) {
+    console.warn(`[Aviation] NOTAM seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'seed-read' } });
+  }
 
   if (!fromSeed && process.env.ICAO_API_KEY) {
     try {
@@ -527,6 +537,7 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
       );
     } catch (err) {
       console.warn(`[Aviation] NOTAM fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'live-fetch' } });
     }
   }
 

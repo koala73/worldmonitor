@@ -1,0 +1,321 @@
+#!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const SEVERITY_RANK = new Map([
+  ['info', 0],
+  ['low', 1],
+  ['moderate', 2],
+  ['high', 3],
+  ['critical', 4],
+]);
+
+export const BASELINE_ADVISORIES_BY_LOCKFILE = {
+  // GHSA-f88m-g3jw-g9cj (sharp inherited libvips decode CVEs) needs attacker-
+  // crafted image BYTES fed to sharp. Neither root chain decodes untrusted
+  // input: @vercel/og's sharp only converts satori-rendered first-party
+  // buffers (brief carousel), and @xenova/transformers is consumed solely by
+  // the browser ML worker (src/workers/ml.worker.ts) — its Node-only sharp
+  // binary never executes server-side. The clean fix (sharp 0.35.x) is
+  // semver-major across both chains; baselined until the parents bump. The
+  // same reasoning covers blog-site below: sharp runs only at Astro build
+  // time over repo-owned images, and the fix requires astro@7 (semver-major).
+  // GHSA-mh99-v99m-4gvg (brace-expansion OOM from unbounded brace patterns)
+  // reaches root only through Clerk's optional Solana wallet -> react-native ->
+  // babel-jest/test-exclude tooling chain. It never executes in the Vite web
+  // bundle or API runtime. The sole patched release, brace-expansion 5.0.8,
+  // changes the CommonJS export shape and breaks this chain's minimatch 3.x;
+  // keep the advisory baselined until the upstream parents move to minimatch 10.
+  'package-lock.json': ['GHSA-f88m-g3jw-g9cj', 'GHSA-mh99-v99m-4gvg'],
+  'consumer-prices-core/package-lock.json': [],
+  'blog-site/package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
+  // GHSA-395f-4hp3-45gv (shell-quote quadratic-complexity DoS in parse()) reaches
+  // pro-test only via react-native -> react-devtools-core, a mobile/dev-tooling
+  // chain the Vite web build never bundles into public/pro/. The parse() DoS is
+  // unreachable from the shipped browser bundle, and forcing shell-quote up (an
+  // `overrides` pin bump) would drag an otherwise-untouched public/pro/ rebuild
+  // into a lockfile-hygiene change. Baselined rather than patched here; drop it
+  // once react-native leaves pro-test's tree. (GHSA-qjx8/w24r predate this.)
+  // GHSA-r28c-9q8g-f849 (postcss sourceMappingURL path traversal) requires
+  // postcss to process attacker-controlled CSS carrying a malicious
+  // sourceMappingURL. pro-test runs postcss only at build time over
+  // first-party Tailwind sources; postcss never ships in public/pro/. The
+  // clean fix means bumping the `overrides.postcss` pin (8.5.12 → ≥8.5.23),
+  // which drags a public/pro/ bundle rebuild into a lockfile-hygiene change —
+  // same trade-off as GHSA-395f below. Drop when the pin next bumps.
+  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv', 'GHSA-r28c-9q8g-f849'],
+  // GHSA-mh99-v99m-4gvg reaches scripts only through ExcelJS's archive
+  // dependencies. ExcelJS is used by operator-run seed/backfill scripts with
+  // exact workbook paths; no request input reaches a minimatch brace pattern.
+  // Forcing brace-expansion 5.0.8 breaks minimatch 3.x/5.x's callable require,
+  // while replacing ExcelJS's archiver stack requires unrelated major upgrades.
+  'scripts/package-lock.json': ['GHSA-mh99-v99m-4gvg'],
+  'docker/runtime-package-lock.json': [],
+};
+
+function severityRank(severity) {
+  return SEVERITY_RANK.get(String(severity ?? '').toLowerCase()) ?? -1;
+}
+
+function advisoryId(advisory) {
+  const urlId = String(advisory.url ?? '').match(/GHSA-[a-z0-9-]+/i)?.[0];
+  if (urlId) return urlId;
+  if (advisory.source) return String(advisory.source);
+  return `${advisory.name ?? 'unknown'}:${advisory.title ?? 'untitled'}`;
+}
+
+export function collectAuditFindings(report, auditLevel = 'high') {
+  const findings = new Map();
+
+  for (const vulnerability of Object.values(report?.vulnerabilities ?? {})) {
+    for (const via of vulnerability?.via ?? []) {
+      if (!via || typeof via !== 'object') continue;
+
+      const severity = via.severity ?? vulnerability.severity;
+      if (severityRank(severity) < severityRank(auditLevel)) continue;
+
+      const id = advisoryId(via);
+      const name = via.name ?? vulnerability.name ?? 'unknown';
+      const key = `${id}:${name}`;
+      findings.set(key, {
+        id,
+        name,
+        severity,
+        title: via.title ?? 'Untitled advisory',
+        url: via.url ?? '',
+      });
+    }
+  }
+
+  return [...findings.values()].sort((a, b) => `${a.id}:${a.name}`.localeCompare(`${b.id}:${b.name}`));
+}
+
+export function collectUnbaselinedFindings(report, lockfile, auditLevel = 'high') {
+  const baseline = new Set(BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] ?? []);
+  return collectAuditFindings(report, auditLevel).filter((finding) => !baseline.has(finding.id));
+}
+
+export function collectAdvisoryIds(report) {
+  const ids = new Set();
+  for (const vulnerability of Object.values(report?.vulnerabilities ?? {})) {
+    for (const via of vulnerability?.via ?? []) {
+      if (!via || typeof via !== 'object') continue;
+      ids.add(advisoryId(via));
+    }
+  }
+  return ids;
+}
+
+export function collectStaleBaselineEntries(report, lockfile) {
+  const present = collectAdvisoryIds(report);
+  return (BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] ?? []).filter((id) => !present.has(id));
+}
+
+/**
+ * Best available human-readable reason from a failed `npm audit --json`.
+ *
+ * npm returns `{"error": {"summary": "", "detail": ""}}` — EMPTY STRINGS, not
+ * null — when the advisories endpoint misbehaves, and puts the only useful text
+ * in the top-level `message`. `??` only falls through on null/undefined, so the
+ * previous `summary ?? detail ?? fallback` threw `Error("")` and the gate went
+ * red printing a single blank line. Pick the first NON-EMPTY value instead.
+ */
+export function resolveAuditErrorMessage(report, workspace) {
+  const candidates = [report?.error?.summary, report?.error?.detail, report?.message];
+  const found = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+  return found?.trim() ?? `npm audit failed for ${workspace}`;
+}
+
+/**
+ * Whether the audit failed because the REGISTRY could not be reached or its
+ * response was unusable — i.e. nothing an author of this PR can fix.
+ *
+ * Observed 2026-07-26: registry.npmjs.org's
+ * `/-/npm/v1/security/advisories/bulk` served a gzip body npm could not parse
+ * (the gzip magic number where JSON was expected), failing every audit
+ * repo-wide. The same commit passed 7 hours earlier, so the lockfile was not
+ * the variable; only the live advisory database was.
+ */
+export function isUpstreamAuditOutage(report) {
+  const text = [report?.error?.summary, report?.error?.detail, report?.message]
+    .filter((value) => typeof value === 'string')
+    .join(' ');
+  if (!text.trim()) return false;
+  return (
+    /security\/advisories\/bulk/i.test(text) ||
+    /audit endpoint returned an error/i.test(text) ||
+    /invalid json response body/i.test(text) ||
+    /(ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|network timeout)/i.test(text) ||
+    /\b(502|503|504)\b/.test(text)
+  );
+}
+
+function parseArgs(argv) {
+  const args = {
+    auditLevel: 'high',
+    workspace: '.',
+    packageJson: '',
+    lockfile: '',
+    // A registry outage is not an actor-fixable defect, so by default it warns
+    // loudly and exits 0 rather than bricking every merge on npm's uptime.
+    // Set --fail-on-outage (or AUDIT_FAIL_ON_OUTAGE=1) where a missed audit is
+    // less acceptable than a blocked pipeline, e.g. a release gate.
+    failOnOutage: process.env.AUDIT_FAIL_ON_OUTAGE === '1',
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--audit-level') args.auditLevel = argv[++i] ?? args.auditLevel;
+    else if (arg === '--workspace') args.workspace = argv[++i] ?? args.workspace;
+    else if (arg === '--package-json') args.packageJson = argv[++i] ?? args.packageJson;
+    else if (arg === '--lockfile') args.lockfile = argv[++i] ?? args.lockfile;
+    else if (arg === '--fail-on-outage') args.failOnOutage = true;
+  }
+
+  if (!args.lockfile) {
+    throw new Error(
+      'Usage: audit-production-dependencies.mjs --workspace <path> [--package-json <package.json>] --lockfile <package-lock.json>',
+    );
+  }
+  args.packageJson ||= `${args.workspace.replace(/\/$/, '')}/package.json`;
+
+  return args;
+}
+
+function resolveAuditWorkspace({ workspace, packageJson, lockfile }) {
+  const workspacePackageJson = resolve(workspace, 'package.json');
+  const workspaceLockfile = resolve(workspace, 'package-lock.json');
+
+  if (packageJson === workspacePackageJson && lockfile === workspaceLockfile) {
+    return {
+      cwd: workspace,
+      cleanup: () => {},
+    };
+  }
+
+  const auditDir = mkdtempSync(join(tmpdir(), 'worldmonitor-security-audit-'));
+  copyFileSync(packageJson, join(auditDir, 'package.json'));
+  copyFileSync(lockfile, join(auditDir, 'package-lock.json'));
+
+  return {
+    cwd: auditDir,
+    cleanup: () => rmSync(auditDir, { recursive: true, force: true }),
+  };
+}
+
+function readAuditReport({ workspace, packageJson, lockfile }) {
+  const auditWorkspace = resolveAuditWorkspace({ workspace, packageJson, lockfile });
+  const result = spawnSync('npm', ['audit', '--omit=dev', '--json'], {
+    cwd: auditWorkspace.cwd,
+    encoding: 'utf8',
+  });
+
+  try {
+    const json = result.stdout.trim();
+
+    if (!json) {
+      process.stderr.write(result.stderr);
+      const failure = new Error(`npm audit did not return JSON for ${workspace}`);
+      // npm writes transport diagnostics to stderr, so classify from there.
+      failure.upstreamOutage = isUpstreamAuditOutage({ message: result.stderr ?? '' });
+      throw failure;
+    }
+
+    let report;
+    try {
+      report = JSON.parse(json);
+    } catch (error) {
+      process.stderr.write(result.stderr);
+      const failure = new Error(`Could not parse npm audit JSON for ${workspace}: ${error.message}`);
+      failure.upstreamOutage = isUpstreamAuditOutage({ message: result.stderr ?? '' });
+      throw failure;
+    }
+
+    if (report.error) {
+      const failure = new Error(resolveAuditErrorMessage(report, workspace));
+      failure.upstreamOutage = isUpstreamAuditOutage(report);
+      throw failure;
+    }
+
+    return report;
+  } finally {
+    auditWorkspace.cleanup();
+  }
+}
+
+function printFinding(prefix, finding) {
+  const suffix = finding.url ? ` (${finding.url})` : '';
+  console.log(`${prefix} ${finding.severity} ${finding.id} ${finding.name}: ${finding.title}${suffix}`);
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const workspace = resolve(process.cwd(), args.workspace);
+  const packageJson = resolve(process.cwd(), args.packageJson);
+  const lockfile = resolve(process.cwd(), args.lockfile);
+
+  let report;
+  try {
+    report = readAuditReport({ workspace, packageJson, lockfile });
+  } catch (error) {
+    // Split the failure classes: a broken registry is not a broken PR.
+    if (error?.upstreamOutage && !args.failOnOutage) {
+      console.log(
+        `::warning title=Security audit could not run::${args.lockfile} was NOT audited — the npm advisory endpoint is unavailable (${error.message}). This is an upstream outage, not a dependency problem; re-run once it recovers.`,
+      );
+      return;
+    }
+    throw error;
+  }
+
+  const allFindings = collectAuditFindings(report, args.auditLevel);
+  const unbaselined = collectUnbaselinedFindings(report, args.lockfile, args.auditLevel);
+  const unbaselinedKeys = new Set(unbaselined.map((finding) => `${finding.id}:${finding.name}`));
+
+  for (const finding of allFindings.filter((item) => !unbaselinedKeys.has(`${item.id}:${item.name}`))) {
+    printFinding('::warning title=Baselined production advisory::', finding);
+  }
+
+  for (const staleId of collectStaleBaselineEntries(report, args.lockfile)) {
+    console.log(
+      `::warning title=Stale baseline entry::${staleId} is baselined for ${args.lockfile} but matched no current advisory; remove it from BASELINE_ADVISORIES_BY_LOCKFILE.`,
+    );
+  }
+
+  if (unbaselined.length > 0) {
+    console.error(`Found ${unbaselined.length} unbaselined ${args.auditLevel}+ production advisories in ${args.lockfile}:`);
+    for (const finding of unbaselined) {
+      printFinding('::error title=Unbaselined production advisory::', finding);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`Production audit OK for ${args.lockfile}: ${allFindings.length} ${args.auditLevel}+ advisories are baselined or absent.`);
+}
+
+export function isInvokedAsScript(entryPath, moduleUrl) {
+  if (!entryPath) return false;
+  try {
+    // Resolve symlinks on both sides: Node sets import.meta.url to the realpath, but
+    // process.argv[1] keeps the symlinked path (e.g. macOS /tmp -> /private/tmp), so a
+    // raw href comparison silently no-ops — the dangerous fail-open for a security gate.
+    const entry = pathToFileURL(realpathSync(entryPath)).href;
+    const self = pathToFileURL(realpathSync(fileURLToPath(moduleUrl))).href;
+    return entry === self;
+  } catch {
+    return moduleUrl === pathToFileURL(entryPath).href;
+  }
+}
+
+if (isInvokedAsScript(process.argv[1], import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}

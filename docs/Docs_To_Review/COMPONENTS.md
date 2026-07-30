@@ -590,12 +590,12 @@ domain-specific markup.
 
 | Field | Detail |
 |---|---|
-| **File** | `src/components/CIIPanel.ts` (150 lines) |
+| **File** | `src/components/CIIPanel.ts` |
 | **Panel ID** | `cii` |
-| **Purpose** | Ranks countries by a composite instability score (U/C/S/I sub-scores). |
-| **Key methods** | `setShareStoryHandler()`, `refresh(forceLocal?)`, `getScores()` |
+| **Purpose** | Renders server-authoritative CII v8 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
+| **Key methods** | `setShareStoryHandler()`, `setCountryClickHandler()`, `refresh(forceLocal?)`, `renderFromCached(cached)`, `getScores()` |
 | **DOM** | `.cii-list` → `.cii-country` each with header (emoji flag, name, score, trend arrow, share button), colour bar, sub-score row (U/C/S/I). |
-| **Services** | `calculateCII()`, `getCSSColor` |
+| **Services** | `toCountryScore()`, `calculateCII()` fallback path, `getCSSColor` |
 | **Variant** | `full` only |
 
 #### GdeltIntelPanel
@@ -1000,14 +1000,6 @@ small UI affordances.
 | **Audio** | Inline base64-encoded WAV notification sound. |
 | **Types** | `CorrelationSignal`, `UnifiedAlert` |
 
-### CountryIntelModal
-
-| Field | Detail |
-|---|---|
-| **File** | `src/components/CountryIntelModal.ts` |
-| **Purpose** | AI-generated country intelligence briefing modal. |
-| **Services** | `getCSSColor`, `country-instability` types. |
-
 ### CountryBriefPage
 
 | Field | Detail |
@@ -1138,7 +1130,6 @@ small UI affordances.
 | LanguageSelector | ✅ | ✅ | ✅ |
 | PlaybackControl | ✅ | ✅ | ✅ |
 | SignalModal | ✅ | ✅ | ✅ |
-| CountryIntelModal | ✅ | ✅ | — |
 | CountryBriefPage | ✅ | ✅ | — |
 | CountryTimeline | ✅ | ✅ | — |
 | StoryModal | ✅ | ✅ | ✅ |
@@ -1228,7 +1219,6 @@ graph TD
 
     subgraph Modals["Modals & Widgets"]
         SIG[SignalModal]
-        CIM[CountryIntelModal]
         CBP[CountryBriefPage]
         CTL[CountryTimeline]
         STM[StoryModal]
@@ -1345,7 +1335,6 @@ export { SearchModal } from './SearchModal';
 
 // Modals & widgets
 export { SignalModal } from './SignalModal';
-export { CountryIntelModal } from './CountryIntelModal';
 export { CountryBriefPage } from './CountryBriefPage';
 export { CountryTimeline } from './CountryTimeline';
 export { PlaybackControl } from './PlaybackControl';

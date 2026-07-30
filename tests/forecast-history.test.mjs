@@ -5,7 +5,14 @@ import {
   makePrediction,
   buildHistorySnapshot,
   buildForecastCase,
+  buildHistoryForecastEntry,
+  buildPublishedForecastPayload,
 } from '../scripts/seed-forecasts.mjs';
+
+import {
+  CONFLICT_COUNT_SOURCE_FEED,
+  attachResolutionSpecs,
+} from '../scripts/_forecast-resolution.mjs';
 
 import {
   selectBenchmarkCandidates,
@@ -318,5 +325,178 @@ describe('forecast benchmark promotion', () => {
     assert.equal(diffPreview.format, 'diff');
     assert.match(diffPreview.diff, /Escalation risk: Iran/);
     assert.match(diffPreview.diff, /Iran escalation risk jumps/);
+  });
+});
+
+// ── U3: resolution spec + projections persistence (#4976 Bet 1) ──────────
+//
+// These exercise the seeder wiring: the enrichment seam (attachResolutionSpecs),
+// the makePrediction default, and the camelCase resolution + projections
+// blocks in both the canonical payload and the 45-day history entry.
+
+// A conflict forecast reaching the hard path needs a count-bearing signal;
+// a commodity market forecast needs an inputs feed with the
+// mapped future ticker priced. Kept minimal + console-quiet.
+const HARD_CONFLICT_GENERATED_AT = 1_700_000_000_000;
+
+function makeHardConflictPred() {
+  return makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.62, 0.55, '7d', [
+    { type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 },
+  ]);
+}
+
+describe('forecast resolution spec round-trip (U3)', () => {
+  it('a hard spec survives buildHistoryForecastEntry -> JSON -> parse with camelCase fields intact', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.6, d7: 0.64, d30: 0.7 };
+    // conflict is judged by default (#5136); force the hard path to exercise hard-spec history round-trip.
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT, { conflictCountFeedAvailable: true });
+    assert.equal(pred.resolution.kind, 'hard');
+
+    const entry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.equal(entry.resolution.kind, 'hard');
+    assert.equal(entry.resolution.metricKey, pred.resolution.metricKey);
+    assert.equal(entry.resolution.operator, '>=');
+    assert.ok(Number.isFinite(entry.resolution.threshold));
+    assert.equal(entry.resolution.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+    assert.equal(entry.resolution.deadline, HARD_CONFLICT_GENERATED_AT + 7 * 24 * 60 * 60 * 1000);
+    // camelCase only — no snake_case leaked through the boundary (D6).
+    assert.ok(!('metric_key' in entry.resolution));
+    assert.ok(!('source_feed' in entry.resolution));
+    // proto3-JSON omission: an inapplicable optional field is ABSENT, not null.
+    assert.ok(!('question' in entry.resolution));
+  });
+
+  it('projections now appear in the history entry and equal the source (#4933 gap)', () => {
+    const pred = makeHardConflictPred();
+    pred.projections = { h24: 0.61, d7: 0.66, d30: 0.72 };
+    const entry = buildHistoryForecastEntry(pred);
+    assert.deepEqual(entry.projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
+  });
+
+  it('preserves generationOrigin in history entries for scorecard grouping', () => {
+    const pred = makeHardConflictPred();
+    pred.generationOrigin = 'state_derived';
+    const entry = buildHistoryForecastEntry(pred);
+    assert.equal(entry.generationOrigin, 'state_derived');
+
+    const legacy = buildHistoryForecastEntry(makeHardConflictPred());
+    assert.equal(legacy.generationOrigin, 'legacy_detector');
+  });
+
+  it('makePrediction defaults resolution:null and an unspec\'d forecast serializes with NO resolution key', () => {
+    const pred = makeHardConflictPred();
+    assert.equal(pred.resolution, null);
+
+    // proto3-JSON omission: unset optional message -> absent key on the wire
+    // (deliberate divergence from the sibling calibration:null idiom — the
+    // generated `resolution?: ResolutionSpec` type is exactly honest this way).
+    const historyEntry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.ok(!('resolution' in historyEntry));
+
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('resolution' in payload));
+    // projections default: absent projections -> null in both builders
+    // (pre-existing sibling convention, unchanged).
+    assert.strictEqual(historyEntry.projections, null);
+    assert.strictEqual(payload.projections, null);
+  });
+
+  it('canonical payload emits a camelCase resolution object for a spec\'d forecast, omits it otherwise', () => {
+    const spec = makeHardConflictPred();
+    // conflict is judged by default (#5136); force the hard path for the camelCase resolution round-trip.
+    attachResolutionSpecs([spec], {}, HARD_CONFLICT_GENERATED_AT, { conflictCountFeedAvailable: true });
+    const payload = buildPublishedForecastPayload(spec);
+    assert.equal(payload.resolution.kind, 'hard');
+    assert.equal(payload.resolution.metricKey, spec.resolution.metricKey);
+    assert.ok(!('metric_key' in payload.resolution));
+
+    const bare = makeHardConflictPred();
+    const serialized = JSON.parse(JSON.stringify(buildPublishedForecastPayload(bare)));
+    assert.ok(!('resolution' in serialized));
+  });
+
+  it('omits (never zeroes) a judged spec\'s numeric fields', () => {
+    const pred = makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
+      { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
+    ]);
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(pred.resolution.kind, 'judged');
+
+    // A judged spec has no threshold — the key must be ABSENT after
+    // serialization (never 0, which would read as a hard ">= 0" bar; never
+    // null, which the generated `threshold?: number` type does not admit).
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('threshold' in payload.resolution));
+    assert.ok(!('baselineValue' in payload.resolution));
+    assert.ok(payload.resolution.question && payload.resolution.question.length > 0);
+    assert.ok(Number.isFinite(payload.resolution.deadline));
+  });
+});
+
+describe('forecast resolution seam coverage (U3, R2/D1)', () => {
+  it('a state_derived-origin forecast (market_transmission signal) gets a non-null judged spec — origin wins', () => {
+    // Production shape: buildStateDerivedForecast attaches a market_transmission
+    // signal (weight 0.24) to every state-derived forecast. Origin-precedence
+    // must classify it judged despite the hard-mapped market signal.
+    const pred = makePrediction('market', 'Global', 'State-derived market stress', 0.5, 0.5, '7d', [
+      { type: 'market_transmission', value: 'FX->equities transmission', weight: 0.24 },
+    ]);
+    pred.generationOrigin = 'state_derived';
+    attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(pred.resolution.kind, 'judged');
+    assert.ok(pred.resolution.deadline);
+  });
+
+  it('a batch with NO state-derived forecasts still has every forecast spec\'d (seam runs after the block closes)', () => {
+    const batch = [
+      makeHardConflictPred(),
+      makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
+        { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
+      ]),
+    ];
+    attachResolutionSpecs(batch, {}, HARD_CONFLICT_GENERATED_AT);
+    assert.equal(batch.every((p) => p.resolution && typeof p.resolution.kind === 'string'), true);
+  });
+
+  it('R2 coverage over a small mixed batch WITH inputs — 100% spec\'d, hard path reached', () => {
+    const conflictPred = makeHardConflictPred();
+
+    const commodityPred = makePrediction('market', 'Middle East', 'Oil price impact: Middle East', 0.55, 0.5, '7d', [
+      { type: 'commodity', value: 'Oil sensitivity: 0.8', weight: 0.3 },
+    ]);
+
+    const politicalPred = makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
+      { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
+    ]);
+
+    const stateDerivedPred = makePrediction('market', 'Global', 'State-derived market stress', 0.5, 0.5, '7d', [
+      { type: 'market_transmission', value: 'FX->equities transmission', weight: 0.24 },
+    ]);
+    stateDerivedPred.generationOrigin = 'state_derived';
+
+    // The builder needs feed data for the commodity hard path: the module reads
+    // inputs.commodityQuotes and matches by future ticker (Oil -> CL=F).
+    const inputs = {
+      commodityQuotes: { quotes: [{ symbol: 'CL=F', name: 'WTI Crude', price: 78.5 }] },
+    };
+
+    const batch = [conflictPred, commodityPred, politicalPred, stateDerivedPred];
+    // conflict is judged by default (#5136); force its hard path so this mixed batch still exercises hard+judged.
+    attachResolutionSpecs(batch, inputs, HARD_CONFLICT_GENERATED_AT, { conflictCountFeedAvailable: true });
+
+    // 100% coverage (R2): every forecast carries a non-null spec.
+    assert.equal(batch.every((p) => p.resolution != null), true);
+    // Both kinds present: conflict + commodity hard, political + state-derived judged.
+    assert.equal(conflictPred.resolution.kind, 'hard');
+    assert.equal(commodityPred.resolution.kind, 'hard');
+    assert.equal(commodityPred.resolution.sourceFeed, 'market:commodities-bootstrap:v1');
+    assert.equal(commodityPred.resolution.operator, 'crosses');
+    assert.ok(Number.isFinite(commodityPred.resolution.baselineValue));
+    assert.equal(politicalPred.resolution.kind, 'judged');
+    assert.equal(stateDerivedPred.resolution.kind, 'judged');
+
+    const hardCount = batch.filter((p) => p.resolution.kind === 'hard').length;
+    assert.equal(hardCount, 2);
   });
 });

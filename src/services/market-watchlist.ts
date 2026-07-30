@@ -114,24 +114,3 @@ export function subscribeMarketWatchlistChange(cb: (entries: MarketWatchlistEntr
   window.addEventListener(MARKET_WATCHLIST_EVENT, handler);
   return () => window.removeEventListener(MARKET_WATCHLIST_EVENT, handler);
 }
-
-export function parseMarketWatchlistInput(text: string): MarketWatchlistEntry[] {
-  // Accept comma or newline-separated entries.
-  // Friendly label format: SYMBOL|Label (ex: TSLA|Tesla)
-  const rawItems = text
-    .split(/[\n,]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const entries: MarketWatchlistEntry[] = [];
-
-  for (const item of rawItems) {
-    const [left, ...rest] = item.split('|');
-    const symbol = normalizeSymbol(left || '');
-    if (!symbol) continue;
-    const name = normalizeName(rest.join('|'));
-    entries.push({ symbol, ...(name ? { name } : {}) });
-  }
-
-  return entries;
-}

@@ -201,7 +201,11 @@ interface SimulationOutcome {
   runnerVersion?: string;
   sourceSimulationPackageKey?: string;
   theaterResults: TheaterResult[];
-  failedTheaters?: Array<{ theaterId: string; reason: string }>;
+  failedTheaters?: Array<{ theaterId: string; reason: string; diagnostics?: { stage?: string; preview?: string } | null }>;
+  eligibleTheaterCount?: number;
+  failedTheaterCount?: number;
+  allTheatersFailed?: boolean;
+  completionStatus?: string;
   globalObservations?: string;
   confidenceNotes?: string;
   generatedAt?: number;
@@ -282,6 +286,10 @@ interface SimulationOutcomePointer {
   outcomeKey: string;
   schemaVersion: string;
   theaterCount: number;
+  eligibleTheaterCount?: number;
+  failedTheaterCount?: number;
+  allTheatersFailed?: boolean;
+  completionStatus?: string;
   generatedAt: number;
   uiTheaters?: unknown[];
 }

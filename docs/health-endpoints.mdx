@@ -1,13 +1,13 @@
 ---
 title: "Health Endpoints"
-description: "World Monitor exposes two health endpoints for monitoring data pipeline integrity. Both run on the Vercel Edge Runtime and query Redis (Upstash) to assess system state."
+description: "Two health endpoints World Monitor exposes for monitoring data pipeline integrity — Edge Runtime handlers querying Upstash Redis for system state."
 ---
 
 ## `/api/health`
 
 Primary health endpoint. Checks all Redis-backed data keys and seed freshness metadata in a single pipeline call.
 
-**Authentication:** None required. Open to all origins (`Access-Control-Allow-Origin: *`).
+**Authentication:** Compact health (`?compact=1`) is public for uptime and keyword monitors. Detailed health (`/api/health` without `compact=1`) and the operator history view (`?history=1`) require a valid operator/enterprise API key because they expose canonical Redis key names, record counts, and freshness thresholds. Browser origins must still pass the CORS allowlist in `api/_cors.js`; requests with no `Origin` header, such as server-side monitors, are allowed only for compact health unless they include an operator key. Health responses are never cached (`Cache-Control: private, no-store, max-age=0` and `CDN-Cache-Control: no-store`).
 
 **HTTP Method:** `GET`
 
@@ -23,9 +23,12 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 |-------------|---------------|---------|
 | `200` | `HEALTHY` | All checks OK, no warnings |
 | `200` | `WARNING` | Some keys stale or on-demand keys empty, but no critical failures |
-| `503` | `DEGRADED` | 1-3 bootstrap keys empty |
-| `503` | `UNHEALTHY` | 4+ bootstrap keys empty |
-| `503` | `REDIS_DOWN` | Could not connect to Redis |
+| `200` | `DEGRADED` | Critical keys empty, but ≤3% of all probed keys |
+| `200` | `UNHEALTHY` | Critical keys empty, >3% of all probed keys |
+| `401` | - | Detailed health or history requested without a valid operator/enterprise API key |
+| `503` | `REDIS_DOWN` | Could not connect to Redis — the **only** state that returns a non-200 code |
+
+> The overall health verdict lives in the JSON `status` field, not the HTTP code. Every state except `REDIS_DOWN` returns `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure.
 
 ### Response Body
 
@@ -33,9 +36,11 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 57,
-    "ok": 52,
+    "total": 194,
+    "ok": 180,
     "warn": 5,
+    "onDemandWarn": 9,
+    "staleContent": 0,
     "crit": 0
   },
   "checkedAt": "2026-03-11T14:00:00.000Z",
@@ -49,6 +54,8 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
   }
 }
 ```
+
+`summary` fields: `total` is one entry per probed key (currently ~194 and growing as panels are added). `warn` **excludes** on-demand-empty keys — those are surfaced separately as `onDemandWarn` so they don't drive the overall verdict to `WARNING`. `staleContent` is a **subset** of `warn` (fresh seeder but the upstream feed stopped advancing). Only `crit` (`EMPTY`/`EMPTY_DATA`) drives `DEGRADED`/`UNHEALTHY`.
 
 With `?compact=1`, the `checks` object is replaced by `problems` containing only non-OK keys.
 
@@ -68,10 +75,71 @@ Keys are grouped into three tiers that determine alert severity:
 |--------|----------|---------|
 | `OK` | Green | Data present, seed fresh |
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
+| `NOT_CONFIGURED` | Green | An optional source adapter this deployment never supplied a credential for (producer wrote `sourceState: "unavailable"`, e.g. the Global Tenders SAM.gov adapter without `SAM_GOV_API_KEY`). Not a fault and not counted as a problem; flips to `OK` on the first run after the credential is added |
+| `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved no transport path reaches the publisher while retaining fresh reviewed records — either an upstream HTTP 403 after a successful proxy CONNECT (`HTTP_403`), or a target-scoped proxy CONNECT refusal corroborated by a successful control tunnel (`PROXY_TARGET_FORBIDDEN`). Uncorroborated CONNECT refusals, stale, empty, or unreviewed states still fail closed |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
-| `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet |
-| `EMPTY` | Crit | Bootstrap or standalone key has no data |
-| `EMPTY_DATA` | Crit | Key exists but contains zero records |
+| `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
+| `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints or 139/174 PortWatch port-activity countries) |
+| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run |
+| `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
+| `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
+| `EMPTY` | Crit | Bootstrap or seeded standalone key has no data |
+| `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
+
+### China Coverage Projection
+
+`chinaCoverage` projects the hourly Railway summary at
+`health:china-coverage:v1`. The evaluator checks each launched China contract
+for both a fresh producer heartbeat and fresh, substantive China content; a
+fresh seed cannot hide stale or missing source content. `CHINA_DEGRADED` is a
+warning projection for partial or stale coverage, while `CHINA_UNAVAILABLE` is
+critical when the summary is invalid or the launched content is unavailable.
+
+The final public composition is monitored separately as
+`chinaDecisionSignals`. Its canonical payload must contain all six stable
+groups even when individual groups are explicitly unavailable. Health requires
+six group records and a seed no older than 60 minutes. Per-source transport
+details for policy, exchanges, and cross-Strait publishers remain visible only
+in this authenticated operator view; they are not copied into the public
+country summary or Pro MCP result.
+Blocked China contracts remain visible in the audit with their stable reason
+code but are excluded from the strict launched-entry health count.
+
+The launched cross-Strait activity contract audits the durable archive
+`military:cross-strait-activity:v1` independently for producer transport and
+latest Taiwan MND reporting-window freshness. A fresh seed with a stale
+official report therefore remains degraded. Japan Joint Staff reviewed
+observations are regional augmentation and do not satisfy the Taiwan MND
+content requirement. `/api/health` separately monitors
+`military:cross-strait-activity-bootstrap:v1`; fresh canonical data cannot hide
+a missing compact UI projection. It also exposes dedicated MND and Japan Joint
+Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED`, and
+only when retained reviewed records exist and one of two evidenced conditions
+holds. `HTTP_403` means the direct request and an upstream response received
+after a successful proxy CONNECT both returned HTTP 403 — the publisher itself
+refused both paths. `PROXY_TARGET_FORBIDDEN` means the direct request returned
+HTTP 403 and the proxy refused CONNECT for the target *while a control CONNECT
+to a different contracted host succeeded in the same run through the same
+credentials* — the proxy provider forbids this destination specifically, so no
+configured transport path exists. An uncorroborated CONNECT refusal, a control
+tunnel that also fails, `PROXY_AUTH_FAILED`, stale metadata, a missing source
+record, or any other source using the blocked state still fail closed through
+the existing `STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. The distinction
+matters operationally: `PROXY_TARGET_FORBIDDEN` is durable and needs a
+different egress to change, whereas a bare CONNECT refusal is a proxy fault to
+remediate. Other current fetch failures
+report `SEED_ERROR` while the last-good archive remains available.
+The bundle freshness gate advances only after the archive, projection, and
+both source-health records publish successfully. The public bootstrap retains
+the bounded reason codes used for disclosure but omits proxy response
+diagnostics; full sanitized diagnostics remain in the authenticated operator
+source record.
+
+Operators can obtain the same sanitized, read-only audit with
+`node scripts/audit-china-coverage.mjs --json`; add `--strict` to return a
+nonzero exit code unless every launched entry is healthy. The audit reads only
+the compact Redis contracts and emits status, age, and reason-code summaries—
+never credentials or raw upstream payloads.
 
 ### Cascade Groups
 
@@ -79,6 +147,22 @@ Some keys use fallback chains. If any sibling has data, empty siblings report `O
 
 - **Theater Posture:** `theaterPostureLive` -> `theaterPosture` (stale) -> `theaterPostureBackup`
 - **Military Flights:** `militaryFlights` -> `militaryFlightsStale`
+- **Displacement:** `displacement` (current UTC year) -> `displacementPrev` (prior year, covers the Jan-1 window before the new-year seed runs)
+
+`riskScores` is intentionally stricter than a raw feed heartbeat. Its
+`recordCount` is realtime signal-density coverage: the count of score-relevant
+Tier-1 conflict, news, and cyber signal families present during the CII refresh.
+The conflict family is satisfied by either the ACLED path or the UCDP event
+feed, matching the CII v8 scorer. When those feeds are reachable but quiet,
+`riskScores` can still report
+`COVERAGE_PARTIAL`; underlying feed freshness is tracked by the source-specific
+health entries where those feeds publish seed metadata.
+
+`portwatchPortActivity` also uses `minRecordCount`. A fresh
+`seed-meta:supply_chain:portwatch-ports` record below 174 countries reports
+`COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country
+PortWatch cache entries, but the canonical country list and healthy seed-meta
+signal do not advance until full 174-country coverage returns.
 
 ### Staleness Thresholds (maxStaleMin)
 
@@ -86,27 +170,31 @@ Selected thresholds from `SEED_META`:
 
 | Domain | Max Stale (min) | Notes |
 |--------|----------------|-------|
-| Market quotes, crypto, sectors | 30 | High-frequency relay loops |
-| Earthquakes, unrest, insights | 30 | Critical event data |
-| Predictions | 15 | Polymarket, fast-moving |
-| Military flights | 15 | Near-real-time tracking |
-| Flight delays (FAA) | 60 | Airport delay snapshots |
-| Wildfires, climate anomalies | 120 | Slower-moving natural events |
-| Cyber threats | 480 | APT data updated less frequently |
-| BIS data, World Bank, minerals | 2880-10080 | Institutional data, weekly/monthly updates |
+| Market quotes, crypto, sectors, earthquakes, insights | 30 | High-frequency relay loops / critical event data |
+| Military flights | 30 | Near-real-time tracking |
+| Predictions, flight delays (FAA) | 90 | Polymarket / airport snapshots |
+| Unrest | 120 | 45min cron, 2h grace |
+| Cyber threats | 240 | APT data updated less frequently |
+| Wildfires | 360 | FIRMS NRT accumulates over hours |
+| Climate anomalies | 540 | 3h cron, 3× cadence |
+| BIS extended, World Bank, IMF | 2160-100800 | Institutional data, weekly/monthly/annual |
+
+> These are illustrative; `SEED_META` in `api/health.js` is the source of truth and each entry documents its own cadence rationale.
 
 ### Example Requests
 
 ```bash
-# Full health check
-curl -s https://api.worldmonitor.app/api/health | jq .
+# Full health check (requires an operator API key)
+curl -s https://api.worldmonitor.app/api/health \
+  -H "X-WorldMonitor-Key: $WORLDMONITOR_API_KEY" | jq .
 
 # Compact (problems only)
 curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
 
 # UptimeRobot / monitoring: check HTTP status code
-curl -o /dev/null -s -w "%{http_code}" https://api.worldmonitor.app/api/health
-# Returns 200 (healthy/warning) or 503 (degraded/unhealthy)
+curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?compact=1"
+# Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
+# state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
 ```
 
 ## `/api/seed-health`
@@ -122,7 +210,7 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
 | HTTP Status | Overall Status | Meaning |
 |-------------|---------------|---------|
 | `200` | `healthy` | All seed loops reporting on time |
-| `200` | `warning` | Some seeds stale (age > 2x interval) |
+| `200` | `warning` | Some seeds stale (age > 2x interval) or below a declared coverage floor |
 | `200` | `degraded` | Some seeds missing entirely |
 | `401` | - | Invalid or missing API key |
 | `503` | - | Redis unavailable |
@@ -149,6 +237,15 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
       "sourceVersion": null,
       "ageMinutes": 140,
       "stale": true
+    },
+    "supply_chain:portwatch-ports": {
+      "status": "coverage_partial",
+      "fetchedAt": 1710158100000,
+      "recordCount": 139,
+      "minRecordCount": 174,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": true
     }
   }
 }
@@ -156,7 +253,7 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
 
 ### Staleness Logic
 
-A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing.
+A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing. Seeds with an explicit `minRecordCount` also report `coverage_partial` and `stale: true` until their coverage floor is met.
 
 | Domain | Interval (min) | Stale After (min) |
 |--------|---------------|-------------------|
@@ -167,6 +264,28 @@ A seed is considered stale when its age exceeds **2x the configured interval**. 
 | Shipping rates, satellites | 90-120 | 180-240 |
 | GPS jamming, displacement | 360 | 720 |
 | Iran events, UCDP | 210-5040 | 420-10080 |
+
+### History ingestion (`intel-history:*`)
+
+Domains prefixed `intel-history:` do **not** describe a seeder's canonical publish. They track whether that collector's post-publish append to the historical intelligence store is still landing:
+
+| Domain | Tracks |
+|--------|--------|
+| `intel-history:conflict:acled-intel` | history appends from `seed-conflict-intel` |
+| `intel-history:military:cross-strait-activity` | history appends from `seed-cross-strait-activity` |
+| `intel-history:energy:intelligence` | history appends from `seed-energy-intelligence` |
+
+The append is fail-open by design — the canonical publish has already committed when it runs, so a failure must never fail the run. That means the collector's own entry (`conflict:acled-intel`, …) stays `ok` while history silently stops accumulating. These entries are the separate signal:
+
+- `fetchedAt` is the last **healthy** append, never the last attempt. A run that reached the relay advances it; a run that delivered nothing (every chunk rejected, or the wall-clock budget died before the first request) does not. So a broken relay freezes it and the entry goes `stale` on the ordinary 2x-interval rule.
+- `status: "error"` means the append failed on two consecutive runs — or, on the very first tick, that a relay credential present during an earlier successful append has since been removed.
+- `lastErrorCode` names the cause when there is one: `http_401`, `budget_exhausted`, `all_chunks_failed`, `config_removed`, or a clamped error-class name. Absent when the ingest has never failed.
+- `status: "not_configured"` means this deployment has **never** had relay credentials. It is visible but never an alarm — no operator action clears it except provisioning the relay. Losing credentials after a successful append is not this state; it reports `error` with `lastErrorCode: "config_removed"`.
+- `recordCount` is the volume the relay accepted on the last successful append. Zero is valid: a run whose records were all deduped still proves the pipeline works.
+
+The richer per-run detail — `lastErrorReason`, `consecutiveFailures`, `missingConfig`, and the inserted/deduped/abandoned counts — is **not** returned by either endpoint. It lives in the Redis record `intel-history:ingest-health:<domain>:<resource>:v1`, which the endpoints project from.
+
+A `stale` or `error` here alongside an `ok` collector means canonical data is fine and the history store is the thing to investigate.
 
 ### Example Request
 
@@ -179,12 +298,16 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 
 ### UptimeRobot
 
-Use `/api/health` as the monitor URL. UptimeRobot checks HTTP status:
+Use `/api/health?compact=1` as the public monitor URL. The HTTP status code only distinguishes a total Redis outage from everything else:
 
-- `200` = up
-- `503` = down
+- `503` = `REDIS_DOWN` (Redis unreachable — a true hard outage)
+- `200` = every other state, including `DEGRADED` and `UNHEALTHY`
 
-For keyword monitoring, check for `"status":"HEALTHY"` in the response body.
+So an HTTP-status-only monitor catches a full backend outage but **not** degraded/unhealthy data. For those, add a keyword monitor.
+
+Point the keyword monitor at `https://api.worldmonitor.app/api/health?compact=1` and alert when the compact token `"status":"HEALTHY"` (no space after the colon) is **absent** from the response body. Compact mode serializes with no indentation, so this exact token is stable regardless of formatting.
+
+> The bare `/api/health` URL is now an operator view and returns `401` without an API key. Public monitoring should always use `?compact=1`.
 
 ### Custom Alerting
 
@@ -207,6 +330,6 @@ fi
 | **Scope** | Data keys + seed metadata | Seed metadata only |
 | **Auth** | None (public) | API key or allowed origin |
 | **Data fetched** | Full Redis values (to count records) | Only `seed-meta:*` keys |
-| **HTTP 503** | Yes (DEGRADED/UNHEALTHY) | No (always 200 unless Redis down) |
+| **HTTP 503** | Only `REDIS_DOWN` (DEGRADED/UNHEALTHY return 200) | No (always 200 unless Redis down) |
 | **Best for** | Uptime monitoring, dashboard health | Debugging seed loop issues |
-| **Response size** | Larger (57+ keys with record counts) | Smaller (42 seed domains) |
+| **Response size** | Larger (~194 keys with record counts) | Smaller (seed-meta domains only) |

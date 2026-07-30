@@ -1,0 +1,380 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  gdeltSeenDateToIso,
+  buildGdeltConflictUrl,
+  mapGdeltArticlesToEvents,
+  GDELT_COUNTRY_NAMES,
+} from '../scripts/_conflict-gdelt.mjs';
+import { computeEmaWindows } from '../scripts/_ema-threat-engine.mjs';
+import {
+  fetchGdeltConflictEvents,
+  GDELT_MIN_SUCCESSFUL_COUNTRIES,
+} from '../scripts/seed-conflict-intel.mjs';
+
+const BULK_FIXTURE_NOW = Date.parse('2026-07-13T12:00:00Z');
+
+test('gdeltSeenDateToIso parses GDELT seendate formats to YYYY-MM-DD', () => {
+  assert.equal(gdeltSeenDateToIso('20260709T140000Z'), '2026-07-09');
+  assert.equal(gdeltSeenDateToIso('20260709140000'), '2026-07-09');
+  assert.ok(Number.isFinite(Date.parse(gdeltSeenDateToIso('20260709T140000Z'))));
+  // unparseable → '' (dropped downstream, never a bad Date)
+  assert.equal(gdeltSeenDateToIso(''), '');
+  assert.equal(gdeltSeenDateToIso('bad'), '');
+  assert.equal(gdeltSeenDateToIso(null), '');
+});
+
+test('buildGdeltConflictUrl targets DOC 2.0 artlist json with the country name', () => {
+  const url = buildGdeltConflictUrl('SD');
+  assert.ok(url.startsWith('https://api.gdeltproject.org/api/v2/doc/doc?query='));
+  assert.ok(url.includes('mode=artlist'));
+  assert.ok(url.includes('format=json'));
+  assert.ok(decodeURIComponent(url).includes('"Sudan"'));
+});
+
+test('mapGdeltArticlesToEvents emits {country, event_date} in the EMA-readable shape', () => {
+  const articles = [
+    { seendate: '20260709T140000Z', domain: 'aljazeera.com', url: 'https://x/1', title: 'a' },
+    { seendate: '20260709T100000Z', domain: 'reuters.com', url: 'https://x/2', title: 'b' },
+  ];
+  const events = mapGdeltArticlesToEvents(articles, 'SD');
+  assert.equal(events.length, 2);
+  // country is the full name (matches UCDP / normalizeCountry), NOT the ISO2 code
+  assert.equal(events[0].country, 'Sudan');
+  // event_date is the field the EMA reads — the bug this fixes was its absence
+  assert.equal(events[0].event_date, '2026-07-09');
+  assert.ok('event_date' in events[0]);
+  assert.equal(events[0].title, 'a');
+  assert.equal(events[0].url, 'https://x/1');
+});
+
+test('mapGdeltArticlesToEvents uses durable identities across reordered and replaced DOC responses', () => {
+  const firstRun = mapGdeltArticlesToEvents([
+    { seendate: '20260709T140000Z', domain: 'reuters.com', url: 'https://example.com/story?b=2&a=1#section', title: 'First story' },
+    { seendate: '20260709T130000Z', domain: 'apnews.com', url: 'https://example.com/other', title: 'Second story' },
+  ], 'SD');
+  const secondRun = mapGdeltArticlesToEvents([
+    { seendate: '20260709T130000Z', domain: 'apnews.com', url: 'https://example.com/other', title: 'Second story' },
+    { seendate: '20260709T140000Z', domain: 'reuters.com', url: 'https://example.com/story?a=1&b=2', title: 'First story' },
+    { seendate: '20260709T120000Z', domain: 'bbc.com', url: 'https://example.com/replacement', title: 'Replacement story' },
+  ], 'SD');
+
+  assert.equal(secondRun[0].id, firstRun[1].id);
+  assert.equal(secondRun[1].id, firstRun[0].id);
+  assert.notEqual(secondRun[2].id, firstRun[0].id);
+  assert.notEqual(secondRun[2].id, firstRun[1].id);
+  assert.match(firstRun[0].id, /^gdelt-SD-[a-f0-9]{16}$/);
+});
+
+test('mapGdeltArticlesToEvents drops articles with an unparseable seendate', () => {
+  const events = mapGdeltArticlesToEvents(
+    [{ seendate: '', domain: 'd' }, { seendate: 'garbage' }, { seendate: '20260709T000000Z' }],
+    'YE',
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0].country, 'Yemen');
+});
+
+test('mapGdeltArticlesToEvents is defensive against bad input', () => {
+  assert.deepEqual(mapGdeltArticlesToEvents(null, 'SD'), []);
+  assert.deepEqual(mapGdeltArticlesToEvents([{ seendate: '20260709T0000Z' }], 'ZZ'), []); // unknown cc → no name
+});
+
+test('GDELT-derived events register in the conflict EMA (end-to-end shape contract)', () => {
+  // The whole point of #5099: without a valid event_date, computeEmaWindows would
+  // Date.parse(undefined) → NaN → skip the event, leaving the country uncounted.
+  const now = Date.parse('2026-07-09T18:00:00Z');
+  const recent = new Date(now - 60 * 60 * 1000).toISOString().slice(0, 19).replace(/[-:T]/g, '') + 'Z';
+  const events = mapGdeltArticlesToEvents(
+    [{ seendate: recent, domain: 'd' }, { seendate: recent, domain: 'd2' }],
+    'SD',
+  );
+  const windows = computeEmaWindows(new Map(), events, [], now);
+  const sudan = [...windows.entries()].find(([c]) => String(c).toLowerCase().includes('sudan'));
+  assert.ok(sudan, 'Sudan should be present in the EMA windows');
+  // event_date within the 24h cutoff → counted (would be 0 if event_date were missing)
+  assert.ok(sudan[1], 'Sudan window state should exist');
+});
+
+test('GDELT_COUNTRY_NAMES covers the priority conflict set with full display names', () => {
+  assert.equal(GDELT_COUNTRY_NAMES.UA, 'Ukraine');
+  assert.equal(GDELT_COUNTRY_NAMES.SD, 'Sudan');
+  assert.equal(GDELT_COUNTRY_NAMES.CD, 'Democratic Republic of Congo');
+  assert.ok(Object.keys(GDELT_COUNTRY_NAMES).length >= 20);
+});
+
+test('fetchGdeltConflictEvents fails closed when too many country fetches fail', async () => {
+  let calls = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        if (calls < GDELT_MIN_SUCCESSFUL_COUNTRIES) {
+          return { country: cc, ok: true, events: [{ country: 'Sudan', event_date: '2026-07-09' }] };
+        }
+        return { country: cc, ok: false, events: [], error: 'proxy unavailable' };
+      },
+    }),
+    /coverage below floor: 15\/20 countries succeeded \(min 16\)/,
+  );
+});
+
+test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds but yields zero events', async () => {
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
+    loadPreviousSnapshot: async () => null,
+    fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'gdelt-event-empty-doc', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.equal(result.events.length, 1);
+  assert.equal(result.pagination.countriesSucceeded, 20);
+  assert.equal(result.pagination.countriesFailed, 0);
+});
+
+test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk event feed', async () => {
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
+    loadPreviousSnapshot: async () => null,
+    fetchCountryEvents: async (cc) => ({
+      country: cc,
+      ok: false,
+      events: [],
+      error: 'HTTP 429',
+    }),
+    fetchBulkEvents: async () => ({
+      events: [{
+        id: 'gdelt-event-1',
+        country: 'Sudan',
+        event_date: '2026-07-13',
+        occurredAt: Date.parse('2026-07-13'),
+        source: 'example.com',
+        url: 'https://example.com/conflict',
+      }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].country, 'Sudan');
+  assert.equal(result.pagination.countriesTotal, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.countriesSucceeded, 0);
+  assert.equal(result.pagination.countriesFailed, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.exportTimestamp, '20260713110000');
+  assert.equal(result.pagination.exportsRequested, 8);
+  assert.equal(result.pagination.exportsSucceeded, 8);
+  assert.equal(result.pagination.countriesWithEvents, 1);
+});
+
+test('fetchGdeltConflictEvents carries prior bulk events through the EMA 24h window', async () => {
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  const makeEvent = (id, hoursAgo) => {
+    const gdeltAddedAt = now - hoursAgo * 60 * 60 * 1000;
+    return {
+      id,
+      country: 'Sudan',
+      event_date: new Date(gdeltAddedAt).toISOString().slice(0, 10),
+      occurredAt: gdeltAddedAt,
+      gdeltAddedAt,
+      source: 'example.com',
+      url: `https://example.com/${id}`,
+    };
+  };
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => now,
+    fetchCountryEvents: async (cc) => ({ country: cc, ok: false, events: [], error: 'HTTP 429' }),
+    fetchBulkEvents: async () => ({
+      events: [makeEvent('current-1h', 1)],
+      oldestExportTimestamp: '20260713160000',
+      exportTimestamp: '20260713170000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => ({
+      source: 'gdelt-bulk',
+      events: [makeEvent('prior-12h', 12), makeEvent('stale-25h', 25)],
+      pagination: {
+        exportTimestamp: '20260713153000',
+        rollingWindowStartedAt: now - 14 * 60 * 60 * 1000,
+      },
+    }),
+  });
+
+  assert.deepEqual(result.events.map(event => event.id), ['current-1h', 'prior-12h']);
+  assert.equal(result.pagination.rollingWindowHours, 24);
+  assert.equal(result.pagination.retainedPreviousEvents, 1);
+  const windows = computeEmaWindows(new Map(), result.events, [], now);
+  assert.equal(windows.get('sudan').window.at(-1), 2);
+});
+
+test('fetchGdeltConflictEvents publishes fresh bulk events when the previous snapshot read fails', async () => {
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => now,
+    fetchCountryEvents: async (cc) => ({ country: cc, ok: false, events: [], error: 'HTTP 429' }),
+    fetchBulkEvents: async () => ({
+      events: [{
+        id: 'fresh-after-redis-blip',
+        country: 'Sudan',
+        event_date: '2026-07-13',
+        occurredAt: now - 60 * 60 * 1000,
+        gdeltAddedAt: now - 60 * 60 * 1000,
+      }],
+      oldestExportTimestamp: '20260713160000',
+      exportTimestamp: '20260713170000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => {
+      throw new Error('Redis snapshot read failed: HTTP 503');
+    },
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.deepEqual(result.events.map(event => event.id), ['fresh-after-redis-blip']);
+  assert.equal(result.pagination.retainedPreviousEvents, 0);
+  assert.equal(result.pagination.rollingWindowComplete, false);
+});
+
+test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bulk recovery', async () => {
+  let calls = 0;
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
+    loadPreviousSnapshot: async () => null,
+    fetchCountryEvents: async (cc) => {
+      calls += 1;
+      return calls <= GDELT_MIN_SUCCESSFUL_COUNTRIES
+        ? { country: cc, ok: true, events: [] }
+        : { country: cc, ok: false, events: [], error: 'HTTP 429' };
+    },
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'gdelt-event-partial-doc', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.equal(result.pagination.countriesSucceeded, GDELT_MIN_SUCCESSFUL_COUNTRIES);
+  assert.equal(
+    result.pagination.countriesFailed,
+    Object.keys(GDELT_COUNTRY_NAMES).length - GDELT_MIN_SUCCESSFUL_COUNTRIES,
+  );
+});
+
+// #5140: the sweep's former retry fanout exceeded runSeed's fetch deadline, so
+// a GDELT brownout
+// crashed the seeder (exit 75) instead of reaching the caught coverage-floor →
+// aux-only → exit 0 path. The sweep must stop launching batches once its
+// launch cutoff passes, regardless of per-country outcome. (The deadline
+// arithmetic itself is pinned in seed-fetch-deadline-budget-invariants.test.mjs.)
+test('fetchGdeltConflictEvents stops launching batches once the launch cutoff passes (#5140)', async () => {
+  let calls = 0;
+  let fakeTime = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      now: () => fakeTime,
+      deadlineAt: 75_000,
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        // Each request consumes 10s. The route canary is one request; healthy
+        // coverage then widens to batches of four.
+        fakeTime += 40_000 / 4;
+        return { country: cc, ok: true, events: [] };
+      },
+    }),
+    /coverage below floor.*sweep budget exhausted/s,
+  );
+  // Cutoff at 75s: canary ends at 10s, batches end at 50s and 90s, then stop.
+  assert.equal(calls, 9);
+});
+
+test('fetchGdeltConflictEvents launches nothing when the phase cutoff already passed at entry (#5140)', async () => {
+  // fetchAll anchors deadlineAt at fetch-phase START; if slow aux feeds (HAPI's
+  // January snapshot fallback is bounded at ~315s) consume the window first,
+  // the sweep must not add a single batch on top — it degrades instantly to the
+  // caught floor throw.
+  let calls = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      deadlineAt: Date.now() - 1,
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        return { country: cc, ok: true, events: [] };
+      },
+    }),
+    /coverage below floor: 0\/20/,
+  );
+  assert.equal(calls, 0);
+});
+
+test('fetchGdeltConflictEvents stops sweeping once the coverage floor is unreachable (#5140)', async () => {
+  let calls = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        return { country: cc, ok: false, events: [], error: 'proxy unavailable' };
+      },
+    }),
+    /coverage below floor/,
+  );
+  // With no successful canary, requests stay sequential. After 5 failures:
+  // 0 successes + 15 remaining < the 16-country floor.
+  assert.equal(calls, 5);
+});
+
+test('early-stop reason names BOTH conditions when budget and floor trip together (#5140)', async (t) => {
+  const warns = [];
+  t.mock.method(console, 'warn', (...args) => { warns.push(args.join(' ')); });
+  let calls = 0;
+  let fakeTime = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      now: () => fakeTime,
+      deadlineAt: 85_000,
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        fakeTime += 10_000;
+        // Canary/first batch succeed; the next batch fails → the floor drifts out of reach
+        // while the clock runs out, so both stop conditions hold at once.
+        return calls <= 4
+          ? { country: cc, ok: true, events: [] }
+          : { country: cc, ok: false, events: [], error: 'down' };
+      },
+    }),
+    /coverage below floor/,
+  );
+  // Before the next batch: clock 90s ≥ 85s cutoff AND
+  // 4 successes + 11 remaining < 16.
+  assert.equal(calls, 9);
+  assert.ok(
+    warns.some((w) => w.includes('sweep budget exhausted + coverage floor unreachable')),
+    `expected combined stop reason in warns: ${warns.join(' | ')}`,
+  );
+});

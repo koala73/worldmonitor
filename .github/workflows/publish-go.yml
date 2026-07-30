@@ -1,0 +1,76 @@
+name: Publish Go SDK to the module proxy
+
+# Go modules need no registry upload — a version tag on the repository IS the
+# release. This workflow validates the module at the tag, then warms
+# proxy.golang.org so the version is immediately fetchable with `go get` and
+# indexed on pkg.go.dev (the proxy only learns about a version when someone
+# requests it; this is that first request).
+#
+# The module lives at sdk/go/ (module github.com/koala73/worldmonitor/sdk/go),
+# so per Go's monorepo convention its release tags are prefixed with the
+# module directory: sdk/go/v1.2.3.
+
+on:
+  push:
+    tags: ['sdk/go/v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing sdk/go/vX.Y.Z tag version to (re-)warm on the proxy, e.g. v0.1.0'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/go
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Vet and test
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::gofmt drift"; exit 1; }
+          go vet ./...
+          go test ./...
+
+      - name: Verify Version constant matches the tag
+        if: startsWith(github.ref, 'refs/tags/sdk/go/v')
+        run: |
+          MOD_VERSION="v$(sed -n 's/^const Version = "\(.*\)"$/\1/p' worldmonitor.go)"
+          TAG_VERSION="${GITHUB_REF_NAME#sdk/go/}"
+          if [ "$MOD_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::worldmonitor.go Version ($MOD_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Warm proxy.golang.org (makes the version go-gettable + indexed on pkg.go.dev)
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#sdk/go/}"
+          fi
+          MODULE="github.com/koala73/worldmonitor/sdk/go"
+          echo "Requesting ${MODULE}@${VERSION} from proxy.golang.org"
+          # Retry: the proxy fetches from GitHub on first request and can lag a
+          # just-pushed tag by a minute or two.
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent --show-error "https://proxy.golang.org/${MODULE}/@v/${VERSION}.info"; then
+              echo; echo "Proxy knows ${MODULE}@${VERSION}."
+              exit 0
+            fi
+            echo "Attempt ${attempt} failed; retrying in 30s…"
+            sleep 30
+          done
+          echo "::error::proxy.golang.org never served ${MODULE}@${VERSION}"
+          exit 1

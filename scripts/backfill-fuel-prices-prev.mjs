@@ -282,8 +282,8 @@ async function fetchMexico() {
     if (!dates.length) return [];
     const maxDate = dates.sort().reverse()[0];
     const latest = results.filter(r => r.fecha_aplicacion === maxDate);
-    const reg = latest.map(r => parseFloat(r.precio_gasolina_regular)).filter(v => !isNaN(v) && v > 0);
-    const dsl = latest.map(r => parseFloat(r.precio_diesel)).filter(v => !isNaN(v) && v > 0);
+    const reg = latest.map(r => parseFloat(r.precio_gasolina_regular)).filter(v => !Number.isNaN(v) && v > 0);
+    const dsl = latest.map(r => parseFloat(r.precio_diesel)).filter(v => !Number.isNaN(v) && v > 0);
     const avgR = reg.length ? +(reg.reduce((a, b) => a + b, 0) / reg.length).toFixed(4) : null;
     const avgD = dsl.length ? +(dsl.reduce((a, b) => a + b, 0) / dsl.length).toFixed(4) : null;
     console.log(`  [MX] Regular=${avgR} MXN/L, Diesel=${avgD} MXN/L (baseline, date=${maxDate})`);

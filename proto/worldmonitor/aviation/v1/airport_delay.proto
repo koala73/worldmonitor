@@ -83,7 +83,7 @@ enum FlightDelayType {
 }
 
 // FlightDelaySeverity represents the severity of flight delays at an airport.
-// Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+// Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
 enum FlightDelaySeverity {
   // Unspecified severity.
   FLIGHT_DELAY_SEVERITY_UNSPECIFIED = 0;
@@ -97,6 +97,10 @@ enum FlightDelaySeverity {
   FLIGHT_DELAY_SEVERITY_MAJOR = 4;
   // Severe delays over 90 minutes.
   FLIGHT_DELAY_SEVERITY_SEVERE = 5;
+  // No telemetry available; do not interpret as normal operations. Emitted
+  // when an upstream source (FAA seed, AviationStack intl cache) failed to
+  // return data for this airport — coverage is unknown, not "healthy".
+  FLIGHT_DELAY_SEVERITY_UNKNOWN = 6;
 }
 
 // FlightDelaySource represents the source of delay data.

@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchSocialVelocity, type SocialVelocityPost } from '@/services/social-velocity';
 
 function relativeTime(ms: number): string {
@@ -29,7 +30,7 @@ export class SocialVelocityPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'social-velocity', title: 'Social Velocity', showCount: false });
+    super({ id: 'social-velocity', title: 'Social Velocity', showCount: false, infoTooltip: t('components.socialVelocity.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -86,11 +87,11 @@ export class SocialVelocityPanel extends Panel {
       </div>`;
     }).join('');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div style="overflow-y:auto;max-height:440px">
         ${rows || '<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">No signals</div>'}
       </div>
       <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Reddit · velocity = recency × score × ratio</div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 }

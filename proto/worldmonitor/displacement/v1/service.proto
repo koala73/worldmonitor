@@ -11,6 +11,8 @@ service DisplacementService {
   option (sebuf.http.service_config) = {base_path: "/api/displacement/v1"};
 
   // GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+  // Empty/absent summary with fetched_at=0 or data_available=false means the
+  // snapshot is unavailable/degraded, not that global displacement is zero.
   rpc GetDisplacementSummary(GetDisplacementSummaryRequest) returns (GetDisplacementSummaryResponse) {
     option (sebuf.http.config) = {path: "/get-displacement-summary", method: HTTP_METHOD_GET};
   }

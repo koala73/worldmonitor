@@ -40,6 +40,10 @@ const FX_SYMBOLS = Object.fromEntries(
 
 const FX_FALLBACKS = SHARED_FX_FALLBACKS;
 
+export function declareRecords(data) {
+  return data && typeof data === 'object' ? Object.keys(data).length : 0;
+}
+
 await runSeed('shared', 'fx-rates', CANONICAL_KEY, async () => {
   // Always fetch live — this seed IS the cache writer, bypass getSharedFxRates
   const rates = await fetchYahooFxRates(FX_SYMBOLS, FX_FALLBACKS);
@@ -50,4 +54,7 @@ await runSeed('shared', 'fx-rates', CANONICAL_KEY, async () => {
   validateFn: (data) => data && typeof data === 'object' && Object.keys(data).length > 10,
   recordCount: (data) => Object.keys(data).length,
   sourceVersion: 'yahoo-fx-shared',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 3600,
 });

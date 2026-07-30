@@ -1,0 +1,170 @@
+---
+title: "管道登记表方法论"
+description: "World Monitor 如何在 Energy Atlas 地图图层上，对全球主要油气输送管道进行策展、数据来源核查以及运营状态属性归属标注，涵盖管道走向、运营方、容量、启用与停用状态、历史维护记录和地缘影响因素的方法论说明，帮助能源分析师全面掌握管道网络态势。"
+---
+
+## 范围
+
+第 1 版上线时包含一个经策展的关键油气管道登记表，而非声称全球完整性的清单：
+
+- 约 75 条关键天然气管道（Nord Stream 1/2、TurkStream、Yamal、Brotherhood/Soyuz、Power of Siberia、Qatar–UAE Dolphin、Medgaz、Langeled、Europipe I/II、Franpipe 等）
+- 约 75 条关键石油管道（Druzhba N/S、CPC、ESPO、BTC、Trans-Alaska、Habshan–Fujairah、Keystone、Kirkuk–Ceyhan、Baku–Supsa 等）
+
+策展偏好倾向于具有活跃地缘政治敞口的管道，而非理论上的全球完整性。扩展是上线后的决策。
+
+## 数据来源
+
+- **[Global Energy Monitor](https://globalenergymonitor.org) — Oil & Gas Pipeline Tracker**（CC-BY 4.0）。几何信息、容量、运营商、国家列表的主要来源。
+- **ENTSOG Transparency Platform**（公开 API）— 欧盟天然气管道提名与输出。
+- **运营商技术文档** — 路线示意图、容量铭牌、不可抗力通知。
+- **监管机构备案** — 适用情况下的按司法管辖区备案。
+
+每条管道都至少携带一个主要来源引用。
+
+## 证据模式（非结论）
+
+我们不发布单纯的 `sanctions_blocked` 或 `political_cutoff` 标签。公开徽章由服务端根据每条管道的证据包派生：
+
+```ts
+{
+  physicalState: 'flowing' | 'reduced' | 'offline' | 'unknown',
+  physicalStateSource: 'ais-relay' | 'operator' | 'satellite' | 'press',
+  operatorStatement: { text, url, date } | null,
+  commercialState: 'under_contract' | 'expired' | 'suspended' | 'unknown',
+  sanctionRefs: [{ authority, listId, date, url }, ...],
+  lastEvidenceUpdate: ISO8601,
+  classifierVersion: 'vN',
+  classifierConfidence: 0..1
+}
+```
+
+可见的 `publicBadge`（`flowing | reduced | offline | disputed`）是带有新鲜度权重的确定性函数。当一条管道重新开放或制裁名单变化时，证据字段更新，徽章自动重新派生。我们交付的是证据；徽章只是它的一种便捷视图。
+
+## 公开徽章如何变动
+
+设计的审计界面是一个公开修订日志，记录每次翻转公开状态的转换，如下：
+
+- `{ assetId, fieldChanged, previousValue, newValue, trigger, sourcesUsed[], classifierVersion }`
+
+没有人工审核队列门控转换——质量来自分层证据阈值 + LLM 二次合理性检查 + 过时证据自动衰减。分类器的版本字符串随每个公开徽章一起发布，以便科学复现成为可能。
+
+**状态（v1 上线）：** 修订日志界面尚未上线——请参阅 [`/corrections`](/zh/corrections) 了解计划的形状与当前状态。写入条目的分类器在上线后发布。今天，审计路径是每个 RPC 响应中嵌入的证据包 + 本页的方法论。
+
+## 新鲜度 SLA
+
+- 管道登记表字段（几何信息、运营商、容量）：35 天
+- 管道公开徽章（派生状态）：24 小时；在 48 小时自动衰减为 `stale`，并在 7 天后从"活跃中断"计数中排除
+
+## 已知限制
+
+- 几何信息已简化（非工程级路由）。请勿用于现场作业。
+- 流向已标示但并不总是与计量现实校准；相对状态（流动 / 减少 / 离线）比绝对百万桶/日更可靠。
+- 制裁引用是证据，而非法律解释。每个 `sanctionRefs` 条目都引用了机构；对制裁是否"阻断"流的解释在证据包中明确，绝不在徽章标签中隐含。
+
+## 来源溯源
+
+管道登记表数据来源于 [Global Energy Monitor](https://globalenergymonitor.org)（CC-BY 4.0），并在新闻报道的合理使用下纳入了额外的运营商和监管机构材料。
+
+人工策展的子集（运营商/监管机构/制裁相关行且分类器置信度 ≥ 0.7）随完整证据包发布：运营商声明、制裁引用、最后证据更新时间戳和具名来源机构。从 GEM 导入的子集（长尾覆盖行）以最低限度的证据发布——`physicalStateSource: gem`、`classifierConfidence ≤ 0.5`、无运营商声明、无制裁引用。两个子集都通过相同的登记表验证器，并馈入相同的公开徽章派生。
+
+## 运营商运行手册 — GEM 导入刷新
+
+### 节奏
+
+**每季度刷新**（或当 GEM 发布新版本时——检查下方的 GGIT/GOIT 落地页）。刷新由运营商中介而非 cron 驱动，因为：
+
+- GEM 下载需通过按请求表单获取；生成的 URL 是特定于版本的，每季度轮换，因此硬编码的 URL 会静默地获取与我们归属版本不同的版本。
+- 每个版本偶尔会调整列名；`scripts/import-gem-pipelines.mjs` 中的模式漂移哨兵会大声捕捉到这一点，但它需要在提交前由人工审阅差异。
+
+如果一个季度过去未刷新，请设置日历提醒。建议节奏：每 90 天审阅；每当同行参考站点（例如 global-energy-flow.com）宣传比我们更新的版本时就刷新。
+
+### 源数据集
+
+我们使用的两个文件是 GEM 的仅管道追踪器（**不是**合并的"Oil & Gas Extraction Tracker"——那是上游井/油田，模式不同）：
+
+| 追踪器 | 缩写 | 内容 | 落地页 |
+|---|---|---|---|
+| Global Gas Infrastructure Tracker | **GGIT** | 天然气管道 + LNG 接收站 | [globalenergymonitor.org/projects/global-gas-infrastructure-tracker](https://globalenergymonitor.org/projects/global-gas-infrastructure-tracker/) |
+| Global Oil Infrastructure Tracker | **GOIT** | 石油 + NGL 管道 | [globalenergymonitor.org/projects/global-oil-infrastructure-tracker](https://globalenergymonitor.org/projects/global-oil-infrastructure-tracker/) |
+
+**GIS .zip 下载**（包含 GeoJSON、GeoPackage 和 shapefile）是我们想要的——**不是** .xlsx。XLSX 有属性但没有经纬度列；只有 GeoJSON 同时具有列属性和用于端点提取的 `LineString.coordinates`。
+
+#### 最近已知良好的 URL（按版本轮换）
+
+这些是我们用于 2026-04-25 导入的 URL。GEM 按版本轮换，因此在重新运行前，请始终通过上方的落地页为当前版本重新请求：
+
+```
+GGIT Gas (2025-11):  https://globalenergymonitor.org/wp-content/uploads/2025/11/GEM-GGIT-Gas-Pipelines-2025-11.zip
+GOIT Oil (2025-03):  https://globalenergymonitor.org/wp-content/uploads/2025/03/GEM-GOIT-Oil-NGL-Pipelines-2025-03.zip
+```
+
+URL 模式稳定：`globalenergymonitor.org/wp-content/uploads/YYYY/MM/GEM-{GGIT,GOIT}-{tracker-name}-YYYY-MM.zip`。如果落地页下载流程变化，此模式是根据 GEM 发布的版本日期推断新 URL 的回退方案。
+
+### 刷新步骤
+
+1. **请求数据**，通过上方的任一落地页。GEM 会通过电子邮件向您发送按版本的 URL（一个给 .xlsx，一个给 GIS .zip）。即使数据本身是 CC-BY 4.0，仍需注册。
+
+2. **下载两个 GIS .zip** 并解压：
+   ```bash
+   unzip -o ~/Downloads/GEM-GGIT-Gas-Pipelines-YYYY-MM.zip -d /tmp/gem-gis/gas/
+   unzip -o ~/Downloads/GEM-GOIT-Oil-NGL-Pipelines-YYYY-MM.zip -d /tmp/gem-gis/oil/
+   ```
+
+3. **通过仓库内转换器将 GeoJSON → 规范化 JSON**。它读取两个 GeoJSON 文件，应用脚本头中记录的过滤开关，通过 `pycountry` 将国家名称规范化为 ISO 3166-1 alpha-2，并输出运营商形状的信封：
+   ```bash
+   pip3 install pycountry  # one-time
+   GEM_GAS_GEOJSON=/tmp/gem-gis/gas/GEM-GGIT-Gas-Pipelines-YYYY-MM.geojson \
+   GEM_OIL_GEOJSON=/tmp/gem-gis/oil/GEM-GOIT-Oil-NGL-Pipelines-YYYY-MM.geojson \
+   GEM_DOWNLOADED_AT=YYYY-MM-DD \
+   GEM_SOURCE_VERSION="GEM-GGIT-YYYY-MM+GOIT-YYYY-MM" \
+   python3 scripts/_gem-geojson-to-canonical.py > /tmp/gem-pipelines.json 2> /tmp/gem-drops.log
+   cat /tmp/gem-drops.log  # inspect drop counts before merging
+   ```
+
+   过滤开关默认值（在 `scripts/_gem-geojson-to-canonical.py` 中）：
+   - `MIN_LENGTH_KM_GAS = 750`（仅干线级）
+   - `MIN_LENGTH_KM_OIL = 400`（仅干线级）
+   - `ACCEPTED_STATUS = {operating, construction}`
+   - 容量单位换算：原生 bcm/y；MMcf/d、MMSCMD、mtpa、m3/day、bpd、Mb/d、kbd → bcm/y（天然气）或 bbl/d（石油）
+
+   这些阈值是针对 2025-11/2025-03 版本经验调校的，以使每个登记表达到约 250-300 条。如果未来版本改变了体量分布，请相应调整。
+
+4. **试运行**以在触及登记表前检查候选计数：
+   ```bash
+   GEM_PIPELINES_FILE=/tmp/gem-pipelines.json node scripts/import-gem-pipelines.mjs --print-candidates \
+     | jq '{ gas: (.gas | length), oil: (.oil | length) }'
+   ```
+
+5. **合并**到 `scripts/data/pipelines-{gas,oil}.json`（原子化写入两者——在任一被触及磁盘前同时验证两者）：
+   ```bash
+   GEM_PIPELINES_FILE=/tmp/gem-pipelines.json node scripts/import-gem-pipelines.mjs --merge
+   ```
+   在提交前对差异中 5-10 个随机的 GEM 来源行进行抽查——已知的主要干线（Druzhba、Nord Stream、Keystone、TAPI、Centro Oeste）是良好的健全性检查锚点。
+
+6. **提交**数据 + 记录来源溯源。每个版本的 SHA256 放入提交信息中，以便未来审计可以验证可复现性：
+   ```bash
+   shasum -a 256 ~/Downloads/GEM-GGIT-Gas-Pipelines-YYYY-MM.xlsx \
+                  ~/Downloads/GEM-GOIT-Oil-NGL-Pipelines-YYYY-MM.xlsx
+   ```
+   如果行数跨越某个阈值，也请提升 `scripts/_pipeline-registry.mjs` 中的 `MIN_PIPELINES_PER_REGISTRY`，以便未来的部分重新导入会大声失败，而不是静默地减半登记表。
+
+7. **验证** `npm run test:data` 在推送前为绿色。
+
+### 故障模式与应对
+
+| 症状 | 原因 | 修复 |
+|---|---|---|
+| 转换器以 `GEM_GAS_GEOJSON env vars are required` 退出 | 未设置环境变量 | 同时设置 `GEM_GAS_GEOJSON` 和 `GEM_OIL_GEOJSON` 指向解压后的 `.geojson` 文件后重新运行 |
+| 大量行因 `country:Foo\|Bar` 被丢弃 | GEM 使用的新国家名称不在 `pycountry` 或别名表中 | 在 `scripts/_gem-geojson-to-canonical.py` 的 `COUNTRY_ALIASES` 中添加别名 |
+| 大量行因 `no_capacity` 被丢弃，单位是我们未见过 | GEM 新增了容量单位 | 在转换器的 `gas_capacity()` 或 `oil_capacity()` 中添加换算系数 |
+| 解析器抛出 `schema drift — pipelines[i] missing column "X"` | GEM 在版本间重命名了列 | 解析器会指出缺失的列；在转换器中将其映射回来并重新运行 |
+| `validateRegistry` 拒绝合并后的登记表 | 几乎总是：计数低于 `MIN_PIPELINES_PER_REGISTRY`，或证据来源不在白名单中 | 检查合并后的 JSON；如果行丢弃是真实的，降低下限；如果某行的证据格式错误，修复转换器 |
+| 版本间净增量急剧下降 | GEM 移除了某个追踪器子集，或去重过度匹配 | 运行 `--print-candidates` 并与上一季度的输出对比；如有需要，调整 `scripts/_pipeline-dedup.mjs` 中的 haversine/Jaccard 开关 |
+
+## 更正
+
+请参阅 [`/corrections`](/zh/corrections) 了解计划的修订日志格式
+和提交政策。发现错误状态？请在
+[公开仓库](https://github.com/koala73/worldmonitor/issues) 提交一个 GitHub issue。
+更正当前由人工处理，一旦分类器上线，
+将通过自动化的 `override` 触发路径流转。

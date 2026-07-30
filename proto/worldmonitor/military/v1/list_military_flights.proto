@@ -8,9 +8,12 @@ import "worldmonitor/military/v1/military_flight.proto";
 
 // ListMilitaryFlightsRequest specifies filters for retrieving military flight data.
 message ListMilitaryFlightsRequest {
-  // Maximum items per page (1-100).
+  // Maximum items per page (1-100). 0 or omitted uses the default of 100.
   int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
-  // Cursor for next page.
+  // Cursor for the next page. Treat it as opaque: echo the next-cursor value
+  // returned in the previous response's pagination metadata verbatim, and do
+  // not construct or parse it. Empty (or any unrecognized value) requests the
+  // first page.
   string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // North-east corner latitude of bounding box.
   double ne_lat = 3 [(sebuf.http.query) = { name: "ne_lat" }];
@@ -21,9 +24,11 @@ message ListMilitaryFlightsRequest {
   // South-west corner longitude of bounding box.
   double sw_lon = 6 [(sebuf.http.query) = { name: "sw_lon" }];
   // Optional operator filter.
-  MilitaryOperator operator = 7 [(sebuf.http.query) = { name: "operator" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  MilitaryOperator operator = 7 [(sebuf.http.query) = { name: "operator" }, (sebuf.http.unimplemented) = true];
   // Optional aircraft type filter.
-  MilitaryAircraftType aircraft_type = 8 [(sebuf.http.query) = { name: "aircraft_type" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  MilitaryAircraftType aircraft_type = 8 [(sebuf.http.query) = { name: "aircraft_type" }, (sebuf.http.unimplemented) = true];
 }
 
 // ListMilitaryFlightsResponse contains military flights and clusters.

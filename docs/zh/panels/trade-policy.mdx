@@ -1,0 +1,55 @@
+---
+title: "贸易政策"
+description: "六标签页贸易政策综合面板，涵盖出口限制措施、关税趋势、双边贸易流、非关税壁垒、美国海关收入以及双边 Comtrade 商品流数据，帮助分析师从多个维度追踪保护主义走向、评估全球供应链风险敞口，并为宏观经济情报、贸易战研判与关税敏感行业的投资与合规决策提供数据支撑。"
+---
+
+**Trade Policy** 面板（内部 id `trade-policy`）是仪表盘上获取实时贸易政策上下文的首选面 — 什么正在被限制、关税走向如何、流如何变化、存在哪些壁垒，以及美国海关收入如何作为关税传导的实时信号。
+
+## 面板显示内容
+
+一个数据密集型面板（`defaultRowSpan: 2`）的六个标签页：
+
+| 标签页 id | 显示内容 |
+|---|---|
+| `restrictions` | 活跃贸易限制 — 挂载时的默认标签页。 |
+| `tariffs` | 关税趋势（`TariffDataPoint[]`）和 `EffectiveTariffRate` 序列。 |
+| `flows` | 双边贸易流 — `GetTradeFlowsResponse`。 |
+| `barriers` | 非关税壁垒 — `GetTradeBarriersResponse`。 |
+| `revenue` | 美国财政部海关收入 — 月度数据，附 FYTD 同比比较和峰值高亮。 |
+| `comtrade` | 完整 Comtrade 双边流搜索 — `ListComtradeFlowsResponse`。 |
+
+`TabId` 是联合类型 `'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade'`（`src/components/TradePolicyPanel.ts:17`）。
+
+面板 id 为 `trade-policy`；规范组件为 `src/components/TradePolicyPanel.ts`。标题从 i18n 解析（`panels.tradePolicy`）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *trade*、*tariff* 或 *customs*。
+- **按变体的可用性**：在 **full/geopolitical**（`priority: 1`）、**finance**（`priority: 1`）和 **commodity**（`priority: 1`）变体中注册并默认启用。在 tech 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`、`FINANCE_PANELS`、`COMMODITY_PANELS` 的 `'trade-policy'` 条目。
+
+## 数据来源
+
+来自 `@/services/trade` 的六种响应形状，均由 `TradeService` 中生成的 sebuf REST RPC 支持。面板外壳免费；关税趋势与 Comtrade 调用使用 `premiumFetch`，因为这两条路径是付费传输路径，而限制、流、壁垒与海关收入使用公开客户端。海关收入还会在回退到 RPC 之前检查 bootstrap 缓存键 `customsRevenue`。
+
+| 标签页 | 方法 + 路由 | 支撑内容 |
+|---|---|---|
+| `restrictions` | `GET /api/trade/v1/get-trade-restrictions` | WTO 限制列表，含国家过滤器与上游不可用状态。 |
+| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | 申报国与伙伴国之间的付费关税率时间序列。 |
+| `flows` | `GET /api/trade/v1/get-trade-flows` | 双边商品贸易流行与同比上下文。 |
+| `barriers` | `GET /api/trade/v1/get-trade-barriers` | 按国家或措施类型筛选的 SPS/TBT 壁垒通报。 |
+| `revenue` | `GET /api/trade/v1/get-customs-revenue` | 美国财政部海关关税收入；bootstrap 优先，通过 `customsRevenue`。 |
+| `comtrade` | `GET /api/trade/v1/list-comtrade-flows` | 付费 UN Comtrade 战略商品流搜索，含异常标志。 |
+
+`revenue` 标签页的美国财政部数据源特别敏感 — 请参见更新日志中 "US Treasury customs revenue in Trade Policy panel" 条目（`#1663`）。
+
+## 刷新频率
+
+挂载和标签页切换时按标签页获取；无轮询。上游种子器按各数据集的不同频率运行（关税每日，Comtrade 每月）。
+
+## 层级与门控
+
+**面板外壳免费。** 变体注册中无 `premium` 标志。生成的 REST 服务是混合的：限制、流、壁垒与海关收入为公开；`get-tariff-trends` 与 `list-comtrade-flows` 为付费 RPC 路径，在无授权会话或 API 密钥时降级为空数据。
+
+## API 参考
+
+- [Trade service](/api/TradeService.openapi.yaml) — 六个标签页支持 RPC 的完整 schema 与查询参数。

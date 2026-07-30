@@ -52,7 +52,11 @@ export const DiscoverySeedSchema = z.object({
 export const SearchConfigSchema = z.object({
   numResults: z.number().default(3),
   queryTemplate: z.string().optional(),
-  urlPathContains: z.string().optional(),
+  // Substring(s) that must appear in the URL path. Pass an array to accept
+  // multiple URL patterns (e.g. Carrefour BR uses both legacy `/produto/<slug>`
+  // and VTEX `<slug>/p` for product pages). A URL passes if it contains ANY
+  // of the listed substrings.
+  urlPathContains: z.union([z.string(), z.array(z.string()).min(1)]).optional(),
   inStockFromPrice: z.boolean().default(false),
 });
 
@@ -100,6 +104,11 @@ export const BasketItemSchema = z.object({
   substitutionGroup: z.string().optional(),
   minBaseQty: z.number().optional(),
   maxBaseQty: z.number().optional(),
+  // Lowercase tokens that, if present in an extracted productName, mark the hit
+  // as a class mismatch (e.g. "canned" for fresh tomatoes). Intended for obvious
+  // class errors; product-taxonomy distinctions like plain vs greek yogurt
+  // belong in separate substitutionGroup values, not here.
+  negativeTokens: z.array(z.string()).optional(),
   qualificationRules: z.record(z.string(), z.unknown()).optional(),
 });
 

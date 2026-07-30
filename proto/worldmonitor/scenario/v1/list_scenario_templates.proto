@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.scenario.v1;
+
+// ScenarioTemplate mirrors the catalog shape served by
+// GET /api/scenario/v1/list-scenario-templates. The authoritative template
+// registry lives in server/worldmonitor/supply-chain/v1/scenario-templates.ts.
+message ScenarioTemplate {
+  string id = 1;
+  string name = 2;
+  // Chokepoint ids this scenario disrupts. Empty for tariff-shock scenarios
+  // that have no physical chokepoint closure.
+  repeated string affected_chokepoint_ids = 3;
+  // 0-100 percent of chokepoint capacity blocked.
+  int32 disruption_pct = 4;
+  // Estimated duration of disruption in days.
+  int32 duration_days = 5;
+  // HS2 chapter codes affected. Empty means ALL sectors are affected.
+  repeated string affected_hs2 = 6;
+  // Freight cost multiplier applied on top of bypass corridor costs.
+  double cost_shock_multiplier = 7;
+}
+
+message ListScenarioTemplatesRequest {}
+
+message ListScenarioTemplatesResponse {
+  repeated ScenarioTemplate templates = 1;
+}

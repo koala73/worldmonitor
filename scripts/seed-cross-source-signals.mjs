@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -30,7 +31,7 @@ const SOURCE_KEYS = [
   'gdelt:intel:tone:nuclear',
   'gdelt:intel:tone:maritime',
   'weather:alerts:v1',
-  'risk:scores:sebuf:stale:v1',
+  CII_RISK_SCORE_CACHE_KEYS.stale,
   'regulatory:actions:v1',
 ];
 
@@ -642,11 +643,21 @@ function extractWeatherExtreme(d) {
 
 const GDELT_TONE_TOPICS = ['military', 'nuclear', 'maritime'];
 
+// The per-topic tone keys survive up to TIMELINE_TTL (7d, #5478) so last-good
+// data stays SERVABLE through a GDELT brownout — but a days-old declining
+// trend must not keep minting deterioration signals stamped detectedAt=now.
+// 48h = two daily series points of slack; older (or undatable) payloads are
+// skipped and the bundled-canonical fallback below still provides a coarse
+// tone signal.
+const MAX_TONE_SIGNAL_AGE_MS = 48 * 3600 * 1000;
+
 function extractMediaToneDeterioration(d) {
   const signals = [];
   for (const topic of GDELT_TONE_TOPICS) {
     const tonePayload = d[`gdelt:intel:tone:${topic}`];
     if (!tonePayload) continue;
+    const fetchedMs = Date.parse(tonePayload.fetchedAt);
+    if (!Number.isFinite(fetchedMs) || Date.now() - fetchedMs > MAX_TONE_SIGNAL_AGE_MS) continue;
     const series = Array.isArray(tonePayload.data) ? tonePayload.data : [];
     if (series.length < 3) continue;
     const last3 = series.slice(-3);
@@ -694,7 +705,7 @@ function extractMediaToneDeterioration(d) {
 }
 
 function extractRiskScoreSpike(d) {
-  const payload = d['risk:scores:sebuf:stale:v1'];
+  const payload = d[CII_RISK_SCORE_CACHE_KEYS.stale];
   if (!payload) return [];
   const ciiScores = Array.isArray(payload.ciiScores) ? payload.ciiScores : [];
   const spiking = ciiScores.filter(s => safeNum(s.combinedScore) > 80 || s.trend === 'TREND_DIRECTION_RISING');
@@ -867,6 +878,10 @@ function validate(data) {
   return Array.isArray(data?.signals);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.signals) ? data.signals.length : 0;
+}
+
 runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSourceSignals, {
   ttlSeconds: CACHE_TTL,
   validateFn: validate,
@@ -883,4 +898,8 @@ runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSou
       signal: AbortSignal.timeout(5_000),
     }).catch(err => console.warn(`  seed-meta write failed: ${err.message}`));
   },
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 });

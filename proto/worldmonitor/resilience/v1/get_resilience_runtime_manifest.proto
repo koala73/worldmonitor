@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+message GetResilienceRuntimeManifestRequest {}
+
+message ResilienceRuntimeFlag {
+  string name = 1;
+  bool enabled = 2;
+}
+
+message ResilienceRuntimeCacheState {
+  string score_prefix = 1;
+  string ranking_key = 2;
+  string history_prefix = 3;
+  string interval_prefix = 4;
+  string interval_methodology = 5;
+}
+
+message ResilienceRankingCacheState {
+  string fetched_at = 1;
+  int32 count = 2;
+  int32 scored = 3;
+  int32 total = 4;
+}
+
+message ResilienceRuntimeConstructVersions {
+  // Safe derived energy construct version. Valid values: "legacy" or "v2".
+  string energy = 1;
+}
+
+message ResilienceRuntimeIntervalState {
+  // True only when the public sample interval can be read for the active formula.
+  bool available = 1;
+  // Public methodology tag used to audit scoreInterval/rankStable semantics.
+  string methodology = 2;
+  // ISO2 country used for the public availability probe.
+  string sample_country = 3;
+  // Latest safe observed timestamp from interval seed-meta or sample payload.
+  string last_observed_at = 4;
+}
+
+message GetResilienceRuntimeManifestResponse {
+  int32 manifest_version = 1;
+  string generated_at = 2;
+  string deployed_commit_sha = 3;
+  string vercel_env = 4;
+  string formula_tag = 5;
+  string data_version = 6;
+  repeated ResilienceRuntimeFlag flags = 7;
+  ResilienceRuntimeCacheState cache = 8;
+  ResilienceRankingCacheState ranking_cache = 9;
+  // Always populated by the runtime manifest handler; generated proto3 TypeScript
+  // types may still mark this message field optional.
+  ResilienceRuntimeConstructVersions construct_versions = 10;
+  // Always populated; exposes safe interval availability without raw cache keys.
+  ResilienceRuntimeIntervalState intervals = 11;
+}

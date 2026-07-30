@@ -2,6 +2,8 @@ import * as d3 from 'd3';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export interface TimelineEvent {
   timestamp: number;
@@ -86,6 +88,15 @@ export class CountryTimeline {
     const width = this.container.clientWidth;
     if (width <= 0) return;
 
+    // Clamp timestamps to the visible 7-day domain so dots align with the
+    // axis labels they describe (issue #2973 bug 3). Events with missing or
+    // future timestamps would otherwise plot off-axis.
+    const nowMs = Date.now();
+    const domainStart = nowMs - SEVEN_DAYS_MS;
+    const visibleEvents = events
+      .filter((e) => Number.isFinite(e.timestamp) && e.timestamp >= domainStart)
+      .map((e) => (e.timestamp > nowMs ? { ...e, timestamp: nowMs } : e));
+
     const innerW = width - MARGIN.left - MARGIN.right;
     const innerH = HEIGHT - MARGIN.top - MARGIN.bottom;
 
@@ -100,10 +111,10 @@ export class CountryTimeline {
       .append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
-    const now = Date.now();
+    const now = nowMs;
     const xScale = d3
       .scaleTime()
-      .domain([new Date(now - SEVEN_DAYS_MS), new Date(now)])
+      .domain([new Date(domainStart), new Date(now)])
       .range([0, innerW]);
 
     const yScale = d3
@@ -115,8 +126,8 @@ export class CountryTimeline {
     this.drawGrid(g, xScale, innerH);
     this.drawAxes(g, xScale, yScale, innerH);
     this.drawNowMarker(g, xScale, new Date(now), innerH);
-    this.drawEmptyLaneLabels(g, events, yScale, innerW);
-    this.drawEvents(g, events, xScale, yScale);
+    this.drawEmptyLaneLabels(g, visibleEvents, yScale, innerW);
+    this.drawEvents(g, visibleEvents, xScale, yScale);
   }
 
   private drawGrid(
@@ -248,7 +259,7 @@ export class CountryTimeline {
       .on('mouseenter', function (event: MouseEvent, d: TimelineEvent) {
         d3.select(this).attr('opacity', 1).attr('stroke', getCSSColor('--text')).attr('stroke-width', 1.5);
         const dateStr = fmt(new Date(d.timestamp));
-        tooltip.innerHTML = `<strong>${escapeHtml(d.label)}</strong><br/>${escapeHtml(dateStr)}`;
+        setTrustedHtml(tooltip, trustedHtml(`<strong>${escapeHtml(d.label)}</strong><br/>${escapeHtml(dateStr)}`, "legacy direct innerHTML migration"));
         tooltip.style.display = 'block';
         const rect = container.getBoundingClientRect();
         const x = event.clientX - rect.left + 12;

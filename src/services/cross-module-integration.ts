@@ -3,7 +3,8 @@ import type { CountryScore } from './country-instability';
 import { getLatestSanctionsPressure, type SanctionsPressureResult } from './sanctions-pressure';
 import { getLatestRadiationWatch, type RadiationObservation } from './radiation';
 import type { CascadeResult, CascadeImpactLevel } from '@/types';
-import { calculateCII, isInLearningMode } from './country-instability';
+import { isInLearningMode } from './country-instability';
+import { getCachedCountryScores, isElevatedCiiScore } from './cached-risk-scores';
 import { getCountryNameByCode } from './country-geometry';
 import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
@@ -94,13 +95,19 @@ export interface StrategicRiskOverview {
   topRisks: string[];
   topConvergenceZones: { cellId: string; lat: number; lon: number; score: number }[];
   unstableCountries: CountryScore[];
-  timestamp: Date;
+  timestamp: Date | null;
+  degraded: boolean;
+  stale: boolean;
 }
 
 const alerts: UnifiedAlert[] = [];
 const previousCIIScores = new Map<string, number>();
 const ALERT_MERGE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const ALERT_MERGE_DISTANCE_KM = 200;
+
+function getAuthoritativeCIIScores(): CountryScore[] {
+  return getCachedCountryScores();
+}
 
 let alertIdCounter = 0;
 function generateAlertId(): string {
@@ -560,7 +567,7 @@ function getCountriesNearLocation(lat: number, lon: number): string[] {
 
 export function checkCIIChanges(): UnifiedAlert[] {
   const newAlerts: UnifiedAlert[] = [];
-  const scores = calculateCII();
+  const scores = getAuthoritativeCIIScores();
 
   // Skip alerting during learning mode - data not yet reliable
   const inLearning = isInLearningMode();
@@ -590,8 +597,9 @@ export function checkCIIChanges(): UnifiedAlert[] {
 }
 
 function getHighestComponent(score: CountryScore): string {
-  const { unrest, security, information } = score.components;
-  if (unrest >= security && unrest >= information) return 'Civil Unrest';
+  const { unrest, conflict, security, information } = score.components;
+  if (unrest >= conflict && unrest >= security && unrest >= information) return 'Civil Unrest';
+  if (conflict >= security && conflict >= information) return 'Conflict Activity';
   if (security >= information) return 'Security Activity';
   return 'Information Velocity';
 }
@@ -627,7 +635,7 @@ export function calculateStrategicRiskOverview(
   breakingAlertScore?: number,
   theaterStaleFactor?: number
 ): StrategicRiskOverview {
-  const ciiScores = calculateCII();
+  const ciiScores = getAuthoritativeCIIScores();
 
   // Update the alerts array with current data
   updateAlerts(convergenceAlerts);
@@ -706,8 +714,10 @@ export function calculateStrategicRiskOverview(
     topConvergenceZones: convergenceAlerts
       .slice(0, 3)
       .map(a => ({ cellId: a.cellId, lat: a.lat, lon: a.lon, score: a.score })),
-    unstableCountries: ciiScores.filter(s => s.score >= 50).slice(0, 5),
+    unstableCountries: ciiScores.filter(s => isElevatedCiiScore(s.score)).slice(0, 5),
     timestamp: new Date(),
+    degraded: false,
+    stale: false,
   };
 }
 
@@ -732,8 +742,8 @@ function calculateCIIRiskScore(scores: CountryScore[]): number {
     }
   }
 
-  // Count of elevated countries (score >= 50) adds bonus
-  const elevatedCount = scores.filter(s => s.score >= 50).length;
+  // Count of countries in the formal elevated-or-higher CII bands adds bonus.
+  const elevatedCount = scores.filter(s => isElevatedCiiScore(s.score)).length;
   const elevatedBonus = Math.min(20, elevatedCount * 5);
 
   return Math.min(100, weightedScore + elevatedBonus);
@@ -809,6 +819,7 @@ export function getRecentAlerts(hours: number = 24): UnifiedAlert[] {
 
 export function clearAlerts(): void {
   alerts.length = 0;
+  previousCIIScores.clear();
 }
 
 export function getAlertCount(): { critical: number; high: number; medium: number; low: number } {

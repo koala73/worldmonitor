@@ -1,0 +1,75 @@
+---
+title: "供应链"
+description: "供应链面板是 WorldMonitor 仪表盘的供应链指挥中心，整合航运压力综合指标、主要承运人与航运 ETF 追踪、锂钴稀土等关键矿物价格走势、全球咽喉要道通行卡片以及 Scenario Engine 情景触发面，为分析师提供一站式的物流风险、原材料波动与地缘中断预警工作区。"
+---
+
+**Supply Chain** 面板（内部 id `supply-chain`）是一切供应链相关内容的主要入口：综合航运压力分数、带价格变动的承运人和 ETF 行、矿物集中度视图，以及最重要的是 **[Scenario Engine](/zh/scenario-engine)** 触发按钮，允许 PRO 用户在地图和面板状态上激活预构建的中断场景。
+
+## 面板显示内容
+
+综合指标区域：
+
+- **航运压力标题** — 一个综合压力分数（0-100），带着色仪表，按级别分桶（`critical` / `elevated` / `moderate` / `normal`）。
+- **承运人/ETF/指数行** — 每代码价格、百分比变化（`▲`/`▼` 箭头，带看涨/看跌色调）、紧凑迷你图和类型徽章（`ETF` / `IDX` / `CARR`）。
+- **关键矿物行** — 每矿物前 3 生产国集中度、HHI 和风险评级（`critical` / `high` / `moderate` / `low`）。
+- **Scenario Engine 触发卡片** — 每场景触发按钮（`sc-scenario-trigger` / `sc-scenario-btn`），将模板 id 分派到场景 worker。免费用户看到按钮但在激活时遇到 PRO 门控。全范围场景运行使用 v1 已种子化的报告国集合（`US`、`CN`、`RU`、`IR`、`IN`、`TW`）。请参见 [Scenario Engine](/zh/scenario-engine) 了解完整工作流。
+- **活动场景横幅**（当场景运行时）— 图标、场景名称、可选参数标签（持续时间 + 成本增加）、受影响最大的国家、关闭 ×。当模板参数被填充时，渲染额外的 "Simulating …" 标语。横幅构建位于 `src/components/SupplyChainPanel.ts` 的 `renderScenarioBanner()` 中。
+
+面板 id 为 `supply-chain`；规范组件为 `src/components/SupplyChainPanel.ts`。按变体的标题："Supply Chain"（full/finance）或 "Supply Chain & Logistics"（commodity）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *supply chain*、*shipping* 或 *logistics*。
+- **按变体的可用性**：在 **full/geopolitical**（priority 1）、**finance**（priority 1）和 **commodity**（priority 1）变体中注册并默认启用。在 tech 或 happy 变体中不存在。来源：`FULL_PANELS`、`FINANCE_PANELS`、`COMMODITY_PANELS` 中的 `'supply-chain'` 条目。桌面端 full 变体注册额外叠加 `premium: 'enhanced'`（`src/config/panels.ts` 中的 `_desktop &&` 子句）。
+
+## 数据来源
+
+本面板及相邻的供应链工作流混合了生成的 sebuf REST RPC、bootstrap/共享存储首绘和特殊平台路由。主 Supply Chain 面板在可用时读取缓存的 bootstrap 负载以获取综合压力、咽喉要道、航运费率和矿物，随后通过生成的 `SupplyChainService` RPC 刷新。
+
+| 面 | 方法 + 路由 | 数据源 |
+|---|---|---|
+| 航运压力标题和承运人行 | `GET /api/supply-chain/v1/get-shipping-stress` | 综合压力分数加上承运人/ETF/指数行；通过 `shippingStress` bootstrap 优先。 |
+| 航运费率 | `GET /api/supply-chain/v1/get-shipping-rates` | FRED 货运指数和尖峰检测；通过 `shippingRates` bootstrap 优先。 |
+| 咽喉要道卡片和条带 | `GET /api/supply-chain/v1/get-chokepoint-status` | 当前咽喉要道状态、警告、AIS 中断计数和紧凑过境摘要；通过 `chokepoints` bootstrap 优先。 |
+| 展开的咽喉要道卡片 | `GET /api/supply-chain/v1/get-chokepoint-history` | 单个咽喉要道的懒加载过境计数历史。 |
+| 关键矿物行 | `GET /api/supply-chain/v1/get-critical-minerals` | 矿物集中度、HHI、顶级生产者和风险评级；通过 `minerals` bootstrap 优先。 |
+| 国家暴露 | `GET /api/supply-chain/v1/get-country-chokepoint-index` | 国家简报和航线风险面使用的 PRO 国家 + HS2 暴露分数。 |
+| 绕行走廊 | `GET /api/supply-chain/v1/get-bypass-options` | 针对咽喉要道/货物类型的 PRO 排名海运和陆运绕行选项。 |
+| 国家成本冲击 | `GET /api/supply-chain/v1/get-country-cost-shock` | 针对国家 + 咽喉要道 + HS2 切片的 PRO 成本冲击和战争风险估算。 |
+| 国家进口篮 | `GET /api/supply-chain/v1/get-country-products` | 用于国家下钻的 PRO 已种子化双边 HS4 进口篮。 |
+| 多部门冲击 | `GET /api/supply-chain/v1/get-multi-sector-cost-shock` | 封闭窗口上的 PRO 部门级成本冲击估算。 |
+| 部门依赖 | `GET /api/supply-chain/v1/get-sector-dependency` | PRO 依赖标志、主要出口商份额和主要咽喉要道暴露。 |
+| Route Explorer 航线 | `GET /api/supply-chain/v1/get-route-explorer-lane` | PRO 主航线几何、咽喉要道暴露、绕行几何、战争风险层级和中断分数。 |
+| Route Explorer 影响 | `GET /api/supply-chain/v1/get-route-impact` | 针对所选航线 + HS2 大宗商品的 PRO 国家影响指标。 |
+| 管道注册表 | `GET /api/supply-chain/v1/list-pipelines` | Pipeline Status 面板和 Energy Atlas PathLayer；bootstrap/共享存储优先，渲染后 RPC 刷新。 |
+| 管道抽屉 | `GET /api/supply-chain/v1/get-pipeline-detail` | 单个管道的懒加载证据包和修订日志。 |
+| 存储设施注册表 | `GET /api/supply-chain/v1/list-storage-facilities` | Strategic Storage Atlas 和 Energy Atlas ScatterplotLayer；bootstrap/共享存储优先，渲染后 RPC 刷新。 |
+| 存储设施抽屉 | `GET /api/supply-chain/v1/get-storage-facility-detail` | 单个存储设施的懒加载证据包和修订日志。 |
+| 燃料短缺注册表 | `GET /api/supply-chain/v1/list-fuel-shortages` | 燃料短缺告警面板和能源情报摘要。 |
+| 燃料短缺抽屉 | `GET /api/supply-chain/v1/get-fuel-shortage-detail` | 单个短缺的懒加载引文时间线和证据包。 |
+| 能源中断 | `GET /api/supply-chain/v1/list-energy-disruptions` | Energy Disruptions 面板、管道/存储抽屉时间线和 Global Energy Risk Overview 中的活跃中断计数。 |
+
+从此面使用的特殊平台路由：
+
+| 面 | 方法 + 路由 | 数据源 |
+|---|---|---|
+| 场景激活 | `POST /api/scenario/v1/run-scenario` | PRO Scenario Engine 触发按钮分派模板 id 和参数。 |
+| 场景状态 | `GET /api/scenario/v1/get-scenario-status` | Scenario Engine 轮询在 worker 完成后绘制活动场景横幅。 |
+
+请参见 [Scenarios API](/zh/api-scenarios) 了解完整异步作业合约。
+
+## 刷新频率
+
+面板在挂载和用户触发刷新时读取。Scenario Engine 作业是异步的；面板轮询作业状态端点，在 worker 写入 `status: "done"` 后绘制横幅。
+
+## 层级与门控
+
+Supply Chain 面板本身在 Web 端**免费**（full / finance / commodity 变体）。桌面端 full 变体注册叠加 `premium: 'enhanced'`。**Scenario Engine 激活是 PRO**，无论 Web 还是桌面 — 免费用户看到触发按钮但在激活时遇到 `scenario-engine` 门控。
+
+## 相关
+
+- [Scenario Engine](/zh/scenario-engine) — 激活工作流 + 模板目录。
+- [Route Explorer](/zh/route-explorer) — 按航线的咽喉要道 + 绕行分析。
+- [Supply Chain service](/api/SupplyChainService.openapi.yaml) — 后端 RPC 族。
+- [Scenarios API](/zh/api-scenarios) — 场景运行的异步作业合约。
+- [霍尔木兹贸易追踪器](/zh/panels/hormuz-tracker) — 咽喉要道专用深度分析。

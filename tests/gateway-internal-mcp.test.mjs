@@ -1,0 +1,1177 @@
+/**
+ * Tests for U8 — Gateway internal-MCP HMAC verify + sanitised-Request
+ * propagation + `isCallerPremium` extension.
+ *
+ * Surface under test:
+ *   - server/gateway.ts            HMAC pre-check + strip-then-construct
+ *   - server/_shared/mcp-internal-hmac.ts::verifyInternalMcpRequest
+ *   - server/_shared/premium-check.ts::isCallerPremium
+ *
+ * The HMAC sign helper from U7 is the SAME module — sign side and verify
+ * side share canonicalisation primitives, so any drift between the two
+ * surfaces immediately as a 401 here.
+ *
+ * Convex `getEntitlements` and the internal-MCP replay cache are stubbed by
+ * intercepting globalThis.fetch. The replay cache stub implements Redis
+ * `SET ... EX ... NX` semantics so same-nonce replays exercise the production
+ * gateway decision point.
+ */
+
+import { strict as assert } from 'node:assert';
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import { readFile } from 'node:fs/promises';
+
+import { createDomainGateway } from '../server/gateway.ts';
+import {
+  signInternalMcpRequest,
+  getInternalMcpVerifiedNonce,
+  INTERNAL_MCP_SIG_HEADER,
+  INTERNAL_MCP_USER_ID_HEADER,
+  INTERNAL_MCP_NONCE_HEADER,
+  INTERNAL_MCP_VERIFIED_HEADER,
+  TRUSTED_USER_ID_HEADER,
+  INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS,
+  INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS,
+} from '../server/_shared/mcp-internal-hmac.ts';
+import { isCallerPremium } from '../server/_shared/premium-check.ts';
+
+const VERIFIED_NONCE = getInternalMcpVerifiedNonce();
+
+const HMAC_SECRET = 'test-internal-hmac-secret-32bytes-padding-xxxxxxxxxxxxxxxxxxxxx';
+const PRO_USER_ID = 'user_pro_abc';
+const FREE_USER_ID = 'user_free_xyz';
+const TIER1_NO_MCP_USER_ID = 'user_pro_legacy';
+
+const CONVEX_SITE = 'https://fake.convex.site';
+const CONVEX_SECRET = 'fake-convex-shared-secret';
+
+const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_ENV = { ...process.env };
+
+// ---------------------------------------------------------------------------
+// Test fixture: gateway with two routes, one capturing the request handed
+// to the handler so tests can assert what propagated through.
+// ---------------------------------------------------------------------------
+let lastHandlerRequest = null;
+// Map<key, expiryMs> — models Redis EX-based expiry so tests can exercise
+// TTL-vs-acceptance-window interactions, not just presence/absence.
+let replayCacheKeys = new Map();
+
+function makeGateway() {
+  return createDomainGateway([
+    {
+      method: 'POST',
+      path: '/api/news/v1/summarize-article',
+      handler: async (req) => {
+        lastHandlerRequest = req;
+        return new Response(JSON.stringify({ ok: true, route: 'summarize-article' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/intelligence/v1/deduct-situation',
+      handler: async (req) => {
+        lastHandlerRequest = req;
+        return new Response(JSON.stringify({ ok: true, route: 'deduct-situation' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/news/v1/list-feed-digest',
+      handler: async (req) => {
+        lastHandlerRequest = req;
+        return new Response(JSON.stringify({ ok: true, route: 'list-feed-digest' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+    },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Convex `/api/internal-entitlements` stub — answers based on userId.
+// ---------------------------------------------------------------------------
+function entitlementForUser(userId) {
+  if (userId === PRO_USER_ID) {
+    return {
+      planKey: 'pro',
+      features: { tier: 1, apiAccess: false, apiRateLimit: 60, maxDashboards: 10, prioritySupport: false, exportFormats: [], mcpAccess: true },
+      validUntil: Date.now() + 86_400_000,
+    };
+  }
+  if (userId === TIER1_NO_MCP_USER_ID) {
+    return {
+      planKey: 'pro',
+      features: { tier: 1, apiAccess: false, apiRateLimit: 60, maxDashboards: 10, prioritySupport: false, exportFormats: [], mcpAccess: false },
+      validUntil: Date.now() + 86_400_000,
+    };
+  }
+  if (userId === FREE_USER_ID) {
+    return {
+      planKey: 'free',
+      features: { tier: 0, apiAccess: false, apiRateLimit: 60, maxDashboards: 1, prioritySupport: false, exportFormats: [], mcpAccess: false },
+      validUntil: Date.now() + 86_400_000,
+    };
+  }
+  return null;
+}
+
+function installFetchStub(opts = {}) {
+  const overrideEntitlement = opts.entitlement;
+  const replayCacheUnavailable = opts.replayCacheUnavailable === true;
+  const replayCacheCommandError = opts.replayCacheCommandError === true;
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input?.url;
+    if (typeof url === 'string' && url.includes('redis.test/get/')) {
+      return new Response(JSON.stringify({ result: undefined }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (typeof url === 'string' && url.includes('redis.test/pipeline')) {
+      if (replayCacheUnavailable) {
+        return new Response(JSON.stringify([{ error: 'redis unavailable' }]), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const commands = JSON.parse(String(init?.body ?? '[]'));
+      const results = commands.map((cmd) => {
+        if (cmd?.[0] === 'SET' && cmd?.[3] === 'EX' && cmd?.[5] === 'NX') {
+          if (replayCacheCommandError) return { error: 'WRONGTYPE Operation against a key holding the wrong kind of value' };
+          const key = String(cmd[1]);
+          const ttlSeconds = Number(cmd[4]);
+          const nowMs = Date.now();
+          const existingExpiry = replayCacheKeys.get(key);
+          // Honor Redis EX expiry: a key past its TTL is treated as absent, so
+          // a claim after expiry succeeds exactly as production Redis would.
+          if (existingExpiry !== undefined && existingExpiry > nowMs) return { result: null };
+          replayCacheKeys.set(key, nowMs + ttlSeconds * 1000);
+          return { result: 'OK' };
+        }
+        return { result: 0 };
+      });
+      return new Response(JSON.stringify(results), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (typeof url === 'string' && url === 'https://redis.test/') {
+      return new Response(JSON.stringify({ result: 'OK' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (typeof url === 'string' && url.includes('/api/internal-entitlements')) {
+      const body = JSON.parse(init?.body ?? '{}');
+      const ent = overrideEntitlement ? overrideEntitlement(body.userId) : entitlementForUser(body.userId);
+      return new Response(JSON.stringify(ent), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    // Anything else — fail loudly so tests can't silently depend on the network.
+    throw new Error(`unexpected fetch in test: ${url}`);
+  };
+}
+
+function resetEnv() {
+  for (const k of Object.keys(process.env)) {
+    if (!(k in ORIGINAL_ENV)) delete process.env[k];
+  }
+  Object.assign(process.env, ORIGINAL_ENV);
+}
+
+function disableRedisForLegacyGatewayCheck() {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+}
+
+beforeEach(() => {
+  lastHandlerRequest = null;
+  replayCacheKeys = new Map();
+  process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+  process.env.CONVEX_SITE_URL = CONVEX_SITE;
+  process.env.CONVEX_SERVER_SHARED_SECRET = CONVEX_SECRET;
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-test-token';
+  // The gateway's envelope expects WORLDMONITOR_VALID_KEYS to exist for the
+  // legacy wm_ key path tests.
+  process.env.WORLDMONITOR_VALID_KEYS = 'wm_test_key_123';
+  installFetchStub();
+});
+
+afterEach(() => {
+  globalThis.fetch = ORIGINAL_FETCH;
+  resetEnv();
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+async function buildSignedRequest({
+  method = 'POST',
+  url = 'https://api.worldmonitor.app/api/news/v1/summarize-article',
+  body = JSON.stringify({ provider: 'auto', mode: 'brief' }),
+  userId = PRO_USER_ID,
+  secret = HMAC_SECRET,
+  now,
+  extraHeaders = {},
+} = {}) {
+  const signed = await signInternalMcpRequest({ method, url, body, userId, secret, now });
+  return new Request(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+      [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      ...extraHeaders,
+    },
+    body: method === 'GET' ? undefined : body,
+  });
+}
+
+// ===========================================================================
+// COLD-START CONFIG ASSERTIONS
+// ===========================================================================
+describe('gateway internal-MCP HMAC config — cold start', () => {
+  it('throws during gateway construction when Pro grant signing is configured without MCP_INTERNAL_HMAC_SECRET', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('treats an empty MCP_INTERNAL_HMAC_SECRET as missing when Pro grant signing is configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = '';
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('treats a whitespace-only MCP_INTERNAL_HMAC_SECRET as missing when Pro grant signing is configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = '   ';
+
+    assert.throws(
+      () => makeGateway(),
+      /MCP_INTERNAL_HMAC_SECRET must be configured when MCP_PRO_GRANT_HMAC_SECRET is set/,
+    );
+  });
+
+  it('does not require either HMAC secret when Pro grant signing is not configured', () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '';
+    assert.doesNotThrow(() => makeGateway());
+
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = '   ';
+    assert.doesNotThrow(() => makeGateway());
+  });
+
+  it('allows gateway construction when both Pro grant signing and internal HMAC are configured', () => {
+    process.env.MCP_PRO_GRANT_HMAC_SECRET = 'test-pro-grant-secret-32bytes-padding';
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+
+    assert.doesNotThrow(() => makeGateway());
+  });
+});
+
+// ===========================================================================
+// HAPPY PATHS
+// ===========================================================================
+describe('gateway internal-MCP HMAC verify — happy paths', () => {
+  it('valid signature from tier-1 mcpAccess user → 200; downstream sees trusted markers', async () => {
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 200, `expected 200, got ${res.status} body=${await res.clone().text()}`);
+    const j = await res.json();
+    assert.equal(j.ok, true);
+    assert.equal(j.route, 'summarize-article');
+
+    assert.ok(lastHandlerRequest, 'handler was invoked');
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_VERIFIED_HEADER),
+      VERIFIED_NONCE,
+      'trusted verified marker propagated as the per-process nonce',
+    );
+    assert.equal(
+      lastHandlerRequest.headers.get(TRUSTED_USER_ID_HEADER),
+      PRO_USER_ID,
+      'trusted user id propagated',
+    );
+  });
+
+  it('same signed internal-MCP request succeeds once, then replay is rejected before handler trust', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const body = JSON.stringify({ provider: 'auto', mode: 'brief' });
+    const signed = await signInternalMcpRequest({
+      method: 'POST',
+      url,
+      body,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+      nonce: 'replay_nonce_4681',
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+      [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+    };
+
+    const first = await handler(new Request(url, { method: 'POST', headers, body }));
+    assert.equal(first.status, 200, `first signed request should pass, body=${await first.clone().text()}`);
+
+    lastHandlerRequest = null;
+    const replay = await handler(new Request(url, { method: 'POST', headers, body }));
+    assert.equal(replay.status, 401, 'duplicate signed nonce must be rejected within the timestamp window');
+    assert.deepEqual(await replay.json(), { error: 'invalid_internal_mcp_signature' });
+    assert.equal(lastHandlerRequest, null, 'replay must not reach the handler or trusted-marker path');
+  });
+
+  it('replay inside the symmetric acceptance span but past the old short TTL is still rejected', async () => {
+    // Regression for the P2 finding. The verify timestamp check is SYMMETRIC
+    // (|nowSec - ts| <= WINDOW), so a signature stays acceptable across a full
+    // 2*WINDOW span. The old TTL (WINDOW + 5 = 35s) could expire the nonce
+    // while the signature was still fresh when the signer's clock LEADS the
+    // gateway's, reopening the replay. The TTL must cover the whole 2*WINDOW
+    // acceptance span (now 2*WINDOW + 5 = 65s).
+    assert.ok(
+      INTERNAL_MCP_REPLAY_CACHE_TTL_SECONDS >= 2 * INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS,
+      'replay-cache TTL must cover the full 2*WINDOW symmetric acceptance span',
+    );
+
+    const WINDOW = INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS;
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const body = JSON.stringify({ provider: 'auto', mode: 'brief' });
+    const tsSec = 1_800_000_000; // fixed signer timestamp (unix seconds)
+    const signed = await signInternalMcpRequest({
+      method: 'POST',
+      url,
+      body,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+      now: tsSec,
+      nonce: 'replay_nonce_skew_4681',
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+      [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+    };
+
+    const realDateNow = Date.now;
+    try {
+      // Signer clock leads the gateway by WINDOW seconds: first sighting sits
+      // at the earliest edge of the acceptance window; the nonce is cached here.
+      Date.now = () => (tsSec - WINDOW) * 1000;
+      const first = await handler(new Request(url, { method: 'POST', headers, body }));
+      assert.equal(first.status, 200, `first request at acceptance-window start should pass, body=${await first.clone().text()}`);
+
+      // Replay arrives 2*WINDOW seconds later — the latest edge of the SAME
+      // acceptance window. That is past the old (WINDOW + 5) TTL, but the
+      // signature is still fresh, so the nonce MUST still be cached → 401.
+      lastHandlerRequest = null;
+      Date.now = () => (tsSec + WINDOW) * 1000;
+      const replay = await handler(new Request(url, { method: 'POST', headers, body }));
+      assert.equal(replay.status, 401, 'replay inside the acceptance span but past the old short TTL must still be rejected');
+      assert.deepEqual(await replay.json(), { error: 'invalid_internal_mcp_signature' });
+      assert.equal(lastHandlerRequest, null, 'replay must not reach the handler');
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('same request shape with unique signed nonces continues to succeed', async () => {
+    const handler = makeGateway();
+    const first = await buildSignedRequest();
+    const firstRes = await handler(first);
+    assert.equal(firstRes.status, 200, `first unique nonce should pass, body=${await firstRes.clone().text()}`);
+
+    const second = await buildSignedRequest();
+    const secondRes = await handler(second);
+    assert.equal(secondRes.status, 200, `second unique nonce should pass, body=${await secondRes.clone().text()}`);
+  });
+
+  it('valid HMAC fails closed when the replay cache is unavailable', async () => {
+    installFetchStub({ replayCacheUnavailable: true });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 503, 'replay-cache outage must fail closed');
+    assert.deepEqual(await res.json(), { error: 'internal_mcp_replay_cache_unavailable' });
+    assert.equal(lastHandlerRequest, null, 'handler must not run when replay cache cannot claim the nonce');
+  });
+
+  it('valid HMAC fails closed when Redis returns a command-level replay-cache error', async () => {
+    installFetchStub({ replayCacheCommandError: true });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 503, 'Redis command-level errors must be cache-unavailable, not replay');
+    assert.deepEqual(await res.json(), { error: 'internal_mcp_replay_cache_unavailable' });
+    assert.equal(lastHandlerRequest, null, 'handler must not run when Redis cannot atomically claim the nonce');
+  });
+
+  it('isCallerPremium returns true for a verified-marker request from tier-1 mcpAccess user', async () => {
+    // Synthesize the post-gateway request shape: trusted markers set,
+    // no inbound HMAC headers (gateway already consumed them).
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        [INTERNAL_MCP_VERIFIED_HEADER]: VERIFIED_NONCE,
+        [TRUSTED_USER_ID_HEADER]: PRO_USER_ID,
+      },
+    });
+    const result = await isCallerPremium(req);
+    assert.equal(result, true);
+  });
+
+  it('isCallerPremium returns FALSE when a request claims to be verified but the userId is tier 0 (defensive re-fetch)', async () => {
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        [INTERNAL_MCP_VERIFIED_HEADER]: VERIFIED_NONCE,
+        [TRUSTED_USER_ID_HEADER]: FREE_USER_ID,
+      },
+    });
+    const result = await isCallerPremium(req);
+    assert.equal(result, false, 'defensive re-fetch caught tier-0 userId');
+  });
+
+  it('isCallerPremium returns FALSE when verified-marker carries tier-1 user without mcpAccess (defensive re-fetch)', async () => {
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        [INTERNAL_MCP_VERIFIED_HEADER]: VERIFIED_NONCE,
+        [TRUSTED_USER_ID_HEADER]: TIER1_NO_MCP_USER_ID,
+      },
+    });
+    const result = await isCallerPremium(req);
+    assert.equal(result, false, 'mcpAccess: false fails defensively');
+  });
+
+  it('reordered query params still verify (canonicalisation sorts keys)', async () => {
+    const handler = makeGateway();
+    // Sign a URL with `?a=1&b=2`, send with `?b=2&a=1`.
+    const url1 = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?a=1&b=2';
+    const url2 = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?b=2&a=1';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: url1, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url2, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'reordered query MUST verify after canonicalisation');
+  });
+
+  it('GET (no body) hashes empty string consistently between sign and verify', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'GET with empty body verified ok');
+  });
+
+  // -------------------------------------------------------------------------
+  // Vercel dynamic-route query injection (WORLDMONITOR-R1 / WORLDMONITOR-T8).
+  //
+  // In production every gateway domain is served by api/<domain>/v1/[rpc].ts;
+  // Vercel's filesystem router injects the matched segment into the function's
+  // request URL as ?rpc=<segment>. The signer never sees that param, so the
+  // verifier must strip the exact router echo before hashing — confirmed live:
+  // signing WITHOUT the param 401'd (invalid_internal_mcp_signature) while
+  // signing WITH it passed signature verify. These tests feed the verifier the
+  // REAL production request shape, which the original suite never did.
+  // -------------------------------------------------------------------------
+  it('Vercel-injected ?rpc=<last-segment> on the inbound URL still verifies (signer never saw it)', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?lang=en';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?lang=en&rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'router-injected rpc param MUST be stripped before hashing');
+  });
+
+  it('Vercel-injected ?rpc=<last-segment> with NO other query params still verifies', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'router-injected rpc as the only param MUST be stripped');
+  });
+
+  it('caller-appended ?rpc with a value ≠ last path segment still breaks the signature → 401', async () => {
+    const handler = makeGateway();
+    const signedUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const inboundUrl = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=evil-other-route';
+    const signed = await signInternalMcpRequest({ method: 'GET', url: signedUrl, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(inboundUrl, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'non-echo rpc values MUST stay in the hash');
+    assert.deepEqual(await res.json(), { error: 'invalid_internal_mcp_signature' });
+  });
+
+  it('rpc=<last-segment> in the SIGNED URL fails verification — rpc is a reserved routing param', async () => {
+    // Both sides carry the param: verifier strips it from the inbound hash,
+    // but the signer's canonical string included it, so the hashes diverge
+    // and verification MUST fail (401). This pins the contract that `rpc`
+    // is a RESERVED routing param outbound tool URLs must never use — if a
+    // future endpoint legitimately needs a query param named rpc, the
+    // signer and verifier have to agree on new handling first.
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?rpc=list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url, {
+      method: 'GET',
+      headers: {
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'rpc is reserved for the router; signer URLs must not carry it');
+  });
+});
+
+// ===========================================================================
+// ERROR PATHS — 401s
+// ===========================================================================
+describe('gateway internal-MCP HMAC verify — error paths', () => {
+  it('missing X-WM-MCP-User-Id but X-WM-MCP-Internal present → 401 invalid_internal_mcp_signature', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const body = JSON.stringify({ x: 1 });
+    const signed = await signInternalMcpRequest({ method: 'POST', url, body, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', [INTERNAL_MCP_SIG_HEADER]: signed.signature },
+      body,
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+    const j = await res.json();
+    assert.equal(j.error, 'invalid_internal_mcp_signature');
+  });
+
+  it('mutated signature → 401 (does NOT fall through to validateApiKey)', async () => {
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    // Flip a character in the sig portion.
+    const sig = req.headers.get(INTERNAL_MCP_SIG_HEADER);
+    const mutated = sig.slice(0, -1) + (sig.slice(-1) === 'A' ? 'B' : 'A');
+    const tampered = new Request(req.url, {
+      method: req.method,
+      headers: (() => {
+        const h = new Headers(req.headers);
+        h.set(INTERNAL_MCP_SIG_HEADER, mutated);
+        return h;
+      })(),
+      body: await req.clone().text(),
+    });
+    const res = await handler(tampered);
+    assert.equal(res.status, 401);
+    const j = await res.json();
+    assert.equal(j.error, 'invalid_internal_mcp_signature');
+    assert.equal(lastHandlerRequest, null, 'handler must not run on bad signature');
+  });
+
+  it('replay against a different path → 401 (path bound in payload)', async () => {
+    const handler = makeGateway();
+    const url1 = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const url2 = 'https://api.worldmonitor.app/api/intelligence/v1/deduct-situation';
+    const body = JSON.stringify({ x: 1 });
+    const signed = await signInternalMcpRequest({ method: 'POST', url: url1, body, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url2, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+      body,
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'replay across path must 401');
+  });
+
+  it('replay against a different method → 401', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    // Send as POST with body.
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'replay across method must 401');
+  });
+
+  it('replay with mutated body → 401', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const original = JSON.stringify({ country_code: 'US' });
+    const tampered = JSON.stringify({ country_code: 'RU' });
+    const signed = await signInternalMcpRequest({ method: 'POST', url, body: original, userId: PRO_USER_ID, secret: HMAC_SECRET });
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+      body: tampered,
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'mutated body must 401');
+  });
+
+  it('timestamp 60s in the past → 401', async () => {
+    const handler = makeGateway();
+    const past = Math.floor(Date.now() / 1000) - 60;
+    const req = await buildSignedRequest({ now: past });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+  });
+
+  it('timestamp 60s in the future → 401', async () => {
+    const handler = makeGateway();
+    const future = Math.floor(Date.now() / 1000) + 60;
+    const req = await buildSignedRequest({ now: future });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+  });
+
+  it('tier-0 userId in X-WM-MCP-User-Id → 401 insufficient_entitlement', async () => {
+    const handler = makeGateway();
+    const req = await buildSignedRequest({ userId: FREE_USER_ID });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+    const j = await res.json();
+    assert.equal(j.error, 'insufficient_entitlement');
+  });
+
+  it('tier-1 user with mcpAccess: false → 401 insufficient_entitlement', async () => {
+    const handler = makeGateway();
+    const req = await buildSignedRequest({ userId: TIER1_NO_MCP_USER_ID });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+    const j = await res.json();
+    assert.equal(j.error, 'insufficient_entitlement');
+  });
+
+  it('malformed signature header (no dot) → 401', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: 'no_dot_at_all_just_garbage',
+        [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+  });
+
+  it('malformed signature header (multiple dots) → 401', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: '1700000000.abc.def',
+        [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+  });
+
+  it('malformed signature header (non-numeric ts) → 401', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: 'notanumber.AAAA',
+        [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401);
+  });
+
+  it('MCP_INTERNAL_HMAC_SECRET unset → 500 CONFIGURATION on the HMAC-attempt path', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    const handler = makeGateway();
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: '1700000000.AAAA',
+        [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 500);
+    const j = await res.json();
+    assert.equal(j.error, 'CONFIGURATION');
+  });
+
+  it('legacy wm_ caller (no internal-MCP headers) → unaffected by missing MCP_INTERNAL_HMAC_SECRET', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    disableRedisForLegacyGatewayCheck();
+    const handler = makeGateway();
+    // wm_-key flow: send a valid WORLDMONITOR_VALID_KEYS key on a non-tier-gated route.
+    // Use list-feed-digest which is public-ish but in routes table.
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/list-feed-digest', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'wm_test_key_123' },
+    });
+    const res = await handler(req);
+    // Don't assert 200 (other gateway gates may apply); only assert it didn't 500 with CONFIGURATION.
+    assert.notEqual(res.status, 500, 'legacy path unaffected by missing MCP secret');
+    if (res.status >= 400) {
+      const j = await res.json().catch(() => ({}));
+      assert.notEqual(j.error, 'CONFIGURATION', 'no CONFIGURATION error on legacy path');
+    }
+  });
+});
+
+// ===========================================================================
+// HEADER INJECTION DEFENSE
+// ===========================================================================
+describe('gateway internal-MCP — header injection defense', () => {
+  it('client-injected x-wm-mcp-internal-verified is stripped before any logic', async () => {
+    disableRedisForLegacyGatewayCheck();
+    const handler = makeGateway();
+    // External attacker sends a guessed marker value (constant '1', the
+    // pre-nonce design) with a hopeful spoof of x-user-id.
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/list-feed-digest', {
+      method: 'GET',
+      headers: {
+        'X-WorldMonitor-Key': 'wm_test_key_123',
+        [INTERNAL_MCP_VERIFIED_HEADER]: '1',
+        [TRUSTED_USER_ID_HEADER]: PRO_USER_ID,
+      },
+    });
+    const res = await handler(req);
+    if (res.status === 200) {
+      // If the legacy wm_ path admits the request, the handler MUST NOT see the spoofed markers.
+      assert.ok(lastHandlerRequest, 'handler ran');
+      assert.notEqual(
+        lastHandlerRequest.headers.get(INTERNAL_MCP_VERIFIED_HEADER),
+        '1',
+        'spoofed verified marker MUST be stripped',
+      );
+      // x-user-id may legitimately be set by Clerk session resolution if the
+      // route is tier-gated; for this non-tier-gated route, the strip step
+      // applies and any inbound x-user-id is removed.
+      assert.notEqual(
+        lastHandlerRequest.headers.get(TRUSTED_USER_ID_HEADER),
+        PRO_USER_ID,
+        'spoofed user id MUST be stripped for non-tier-gated route',
+      );
+    }
+  });
+
+  it('attacker who somehow guesses the per-process nonce ALSO gets stripped at gateway entry', async () => {
+    disableRedisForLegacyGatewayCheck();
+    const handler = makeGateway();
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/list-feed-digest', {
+      method: 'GET',
+      headers: {
+        'X-WorldMonitor-Key': 'wm_test_key_123',
+        // Even with the right nonce value (e.g. leaked from a log), the
+        // strip step at gateway entry deletes it before any logic runs.
+        [INTERNAL_MCP_VERIFIED_HEADER]: VERIFIED_NONCE,
+        [TRUSTED_USER_ID_HEADER]: PRO_USER_ID,
+      },
+    });
+    const res = await handler(req);
+    if (res.status === 200) {
+      assert.ok(lastHandlerRequest, 'handler ran');
+      // The handler may legitimately see the nonce only if the gateway
+      // re-set it during HMAC verify — and we did NOT send an HMAC header
+      // here, so it must have been stripped.
+      assert.notEqual(
+        lastHandlerRequest.headers.get(INTERNAL_MCP_VERIFIED_HEADER),
+        VERIFIED_NONCE,
+        'guessed-nonce attack MUST be stripped',
+      );
+    }
+  });
+
+  it('isCallerPremium returns FALSE for an unknown userId even with valid nonce (defensive re-fetch)', async () => {
+    // Models the case where someone bypasses the gateway in tests / dev. The
+    // header check alone admits this — the defensive re-fetch must still
+    // confirm against Convex, and only PRO_USER_ID's entitlement passes.
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        [INTERNAL_MCP_VERIFIED_HEADER]: VERIFIED_NONCE,
+        [TRUSTED_USER_ID_HEADER]: 'made_up_user_no_entitlement',
+      },
+    });
+    const result = await isCallerPremium(req);
+    assert.equal(result, false, 'unknown userId fails defensive re-fetch');
+  });
+
+  it('isCallerPremium returns FALSE on a direct edge function when verified-marker is the constant "1" (not the per-process nonce)', async () => {
+    // Models a direct-edge-function attack where the request bypasses the
+    // gateway entirely (e.g. hitting `api/widget-agent` directly with a
+    // spoofed marker). An attacker sending the constant '1' (the pre-
+    // nonce design value) cannot get past the timing-safe nonce compare
+    // in `isCallerPremium`, so premium semantics are NOT granted.
+    const req = new Request('https://api.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        [INTERNAL_MCP_VERIFIED_HEADER]: '1',
+        [TRUSTED_USER_ID_HEADER]: PRO_USER_ID,
+      },
+    });
+    const result = await isCallerPremium(req);
+    assert.equal(result, false, 'guessed-constant marker rejected by nonce check');
+  });
+
+  it('isCallerPremium enterprise key path accepts exact keys and rejects length mismatches', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-short,enterprise-key-with-a-distinct-length';
+
+    const exact = new Request('https://api.worldmonitor.app/api/mcp-proxy', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'enterprise-key-with-a-distinct-length' },
+    });
+    assert.equal(await isCallerPremium(exact), true);
+
+    const prefixOnly = new Request('https://api.worldmonitor.app/api/mcp-proxy', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'enterprise-key-with-a-distinct' },
+    });
+    assert.equal(await isCallerPremium(prefixOnly), false);
+
+    const longerMismatch = new Request('https://api.worldmonitor.app/api/mcp-proxy', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'enterprise-short-extra' },
+    });
+    assert.equal(await isCallerPremium(longerMismatch), false);
+  });
+
+  it('premium-check enterprise allowlist uses the timing-safe helper', async () => {
+    const source = await readFile(new URL('../server/_shared/premium-check.ts', import.meta.url), 'utf8');
+    assert.match(
+      source,
+      /import\s*\{[^}]*\btimingSafeIncludes\b[^}]*\}\s*from\s*['"]\.\.\/\.\.\/api\/_crypto\.js['"]/,
+      'premium-check must import the shared timingSafeIncludes helper',
+    );
+    assert.match(
+      source,
+      /await\s+timingSafeIncludes\s*\(\s*wmKey\s*,\s*validKeys\s*\)/,
+      'premium-check must validate enterprise keys with timingSafeIncludes',
+    );
+    assert.doesNotMatch(
+      source,
+      /validKeys\.includes\s*\(\s*wmKey\s*\)/,
+      'premium-check must not use Array.includes for enterprise key auth',
+    );
+  });
+
+  it('present-but-invalid HMAC + valid wm_ key: invalid path fails closed (does not chain to legacy)', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/list-feed-digest';
+    // Sign with the WRONG secret, then attach a valid wm_ key to try to chain.
+    const signed = await signInternalMcpRequest({ method: 'GET', url, body: null, userId: PRO_USER_ID, secret: 'wrong-secret-not-the-real-one' });
+    const req = new Request(url, {
+      method: 'GET',
+      headers: {
+        'X-WorldMonitor-Key': 'wm_test_key_123',
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'present-but-invalid HMAC fails closed');
+    const j = await res.json();
+    assert.equal(j.error, 'invalid_internal_mcp_signature');
+  });
+});
+
+// ===========================================================================
+// LEGACY PASS-THROUGH
+// ===========================================================================
+describe('gateway internal-MCP — legacy unaffected', () => {
+  it('no internal-MCP headers at all → legacy validateApiKey path runs (request reaches handler when key is valid)', async () => {
+    disableRedisForLegacyGatewayCheck();
+    const handler = makeGateway();
+    const req = new Request('https://api.worldmonitor.app/api/news/v1/list-feed-digest', {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': 'wm_test_key_123' },
+    });
+    const res = await handler(req);
+    // The wm_ key may or may not pass depending on origin checks; at minimum
+    // the response must NOT be the internal-MCP 401 or the CONFIGURATION 500.
+    if (res.status >= 400) {
+      const j = await res.json().catch(() => ({}));
+      assert.notEqual(j.error, 'invalid_internal_mcp_signature');
+      assert.notEqual(j.error, 'insufficient_entitlement');
+      assert.notEqual(j.error, 'CONFIGURATION');
+    }
+  });
+});
+
+// ===========================================================================
+// F1, F7, F8 — review-pass fixes for the gateway internal-MCP path
+// ===========================================================================
+describe('gateway internal-MCP — F1: validUntil re-check', () => {
+  it('F1: tier-1 mcpAccess user with validUntil < now → 401 insufficient_entitlement', async () => {
+    // Override the entitlement stub to return a row with lapsed validUntil.
+    // The gateway's Convex-fallback re-check must reject — without F1 the
+    // request would propagate as authorized.
+    installFetchStub({
+      entitlement: () => ({
+        planKey: 'pro',
+        features: {
+          tier: 1, apiAccess: false, apiRateLimit: 60, maxDashboards: 10,
+          prioritySupport: false, exportFormats: [], mcpAccess: true,
+        },
+        validUntil: Date.now() - 1000, // expired 1s ago
+      }),
+    });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'lapsed entitlement must 401 even with verified HMAC');
+    const j = await res.json();
+    assert.equal(j.error, 'insufficient_entitlement');
+    assert.equal(lastHandlerRequest, null, 'handler must NOT run when entitlement is stale');
+  });
+});
+
+describe('gateway internal-MCP — billing renewal verification', () => {
+  for (const billingStatus of ['renewal_verification_pending', 'renewal_verification_failed']) {
+    it(`${billingStatus} → retryable no-store 503`, async () => {
+      installFetchStub({
+        entitlement: () => ({
+          planKey: 'free',
+          features: {
+            tier: 0, apiAccess: false, apiRateLimit: 0, maxDashboards: 1,
+            prioritySupport: false, exportFormats: [], mcpAccess: false,
+          },
+          validUntil: 0,
+          billingStatus,
+          retryAfterSeconds: 17,
+        }),
+      });
+      const handler = makeGateway();
+      const req = await buildSignedRequest();
+      const res = await handler(req);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('Retry-After'), '17');
+      assert.equal(res.headers.get('X-Billing-Verification'), billingStatus);
+      assert.equal((await res.json()).code, billingStatus);
+      assert.equal(lastHandlerRequest, null, 'handler must not run while renewal verification is unresolved');
+    });
+  }
+
+  it('current Pro fallback remains usable while stronger renewal verification is pending', async () => {
+    installFetchStub({
+      entitlement: () => ({
+        planKey: 'pro_monthly',
+        features: {
+          tier: 1, apiAccess: false, apiRateLimit: 0, maxDashboards: 10,
+          prioritySupport: false, exportFormats: ['csv'], mcpAccess: true,
+        },
+        validUntil: Date.now() + 86_400_000,
+        billingStatus: 'renewal_verification_pending',
+        retryAfterSeconds: 17,
+      }),
+    });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+
+    assert.equal(res.status, 200);
+    assert.notEqual(lastHandlerRequest, null, 'covered MCP request must reach the handler');
+  });
+
+  it('subscription_lapsed → distinct hard denial', async () => {
+    installFetchStub({
+      entitlement: () => ({
+        planKey: 'free',
+        features: {
+          tier: 0, apiAccess: false, apiRateLimit: 0, maxDashboards: 1,
+          prioritySupport: false, exportFormats: [], mcpAccess: false,
+        },
+        validUntil: 0,
+        billingStatus: 'subscription_lapsed',
+      }),
+    });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Retry-After'), null);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    assert.equal((await res.json()).code, 'subscription_lapsed');
+    assert.equal(lastHandlerRequest, null, 'handler must not run after a confirmed lapse');
+  });
+});
+
+describe('gateway internal-MCP — F7: HMAC headers stripped before handler sees request', () => {
+  it('handler receives no X-WM-MCP-Internal or X-WM-MCP-User-Id; only the trusted-marker pair', async () => {
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 200);
+    assert.ok(lastHandlerRequest, 'handler ran');
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_SIG_HEADER),
+      null,
+      'F7: inbound HMAC sig header MUST be stripped before handler',
+    );
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_USER_ID_HEADER),
+      null,
+      'F7: inbound HMAC userId header MUST be stripped before handler',
+    );
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_NONCE_HEADER),
+      null,
+      'F7: inbound HMAC nonce header MUST be stripped before handler',
+    );
+    // Trusted markers MUST still be present — those are the gateway's
+    // outbound contract for downstream isCallerPremium checks.
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_VERIFIED_HEADER),
+      VERIFIED_NONCE,
+      'F7: trusted verified marker MUST still be present',
+    );
+    assert.equal(
+      lastHandlerRequest.headers.get(TRUSTED_USER_ID_HEADER),
+      PRO_USER_ID,
+      'F7: trusted userId MUST still be present',
+    );
+  });
+});
+
+describe('gateway internal-MCP — F8: body size cap', () => {
+  it('Content-Length > 256 KB → 413 payload_too_large (HMAC-verify path)', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    // Sign a small body so the signature is shaped correctly; the gate
+    // should fire on Content-Length BEFORE verify even runs.
+    const body = JSON.stringify({ x: 1 });
+    const signed = await signInternalMcpRequest({
+      method: 'POST',
+      url,
+      body,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+    });
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(4 * 1024 * 1024), // 4MB — well over the cap
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      },
+      body,
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 413, 'oversized Content-Length MUST 413');
+    const j = await res.json();
+    assert.equal(j.error, 'payload_too_large');
+    assert.equal(lastHandlerRequest, null, 'handler must NOT run on oversized body');
+  });
+
+  it('strip-only path (no HMAC) ALSO enforces the 256 KB cap', async () => {
+    const handler = makeGateway();
+    // No HMAC sig — but trust markers present trigger the strip-then-construct
+    // block, which also has the body-size guard.
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(4 * 1024 * 1024),
+        [INTERNAL_MCP_VERIFIED_HEADER]: '1', // attacker-injected marker → triggers strip
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 413);
+    const j = await res.json();
+    assert.equal(j.error, 'payload_too_large');
+  });
+});

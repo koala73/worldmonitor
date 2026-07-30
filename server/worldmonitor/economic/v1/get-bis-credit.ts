@@ -10,17 +10,18 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'economic:bis:credit:v1';
 
 export async function getBisCredit(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: GetBisCreditRequest,
 ): Promise<GetBisCreditResponse> {
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as GetBisCreditResponse | null;
-    return result || { entries: [] };
+    return result || markNoStoreFallbackResponse(ctx.request, { entries: [] });
   } catch {
-    return { entries: [] };
+    return markNoStoreFallbackResponse(ctx.request, { entries: [] });
   }
 }

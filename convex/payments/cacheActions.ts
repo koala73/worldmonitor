@@ -9,6 +9,7 @@
  */
 
 import { internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
 // 15 min — short enough that subscription expiry is reflected promptly
@@ -44,12 +45,55 @@ export const syncEntitlementCache = internalAction({
       maxDashboards: v.number(),
       apiAccess: v.boolean(),
       apiRateLimit: v.number(),
+      planLimits: v.optional(v.object({
+        apiRequestsPerDay: v.union(v.number(), v.null()),
+        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
+        mcpCallsPerDay: v.union(v.number(), v.null()),
+        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
+      })),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional — legacy entitlement rows pre-dating plan 2026-05-10-001
+      // do not carry mcpAccess. Schema validator must accept their reads.
+      mcpAccess: v.optional(v.boolean()),
+      // Optional — per-account daily REST allowance (#3199). Catalog-sourced
+      // writes set it; legacy rows omit it (rate-limit consumer fail-opens).
+      apiDailyAllowance: v.optional(v.number()),
+      // Optional — data-export entitlement (plan 2026-07-25-001). Catalog
+      // writes set it; legacy rows omit it (export gate fail-opens at tier 2+).
+      dataExport: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
   },
   handler: async (_ctx, args) => {
+    await writeEntitlementCacheToRedis(args.userId, args);
+  },
+});
+
+/**
+ * Re-syncs a user's entitlement cache from the CURRENT database state.
+ *
+ * Used for the delayed race-covering sync (#4770 review): replaying the
+ * caller's upsert-time snapshot could revert a newer entitlement write that
+ * landed inside the delay (e.g. a renewal followed by a cancellation),
+ * re-granting stale paid access for up to the cache TTL. Reading at fire
+ * time means the delayed write always reflects the latest state.
+ */
+export const resyncEntitlementCacheFromDb = internalAction({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const current = await ctx.runQuery(
+      internal.entitlements.getEntitlementsByUserId,
+      { userId: args.userId },
+    );
+    await writeEntitlementCacheToRedis(args.userId, current);
+  },
+});
+
+async function writeEntitlementCacheToRedis(
+  userId: string,
+  payload: { planKey: string; features: unknown; validUntil: number },
+): Promise<void> {
     const url = process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -60,11 +104,11 @@ export const syncEntitlementCache = internalAction({
       return;
     }
 
-    const key = getEntitlementKey(args.userId);
+    const key = getEntitlementKey(userId);
     const value = JSON.stringify({
-      planKey: args.planKey,
-      features: args.features,
-      validUntil: args.validUntil,
+      planKey: payload.planKey,
+      features: payload.features,
+      validUntil: payload.validUntil,
     });
 
     const controller = new AbortController();
@@ -80,8 +124,14 @@ export const syncEntitlementCache = internalAction({
       );
 
       if (!resp.ok) {
-        console.warn(
-          `[cacheActions] Redis SET failed: HTTP ${resp.status} for user ${args.userId}`,
+        // Throw so Convex auto-Sentry surfaces this; the action is
+        // scheduled by upsertEntitlements (fire-and-forget) and the
+        // SET is idempotent, so retry-on-error is safe and correct.
+        // The previous silent `console.warn` left persistent Redis
+        // outages invisible — users who upgraded would not see PRO
+        // features until next manual cache rebuild.
+        throw new Error(
+          `[cacheActions] Redis SET failed: HTTP ${resp.status} for user ${userId}`,
         );
       }
     } catch (err) {
@@ -89,17 +139,23 @@ export const syncEntitlementCache = internalAction({
         "[cacheActions] Redis cache sync failed:",
         err instanceof Error ? err.message : String(err),
       );
+      // Re-throw so Convex auto-Sentry captures (the warn above stays
+      // for ops visibility in the Convex log dashboard).
+      throw err;
     } finally {
       clearTimeout(timeout);
     }
-  },
-});
+}
 
 /**
  * Deletes a user's entitlement cache entry from Redis.
  *
  * Used by claimSubscription to clear the stale anonymous ID cache entry
- * after reassigning records to the real authenticated user.
+ * after reassigning records to the real authenticated user. The deleted
+ * key is unreachable post-claim (read path uses the real userId) and
+ * self-expires at ENTITLEMENT_CACHE_TTL_SECONDS, so a failed DEL has no
+ * user impact — warn and swallow rather than surfacing transient
+ * Upstash latency blips to Convex auto-Sentry.
  */
 export const deleteEntitlementCache = internalAction({
   args: { userId: v.string() },
@@ -129,6 +185,10 @@ export const deleteEntitlementCache = internalAction({
         );
       }
     } catch (err) {
+      // sentry-coverage-ok — DEL failure has no user impact (key is
+      // unreachable post-claim, self-expires at 15-min TTL); a 5s
+      // AbortError from a transient Upstash latency blip should not
+      // page via Convex auto-Sentry.
       console.warn(
         "[cacheActions] Redis cache delete failed:",
         err instanceof Error ? err.message : String(err),

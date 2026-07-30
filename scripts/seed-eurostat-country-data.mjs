@@ -256,12 +256,20 @@ function validate(data) {
   return true;
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-eurostat-country-data.mjs')) {
   runSeed('economic', 'eurostat-country-data', CANONICAL_KEY, fetchAll, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'eurostat-v1',
     recordCount: (data) => Object.keys(data?.countries || {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 4320,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

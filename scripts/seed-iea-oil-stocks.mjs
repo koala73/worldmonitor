@@ -1,10 +1,17 @@
 #!/usr/bin/env node
+// @ts-check
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+// Pure contentMeta + dataMonth parser live in their own module so tests
+// can import the real code (no replicas, no drift). See helpers module
+// header for the shape contract — IEA is a single-snapshot seeder where
+// the top-level dataMonth string IS the content-age signal.
+import { ieaOilStocksContentMeta, IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN } from './_iea-oil-stocks-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'energy:iea-oil-stocks:v1:index';
+export const ANALYSIS_KEY = 'energy:oil-stocks-analysis:v1';
 export const IEA_90_DAY_OBLIGATION = 90;
 const TTL_SECONDS = 40 * 24 * 3600;
 
@@ -94,6 +101,95 @@ export function buildIndex(members, dataMonth, updatedAt) {
   };
 }
 
+const REGION_EUROPE = new Set(['AT','BE','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','NL','PL','PT','SK','ES','SE','CH','TR','GB','NO']);
+const REGION_ASIA_PACIFIC = new Set(['AU','JP','KR','NZ']);
+const REGION_NORTH_AMERICA = new Set(['CA','MX','US']);
+
+/**
+ * @typedef {{
+ *   iso2: string,
+ *   daysOfCover: number | null,
+ *   netExporter: boolean,
+ *   belowObligation: boolean,
+ *   anomaly?: boolean
+ * }} IeaMemberInput
+ */
+
+/**
+ * @param {IeaMemberInput[]} members
+ * @param {string} dataMonth
+ * @param {string} updatedAt
+ */
+export function buildOilStocksAnalysis(members, dataMonth, updatedAt) {
+  const eligible = members.filter(m => !m.anomaly);
+
+  const ranked = eligible
+    .slice()
+    .sort((a, b) => {
+      if (a.netExporter && b.netExporter) return 0;
+      if (a.netExporter) return 1;
+      if (b.netExporter) return -1;
+      const da = a.daysOfCover ?? -Infinity;
+      const db = b.daysOfCover ?? -Infinity;
+      return db - da;
+    });
+
+  let rank = 1;
+  const ieaMembers = ranked.map(m => {
+    /** @type {number | null} */
+    const vsObligation = m.netExporter ? null : (m.daysOfCover !== null ? m.daysOfCover - IEA_90_DAY_OBLIGATION : null);
+    const obligationMet = m.netExporter || (m.daysOfCover !== null && m.daysOfCover >= IEA_90_DAY_OBLIGATION);
+    const entry = {
+      iso2: m.iso2,
+      daysOfCover: m.daysOfCover,
+      netExporter: m.netExporter,
+      belowObligation: m.belowObligation,
+      obligationMet,
+      rank,
+      vsObligation,
+    };
+    rank++;
+    return entry;
+  });
+
+  const belowObligation = ieaMembers.filter(m => m.belowObligation).map(m => m.iso2);
+
+  /**
+   * @param {Set<string>} regionSet
+   */
+  function regionStats(regionSet) {
+    const regionMembers = eligible.filter(m => regionSet.has(m.iso2) && !m.netExporter && m.daysOfCover !== null);
+    const days = regionMembers.map(m => /** @type {number} */ (m.daysOfCover));
+    const avgDays = days.length > 0 ? Math.round(days.reduce((s, d) => s + d, 0) / days.length) : null;
+    const minDays = days.length > 0 ? Math.min(...days) : null;
+    const countBelowObligation = regionMembers.filter(m => m.belowObligation).length;
+    return { avgDays, minDays, countBelowObligation };
+  }
+
+  const euStats = regionStats(REGION_EUROPE);
+  const apStats = regionStats(REGION_ASIA_PACIFIC);
+
+  const naMembers = eligible.filter(m => REGION_NORTH_AMERICA.has(m.iso2));
+  const naNetExporters = naMembers.filter(m => m.netExporter).length;
+  const naImporters = naMembers.filter(m => !m.netExporter && m.daysOfCover !== null);
+  const naAvgDays = naImporters.length > 0
+    ? Math.round(naImporters.reduce((s, m) => s + /** @type {number} */ (m.daysOfCover), 0) / naImporters.length)
+    : null;
+
+  return {
+    updatedAt,
+    dataMonth,
+    ieaMembers,
+    belowObligation,
+    regionalSummary: {
+      europe: { avgDays: euStats.avgDays, minDays: euStats.minDays, countBelowObligation: euStats.countBelowObligation },
+      asiaPacific: { avgDays: apStats.avgDays, minDays: apStats.minDays, countBelowObligation: apStats.countBelowObligation },
+      northAmerica: { netExporters: naNetExporters, ...(naAvgDays !== null ? { avgDays: naAvgDays } : {}) },
+    },
+    shockScenario: null,
+  };
+}
+
 async function fetchIeaOilStocks() {
   const latestResp = await fetch('https://api.iea.org/netimports/latest', {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -138,7 +234,30 @@ const COUNTRY_EXTRA_KEYS = Object.values(COUNTRY_MAP).map(iso2 => ({
   transform: (data) => data.members?.find(m => m.iso2 === iso2) ?? null,
 }));
 
+// Analysis key included in extraKeys so runSeed extends its TTL on fetch
+// failure or validation skip — preventing expiry while the index is healthy.
+const ANALYSIS_EXTRA_KEY = {
+  key: ANALYSIS_KEY,
+  ttl: TTL_SECONDS,
+  transform: (data) => buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt),
+};
+
+// Seed-meta for the analysis key, also handled via extraKeys so it stays alive
+// on fetch failure or validation skip (health.js oilStocksAnalysis check).
+const ANALYSIS_META_EXTRA_KEY = {
+  key: 'seed-meta:energy:oil-stocks-analysis',
+  ttl: Math.max(86400 * 50, TTL_SECONDS),
+  transform: (data) => {
+    const analysis = buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt);
+    return { fetchedAt: Date.now(), recordCount: analysis.ieaMembers.length };
+  },
+};
+
 const isMain = process.argv[1]?.endsWith('seed-iea-oil-stocks.mjs');
+export function declareRecords(data) {
+  return Array.isArray(data?.members) ? data.members.length : 0;
+}
+
 if (isMain) {
   runSeed('energy', 'iea-oil-stocks', CANONICAL_KEY, fetchIeaOilStocks, {
     validateFn: (data) => Array.isArray(data?.members) && data.members.length > 0,
@@ -146,7 +265,27 @@ if (isMain) {
     sourceVersion: 'iea-oil-stocks-v1',
     recordCount: (data) => data?.members?.length || 0,
     publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
-    extraKeys: COUNTRY_EXTRA_KEYS,
+    extraKeys: [...COUNTRY_EXTRA_KEYS, ANALYSIS_EXTRA_KEY, ANALYSIS_META_EXTRA_KEY],
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 57600,
+
+    // ── Content-age contract (Sprint 3b of the 2026-05-04 health-readiness plan) ──
+    //
+    // 150-day budget = ~100d natural ~M+4 lag at fresh-arrival + ~30d normal
+    // intra-cycle aging + ~22d grace. IEA net-imports run on an observed ~M+4
+    // cadence (live probe 2026-06-06: latest dataMonth="2026-02", ~97.7d old,
+    // with 2026-03/04 still empty upstream), so even the freshest snapshot the
+    // seeder can serve is already ~98d old. STALE_CONTENT trips only when the
+    // cache is frozen ~2 months past the normal cycle (genuine upstream freeze
+    // or seeder failure). See IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN JSDoc for the
+    // full iteration history (45d → 90d → 120d → 150d).
+    //
+    // ieaOilStocksContentMeta parses data.dataMonth ("YYYY-MM") into
+    // end-of-month UTC ms. Single-snapshot shape: newest === oldest.
+    contentMeta: ieaOilStocksContentMeta,
+    maxContentAgeMin: IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

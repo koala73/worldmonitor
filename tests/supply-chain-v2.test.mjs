@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -151,37 +152,20 @@ describe('OpenAPI spec includes aisDisruptions', () => {
 // ========================================================================
 
 describe('Cache keys bumped to v2', () => {
-  const bootstrapSrc = readSrc('api/bootstrap.js');
-  const cacheKeysSrc = readSrc('server/_shared/cache-keys.ts');
   const chokepointSrc = readSrc('server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts');
   const mineralsSrc = readSrc('server/worldmonitor/supply-chain/v1/get-critical-minerals.ts');
 
   it('bootstrap.js chokepoints key is v4', () => {
-    assert.match(bootstrapSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
+    assert.equal(BOOTSTRAP_CACHE_KEYS.chokepoints, 'supply_chain:chokepoints:v4');
   });
 
   it('bootstrap.js minerals key is v2', () => {
-    assert.match(bootstrapSrc, /minerals:\s*'supply_chain:minerals:v2'/);
+    assert.equal(BOOTSTRAP_CACHE_KEYS.minerals, 'supply_chain:minerals:v2');
   });
 
-  it('bootstrap.js has chokepointTransits key', () => {
-    assert.match(bootstrapSrc, /chokepointTransits:\s*'supply_chain:chokepoint_transits:v1'/);
-  });
-
-  it('cache-keys.ts chokepoints key is v4', () => {
-    assert.match(cacheKeysSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
-  });
-
-  it('cache-keys.ts has chokepointTransits key', () => {
-    assert.match(cacheKeysSrc, /chokepointTransits:\s*'supply_chain:chokepoint_transits:v1'/);
-  });
-
-  it('cache-keys.ts minerals key is v2', () => {
-    assert.match(cacheKeysSrc, /minerals:\s*'supply_chain:minerals:v2'/);
-  });
-
-  it('chokepoint handler uses v4 redis key', () => {
-    assert.match(chokepointSrc, /REDIS_CACHE_KEY\s*=\s*'supply_chain:chokepoints:v4'/);
+  it('chokepoint handler uses CHOKEPOINT_STATUS_KEY constant', () => {
+    // Handler now imports CHOKEPOINT_STATUS_KEY from cache-keys.ts instead of defining a local duplicate
+    assert.match(chokepointSrc, /CHOKEPOINT_STATUS_KEY\s+as\s+REDIS_CACHE_KEY/);
   });
 
   it('minerals handler uses v2 redis key', () => {
@@ -189,10 +173,9 @@ describe('Cache keys bumped to v2', () => {
   });
 
   it('no v1 cache keys remain for chokepoints or minerals', () => {
-    assert.doesNotMatch(bootstrapSrc, /supply_chain:chokepoints:v1/);
-    assert.doesNotMatch(bootstrapSrc, /supply_chain:minerals:v1/);
-    assert.doesNotMatch(cacheKeysSrc, /supply_chain:chokepoints:v1/);
-    assert.doesNotMatch(cacheKeysSrc, /supply_chain:minerals:v1/);
+    const registry = JSON.stringify(BOOTSTRAP_CACHE_KEYS);
+    assert.doesNotMatch(registry, /supply_chain:chokepoints:v1/);
+    assert.doesNotMatch(registry, /supply_chain:minerals:v1/);
   });
 });
 
@@ -342,8 +325,8 @@ describe('Gateway daily cache tier', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-chokepoint-status':\s*'medium'/);
   });
 
-  it('shipping rates route still uses static tier', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'static'/);
+  it('shipping rates route uses daily tier (24h seed interval)', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'daily'/);
   });
 });
 

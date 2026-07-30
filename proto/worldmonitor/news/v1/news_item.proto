@@ -30,12 +30,31 @@ message NewsItem {
   worldmonitor.core.v1.GeoCoordinates location = 7;
   // Human-readable location name.
   string location_name = 8;
-  // Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.
+  // Composite importance score. The base 0-100 score uses severity × 55% +
+  // source tier × 20% + corroboration × 15% + recency × 10%, then may add an
+  // 18-point diplomacy/flashpoint boost and 4 points per entity-level
+  // corroborating source, capped at five sources. The final score can exceed
+  // 100; with current boosts it is approximately capped at 138.
   int32 importance_score = 9;
-  // Number of distinct sources that reported the same story in this digest cycle.
+  // Number of distinct sources that reported the same story in this digest
+  // cycle. "Same story" is determined by edit-tolerant story-identity
+  // clustering (headlines describing one event with different wording,
+  // ordering, source suffixes, truncation, or morphology corroborate each
+  // other) — not exact-title matching. See shared/story-identity.js.
   int32 corroboration_count = 10;
   // Story lifecycle metadata derived from cross-cycle persistence data.
   StoryMeta story_meta = 11;
+  // Cleaned article description from the RSS/Atom <description> /
+  // <content:encoded> / <summary> / <content> tag: HTML-stripped,
+  // entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
+  // when unavailable or indistinguishable from the headline — consumers must
+  // fall back to the headline for display/LLM grounding in that case.
+  string snippet = 12;
+  // Equity ticker symbols mentioned by the story, extracted at ingest from
+  // cashtags ($AAPL) and the curated company dictionary
+  // (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
+  // Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
+  repeated string tickers = 13 [(buf.validate.field).repeated.max_items = 8];
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.
@@ -44,7 +63,10 @@ message StoryMeta {
   int64 first_seen = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Total number of digest cycles in which this story appeared.
   int32 mention_count = 2;
-  // Number of unique sources that reported this story (cached from Redis Set).
+  // Number of unique sources reporting this story in the CURRENT digest
+  // cycle (batch corroboration from fuzzy story clustering, #4919;
+  // defaults to 1 for unclustered items). The cross-cycle Redis source
+  // set (story:sources:v1) feeds importance scoring, not this field.
   int32 source_count = 3;
   // Story lifecycle phase derived from persistence data.
   StoryPhase phase = 4;
@@ -75,7 +97,8 @@ message ThreatClassification {
     (buf.validate.field).double.gte = 0,
     (buf.validate.field).double.lte = 1
   ];
-  // Classification source — "keyword", "ml", or "llm".
+  // Classification source — "keyword", "keyword-historical-downgrade", or
+  // "llm".
   string source = 4;
 }
 

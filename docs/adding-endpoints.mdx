@@ -2,11 +2,13 @@
 title: "Adding API Endpoints"
 description: "All JSON API endpoints in World Monitor must use sebuf. This guide walks through adding a new RPC to an existing service and adding an entirely new service."
 ---
-All JSON API endpoints in World Monitor **must** use sebuf. Do not create standalone `api/*.js` files — the legacy pattern is deprecated and being removed.
+All JSON API endpoints in World Monitor **must** use sebuf. Do not create standalone `api/*.js` or `api/*.ts` files for new data APIs — the legacy pattern is deprecated and being removed.
 
 This guide walks through adding a new RPC to an existing service and adding an entirely new service.
 
-> **Important:** After modifying any `.proto` file, you **must** run `make generate` before building or pushing. The generated TypeScript files in `src/generated/` are checked into the repo and must stay in sync with the proto definitions. CI does not run generation yet — this is your responsibility until we add it to the pipeline (see [#200](https://github.com/koala73/worldmonitor/issues/200)).
+> **Enforcement:** `npm run lint:api-contract` runs in CI (see `.github/workflows/lint-code.yml`). It walks every file under `api/`, pairs each sebuf gateway (`api/<domain>/v<N>/[rpc].ts`) with a generated service under `src/generated/server/worldmonitor/`, and rejects any file that is neither a gateway nor listed in `api/api-route-exceptions.json`. The manifest is the only escape hatch for endpoints that genuinely cannot be proto — OAuth callbacks, binary responses, upstream proxies, operator plumbing — and every entry is pinned to @SebastienMelki via `.github/CODEOWNERS`. Expect reviewer pushback on new entries.
+>
+> **Generation freshness:** After modifying any `.proto` file, run `make generate` before pushing. The generated TypeScript in `src/generated/` is checked in and must stay in sync; `.github/workflows/proto-check.yml` fails the PR if it drifts.
 
 ## Prerequisites
 
@@ -155,7 +157,7 @@ export const seismologyHandler: SeismologyServiceHandler = {
 npx tsc --noEmit   # should pass with zero errors
 ```
 
-The route is already live. `createSeismologyServiceRoutes()` picks up the new RPC automatically — no changes needed to `api/[[...path]].ts` or `vite.config.ts`.
+The route is already live through the domain gateway in `api/seismology/v1/[rpc].ts`. `createSeismologyServiceRoutes()` picks up the new RPC automatically — no route-table or `vite.config.ts` edits are needed.
 
 ### 7. Check the generated docs
 
@@ -163,69 +165,69 @@ Open `docs/api/SeismologyService.openapi.yaml` — the new endpoint should appea
 
 ## Adding a new service
 
-Example: adding a `SanctionsService`.
+Example: adding a hypothetical `WeatherService`. (No `weather` domain exists in this repo — the example below is purely illustrative; copy-pasting any path from this section will hit a 404.)
 
 ### 1. Create the proto directory
 
 ```
-proto/worldmonitor/sanctions/v1/
+proto/worldmonitor/weather/v1/
 ```
 
 ### 2. Define entity messages
 
-Create `proto/worldmonitor/sanctions/v1/sanctions_entry.proto`:
+Create `proto/worldmonitor/weather/v1/weather_station.proto`:
 
 ```protobuf
 syntax = "proto3";
-package worldmonitor.sanctions.v1;
+package worldmonitor.weather.v1;
 
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// SanctionsEntry represents a single entity on a sanctions list.
-message SanctionsEntry {
-  // Unique identifier.
+// WeatherStation represents a single ground-based observation station.
+message WeatherStation {
+  // Unique identifier (e.g., WMO station number).
   string id = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1
   ];
-  // Name of the sanctioned entity or individual.
+  // Human-readable station name.
   string name = 2;
-  // Issuing authority (e.g., "OFAC", "EU", "UN").
-  string authority = 3;
-  // ISO 3166-1 alpha-2 country code of the target.
+  // Operating network (e.g., "NWS", "WMO", "NOAA").
+  string network = 3;
+  // ISO 3166-1 alpha-2 country code where the station is located.
   string country_code = 4;
-  // Date the sanction was imposed, as Unix epoch milliseconds.
-  int64 imposed_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Date the station first reported observations, as Unix epoch milliseconds.
+  int64 first_seen_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 ```
 
 ### 3. Define request/response messages
 
-Create `proto/worldmonitor/sanctions/v1/list_sanctions.proto`:
+Create `proto/worldmonitor/weather/v1/list_weather_stations.proto`:
 
 ```protobuf
 syntax = "proto3";
-package worldmonitor.sanctions.v1;
+package worldmonitor.weather.v1;
 
 import "buf/validate/validate.proto";
 import "worldmonitor/core/v1/pagination.proto";
-import "worldmonitor/sanctions/v1/sanctions_entry.proto";
+import "worldmonitor/weather/v1/weather_station.proto";
 
-// ListSanctionsRequest specifies filters for sanctions data.
-message ListSanctionsRequest {
-  // Filter by issuing authority (e.g., "OFAC"). Empty returns all.
-  string authority = 1;
+// ListWeatherStationsRequest specifies filters for weather station data.
+message ListWeatherStationsRequest {
+  // Filter by operating network (e.g., "NWS"). Empty returns all.
+  string network = 1;
   // Filter by country code.
   string country_code = 2 [(buf.validate.field).string.max_len = 2];
   // Pagination parameters.
   worldmonitor.core.v1.PaginationRequest pagination = 3;
 }
 
-// ListSanctionsResponse contains the matching sanctions entries.
-message ListSanctionsResponse {
-  // The list of sanctions entries.
-  repeated SanctionsEntry entries = 1;
+// ListWeatherStationsResponse contains the matching stations.
+message ListWeatherStationsResponse {
+  // The list of weather stations.
+  repeated WeatherStation stations = 1;
   // Pagination metadata.
   worldmonitor.core.v1.PaginationResponse pagination = 2;
 }
@@ -233,22 +235,22 @@ message ListSanctionsResponse {
 
 ### 4. Define the service
 
-Create `proto/worldmonitor/sanctions/v1/service.proto`:
+Create `proto/worldmonitor/weather/v1/service.proto`:
 
 ```protobuf
 syntax = "proto3";
-package worldmonitor.sanctions.v1;
+package worldmonitor.weather.v1;
 
 import "sebuf/http/annotations.proto";
-import "worldmonitor/sanctions/v1/list_sanctions.proto";
+import "worldmonitor/weather/v1/list_weather_stations.proto";
 
-// SanctionsService provides APIs for international sanctions monitoring.
-service SanctionsService {
-  option (sebuf.http.service_config) = {base_path: "/api/sanctions/v1"};
+// WeatherService provides APIs for weather observation stations.
+service WeatherService {
+  option (sebuf.http.service_config) = {base_path: "/api/weather/v1"};
 
-  // ListSanctions retrieves sanctions entries matching the given filters.
-  rpc ListSanctions(ListSanctionsRequest) returns (ListSanctionsResponse) {
-    option (sebuf.http.config) = {path: "/list-sanctions"};
+  // ListWeatherStations retrieves stations matching the given filters.
+  rpc ListWeatherStations(ListWeatherStationsRequest) returns (ListWeatherStationsResponse) {
+    option (sebuf.http.config) = {path: "/list-weather-stations"};
   }
 }
 ```
@@ -264,53 +266,57 @@ make check   # lint + generate in one step
 Create the handler directory and files:
 
 ```
-server/worldmonitor/sanctions/v1/
-├── handler.ts               # thin re-export
-└── list-sanctions.ts        # RPC implementation
+server/worldmonitor/weather/v1/
+├── handler.ts                     # thin re-export
+└── list-weather-stations.ts       # RPC implementation
 ```
 
-`server/worldmonitor/sanctions/v1/list-sanctions.ts`:
+`server/worldmonitor/weather/v1/list-weather-stations.ts`:
 ```typescript
 import type {
-  SanctionsServiceHandler,
+  WeatherServiceHandler,
   ServerContext,
-  ListSanctionsRequest,
-  ListSanctionsResponse,
-} from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
+  ListWeatherStationsRequest,
+  ListWeatherStationsResponse,
+} from '../../../../src/generated/server/worldmonitor/weather/v1/service_server';
 
-export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
+export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] = async (
   _ctx: ServerContext,
-  req: ListSanctionsRequest,
-): Promise<ListSanctionsResponse> => {
+  req: ListWeatherStationsRequest,
+): Promise<ListWeatherStationsResponse> => {
   // Your implementation here — fetch from upstream API, transform to proto shape
-  return { entries: [], pagination: undefined };
+  return { stations: [], pagination: undefined };
 };
 ```
 
-`server/worldmonitor/sanctions/v1/handler.ts`:
+`server/worldmonitor/weather/v1/handler.ts`:
 ```typescript
-import type { SanctionsServiceHandler } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
+import type { WeatherServiceHandler } from '../../../../src/generated/server/worldmonitor/weather/v1/service_server';
 
-import { listSanctions } from './list-sanctions';
+import { listWeatherStations } from './list-weather-stations';
 
-export const sanctionsHandler: SanctionsServiceHandler = {
-  listSanctions,
+export const weatherHandler: WeatherServiceHandler = {
+  listWeatherStations,
 };
 ```
 
-### 7. Register the service in the gateway
+### 7. Add the per-domain edge gateway
 
-Edit `api/[[...path]].js` — add the import and mount the routes:
+Create `api/weather/v1/[rpc].ts` as the thin Edge entry point for this service:
 
 ```typescript
-import { createSanctionsServiceRoutes } from '../src/generated/server/worldmonitor/sanctions/v1/service_server';
-import { sanctionsHandler } from './server/worldmonitor/sanctions/v1/handler';
+export const config = { runtime: 'edge' };
 
-const allRoutes = [
-  // ... existing routes ...
-  ...createSanctionsServiceRoutes(sanctionsHandler, serverOptions),
-];
+import { createDomainGateway, serverOptions } from '../../../server/gateway';
+import { createWeatherServiceRoutes } from '../../../src/generated/server/worldmonitor/weather/v1/service_server';
+import { weatherHandler } from '../../../server/worldmonitor/weather/v1/handler';
+
+export default createDomainGateway(
+  createWeatherServiceRoutes(weatherHandler, serverOptions),
+);
 ```
+
+There is no repository-wide catch-all gateway file or shared route array to edit. Each service owns its `api/<domain>/v1/[rpc].ts` gateway, and the generated `create<Service>Routes(...)` function enforces the RPC path names and HTTP annotations for that domain.
 
 ### 8. Register in the Vite dev server
 
@@ -318,28 +324,28 @@ Edit `vite.config.ts` — add the lazy import and route mount inside the `sebufA
 
 ### 9. Create the frontend service wrapper
 
-Create `src/services/sanctions.ts`:
+Create `src/services/weather.ts`:
 
 ```typescript
 import {
-  SanctionsServiceClient,
-  type SanctionsEntry,
-  type ListSanctionsResponse,
-} from '@/generated/client/worldmonitor/sanctions/v1/service_client';
+  WeatherServiceClient,
+  type WeatherStation,
+  type ListWeatherStationsResponse,
+} from '@/generated/client/worldmonitor/weather/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 
-export type { SanctionsEntry };
+export type { WeatherStation };
 
-const client = new SanctionsServiceClient('', { fetch: fetch.bind(globalThis) });
-const breaker = createCircuitBreaker<ListSanctionsResponse>({ name: 'Sanctions' });
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const breaker = createCircuitBreaker<ListWeatherStationsResponse>({ name: 'Weather' });
 
-const emptyFallback: ListSanctionsResponse = { entries: [] };
+const emptyFallback: ListWeatherStationsResponse = { stations: [] };
 
-export async function fetchSanctions(authority?: string): Promise<SanctionsEntry[]> {
+export async function fetchWeatherStations(network?: string): Promise<WeatherStation[]> {
   const response = await breaker.execute(async () => {
-    return client.listSanctions({ authority: authority ?? '', countryCode: '', pagination: undefined });
+    return client.listWeatherStations({ network: network ?? '', countryCode: '', pagination: undefined });
   }, emptyFallback);
-  return response.entries;
+  return response.stations;
 }
 ```
 
@@ -349,13 +355,40 @@ export async function fetchSanctions(authority?: string): Promise<SanctionsEntry
 npx tsc --noEmit   # zero errors
 ```
 
+## MCP exposure decision
+
+Every new public OpenAPI operation needs an explicit MCP decision before review. MCP is a curated agent surface, not a 1:1 mirror of REST: expose operations that are safe, predictable, and useful as tools; keep REST-only operations documented when they mutate state, spend per-call LLM or upstream budget, or need manual cache-key review.
+
+Use this checklist for each new or changed RPC:
+
+- [ ] Decide whether this operation should be exposed to MCP.
+- [ ] If yes, identify the owning MCP tool and add the exact `METHOD /api/...` entry to that tool's `_apiPaths`.
+- [ ] If cache-backed, confirm the tool has the right `_cacheKeys` / `_coverageKeys`, freshness metadata, and `seed-meta:<key>` health coverage.
+- [ ] If no, add or update the `tests/mcp-api-parity.test.mjs` exclusion with the matching category prefix and a concrete reason.
+- [ ] If `fetch-on-miss`, include one enforced secondary signal (`high-cardinality-input`, `paid-upstream`, or `llm-cost`) and name the upstream cost, cardinality, and tier policy that makes open MCP exposure unsafe for now.
+- [ ] If `mutating` or `llm-passthrough`, document the separate threat/cost model before proposing an MCP wrapper.
+- [ ] Run `./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs` and include the result in the PR.
+
+A `covered` operation is declared in a tool `_apiPaths` entry. For REST-only operations, the parity test accepts these exclusion categories:
+
+| Category | Use when |
+|----------|----------|
+| `mutating` | The handler writes state, queues work, refreshes caches, records webhooks, or has another persistent side effect. |
+| `llm-passthrough` | The operation invokes per-call LLM work and should not be opened as a generic MCP tool without a cost model. |
+| `fetch-on-miss` | The operation can call a paid, rate-limited, high-cardinality, or otherwise expensive upstream when the cache is cold. Include one enforced secondary signal in the reason: `high-cardinality-input`, `paid-upstream`, or `llm-cost`. |
+| `admin` | The operation is internal-only and protected by an explicit admin boundary, such as an admin key, internal-only middleware, or cron-only path. |
+| `manual-mapping` | The operation uses parameterized cache keys, inline Redis/Convex shapes, or another mapping the static parity walker cannot prove automatically. |
+| `deferred-to-future-tool` | The operation is pure-read and agent-useful, but belongs in a future MCP tool or expanded bundle rather than today's registry. |
+
+The MCP reference docs render the current `_apiPaths` coverage table in [MCP Overview](/mcp-overview#api-coverage). The parity test is canonical for the current covered/excluded split, so do not rely on stale counts in a PR description.
+
 ## Proto conventions
 
 These conventions are enforced across the codebase. Follow them for consistency.
 
 ### File naming
 
-- One file per message type: `earthquake.proto`, `sanctions_entry.proto`
+- One file per message type: `earthquake.proto`, `weather_station.proto`
 - One file per RPC pair: `list_earthquakes.proto`, `get_earthquake_details.proto`
 - Service definition: `service.proto`
 - Use `snake_case` for file names and field names
@@ -426,10 +459,10 @@ buf lint enforces comments on all messages, fields, services, RPCs, and enum val
 Always type the handler function against the generated interface using indexed access:
 
 ```typescript
-export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
+export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] = async (
   _ctx: ServerContext,
-  req: ListSanctionsRequest,
-): Promise<ListSanctionsResponse> => {
+  req: ListWeatherStationsRequest,
+): Promise<ListWeatherStationsResponse> => {
   // ...
 };
 ```
@@ -438,13 +471,13 @@ This ensures the compiler catches any mismatch between your implementation and t
 
 ### Client construction
 
-Always pass `{ fetch: fetch.bind(globalThis) }` when creating clients:
+Always pass `{ fetch: (...args) => globalThis.fetch(...args) }` when creating clients:
 
 ```typescript
-const client = new SanctionsServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 ```
 
-The empty string base URL works because both Vite dev server and Vercel serve the API on the same origin. The `fetch.bind(globalThis)` is required for Tauri compatibility.
+The empty string base URL works because both Vite dev server and Vercel serve the API on the same origin. The arrow-function wrapper around `globalThis.fetch` is required for Tauri compatibility AND for the runtime fetch interceptor — `fetch.bind(globalThis)` is **banned** because it freezes a reference to the global `fetch` at module-init time, which bypasses any later interceptor (auth headers, request logging, retry shims) installed on `globalThis.fetch`. The arrow-function wrapper resolves `globalThis.fetch` on every call.
 
 ## Generated documentation
 

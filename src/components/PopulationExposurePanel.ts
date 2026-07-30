@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { joinSafeHtml, safeHtml } from '@/utils/sanitize';
 import type { PopulationExposure } from '@/types';
 import { formatPopulation } from '@/services/population-exposure';
 import { t } from '@/services/i18n';
@@ -26,25 +26,25 @@ export class PopulationExposurePanel extends Panel {
 
   private renderContent(): void {
     if (this.exposures.length === 0) {
-      this.setContent(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+      this.setSafeContent(safeHtml`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
       return;
     }
 
     const totalAffected = this.exposures.reduce((sum, e) => sum + e.exposedPopulation, 0);
 
-    const cards = this.exposures.slice(0, 30).map(e => {
+    const cards = joinSafeHtml(this.exposures.slice(0, 30).map(e => {
       const typeIcon = this.getTypeIcon(e.eventType);
       const popClass = e.exposedPopulation >= 1_000_000 ? ' popexp-pop-large' : '';
-      return `<div class="popexp-card">
-        <div class="popexp-card-name">${typeIcon} ${escapeHtml(e.eventName)}</div>
+      return safeHtml`<div class="popexp-card">
+        <div class="popexp-card-name">${typeIcon} ${e.eventName}</div>
         <div class="popexp-card-meta">
           <span class="popexp-card-pop${popClass}">${t('components.populationExposure.affectedCount', { count: formatPopulation(e.exposedPopulation) })}</span>
           <span class="popexp-card-radius">${t('components.populationExposure.radiusKm', { km: String(e.exposureRadiusKm) })}</span>
         </div>
       </div>`;
-    }).join('');
+    }));
 
-    this.setContent(`
+    this.setSafeContent(safeHtml`
       <div class="popexp-panel-content">
         <div class="popexp-summary">
           <span class="popexp-label">${t('components.populationExposure.totalAffected')}</span>

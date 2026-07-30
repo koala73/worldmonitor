@@ -1,0 +1,39 @@
+# Cloudflare Worker config for api-cors-preflight.
+# Deployed via `wrangler deploy` (manual) or .github/workflows/deploy-worker.yml (CI).
+# CF account_id is read from the CLOUDFLARE_ACCOUNT_ID env var so this file
+# stays publishable; CLOUDFLARE_API_TOKEN supplies auth.
+
+name = "api-cors-preflight"
+main = "src/index.js"
+compatibility_date = "2025-05-01"
+
+# Bind to api.worldmonitor.app/*. The route is the load-bearing config:
+# without it the Worker is uploaded but receives no traffic.
+[[routes]]
+pattern = "api.worldmonitor.app/*"
+zone_name = "worldmonitor.app"
+
+# Observability: surface Worker errors in CF dashboard logs.
+[observability]
+enabled = true
+
+# Bootstrap tier objects on Workers KV — read-only, for the U-K2 shadow measurement (#5338).
+# The publisher (Railway) writes these keys; here the Worker only reads them to time the read
+# per POP. Namespace id is config, not a secret.
+[[kv_namespaces]]
+binding = "BOOTSTRAP_KV"
+id = "40d42ec8064b4813ac87e61b43fb697f"
+
+# Shadow flag — "1" = measuring. The Worker shadow-reads BOOTSTRAP_KV per POP on public-tier
+# bootstrap GETs (in ctx.waitUntil; response untouched) and emits per-region latency to Axiom.
+# CORS behaviour is provably identical to "0" (byte-identical test). Flip back to "0" to stop.
+#
+# Serve flag (U-K4) — staged cutover of serving the public tier FROM KV via this Worker:
+#   "off"/unset = serve nothing (Phase-A shadow-only; deploy is inert).
+#   "slow"      = serve the slow tier only (safest first cutover).
+#   "all"       = serve both public tiers.
+# Any miss/stale/invalid/error/timeout falls through to the Vercel/Redis origin (strictly additive).
+# Kill-switch = set back to "off" and redeploy. Once "all" is proven, flip BOOTSTRAP_KV_SHADOW to "0".
+[vars]
+BOOTSTRAP_KV_SHADOW = "1"
+BOOTSTRAP_KV_SERVE = "off"

@@ -1,0 +1,222 @@
+---
+title: "桌面应用"
+description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust sidecar 进程管理、系统密钥链安全存储、云端 API 回退策略、离线缓存机制、自动更新流程，以及 Windows、macOS、Linux 的多平台构建、代码签名与公证发布流水线的完整实现细节。"
+---
+
+## 概览
+
+### 桌面应用（Tauri）
+
+- **原生桌面应用**，支持 macOS、Windows 和 Linux —— 打包完整的仪表盘，并附带一个本地 Node.js sidecar，在本地运行全部 60+ 个 API 处理器
+- **OS 钥匙串集成** —— API 密钥存储在系统凭据管理器中（macOS Keychain、Windows Credential Manager），绝不以明文文件形式存储
+- **Token 鉴权的 sidecar** —— 一个唯一的会话 token 防止其他本地进程访问 localhost 上的 sidecar。每次启动时通过随机化哈希生成
+- **云端回退** —— 当本地 API 处理器失败或缺失时，请求会透明地回退到云端部署（worldmonitor.app），并剥离 Origin 头
+- **设置窗口** —— 专用配置 UI（Cmd+,），包含三个标签页：**LLMs**（Ollama 端点、模型选择、Groq、OpenRouter）、**API Keys**（12+ 个数据源凭据，逐键校验）以及 **Debug & Logs**（流量日志、详细模式、日志文件）。每个标签页运行独立的校验流水线 —— 在 LLMs 标签页保存不会阻塞 API Keys 的校验
+- **自动模型发现** —— 当你在 LLMs 标签页设置 Ollama 或 LM Studio 的端点 URL 时，设置面板会立即查询其可用模型（先尝试 Ollama 原生 `/api/tags`，再尝试 OpenAI 兼容的 `/v1/models`），并填充下拉菜单。Embedding 模型会被过滤掉。如果发现失败，会显示一个手动文本输入作为回退
+- **跨窗口密钥同步** —— 主仪表盘和设置窗口运行在独立的 webview 中，具有独立的 JS 上下文。在 Settings 中保存密钥时会写入 OS 钥匙串并广播一个 `localStorage` 变更事件。主窗口监听此事件并热重载所有密钥，无需重启应用
+- **合并式钥匙串保险库** —— 所有密钥作为一个 JSON blob 存储在单个钥匙串条目（`secrets-vault`）中，而非每个密钥一个条目。这将每次应用启动时的 macOS Keychain 授权提示从 20+ 次减少到正好 1 次。一次性迁移会读取现有任何单独条目，合并它们，并清理旧格式
+- **详细调试模式** —— 切换流量日志，状态在重启后保持。查看最近 200 个请求，包含时序、状态码和错误详情
+- **DevTools 切换** —— Cmd+Alt+I 打开嵌入式 web 检查器进行调试
+- **自动更新检查器** —— 每 6 小时轮询云端 API 检查新版本。显示非侵入式更新徽章，附带直接下载链接，并支持按版本忽略。具备变体感知能力 —— Tech Monitor 桌面应用会链接到正确的 Tech Monitor 发布资产
+
+## 多平台架构
+
+全部六个变体运行在三个相互协作的平台上：
+
+```
+┌─────────────────────────────────────┐
+│          Vercel (Edge)              │
+│  60+ edge functions · static SPA    │
+│  Proto gateway (24 typed services)  │
+│  CORS allowlist · Redis cache       │
+│  AI pipeline · market analytics     │
+│  CDN caching (s-maxage) · PWA host  │
+└──────────┬─────────────┬────────────┘
+           │             │ fallback
+           │             ▼
+           │  ┌───────────────────────────────────┐
+           │  │     Tauri Desktop (Rust + Node)   │
+           │  │  OS keychain · Token-auth sidecar │
+           │  │  60+ local API handlers · br/gzip    │
+           │  │  Cloud fallback · Traffic logging │
+           │  └───────────────────────────────────┘
+           │
+           │ https:// (server-side)
+           │ wss://   (client-side)
+           ▼
+┌──────────────────────────────────────────┐
+│        Railway (Relay Server)            │
+│  AIS WebSocket · OpenSky OAuth2          │
+│  Telegram MTProto (26 OSINT channels)    │
+│  OREF rocket alerts (residential proxy)  │
+│  Polymarket proxy (queue backpressure)   │
+│  ICAO NOTAM · RSS proxy · gzip all resp │
+└──────────────────────────────────────────┘
+```
+
+**为什么需要两个平台？** 一些上游 API（OpenSky Network、CNN RSS、UN News、CISA、IAEA）会主动屏蔽来自 Vercel IP 段的请求，还有一些需要持久连接或 edge function 不支持的协议。Railway 中继服务器作为备用源站，负责处理：
+
+- **AIS 船舶追踪** —— 维护到 AISStream.io 的持久 WebSocket 连接，并将其多路复用到所有已连接的浏览器客户端，避免触发每用户连接限制
+- **OpenSky 航空器数据** —— 通过 OAuth2 client credentials 流程进行认证（Vercel IP 在没有 auth token 时会被 OpenSky 返回 403）
+- **Telegram 情报** —— 一个 GramJS MTProto 客户端以 60 秒为周期轮询 26 个 OSINT 频道，具备逐频道超时和 FLOOD_WAIT 处理
+- **OREF 火箭警报** —— 通过 `curl` 经住宅代理轮询以色列后方司令部警报系统（Akamai WAF 会屏蔽数据中心的 TLS 指纹）
+- **Polymarket 代理** —— 从 Gamma API 拉取，带有并发上游限流（最多 3 个同时请求，队列背压阈值为 20）、在途请求去重，以及 10 分钟缓存，以防止来自 11 个并行标签查询的踩踏
+- **ICAO NOTAM 代理** —— 通过中继路由 MENA 机场的 NOTAM 关闭查询，绕过 ICAO API 上对 Vercel IP 的限制
+- **GDELT 正面事件** —— 一个 15 分钟的 cron 任务拉取三个主题化的 GDELT GEO API 查询（突破/可再生能源、保护/人道、志愿/慈善），按事件名去重，校验坐标，按类别分类，并以 45 分钟 TTL 写入 Redis。这取代了直接调用 Vercel Edge Function 的方式 —— 后者因 GDELT 约 31 秒的顺序响应时间超过 25 秒的 edge 超时，在 99.9% 的调用中失败。已注册 bootstrap 水合，使 Happy 变体在首次渲染时即有数据
+- **RSS feeds** —— 代理来自屏蔽 Vercel IP 的域名的 feeds，并带有独立的域名白名单以保证安全。支持条件 GET（ETag/If-Modified-Since）以减少未变更 feeds 的带宽消耗
+
+Vercel edge function 通过 `WS_RELAY_URL`（服务端，HTTPS）连接到 Railway，而浏览器客户端通过 `VITE_WS_RELAY_URL`（客户端，WSS）连接。这种分离使中继 URL 可按部署配置，而不会把服务端配置泄露给浏览器。
+
+当客户端接受且负载超过 1KB 时，所有 Railway 中继响应都会进行 gzip 压缩（zlib `gzipSync`），可减少 JSON 与 XML 响应约 80% 的出口流量。桌面本地 sidecar 现在优先使用 Brotli（`br`），对于大于 1KB 的负载回退到 gzip，自动设置 `Content-Encoding` 与 `Vary: Accept-Encoding`。
+
+## 桌面应用架构
+
+Tauri 桌面应用将仪表盘封装在一个原生窗口中（macOS、Windows、Linux），并附带一个本地 Node.js sidecar，运行全部 API 处理器而无需依赖云端：
+
+```
+┌─────────────────────────────────────────────────┐
+│              Tauri (Rust)                       │
+│  Window management · Consolidated keychain vault│
+│  Token generation · Log management · Menu bar   │
+│  Polymarket native TLS bridge                   │
+└─────────────────────┬───────────────────────────┘
+                      │ spawn + env vars
+                      ▼
+┌─────────────────────────────────────────────────┐
+│      Node.js Sidecar (dynamic port)             │
+│  60+ API handlers · Local RSS proxy             │
+│  Brotli/Gzip compression · Cloud fallback       │
+│  Traffic logging · Verbose debug mode           │
+└─────────────────────┬───────────────────────────┘
+                      │ fetch (on local failure)
+                      ▼
+┌─────────────────────────────────────────────────┐
+│         Cloud (worldmonitor.app)                │
+│  Transparent fallback when local handlers fail  │
+└─────────────────────────────────────────────────┘
+```
+
+## 密钥管理
+
+API 密钥存储在操作系统的凭据管理器中（macOS Keychain、Windows Credential Manager）—— 绝不以明文配置文件形式存储。所有密钥都合并到钥匙串中的单个 JSON 保险库条目里，因此无论配置了多少密钥，应用启动都只需要一次 OS 授权提示。
+
+sidecar 启动时，会读取保险库、解析，并作为环境变量注入。空值或仅含空白字符的值会被跳过。密钥也可以在运行时更新而无需重启 sidecar：在 Settings 窗口保存密钥会触发一次 `POST /api/local-env-update` 调用，热补丁 `process.env`，使处理器立即取到新值。
+
+**校验流水线** —— 当你在 Settings 中输入凭据时，应用会针对实际的提供商 API 进行校验（Groq → `/openai/v1/models`，Ollama → `/api/tags`，FRED → GDP 测试查询，NASA FIRMS → 火灾数据拉取等）。网络错误（超时、DNS 失败、主机不可达）被视为软通过 —— 密钥会被保存并附带"无法验证"提示，而不会阻塞。只有来自提供商的明确 401/403 响应才会将密钥标记为无效。这防止了临时网络问题把用户锁在自己的凭据之外。
+
+**智能重新校验** —— 保存设置时，校验流水线会跳过自上次成功校验以来未修改的密钥。这避免了当用户只改动一个密钥但已有 15 个已配置且校验通过的密钥时，对提供商 API 产生不必要的往返请求。只有新输入或修改过的密钥才会触发校验请求。
+
+**桌面端特有要求** —— 一些功能在桌面端需要的凭据比 Web 端更少。例如，Web 端的 AIS 船舶追踪同时需要中继 URL 和 API 密钥，但桌面 sidecar 在内部处理中继连接，因此只需要 API 密钥。设置面板会根据检测到的平台调整其必填字段显示。
+
+### 桌面运行时配置 Schema
+
+World Monitor 桌面端使用一个运行时配置 schema，具备按功能切换的开关与密钥支撑的凭据。
+
+### 密钥
+
+桌面保险库 schema（Rust `SUPPORTED_SECRET_KEYS`）支持以下 25 个密钥：
+
+- `GROQ_API_KEY`
+- `OPENROUTER_API_KEY`
+- `FRED_API_KEY`
+- `EIA_API_KEY`
+- `FINNHUB_API_KEY`
+- `CLOUDFLARE_API_TOKEN`
+- `ACLED_ACCESS_TOKEN`
+- `URLHAUS_AUTH_KEY`
+- `OTX_API_KEY`
+- `ABUSEIPDB_API_KEY`
+- `NASA_FIRMS_API_KEY`
+- `WINGBITS_API_KEY`
+- `WS_RELAY_URL`
+- `VITE_WS_RELAY_URL`
+- `VITE_OPENSKY_RELAY_URL`
+- `OPENSKY_CLIENT_ID`
+- `OPENSKY_CLIENT_SECRET`
+- `AISSTREAM_API_KEY`
+- `OLLAMA_API_URL`
+- `OLLAMA_MODEL`
+- `WORLDMONITOR_API_KEY` —— 控制云端回退访问（最少 16 字符）
+- `WTO_API_KEY`
+- `AVIATIONSTACK_API`
+- `ICAO_API_KEY`
+- `UCDP_ACCESS_TOKEN`
+
+### 功能 schema
+
+每个功能包含：
+
+- `id`：稳定的功能标识符。
+- `requiredSecrets`：必须存在且有效的密钥列表。
+- `enabled`：来自运行时设置面板的用户切换状态。
+- `available`：计算值（`enabled && requiredSecrets valid`）。
+- `fallback`：面向用户的降级行为描述。
+
+### 桌面密钥存储
+
+桌面构建通过 Tauri 命令绑定将密钥持久化到 OS 凭据存储中，底层为 Rust `keyring` 条目（`world-monitor` 服务命名空间）。
+
+前端**不会以明文文件形式存储**密钥。
+
+### 降级行为
+
+若所需密钥缺失/被禁用：
+
+- 摘要：Groq/OpenRouter 被禁用，回退到浏览器模型。
+- FRED / EIA / Finnhub：经济、石油分析和股票数据返回空状态。
+- Cloudflare / ACLED：中断/冲突返回空状态。
+- 网络威胁 feeds（URLhaus、OTX、AbuseIPDB）：网络威胁图层返回空状态。
+- NASA FIRMS：卫星火灾检测返回空状态。
+- Wingbits：航班增强被禁用，仅保留基于启发式的航班分类。
+- AIS / OpenSky 中继：实时追踪功能被干净地禁用。
+- World Monitor API 密钥：云端回退被阻塞；桌面端仅以本地模式运行。
+
+## Sidecar
+
+### Sidecar 鉴权
+
+每次应用启动时，通过随机化哈希状态（Rust 标准库的 `RandomState`）生成一个唯一的 32 字符十六进制 token。该 token 会：
+
+1. 作为 `LOCAL_API_TOKEN` 注入 sidecar
+2. 前端通过 `get_local_api_token` Tauri 命令获取（在首次 API 请求时懒加载）
+3. 作为 `Authorization: Bearer <token>` 附加到每个本地请求
+
+`/api/service-status` 健康检查端点免除 token 校验，以支持监控工具。
+
+### 动态端口分配
+
+sidecar 默认使用端口 46123，但会优雅地处理 `EADDRINUSE` —— 如果端口被占用（另一个 World Monitor 实例，或任何其他进程），sidecar 会绑定到端口 0 并让 OS 分配一个可用的临时端口。实际绑定的端口会写入一个端口文件（日志目录中的 `sidecar.port`），Rust 宿主在启动时轮询该文件（100 毫秒间隔，5 秒超时）。前端在运行时通过 `get_local_api_port` IPC 命令发现端口，`runtime.ts` 中的 `getApiBaseUrl()` 是规范的访问器 —— 禁止在前端代码中硬编码端口 46123。CSP 的 `connect-src` 指令使用 `http://127.0.0.1:*` 以适配任意端口。
+
+### 本地 RSS 代理
+
+sidecar 内置了一个 RSS 代理处理器，直接从源域名拉取新闻 feeds，完全绕过云端 RSS 代理。这意味着桌面应用可以加载全部 500+ 个 RSS feeds 而无需任何云端依赖 —— Vercel edge 代理使用的相同域名白名单会在本地强制执行。结合本地 API 处理器，这使桌面应用能够作为一个完全自包含的情报聚合平台运行。
+
+### Sidecar 弹性
+
+sidecar 采用多种弹性模式，以在上游 API 降级时维持数据可用性：
+
+- **出错时返回旧数据** —— 当上游 API 返回 5xx 错误或超时时，sidecar 从其内存缓存中提供最后一次成功响应，而非传播失败。面板会显示旧数据并附带可视的"重试中"指示器，而不是变空白
+- **负缓存** —— 上游失败后，sidecar 会记录一个 5 分钟的负缓存条目，以防止立即重新命中同一故障端点。冷却期间的后续请求会立即收到旧响应
+- **错峰请求** —— 具有严格速率限制的 API（Yahoo Finance）使用顺序请求批处理，请求间延迟 150 毫秒，而非 `Promise.all`。这会把 10 个并发请求（会触发 HTTP 429）转换为一个保持在速率限制之下的错峰序列
+- **在途请求去重** —— 对同一资源的并发请求（例如多个面板轮询同一端点）被合并为单次上游拉取。第一个请求创建一个 Promise 存储在在途映射中；所有并发请求都等待该单个 Promise
+- **面板重试指示器** —— 当面板的数据拉取失败并重试时，Panel 基类会显示一个非侵入式的"Retrying..."指示器，让用户理解仪表盘正在自我修复而非已损坏
+
+## 云端回退
+
+当本地 API 处理器缺失、抛出错误或返回 5xx 状态时，sidecar 会透明地将请求代理到云端部署。失败的端点会被标记为 `cloudPreferred` —— 后续请求会跳过本地处理器并直接访问云端，直到 sidecar 重启。代理前会剥离 Origin 和 Referer 头，以维持服务端到服务端的对等。
+
+## 可观测性
+
+- **流量日志** —— 最近 200 个请求的环形缓冲区，包含方法、路径、状态和耗时（毫秒），可通过 `GET /api/local-traffic-log` 访问
+- **详细模式** —— 通过 `POST /api/local-debug-toggle` 切换，在 `verbose-mode.json` 中跨 sidecar 重启持久化
+- **双日志文件** —— `desktop.log` 捕获 Rust 端事件（启动、密钥注入计数、菜单操作），而 `local-api.log` 捕获 Node.js 的 stdout/stderr
+- **强制 IPv4 拉取** —— sidecar 补丁 `globalThis.fetch` 以对所有出站请求强制使用 IPv4。政府 API（NASA FIRMS、EIA、FRED）发布 AAAA DNS 记录，但其 IPv6 端点经常超时。该补丁使用 `node:https` 并设置 `family: 4` 以绕过 Happy Eyeballs，避免级联的 ETIMEDOUT 失败
+- **DevTools** —— `Cmd+Alt+I` 切换嵌入式 web 检查器
+
+## 自动更新
+
+桌面应用通过轮询 `worldmonitor.app/api/version` 检查新版本 —— 启动时一次（延迟 5 秒），之后每 6 小时一次。当检测到较新版本时（semver 比较），会出现一个非侵入式的更新徽章，附带指向 GitHub Release 页面的直接链接。
+
+更新提示可按版本忽略 —— 忽略 v2.5.0 不会抑制 v2.6.0 的通知。更新器具备变体感知能力：Tech Monitor 桌面构建会链接到 Tech Monitor 的发布资产，而非 full 变体。
+
+`/api/version` 端点会读取最新的 GitHub Release 标签并将结果缓存 1 小时，因此版本检查不会在每次请求时都命中 GitHub API。

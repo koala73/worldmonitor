@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   CHOKEPOINTS,
   CANONICAL_KEY,
@@ -7,6 +10,10 @@ import {
   buildPayload,
   validateFn,
 } from '../scripts/seed-chokepoint-baselines.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const fixturePath = resolve(__dirname, 'fixtures/chokepoint-baselines-sample.json');
+const fixture = JSON.parse(readFileSync(fixturePath, 'utf-8'));
 
 describe('buildPayload', () => {
   it('returns all 7 chokepoints', () => {
@@ -99,5 +106,60 @@ describe('validateFn', () => {
   it('returns true for correct shape with 7 chokepoints', () => {
     const payload = buildPayload();
     assert.equal(validateFn(payload), true);
+  });
+});
+
+// Fixture-parity guard (plan §L #8 / V5-7 golden fixtures). The fixture at
+// tests/fixtures/chokepoint-baselines-sample.json snapshots the expected
+// buildPayload output shape (excluding the volatile updatedAt). Any change
+// to CHOKEPOINTS that drifts from the fixture is now a deliberate action
+// requiring a fixture update — not a silent schema shift.
+describe('fixture parity (tests/fixtures/chokepoint-baselines-sample.json)', () => {
+  it('fixture has the same top-level shape (source, referenceYear, chokepoints[])', () => {
+    const payload = buildPayload();
+    assert.equal(fixture.source, payload.source);
+    assert.equal(fixture.referenceYear, payload.referenceYear);
+    assert.ok(Array.isArray(fixture.chokepoints));
+    assert.equal(fixture.chokepoints.length, payload.chokepoints.length);
+  });
+
+  it('fixture chokepoints match buildPayload().chokepoints on every contracted field', () => {
+    // Validate against the seeded PAYLOAD (the actual wire-level contract
+    // the cron writes to Redis), not against the raw CHOKEPOINTS constant.
+    // This matters because buildPayload could transform entries in a
+    // future refactor (coercion, ordering, normalization) — we want the
+    // fixture to track the emitted shape, not the internal source array.
+    //
+    // Validates every field the fixture carries: id, relayId, name, mbd,
+    // lat, lon. Previously only id/relayId/mbd were checked, leaving
+    // lat/lon/name drifts invisible despite being in the fixture.
+    const payload = buildPayload();
+    for (let i = 0; i < payload.chokepoints.length; i++) {
+      const seed = payload.chokepoints[i];
+      const fix = fixture.chokepoints[i];
+      assert.equal(fix.id,       seed.id,       `position ${i}: id drift (seed=${seed.id} fixture=${fix.id})`);
+      assert.equal(fix.relayId,  seed.relayId,  `${seed.id}: relayId drift`);
+      assert.equal(fix.name,     seed.name,     `${seed.id}: name drift (seed="${seed.name}" fixture="${fix.name}")`);
+      assert.equal(fix.mbd,      seed.mbd,      `${seed.id}: mbd drift (seed=${seed.mbd} fixture=${fix.mbd})`);
+      assert.equal(fix.lat,      seed.lat,      `${seed.id}: lat drift (seed=${seed.lat} fixture=${fix.lat})`);
+      assert.equal(fix.lon,      seed.lon,      `${seed.id}: lon drift (seed=${seed.lon} fixture=${fix.lon})`);
+    }
+  });
+
+  it('fixture entry key set matches buildPayload entry key set exactly', () => {
+    // Catches the case where a future buildPayload adds a new field
+    // (e.g. mbd_source, last_reviewed) without updating the fixture —
+    // or vice versa. Keeps schema evolution deliberate and reviewed.
+    const payload = buildPayload();
+    const seedKeys  = Object.keys(payload.chokepoints[0]).sort();
+    const fixKeys   = Object.keys(fixture.chokepoints[0]).sort();
+    assert.deepEqual(fixKeys, seedKeys,
+      `entry key set drift — seed keys: [${seedKeys.join(', ')}], fixture keys: [${fixKeys.join(', ')}]`);
+  });
+
+  it('fixture carries a non-empty updatedAt placeholder (format only, not value)', () => {
+    assert.ok(typeof fixture.updatedAt === 'string');
+    assert.ok(Number.isFinite(Date.parse(fixture.updatedAt)),
+      `fixture updatedAt must be ISO-parseable, got "${fixture.updatedAt}"`);
   });
 });

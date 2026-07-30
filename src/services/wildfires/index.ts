@@ -1,14 +1,12 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  WildfireServiceClient,
-  type FireDetection,
-  type FireConfidence,
-  type ListFireDetectionsResponse,
-} from '@/generated/client/worldmonitor/wildfire/v1/service_client';
+import type { FireDetection, FireConfidence, ListFireDetectionsResponse } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { WildfireServiceClient } from '@/services/generated-rpc-clients';
+import { resolveFireDetectionTotalCount } from './payload';
 
 export type { FireDetection };
+export { resolveFireDetectionTotalCount } from './payload';
 
 // -- Types --
 
@@ -18,6 +16,7 @@ export interface FireRegionStats {
   fireCount: number;
   totalFrp: number;
   highIntensityCount: number;
+  possibleExplosionCount: number;
 }
 
 export interface FetchResult {
@@ -43,7 +42,7 @@ export interface MapFire {
 const client = new WildfireServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListFireDetectionsResponse>({ name: 'Wildfires', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-const emptyFallback: ListFireDetectionsResponse = { fireDetections: [] };
+const emptyFallback: ListFireDetectionsResponse = { fireDetections: [], fetchedAt: 0, dataAvailable: false };
 
 // -- Public API --
 
@@ -64,7 +63,7 @@ export async function fetchAllFires(_days?: number): Promise<FetchResult> {
     (regions[r] ??= []).push(d);
   }
 
-  return { regions, totalCount: detections.length };
+  return { regions, totalCount: resolveFireDetectionTotalCount(response) };
 }
 
 export function computeRegionStats(regions: Record<string, FireDetection[]>): FireRegionStats[] {
@@ -74,12 +73,14 @@ export function computeRegionStats(regions: Record<string, FireDetection[]>): Fi
     const highIntensity = fires.filter(
       f => f.brightness > 360 && f.confidence === 'FIRE_CONFIDENCE_HIGH',
     );
+    const possibleExplosions = fires.filter(f => f.possibleExplosion);
     stats.push({
       region,
       fires,
       fireCount: fires.length,
       totalFrp: fires.reduce((sum, f) => sum + (f.frp || 0), 0),
       highIntensityCount: highIntensity.length,
+      possibleExplosionCount: possibleExplosions.length,
     });
   }
 

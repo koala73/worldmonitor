@@ -1,0 +1,133 @@
+---
+title: "OAuth 2.1 Server"
+description: "支撑 World Monitor MCP 服务器 OAuth 2.1 认证流程的完整 API 参考：涵盖动态客户端注册、授权码颁发、访问令牌交换与刷新端点，为 AI 智能体、LLM 客户端、Claude Desktop 与第三方集成提供符合规范的安全访问、权限范围控制与令牌生命周期管理。"
+---
+
+WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向客户端的唯一用途是**授予对 `/api/mcp` MCP 服务器的访问权限**。它实现了:
+
+- [RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591) — 动态客户端注册
+- [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE(必需,仅 S256)
+- [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) — 授权服务器元数据
+- [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) — 受保护资源元数据
+
+## 发现端点
+
+| URL | 用途 |
+|-----|---------|
+| `/.well-known/oauth-authorization-server` | AS 元数据(端点、支持的 grant、PKCE 方法) |
+| `/.well-known/oauth-protected-resource` | 资源元数据(授权服务器、scope) |
+
+`/.well-known/oauth-protected-resource` 目前公布公共资源作用域 `mcp`。Pro 授权码授权返回内部作用域值 `mcp_pro`。遗留 API-key 授权与 `client_credentials` 返回 `mcp`。
+
+## 端点
+
+### `POST /api/oauth/register`
+
+动态客户端注册。返回 `client_id`(公共客户端,无 secret)。
+
+**请求**:
+```json
+{
+  "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
+  "client_name": "Claude Desktop",
+  "token_endpoint_auth_method": "none"
+}
+```
+
+**响应**:
+```json
+{
+  "client_id": "7c3b08f0-0c1f-4a9c-8a52-69e13d2a5d5e",
+  "client_name": "Claude Desktop",
+  "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
+
+**Redirect URI 允许列表**:仅接受以下前缀:
+
+- `https://claude.ai/api/mcp/auth_callback`
+- `https://claude.com/api/mcp/auth_callback`
+- `http://localhost:<port>` / `http://127.0.0.1:<port>` — 任意端口
+
+**速率限制**:5 次注册 / 60 秒 / IP。
+
+**客户端 TTL**:90 天滑动窗口(每次成功的令牌交换都会刷新)。
+
+### `GET /api/oauth/authorize`
+
+启动 OAuth 流程。渲染一个同意页,重定向到 Clerk 登录,随后签发与调用方 PRO 权益绑定的授权码。
+
+**必填 query 参数**:
+
+- `response_type=code`
+- `client_id` — 来自 DCR
+- `redirect_uri` — 必须与已注册的相匹配
+- `code_challenge` — PKCE S256
+- `code_challenge_method=S256`
+- `state` — 不透明值
+- `scope`(可选)
+
+**Code TTL**:10 分钟。一次性使用(交换时原子 `GETDEL`)。
+
+### `POST /api/oauth/token`
+
+用授权码换取访问令牌,或刷新已有令牌。
+
+**Grant type: `authorization_code`**:
+```
+grant_type=authorization_code
+code=<from /authorize>
+code_verifier=<PKCE>
+client_id=<from DCR>
+redirect_uri=<same as /authorize>
+```
+
+**响应**:
+```json
+{
+  "access_token": "6f13d8fa-89b6-4a02-a527-7f6f61a2df55",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "6ba38313-9a4d-4797-9186-3d2c3c1cfe02",
+  "scope": "mcp_pro"
+}
+```
+
+**Grant type: `refresh_token`**:
+```
+grant_type=refresh_token
+refresh_token=<from previous exchange>
+client_id=<from DCR>
+```
+
+**速率限制**:10 次令牌请求 / 分钟。限制器按键依据为:`client_credentials` 按 `client_secret` 哈希,有 `client_id` 时(`authorization_code` 与 `refresh_token`)按 `client_id`,两者均不可用时才回退到调用方 IP。
+
+**令牌 TTL**:
+
+- Access token:1 小时
+- Refresh token:7 天
+
+Access 与 refresh 令牌为不透明 UUID。所有令牌端点响应均包含 `Cache-Control: no-store, Pragma: no-cache`。
+
+## 使用令牌
+
+在每次 MCP 请求中携带访问令牌:
+
+```
+Authorization: Bearer 6f13d8fa-89b6-4a02-a527-7f6f61a2df55
+```
+
+令牌绑定到用户账户,并在每次调用时重新校验权益 — 降级后下一次请求即撤销访问。
+
+## 错误响应
+
+依据 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2):
+
+```json
+{ "error": "invalid_grant", "error_description": "..." }
+```
+
+常见错误:`invalid_request`、`invalid_client`、`invalid_grant`、`unsupported_grant_type`、`invalid_scope`。

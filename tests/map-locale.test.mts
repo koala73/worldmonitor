@@ -51,7 +51,8 @@ describe('getLocalizedNameField', () => {
   it('returns correct field for every mapped language', () => {
     const expected: Record<string, string> = {
       en: 'name:en', bg: 'name:bg', cs: 'name:cs', fr: 'name:fr',
-      de: 'name:de', el: 'name:el', es: 'name:es', it: 'name:it',
+      de: 'name:de', el: 'name:el', es: 'name:es', hr: 'name:hr',
+      hi: 'name:hi', it: 'name:it',
       pl: 'name:pl', pt: 'name:pt', nl: 'name:nl', sv: 'name:sv',
       ru: 'name:ru', ar: 'name:ar', zh: 'name:zh', ja: 'name:ja',
       ko: 'name:ko', ro: 'name:ro', tr: 'name:tr', th: 'name:th',

@@ -1,4 +1,4 @@
-import { PredictionServiceClient } from '@/generated/client/worldmonitor/prediction/v1/service_client';
+
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
@@ -25,6 +25,7 @@ const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', c
 const client = new PredictionServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 import predictionTags from '../../../scripts/data/prediction-tags.json';
+import { PredictionServiceClient } from '@/services/generated-rpc-clients';
 
 const GEOPOLITICAL_TAGS = predictionTags.geopolitical;
 const TECH_TAGS = predictionTags.tech;
@@ -117,28 +118,59 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
   return markets.slice(0, 15);
 }
 
-export async function fetchCountryMarkets(country: string): Promise<PredictionMarket[]> {
-  try {
-    const resp = await client.listPredictionMarkets({
-      category: 'geopolitics',
-      query: country,
-      pageSize: 30,
-      cursor: '',
-    });
-    if (resp.markets && resp.markets.length > 0) {
-      return resp.markets
-        .map(protoToMarket)
-        .filter(m => !isExpired(m.endDate))
-        .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
-        .slice(0, 5);
-    }
-  } catch { /* RPC failed, fall through to bootstrap filter */ }
+const COUNTRY_SEARCH_ALIASES: Record<string, string[]> = {
+  'United States': ['US', 'America', 'American', 'Trump', 'Biden', 'Fed', 'tariff'],
+  'United Kingdom': ['UK', 'Britain', 'British'],
+  'South Korea': ['Korea'],
+  'United Arab Emirates': ['UAE', 'Dubai', 'Abu Dhabi'],
+  'Saudi Arabia': ['Saudi', 'MBS'],
+  'North Korea': ['DPRK', 'Pyongyang', 'Kim Jong'],
+};
 
+function countrySearchTerms(country: string): string[] {
+  const terms = [country];
+  const aliases = COUNTRY_SEARCH_ALIASES[country];
+  if (aliases) terms.push(...aliases);
+  return terms;
+}
+
+function matchesCountryTerms(title: string, terms: string[]): boolean {
+  return terms.some(t => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title));
+}
+
+export async function fetchCountryMarkets(country: string): Promise<PredictionMarket[]> {
+  const terms = countrySearchTerms(country);
+  const allMarkets: PredictionMarket[] = [];
+
+  // Try RPC across geopolitics + finance (parallel, both cover most country markets)
+  const rpcResults = await Promise.allSettled(
+    (['geopolitics', 'economy'] as const).map(category =>
+      client.listPredictionMarkets({ category, query: country, pageSize: 30, cursor: '' })
+    )
+  );
+  for (const result of rpcResults) {
+    if (result.status === 'fulfilled' && result.value.markets?.length) {
+      allMarkets.push(...result.value.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)));
+    }
+  }
+
+  if (allMarkets.length > 0) {
+    // Filter by any matching term, deduplicate by URL, sort by volume
+    const matched = allMarkets
+      .filter(m => matchesCountryTerms(m.title, terms))
+      .filter((m, i, arr) => arr.findIndex(x => x.url === m.url) === i)
+      .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+      .slice(0, 5);
+    if (matched.length > 0) return matched;
+  }
+
+  // Fallback: search bootstrap data across all buckets
   const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
-  if (hydrated?.geopolitical?.length) {
-    const lower = country.toLowerCase();
-    const filtered = hydrated.geopolitical
-      .filter(m => !isExpired(m.endDate) && m.title.toLowerCase().includes(lower))
+  if (hydrated) {
+    const buckets = [...(hydrated.geopolitical ?? []), ...(hydrated.finance ?? [])];
+    const filtered = buckets
+      .filter(m => !isExpired(m.endDate) && matchesCountryTerms(m.title, terms))
+      .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 5);
     if (filtered.length > 0) return filtered;
   }

@@ -286,9 +286,10 @@ function mapReliefItem(item) {
 async function fetchReliefWeb() {
   const appname = getReliefWebAppname();
   if (!appname) {
-    console.warn('  [ReliefWeb] RELIEFWEB_APPNAME not set, skipping ReliefWeb fetch');
+    console.log('  [ReliefWeb] RELIEFWEB_APPNAME not set, skipping ReliefWeb fetch');
     return [];
   }
+  console.log(`  [ReliefWeb] Fetching with appname="${appname}"`);
   const requestBodies = buildReliefWebRequestBodies();
 
   let lastError = null;
@@ -316,8 +317,11 @@ async function fetchReliefWeb() {
         if (!rows.length) continue;
 
         const mapped = rows.map(mapReliefItem).filter(Boolean);
-        if (mapped.length > 0) return mapped;
-        if (rows.length > 0) console.warn(`[climate-disasters] ${rows.length} ReliefWeb rows returned but all mapped to null`);
+        if (mapped.length > 0) {
+          console.log(`  [ReliefWeb] ${mapped.length} disasters from ${rows.length} rows`);
+          return mapped;
+        }
+        if (rows.length > 0) console.log(`  [ReliefWeb] ${rows.length} rows returned but all mapped to null`);
       } catch (err) {
         lastError = err;
         const message = String(err?.message || err);
@@ -446,7 +450,7 @@ function collectDisasterSourceResults(results) {
     if (err?.isConfigError) throw err;
     failures.push(err);
     const message = String(err?.message || err || 'unknown source failure');
-    console.warn(`[seed-climate-disasters] partial source failure: ${message}`);
+    console.log(`  [seed-climate-disasters] partial source failure: ${message}`);
   }
 
   const disasters = dedupeAndSort(combined);
@@ -481,12 +485,20 @@ function isMain() {
   return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.disasters) ? data.disasters.length : 0;
+}
+
 if (isMain()) {
   runSeed('climate', 'disasters', CANONICAL_KEY, fetchClimateDisasters, {
     validateFn: (data) => Array.isArray(data?.disasters) && data.disasters.length > 0,
     recordCount: (data) => data?.disasters?.length || 0,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'reliefweb+natural-cache-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 720,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

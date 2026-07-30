@@ -1,0 +1,153 @@
+import { Panel } from './Panel';
+import { t } from '@/services/i18n';
+import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
+import { getHydratedData } from '@/services/bootstrap';
+import { fetchChokepointStatus } from '@/services/supply-chain';
+import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
+import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+
+// Ordering for the atlas strip: highest-volume chokepoints first.
+// Matches scripts/seed-chokepoint-baselines.mjs ordering.
+const STRIP_ORDER = [
+  'hormuz_strait',
+  'malacca_strait',
+  'suez',
+  'bab_el_mandeb',
+  'bosphorus',
+  'dover_strait',
+  'panama',
+];
+
+function shortName(id: string): string {
+  switch (id) {
+    case 'hormuz_strait': return t('components.chokepointStrip.shortName.hormuzStrait');
+    case 'malacca_strait': return t('components.chokepointStrip.shortName.malaccaStrait');
+    case 'suez': return t('components.chokepointStrip.shortName.suez');
+    case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
+    case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'panama': return t('components.chokepointStrip.shortName.panama');
+    // Empty string lets the call site's `|| cp.name` fallback fire so any
+    // future chokepoint added to the API but not yet in this switch
+    // displays its server-supplied name instead of its raw machine ID.
+    default: return '';
+  }
+}
+
+function statusColor(status: string): string {
+  const s = (status || '').toLowerCase();
+  if (s.includes('closed') || s.includes('critical')) return '#e74c3c';
+  if (s.includes('disrupted') || s.includes('high')) return '#e67e22';
+  if (s.includes('restricted') || s.includes('elevated') || s.includes('medium')) return '#f39c12';
+  return '#2ecc71';
+}
+
+function formatFlow(cp: ChokepointInfo): string {
+  const est = cp.flowEstimate;
+  if (!est || typeof est.currentMbd !== 'number' || typeof est.baselineMbd !== 'number') return '—';
+  const pct = est.baselineMbd > 0 ? Math.round((est.currentMbd / est.baselineMbd) * 100) : null;
+  if (pct == null) return t('components.chokepointStrip.flow.mbd', { value: est.currentMbd.toFixed(1) });
+  return t('components.chokepointStrip.flow.pctOfBaseline', { pct });
+}
+
+export class ChokepointStripPanel extends Panel {
+  private data: GetChokepointStatusResponse | null = null;
+
+  constructor() {
+    super({
+      id: 'chokepoint-strip',
+      title: t('components.chokepointStrip.title'),
+      infoTooltip: t('components.chokepointStrip.infoTooltip'),
+    });
+  }
+
+  public async fetchData(): Promise<void> {
+    try {
+      const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
+      if (hydrated?.chokepoints?.length) {
+        this.data = hydrated;
+        this.render();
+        void fetchChokepointStatus().then(fresh => {
+          if (!this.element?.isConnected || !fresh?.chokepoints?.length) return;
+          this.data = fresh;
+          this.render();
+        }).catch(() => {});
+        return;
+      }
+      const fresh = await fetchChokepointStatus();
+      if (!this.element?.isConnected) return;
+      this.data = fresh;
+      this.render();
+    } catch (err) {
+      if (this.isAbortError(err)) return;
+      if (!this.element?.isConnected) return;
+      this.showError(t('components.chokepointStrip.errors.unavailable'), () => void this.fetchData());
+    }
+  }
+
+  private render(): void {
+    if (!this.data?.chokepoints?.length) {
+      this.showError(t('components.chokepointStrip.errors.noData'), () => void this.fetchData());
+      return;
+    }
+
+    const byId = new Map(this.data.chokepoints.map(cp => [cp.id, cp]));
+    const ordered = STRIP_ORDER
+      .map(id => byId.get(id))
+      .filter((cp): cp is ChokepointInfo => !!cp);
+
+    const chips = joinSafeHtml(ordered.map(cp => {
+      const color = statusColor(cp.status);
+      const short = shortName(cp.id) || cp.name;
+      const flow = formatFlow(cp);
+      const warnings = cp.activeWarnings > 0
+        ? safeHtml`<span class="cp-chip-warn">${cp.activeWarnings}</span>`
+        : safeHtml``;
+      return safeHtml`
+        <div class="cp-chip" data-cp="${cp.id}" title="${cp.name} - ${cp.status || t('components.chokepointStrip.unknown')}">
+          <div class="cp-chip-dot" style="background:${color}"></div>
+          <div class="cp-chip-body">
+            <div class="cp-chip-name">${short}${warnings}</div>
+            <div class="cp-chip-flow">${flow}</div>
+          </div>
+        </div>`;
+    }));
+
+    const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
+    const footer: SafeHtml = unsafeRawHtml(attributionFooterHtml({
+      sourceType: 'ais',
+      method: t('components.chokepointStrip.attribution.method'),
+      sampleSize: nAis || undefined,
+      sampleLabel: t('components.chokepointStrip.attribution.sampleLabel'),
+      updatedAt: this.data.fetchedAt,
+      creditName: t('components.chokepointStrip.attribution.creditName'),
+    }), 'attributionFooterHtml escapes fields and returns shared footer markup');
+
+    this.setSafeContent(safeHtml`
+      <div class="cp-strip-wrap">
+        <div class="cp-strip">${chips}</div>
+        ${footer}
+      </div>
+      ${unsafeRawHtml(ATTRIBUTION_FOOTER_CSS, 'static attribution footer CSS constant')}
+      <style>
+        .cp-strip-wrap { padding: 4px 0; }
+        .cp-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+        .cp-chip {
+          display: flex; align-items: center; gap: 6px;
+          padding: 6px 10px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 8px;
+          min-width: 120px;
+          font-size: 11px;
+          cursor: default;
+        }
+        .cp-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+        .cp-chip-body { display: flex; flex-direction: column; line-height: 1.2; }
+        .cp-chip-name { font-weight: 600; color: var(--text, #eee); display: flex; align-items: center; gap: 4px; }
+        .cp-chip-warn { background:#e74c3c;color:#fff;border-radius:9px;padding:0 5px;font-size:9px;font-weight:700; }
+        .cp-chip-flow { color: var(--text-dim, #888); font-size: 10px; }
+      </style>
+    `);
+  }
+}

@@ -203,36 +203,13 @@ describe('cachedFetchJson — cache key encoding', () => {
 });
 
 describe('cachedFetchJson — import verification', () => {
-  it('get-company-enrichment.ts imports cachedFetchJson', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const src = readFileSync(resolve('server/worldmonitor/intelligence/v1/get-company-enrichment.ts'), 'utf-8');
-    assert.ok(src.includes("from '../../../_shared/redis'"), 'must import from _shared/redis');
-    assert.ok(src.includes('cachedFetchJson'), 'must use cachedFetchJson');
-    assert.ok(src.includes('intel:enrichment:gh-org:'), 'must use gh-org cache key');
-    assert.ok(src.includes('intel:enrichment:gh-tech:'), 'must use gh-tech cache key');
-    assert.ok(src.includes('intel:enrichment:sec:'), 'must use sec cache key');
-    assert.ok(src.includes('intel:enrichment:hn:'), 'must use hn cache key');
-    assert.ok(
-      src.includes('intel:enrichment:sec:') && src.includes('getTodayISO()'),
-      'SEC cache key must include getTodayISO() daily bucket to track date-window changes',
-    );
-  });
-
-  it('list-company-signals.ts imports cachedFetchJson', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const src = readFileSync(resolve('server/worldmonitor/intelligence/v1/list-company-signals.ts'), 'utf-8');
-    assert.ok(src.includes("from '../../../_shared/redis'"), 'must import from _shared/redis');
-    assert.ok(src.includes('cachedFetchJson'), 'must use cachedFetchJson');
-    assert.ok(src.includes('intel:signals:hn:'), 'must use signals:hn cache key');
-    assert.ok(src.includes('intel:signals:gh:'), 'must use signals:gh cache key');
-    assert.ok(src.includes('intel:signals:jobs:'), 'must use signals:jobs cache key');
-    assert.ok(
-      src.includes('hourBucket()'),
-      'all signal cache keys must include hourBucket() to prevent stale rolling-window results',
-    );
-  });
+  // The previous two assertions in this block — "get-company-enrichment.ts
+  // imports cachedFetchJson" and "list-company-signals.ts imports
+  // cachedFetchJson" — were intentionally removed when both handlers were
+  // disabled per issues #3754 and #3755 (worldmonitor). The disabled handlers
+  // must NOT import cachedFetchJson because re-introducing an upstream fetch
+  // recreates the fabricated-intelligence bug class. See
+  // tests/disabled-company-rpcs.test.mts for the source-level forbid scan.
 
   it('cache keys do not collide with existing bootstrap keys', async () => {
     const { readFileSync } = await import('node:fs');

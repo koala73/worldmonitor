@@ -1,5 +1,6 @@
 import type { ClusteredEvent, VelocityMetrics, VelocityLevel, SentimentType } from '@/types';
 import { mlWorker } from './ml-worker';
+import { effectivePubDateMs } from './feed-date';
 
 const HOUR_MS = 60 * 60 * 1000;
 const ELEVATED_THRESHOLD = 3;
@@ -54,9 +55,19 @@ export function calculateVelocity(cluster: ClusteredEvent): VelocityMetrics {
   const timeSpanHours = Math.max(timeSpanMs / HOUR_MS, 0.25);
   const sourcesPerHour = items.length / timeSpanHours;
 
+  // Exclude pubDateMissing items from trend math entirely. `clustering.ts:116`
+  // aggregates raw `pubDate.getTime()` into `firstSeen`/`lastUpdated` for
+  // cluster metadata (allow-listed — see feed-date-ranking-uses-effective
+  // test). If we let missing-date items into this midpoint partition while
+  // the cluster's firstSeen/lastUpdated were computed from their synthesized
+  // stamps, every such item would land in `olderItems` (effectivePubDateMs
+  // returns 0) and falsely tilt the trend toward 'falling'. Computing trend
+  // only on items with real timestamps preserves the cluster-metadata path
+  // without composing the two policies into a wrong answer.
+  const datedItems = items.filter((i) => i.pubDateMissing !== true);
   const midpoint = cluster.firstSeen.getTime() + timeSpanMs / 2;
-  const recentItems = items.filter(i => i.pubDate.getTime() > midpoint);
-  const olderItems = items.filter(i => i.pubDate.getTime() <= midpoint);
+  const recentItems = datedItems.filter((i) => effectivePubDateMs(i) > midpoint);
+  const olderItems = datedItems.filter((i) => effectivePubDateMs(i) <= midpoint);
 
   let trend: 'rising' | 'stable' | 'falling' = 'stable';
   if (recentItems.length > olderItems.length * 1.5) {

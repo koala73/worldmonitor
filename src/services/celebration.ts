@@ -11,7 +11,25 @@
  * Respects prefers-reduced-motion: no animations when that media query matches.
  */
 
-import confetti from 'canvas-confetti';
+// canvas-confetti (~10KB) is only needed when a positive milestone actually fires —
+// never at boot. Lazy-load + cache it on first celebration so it ships off the eager
+// main entry. Bursts are fire-and-forget, so a one-tick load delay is imperceptible.
+type ConfettiFn = typeof import('canvas-confetti');
+type ConfettiOptions = Parameters<ConfettiFn>[0];
+let confettiPromise: Promise<ConfettiFn> | null = null;
+function loadConfetti(): Promise<ConfettiFn> {
+  if (!confettiPromise) {
+    confettiPromise = import('canvas-confetti')
+      // canvas-confetti is `export =`; the runtime namespace wraps it under .default
+      // (esbuild/Vite CJS interop), while the type is the function itself.
+      .then((m) => ((m as { default?: ConfettiFn }).default ?? m) as ConfettiFn)
+      .catch((err) => { confettiPromise = null; throw err; });
+  }
+  return confettiPromise;
+}
+function fireConfetti(options: ConfettiOptions): void {
+  void loadConfetti().then((confetti) => { confetti(options); }).catch(() => { /* best-effort */ });
+}
 
 // ---- Types ----
 
@@ -46,7 +64,7 @@ export function celebrate(type: 'milestone' | 'record' = 'milestone'): void {
   if (REDUCED_MOTION) return;
 
   if (type === 'milestone') {
-    void confetti({
+    fireConfetti({
       particleCount: 40,
       spread: 60,
       origin: { y: 0.7 },
@@ -55,7 +73,7 @@ export function celebrate(type: 'milestone' | 'record' = 'milestone'): void {
     });
   } else {
     // 'record' -- double burst for extra emphasis
-    void confetti({
+    fireConfetti({
       particleCount: 80,
       spread: 90,
       origin: { y: 0.6 },
@@ -63,7 +81,7 @@ export function celebrate(type: 'milestone' | 'record' = 'milestone'): void {
       disableForReducedMotion: true,
     });
     setTimeout(() => {
-      void confetti({
+      fireConfetti({
         particleCount: 80,
         spread: 90,
         origin: { y: 0.6 },

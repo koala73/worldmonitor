@@ -7,7 +7,11 @@ import type {
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { callLlmReasoning } from '../../../_shared/llm';
-import { sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
+// Issue #3724 (extension): prediction-market titles flow into the deduction
+// LLM's prompt. Use sanitizeForPrompt (semantic + structural), not the lighter
+// sanitizeHeadline, so that a compromised market feed cannot inject
+// instruction-override phrases into the forecaster's context.
+import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
@@ -62,7 +66,7 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   if (!matched.length) return '';
 
   const lines = matched.map((m) => {
-    const title = sanitizeHeadline(m.title);
+    const title = sanitizeForPrompt(m.title);
     if (!title) return null;
     const pct = Math.round(m.yesPrice / 5) * 5;
     const vol = formatVolume(m.volume);
@@ -73,7 +77,19 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   return `## Prediction Market Odds (crowd-calibrated)\n${lines.join('\n')}`;
 }
 
-const DEDUCT_TIMEOUT_MS = 120_000;
+// This route runs on the Vercel Edge gateway (api/intelligence/v1/[rpc].ts →
+// runtime: 'edge'), which enforces a 25s initial-response ceiling — same
+// constraint list-feed-digest budgets under. The LLM reasoning budget must
+// fail closed to the graceful `provider: 'error'` degradation below BEFORE
+// the platform kills the invocation: the previous 120s budget was
+// unreachable (7d of Axiom route telemetry shows no success past 23.6s),
+// so every slower run surfaced as a client 504 with the LLM spend wasted
+// and nothing cached (WORLDMONITOR-VP, #5147). 22s keeps the budget above
+// the observed reasoning p95 (~17.5s) while leaving a 3s guard band for
+// pre-LLM context assembly and response serialization.
+const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
+const RESPONSE_GUARD_BAND_MS = 3_000;
+const DEDUCT_TIMEOUT_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS;
 const DEDUCT_CACHE_TTL = 3600;
 
 export async function deductSituation(
@@ -119,13 +135,19 @@ export async function deductSituation(
                 temperature: 0.3,
                 maxTokens: 1500,
                 timeoutMs: DEDUCT_TIMEOUT_MS,
+                stage: 'deduct-situation',
                 systemAppend: framework || undefined,
             });
 
             if (!result) return null;
             const analysis = postProcessDeductionOutput(result.content, mode);
             return { analysis, model: result.model, provider: result.provider };
-        }
+        },
+        undefined,
+        // Cache safety net must sit above the LLM's own timeout so the
+        // caller's bound wins; otherwise the inflight wrapper rejects at
+        // the 30s default before callLlmReasoning can complete (#3539).
+        { timeoutMs: DEDUCT_TIMEOUT_MS + 5_000 },
     );
 
     if (!cached?.analysis) {

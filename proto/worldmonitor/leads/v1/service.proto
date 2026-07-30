@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.leads.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/leads/v1/register_interest.proto";
+import "worldmonitor/leads/v1/submit_contact.proto";
+
+// LeadsService handles public-facing lead capture: enterprise contact and Pro-waitlist signups.
+service LeadsService {
+  option (sebuf.http.service_config) = {base_path: "/api/leads/v1"};
+
+  // SubmitContact stores an enterprise contact submission in Convex and emails ops.
+  rpc SubmitContact(SubmitContactRequest) returns (SubmitContactResponse) {
+    option (sebuf.http.config) = {path: "/submit-contact", method: HTTP_METHOD_POST};
+  }
+
+  // RegisterInterest adds an email to the Pro waitlist and sends a confirmation email.
+  rpc RegisterInterest(RegisterInterestRequest) returns (RegisterInterestResponse) {
+    option (sebuf.http.config) = {path: "/register-interest", method: HTTP_METHOD_POST};
+  }
+}

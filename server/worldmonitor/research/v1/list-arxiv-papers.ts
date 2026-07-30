@@ -11,11 +11,12 @@ import type {
 
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_KEY_PREFIX = 'research:arxiv:v1';
 
 export async function listArxivPapers(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListArxivPapersRequest,
 ): Promise<ListArxivPapersResponse> {
   try {
@@ -23,9 +24,9 @@ export async function listArxivPapers(
     const pageSize = clampInt(req.pageSize, 50, 1, 100);
     const seedKey = `${SEED_KEY_PREFIX}:${category}::50`;
     const result = await getCachedJson(seedKey, true) as ListArxivPapersResponse | null;
-    if (!result?.papers?.length) return { papers: [], pagination: undefined };
+    if (!result?.papers?.length) return markNoStoreFallbackResponse(ctx.request, { papers: [], pagination: undefined });
     return { papers: result.papers.slice(0, pageSize), pagination: undefined };
   } catch {
-    return { papers: [], pagination: undefined };
+    return markNoStoreFallbackResponse(ctx.request, { papers: [], pagination: undefined });
   }
 }

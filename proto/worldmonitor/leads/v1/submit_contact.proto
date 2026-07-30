@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.leads.v1;
+
+import "buf/validate/validate.proto";
+
+// SubmitContactRequest carries an enterprise contact form submission.
+message SubmitContactRequest {
+  string email = 1 [(buf.validate.field).required = true];
+  string name = 2 [(buf.validate.field).required = true];
+  string organization = 3 [(buf.validate.field).required = true];
+  string phone = 4 [(buf.validate.field).required = true];
+  string message = 5;
+  string source = 6;
+  // Honeypot — bots auto-fill this hidden field; real submissions leave it empty.
+  string website = 7;
+  // Cloudflare Turnstile token proving the submitter is human.
+  string turnstile_token = 8 [(buf.validate.field).required = true];
+}
+
+// SubmitContactResponse reports the outcome of storing the lead and notifying ops.
+message SubmitContactResponse {
+  // Always "sent" on success.
+  string status = 1;
+  // True when the Resend notification to ops was delivered.
+  bool email_sent = 2;
+}

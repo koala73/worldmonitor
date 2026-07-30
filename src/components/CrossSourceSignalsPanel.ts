@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 interface CrossSourceSignal {
   id: string;
@@ -167,7 +167,7 @@ export class CrossSourceSignalsPanel extends Panel {
       if (!this.evaluatedAt) {
         this.showError('Signal aggregator is initializing. First evaluation runs within 15 minutes.', () => {/* refreshed by scheduler */});
       } else {
-        this.setContent('<div style="padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)">No cross-source signals detected.</div>');
+        this.setSafeContent(unsafeRawHtml('<div style="padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)">No cross-source signals detected.</div>', 'legacy Panel.setContent() migration'));
       }
       return;
     }
@@ -182,12 +182,12 @@ export class CrossSourceSignalsPanel extends Panel {
 
     const signalRows = this.signals.map((s, i) => this.renderSignal(s, i)).join('');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div style="display:flex;flex-direction:column;gap:6px">
         ${compositeNote}
         ${signalRows}
         ${evalTime ? `<div style="font-size:10px;color:var(--text-dim);padding-top:8px;border-top:1px solid var(--border);text-align:center;font-family:var(--font-mono)">${escapeHtml(evalTime)}</div>` : ''}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 }

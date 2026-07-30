@@ -1,0 +1,5 @@
+{
+  "name": "nordics",
+  "description": "Nordic countries — established democracies with low debt and strong governance. Used in resilience cohort anti-inversion test (plan 2026-04-26-002 §U1) as the anchor for 'high-trust low-debt democracies should not catastrophically underperform GCC oil-state monarchies'. Membership: 5 sovereign Nordics; excludes Greenland (territory of DK) and Faroe Islands.",
+  "iso2": ["NO", "SE", "FI", "DK", "IS"]
+}

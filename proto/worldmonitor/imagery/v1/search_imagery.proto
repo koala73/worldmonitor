@@ -5,9 +5,13 @@ package worldmonitor.imagery.v1;
 import "sebuf/http/annotations.proto";
 
 message SearchImageryRequest {
+  // Bounding box filter for imagery search, encoded as west,south,east,north.
   string bbox = 1 [(sebuf.http.query) = {name: "bbox"}];
+  // ISO 8601 datetime or datetime range for matching imagery scenes.
   string datetime = 2 [(sebuf.http.query) = {name: "datetime"}];
+  // Optional imagery source filter, such as satellite or provider name.
   string source = 3 [(sebuf.http.query) = {name: "source"}];
+  // Maximum number of imagery scenes to return.
   int32 limit = 4 [(sebuf.http.query) = {name: "limit"}];
 }
 

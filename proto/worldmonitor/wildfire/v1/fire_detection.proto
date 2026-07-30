@@ -30,6 +30,9 @@ message FireDetection {
   string region = 8;
   // Day or night detection ("D" or "N").
   string day_night = 9;
+  // Whether the thermal signature suggests a possible explosion rather than a fire
+  // (FRP > 80 MW and brightness > 380 K).
+  bool possible_explosion = 10;
 }
 
 // FireConfidence represents the confidence level of a fire detection.

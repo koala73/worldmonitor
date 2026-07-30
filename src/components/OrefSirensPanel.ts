@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { joinSafeHtml, safeHtml, type SafeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { fetchOrefHistory } from '@/services/oref-alerts';
 import type { OrefAlertsResponse, OrefAlert, OrefHistoryEntry } from '@/services/oref-alerts';
@@ -29,7 +29,7 @@ export class OrefSirensPanel extends Panel {
 
   public setData(data: OrefAlertsResponse): void {
     if (!data.configured) {
-      this.setContent(`<div class="panel-empty">${t('components.orefSirens.notConfigured')}</div>`);
+      this.setSafeContent(safeHtml`<div class="panel-empty">${t('components.orefSirens.notConfigured')}</div>`);
       this.setCount(0);
       return;
     }
@@ -91,15 +91,15 @@ export class OrefSirensPanel extends Panel {
     }
   }
 
-  private renderHistoryWaves(): string {
+  private renderHistoryWaves(): SafeHtml {
     if (!this.historyWaves.length) {
       if (this.historyCount24h > 0) {
-        return `<div class="oref-history-section">
+        return safeHtml`<div class="oref-history-section">
           <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: '...' })}</div>
           <div class="oref-wave-list" style="opacity:0.5;text-align:center;padding:8px">${t('components.orefSirens.loadingHistory', { defaultValue: 'Loading history...' })}</div>
         </div>`;
       }
-      return '';
+      return safeHtml``;
     }
 
     const now = Date.now();
@@ -107,25 +107,25 @@ export class OrefSirensPanel extends Panel {
     withTs.sort((a, b) => b.ts - a.ts);
     const sorted = withTs.slice(0, MAX_HISTORY_WAVES);
 
-    const rows = sorted.map(({ wave, ts }) => {
+    const rows = joinSafeHtml(sorted.map(({ wave, ts }) => {
       const isRecent = now - ts < ONE_HOUR_MS;
       const rowClass = isRecent ? 'oref-wave-row oref-wave-recent' : 'oref-wave-row';
-      const badge = isRecent ? '<span class="oref-recent-badge">RECENT</span>' : '';
-      const types = wave.alerts.map(a => escapeHtml(a.title || a.cat));
+      const badge = isRecent ? safeHtml`<span class="oref-recent-badge">RECENT</span>` : safeHtml``;
+      const types = wave.alerts.map(a => a.title || a.cat);
       const uniqueTypes = [...new Set(types)];
       const totalAreas = wave.alerts.reduce((sum, a) => sum + (a.data?.length || 0), 0);
-      const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` — ${totalAreas} areas` : '');
+      const summary = uniqueTypes.join(', ') + (totalAreas > 0 ? ` - ${totalAreas} areas` : '');
 
-      return `<div class="${rowClass}">
+      return safeHtml`<div class="${rowClass}">
         <div class="oref-wave-header">
           <span class="oref-wave-time">${this.formatWaveTime(wave.timestamp)}</span>
           ${badge}
         </div>
         <div class="oref-wave-summary">${summary}</div>
       </div>`;
-    }).join('');
+    }));
 
-    return `<div class="oref-history-section">
+    return safeHtml`<div class="oref-history-section">
       <div class="oref-history-title">${t('components.orefSirens.historySummary', { count: String(this.historyCount24h), waves: String(sorted.length) })}</div>
       <div class="oref-wave-list">${rows}</div>
     </div>`;
@@ -135,7 +135,7 @@ export class OrefSirensPanel extends Panel {
     const historyHtml = this.renderHistoryWaves();
 
     if (this.alerts.length === 0) {
-      this.setContent(`
+      this.setSafeContent(safeHtml`
         <div class="oref-panel-content">
           <div class="oref-status oref-ok">
             <span class="oref-status-icon">&#x2705;</span>
@@ -147,19 +147,19 @@ export class OrefSirensPanel extends Panel {
       return;
     }
 
-    const alertRows = this.alerts.slice(0, 20).map(alert => {
-      const areas = (alert.data || []).map(a => escapeHtml(a)).join(', ');
+    const alertRows = joinSafeHtml(this.alerts.slice(0, 20).map(alert => {
+      const areas = (alert.data || []).join(', ');
       const time = this.formatAlertTime(alert.alertDate);
-      return `<div class="oref-alert-row">
+      return safeHtml`<div class="oref-alert-row">
         <div class="oref-alert-header">
-          <span class="oref-alert-title">${escapeHtml(alert.title || alert.cat)}</span>
+          <span class="oref-alert-title">${alert.title || alert.cat}</span>
           <span class="oref-alert-time">${time}</span>
         </div>
         <div class="oref-alert-areas">${areas}</div>
       </div>`;
-    }).join('');
+    }));
 
-    this.setContent(`
+    this.setSafeContent(safeHtml`
       <div class="oref-panel-content">
         <div class="oref-status oref-danger">
           <span class="oref-pulse"></span>

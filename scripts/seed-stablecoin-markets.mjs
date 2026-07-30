@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById, coingeckoEndpoint } from './_seed-utils.mjs';
 
 const stablecoinConfig = loadSharedConfig('stablecoins.json');
 
@@ -32,13 +32,8 @@ async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept:
 const COINPAPRIKA_ID_MAP = stablecoinConfig.coinpaprika;
 
 async function fetchFromCoinGecko() {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey
-    ? 'https://pro-api.coingecko.com/api/v3'
-    : 'https://api.coingecko.com/api/v3';
+  const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${STABLECOIN_IDS}&order=market_cap_desc&sparkline=false&price_change_percentage=7d`;
-  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
-  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
   const resp = await fetchWithRateLimitRetry(url, 5, headers);
   const data = await resp.json();
@@ -51,18 +46,12 @@ async function fetchFromCoinGecko() {
 async function fetchFromCoinPaprika() {
   console.log('  [CoinPaprika] Falling back to CoinPaprika...');
   const ids = STABLECOIN_IDS.split(',');
-  const paprikaIds = new Set(ids.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean));
-  if (paprikaIds.size === 0) throw new Error('No CoinPaprika ID mapping for stablecoins');
+  const paprikaIds = ids.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
+  if (paprikaIds.length === 0) throw new Error('No CoinPaprika ID mapping for stablecoins');
 
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
-  const allTickers = await resp.json();
+  const tickers = await fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
-  return allTickers
-    .filter((t) => paprikaIds.has(t.id))
+  return tickers
     .map((t) => ({
       id: reverseMap.get(t.id) || t.id,
       current_price: t.quotes.USD.price,
@@ -133,10 +122,18 @@ function validate(data) {
   );
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.stablecoins) ? data.stablecoins.length : 0;
+}
+
 runSeed('market', 'stablecoins', CANONICAL_KEY, fetchStablecoinMarkets, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-stablecoins',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 60,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

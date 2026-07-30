@@ -1,0 +1,58 @@
+---
+title: "Radiation Watch"
+description: "Worldwide radiation readings from EPA RadNet and Safecast, with baseline comparison, anomaly scoring, and source-confidence synthesis."
+---
+
+The **Radiation Watch** panel answers three questions at a glance: what is **normal** right now, what is **elevated**, and which anomalies are **corroborated** versus **tentative**. It pulls observation-level readings from official and citizen-science networks, compares each station against its own baseline, and flags anomalies with a confidence assessment that reconciles agreement (or conflict) between sources.
+
+## What the panel shows
+
+A list of radiation observations with:
+
+- **Station reading** — the observed value and unit, with the baseline shown alongside.
+- **Delta** — how the current reading compares to the station's baseline (absolute and z-score).
+- **Per-row status badges** — each observation can surface inline badges for **confirmed** (corroborated across sources), **conflict** (disagreement with nearby readings), and **CPM-derived** (value was originally in counts-per-minute and was converted to the panel's display unit).
+
+A summary bar across the top of the panel renders six count cards:
+
+| Card | Backing field |
+|---|---|
+| Anomalies | `anomalyCount` |
+| Elevated | `elevatedCount` |
+| Confirmed | `corroboratedCount` |
+| Low Confidence | `lowConfidenceCount` |
+| Conflicts | `conflictingCount` |
+| Spikes | `spikeCount` |
+
+CPM-derived observations are surfaced per-row only (as a badge), not in the summary bar.
+
+**Row interactions**:
+- Click a row to jump the map to that station's coordinates (requires the map to be mounted in the current variant).
+
+Panel id is `radiation-watch`; canonical component is `src/components/RadiationWatchPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *radiation*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. Not present in the tech, finance, commodity, or happy variants. Source: `FULL_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+Per the in-panel info tooltip, Radiation Watch is seeded from:
+
+- **EPA RadNet** — the US Environmental Protection Agency's radiation monitoring network.
+- **Safecast** — open citizen-science radiation network.
+
+A single RPC backs the panel: `GET /api/radiation/v1/list-radiation-observations`. The backend seeder fetches both upstreams, applies baseline comparison + confidence synthesis, and writes the aggregated result at `radiation:observations:v1` in Redis.
+
+## Refresh cadence
+
+The seeder is a short-interval job. The key is allowed up to **30 minutes** in `api/health.js` (`maxStaleMin: 30`) before the health surface escalates. In practice this is one of the fastest-refreshing seeds on the platform.
+
+## Tier & gating
+
+Radiation Watch is **free**. No `premium` flag in `src/config/panels.ts`; the RPC is public.
+
+## API reference
+
+- [Radiation service](/api/RadiationService.openapi.yaml) — `list-radiation-observations`.

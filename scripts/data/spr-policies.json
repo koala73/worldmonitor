@@ -1,0 +1,597 @@
+{
+  "referenceYear": 2025,
+  "metaSource": "IEA, OPEC, EIA, national energy ministries, ISPRL, JOGMEC, KNOC",
+  "policies": {
+    "US": {
+      "regime": "government_spr",
+      "operator": "DOE Strategic Petroleum Reserve",
+      "capacityMb": 714,
+      "ieaMember": true,
+      "ieaNetImporterObligation": false,
+      "stockholdingModel": "government",
+      "source": "DOE SPR Distribution Brochure 2025",
+      "asOf": "2025-03"
+    },
+    "CN": {
+      "regime": "government_spr",
+      "operator": "CNPC/Sinopec (state-directed)",
+      "capacityMb": 476,
+      "ieaMember": false,
+      "stockholdingModel": "government",
+      "note": "Capacity from 3-phase construction program; fill levels not publicly disclosed",
+      "source": "EIA Today in Energy (2025), Wikipedia SPR China",
+      "asOf": "2025-10"
+    },
+    "IN": {
+      "regime": "government_spr",
+      "operator": "ISPRL (Indian Strategic Petroleum Reserves Ltd)",
+      "capacityMb": 39,
+      "ieaMember": false,
+      "stockholdingModel": "government",
+      "note": "Phase 2 expansion to 87Mb planned (Chandikhol + Padur)",
+      "source": "ISPRL, PIB India",
+      "asOf": "2026-03"
+    },
+    "JP": {
+      "regime": "mandatory_stockholding",
+      "operator": "JOGMEC + private sector",
+      "capacityMb": 260,
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Japan Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "KR": {
+      "regime": "mandatory_stockholding",
+      "operator": "KNOC + private sector",
+      "capacityMb": 146,
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Korea Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "DE": {
+      "regime": "mandatory_stockholding",
+      "operator": "EBV (Erdolbevorratungsverband)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Germany Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "FR": {
+      "regime": "mandatory_stockholding",
+      "operator": "SAGESS + private sector",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA France Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "GB": {
+      "regime": "mandatory_stockholding",
+      "operator": "BEIS (industry obligation)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": false,
+      "stockholdingModel": "industry",
+      "source": "IEA United Kingdom Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "IT": {
+      "regime": "mandatory_stockholding",
+      "operator": "OCSIT + industry",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Italy Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "SA": {
+      "regime": "spare_capacity",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "No formal SPR; maintains spare production capacity as world's swing producer",
+      "source": "OPEC, Aramco Annual Report 2025",
+      "asOf": "2025-12"
+    },
+    "SG": {
+      "regime": "government_spr",
+      "operator": "Ministry of Trade and Industry",
+      "capacityMb": 32,
+      "ieaMember": false,
+      "stockholdingModel": "government",
+      "note": "Strategic reserves at Jurong Island facilities",
+      "source": "MTI Singapore Energy Security",
+      "asOf": "2025-06"
+    },
+    "ZA": {
+      "regime": "government_spr",
+      "operator": "CEF SOC (Saldanha Bay)",
+      "capacityMb": 10,
+      "ieaMember": false,
+      "stockholdingModel": "government",
+      "note": "Saldanha Bay tank farm; partially leased to traders",
+      "source": "CEF SOC South Africa, EIA",
+      "asOf": "2025-01"
+    },
+    "BR": {
+      "regime": "none",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "source": "ANP Brazil",
+      "asOf": "2025-01"
+    },
+    "AU": {
+      "regime": "mandatory_stockholding",
+      "operator": "NESA (ticketed abroad)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "note": "Mostly ticketed stocks held abroad (US, EU); domestic reserves are small",
+      "source": "IEA Australia Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "CA": {
+      "regime": "mandatory_stockholding",
+      "operator": "NEB (net exporter exemption)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": false,
+      "stockholdingModel": "industry",
+      "source": "IEA Canada Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "NO": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoE (net exporter exemption)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": false,
+      "stockholdingModel": "industry",
+      "source": "IEA Norway Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "MX": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "Pemex commercial stocks only; no formal government reserve program",
+      "source": "SENER Mexico",
+      "asOf": "2025-01"
+    },
+    "NZ": {
+      "regime": "mandatory_stockholding",
+      "operator": "MBIE (ticketed abroad)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "note": "Mostly ticketed stocks held abroad",
+      "source": "IEA New Zealand Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "AT": {
+      "regime": "mandatory_stockholding",
+      "operator": "ELG (Erdol-Lagergesellschaft)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Austria Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "BE": {
+      "regime": "mandatory_stockholding",
+      "operator": "APETRA",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Belgium Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "CZ": {
+      "regime": "mandatory_stockholding",
+      "operator": "SSHR (Administration of State Material Reserves)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "government",
+      "source": "IEA Czech Republic Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "DK": {
+      "regime": "mandatory_stockholding",
+      "operator": "FDO (Foreningen Danske Olieberedskabslagre)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Denmark Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "EE": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoECA (ticketed EU stocks)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Estonia Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "FI": {
+      "regime": "mandatory_stockholding",
+      "operator": "NESA (National Emergency Supply Agency)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "government",
+      "source": "IEA Finland Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "GR": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoE + industry obligation",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Greece Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "HU": {
+      "regime": "mandatory_stockholding",
+      "operator": "HUSA (Hungarian Hydrocarbon Stockpiling Association)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Hungary Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "IE": {
+      "regime": "mandatory_stockholding",
+      "operator": "NORA (National Oil Reserves Agency)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Ireland Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "LU": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoE (ticketed EU stocks)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Luxembourg Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "NL": {
+      "regime": "mandatory_stockholding",
+      "operator": "COVA (Centraal Orgaan Voorraadvorming Aardolieproducten)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Netherlands Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "PL": {
+      "regime": "mandatory_stockholding",
+      "operator": "ARM (Material Reserves Agency)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Poland Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "PT": {
+      "regime": "mandatory_stockholding",
+      "operator": "ENMC (Entidade Nacional para o Mercado de Combustiveis)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Portugal Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "SK": {
+      "regime": "mandatory_stockholding",
+      "operator": "EOSA (Emergency Oil Stocks Agency)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Slovakia Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "ES": {
+      "regime": "mandatory_stockholding",
+      "operator": "CORES (Corporacion de Reservas Estrategicas)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Spain Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "SE": {
+      "regime": "mandatory_stockholding",
+      "operator": "SEA (Swedish Energy Agency)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "source": "IEA Sweden Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "CH": {
+      "regime": "mandatory_stockholding",
+      "operator": "Carbura (industry stockpiling org)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Switzerland Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "TR": {
+      "regime": "mandatory_stockholding",
+      "operator": "EPDK (industry obligation)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Turkey Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "CL": {
+      "regime": "mandatory_stockholding",
+      "operator": "CNE (National Energy Commission)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Chile Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "CO": {
+      "regime": "mandatory_stockholding",
+      "operator": "MME (Ministry of Mines and Energy)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": false,
+      "stockholdingModel": "industry",
+      "source": "IEA Colombia Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "IL": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoE + industry obligation",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Israel Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "LV": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoE (ticketed EU stocks)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Latvia Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "LT": {
+      "regime": "mandatory_stockholding",
+      "operator": "LITGAS (industry obligation)",
+      "ieaMember": true,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "source": "IEA Lithuania Oil Security Policy",
+      "asOf": "2025-12"
+    },
+    "AE": {
+      "regime": "government_spr",
+      "operator": "ADNOC (state-directed)",
+      "capacityMb": 15,
+      "ieaMember": false,
+      "stockholdingModel": "government",
+      "note": "Underground Ruwais reserve; integrated with refinery operations",
+      "source": "ADNOC Annual Report, EIA",
+      "asOf": "2025-06"
+    },
+    "KW": {
+      "regime": "spare_capacity",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "KPC maintains spare production capacity; no formal SPR",
+      "source": "KPC, OPEC Annual Statistical Bulletin",
+      "asOf": "2025-12"
+    },
+    "ID": {
+      "regime": "government_spr",
+      "operator": "SKK Migas / Pertamina (pilot phase)",
+      "capacityMb": 6,
+      "ieaMember": false,
+      "stockholdingModel": "government",
+      "note": "Pilot reserve at Tuban; 6Mb initial capacity, expansion planned",
+      "source": "MEMR Indonesia, Jakarta Post",
+      "asOf": "2025-06"
+    },
+    "RU": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "Rosneft/Transneft commercial stocks; no government SPR program",
+      "source": "EIA Russia Country Analysis",
+      "asOf": "2025-01"
+    },
+    "IR": {
+      "regime": "spare_capacity",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "NIOC maintains production flexibility; no publicly documented SPR",
+      "source": "OPEC, EIA Iran Country Analysis",
+      "asOf": "2025-01"
+    },
+    "IQ": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "SOMO commercial stocks at Basra; no formal government SPR",
+      "source": "EIA Iraq Country Analysis",
+      "asOf": "2025-01"
+    },
+    "NG": {
+      "regime": "none",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "NNPCL commercial stocks; no strategic reserve mandate",
+      "source": "NNPCL Nigeria, EIA",
+      "asOf": "2025-01"
+    },
+    "VE": {
+      "regime": "none",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "source": "EIA Venezuela Country Analysis",
+      "asOf": "2025-01"
+    },
+    "QA": {
+      "regime": "spare_capacity",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "QatarEnergy LNG-focused; spare gas capacity, not oil stockpile",
+      "source": "QatarEnergy, OPEC",
+      "asOf": "2025-12"
+    },
+    "TH": {
+      "regime": "mandatory_stockholding",
+      "operator": "DOEB (industry obligation)",
+      "ieaMember": false,
+      "stockholdingModel": "industry",
+      "note": "IEA Association Country; 90-day voluntary stockholding obligation",
+      "source": "DOEB Thailand, IEA Association Countries",
+      "asOf": "2025-06"
+    },
+    "PH": {
+      "regime": "mandatory_stockholding",
+      "operator": "DOE Philippines (industry mandate)",
+      "ieaMember": false,
+      "stockholdingModel": "industry",
+      "note": "30-day industry stockholding obligation",
+      "source": "DOE Philippines Oil Contingency Plan",
+      "asOf": "2025-06"
+    },
+    "MY": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "Petronas commercial stocks; no government SPR",
+      "source": "Petronas, EIA Malaysia Country Analysis",
+      "asOf": "2025-01"
+    },
+    "TW": {
+      "regime": "government_spr",
+      "operator": "CPC Corporation + MOEA",
+      "capacityMb": 30,
+      "ieaMember": false,
+      "stockholdingModel": "mixed_public_private",
+      "note": "Government + industry 90-day strategic stocks mandate",
+      "source": "MOEA Taiwan, CPC Corporation",
+      "asOf": "2025-06"
+    },
+    "PK": {
+      "regime": "none",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "No SPR program; relies on 20-day commercial stocks",
+      "source": "OGRA Pakistan, EIA",
+      "asOf": "2025-01"
+    },
+    "EG": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "EGPC commercial stocks; no government SPR",
+      "source": "EGPC, EIA Egypt Country Analysis",
+      "asOf": "2025-01"
+    },
+    "DZ": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "Sonatrach commercial stocks; no formal SPR",
+      "source": "Sonatrach, EIA Algeria Country Analysis",
+      "asOf": "2025-01"
+    },
+    "LY": {
+      "regime": "none",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "source": "EIA Libya Country Analysis",
+      "asOf": "2025-01"
+    },
+    "AO": {
+      "regime": "none",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "source": "EIA Angola Country Analysis",
+      "asOf": "2025-01"
+    },
+    "KZ": {
+      "regime": "commercial_only",
+      "ieaMember": false,
+      "stockholdingModel": "none",
+      "note": "KazMunayGas commercial stocks; no government SPR",
+      "source": "EIA Kazakhstan Country Analysis",
+      "asOf": "2025-01"
+    },
+    "HR": {
+      "regime": "mandatory_stockholding",
+      "operator": "HANDA (Croatian Hydrocarbon Agency)",
+      "ieaMember": false,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "note": "EU stockholding directive; IEA candidate country",
+      "source": "HANDA Croatia, EU Oil Stocks Directive",
+      "asOf": "2025-12"
+    },
+    "BG": {
+      "regime": "mandatory_stockholding",
+      "operator": "SSRA (State Agency for Strategic Reserves)",
+      "ieaMember": false,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "government",
+      "note": "EU stockholding directive compliance",
+      "source": "SSRA Bulgaria, EU Oil Stocks Directive",
+      "asOf": "2025-12"
+    },
+    "RO": {
+      "regime": "mandatory_stockholding",
+      "operator": "ANRM (National Agency for Mineral Resources)",
+      "ieaMember": false,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "note": "EU stockholding directive compliance",
+      "source": "ANRM Romania, EU Oil Stocks Directive",
+      "asOf": "2025-12"
+    },
+    "CY": {
+      "regime": "mandatory_stockholding",
+      "operator": "MoE (ticketed EU stocks)",
+      "ieaMember": false,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "note": "EU stockholding directive; small island economy, relies on ticketed stocks",
+      "source": "MoE Cyprus, EU Oil Stocks Directive",
+      "asOf": "2025-12"
+    },
+    "MT": {
+      "regime": "mandatory_stockholding",
+      "operator": "MRA (Malta Resources Authority)",
+      "ieaMember": false,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "industry",
+      "note": "EU stockholding directive; minimal domestic storage",
+      "source": "MRA Malta, EU Oil Stocks Directive",
+      "asOf": "2025-12"
+    },
+    "SI": {
+      "regime": "mandatory_stockholding",
+      "operator": "ZODS (Commodity Reserves Agency)",
+      "ieaMember": false,
+      "ieaNetImporterObligation": true,
+      "stockholdingModel": "mixed_public_private",
+      "note": "EU stockholding directive compliance",
+      "source": "ZODS Slovenia, EU Oil Stocks Directive",
+      "asOf": "2025-12"
+    }
+  }
+}

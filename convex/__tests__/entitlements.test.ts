@@ -142,6 +142,82 @@ describe("entitlement query", () => {
     );
   });
 
+  test("mcpAccess: free is false, paid tiers are true (plan 2026-05-10-001)", () => {
+    // Free tier — must NOT grant Pro MCP access.
+    expect(getFeaturesForPlan("free").mcpAccess).toBe(false);
+
+    // All paid tiers grant MCP access.
+    expect(getFeaturesForPlan("pro_monthly").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("pro_annual").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("api_starter").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("api_starter_annual").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("api_business").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("enterprise").mcpAccess).toBe(true);
+  });
+
+  test("read-time catalog merge surfaces mcpAccess on legacy rows lacking the field (reviewer round-2 P1.3)", async () => {
+    const t = convexTest(schema, modules);
+
+    // Simulate a pre-U10 entitlement row: pro_monthly plan, but the stored
+    // features object is the OLD shape without mcpAccess. After read-time
+    // merge with the catalog, the response should surface mcpAccess: true.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user-legacy",
+        planKey: "pro_monthly",
+        features: {
+          tier: 1,
+          apiAccess: false,
+          apiRateLimit: 60,
+          maxDashboards: 10,
+          prioritySupport: false,
+          exportFormats: ["csv"],
+          // NO mcpAccess field — legacy shape
+        },
+        validUntil: FUTURE,
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
+      userId: "user-legacy",
+    });
+
+    expect(result.planKey).toBe("pro_monthly");
+    expect(result.features.tier).toBe(1);
+    expect(result.features.mcpAccess).toBe(true); // surfaced from catalog default
+  });
+
+  test("read-time catalog merge: stored features win on conflict (per-user overrides preserved)", async () => {
+    const t = convexTest(schema, modules);
+
+    // If a stored row had mcpAccess: false (e.g. admin per-user override),
+    // the merge must NOT clobber it with the catalog default.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user-override",
+        planKey: "pro_monthly",
+        features: {
+          tier: 1,
+          apiAccess: false,
+          apiRateLimit: 60,
+          maxDashboards: 10,
+          prioritySupport: false,
+          exportFormats: ["csv"],
+          mcpAccess: false, // explicit override
+        },
+        validUntil: FUTURE,
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
+      userId: "user-override",
+    });
+
+    expect(result.features.mcpAccess).toBe(false); // override preserved
+  });
+
   test("does not throw when duplicate entitlement rows exist for same userId", async () => {
     const t = convexTest(schema, modules);
 

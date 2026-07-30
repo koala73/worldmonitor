@@ -1,9 +1,11 @@
 import { escapeHtml } from '@/utils/sanitize';
-import { shuffle } from '@/utils';
+import { shuffle, debounce } from '@/utils';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface CommandResult {
   command: Command;
@@ -23,6 +25,11 @@ function kebabToCamel(s: string): string {
   return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
+function panelCommandTargetId(commandId: string): string | null {
+  if (!commandId.startsWith('panel:')) return null;
+  return commandId.slice(6).split('@')[0] || null;
+}
+
 function resolveCommandLabel(cmd: Command): string {
   const colonIdx = cmd.id.indexOf(':');
   if (colonIdx === -1) return cmd.label;
@@ -36,7 +43,10 @@ function resolveCommandLabel(cmd: Command): string {
       return `${t('commands.prefixes.map')}: ${cmd.label}`;
     case 'panel': {
       const fallback = cmd.label.startsWith('Panel: ') ? cmd.label.slice(7) : cmd.label;
-      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: fallback });
+      const panelId = panelCommandTargetId(cmd.id) ?? action;
+      const panelName = action.includes('@')
+        ? fallback
+        : t('panels.' + kebabToCamel(panelId), { defaultValue: fallback });
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
     case 'country':
@@ -78,6 +88,10 @@ interface SearchModalOptions {
   placeholder?: string;
 }
 
+// Trailing-debounce window for per-keystroke search (#4537). Long enough to
+// coalesce fast typing, short enough to feel responsive on settle.
+const SEARCH_DEBOUNCE_MS = 180;
+
 export class SearchModal {
   private container: HTMLElement;
   private overlay: HTMLElement | null = null;
@@ -85,6 +99,17 @@ export class SearchModal {
   private resultsList: HTMLElement | null = null;
   private chipsContainer: HTMLElement | null = null;
   private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  // Invalidates deferred mobile list population when the sheet closes before
+  // its first paint (or is immediately reopened).
+  private mobileInitialPopulationGeneration = 0;
+  // Debounce the per-keystroke search so fast typing runs the command match +
+  // sort once after settle, not on every input event — cuts INP processing
+  // time (#4537). Programmatic handleSearch() calls (filters, category select)
+  // stay immediate; only the input listener routes through this.
+  private debouncedSearch = debounce((): void => this.handleSearch(), SEARCH_DEBOUNCE_MS);
+  // The query last passed through handleSearch — lets keyboard nav detect when a
+  // debounced keystroke search is still pending (results stale vs. current input).
+  private lastSearchedQuery = '';
   private viewportHandler: (() => void) | null = null;
   private sources: SearchableSource[] = [];
   private results: SearchResult[] = [];
@@ -99,6 +124,22 @@ export class SearchModal {
   private flightSearchFired = false;
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
+  /**
+   * Panels the user *could* enable on this variant (entitled superset),
+   * vs `activePanelIds` which is the currently-enabled subset. A panel in
+   * `available` but not `active` is rendered with an "Add" affordance and
+   * gets enabled on selection. When unset (size 0) we fall back to
+   * active-only gating for back-compat.
+   */
+  private availablePanelIds: Set<string> = new Set();
+  /**
+   * Caller-supplied predicate that returns true iff a `layer:<key>` command
+   * can actually execute right now (current renderer supports the layer +
+   * DeckGL gate for DeckGL-only layers). Hooked from SearchManager so
+   * renderer knowledge lives in one place. Defaults to "always true" when
+   * not set (back-compat for any instantiator that doesn't wire it).
+   */
+  private layerExecutableFn: (layerKey: string) => boolean = () => true;
   private isMobile: boolean;
   /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
   private showingAllCommands = false;
@@ -143,6 +184,26 @@ export class SearchModal {
     this.activePanelIds = new Set(panelIds);
   }
 
+  public setAvailablePanels(panelIds: string[]): void {
+    this.availablePanelIds = new Set(panelIds);
+  }
+
+  /** A panel command is shown iff enabled OR available-to-add (back-compat: active-only when no available set). */
+  private isPanelCommandVisible(panelId: string): boolean {
+    if (this.availablePanelIds.size === 0) return this.activePanelIds.has(panelId);
+    return this.activePanelIds.has(panelId) || this.availablePanelIds.has(panelId);
+  }
+
+  /** True when a panel command would add a currently-disabled panel (drives the "Add" affordance). */
+  private isAddablePanel(cmd: Command): boolean {
+    const id = panelCommandTargetId(cmd.id);
+    return !!id && !this.activePanelIds.has(id) && this.availablePanelIds.has(id);
+  }
+
+  public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
+    this.layerExecutableFn = fn;
+  }
+
   public open(): void {
     if (this.closeTimeoutId) {
       clearTimeout(this.closeTimeoutId);
@@ -160,11 +221,17 @@ export class SearchModal {
     this.createModal();
     this.input?.focus();
     this.showingAllCommands = false;
-    this.showRecentOrEmpty();
-    if (this.isMobile) this.renderChips();
+    if (this.isMobile) {
+      this.scheduleMobileInitialPopulation();
+    } else {
+      this.showRecentOrEmpty();
+    }
   }
 
   public close(): void {
+    // Drop any pending debounced search so it can't fire against a torn-down modal.
+    this.debouncedSearch.cancel();
+    this.mobileInitialPopulationGeneration += 1;
     if (this.viewportHandler && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', this.viewportHandler);
       this.viewportHandler = null;
@@ -198,12 +265,44 @@ export class SearchModal {
     return this.overlay !== null;
   }
 
+  /**
+   * Keep the tap frame limited to the sheet shell. The results list and command
+   * chips can create several nodes plus event listeners, which otherwise makes
+   * the first sheet presentation compete with the FAB interaction (#5158).
+   */
+  private scheduleMobileReveal(overlay: HTMLElement): void {
+    requestAnimationFrame(() => {
+      // The sheet can close or be replaced before its queued reveal runs. Do
+      // not let stale work reopen an outgoing or removed overlay.
+      if (this.overlay !== overlay || this.closeTimeoutId !== null) return;
+      overlay.classList.add('open');
+    });
+  }
+
+  private scheduleMobileInitialPopulation(): void {
+    const generation = ++this.mobileInitialPopulationGeneration;
+    // The first frame reveals the sheet; the second runs after that paint. Do
+    // not use the startup after-paint scheduler here: it can wait for load and
+    // idle time even though this is an already-interactive control.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // A close/reopen or an immediate keystroke owns the content now; never
+        // overwrite its current results with the initial empty/recent state.
+        if (generation !== this.mobileInitialPopulationGeneration || !this.overlay || this.input?.value) return;
+        this.showRecentOrEmpty();
+        this.renderChips();
+      });
+    });
+  }
+
   private createModal(): void {
     this.overlay = document.createElement('div');
+    this.overlay.setAttribute('role', 'dialog');
+    this.overlay.setAttribute('aria-modal', 'true');
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
-      this.overlay.innerHTML = `
+      setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
           <div class="search-sheet-header">
@@ -214,7 +313,7 @@ export class SearchModal {
           <div class="search-sheet-chips"></div>
           <div class="search-results"></div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       this.overlay.addEventListener('click', (e) => {
         if (e.target === this.overlay) this.close();
@@ -225,7 +324,7 @@ export class SearchModal {
       this.chipsContainer = this.overlay.querySelector('.search-sheet-chips');
 
       this.container.appendChild(this.overlay);
-      requestAnimationFrame(() => this.overlay?.classList.add('open'));
+      this.scheduleMobileReveal(this.overlay);
 
       const sheet = this.overlay.querySelector('.search-sheet') as HTMLElement | null;
       if (sheet && window.visualViewport) {
@@ -238,7 +337,7 @@ export class SearchModal {
       }
     } else {
       this.overlay.className = 'search-overlay';
-      this.overlay.innerHTML = `
+      setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-modal">
           <div class="search-header">
             <span class="search-icon">\u2318</span>
@@ -252,7 +351,7 @@ export class SearchModal {
             <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
           </div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       this.overlay.addEventListener('click', (e) => {
         if (e.target === this.overlay) this.close();
@@ -264,7 +363,7 @@ export class SearchModal {
     this.input = this.overlay.querySelector('.search-input');
     this.resultsList = this.overlay.querySelector('.search-results');
 
-    this.input?.addEventListener('input', () => this.handleSearch());
+    this.input?.addEventListener('input', () => this.debouncedSearch());
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
   }
 
@@ -272,9 +371,17 @@ export class SearchModal {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
     for (const cmd of getAllCommands()) {
-      if (cmd.id.startsWith('panel:')) {
-        const panelId = cmd.id.slice(6);
-        if (!this.activePanelIds.has(panelId)) continue;
+      const panelId = panelCommandTargetId(cmd.id);
+      if (panelId) {
+        if (!this.isPanelCommandVisible(panelId)) continue;
+      }
+      // Hide layer commands whose layer can't render under the current
+      // map renderer / DeckGL mode. Without this, CMD+K surfaces toggles
+      // that silently no-op (e.g. storageFacilities in globe mode, or
+      // flat-only DeckGL layers while on the SVG/mobile fallback).
+      if (cmd.id.startsWith('layer:')) {
+        const layerKey = cmd.id.slice(6);
+        if (!this.layerExecutableFn(layerKey)) continue;
       }
       const label = resolveCommandLabel(cmd).toLowerCase();
       const allTerms = [...cmd.keywords, label];
@@ -295,8 +402,13 @@ export class SearchModal {
   }
 
   private handleSearch(): void {
+    // A programmatic refresh can render while the mobile sheet's initial
+    // population is still deferred. Its results now own the list.
+    if (this.isMobile) this.mobileInitialPopulationGeneration += 1;
     const rawInput = this.input?.value.toLowerCase() || '';
     const query = rawInput.trim();
+    // Record what we actually searched so flushPendingSearch can detect stale results.
+    this.lastSearchedQuery = query;
 
     if (!query) {
       this.showingAllCommands = false;
@@ -402,7 +514,7 @@ export class SearchModal {
   private renderRecent(): void {
     if (!this.resultsList) return;
 
-    this.resultsList.innerHTML = `<div class="search-section-header">${t('modals.search.recent')}</div>`;
+    setTrustedHtml(this.resultsList, trustedHtml(`<div class="search-section-header">${t('modals.search.recent')}</div>`, "legacy direct innerHTML migration"));
 
     this.recentSearches.forEach((term, i) => {
       const item = document.createElement('div');
@@ -461,7 +573,7 @@ export class SearchModal {
         </div>`;
     });
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.tip-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -493,7 +605,13 @@ export class SearchModal {
     this.resultsList.appendChild(wrap);
   }
 
-  /** Renders the full command list by category. Commands are sourced from getAllCommands(); no separate list to maintain. */
+  /**
+   * Renders the full command list by category. Commands are sourced from
+   * getAllCommands(); no separate list to maintain. This view intentionally
+   * includes available-but-disabled panels (each tagged with an "Add" pill via
+   * isAddablePanel) so it doubles as a browse-and-add surface — the list is
+   * kept navigable by the collapsible per-category <details> grouping below.
+   */
   private renderAllCommandsList(): void {
     if (!this.resultsList) return;
 
@@ -501,7 +619,10 @@ export class SearchModal {
     const commands = allCommands.filter(cmd => {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
-        if (!this.activePanelIds.has(panelId)) return false;
+        if (!this.isPanelCommandVisible(panelId)) return false;
+      }
+      if (cmd.id.startsWith('layer:')) {
+        if (!this.layerExecutableFn(cmd.id.slice(6))) return false;
       }
       return true;
     });
@@ -529,18 +650,22 @@ export class SearchModal {
       html += `<summary class="search-command-category-summary">${escapeHtml(label)}</summary>`;
       html += `<div class="search-command-category-list">`;
       for (const cmd of list) {
+        const addable = this.isAddablePanel(cmd);
+        const addLabel = t('modals.search.addPanel', { defaultValue: 'Add' });
+        const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(cmd)}`)}"` : '';
         html += `
-          <div class="search-result-item command-item" data-command="${escapeHtml(cmd.id)}">
+          <div class="search-result-item command-item ${addable ? 'command-addable' : ''}" data-command="${escapeHtml(cmd.id)}"${ariaLabel}>
             <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
             </div>
+            ${addable ? `<span class="search-result-type search-result-type-add">${escapeHtml(addLabel)}</span>` : ''}
           </div>`;
       }
       html += `</div></details>`;
     }
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     const backLink = this.resultsList.querySelector('.search-all-commands-back');
     backLink?.addEventListener('click', (e) => {
@@ -571,22 +696,22 @@ export class SearchModal {
     if (this.commandResults.length === 0 && this.results.length === 0) {
       if (this.currentFlightCallsign && this.onFlightSearch) {
         if (this.flightSearchFired) {
-          this.resultsList.innerHTML = `
+          setTrustedHtml(this.resultsList, trustedHtml(`
             <div class="search-empty">
               <div class="search-empty-icon">\u2708\uFE0F</div>
               <div>${escapeHtml(t('modals.search.flightNotFound', { callsign: this.currentFlightCallsign }))}</div>
-            </div>`;
+            </div>`, "legacy direct innerHTML migration"));
         } else {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
         }
         return;
       }
-      this.resultsList.innerHTML = `
+      setTrustedHtml(this.resultsList, trustedHtml(`
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
           <div>${t('modals.search.noResults')}</div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -624,13 +749,17 @@ export class SearchModal {
     if (this.commandResults.length > 0) {
       html += `<div class="search-section-header">${t('modals.search.commands')}</div>`;
       for (const { command } of this.commandResults) {
+        const addable = this.isAddablePanel(command);
+        const addLabel = t('modals.search.addPanel', { defaultValue: 'Add' });
+        const typeLabel = addable ? addLabel : resolveCategoryLabel(command);
+        const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(command)}`)}"` : '';
         html += `
-          <div class="search-result-item command-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${command.id}">
-            <span class="search-result-icon">${command.icon}</span>
+          <div class="search-result-item command-item ${addable ? 'command-addable' : ''} ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${escapeHtml(command.id)}"${ariaLabel}>
+            <span class="search-result-icon">${escapeHtml(command.icon)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(command))}</div>
             </div>
-            <span class="search-result-type">${escapeHtml(resolveCategoryLabel(command))}</span>
+            <span class="search-result-type${addable ? ' search-result-type-add' : ''}">${escapeHtml(typeLabel)}</span>
           </div>`;
         globalIndex++;
       }
@@ -652,7 +781,7 @@ export class SearchModal {
       globalIndex++;
     }
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.search-result-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -664,7 +793,7 @@ export class SearchModal {
 
   private renderFlightSearchTrigger(callsign: string): void {
     if (!this.resultsList) return;
-    this.resultsList.innerHTML = `
+    setTrustedHtml(this.resultsList, trustedHtml(`
       <div class="search-result-item selected" data-flight-trigger="${escapeHtml(callsign)}">
         <span class="search-result-icon">\u2708\uFE0F</span>
         <div class="search-result-content">
@@ -672,7 +801,7 @@ export class SearchModal {
           <div class="search-result-subtitle">${escapeHtml(t('modals.search.flightSearchHint'))}</div>
         </div>
         <span class="search-result-type">${escapeHtml(t('modals.search.types.flight'))}</span>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
     this.resultsList.querySelector('[data-flight-trigger]')?.addEventListener('click', () => {
       this.triggerFlightSearch(callsign);
     });
@@ -681,20 +810,20 @@ export class SearchModal {
   private triggerFlightSearch(callsign: string): void {
     if (!this.onFlightSearch || !this.resultsList) return;
     this.flightSearchFired = true;
-    this.resultsList.innerHTML = `
+    setTrustedHtml(this.resultsList, trustedHtml(`
       <div class="search-result-item">
         <span class="search-result-icon">\u2708\uFE0F</span>
         <div class="search-result-content">
           <div class="search-result-title">Searching for <strong>${escapeHtml(callsign)}</strong>\u2026</div>
         </div>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
     this.onFlightSearch(callsign);
   }
 
   private renderChips(query?: string): void {
     if (!this.chipsContainer) return;
     if (query && query.length >= 1) {
-      this.chipsContainer.innerHTML = '';
+      setTrustedHtml(this.chipsContainer, trustedHtml('', "legacy direct innerHTML migration"));
       return;
     }
 
@@ -710,9 +839,9 @@ export class SearchModal {
       chips.push({ label, value: label.toLowerCase() });
     }
 
-    this.chipsContainer.innerHTML = chips.map(c =>
+    setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
-    ).join('');
+    ).join(''), "legacy direct innerHTML migration"));
 
     this.chipsContainer.querySelectorAll('.search-chip').forEach(el => {
       el.addEventListener('click', () => {
@@ -735,7 +864,23 @@ export class SearchModal {
     return escapedText.replace(regex, '<mark>$1</mark>');
   }
 
+  // Run a pending debounced search synchronously when the input has changed since
+  // the last search, so keyboard nav/selection acts on current results.
+  private flushPendingSearch(): void {
+    const current = (this.input?.value.toLowerCase() ?? '').trim();
+    if (current !== this.lastSearchedQuery) {
+      this.debouncedSearch.cancel();
+      this.handleSearch();
+    }
+  }
+
   private handleKeydown(e: KeyboardEvent): void {
+    // The keystroke search is debounced (180ms). Flush it before Arrow/Enter so
+    // selection runs against results for the CURRENT query, not stale ones from
+    // before the debounce fired (#4537 follow-up — review #4556).
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      this.flushPendingSearch();
+    }
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();

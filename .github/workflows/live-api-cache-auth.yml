@@ -1,0 +1,119 @@
+name: Live API Cache/Auth Sweep
+
+# Production cache/auth posture sweep — the regression net for #4497, wired up
+# to actually execute by #5379.
+#
+# Why this workflow exists (#5379): the suite
+# (tests/live-api-cache-auth-regression.test.mjs) is wrapped in
+# `describe(..., { skip: !LIVE })` where LIVE comes from LIVE_API_CACHE_TESTS=1.
+# Nothing in the repo ever set that variable, so the file had been inert since
+# it landed — an unconditional `throw` at the top of the describe still exited
+# 0. It is part of the `test:data` glob, so every CI run "passed" it without
+# executing a single assertion. This workflow is the only thing that turns it
+# on.
+#
+# What the suite asserts against LIVE production (#4497 incident class — a
+# shared-cache HIT serving an authenticated/rejected response):
+#   - fake `wm_` auth on /api/bootstrap and generated RPCs answers 401, is
+#     no-store, is never a Cloudflare HIT, and leaks no auth sentinel
+#     ("gateway validation" / Convex / keyHash) in the body.
+#   - anonymous public REST/RPC surfaces stay `public`-cacheable (the fix for
+#     #4497 must not have over-corrected into no-store everywhere).
+#   - the MCP surface stays protocol-valid AND no-store: OPTIONS preflight 204,
+#     bare GET 405 (never 401 — a 401 here reads to strict SDK clients as a
+#     failed handshake, the #4937 shape), anonymous initialize/resources/list
+#     are public discovery 200s, every resources/list entry resources/read's
+#     cleanly for an anonymous caller, and tools/call is a 401 carrying the
+#     OAuth resource_metadata hint.
+#   - OAuth metadata stays discoverable and cacheable on both hosts.
+# None of this is reachable from an in-process test: CDN cache status, CF/Vercel
+# rule ordering, and the apex/www host split only exist in production.
+#
+# No secrets are provisioned. The one authenticated case (an authorized-key MCP
+# 200 — the only probe that can catch a cached 200 of PRIVATE data, since the
+# 401 cases above cannot) is gated per-test on WM_LIVE_TEST_KEY and reports as
+# SKIP, not failure, when the key is absent. If someone later adds that secret,
+# add `WM_LIVE_TEST_KEY: ${{ secrets.WM_LIVE_TEST_KEY }}` to the run step's env
+# and the case self-enables with no other change.
+#
+# No `npm ci`: the suite imports only `node:assert` and `node:test`, so it runs
+# under plain `node --test` on the Node 24 runner. It is invoked directly rather
+# than via `npm run test:data` both to avoid installing the repo's full
+# dependency tree for one file and because test:data would drag in the entire
+# unit suite (which has no business hitting production).
+#
+# Triggers:
+#   - schedule (every 6h, offset from mcp-live-smoke's :23 so the two live
+#     probes don't hit prod from the same runner IP range in the same minute):
+#     the posture this guards is set by CDN rules and deploy config, which drift
+#     independently of commits. ~23 requests per run (2 bootstrap + 2 RPC +
+#     1 premium RPC + 16 MCP + 2 OAuth); 4 runs/day is ~92 requests — negligible,
+#     and the 16 MCP requests land over ~2s, far under the anon 60/min/IP limit.
+#   - push to main touching the suite/workflow: validates edits on merge.
+#   - workflow_dispatch: manual re-runs from the Actions UI.
+# NOT pull_request: the target is live production, not PR code — a PR run could
+# neither exercise its own changes nor fail for reasons the PR caused.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/live-api-cache-auth-regression.test.mjs'
+      - '.github/workflows/live-api-cache-auth.yml'
+  schedule:
+    - cron: '47 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    # ~23 requests x 15s worst-case per-request timeout (LIVE_API_CACHE_TIMEOUT_MS)
+    # is a ~6min absolute ceiling, plus ~1min checkout/setup-node. Nominal runs
+    # finish in under 5s.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Live cache/auth regression sweep against production
+        env:
+          LIVE_API_CACHE_TESTS: '1'
+        # The bug this workflow exists to fix is "the suite silently ran zero
+        # assertions and CI went green". Simply setting the env var reintroduces
+        # that exact failure one rename away: the whole suite is a single
+        # `describe(..., { skip: !LIVE })`, and `node --test` exits 0 when every
+        # test is skipped (verified: `tests 0 / pass 0 / fail 0`, exit 0). The
+        # suite's own `assert.equal(LIVE, true)` self-check cannot help — it is
+        # INSIDE the skipped describe.
+        #
+        # So assert that all mandatory work actually happened. The suite has one
+        # self-check plus six mandatory production-probe groups; the authenticated
+        # canary is a seventh probe group but remains an explicit skip until
+        # WM_LIVE_TEST_KEY is provisioned. Requiring seven passes means the
+        # documentation-only self-check cannot keep this workflow green if any
+        # mandatory production group stops registering or starts skipping. Each
+        # group also emits a named completion marker so an unrelated new test or
+        # the optional canary cannot compensate for a missing mandatory probe.
+        # `--test-reporter=tap` is pinned
+        # explicitly rather than relying on the default, because Node picks the
+        # reporter from TTY-ness and a format change would silently break the
+        # grep — turning this guard itself into the vacuous-pass it prevents.
+        # TAP's `# pass N` line is stable and documented.
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap tests/live-api-cache-auth-regression.test.mjs 2>&1 | tee /tmp/sweep.log
+          pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/sweep.log)
+          if [ "$pass_count" -lt 7 ]; then
+            echo "::error::Live sweep completed only $pass_count/7 mandatory checks — one or more production probe groups did not run."
+            exit 1
+          fi
+          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata; do
+            if ! grep -qE "^[[:space:]]*# LIVE_SWEEP_PROBE_COMPLETED ${probe}$" /tmp/sweep.log; then
+              echo "::error::Live sweep did not complete mandatory production probe group: ${probe}"
+              exit 1
+            fi
+          done

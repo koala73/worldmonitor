@@ -1,209 +1,37 @@
 /**
- * RPC: getCompanyEnrichment -- Aggregates company data from multiple public sources.
- * Port from api/enrichment/company.js
- * Sources: GitHub, SEC EDGAR, Hacker News
+ * RPC: getCompanyEnrichment — per-company intelligence composite (issue #5695).
+ *
+ * Identity resolves exclusively through the SEC's own ticker/name registry to a
+ * CIK (server/_shared/sec-edgar). Legs, each independently cached and degradable:
+ *   - SEC EDGAR submissions: filer profile + recent filings (source "sec_edgar")
+ *   - Finnhub: market profile + earnings surprises (source "finnhub")
+ *   - Per-ticker headline search: recent news mentions (source "news")
+ *
+ * Predecessor history: the original handler guessed a code-host org from the
+ * domain label and attributed unrelated footprints (issues #3754/#3755); it was
+ * disabled in PR #3777. This implementation performs no domain-slug guessing —
+ * an unresolvable company returns an empty envelope with sources: [].
  */
 
 import type {
   ServerContext,
   GetCompanyEnrichmentRequest,
   GetCompanyEnrichmentResponse,
+  SecFiling,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { fetchJson } from '../../../_shared/fetch-json';
-import { cachedFetchJson } from '../../../_shared/redis';
+import {
+  describeItemCodes,
+  fetchSecSubmissions,
+  filingIndexUrl,
+  resolveCompany,
+} from '../../../_shared/sec-edgar';
+import {
+  fetchCompanyNewsMentions,
+  fetchFinnhubCompanyAndEarnings,
+} from './_company-shared';
 
-interface GitHubOrg {
-  name?: string;
-  login?: string;
-  description?: string;
-  blog?: string;
-  location?: string;
-  public_repos?: number;
-  followers?: number;
-  avatar_url?: string;
-  created_at?: string;
-}
-
-interface GitHubRepo {
-  language?: string | null;
-  stargazers_count?: number;
-}
-
-interface SECSearchResponse {
-  hits: {
-    total?: { value: number };
-    hits: Array<{
-      _source?: {
-        form_type?: string;
-        file_type?: string;
-        file_date?: string;
-        period_of_report?: string;
-        display_names?: string[];
-      }
-    }>;
-  };
-}
-
-interface HNAlgoliaHit {
-  title?: string;
-  url?: string;
-  points?: number;
-  num_comments?: number;
-  created_at?: string;
-}
-
-interface HNAlgoliaResponse {
-  hits: HNAlgoliaHit[];
-}
-
-interface GitHubOrgResult {
-  name: string;
-  description: string;
-  blog: string;
-  location: string;
-  publicRepos: number;
-  followers: number;
-  avatarUrl: string;
-  createdAt: string | undefined;
-}
-
-interface TechStackItem {
-  name: string;
-  category: string;
-  confidence: number;
-}
-
-interface SECResult {
-  totalFilings: number;
-  recentFilings: Array<{ form: string; fileDate: string; description: string }>;
-}
-
-interface HNMentionItem {
-  title: string;
-  url: string;
-  points: number;
-  comments: number;
-  createdAtMs: number;
-}
-
-function getDateMonthsAgo(months: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - months);
-  return d.toISOString().split('T')[0]!;
-}
-
-function getTodayISO(): string {
-  return new Date().toISOString().split('T')[0]!;
-}
-
-function inferFromDomain(domain: string): { inferredName: string; domain: string } {
-  const name = domain.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '')
-    .split('.')
-    .pop()
-    ?.replace(/-/g, ' ')
-    ?.replace(/\b\w/g, (c) => c.toUpperCase()) || domain;
-
-  return { inferredName: name, domain };
-}
-
-function slugFromDomain(domain: string): string {
-  return domain.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '').split('.').pop() || domain;
-}
-
-function parseIsoMs(value: string | undefined): number {
-  if (!value) return 0;
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : 0;
-}
-
-async function fetchGitHubOrg(name: string): Promise<GitHubOrgResult | null> {
-  return cachedFetchJson<GitHubOrgResult>(
-    `intel:enrichment:gh-org:${encodeURIComponent(name.toLowerCase())}`,
-    3600,
-    async () => {
-      const data = await fetchJson<GitHubOrg>(`https://api.github.com/orgs/${encodeURIComponent(name)}`);
-      if (!data) return null;
-      return {
-        name: data.name || data.login || '',
-        description: data.description || '',
-        blog: data.blog || '',
-        location: data.location || '',
-        publicRepos: data.public_repos || 0,
-        followers: data.followers || 0,
-        avatarUrl: data.avatar_url || '',
-        createdAt: data.created_at,
-      };
-    },
-  );
-}
-
-async function fetchGitHubTechStack(orgName: string): Promise<TechStackItem[] | null> {
-  return cachedFetchJson<TechStackItem[]>(
-    `intel:enrichment:gh-tech:${encodeURIComponent(orgName.toLowerCase())}`,
-    3600,
-    async () => {
-      const repos = await fetchJson<GitHubRepo[]>(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=stars&per_page=10`);
-      if (!Array.isArray(repos)) return null;
-
-      const languages = new Map<string, number>();
-      for (const repo of repos) {
-        if (repo.language) {
-          languages.set(repo.language, (languages.get(repo.language) || 0) + (repo.stargazers_count || 0) + 1);
-        }
-      }
-
-      return Array.from(languages.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([lang, score]) => ({
-          name: lang,
-          category: 'Programming Language',
-          confidence: Math.min(1, score / 100),
-        }));
-    },
-  );
-}
-
-async function fetchSECData(companyName: string): Promise<SECResult | null> {
-  return cachedFetchJson<SECResult>(
-    `intel:enrichment:sec:${encodeURIComponent(companyName.toLowerCase())}:${getTodayISO()}`,
-    3600,
-    async () => {
-      const url = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(companyName)}&dateRange=custom&startdt=${getDateMonthsAgo(6)}&enddt=${getTodayISO()}&forms=10-K,10-Q,8-K&from=0&size=5`;
-      const data = await fetchJson<SECSearchResponse>(url, { timeoutMs: 12_000 });
-      if (!data?.hits?.hits) return null;
-
-      return {
-        totalFilings: data.hits.total?.value || 0,
-        recentFilings: data.hits.hits.slice(0, 5).map((h) => ({
-          form: h._source?.form_type || h._source?.file_type || 'Unknown',
-          fileDate: h._source?.file_date || h._source?.period_of_report || '',
-          description: h._source?.display_names?.[0] || companyName,
-        })),
-      };
-    },
-  );
-}
-
-async function fetchHackerNewsMentions(companyName: string): Promise<HNMentionItem[] | null> {
-  return cachedFetchJson<HNMentionItem[]>(
-    `intel:enrichment:hn:${encodeURIComponent(companyName.toLowerCase())}`,
-    1800,
-    async () => {
-      const data = await fetchJson<HNAlgoliaResponse>(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(companyName)}&tags=story&hitsPerPage=5`);
-      if (data === null || !data.hits) return null;
-
-      return data.hits.map((h) => ({
-        title: h.title || '',
-        url: h.url || '',
-        points: h.points || 0,
-        comments: h.num_comments || 0,
-        createdAtMs: parseIsoMs(h.created_at),
-      }));
-    },
-  );
-}
+const MAX_RECENT_FILINGS = 15;
 
 export async function getCompanyEnrichment(
   _ctx: ServerContext,
@@ -211,47 +39,147 @@ export async function getCompanyEnrichment(
 ): Promise<GetCompanyEnrichmentResponse> {
   const domain = req.domain?.trim().toLowerCase();
   const name = req.name?.trim();
+  const ticker = req.ticker?.trim();
 
-  if (!domain && !name) {
-    throw new ValidationError([{ field: 'domain', description: 'Provide domain or name' }]);
+  // v1 compatibility: domain attribution remains disabled. Existing callers
+  // that still send the deprecated field keep receiving the safe empty stub.
+  if (domain && !ticker) return legacyDomainStub(domain, name);
+
+  if (!name && !ticker) {
+    throw new ValidationError([{ field: 'ticker', description: 'Provide ticker or name' }]);
   }
 
-  const companyName = name || (domain ? inferFromDomain(domain).inferredName : 'Unknown');
-  const searchName = domain ? slugFromDomain(domain) : companyName.toLowerCase().replace(/\s+/g, '');
+  const resolution = await resolveCompany({ ticker, name });
+  if (resolution.status !== 'ok') {
+    // "not_found" is a real, cacheable answer; "registry_unavailable" is a
+    // lookup failure and must not be cached as one.
+    return unresolved(ticker, name, resolution.status === 'registry_unavailable');
+  }
+  const resolved = resolution.company;
 
-  const [githubOrg, techStack, secData, hnMentions] = await Promise.all([
-    fetchGitHubOrg(searchName),
-    fetchGitHubTechStack(searchName),
-    fetchSECData(companyName),
-    fetchHackerNewsMentions(companyName),
+  // Finnhub profile + earnings share one gate on cold miss (30/min budget).
+  const [submissions, finnhub, news] = await Promise.all([
+    fetchSecSubmissions(resolved.cik),
+    fetchFinnhubCompanyAndEarnings(resolved.ticker),
+    fetchCompanyNewsMentions(resolved.ticker, resolved.name),
   ]);
+  const profile = finnhub.profile;
+  const earnings = finnhub.earnings;
 
-  const techStackItems = techStack ?? [];
-  const hnMentionItems = hnMentions ?? [];
+  const sources: string[] = [];
+  if (submissions) sources.push('sec_edgar');
+  if (profile || earnings) sources.push('finnhub');
+  if (news?.mentions.length) sources.push('news');
+  const sourceFetchedAtMs = [
+    submissions?.fetchedAtMs,
+    ...finnhub.fetchedAtMs,
+    news?.fetchedAtMs,
+  ].filter((value): value is number => Number.isFinite(value));
+  const unavailable = submissions == null
+    && profile == null
+    && earnings == null
+    && news == null;
+
+  // fetchSecSubmissions already applies the single relevant-form predicate
+  // (including 40-F and slash-amendments).
+  const recentFilings: SecFiling[] = (submissions?.filings ?? [])
+    .slice(0, MAX_RECENT_FILINGS)
+    .map(filing => ({
+      form: filing.form,
+      fileDate: filing.filingDate,
+      description: filing.form.startsWith('8-K') && filing.items.length > 0
+        ? describeItemCodes(filing.items)
+        : '',
+      url: filing.accessionNumber ? filingIndexUrl(resolved.cik, filing.accessionNumber) : '',
+      items: filing.items,
+    }));
+
+  const city = submissions?.city ?? '';
+  const region = submissions?.stateOrCountry ?? '';
+  // SEC submissions carry a `website` field but leave it empty in practice, so
+  // the reported domain comes from the market profile in almost every case.
+  const website = submissions?.website || profile?.website || '';
 
   return {
     company: {
-      name: githubOrg?.name || companyName,
-      domain: domain || githubOrg?.blog?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '',
-      description: githubOrg?.description || '',
-      location: githubOrg?.location || '',
-      website: githubOrg?.blog || (domain ? `https://${domain}` : ''),
-      founded: githubOrg?.createdAt ? new Date(githubOrg.createdAt).getFullYear() : 0,
+      name: submissions?.name || resolved.name,
+      // Always the resolved filer's own domain — never an echo of caller input.
+      domain: safeDomainFromWebsite(website),
+      description: submissions?.sicDescription ?? '',
+      location: city && region ? `${city}, ${region}` : city || region,
+      website,
+      founded: 0,
+      cik: resolved.cik,
+      ticker: resolved.ticker,
     },
-    github: githubOrg ? {
-      publicRepos: githubOrg.publicRepos,
-      followers: githubOrg.followers,
-      avatarUrl: githubOrg.avatarUrl,
-    } : undefined,
-    techStack: techStackItems,
-    secFilings: secData || undefined,
-    hackerNewsMentions: hnMentionItems,
-    enrichedAtMs: Date.now(),
-    sources: [
-      githubOrg ? 'github' : null,
-      techStackItems.length > 0 ? 'github_repos' : null,
-      secData ? 'sec_edgar' : null,
-      hnMentionItems.length > 0 ? 'hacker_news' : null,
-    ].filter((s): s is string => s !== null),
+    secFilings: submissions
+      ? { totalFilings: submissions.totalRecentFilings, recentFilings }
+      : undefined,
+    // Conservative composite freshness: never relabel a warm cached leg as
+    // freshly fetched just because this handler assembled it now.
+    enrichedAtMs: sourceFetchedAtMs.length > 0 ? Math.min(...sourceFetchedAtMs) : 0,
+    sources,
+    github: undefined,
+    techStack: [],
+    hackerNewsMentions: [],
+    market: profile?.market,
+    earningsSurprises: earnings ?? [],
+    newsMentions: news?.mentions ?? [],
+    // Identity resolved, but no enrichment source answered. This is not a
+    // truthful "company has no data" result and must not become a cached empty.
+    unavailable,
   };
+}
+
+function unresolved(ticker?: string, name?: string, unavailable = false): GetCompanyEnrichmentResponse {
+  return emptyEnrichment(
+    { name: name || '', ticker: ticker?.toUpperCase() || '' },
+    unavailable,
+  );
+}
+
+function legacyDomainStub(domain: string, name?: string): GetCompanyEnrichmentResponse {
+  return emptyEnrichment({
+    name: name || '',
+    domain,
+    website: `https://${domain}`,
+  });
+}
+
+function emptyEnrichment(
+  company: Partial<NonNullable<GetCompanyEnrichmentResponse['company']>>,
+  unavailable = false,
+): GetCompanyEnrichmentResponse {
+  return {
+    company: {
+      name: '',
+      domain: '',
+      description: '',
+      location: '',
+      website: '',
+      founded: 0,
+      cik: '',
+      ticker: '',
+      ...company,
+    },
+    github: undefined,
+    techStack: [],
+    secFilings: undefined,
+    hackerNewsMentions: [],
+    enrichedAtMs: Date.now(),
+    sources: [],
+    market: undefined,
+    earningsSurprises: [],
+    newsMentions: [],
+    unavailable,
+  };
+}
+
+function safeDomainFromWebsite(website: string): string {
+  if (!website) return '';
+  try {
+    return new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
 }

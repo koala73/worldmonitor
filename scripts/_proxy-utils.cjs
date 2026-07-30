@@ -4,18 +4,24 @@ const net = require('node:net');
 const tls = require('node:tls');
 const https = require('node:https');
 const zlib = require('node:zlib');
+
+const DECODO_GATE_HOST = 'gate.decodo.com';
+const DECODO_STICKY_PORT_MIN = 10_001;
+const DECODO_STICKY_PORT_MAX = 49_999;
+
 function parseProxyConfig(raw) {
   if (!raw) return null;
 
   // Standard URL format: http://user:pass@host:port or https://user:pass@host:port
   try {
     const u = new URL(raw);
-    if (u.hostname) {
+    if (u.hostname && (u.protocol === 'http:' || u.protocol === 'https:')) {
+      const tls = u.protocol === 'https:';
       return {
         host: u.hostname,
-        port: parseInt(u.port, 10),
+        port: u.port ? parseInt(u.port, 10) : (tls ? 443 : 80),
         auth: u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null,
-        tls: u.protocol === 'https:',
+        tls,
       };
     }
   } catch { /* fall through */ }
@@ -47,6 +53,36 @@ function parseProxyConfig(raw) {
 }
 
 /**
+ * Parse a proxy configuration and, for Decodo sticky gateway ports, advance
+ * each retry to a distinct sticky session. Other providers and Decodo rotating
+ * ports retain their configured route exactly.
+ */
+function parseProxyConfigForAttempt(raw, attempt = 0) {
+  const config = parseProxyConfig(raw);
+  if (!config) return null;
+  const port = Number(config.port);
+  // Normalize for provider detection only: the host:port:user:pass form keeps
+  // whatever casing the operator typed, while the URL form is lowercased by the
+  // URL parser. config.host stays verbatim so the connection is unchanged.
+  const host = String(config.host || '').toLowerCase().replace(/\.$/u, '');
+  if (
+    host !== DECODO_GATE_HOST
+    || !Number.isInteger(port)
+    || port < DECODO_STICKY_PORT_MIN
+    || port > DECODO_STICKY_PORT_MAX
+  ) {
+    return config;
+  }
+
+  const stickyPortCount = DECODO_STICKY_PORT_MAX - DECODO_STICKY_PORT_MIN + 1;
+  return {
+    ...config,
+    port: DECODO_STICKY_PORT_MIN
+      + ((port - DECODO_STICKY_PORT_MIN + attempt) % stickyPortCount),
+  };
+}
+
+/**
  * Resolve proxy from PROXY_URL only. Returns { host, port, auth } or null.
  * Use this for sources where OREF (IL-exit) proxy must NOT be used (e.g. USNI).
  */
@@ -67,8 +103,8 @@ function resolveProxyConfigWithFallback() {
  * Decodo: gate.decodo.com → us.decodo.com (curl endpoint differs from CONNECT endpoint).
  * Returns empty string if no proxy configured.
  */
-function resolveProxyString() {
-  const cfg = resolveProxyConfigWithFallback();
+function resolveProxyString(raw = process.env.PROXY_URL || '') {
+  const cfg = parseProxyConfig(raw);
   if (!cfg) return '';
   const host = cfg.host.replace(/^gate\./, 'us.');
   return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
@@ -88,16 +124,37 @@ function resolveProxyStringConnect() {
   return cfg.tls ? `https://${base}` : base;
 }
 
-function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443 } = {}) {
+function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443, signal } = {}) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      proxySock.destroy();
-      reject(new Error('CONNECT tunnel timeout'));
-    }, timeoutMs);
-
-    const onError = (e) => { clearTimeout(timer); reject(e); };
+    if (signal && signal.aborted) {
+      return reject(signal.reason || new Error('aborted'));
+    }
 
     let proxySock;
+    let settled = false;
+    let onAbort = null;
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+    };
+    const resolveOnce = (val) => { if (settled) return; settled = true; cleanup(); resolve(val); };
+    const rejectOnce = (err) => { if (settled) return; settled = true; cleanup(); reject(err); };
+
+    const timer = setTimeout(() => {
+      if (proxySock) proxySock.destroy();
+      rejectOnce(new Error('CONNECT tunnel timeout'));
+    }, timeoutMs);
+
+    if (signal) {
+      onAbort = () => {
+        if (proxySock) proxySock.destroy();
+        rejectOnce(signal.reason || new Error('aborted'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    const onError = (e) => rejectOnce(e);
+
     const connectCb = () => {
       const authHeader = proxyConfig.auth
         ? `\r\nProxy-Authorization: Basic ${Buffer.from(proxyConfig.auth).toString('base64')}`
@@ -113,11 +170,10 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         proxySock.removeListener('data', onData);
         const statusLine = buf.split('\r\n')[0];
         if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
-          clearTimeout(timer);
           proxySock.destroy();
-          return reject(
+          return rejectOnce(
             Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), {
-              status: parseInt(statusLine.split(' ')[1]) || 0,
+              status: parseInt(statusLine.split(' ')[1], 10) || 0,
             })
           );
         }
@@ -126,9 +182,8 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         const tlsSocket = tls.connect(
           { socket: proxySock, servername: targetHostname, ALPNProtocols: ['http/1.1'] },
           () => {
-            clearTimeout(timer);
             proxySock.resume();
-            resolve({
+            resolveOnce({
               socket: tlsSocket,
               destroy: () => { tlsSocket.destroy(); proxySock.destroy(); },
             });
@@ -151,19 +206,60 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
   });
 }
 
+function readBoundedResponseStream(stream, maxResponseBytes = Infinity) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let responseBytes = 0;
+    stream.on('data', (chunk) => {
+      responseBytes += chunk.byteLength;
+      if (responseBytes > maxResponseBytes) {
+        stream.destroy();
+        reject(Object.assign(new Error('proxy response too large'), {
+          code: 'RESPONSE_TOO_LARGE',
+        }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
 function proxyFetch(url, proxyConfig, {
   accept = '*/*',
   headers = {},
   method = 'GET',
   body = null,
+  maxResponseBytes = Infinity,
   timeoutMs = 20_000,
+  signal,
 } = {}) {
   const targetUrl = new URL(url);
 
-  return proxyConnectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs }).then(({ socket: tlsSocket, destroy }) => {
+  if (signal && signal.aborted) {
+    return Promise.reject(signal.reason || new Error('aborted'));
+  }
+
+  return proxyConnectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs, signal }).then(({ socket: tlsSocket, destroy }) => {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { destroy(); reject(new Error('proxy fetch timeout')); }, timeoutMs);
-      const fail = (e) => { clearTimeout(timer); destroy(); reject(e); };
+      let settled = false;
+      let onAbort = null;
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+      };
+      // Both terminal paths destroy the TLS tunnel (mirrors the original
+      // behavior where success + failure both released the socket).
+      const resolveOnce = (v) => { if (settled) return; settled = true; cleanup(); destroy(); resolve(v); };
+      const rejectOnce = (e) => { if (settled) return; settled = true; cleanup(); destroy(); reject(e); };
+
+      const timer = setTimeout(() => rejectOnce(new Error('proxy fetch timeout')), timeoutMs);
+
+      if (signal) {
+        onAbort = () => rejectOnce(signal.reason || new Error('aborted'));
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
 
       const reqHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -187,25 +283,31 @@ function proxyFetch(url, proxyConfig, {
         if (enc === 'gzip') stream = resp.pipe(zlib.createGunzip());
         else if (enc === 'deflate') stream = resp.pipe(zlib.createInflate());
 
-        const chunks = [];
-        stream.on('data', (c) => chunks.push(c));
-        stream.on('end', () => {
-          clearTimeout(timer);
-          destroy();
-          resolve({
+        readBoundedResponseStream(stream, maxResponseBytes).then(
+          (buffer) => resolveOnce({
             ok: resp.statusCode >= 200 && resp.statusCode < 300,
             status: resp.statusCode,
-            buffer: Buffer.concat(chunks),
+            buffer,
             contentType: resp.headers['content-type'] || '',
-          });
-        });
-        stream.on('error', fail);
+          }),
+          rejectOnce,
+        );
       });
-      req.on('error', fail);
+      req.on('error', rejectOnce);
       if (body != null) req.write(body);
       req.end();
     });
   });
 }
 
-module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString, resolveProxyStringConnect, proxyConnectTunnel, proxyFetch };
+module.exports = {
+  parseProxyConfig,
+  parseProxyConfigForAttempt,
+  resolveProxyConfig,
+  resolveProxyConfigWithFallback,
+  resolveProxyString,
+  resolveProxyStringConnect,
+  proxyConnectTunnel,
+  proxyFetch,
+  _readBoundedResponseStream: readBoundedResponseStream,
+};

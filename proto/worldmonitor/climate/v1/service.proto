@@ -40,6 +40,8 @@ service ClimateService {
   }
 
   // ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.
+  // Empty items with fetched_at=0 or data_available=false means the seed snapshot
+  // is unavailable/degraded, not that there are confirmed zero headlines.
   rpc ListClimateNews(ListClimateNewsRequest) returns (ListClimateNewsResponse) {
     option (sebuf.http.config) = {path: "/list-climate-news", method: HTTP_METHOD_GET};
   }

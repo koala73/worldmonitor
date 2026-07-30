@@ -1,10 +1,11 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
-import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+
 import type { ListEtfFlowsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
 type ETFFlowsResult = ListEtfFlowsResponse;
 
@@ -85,7 +86,7 @@ export class ETFFlowsPanel extends Panel {
     const d = this.data;
     if (!d.etfs?.length) {
       const msg = d.rateLimited ? t('components.etfFlows.rateLimited') : t('components.etfFlows.unavailable');
-      this.setContent(`<div class="panel-loading-text">${msg}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-loading-text">${msg}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -139,6 +140,6 @@ export class ETFFlowsPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

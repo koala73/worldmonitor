@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, runSeed, sleep } from './_seed-utils.mjs';
 import { CLIMATE_ZONES, MIN_CLIMATE_ZONE_COUNT, hasRequiredClimateZones } from './_climate-zones.mjs';
 import { chunkItems, fetchOpenMeteoArchiveBatch } from './_open-meteo-archive.mjs';
@@ -138,12 +139,23 @@ function validate(data) {
     && data.normals.every((zone) => Array.isArray(zone?.months) && zone.months.length === 12);
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+// Contract opt-in: records = number of climate zones with 1991-2020 normals.
+// Custom shape `{referencePeriod, fetchedAt, normals[]}` — computeRecordCount
+// auto-detect historically missed this, causing the phantom EMPTY_DATA symptom
+// documented in the plan's discrepancy class 1.
+export function declareRecords(data) {
+  return Array.isArray(data?.normals) ? data.normals.length : 0;
+}
+
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   runSeed('climate', 'zone-normals', CLIMATE_ZONE_NORMALS_KEY, fetchClimateZoneNormals, {
     validateFn: validate,
     ttlSeconds: NORMALS_TTL,
     sourceVersion: 'open-meteo-wmo-1991-2020-v1',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 89280, // matches api/health.js SEED_META (monthly cron on 1st; 62d window)
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

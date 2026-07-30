@@ -1,0 +1,63 @@
+---
+title: "Financial Stress"
+description: "Kansas City Fed Financial Stress Index (KCFSI) + ECB EU Financial Stress Indicator — 11-indicator stress composites with level-coloured interpretation."
+---
+
+The **Financial Stress** panel (internal id `fsi`) surfaces two parallel stress composites — one for the US, one for the EU — in a single reading so analysts can see when financial-market stress is co-moving across the two anchors.
+
+## What the panel shows
+
+Two side-by-side readings:
+
+- **US KCFSI** — Kansas City Fed Financial Stress Index: 11-indicator composite built from yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress; negative values, below-average.
+- **EU FSI** — ECB's EU Financial Stress Indicator.
+
+Each reading includes:
+
+- **Current level** with a label (`Low Stress` / `Moderate Stress` / `Elevated Stress` / `High Stress`).
+- **Colour-bucketed indicator** — green (`#27ae60`) at Low, orange (`#f39c12`) at Moderate, burnt orange (`#e67e22`) at Elevated, and deep red (`#c0392b`) at High (`fsiLabelColor()` in `src/components/FSIPanel.ts`).
+- **Interpretation string** explaining what the current level means for financial conditions (`fsiInterpretation()`).
+
+Panel id is `fsi`; canonical component is `src/components/FSIPanel.ts`. Title from i18n; config name: "Financial Stress".
+
+## How you reach it
+
+- **Cmd+K**: type *fsi*, *financial stress*, or *kcfsi*.
+- **Availability by variant**: registered in the **full/geopolitical** variant (disabled by default — opt-in, `enabled: false, priority: 2`) and enabled by default in the **finance** variant (`priority: 1`). Not present in the tech, commodity, or happy variants. Source: `'fsi'` entries in `FULL_PANELS` (`:108`-ish) and `FINANCE_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+The panel uses generated RPC clients directly and prefers bootstrap-hydrated values before fresh calls.
+
+| Reading | Method + route | Feeds |
+|---|---|---|
+| US KCFSI | `GET /api/market/v1/get-fear-greed-index` | KCFSI value and market-stress inputs from the Fear & Greed payload; bootstrap-first via `fearGreedIndex`. |
+| EU FSI | `GET /api/economic/v1/get-eu-fsi` | ECB CISS `SS_CIN` latest value and history; bootstrap-first via `euFsi`. |
+
+Upstream KCFSI data is from the Federal Reserve Bank of Kansas City; EU FSI is
+from the ECB CISS `SS_CIN` daily series, the live successor to the legacy
+`SS_CI` series.
+
+EU FSI label buckets follow the seeded CISS value directly:
+
+| ECB CISS `SS_CIN` value | Label |
+|---:|---|
+| `< 0.2` | Low Stress |
+| `>= 0.2` and `< 0.4` | Moderate Stress |
+| `>= 0.4` and `< 0.6` | Elevated Stress |
+| `>= 0.6` | High Stress |
+
+## Refresh cadence
+
+Weekly for KCFSI (published by KC Fed). EU FSI is seeded daily from the ECB
+CISS `SS_CIN` daily series. The panel reads the hydrated snapshot on mount; no
+polling.
+
+## Tier & gating
+
+**Free.** No `premium` flag in either variant registration. Both backing RPCs are public.
+
+## API reference
+
+- [Economic service](/api/EconomicService.openapi.yaml) — includes `GetEuFsi` and the broader macro family.
+- [Markets service](/api/MarketService.openapi.yaml) — includes the KCFSI series.

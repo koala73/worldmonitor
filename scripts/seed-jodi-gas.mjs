@@ -1,15 +1,31 @@
 #!/usr/bin/env node
+// @ts-check
 
 import { inflateRaw } from 'node:zlib';
+import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  runSeed,
+  writeExtraKey,
+  readSeedSnapshot,
+  extendExistingTtl,
+} from './_seed-utils.mjs';
+import {
+  assessChinaJodiCoverage,
+  hasFiniteMeasurementAtPaths,
+} from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
+const require = createRequire(import.meta.url);
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 const inflateRawAsync = promisify(inflateRaw);
 
 export const CANONICAL_KEY = 'energy:jodi-gas:v1:_countries';
 export const KEY_PREFIX = 'energy:jodi-gas:v1:';
+export const LNG_VULNERABILITY_KEY = 'energy:lng-vulnerability:v1';
 export const GAS_TTL = 3_024_000;
 
 const ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
@@ -131,6 +147,50 @@ export function validateGasCountries(iso2Array) {
   return Array.isArray(iso2Array) && iso2Array.length >= MIN_COUNTRIES;
 }
 
+function hasGasMeasurements(record) {
+  return hasFiniteMeasurementAtPaths(record, JODI_MEASUREMENT_FIELDS.gas);
+}
+
+export function assessChinaGasCoverage(records, now = new Date()) {
+  return assessChinaJodiCoverage(records, now, hasGasMeasurements);
+}
+
+/**
+ * Reject unusable China coverage without letting the prior per-country
+ * snapshot expire behind the still-preserved canonical country list.
+ *
+ * @param {Parameters<typeof assessChinaGasCoverage>[0]} records
+ * @param {Date} now
+ * @param {{
+ *   readSnapshot?: (key: string) => Promise<unknown>,
+ *   extendTtl?: (keys: string[], ttlSeconds: number) => Promise<unknown>,
+ * }} deps
+ */
+export async function enforceChinaGasCoverage(records, now = new Date(), deps = {}) {
+  const chinaCoverage = assessChinaGasCoverage(records, now);
+  if (chinaCoverage.ok) return chinaCoverage;
+
+  const readSnapshot = deps.readSnapshot ?? readSeedSnapshot;
+  const extendTtl = deps.extendTtl ?? extendExistingTtl;
+  const previousIso2List = await readSnapshot(CANONICAL_KEY).catch(() => null);
+  const previousCountryKeys = Array.isArray(previousIso2List)
+    ? previousIso2List
+      .filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2))
+      .map((iso2) => `${KEY_PREFIX}${iso2}`)
+    : [];
+
+  if (previousCountryKeys.length > 0) {
+    await extendTtl(previousCountryKeys, GAS_TTL).catch(() => {});
+  }
+
+  const error = new Error(`China JODI gas coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  // The coverage result is deterministic for the downloaded snapshot. Tell
+  // runSeed's outer withRetry loop not to download and parse the same ZIP
+  // again after last-good country TTLs have already been preserved.
+  error.nonRetryable = true;
+  throw error;
+}
+
 function findZipEntry(buf, filename) {
   const LOCAL_SIG = 0x04034b50;
   let offset = 0;
@@ -198,10 +258,54 @@ async function fetchJodiGas() {
   console.log(`  Rows after TJ/flow/assessment filter: ${rows.length}`);
   const records = buildCountryRecords(rows);
   console.log(`  Countries with gas data: ${records.length}`);
+  await enforceChinaGasCoverage(records);
   return records;
 }
 
+/**
+ * @typedef {{ iso2: string, lngShareOfImports: number|null, lngImportsTj: number|null, pipeImportsTj: number|null, dataMonth: string }} GasRecord
+ */
+
+/**
+ * Build the LNG vulnerability index from country records.
+ * @param {GasRecord[]} members
+ * @param {string} dataMonth
+ * @param {string} updatedAt
+ */
+export function buildLngVulnerabilityIndex(members, dataMonth, updatedAt) {
+  const withLng = members.filter(
+    r => r.lngShareOfImports !== null && typeof r.lngShareOfImports === 'number' && (r.lngImportsTj ?? 0) > 0,
+  );
+  const withPipe = members.filter(
+    r => r.lngShareOfImports !== null && typeof r.lngShareOfImports === 'number' && (r.pipeImportsTj ?? 0) > 0,
+  );
+
+  const top20LngDependent = withLng
+    .sort((a, b) => /** @type {number} */ (b.lngShareOfImports) - /** @type {number} */ (a.lngShareOfImports))
+    .slice(0, 20)
+    .map(r => ({
+      iso2: r.iso2,
+      lngShareOfImports: /** @type {number} */ (r.lngShareOfImports),
+      lngImportsTj: /** @type {number} */ (r.lngImportsTj),
+    }));
+
+  const top20PipelineDependent = withPipe
+    .sort((a, b) => /** @type {number} */ (a.lngShareOfImports) - /** @type {number} */ (b.lngShareOfImports))
+    .slice(0, 20)
+    .map(r => ({
+      iso2: r.iso2,
+      lngShareOfImports: /** @type {number} */ (r.lngShareOfImports),
+      pipeImportsTj: /** @type {number} */ (r.pipeImportsTj),
+    }));
+
+  return { updatedAt, dataMonth, top20LngDependent, top20PipelineDependent };
+}
+
 const isMain = process.argv[1]?.endsWith('seed-jodi-gas.mjs');
+
+export function declareRecords(data) {
+  return Array.isArray(data) ? data.length : 0;
+}
 
 if (isMain) {
   await runSeed('energy', 'jodi-gas', CANONICAL_KEY, fetchJodiGas, {
@@ -210,10 +314,28 @@ if (isMain) {
     validateFn: validateGasCountries,
     publishTransform: (records) => records.map(r => r.iso2),
     recordCount: (records) => (Array.isArray(records) ? records.length : 0),
+    extraKeys: [
+      {
+        key: LNG_VULNERABILITY_KEY,
+        ttl: GAS_TTL,
+        transform: (records) => {
+          const updatedAt = new Date().toISOString();
+          const dataMonths = records.map(r => r.dataMonth).filter(Boolean).sort();
+          const dataMonth = dataMonths[dataMonths.length - 1] ?? '';
+          return buildLngVulnerabilityIndex(records, dataMonth, updatedAt);
+        },
+      },
+    ],
     afterPublish: async (records) => {
       for (const record of records) {
         await writeExtraKey(`${KEY_PREFIX}${record.iso2}`, record, GAS_TTL);
       }
+      // LNG vulnerability index is now written via extraKeys (gets TTL-preserved on failure)
     },
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 57600,
+    sourceVersion: 'jodi-gas-v1',
   });
 }

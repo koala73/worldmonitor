@@ -36,5 +36,7 @@ message GetEurostatCountryDataResponse {
   // UTC ms timestamp when seed data was written.
   int64 seeded_at = 2;
   // True when upstream data is unavailable (fallback result).
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 3;
 }

@@ -1,0 +1,87 @@
+---
+title: "API 错误参考：状态码、错误结构与重试策略"
+description: "WorldMonitor API 的标准错误结构说明，涵盖常见 HTTP 状态码语义、JSON-RPC 错误信封字段、错误码分类，以及针对瞬时故障、限流与上游中断的安全重试策略，帮助开发者在生产环境构建幂等、可观测且具备指数退避与熔断机制的健壮客户端，并快速诊断集成过程中的常见问题。"
+---
+
+## 错误结构
+
+所有错误响应均为 JSON，`Content-Type: application/json`：
+
+```json
+{ "error": "brief_not_found" }
+```
+
+部分端点会包含额外字段：
+
+```json
+{
+  "error": "invalid_request",
+  "error_description": "iso2 must be a 2-letter uppercase country code",
+  "field": "iso2"
+}
+```
+
+OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) 错误码：`invalid_request`、`invalid_client`、`invalid_grant`、`unsupported_grant_type`、`invalid_scope`。
+
+## 状态码
+
+| 状态码 | 含义 | 是否重试？ |
+|------|---------|--------|
+| `200` | OK | — |
+| `202` | 已接受 — 作业已入队。轮询以获取最终状态。 | — |
+| `304` | 未修改（条件缓存命中） | — |
+| `400` | 错误请求 — 校验错误 | 否 — 修正输入 |
+| `401` | 缺失 / 无效的认证 | 否 — 修正认证 |
+| `403` | 已认证但无权限（通常为 `pro_required`），或 `subscription_lapsed` —— 已与计费提供方确认的订阅失效（设置 `X-Billing-Verification` 响应头） | 否 — 升级 / 重新订阅 |
+| `404` | 资源 / 工具 / brief / 实体未找到 | 否 |
+| `405` | 方法不允许 | 否 |
+| `409` | 冲突（重复的 webhook 注册等） | 否 |
+| `413` | 请求体过大 | 否 |
+| `429` | 触发速率限制 | 是 — 遵守 `Retry-After` |
+| `500` | 服务器 bug | 是 — 退避后重试，再上报 |
+| `502` | 上游 / Convex / Dodo 故障 | 是 — 指数退避 |
+| `503` | 服务不可用 — 缺失环境变量或依赖不可用；计费校验进行中（`renewal_verification_pending` / `renewal_verification_failed` —— 动态 `Retry-After`，1-60 秒）；或计费后端不可达（`entitlement_verification_unavailable` —— 固定 `Retry-After: 5`） | 是 — 遵守 `Retry-After`，否则指数退避 |
+| `504` | 上游超时 | 是 — 退避后重试 |
+
+### 读取 `X-Billing-Verification`
+
+对于返回 JSON 的网关入口，`X-Billing-Verification` 通常与响应体中的计费 `code` 一致。Pro-MCP OAuth 流程有意采用两种不同的响应结构：其 grant 握手端点在响应体中使用稳定错误码，以 `TIER_VERIFICATION_UNAVAILABLE` 表示可重试的校验故障，以 `INSUFFICIENT_TIER` 表示终态的层级拒绝，而响应头承载底层的具体计费原因；`/oauth/authorize-pro` 返回 HTML，因此该响应头仍是其机器可读的计费原因。该响应头已列入 `Access-Control-Expose-Headers`，因此浏览器客户端可以跨域直接读取。请依据该响应头而非仅依据状态码分支：这些入口返回的 `503` 也可能表示「必需的环境变量未配置」——那是**不可重试**的；而 `403` 既可能是普通的 `pro_required` 升级提示，也可能是 `subscription_lapsed` 判定。
+
+在 `X-Billing-Verification` 承载的计费原因中，只有 `subscription_lapsed` 是终态。它从不携带 `Retry-After`——缺少该响应头本身就是信号：出路是重新订阅，而不是重试。在 grant 握手端点，即使没有计费响应头，也应将响应体错误码 `INSUFFICIENT_TIER` 视为终态，将 `TIER_VERIFICATION_UNAVAILABLE` 视为可重试。
+
+### 生成式 RPC 的计费拒绝
+
+生成式 RPC 处理程序会在各自原生的错误形态中保留同一项计费判定。`summarizeArticle` 在成功的 RPC 信封内报告错误，因此可重试的计费状态使用 `status: SUMMARIZE_STATUS_ERROR`、`errorType: ServiceError`，并在 `statusDetail` 中携带计费代码；由提供方确认的订阅失效则使用 `errorType: AuthError`。scenario、shipping-v2 与 forecast-simulation 处理程序改用生成的 `ApiError` 异常，因此可重试状态会返回 HTTP `503`，同时携带 `Retry-After`、`X-Billing-Verification` 与相同的响应体 `code`。已确认的免费调用方仍会收到原有的 Pro-required `403`。
+
+## 常见错误字符串
+
+| `error` 值 | 含义 |
+|---------------|---------|
+| `UNAUTHENTICATED` | 无有效的 Clerk JWT 或 API 密钥。 |
+| `pro_required` | 已认证，但账户非 PRO。 |
+| `invalid_payload` | 请求体未通过 schema 校验。 |
+| `invalid_date_shape` | 日期参数非 `YYYY-MM-DD`。 |
+| `brief_not_found` | 所请求的 `{userId, issueDate}` 没有已生成的 brief。 |
+| `Rate limit exceeded` | 触发 429；遵守 `Retry-After`。 |
+| `Service temporarily unavailable` | Upstash 或其他硬依赖在请求时不可用。 |
+| `service_unavailable` | 签名密钥 / 必需的环境变量未配置。 |
+| `Failed to enqueue scenario job` | `/api/scenario/v1/run-scenario` 上的 Redis 管道故障。 |
+| `subscription_lapsed` | 订阅失效已与计费提供方确认。重新认证无效 —— 请重新订阅以恢复访问。响应携带 `X-Billing-Verification: subscription_lapsed`。 |
+| `renewal_verification_pending` | 你的订阅在本地记录中刚刚到期，服务端正在与计费提供方重新确认。可重试的 503 —— 遵守 `Retry-After`（1-60 秒）；已续订的订阅通常在一到两次重试内恢复。 |
+| `renewal_verification_failed` | 提供方复查未能完成，处于短暂冷却期。可重试的 503 —— 遵守 `Retry-After`。 |
+| `entitlement_verification_unavailable` | 计费后端未能就访问权限给出结论 —— 不可达、报错，或拒绝了服务端自身的凭据 —— 因此该拒绝不构成对套餐的任何判定，绝不可按套餐不足解读。在所有已认证入口均可能出现（`wm_` API 密钥、bootstrap、会话/bearer 层级检查、MCP）。可重试的 503，携带 `Retry-After: 5` 与 `X-Billing-Verification: entitlement_verification_unavailable`。 |
+| `TIER_VERIFICATION_UNAVAILABLE` | Pro-MCP OAuth 握手（`POST /api/internal/mcp-grant-mint`、`GET /api/internal/mcp-grant-context`）无法校验调用方的订阅状态。可重试的 503，携带 `Retry-After` 与 `X-Billing-Verification`；该握手保留自有的 SCREAMING_SNAKE 错误词表，`INSUFFICIENT_TIER` 仍是终态 403（包括已与计费提供方确认的订阅失效，此时还会额外设置 `X-Billing-Verification: subscription_lapsed`）。 |
+
+## 重试策略
+
+**幂等读**（`GET`）：对 429/5xx 使用指数退避重试（1 秒、2 秒、4 秒，上限 30 秒，共 5 次）。大多数 GET 响应在边缘已缓存，因此重试通常更快完成。
+
+**写入**：切勿自动重试 4xx。对于写入时的 5xx，需甄别：`POST /api/brief/share-url` 与 `POST /api/v2/shipping/webhooks` 是幂等的；`POST /api/scenario/v1/run-scenario` **不**幂等 — 每次调用都会入队一个新作业。对 `run-scenario` 重试 5xx 可能会使速率限制计数翻倍。
+
+**MCP**：服务器在 JSON-RPC 结果中以 `isError: true` 和文本说明返回工具错误 — 这些并非 HTTP 错误。请在工具调用层进行处理。
+
+## 调试
+
+- 每个 Edge 响应都包含 `x-vercel-id` 与 `x-worldmonitor-deploy` 头 — 上报问题时请一并提供。
+- Sentry 告警会转发到 [status.worldmonitor.app](https://status.worldmonitor.app/)。
+- `GET /api/health` 与 `GET /api/seed-health` 显示各 seed 的数据新鲜度；某个 seed 过期是出现意外空载荷的最常见根因。

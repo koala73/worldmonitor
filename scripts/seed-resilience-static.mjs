@@ -16,10 +16,10 @@ import { resolveProxyStringConnect } from './_proxy-utils.cjs';
 import {
   createCountryResolvers,
   isIso2,
-  isIso3,
-  normalizeCountryToken,
   resolveIso2,
 } from './_country-resolver.mjs';
+import { isInRankableUniverse } from './shared/rankable-universe.mjs';
+import wgiIndicatorKeys from './shared/wgi-indicator-keys.json' with { type: 'json' };
 
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
 
@@ -28,28 +28,54 @@ loadEnvFile(import.meta.url);
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 export const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
+// Aggregated IPC Phase 3+ view — readers that want "which countries are in a
+// food crisis this year" without fanning out to 222 per-country keys. Shape is
+// compatible with scripts/backtest-resilience-outcomes.mjs::detectFoodCrisis:
+// { countries: { ISO2: { ipcPhase, phase, peopleInCrisis, year } } }.
+export const RESILIENCE_STATIC_FAO_KEY = 'resilience:static:fao';
 export const RESILIENCE_STATIC_TTL_SECONDS = 400 * 24 * 60 * 60;
-export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v1';
+// Plan 2026-04-26-002 §U2 (PR 1) bumped v7 → v8 because this PR adds
+// the rankable-universe filter at finalizeCountryPayloads. Without
+// the version bump, `shouldSkipSeedYear` (line ~70) would no-op the
+// post-merge seeder run since prod already has a successful 2026 v7
+// seed — the new whitelist would never run, the static index would
+// remain at ~222 entries, and the universe filter would silently
+// not take effect. Caught by reviewer post-PR-3435 push.
+// v9 adds static-data quality provenance and guards, so current-year
+// successful v8 snapshots must not skip the updated publish path.
+export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v9';
 export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
 
 const LOCK_DOMAIN = 'resilience:static';
 const LOCK_TTL_MS = 2 * 60 * 60 * 1000;
-const TOTAL_DATASET_SLOTS = 8;
-const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea'];
-const WGI_INDICATORS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
-const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC'];
+const TOTAL_DATASET_SLOTS = 11;
+const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp', 'fxReservesMonths', 'appliedTariffRate'];
+export const WGI_INDICATORS = wgiIndicatorKeys;
+const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC', 'IT.NET.BBND.P2'];
 const WHO_INDICATORS = {
   hospitalBeds: 'WHS6_102',
   uhcIndex: 'UHC_INDEX_REPORTED',
   // WHS4_100 from the issue body no longer resolves; WHO currently exposes MCV1 coverage on WHS8_110.
   measlesCoverage: process.env.RESILIENCE_WHO_MEASLES_INDICATOR || 'WHS8_110',
+  physiciansPer10k: 'HWF_0001',
+  healthExpPerCapitaUsd: 'GHED_CHE_pc_US_SHA2011',
 };
 const WORLD_BANK_BASE = 'https://api.worldbank.org/v2';
 const WHO_BASE = 'https://ghoapi.azureedge.net/api';
 const RSF_RANKING_URL = 'https://rsf.org/en/ranking';
+const RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK = 10;
+// Top-10 RSF countries currently score in the 5-20 range; 30 is a conservative
+// upper bound before treating the feed as direction-inverted.
+const RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE = 30;
 const EUROSTAT_ENERGY_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_ind_id?freq=A';
 const WB_ENERGY_IMPORT_INDICATOR = 'EG.IMP.CONS.ZS';
 const COUNTRY_RESOLVERS = createCountryResolvers();
+const EUROSTAT_ENERGY_EU_MEMBER_FLOOR = 24;
+const EUROSTAT_EU_MEMBER_ISO2 = new Set([
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI',
+  'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU',
+  'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+]);
 
 export function countryRedisKey(iso2) {
   return `${RESILIENCE_STATIC_PREFIX}${iso2}`;
@@ -63,7 +89,9 @@ export function shouldSkipSeedYear(meta, seedYear = nowSeedYear()) {
   return Boolean(
     meta
     && meta.status === 'ok'
+    && meta.sourceVersion === RESILIENCE_STATIC_SOURCE_VERSION
     && Number(meta.seedYear) === seedYear
+    && !(meta.failedDatasets?.length > 0)
     && Number.isFinite(Number(meta.recordCount))
     && Number(meta.recordCount) > 0,
   );
@@ -72,11 +100,6 @@ export function shouldSkipSeedYear(meta, seedYear = nowSeedYear()) {
 function safeNum(value) {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-}
-
-function coalesceYear(...values) {
-  const numeric = values.map(v => safeNum(v)).filter(v => v != null);
-  return numeric.length ? Math.max(...numeric) : null;
 }
 
 function roundMetric(value, digits = 3) {
@@ -91,7 +114,10 @@ async function fetchTextDirect(url, accept, timeoutMs) {
     headers: { Accept: accept, 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    const err = Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+    throw err;
+  }
   return { text: await response.text(), contentType: response.headers.get('content-type') || '' };
 }
 
@@ -252,26 +278,40 @@ export async function fetchInfrastructureDataset() {
 }
 
 async function fetchWhoIndicatorRows(indicatorCode) {
-  const rows = [];
-  const params = new URLSearchParams({
-    '$select': 'SpatialDim,TimeDim,NumericValue,Value',
-    '$filter': "SpatialDimType eq 'COUNTRY'",
-    '$top': '1000',
-  });
-  let nextUrl = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
-  let pageCount = 0;
+  const allRows = [];
+  const PAGE_SIZE = 1000;
   const MAX_WHO_PAGES = 50;
+  let skip = 0;
+  let pageCount = 0;
 
-  while (nextUrl && pageCount < MAX_WHO_PAGES) {
+  while (pageCount < MAX_WHO_PAGES) {
     pageCount += 1;
-    const payload = await withRetry(() => fetchJson(nextUrl), 2, 750);
+    const params = new URLSearchParams({
+      '$select': 'SpatialDim,TimeDim,NumericValue,Value',
+      '$filter': "SpatialDimType eq 'COUNTRY'",
+      '$top': String(PAGE_SIZE),
+      '$skip': String(skip),
+    });
+    const url = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
+    const payload = await withRetry(() => fetchJson(url), 2, 750);
     if (!Array.isArray(payload?.value)) throw new Error(`Unexpected WHO response shape for ${indicatorCode}`);
-    rows.push(...payload.value);
-    nextUrl = payload['@odata.nextLink'] || payload['odata.nextLink'] || null;
-  }
-  if (nextUrl) throw new Error(`WHO ${indicatorCode}: pagination exceeded ${MAX_WHO_PAGES} pages`);
+    const rows = payload.value;
+    allRows.push(...rows);
 
-  return rows;
+    const odataNext = payload['@odata.nextLink'] || payload['odata.nextLink'] || null;
+    if (odataNext) {
+      skip = allRows.length;
+      continue;
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    skip += PAGE_SIZE;
+  }
+
+  if (pageCount >= MAX_WHO_PAGES) throw new Error(`WHO ${indicatorCode}: pagination exceeded ${MAX_WHO_PAGES} pages`);
+  console.log(`  [who] ${indicatorCode}: ${allRows.length} rows (${pageCount} pages)`);
+
+  return allRows;
 }
 
 function selectLatestWhoByCountry(rows) {
@@ -324,11 +364,45 @@ export async function fetchWhoDataset() {
     throw new Error('WHO: all indicator fetches failed');
   }
 
+  transformWhoPhysicianDensity(merged);
+
   return merged;
+}
+
+export function transformWhoPhysicianDensity(merged) {
+  for (const [, record] of merged) {
+    const per10k = record.indicators.physiciansPer10k;
+    if (per10k && per10k.value != null) {
+      record.indicators.physiciansPer1k = {
+        indicator: per10k.indicator,
+        value: roundMetric(per10k.value / 10),
+        year: per10k.year,
+      };
+    }
+    delete record.indicators.physiciansPer10k;
+  }
 }
 
 function parseDecimal(value) {
   return safeNum(String(value || '').replace(',', '.'));
+}
+
+function validateRsfFeedDirection(byCountry) {
+  const topRanked = [...byCountry.values()]
+    .filter((row) => row.rank <= RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK);
+
+  if (byCountry.size >= 100 && topRanked.length === 0) {
+    throw new Error('RSF ranking feed direction guard found no top-ranked countries');
+  }
+
+  const highScoreTopRanked = topRanked.filter((row) => row.score > RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE);
+  if (highScoreTopRanked.length === 0) return;
+
+  const examples = highScoreTopRanked
+    .slice(0, 3)
+    .map((row) => `rank ${row.rank} score ${row.score}`)
+    .join(', ');
+  throw new Error(`RSF ranking feed direction guard failed: top-ranked countries must have low lower-is-better abuse-index scores (${examples})`);
 }
 
 export function parseRsfRanking(html) {
@@ -349,6 +423,7 @@ export function parseRsfRanking(html) {
       year: null,
     });
   }
+  validateRsfFeedDirection(byCountry);
   return byCountry;
 }
 
@@ -418,7 +493,15 @@ function parseLatestEurostatValue(data, geoCode) {
   };
 }
 
-export function parseEurostatEnergyDataset(data) {
+export function validateEurostatEnergyEuMemberFloor(parsed, floor = EUROSTAT_ENERGY_EU_MEMBER_FLOOR) {
+  const euRows = [...EUROSTAT_EU_MEMBER_ISO2].filter((iso2) => parsed.has(iso2)).length;
+  if (euRows < floor) {
+    throw new Error(`Eurostat energy dependency parsed ${euRows} EU member rows (expected at least ${floor})`);
+  }
+  return { euRows, floor };
+}
+
+export function parseEurostatEnergyDataset(data, { enforceEuMemberFloor = false } = {}) {
   const ids = Array.isArray(data?.id) ? data.id : [];
   const dimensions = data?.dimension || {};
   if (!data?.value || !ids.length) {
@@ -442,22 +525,25 @@ export function parseEurostatEnergyDataset(data) {
     });
   }
 
+  if (enforceEuMemberFloor) validateEurostatEnergyEuMemberFloor(parsed);
   return parsed;
 }
 
 export async function fetchEnergyDependencyDataset() {
+  // Eurostat is the authoritative EU slice; if it is unavailable or collapses,
+  // fail the whole iea adapter so recovery preserves the previous full snapshot.
   const [eurostatData, worldBankRows] = await Promise.all([
-    withRetry(() => fetchJson(EUROSTAT_ENERGY_URL), 2, 750).catch(() => null),
+    withRetry(() => fetchJson(EUROSTAT_ENERGY_URL), 2, 750).catch((err) => {
+      throw new Error(`Energy dependency: Eurostat fetch failed: ${err.message}`);
+    }),
     fetchWorldBankIndicatorRows(WB_ENERGY_IMPORT_INDICATOR, { mrv: '12' }).catch(() => []),
   ]);
 
   let merged = new Map();
-  if (eurostatData) {
-    try {
-      merged = parseEurostatEnergyDataset(eurostatData);
-    } catch {
-      merged = new Map();
-    }
+  try {
+    merged = parseEurostatEnergyDataset(eurostatData, { enforceEuMemberFloor: true });
+  } catch (err) {
+    throw new Error(`Energy dependency: Eurostat parse/floor check failed: ${err.message}`);
   }
   const worldBankFallback = selectLatestWorldBankByCountry(worldBankRows);
 
@@ -524,21 +610,11 @@ function parseDelimitedText(text, delimiter) {
   });
 }
 
-async function fetchGpiDataset() {
-  const currentYear = new Date().getUTCFullYear();
-  let csvText;
-  let resolvedYear = currentYear;
+export function gpiUrlForYear(yr) {
+  return `https://www.visionofhumanity.org/wp-content/uploads/${yr}/06/GPI_${yr}_${yr}.csv`;
+}
 
-  const urlForYear = (yr) =>
-    `https://www.visionofhumanity.org/wp-content/uploads/${yr}/06/GPI_${yr}_${yr}.csv`;
-
-  try {
-    ({ text: csvText } = await withRetry(() => fetchText(urlForYear(currentYear), { accept: 'text/csv' }), 1, 750));
-  } catch {
-    resolvedYear = currentYear - 1;
-    ({ text: csvText } = await withRetry(() => fetchText(urlForYear(resolvedYear), { accept: 'text/csv' }), 2, 750));
-  }
-
+export function parseGpiRows(csvText, resolvedYear) {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
@@ -560,10 +636,32 @@ async function fetchGpiDataset() {
   return parsed;
 }
 
-async function fetchFsinDataset() {
-  const hdxUrl =
-    'https://data.humdata.org/dataset/7a7e7428-b8d7-4d2e-91d3-19100500e016/resource/2e4f7475-105b-4fae-81f7-7c32076096b6/download/ipc_global_national_wide_latest.csv';
-  const { text: csvText } = await withRetry(() => fetchText(hdxUrl, { accept: 'text/csv' }), 2, 750);
+export async function resolveGpiCsv(
+  currentYear,
+  {
+    directFetch = (url) => fetchTextDirect(url, 'text/csv', 30_000),
+    retryFetch = (url) => withRetry(() => fetchText(url, { accept: 'text/csv' }), 2, 750),
+  } = {},
+) {
+  try {
+    const { text } = await directFetch(gpiUrlForYear(currentYear));
+    return { resolvedYear: currentYear, csvText: text };
+  } catch (err) {
+    if (err.status !== 404) throw err;
+    const resolvedYear = currentYear - 1;
+    console.info(`  [gpi] ${currentYear} report not yet available — using ${resolvedYear}`);
+    const { text } = await retryFetch(gpiUrlForYear(resolvedYear));
+    return { resolvedYear, csvText: text };
+  }
+}
+
+async function fetchGpiDataset() {
+  const currentYear = new Date().getUTCFullYear();
+  const { resolvedYear, csvText } = await resolveGpiCsv(currentYear);
+  return parseGpiRows(csvText, resolvedYear);
+}
+
+export function parseFsinRows(csvText) {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
@@ -573,66 +671,147 @@ async function fetchFsinDataset() {
     const phase3plus = safeNum(row['Phase 3+ #'] ?? row['Phase 3+ number current']);
     const phase4 = safeNum(row['Phase 4 #'] ?? row['Phase 4 number current']);
     const phase5 = safeNum(row['Phase 5 #'] ?? row['Phase 5 number current']);
-    if (phase3plus == null && phase4 == null && phase5 == null) continue;
+    // Skip rows where no crisis-phase data is present (null or zero — IPC only lists active crises).
+    if (!phase3plus && !phase4 && !phase5) continue;
     const yearCandidates = Object.keys(row)
       .filter((k) => /period|date|year/i.test(k))
       .map((k) => safeNum(String(row[k]).slice(0, 4)))
       .filter((v) => v != null && v > 2000);
     const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
+    const highestPhase = phase5 ? 5 : phase4 ? 4 : 3;
+    const higherPhaseTotal = (phase4 ?? 0) + (phase5 ?? 0);
+    const peopleInCrisis = phase3plus && phase3plus > 0 ? phase3plus : higherPhaseTotal;
     parsed.set(iso2, {
       source: 'hdx-ipc',
       year,
-      phase3plus: phase3plus != null ? roundMetric(phase3plus, 0) : null,
-      phase4: phase4 != null ? roundMetric(phase4, 0) : null,
-      phase5: phase5 != null ? roundMetric(phase5, 0) : null,
+      // Output matches the shape that scoreFoodWater() reads from staticRecord.fao.
+      // phase3plus is the IPC Phase 3+ total when present; otherwise Phase 4+5
+      // is a conservative lower-bound fallback for rows missing the aggregate.
+      peopleInCrisis: peopleInCrisis > 0 ? roundMetric(peopleInCrisis, 0) : null,
+      phase: `IPC Phase ${highestPhase}`,
     });
   }
   if (parsed.size === 0) throw new Error('HDX IPC CSV returned no usable rows');
   return parsed;
 }
 
-async function fetchAquastatDataset() {
-  const aquastatUrl =
-    'https://api.data.apps.fao.org/api/v2/bigquery?sql_url=https://data.apps.fao.org/catalog/dataset/945666e6-7803-4621-b8ef-cfd885a84596/resource/4a000a1b-24f0-4328-aab6-b9b525892090/download/query_en.sql&area=World&variable=4550,4192,4190&year=2021&type=country';
-  const { text: csvText } = await withRetry(() => fetchText(aquastatUrl, { accept: 'text/csv' }), 2, 750);
-  const rows = parseDelimitedText(csvText, ',');
+async function fetchFsinDataset() {
+  const hdxUrl =
+    'https://data.humdata.org/dataset/7a7e7428-b8d7-4d2e-91d3-19100500e016/resource/2e4f7475-105b-4fae-81f7-7c32076096b6/download/ipc_global_national_wide_latest.csv';
+  const { text: csvText } = await withRetry(() => fetchText(hdxUrl, { accept: 'text/csv' }), 2, 750);
+  return parseFsinRows(csvText);
+}
 
-  const VARIABLE_MAP = {
-    '4550': 'waterStress',
-    '4192': 'dependencyRatio',
-    '4190': 'renewablePerCapita',
-  };
+// WB indicator ER.H2O.FWST.ZS = "Level of water stress: freshwater withdrawal as a proportion
+// of available freshwater resources". Matches scoreAquastatValue()'s 'stress' keyword branch.
+const WB_WATER_STRESS_INDICATOR = 'ER.H2O.FWST.ZS';
 
+export function buildAquastatWbMap(waterStressLatest) {
   const byCountry = new Map();
-  for (const row of rows) {
-    const countryName = String(row.Country || '').trim();
-    const iso2 = resolveIso2({ name: countryName });
-    if (!iso2) continue;
-    const varCode = String(row.VariableCode || row.Variable_Id || '').trim();
-    const metricKey = VARIABLE_MAP[varCode];
-    if (!metricKey) continue;
-    const value = safeNum(row.Value);
-    const year = safeNum(row.Year);
-    if (value == null) continue;
-
-    const existing = byCountry.get(iso2) || { source: 'fao-aquastat' };
-    const prev = existing[metricKey];
-    if (!prev || (year != null && (prev.year == null || year > prev.year))) {
-      existing[metricKey] = { value: roundMetric(value), year };
-    }
-    byCountry.set(iso2, existing);
+  for (const [iso2, entry] of waterStressLatest.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank-aquastat',
+      value: entry.value,
+      indicator: 'water stress',
+      year: entry.year,
+    });
   }
-  if (byCountry.size === 0) throw new Error('AQUASTAT CSV returned no usable rows');
+  if (byCountry.size === 0) throw new Error('World Bank water stress returned no usable rows');
   return byCountry;
+}
+
+async function fetchAquastatDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_WATER_STRESS_INDICATOR, { mrv: '15' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildAquastatWbMap(latest);
+}
+
+const WB_TRADE_TO_GDP_INDICATOR = 'NE.TRD.GNFS.ZS';
+
+export function buildTradeToGdpMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      tradeToGdpPct: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank trade-to-GDP returned no usable rows');
+  return byCountry;
+}
+
+async function fetchTradeToGdpDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_TRADE_TO_GDP_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildTradeToGdpMap(latest);
+}
+
+const WB_FX_RESERVES_MONTHS_INDICATOR = 'FI.RES.TOTL.MO';
+
+export function buildFxReservesMonthsMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      months: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank FX reserves months returned no usable rows');
+  return byCountry;
+}
+
+async function fetchFxReservesMonthsDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_FX_RESERVES_MONTHS_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildFxReservesMonthsMap(latest);
+}
+
+const WB_APPLIED_TARIFF_INDICATOR = 'TM.TAX.MRCH.WM.AR.ZS';
+
+export function buildAppliedTariffRateMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      value: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank applied tariff rate returned no usable rows');
+  return byCountry;
+}
+
+async function fetchAppliedTariffRateDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_APPLIED_TARIFF_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildAppliedTariffRateMap(latest);
 }
 
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
   const merged = new Map();
+  let droppedNonRankable = 0;
 
   for (const [datasetField, countryMap] of Object.entries(datasetMaps)) {
     for (const [iso2, payload] of countryMap.entries()) {
+      // Plan 2026-04-26-002 §U2 (PR 1): drop non-rankable territories
+      // (AS/GU/GL/IM/GI/FK/etc.) at universe-build time. Whitelist =
+      // 193 UN members + 3 SARs (HK/MO/TW). Earlier behavior admitted
+      // every ISO2 from any source map (~222 entries); now ~196.
+      // HK/MO/TW are tagged 'sar' and stay in the dataset; the future
+      // headlineEligible gate (PR 6) can separate them from the headline
+      // ranking if/when that policy ships.
+      if (!isInRankableUniverse(iso2)) {
+        droppedNonRankable++;
+        continue;
+      }
       upsertDatasetRecord(merged, iso2, datasetField, payload);
     }
+  }
+
+  if (droppedNonRankable > 0) {
+    console.log(`[resilience-static] Dropped ${droppedNonRankable} non-rankable territory entries (filter: 193 UN members + 3 SARs)`);
   }
 
   for (const [iso2, payload] of merged.entries()) {
@@ -656,12 +835,28 @@ export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), s
   return merged;
 }
 
-export function buildManifest(countryPayloads, failedDatasets, seedYear, seededAt) {
+function normalizeRecoveredDatasets(recoveredDatasets = {}) {
+  return Object.entries(recoveredDatasets)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .reduce((acc, [dataset, info]) => {
+      acc[dataset] = {
+        recordCount: Number(info?.recordCount) || 0,
+        countries: [...(info?.countries ?? [])].sort(),
+        seedYears: [...(info?.seedYears ?? [])].sort((left, right) => left - right),
+        seededAts: [...(info?.seededAts ?? [])].sort(),
+        sourceYears: [...(info?.sourceYears ?? [])].sort((left, right) => left - right),
+      };
+      return acc;
+    }, {});
+}
+
+export function buildManifest(countryPayloads, failedDatasets, seedYear, seededAt, recoveredDatasets = {}) {
   const countries = [...countryPayloads.keys()].sort();
   return {
     countries,
     recordCount: countries.length,
     failedDatasets: [...failedDatasets].sort(),
+    recoveredDatasets: normalizeRecoveredDatasets(recoveredDatasets),
     seedYear,
     seededAt,
     sourceVersion: RESILIENCE_STATIC_SOURCE_VERSION,
@@ -686,6 +881,57 @@ export function buildFailureRefreshKeys(manifest) {
     if (isIso2(iso2)) keys.add(countryRedisKey(iso2));
   }
   return [...keys];
+}
+
+function collectSourceYears(value, years = new Set()) {
+  if (!value || typeof value !== 'object') return years;
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === 'seedYear') continue;
+    if (/year$/i.test(key) && typeof nested !== 'object') {
+      const numeric = safeNum(nested);
+      if (numeric != null && numeric >= 1900 && numeric <= 2100) years.add(numeric);
+      continue;
+    }
+    collectSourceYears(nested, years);
+  }
+  return years;
+}
+
+function recoveredDatasetProvenance(dataset, countryPayload, datasetValue) {
+  const seedYear = safeNum(countryPayload?.seedYear);
+  const seededAt = typeof countryPayload?.seededAt === 'string' ? countryPayload.seededAt : null;
+  const sourceYears = [...collectSourceYears(datasetValue)].sort((left, right) => left - right);
+  return {
+    dataset,
+    ...(seedYear != null ? { seedYear } : {}),
+    ...(seededAt ? { seededAt } : {}),
+    ...(sourceYears.length ? { sourceYears } : {}),
+  };
+}
+
+function annotateRecoveredDatasetValue(dataset, countryPayload, datasetValue) {
+  if (!datasetValue || typeof datasetValue !== 'object' || Array.isArray(datasetValue)) return datasetValue;
+  return {
+    ...datasetValue,
+    _recovered: recoveredDatasetProvenance(dataset, countryPayload, datasetValue),
+  };
+}
+
+function noteRecoveredDataset(recoveredDatasets, dataset, iso2, countryPayload, datasetValue) {
+  const provenance = recoveredDatasetProvenance(dataset, countryPayload, datasetValue);
+  const info = recoveredDatasets[dataset] ?? {
+    recordCount: 0,
+    countries: new Set(),
+    seedYears: new Set(),
+    seededAts: new Set(),
+    sourceYears: new Set(),
+  };
+  info.recordCount += 1;
+  info.countries.add(iso2);
+  if (provenance.seedYear != null) info.seedYears.add(provenance.seedYear);
+  if (provenance.seededAt) info.seededAts.add(provenance.seededAt);
+  for (const year of provenance.sourceYears ?? []) info.sourceYears.add(year);
+  recoveredDatasets[dataset] = info;
 }
 
 async function redisPipeline(commands) {
@@ -714,13 +960,77 @@ async function readJsonKey(key) {
   return verifySeedKey(key);
 }
 
-async function publishSuccess(countryPayloads, manifest, meta) {
+/**
+ * Build the aggregated `resilience:static:fao` payload from the per-country
+ * FAO dataset map. Only includes countries that IPC lists as Phase 3+ — by
+ * design, IPC's "global latest" CSV only publishes crisis cases, so absence
+ * from this aggregate means "not an IPC-monitored crisis country" (consistent
+ * with how scoreFoodWater() treats missing per-country fao data).
+ *
+ * Output shape matches backtest-resilience-outcomes.mjs::detectFoodCrisis:
+ *   { countries: { [iso2]: { ipcPhase, phase, peopleInCrisis, year, source } },
+ *     fetchedAt, source, count, seedYear }
+ */
+export function buildFaoAggregate(faoMap, seedYear, seededAt, eligibleCountryCodes = null) {
+  const eligible = eligibleCountryCodes
+    ? new Set([...eligibleCountryCodes].map((code) => String(code).toUpperCase()))
+    : null;
+  const countries = {};
+  let count = 0;
+  for (const [iso2, entry] of faoMap.entries()) {
+    const countryCode = String(iso2).toUpperCase();
+    if (eligible ? !eligible.has(countryCode) : !isInRankableUniverse(countryCode)) continue;
+    if (!entry || typeof entry !== 'object') continue;
+    const phaseMatch = typeof entry.phase === 'string' ? entry.phase.match(/\d+/) : null;
+    const ipcPhase = phaseMatch ? Number(phaseMatch[0]) : null;
+    if (ipcPhase == null || ipcPhase < 3) continue;
+    countries[countryCode] = {
+      ipcPhase,
+      phase: entry.phase,
+      peopleInCrisis: entry.peopleInCrisis ?? null,
+      year: entry.year ?? null,
+      source: entry.source ?? 'hdx-ipc',
+    };
+    count += 1;
+  }
+  return {
+    countries,
+    count,
+    fetchedAt: seededAt,
+    seedYear,
+    source: 'hdx-ipc',
+    status: 'ok',
+  };
+}
+
+export function buildFaoAggregateForPublish(datasetMaps, failedDatasets, recovery, seedYear, seededAt, eligibleCountryCodes) {
+  const faoFailed = failedDatasets.includes('fao');
+  const recoveredFaoCount = safeNum(recovery?.recoveredDatasets?.fao?.recordCount) ?? 0;
+  if (faoFailed && recoveredFaoCount <= 0) {
+    return {
+      countries: {},
+      count: 0,
+      fetchedAt: seededAt,
+      seedYear,
+      source: 'hdx-ipc',
+      status: 'error',
+      failed: true,
+      failedDatasets: ['fao'],
+    };
+  }
+  return buildFaoAggregate(datasetMaps.fao ?? new Map(), seedYear, seededAt, eligibleCountryCodes);
+}
+
+async function publishSuccess(countryPayloads, manifest, meta, { faoAggregate } = {}) {
   const commands = [];
   for (const [iso2, payload] of countryPayloads.entries()) {
     commands.push(['SET', countryRedisKey(iso2), JSON.stringify(payload), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
   }
   commands.push(['SET', RESILIENCE_STATIC_INDEX_KEY, JSON.stringify(manifest), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
   commands.push(['SET', RESILIENCE_STATIC_META_KEY, JSON.stringify(meta), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
+  if (faoAggregate) {
+    commands.push(['SET', RESILIENCE_STATIC_FAO_KEY, JSON.stringify(faoAggregate), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
+  }
   const results = await redisPipeline(commands);
   const failures = results.filter(r => r?.error || r?.result === 'ERR');
   if (failures.length > 0) {
@@ -756,6 +1066,9 @@ async function fetchAllDatasetMaps() {
     { key: 'fao', fetcher: fetchFsinDataset },
     { key: 'aquastat', fetcher: fetchAquastatDataset },
     { key: 'iea', fetcher: fetchEnergyDependencyDataset },
+    { key: 'tradeToGdp', fetcher: fetchTradeToGdpDataset },
+    { key: 'fxReservesMonths', fetcher: fetchFxReservesMonthsDataset },
+    { key: 'appliedTariffRate', fetcher: fetchAppliedTariffRateDataset },
   ];
 
   const results = await Promise.allSettled(adapters.map((adapter) => adapter.fetcher()));
@@ -783,7 +1096,8 @@ async function fetchAllDatasetMaps() {
 // Throws if the Redis recovery reads themselves fail — the caller must then call
 // preservePreviousSnapshotOnFailure and abort, rather than publishing corrupt data.
 export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readIndex, readPipeline }) {
-  if (failedDatasets.length === 0) return;
+  const recoveredDatasets = {};
+  if (failedDatasets.length === 0) return { recoveredDatasets };
 
   let existingIndex;
   try {
@@ -795,7 +1109,7 @@ export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readI
   const existingCountries = existingIndex?.countries ?? [];
   if (existingCountries.length === 0) {
     console.warn(`  [fallback] dataset(s) failed (${failedDatasets.join(', ')}) — no prior snapshot to recover from`);
-    return;
+    return { recoveredDatasets };
   }
 
   let pipelineResults;
@@ -812,7 +1126,8 @@ export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readI
     if (!existing) continue;
     for (const key of failedDatasets) {
       if (existing[key] != null && datasetMaps[key] instanceof Map && !datasetMaps[key].has(iso2)) {
-        datasetMaps[key].set(iso2, existing[key]);
+        datasetMaps[key].set(iso2, annotateRecoveredDatasetValue(key, existing, existing[key]));
+        noteRecoveredDataset(recoveredDatasets, key, iso2, existing, existing[key]);
       }
     }
   }
@@ -820,6 +1135,8 @@ export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readI
   for (const key of failedDatasets) {
     console.warn(`  [fallback] dataset '${key}' failed — preserved ${datasetMaps[key].size} existing Redis records from prior snapshot`);
   }
+
+  return { recoveredDatasets: normalizeRecoveredDatasets(recoveredDatasets) };
 }
 
 export async function seedResilienceStatic() {
@@ -836,8 +1153,9 @@ export async function seedResilienceStatic() {
 
   const { datasetMaps, failedDatasets } = await fetchAllDatasetMaps();
 
+  let recovery = { recoveredDatasets: {} };
   try {
-    await recoverFailedDatasets(datasetMaps, failedDatasets, {
+    recovery = await recoverFailedDatasets(datasetMaps, failedDatasets, {
       readIndex: () => readJsonKey(RESILIENCE_STATIC_INDEX_KEY),
       readPipeline: redisPipeline,
     });
@@ -854,7 +1172,7 @@ export async function seedResilienceStatic() {
 
   const seededAt = new Date().toISOString();
   const countryPayloads = finalizeCountryPayloads(datasetMaps, seedYear, seededAt);
-  const manifest = buildManifest(countryPayloads, failedDatasets, seedYear, seededAt);
+  const manifest = buildManifest(countryPayloads, failedDatasets, seedYear, seededAt, recovery?.recoveredDatasets ?? {});
 
   if (manifest.recordCount === 0) {
     const failure = await preservePreviousSnapshotOnFailure(
@@ -874,7 +1192,22 @@ export async function seedResilienceStatic() {
     failedDatasets,
   });
 
-  await publishSuccess(countryPayloads, manifest, meta);
+  // Piggyback on the same fetch/recovery path: the FAO dataset map is
+  // already in memory, just reshape and publish as an aggregate readable by
+  // the weekly validation cron's Outcome-Backtest (resilience:static:fao).
+  // If FAO failed and recovery found no prior FAO rows, publish an explicit
+  // failed/empty aggregate so a prior long-lived FAO key cannot remain fresh
+  // under the shared seed-meta:resilience:static heartbeat.
+  const faoAggregate = buildFaoAggregateForPublish(
+    datasetMaps,
+    failedDatasets,
+    recovery,
+    seedYear,
+    seededAt,
+    countryPayloads.keys(),
+  );
+
+  await publishSuccess(countryPayloads, manifest, meta, { faoAggregate });
 
   return {
     skipped: false,

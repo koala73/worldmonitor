@@ -46,7 +46,7 @@ const INJECTION_PATTERNS = [
   /(?:output|print|display|reveal|show|repeat|recite|write\s+out)\s+(?:your\s+)?(?:system\s+prompt|instructions?|initial\s+prompt|original\s+prompt|context)\b/gi,
 
   // Prompt boundary separator lines
-  /^[\-=]{3,}$/gm,
+  /^[-=]{3,}$/gm,
   /^#{3,}\s/gm,
 ];
 
@@ -118,7 +118,7 @@ const STRUCTURAL_PATTERNS = [
   /<\|(?:endoftext|fim_prefix|fim_middle|fim_suffix|pad)\|>/gi,
   /\[(?:INST|\/INST|SYS|\/SYS)\]/gi,
   /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi,
-  /^[\-=]{3,}$/gm,
+  /^[-=]{3,}$/gm,
 ];
 
 /**

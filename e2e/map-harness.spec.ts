@@ -11,13 +11,13 @@ type OverlaySnapshot = {
 
 type VisualScenarioSummary = {
   id: string;
-  variant: 'both' | 'full' | 'tech' | 'finance';
+  variant: 'both' | 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
 };
 
 type HarnessWindow = Window & {
   __mapHarness?: {
     ready: boolean;
-    variant: 'full' | 'tech' | 'finance';
+    variant: 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
     seedAllDynamicData: () => void;
     setProtestsScenario: (scenario: 'alpha' | 'beta') => void;
     setPulseProtestsScenario: (
@@ -126,6 +126,56 @@ const EXPECTED_FINANCE_DECK_LAYERS = [
   'gulf-investments-layer',
 ];
 
+const EXPECTED_ENERGY_DECK_LAYERS = [
+  'pipelines-layer',
+  'storage-facilities-layer',
+  'fuel-shortages-layer',
+  'live-tankers-layer',
+  'ais-density-layer',
+  'ais-disruptions-layer',
+  'commodity-hubs-layer',
+  'commodity-ports-layer',
+  'trade-routes-layer',
+  'trade-chokepoints-layer',
+  'waterways-layer',
+  'weather-layer',
+  'outages-layer',
+  'earthquakes-layer',
+  'natural-events-layer',
+  'minerals-layer',
+  'fires-layer',
+  'climate-heatmap-layer',
+];
+
+const EXPECTED_COMMODITY_DECK_LAYERS = [
+  'pipelines-layer',
+  'ais-density-layer',
+  'ais-disruptions-layer',
+  'ports-layer',
+  'commodity-hubs-layer',
+  'commodity-ports-layer',
+  'trade-routes-layer',
+  'trade-chokepoints-layer',
+  'waterways-layer',
+  'weather-layer',
+  'outages-layer',
+  'earthquakes-layer',
+  'natural-events-layer',
+  'minerals-layer',
+  'mining-sites-layer',
+  'processing-plants-layer',
+  'fires-layer',
+  'climate-heatmap-layer',
+  'economic-centers-layer',
+];
+
+const EXPECTED_HAPPY_DECK_LAYERS = [
+  'positive-events-layer',
+  'kindness-layer',
+  'species-recovery-layer',
+  'renewable-installations-layer',
+];
+
 const waitForHarnessReady = async (
   page: import('@playwright/test').Page
 ): Promise<void> => {
@@ -177,8 +227,14 @@ test.describe('DeckGL map harness', () => {
 
     const expectedVariant = process.env.VITE_VARIANT === 'tech'
       ? 'tech'
+      : process.env.VITE_VARIANT === 'energy'
+      ? 'energy'
       : process.env.VITE_VARIANT === 'finance'
       ? 'finance'
+      : process.env.VITE_VARIANT === 'commodity'
+      ? 'commodity'
+      : process.env.VITE_VARIANT === 'happy'
+      ? 'happy'
       : 'full';
     expect(runtimeVariant).toBe(expectedVariant);
   });
@@ -232,8 +288,14 @@ test.describe('DeckGL map harness', () => {
 
     const expectedDeckLayers = variant === 'tech'
       ? EXPECTED_TECH_DECK_LAYERS
+      : variant === 'energy'
+      ? EXPECTED_ENERGY_DECK_LAYERS
       : variant === 'finance'
       ? EXPECTED_FINANCE_DECK_LAYERS
+      : variant === 'commodity'
+      ? EXPECTED_COMMODITY_DECK_LAYERS
+      : variant === 'happy'
+      ? EXPECTED_HAPPY_DECK_LAYERS
       : EXPECTED_FULL_DECK_LAYERS;
 
     await expect
@@ -323,6 +385,26 @@ test.describe('DeckGL map harness', () => {
         return await page.evaluate(() => {
           const w = window as HarnessWindow;
           return w.__mapHarness?.getLayerDataCount('gulf-investments-layer') ?? 0;
+        });
+      }, { timeout: 30000 })
+      .toBeGreaterThan(0);
+  });
+
+  test('renders disease outbreak layer when explicitly enabled', async ({ page }) => {
+    await waitForHarnessReady(page);
+
+    await page.evaluate(() => {
+      const w = window as HarnessWindow;
+      w.__mapHarness?.seedAllDynamicData();
+      w.__mapHarness?.setLayersForSnapshot(['diseaseOutbreaks']);
+      w.__mapHarness?.setCamera({ lon: 36.82, lat: -1.29, zoom: 5.2 });
+    });
+
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => {
+          const w = window as HarnessWindow;
+          return w.__mapHarness?.getLayerDataCount('disease-outbreaks-layer') ?? 0;
         });
       }, { timeout: 30000 })
       .toBeGreaterThan(0);
@@ -434,6 +516,14 @@ test.describe('DeckGL map harness', () => {
       const w = window as HarnessWindow;
       return w.__mapHarness?.variant ?? 'full';
     });
+    test.skip(
+      variant === 'commodity' || variant === 'happy',
+      'Visual baselines are not recorded for commodity/happy variant scenes yet'
+    );
+    // Energy currently reuses the shared "both" visual scenarios; until we
+    // record Atlas-only golden scenes, compare those shared scenarios against
+    // the existing full baselines rather than silently coercing the runtime.
+    const screenshotVariant = variant === 'energy' ? 'full' : variant;
 
     const scenarios = await page.evaluate(() => {
       const w = window as HarnessWindow;
@@ -449,7 +539,7 @@ test.describe('DeckGL map harness', () => {
       await test.step(`visual baseline: ${scenario.id}`, async () => {
         await prepareVisualScenario(page, scenario.id);
         await expect(mapWrapper).toHaveScreenshot(
-          `layer-${variant}-${scenario.id}.png`,
+          `layer-${screenshotVariant}-${scenario.id}.png`,
           {
             animations: 'disabled',
             caret: 'hide',

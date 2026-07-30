@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message OilInventoriesSprSnapshot {
+  double latest_stocks_mb = 1;
+  double change_wow = 2;
+  repeated OilInventoriesSprWeek weeks = 3;
+}
+
+message OilInventoriesSprWeek {
+  string period = 1;
+  double stocks_mb = 2;
+}
+
+message OilInventoriesEuGas {
+  double fill_pct = 1;
+  double fill_pct_change_1d = 2;
+  string trend = 3;
+  repeated OilInventoriesEuGasDay history = 4;
+}
+
+message OilInventoriesEuGasDay {
+  string date = 1;
+  double fill_pct = 2;
+}
+
+message OilInventoriesIeaMember {
+  string iso2 = 1;
+  optional double days_of_cover = 2;
+  bool net_exporter = 3;
+  bool below_obligation = 4;
+}
+
+message OilInventoriesRegionStats {
+  optional double avg_days = 1;
+  optional double min_days = 2;
+  optional int32 count_below_obligation = 3;
+}
+
+message OilInventoriesIeaStocks {
+  string data_month = 1;
+  repeated OilInventoriesIeaMember members = 2;
+  OilInventoriesRegionStats europe = 3;
+  OilInventoriesRegionStats asia_pacific = 4;
+  OilInventoriesRegionStats north_america = 5;
+}
+
+message OilInventoriesRefinery {
+  double inputs_mbpd = 1;
+  string period = 2;
+}
+
+message CrudeInventoryWeekRef {
+  string period = 1;
+  double stocks_mb = 2;
+  optional double weekly_change_mb = 3;
+}
+
+message NatGasWeekRef {
+  string period = 1;
+  double stor_bcf = 2;
+  optional double weekly_change_bcf = 3;
+}
+
+message GetOilInventoriesRequest {}
+
+message GetOilInventoriesResponse {
+  repeated CrudeInventoryWeekRef crude_weeks = 1;
+  OilInventoriesSprSnapshot spr = 2;
+  repeated NatGasWeekRef nat_gas_weeks = 3;
+  OilInventoriesEuGas eu_gas = 4;
+  OilInventoriesIeaStocks iea_stocks = 5;
+  OilInventoriesRefinery refinery = 6;
+  string updated_at = 7;
+}

@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 function makeRequest(origin) {
   const headers = new Headers();
@@ -24,6 +24,7 @@ test('allows desktop Tauri origins', () => {
     assert.equal(isDisallowedOrigin(req), false, `origin should be allowed: ${origin}`);
     const cors = getCorsHeaders(req);
     assert.equal(cors['Access-Control-Allow-Origin'], origin);
+    assert.equal(cors['Access-Control-Allow-Credentials'], 'true');
   }
 });
 
@@ -32,9 +33,42 @@ test('rejects unrelated external origins', () => {
   assert.equal(isDisallowedOrigin(req), true);
   const cors = getCorsHeaders(req);
   assert.equal(cors['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+  assert.equal(cors['Access-Control-Allow-Credentials'], 'true');
 });
 
 test('requests without origin remain allowed', () => {
   const req = makeRequest(null);
   assert.equal(isDisallowedOrigin(req), false);
+});
+
+test('CORS allow headers include MCP transport headers', () => {
+  const privateCors = getCorsHeaders(makeRequest('https://worldmonitor.app'));
+  const publicCors = getPublicCorsHeaders('POST, GET, OPTIONS');
+
+  for (const cors of [privateCors, publicCors]) {
+    const allowed = cors['Access-Control-Allow-Headers'];
+    assert.match(allowed, /\bMcp-Session-Id\b/);
+    assert.match(allowed, /\bMCP-Protocol-Version\b/);
+    assert.match(allowed, /\bLast-Event-ID\b/);
+
+    const exposed = cors['Access-Control-Expose-Headers'];
+    assert.match(exposed, /\bMcp-Session-Id\b/);
+    assert.match(exposed, /\bWWW-Authenticate\b/);
+    assert.match(exposed, /\bRetry-After\b/);
+    // IETF RateLimit fields so browser-context agents can self-throttle cross-origin.
+    assert.match(exposed, /\bRateLimit-Policy\b/);
+    assert.match(exposed, /\bRateLimit-Limit\b/);
+    assert.match(exposed, /\bRateLimit-Remaining\b/);
+    assert.match(exposed, /\bRateLimit-Reset\b/);
+    // Bare combined member: match RateLimit NOT preceded by "-" (so it doesn't
+    // just re-match the RateLimit-* fields above) and followed by a delimiter.
+    assert.match(exposed, /(^|[\s,])RateLimit(,|$)/);
+    assert.match(exposed, /\bX-RateLimit-Limit\b/);
+    assert.match(exposed, /\bX-RateLimit-Remaining\b/);
+    assert.match(exposed, /\bX-RateLimit-Reset\b/);
+    assert.match(exposed, /\bX-WorldMonitor-Bbox\b/);
+    assert.match(exposed, /\bX-WorldMonitor-Bbox-Missing\b/);
+    assert.match(exposed, /\bX-WorldMonitor-Bbox-Invalid\b/);
+    assert.match(exposed, /\bX-Military-Bbox\b/);
+  }
 });

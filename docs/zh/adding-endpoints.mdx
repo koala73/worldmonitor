@@ -1,0 +1,496 @@
+---
+title: "添加 API 端点"
+description: "在 World Monitor 中扩展 JSON API 的完整开发指南：所有端点必须使用 sebuf 定义类型安全的请求与响应契约。本文分步演示如何在现有服务中添加新 RPC、创建全新的服务模块、注册路由与生成客户端，并保持与 CLI、SDK、OpenAPI 与 MCP 工具生态的一致性。"
+---
+World Monitor 中的所有 JSON API 端点**必须**使用 sebuf。不要为新的数据 API 创建独立的 `api/*.js` 或 `api/*.ts` 文件——这一旧模式已被弃用并正在被移除。
+
+本指南将介绍如何为现有服务添加新的 RPC，以及如何添加一个全新的服务。
+
+> **强制执行：** `npm run lint:api-contract` 会在 CI 中运行（参见 `.github/workflows/lint-code.yml`）。它会遍历 `api/` 下的每个文件，将每个 sebuf 网关（`api/<domain>/v<N>/[rpc].ts`）与 `src/generated/server/worldmonitor/` 下生成的服务配对，并拒绝任何既不是网关也未在 `api/api-route-exceptions.json` 中列出的文件。该清单是那些确实无法使用 proto 定义的端点（OAuth 回调、二进制响应、上游代理、运维管道）的唯一逃生通道，且每个条目都通过 `.github/CODEOWNERS` 固定由 @SebastienMelki 负责。新增条目预计会受到审核者的质疑。
+>
+> **生成新鲜度：** 修改任何 `.proto` 文件后，在推送前请运行 `make generate`。`src/generated/` 中生成的 TypeScript 代码已签入仓库，必须保持同步；如果发生漂移，`.github/workflows/proto-check.yml` 会导致 PR 失败。
+
+## 前置条件
+
+你需要安装 **Go 1.21+** 和 **Node.js 18+**。其他所有依赖会自动安装：
+
+```bash
+make install    # 一次性：安装 buf、sebuf 插件、npm 依赖、proto 依赖
+```
+
+这会安装：
+
+- **buf** —— proto 代码检查、依赖管理和代码生成编排器
+- **protoc-gen-ts-client** —— 生成 TypeScript 客户端类（来自 [sebuf](https://github.com/SebastienMelki/sebuf)）
+- **protoc-gen-ts-server** —— 生成 TypeScript 服务端处理程序接口（来自 sebuf）
+- **protoc-gen-openapiv3** —— 生成 OpenAPI v3 规范（来自 sebuf）
+- **npm 依赖** —— 所有 Node.js 包
+
+在仓库根目录运行代码生成：
+
+```bash
+make generate   # 从 proto 重新生成所有 TypeScript + OpenAPI
+```
+
+这会为每个服务生成三个输出：
+
+- `src/generated/client/{domain}/v1/service_client.ts` —— 供前端使用的类型化 fetch 客户端
+- `src/generated/server/{domain}/v1/service_server.ts` —— 供后端使用的处理程序接口 + 路由工厂
+- `docs/api/{Domain}Service.openapi.yaml` + `.json` —— OpenAPI v3 文档
+
+## 为现有服务添加 RPC
+
+示例：将 `GetEarthquakeDetails` 添加到 `SeismologyService`。
+
+### 1. 定义请求/响应消息
+
+创建 `proto/worldmonitor/seismology/v1/get_earthquake_details.proto`：
+
+```protobuf
+syntax = "proto3";
+package worldmonitor.seismology.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/seismology/v1/earthquake.proto";
+
+// GetEarthquakeDetailsRequest specifies which earthquake to retrieve.
+message GetEarthquakeDetailsRequest {
+  // USGS event identifier (e.g., "us7000abcd").
+  string earthquake_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100
+  ];
+}
+
+// GetEarthquakeDetailsResponse contains the full earthquake record.
+message GetEarthquakeDetailsResponse {
+  // The earthquake matching the requested ID.
+  Earthquake earthquake = 1;
+}
+```
+
+### 2. 将 RPC 添加到服务定义
+
+编辑 `proto/worldmonitor/seismology/v1/service.proto`：
+
+```protobuf
+import "worldmonitor/seismology/v1/get_earthquake_details.proto";
+
+service SeismologyService {
+  // ... existing RPCs ...
+
+  // GetEarthquakeDetails retrieves a single earthquake by its USGS event ID.
+  rpc GetEarthquakeDetails(GetEarthquakeDetailsRequest) returns (GetEarthquakeDetailsResponse) {
+    option (sebuf.http.config) = {path: "/get-earthquake-details"};
+  }
+}
+```
+
+### 3. 代码检查并生成
+
+```bash
+make check   # 一步完成代码检查 + 生成
+```
+
+此时，`npx tsc --noEmit` 会**失败**，因为处理程序尚未实现新方法。这是有意为之的——编译器会强制执行契约。
+
+### 4. 实现处理程序
+
+创建 `server/worldmonitor/seismology/v1/get-earthquake-details.ts`：
+
+```typescript
+import type {
+  SeismologyServiceHandler,
+  ServerContext,
+  GetEarthquakeDetailsRequest,
+  GetEarthquakeDetailsResponse,
+} from '../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
+
+export const getEarthquakeDetails: SeismologyServiceHandler['getEarthquakeDetails'] = async (
+  _ctx: ServerContext,
+  req: GetEarthquakeDetailsRequest,
+): Promise<GetEarthquakeDetailsResponse> => {
+  const response = await fetch(
+    `https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/${req.earthquakeId}.geojson`,
+  );
+  if (!response.ok) {
+    throw new Error(`USGS API error: ${response.status}`);
+  }
+  const f: any = await response.json();
+  return {
+    earthquake: {
+      id: f.id,
+      place: f.properties.place || '',
+      magnitude: f.properties.mag ?? 0,
+      depthKm: f.geometry.coordinates[2] ?? 0,
+      location: {
+        latitude: f.geometry.coordinates[1],
+        longitude: f.geometry.coordinates[0],
+      },
+      occurredAt: f.properties.time,
+      sourceUrl: f.properties.url || '',
+    },
+  };
+};
+```
+
+### 5. 将其接入处理程序再导出
+
+编辑 `server/worldmonitor/seismology/v1/handler.ts`：
+
+```typescript
+import type { SeismologyServiceHandler } from '../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
+
+import { listEarthquakes } from './list-earthquakes';
+import { getEarthquakeDetails } from './get-earthquake-details';
+
+export const seismologyHandler: SeismologyServiceHandler = {
+  listEarthquakes,
+  getEarthquakeDetails,
+};
+```
+
+### 6. 验证
+
+```bash
+npx tsc --noEmit   # 应该零错误通过
+```
+
+路由已通过 `api/seismology/v1/[rpc].ts` 中的领域网关生效。`createSeismologyServiceRoutes()` 会自动识别新的 RPC——无需编辑路由表或 `vite.config.ts`。
+
+### 7. 检查生成的文档
+
+打开 `docs/api/SeismologyService.openapi.yaml`——新端点应当出现，并包含来自你的 proto 注解的所有验证约束。
+
+## 添加新服务
+
+示例：添加一个假想的 `WeatherService`。（本仓库中不存在 `weather` 域——下面的示例纯粹是说明性的；复制粘贴本节的任何路径都会命中 404。）
+
+### 1. 创建 proto 目录
+
+```
+proto/worldmonitor/weather/v1/
+```
+
+### 2. 定义实体消息
+
+创建 `proto/worldmonitor/weather/v1/weather_station.proto`：
+
+```protobuf
+syntax = "proto3";
+package worldmonitor.weather.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// WeatherStation represents a single ground-based observation station.
+message WeatherStation {
+  // Unique identifier (e.g., WMO station number).
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Human-readable station name.
+  string name = 2;
+  // Operating network (e.g., "NWS", "WMO", "NOAA").
+  string network = 3;
+  // ISO 3166-1 alpha-2 country code where the station is located.
+  string country_code = 4;
+  // Date the station first reported observations, as Unix epoch milliseconds.
+  int64 first_seen_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+```
+
+### 3. 定义请求/响应消息
+
+创建 `proto/worldmonitor/weather/v1/list_weather_stations.proto`：
+
+```protobuf
+syntax = "proto3";
+package worldmonitor.weather.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/core/v1/pagination.proto";
+import "worldmonitor/weather/v1/weather_station.proto";
+
+// ListWeatherStationsRequest specifies filters for weather station data.
+message ListWeatherStationsRequest {
+  // Filter by operating network (e.g., "NWS"). Empty returns all.
+  string network = 1;
+  // Filter by country code.
+  string country_code = 2 [(buf.validate.field).string.max_len = 2];
+  // Pagination parameters.
+  worldmonitor.core.v1.PaginationRequest pagination = 3;
+}
+
+// ListWeatherStationsResponse contains the matching stations.
+message ListWeatherStationsResponse {
+  // The list of weather stations.
+  repeated WeatherStation stations = 1;
+  // Pagination metadata.
+  worldmonitor.core.v1.PaginationResponse pagination = 2;
+}
+```
+
+### 4. 定义服务
+
+创建 `proto/worldmonitor/weather/v1/service.proto`：
+
+```protobuf
+syntax = "proto3";
+package worldmonitor.weather.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/weather/v1/list_weather_stations.proto";
+
+// WeatherService provides APIs for weather observation stations.
+service WeatherService {
+  option (sebuf.http.service_config) = {base_path: "/api/weather/v1"};
+
+  // ListWeatherStations retrieves stations matching the given filters.
+  rpc ListWeatherStations(ListWeatherStationsRequest) returns (ListWeatherStationsResponse) {
+    option (sebuf.http.config) = {path: "/list-weather-stations"};
+  }
+}
+```
+
+### 5. 生成
+
+```bash
+make check   # 一步完成代码检查 + 生成
+```
+
+### 6. 实现处理程序
+
+创建处理程序目录和文件：
+
+```
+server/worldmonitor/weather/v1/
+├── handler.ts                     # thin re-export
+└── list-weather-stations.ts       # RPC implementation
+```
+
+`server/worldmonitor/weather/v1/list-weather-stations.ts`：
+```typescript
+import type {
+  WeatherServiceHandler,
+  ServerContext,
+  ListWeatherStationsRequest,
+  ListWeatherStationsResponse,
+} from '../../../../src/generated/server/worldmonitor/weather/v1/service_server';
+
+export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] = async (
+  _ctx: ServerContext,
+  req: ListWeatherStationsRequest,
+): Promise<ListWeatherStationsResponse> => {
+  // Your implementation here — fetch from upstream API, transform to proto shape
+  return { stations: [], pagination: undefined };
+};
+```
+
+`server/worldmonitor/weather/v1/handler.ts`：
+```typescript
+import type { WeatherServiceHandler } from '../../../../src/generated/server/worldmonitor/weather/v1/service_server';
+
+import { listWeatherStations } from './list-weather-stations';
+
+export const weatherHandler: WeatherServiceHandler = {
+  listWeatherStations,
+};
+```
+
+### 7. 添加每领域边缘网关
+
+创建 `api/weather/v1/[rpc].ts` 作为此服务的薄 Edge 入口点：
+
+```typescript
+export const config = { runtime: 'edge' };
+
+import { createDomainGateway, serverOptions } from '../../../server/gateway';
+import { createWeatherServiceRoutes } from '../../../src/generated/server/worldmonitor/weather/v1/service_server';
+import { weatherHandler } from '../../../server/worldmonitor/weather/v1/handler';
+
+export default createDomainGateway(
+  createWeatherServiceRoutes(weatherHandler, serverOptions),
+);
+```
+
+不存在仓库范围的 catch-all 网关文件或共享路由数组需要编辑。每个服务拥有其 `api/<domain>/v1/[rpc].ts` 网关，生成的 `create<Service>Routes(...)` 函数为该领域强制 RPC 路径名和 HTTP 注解。
+
+### 8. 在 Vite 开发服务器中注册
+
+编辑 `vite.config.ts`——在 `sebufApiPlugin()` 函数内部添加懒加载导入和路由挂载。遵循现有模式（搜索任何其他服务以查看具体位置）。
+
+### 9. 创建前端服务包装器
+
+创建 `src/services/weather.ts`：
+
+```typescript
+import {
+  WeatherServiceClient,
+  type WeatherStation,
+  type ListWeatherStationsResponse,
+} from '@/generated/client/worldmonitor/weather/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
+
+export type { WeatherStation };
+
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const breaker = createCircuitBreaker<ListWeatherStationsResponse>({ name: 'Weather' });
+
+const emptyFallback: ListWeatherStationsResponse = { stations: [] };
+
+export async function fetchWeatherStations(network?: string): Promise<WeatherStation[]> {
+  const response = await breaker.execute(async () => {
+    return client.listWeatherStations({ network: network ?? '', countryCode: '', pagination: undefined });
+  }, emptyFallback);
+  return response.stations;
+}
+```
+
+### 10. 验证
+
+```bash
+npx tsc --noEmit   # 零错误
+```
+
+## MCP 暴露决策
+
+每个新的公开 OpenAPI 操作在评审前都需要一个明确的 MCP 决策。MCP 是一个精选的 agent 接口，而非 REST 的 1:1 镜像：暴露安全、可预测且作为工具有用的操作；当操作会变更状态、消耗每次调用的 LLM 或上游预算，或需要手动缓存键审查时，保留为 REST 专属并记录在案。
+
+对每个新增或变更的 RPC 使用以下清单：
+
+- [ ] 决定此操作是否应暴露给 MCP。
+- [ ] 若是，确定归属的 MCP 工具，并将确切的 `METHOD /api/...` 条目添加到该工具的 `_apiPaths`。
+- [ ] 若由缓存支持，确认工具具有正确的 `_cacheKeys` / `_coverageKeys`、新鲜度元数据和 `seed-meta:<key>` 健康覆盖。
+- [ ] 若否，在 `tests/mcp-api-parity.test.mjs` 中添加或更新排除项，附带匹配的类别前缀和具体原因。
+- [ ] 若为 `fetch-on-miss`，包含一个强制的辅助信号（`high-cardinality-input`、`paid-upstream` 或 `llm-cost`），并说明使当前开放 MCP 暴露不安全的上游成本、基数和分层策略。
+- [ ] 若为 `mutating` 或 `llm-passthrough`，在提出 MCP 封装前记录独立的威胁/成本模型。
+- [ ] 运行 `./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs` 并在 PR 中包含结果。
+
+`covered` 操作在工具的 `_apiPaths` 条目中声明。对于 REST 专属操作，对等测试接受以下排除类别：
+
+| 类别 | 适用情形 |
+|----------|----------|
+| `mutating` | 处理器写入状态、排队工作、刷新缓存、记录 webhook，或具有其他持久副作用。 |
+| `llm-passthrough` | 该操作调用每次调用的 LLM 工作，不应在没有成本模型的情况下作为通用 MCP 工具开放。 |
+| `fetch-on-miss` | 该操作在缓存冷时可能调用付费、限流、高基数或其他昂贵的上游。在原因中包含一个强制的辅助信号：`high-cardinality-input`、`paid-upstream` 或 `llm-cost`。 |
+| `admin` | 该操作仅限内部，受显式管理员边界保护，例如管理员密钥、仅限内部的中间件或仅限 cron 的路径。 |
+| `manual-mapping` | 该操作使用参数化缓存键、内联 Redis/Convex 结构，或静态对等遍历器无法自动证明的其他映射。 |
+| `deferred-to-future-tool` | 该操作是纯读取且对 agent 有用，但属于未来的 MCP 工具或扩展包，而非当前注册表。 |
+
+MCP 参考文档在 [MCP 概览](/zh/mcp-overview#api-coverage) 中渲染当前的 `_apiPaths` 覆盖表。对等测试是当前已覆盖/已排除拆分的权威来源，因此不要依赖 PR 描述中的过时计数。
+
+## Proto 约定
+
+这些约定在整个代码库中被强制执行。请遵循它们以保持一致性。
+
+### 文件命名
+
+- 每个消息类型一个文件：`earthquake.proto`、`weather_station.proto`
+- 每个 RPC 对一个文件：`list_earthquakes.proto`、`get_earthquake_details.proto`
+- 服务定义：`service.proto`
+- 文件名和字段名使用 `snake_case`
+
+### 时间字段
+
+始终使用 `int64` 配合 Unix 纪元毫秒。切勿使用 `google.protobuf.Timestamp`。
+
+始终添加 `INT64_ENCODING_NUMBER` 注解，以便 TypeScript 得到 `number` 而非 `string`：
+
+```protobuf
+int64 occurred_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+```
+
+### 验证注解
+
+导入 `buf/validate/validate.proto` 并在 proto 层面为字段添加注解。这些约束会自动流入生成的 OpenAPI 规范。
+
+常见模式：
+
+```protobuf
+// Required string with length bounds
+string id = 1 [
+  (buf.validate.field).required = true,
+  (buf.validate.field).string.min_len = 1,
+  (buf.validate.field).string.max_len = 100
+];
+
+// Numeric range (e.g., score 0-100)
+double risk_score = 2 [
+  (buf.validate.field).double.gte = 0,
+  (buf.validate.field).double.lte = 100
+];
+
+// Non-negative value
+double min_magnitude = 3 [(buf.validate.field).double.gte = 0];
+
+// Coordinate bounds (prefer using core.v1.GeoCoordinates instead)
+double latitude = 1 [
+  (buf.validate.field).double.gte = -90,
+  (buf.validate.field).double.lte = 90
+];
+```
+
+### 共享核心类型
+
+请复用这些类型，而不要重新定义：
+
+| 类型 | 导入 | 用途 |
+|------|------|------|
+| `GeoCoordinates` | `worldmonitor/core/v1/geo.proto` | 任何经纬度位置（内置 -90/90 和 -180/180 边界） |
+| `BoundingBox` | `worldmonitor/core/v1/geo.proto` | 空间过滤 |
+| `TimeRange` | `worldmonitor/core/v1/time.proto` | 基于时间的过滤（带 `INT64_ENCODING_NUMBER`） |
+| `PaginationRequest` | `worldmonitor/core/v1/pagination.proto` | 请求分页（带 page_size 1-100 约束） |
+| `PaginationResponse` | `worldmonitor/core/v1/pagination.proto` | 响应分页元数据 |
+
+### 注释
+
+buf lint 强制要求所有消息、字段、服务、RPC 和枚举值都必须有注释。每个 proto 元素都必须有 `//` 注释。这不是可选项——没有注释，`buf lint` 会失败。
+
+### 路由路径
+
+- 服务基础路径：`/api/{domain}/v1`
+- RPC 路径：使用 kebab-case 的 `/{verb}-{noun}`（例如 `/list-earthquakes`、`/get-vessel-snapshot`）
+
+### 处理程序类型定义
+
+始终使用索引访问类型，针对生成的接口为处理程序函数定义类型：
+
+```typescript
+export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] = async (
+  _ctx: ServerContext,
+  req: ListWeatherStationsRequest,
+): Promise<ListWeatherStationsResponse> => {
+  // ...
+};
+```
+
+这确保编译器能捕获你的实现与 proto 契约之间的任何不匹配。
+
+### 客户端构造
+
+创建客户端时始终传入 `{ fetch: (...args) => globalThis.fetch(...args) }`：
+
+```typescript
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+```
+
+空字符串作为基础 URL 之所以可行，是因为 Vite 开发服务器和 Vercel 都在同一源上提供 API。围绕 `globalThis.fetch` 的箭头函数包装器对于 Tauri 兼容性以及运行时 fetch 拦截器是必需的——`fetch.bind(globalThis)` 被**禁止**使用，因为它在模块初始化时冻结了对全局 `fetch` 的引用，这会绕过后续安装在 `globalThis.fetch` 上的任何拦截器（认证头、请求日志、重试垫片）。箭头函数包装器会在每次调用时解析 `globalThis.fetch`。
+
+## 生成的文档
+
+每次运行 `make generate` 时，都会为每个服务生成 OpenAPI v3 规范：
+
+- `docs/api/{Domain}Service.openapi.yaml` —— 人类可读的 YAML
+- `docs/api/{Domain}Service.openapi.json` —— 机器可读的 JSON
+
+这些规范包括：
+
+- 所有端点及其请求/响应模式
+- 来自 `buf.validate` 注解的验证约束（最小/最大值、必填字段、范围）
+- 来自 proto 注释的字段描述
+- 错误响应模式（400 验证错误、500 服务器错误）
+
+你无需手动编写或维护 OpenAPI 规范。它们是生成产物。如果需要更改 API 文档，请更改 proto 并重新生成。

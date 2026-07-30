@@ -1,0 +1,130 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://worldmonitor.app/.well-known/api-catalog",
+      "item": [
+        {
+          "href": "https://api.worldmonitor.app/",
+          "title": "World Monitor REST API"
+        },
+        {
+          "href": "https://worldmonitor.app/mcp",
+          "title": "World Monitor MCP server"
+        },
+        {
+          "href": "https://www.worldmonitor.app/docs/mcp",
+          "title": "World Monitor docs MCP server (documentation search & retrieval)"
+        },
+        {
+          "href": "https://worldmonitor.app/",
+          "title": "World Monitor agent skills"
+        }
+      ]
+    },
+    {
+      "anchor": "https://api.worldmonitor.app/",
+      "service-desc": [
+        {
+          "href": "https://www.worldmonitor.app/openapi.yaml",
+          "type": "application/vnd.oai.openapi"
+        },
+        {
+          "href": "https://www.worldmonitor.app/openapi.json",
+          "type": "application/json"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://www.worldmonitor.app/docs/documentation",
+          "type": "text/html"
+        }
+      ],
+      "service-meta": [
+        {
+          "href": "https://worldmonitor.app/pricing.md",
+          "type": "text/markdown",
+          "title": "Pricing, plans & limits (machine-readable)"
+        },
+        {
+          "href": "https://www.worldmonitor.app/api/product-catalog",
+          "type": "application/json",
+          "title": "Live product catalog (tiers, prices, product IDs)"
+        },
+        {
+          "href": "https://www.worldmonitor.app/docs/openapi/CommerceService.openapi.yaml",
+          "type": "application/vnd.oai.openapi",
+          "title": "Commerce/pricing endpoints OpenAPI (separate from the root bundle)"
+        },
+        {
+          "href": "https://worldmonitor.app/support.md",
+          "type": "text/markdown",
+          "title": "Support channels & contact (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/agents.md",
+          "type": "text/markdown",
+          "title": "Agent operations guide (surfaces, auth, crawl policy)"
+        },
+        {
+          "href": "https://worldmonitor.app/developers.md",
+          "type": "text/markdown",
+          "title": "World Monitor Developer Portal — links every developer resource by name"
+        },
+        {
+          "href": "https://worldmonitor.app/mcp-server.md",
+          "type": "text/markdown",
+          "title": "World Monitor MCP Server — endpoint, tools, auth (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/openapi.md",
+          "type": "text/markdown",
+          "title": "World Monitor OpenAPI Specification — REST API contract (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/sdks.md",
+          "type": "text/markdown",
+          "title": "World Monitor SDKs — Python, Ruby, Go, JavaScript (machine-readable)"
+        }
+      ],
+      "status": [
+        {
+          "href": "https://api.worldmonitor.app/api/health?compact=1",
+          "type": "application/json"
+        }
+      ]
+    },
+    {
+      "anchor": "https://worldmonitor.app/mcp",
+      "service-desc": [
+        {
+          "href": "https://worldmonitor.app/.well-known/mcp/server-card.json",
+          "type": "application/json"
+        }
+      ]
+    },
+    {
+      "anchor": "https://www.worldmonitor.app/docs/mcp",
+      "service-desc": [
+        {
+          "href": "https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json",
+          "type": "application/json"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://www.worldmonitor.app/docs/documentation",
+          "type": "text/html"
+        }
+      ]
+    },
+    {
+      "anchor": "https://worldmonitor.app/",
+      "agent-skills-index": [
+        {
+          "href": "https://worldmonitor.app/.well-known/agent-skills/index.json",
+          "type": "application/json"
+        }
+      ]
+    }
+  ]
+}

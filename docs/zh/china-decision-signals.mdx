@@ -1,0 +1,104 @@
+---
+title: "中国决策信号"
+description: "国家摘要、公共 RPC、MCP、bootstrap、告警和 operator 健康检查共用的受限六领域中国摘要。"
+---
+
+WorldMonitor 的中国决策信号层是一个组合边界，而不是新的来源或评分方法。它按稳定
+顺序发布六条已审查领域管线的结果：
+
+1. `macro`
+2. `policy-enforcement`
+3. `cross-strait-activity`
+4. `corporate-disclosures`
+5. `corridor-conditions`
+6. `activity-nowcast`
+
+每个领域都报告 `available`、`partial`、`stale` 或 `unavailable`。来源中断或无效
+溯源信封只会让对应领域失败即关闭，不会隐藏其他健康领域。公共响应每个领域最多包含
+四个条目，并说明省略了多少个其他有效条目。
+
+## 跨界面的单一契约
+
+同一个 `china-decision-signals/v1` JSON 契约支持：
+
+- 中国国家简报；
+- `GET /api/intelligence/v1/get-china-decision-signals`；
+- Pro MCP 工具 `get_china_decision_signals`；
+- 按需 bootstrap key `chinaDecisionSignals`；
+- Railway 规范缓存 key `intelligence:china-decision-signals:v1`；以及
+- `/api/health` 和 `/api/seed-health` 中仅限 operator 的新鲜度条目。
+
+匿名仪表盘和公共 RPC 读取者获得受限摘要。Pro MCP 读取者获得相同条目和溯源，而
+不是更高风险的来源扩展。详细缓存名称、请求健康和新鲜度阈值仍仅限 operator。
+
+| 访问契约 | 界面 |
+| --- | --- |
+| `bounded_public_summary` | 匿名国家简报和公共 RPC |
+| `same_provenance_via_mcp` | Pro MCP 工具 |
+| `source_health_only` | Operator 健康端点 |
+
+## 溯源与缺失值
+
+每个条目都携带完整决策信号溯源信封：发布者类别、证据 URL 或明确的不适用声明、
+原始引用、语言与翻译状态、独立的观测/发布/生效/检索时间、修订与替代、提取和分类
+置信度、佐证、传输/内容新鲜度以及派生关系。
+
+政府部门、国家控制媒体、交易所、独立观测、市场发布者和派生输出保持可见区分。
+官方发布不被视为独立佐证。活动 nowcast 是具有命名输入信号 ID 的确定性方向比较，
+不是不透明的中国风险评分。
+
+公共界面不暴露详细双边贸易行、宽泛军事身份范围、原始 ADS-B/AIS 到达、或来源健康
+内部信息。缺失值保持明确，不会被转换为零、正常或当前。
+
+## 告警策略
+
+告警范围比快照更窄：
+
+- 第一个规范快照不会扇出历史记录；
+- 征求意见稿、指导文件、未知政策分类和原始台海到达不会触发告警；
+- 已审查的政策/执法和企业事件只对新的稳定 lineage 告警；
+- 修订、更正和重复摄取保留该 lineage 并去重；
+- 台海告警要求透明的 30/90 天中位数区间之间发生转换；
+- 活动 nowcast 告警要求确定性比较状态发生转换。
+
+该界面只发出低或中等严重度。类型化事件使用 24 小时去重冷却；基线和 nowcast 转换
+使用 12 小时。高或严重升级必须由单独审查的告警策略负责，不能由来源到达量决定。
+
+## 部署审计
+
+Railway 的 derived-signals bundle 每 15 分钟刷新一次规范组合。Seeder 读取公共 RPC，
+验证六个有序领域，发布规范 key，然后写入
+`seed-meta:intelligence:china-decision-signals`。告警仅在规范发布后投递。失败的
+投递会保留在持久且去重的 outbox 中，等待下一次 seed 重试；它们不会回滚已发布的
+快照。
+
+该审计分为两半，各自由不同的机制强制执行。
+
+**静态部分**通过 `npm run test:data` 下的
+`tests/china-decision-parity-audit.test.mjs` 在每个 pull request 上运行，确认六个
+领域的组合仍然注册在 API、MCP、bootstrap、健康检查、告警、Railway 和文档各个界面
+上。其中大多数注册通过 token 存在性检查，只能证明界面没有被删除或重命名。对于
+静默断线代价最高的界面——网关缓存层级、网关匿名可达性以及三个访问层级——审计会
+读取真实的容器并判断该值是否为其成员，因此被注释掉的条目或残留的重复项会判为
+失败而不是通过。访问层级门禁还会通过对降级层级实际执行已发布快照校验器来证明。
+
+发布前在本地运行：
+
+```bash
+node scripts/audit-china-decision-parity.mjs
+```
+
+**实时部分**针对已部署环境运行，因此任何 pull request 都无法执行它。它由
+`china-decision-parity-live.yml` workflow 强制执行：每六小时探测生产环境，在触及
+该审计的 `main` 推送时运行，也可按需手动触发。部署 staging 后，用公共 base URL
+手动运行：
+
+```bash
+node scripts/audit-china-decision-parity.mjs --require-live --url https://api-staging.example
+```
+
+`--require-live` 会在没有 URL 传给探针时让命令失败，因此自动化调用方无法报告一次
+从未执行的 staging 审计。base URL 必须是公共主机上的 `https`——回环地址、链路本地
+地址和私有网段都会被拒绝，因为探针会报告它所指向目标的可达性和延迟。实时探针只输出
+路由状态、延迟、生成时间和领域状态。它不会打印环境变量、API key、Redis 值、来源
+文档或详细贸易记录。

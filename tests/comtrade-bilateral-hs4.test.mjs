@@ -1,0 +1,579 @@
+import { readdirSync, readFileSync as originalReadFileSync, statSync } from 'node:fs';
+function readFileSync(path, options) {
+  const content = originalReadFileSync(path, options);
+  if (typeof content === 'string') {
+    return content.replace(/\r\n/g, '\n');
+  }
+  return content;
+}
+import { join } from 'node:path';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { candidatePeriods } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
+
+const root = join(import.meta.dirname, '..');
+
+// ─── sebuf handler ───────────────────────────────────────────────────────────
+
+describe('getCountryProducts sebuf handler (server/worldmonitor/supply-chain/v1/get-country-products.ts)', () => {
+  const filePath = join(root, 'server', 'worldmonitor', 'supply-chain', 'v1', 'get-country-products.ts');
+  const src = readFileSync(filePath, 'utf-8');
+
+  it('exports getCountryProducts as the sebuf handler entry point', () => {
+    assert.ok(
+      /export\s+async\s+function\s+getCountryProducts/.test(src),
+      'must export an async getCountryProducts(ctx, req) handler',
+    );
+  });
+
+  it('validates iso2 with the /^[A-Z]{2}$/ pattern', () => {
+    assert.ok(
+      src.includes('[A-Z]{2}'),
+      'must validate iso2 with a two-uppercase-letter regex',
+    );
+  });
+
+  it('uses isCallerPremium for PRO gating against ctx.request', () => {
+    assert.ok(
+      src.includes('isCallerPremium'),
+      'must use isCallerPremium for PRO-gating',
+    );
+    assert.ok(
+      src.includes('isCallerPremium(ctx.request)'),
+      'must invoke isCallerPremium(ctx.request) so the sebuf gateway request is authorised',
+    );
+  });
+
+  it('returns the typed empty payload for both non-PRO and invalid-iso2 paths', () => {
+    assert.ok(
+      /products: \[\], fetchedAt: ''/.test(src),
+      'empty fallback must have empty products array and empty fetchedAt',
+    );
+    const proIdx = src.indexOf('isPro');
+    const validIdx = src.indexOf('[A-Z]{2}');
+    assert.ok(proIdx !== -1 && validIdx !== -1, 'must reference both PRO and validation gates');
+  });
+
+  it('reads from raw Upstash Redis (skip env-prefix) so seeder writes resolve', () => {
+    assert.ok(
+      /getCachedJson\([^,]+,\s*true\)/.test(src),
+      'must call getCachedJson(key, true) so the raw seeder key is read',
+    );
+  });
+
+  it('reads the comtrade:bilateral-hs4 key keyed by iso2', () => {
+    assert.ok(
+      /comtrade:bilateral-hs4:\$\{iso2\}:v1/.test(src),
+      'must read comtrade:bilateral-hs4:${iso2}:v1',
+    );
+  });
+});
+
+// ─── Seeder structure ────────────────────────────────────────────────────────
+
+describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs)', () => {
+  const filePath = join(root, 'scripts', 'seed-comtrade-bilateral-hs4.mjs');
+  const src = readFileSync(filePath, 'utf-8');
+
+  it('uses acquireLockSafely for distributed locking', () => {
+    assert.ok(
+      src.includes('acquireLockSafely'),
+      'seeder: must use acquireLockSafely to prevent concurrent runs',
+    );
+  });
+
+  it('calls releaseLock in a finally block', () => {
+    const finallyIdx = src.lastIndexOf('finally');
+    const releaseIdx = src.indexOf('releaseLock', finallyIdx);
+    assert.ok(
+      finallyIdx !== -1 && releaseIdx !== -1 && releaseIdx > finallyIdx,
+      'seeder: must call releaseLock in a finally block to guarantee lock cleanup',
+    );
+  });
+
+  it('has isMain guard at the bottom (prevents automatic execution on import)', () => {
+    assert.ok(
+      src.includes("process.argv[1]?.endsWith('seed-comtrade-bilateral-hs4.mjs')"),
+      'seeder: must have isMain guard checking process.argv[1]',
+    );
+    const isMainIdx = src.indexOf('isMain');
+    const mainCallIdx = src.indexOf('main()', isMainIdx);
+    assert.ok(
+      isMainIdx !== -1 && mainCallIdx !== -1,
+      'seeder: isMain guard must gate the main() call',
+    );
+  });
+
+  it('reads COMTRADE_API_KEYS from environment', () => {
+    assert.ok(
+      src.includes('process.env.COMTRADE_API_KEYS'),
+      'seeder: must read COMTRADE_API_KEYS from environment for API authentication',
+    );
+  });
+
+  it('implements key rotation via getNextKey pattern', () => {
+    assert.ok(
+      src.includes('getNextKey'),
+      'seeder: must implement getNextKey for API key rotation across requests',
+    );
+    assert.ok(
+      src.includes('keyIndex'),
+      'seeder: key rotation must track index via keyIndex',
+    );
+    assert.ok(
+      src.includes('COMTRADE_KEYS.length'),
+      'seeder: key rotation must cycle through all available keys',
+    );
+  });
+
+  it('keeps bulk country payloads alive across the monthly Railway cadence', () => {
+    const ttlMatch = src.match(/const TTL_SECONDS = (\d+)/);
+    assert.ok(
+      ttlMatch && Number(ttlMatch[1]) >= 35 * 86_400,
+      'seeder: TTL_SECONDS must cover a 31-day month plus at least 4 days of deploy/missed-tick slack',
+    );
+  });
+
+  it('falls back to an earlier period per-reporter when the primary period is empty', () => {
+    // Behavioural, not a source grep: the helper now lives in
+    // scripts/shared/comtrade-period.mjs and is re-exported, so a text match on
+    // `export function candidatePeriods` would fail on a working seeder — and,
+    // worse, would pass on a broken one that merely kept the token.
+    assert.deepEqual(
+      candidatePeriods(new Date('2026-07-02T00:00:00Z')),
+      ['2024', '2023'],
+      'seeder: a reporter that has not filed (y-2) must still be retried at (y-3)',
+    );
+    assert.match(
+      src,
+      /if \(batch1\.length > 0 \|\| batch2\.length > 0\) break;/,
+      'seeder: must stop retrying a reporter as soon as a period returns records',
+    );
+  });
+
+  it('does not carry a hardcoded fallback year — must derive from the requested period', () => {
+    assert.doesNotMatch(
+      src,
+      /latestYear \|\| 202\d\b/,
+      'seeder: year fallback must track the requested period, not a hardcoded year that goes stale',
+    );
+  });
+
+  it('caps total requests under the UN Comtrade 500/mo quota even with the period fallback', () => {
+    assert.ok(
+      /REQUEST_BUDGET/.test(src),
+      'seeder: the (y-3) fallback can double request volume for reporters empty on (y-2) — must be guarded by a request budget',
+    );
+  });
+
+  it('META_KEY follows seed-meta: convention', () => {
+    const match = src.match(/META_KEY\s*=\s*'(seed-meta:[^']+)'/);
+    assert.ok(
+      match,
+      'seeder: META_KEY must follow the seed-meta: prefix convention',
+    );
+    assert.strictEqual(
+      match[1],
+      'seed-meta:comtrade:bilateral-hs4',
+      'seeder: META_KEY must be seed-meta:comtrade:bilateral-hs4',
+    );
+  });
+
+  it('KEY_PREFIX follows expected pattern', () => {
+    const match = src.match(/KEY_PREFIX\s*=\s*'([^']+)'/);
+    assert.ok(
+      match,
+      'seeder: KEY_PREFIX must be defined',
+    );
+    assert.strictEqual(
+      match[1],
+      'comtrade:bilateral-hs4:',
+      'seeder: KEY_PREFIX must be comtrade:bilateral-hs4:',
+    );
+  });
+
+  it('derives HS4 codes from the shared strategic-product metadata', () => {
+    assert.ok(
+      src.includes("require('./shared/comtrade-strategic-products.json')"),
+      'seeder: HS4 codes must come from the reviewed shared metadata',
+    );
+    assert.doesNotMatch(src, /const\s+HS4_CODES\s*=\s*\[/, 'seeder: must not carry an inline HS4 list');
+    const metadata = JSON.parse(readFileSync(join(root, 'scripts', 'shared', 'comtrade-strategic-products.json'), 'utf8'));
+    const codes = new Set(metadata.products.map(product => product.bilateralHs4Code).filter(Boolean));
+    assert.equal(codes.size, 20, `seeder: must preserve the two-batch 500-calls/month quota budget, got ${codes.size} codes`);
+  });
+
+  it('does NOT write empty data to Redis on fetch failure (preserves existing data)', () => {
+    assert.ok(
+      src.includes('preserving existing data'),
+      'seeder: catch block must log that existing data is preserved on failure',
+    );
+    const catchBlock = src.slice(
+      src.indexOf("fetch failed, preserving existing data"),
+    );
+    assert.ok(
+      catchBlock.includes('failedCount++'),
+      'seeder: failed fetches must increment failedCount without writing empty data to Redis',
+    );
+    assert.ok(
+      !catchBlock.startsWith('commands.push'),
+      'seeder: catch block must NOT push SET commands for failed countries',
+    );
+  });
+
+  it('handles 429 rate limiting with sleep and retry', () => {
+    assert.ok(
+      src.includes('429'),
+      'seeder: must detect HTTP 429 rate limit responses',
+    );
+    assert.ok(
+      src.includes('rate-limited'),
+      'seeder: must log rate limit events',
+    );
+    // Matches bare `sleep(60_000)` or indirected `_retrySleep(60_000)` — the
+    // latter is the test-injectable form used so retry unit tests don't
+    // actually sleep 60s. Either form preserves the 60s production cadence.
+    assert.ok(
+      /\b(?:_retrySleep|sleep)\(60[_]?000\)/.test(src),
+      'seeder: must wait 60 seconds on 429 before retrying',
+    );
+  });
+
+  it('exports main() function for external invocation', () => {
+    assert.ok(
+      /export\s+async\s+function\s+main/.test(src),
+      'seeder: must export main() for use by orchestration scripts',
+    );
+  });
+
+  it('writes seed-meta with fetchedAt and recordCount fields', () => {
+    assert.ok(
+      src.includes('fetchedAt'),
+      'seeder: seed-meta must include fetchedAt timestamp',
+    );
+    assert.ok(
+      src.includes('recordCount'),
+      'seeder: seed-meta must include recordCount',
+    );
+  });
+
+  it('extends TTL on lock-skipped path (prevents stale data when another instance runs)', () => {
+    const skippedIdx = src.indexOf('lock.skipped');
+    assert.ok(skippedIdx !== -1, 'seeder: must check lock.skipped');
+    const extendIdx = src.indexOf('extendExistingTtl', skippedIdx);
+    assert.ok(
+      extendIdx !== -1 && extendIdx - skippedIdx < 300,
+      'seeder: must call extendExistingTtl when lock is skipped',
+    );
+  });
+
+  it('defines COMTRADE_REPORTER_OVERRIDES for all countries with non-standard Comtrade codes', () => {
+    assert.ok(
+      src.includes("require('./shared/comtrade-reporter-overrides.json')"),
+      'seeder: must read the shared reporter override file to handle non-standard Comtrade reporter codes',
+    );
+    const overrides = JSON.parse(readFileSync(join(root, 'scripts', 'shared', 'comtrade-reporter-overrides.json'), 'utf8'));
+    assert.equal(overrides.FR, '251', "shared overrides must map FR to '251'");
+    assert.equal(overrides.IT, '381', "shared overrides must map IT to '381'");
+    assert.equal(overrides.US, '842', "shared overrides must map US to '842'");
+    assert.equal(overrides.IN, '699', "shared overrides must map IN to '699'");
+    assert.equal(overrides.TW, '490', "shared overrides must map TW to '490'");
+    assert.equal(overrides.NO, '579', "shared overrides must map NO to '579'");
+    assert.equal(overrides.CH, '757', "shared overrides must map CH to '757'");
+  });
+
+  it('applies COMTRADE_REPORTER_OVERRIDES before falling back to ISO2_TO_UN for reporter code lookup', () => {
+    const overrideIdx = src.indexOf('COMTRADE_REPORTER_OVERRIDES[iso2]');
+    const iso2ToUnIdx = src.indexOf('ISO2_TO_UN[iso2]', overrideIdx);
+    assert.ok(
+      overrideIdx !== -1,
+      'seeder: must use COMTRADE_REPORTER_OVERRIDES when resolving the Comtrade reporter code',
+    );
+    assert.ok(
+      iso2ToUnIdx !== -1 && iso2ToUnIdx > overrideIdx,
+      'seeder: COMTRADE_REPORTER_OVERRIDES must be checked before ISO2_TO_UN (override takes precedence)',
+    );
+  });
+});
+
+// ─── Lazy fallback reporter-code parity ─────────────────────────────────────
+
+describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain/v1/_bilateral-hs4-lazy.ts)', () => {
+  const filePath = join(root, 'server', 'worldmonitor', 'supply-chain', 'v1', '_bilateral-hs4-lazy.ts');
+  const src = readFileSync(filePath, 'utf-8');
+
+  it('reads the shared Comtrade reporter override file', () => {
+    assert.ok(
+      src.includes("scripts/shared/comtrade-reporter-overrides.json"),
+      'lazy fallback: must use the shared reporter override file so NO/CH drift does not regress',
+    );
+  });
+
+  it('uses the stable HS route and an explicit safely-final annual period', () => {
+    assert.ok(
+      src.includes('/public/v1/preview/C/A/HS'),
+      'lazy fallback: must use the stable HS API route classifier',
+    );
+    assert.match(
+      src,
+      /searchParams\.set\('period',\s*recentPeriod\(\)\)/,
+      'lazy fallback: must request an explicit annual period instead of accepting a successful empty response',
+    );
+  });
+
+  it('does not carry a stale IN/TW-only inline override map', () => {
+    assert.ok(
+      !/COMTRADE_REPORTER_OVERRIDES:\s*Record<string,\s*string>\s*=\s*\{\s*IN:\s*'699',\s*TW:\s*'490'\s*\}/.test(src),
+      'lazy fallback: must not define an independent IN/TW-only override map',
+    );
+  });
+});
+
+describe('Comtrade reporter-code source-of-truth guard', () => {
+  function isRuntimeAuditFixture(name) {
+    return name === '_bundle-runner-test-run.mjs'
+      || /^_bundle-runner-test-run-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.mjs$/u.test(name)
+      || name.startsWith('_bundle-fixture-');
+  }
+
+  function collectRuntimeSources(dir) {
+    const out = [];
+    for (const name of readdirSync(dir)) {
+      if (isRuntimeAuditFixture(name)) continue;
+      const filePath = join(dir, name);
+      const stat = statSync(filePath);
+      if (stat.isDirectory()) {
+        if (name === 'generated' || name === 'node_modules' || name === '__tests__') continue;
+        out.push(...collectRuntimeSources(filePath));
+        continue;
+      }
+      if (/\.(?:mjs|js|ts)$/.test(name)) {
+        out.push(filePath);
+      }
+    }
+    return out;
+  }
+
+  const checkedFiles = [
+    ...collectRuntimeSources(join(root, 'scripts')),
+    ...collectRuntimeSources(join(root, 'server')),
+    ...collectRuntimeSources(join(root, 'src')),
+  ];
+  const inlineReporterMapDeclaration =
+    /\b(?:ISO2_TO_COMTRADE(?:_OVERRIDES)?|COMTRADE_REPORTER_OVERRIDES)\b\s*(?::[^=]+)?=\s*\{([\s\S]*?)\}/g;
+  const staleInlineReporterOverride = /\b(?:IN:\s*['"]699['"]|TW:\s*['"]490['"])/;
+
+  function hasStaleInlineReporterMap(src) {
+    for (const match of src.matchAll(inlineReporterMapDeclaration)) {
+      if (staleInlineReporterOverride.test(match[1] ?? '')) return true;
+    }
+    return false;
+  }
+
+  it('catches stale inline maps regardless of key ordering or partial entries', () => {
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE = { IN: '699', TW: '490' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE = { TW: '490', IN: '699' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE_OVERRIDES = { IN: '699' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const COMTRADE_REPORTER_OVERRIDES = { TW: '490' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const OTHER_MAP = { IN: '699', TW: '490' };"), false);
+  });
+
+  it('keeps the committed bundle runner in the runtime-source audit', () => {
+    assert.ok(
+      checkedFiles.includes(join(root, 'scripts', '_bundle-runner.mjs')),
+      'the committed bundle runner must remain covered by the runtime-source audit',
+    );
+  });
+
+  it('ignores randomized bundle-runner fixtures created by concurrent tests', () => {
+    assert.equal(
+      isRuntimeAuditFixture('_bundle-runner-test-run-9cd5c29e-95ba-4eb9-839b-662729b61564.mjs'),
+      true,
+    );
+    assert.equal(isRuntimeAuditFixture('_bundle-runner-test-run-not-a-uuid.mjs'), false);
+    assert.equal(isRuntimeAuditFixture('_bundle-runner.mjs'), false);
+  });
+
+  it('does not reintroduce stale inline IN/TW-only reporter maps in runtime sources', () => {
+    for (const filePath of checkedFiles) {
+      const src = readFileSync(filePath, 'utf-8');
+      assert.equal(
+        hasStaleInlineReporterMap(src),
+        false,
+        `${filePath}: Comtrade reporter overrides must come from scripts/shared/comtrade-reporter-overrides.json`,
+      );
+    }
+  });
+});
+
+// ─── Service function ────────────────────────────────────────────────────────
+
+describe('fetchCountryProducts service (src/services/supply-chain/index.ts)', () => {
+  const filePath = join(root, 'src', 'services', 'supply-chain', 'index.ts');
+  const src = readFileSync(filePath, 'utf-8');
+
+  it('fetchCountryProducts function exists', () => {
+    assert.ok(
+      /export\s+async\s+function\s+fetchCountryProducts/.test(src),
+      'supply-chain/index.ts: must export fetchCountryProducts function',
+    );
+  });
+
+  it('CountryProductsResponse alias is exported for legacy callsites', () => {
+    assert.ok(
+      src.includes('export type CountryProductsResponse = GetCountryProductsResponse'),
+      'supply-chain/index.ts: must export CountryProductsResponse as alias of GetCountryProductsResponse',
+    );
+  });
+
+  it('CountryProduct type is re-exported from the generated client', () => {
+    assert.ok(
+      /export type \{[\s\S]*?\bCountryProduct\b/.test(src),
+      'supply-chain/index.ts: must re-export CountryProduct from the generated sebuf client',
+    );
+  });
+
+  it('ProductExporter type is re-exported from the generated client', () => {
+    assert.ok(
+      /export type \{[\s\S]*?\bProductExporter\b/.test(src),
+      'supply-chain/index.ts: must re-export ProductExporter from the generated sebuf client',
+    );
+  });
+
+  it('calls the generated sebuf client.getCountryProducts (not premiumFetch)', () => {
+    const fnStart = src.indexOf('async function fetchCountryProducts');
+    const fnBody = src.slice(fnStart, src.indexOf('\n}\n', fnStart) + 3);
+    assert.ok(
+      fnBody.includes('client.getCountryProducts('),
+      'fetchCountryProducts: must call the generated client.getCountryProducts',
+    );
+    assert.ok(
+      !fnBody.includes('premiumFetch'),
+      'fetchCountryProducts: must not bypass the typed client with premiumFetch',
+    );
+  });
+
+  it('returns empty products array on error (graceful fallback)', () => {
+    assert.ok(
+      src.includes("products: [], fetchedAt: ''"),
+      'fetchCountryProducts: emptyProducts fallback must have empty products array and empty fetchedAt',
+    );
+    const fnStart = src.indexOf('async function fetchCountryProducts');
+    const fnBody = src.slice(fnStart, src.indexOf('\n}\n', fnStart) + 3);
+    assert.ok(
+      fnBody.includes('catch'),
+      'fetchCountryProducts: must have catch block for graceful fallback',
+    );
+    assert.ok(
+      fnBody.includes('emptyProducts'),
+      'fetchCountryProducts: catch block must return emptyProducts',
+    );
+  });
+
+  it('CountryProduct generated interface has expected fields', () => {
+    const generated = readFileSync(
+      join(root, 'src', 'generated', 'client', 'worldmonitor', 'supply_chain', 'v1', 'service_client.ts'),
+      'utf-8',
+    );
+    const ifaceStart = generated.indexOf('export interface CountryProduct');
+    assert.ok(ifaceStart !== -1, 'generated client must define CountryProduct interface');
+    const ifaceEnd = generated.indexOf('}', ifaceStart);
+    const iface = generated.slice(ifaceStart, ifaceEnd + 1);
+    assert.ok(iface.includes('hs4: string'), 'CountryProduct must have hs4: string');
+    assert.ok(iface.includes('description: string'), 'CountryProduct must have description: string');
+    assert.ok(iface.includes('totalValue: number'), 'CountryProduct must have totalValue: number');
+    assert.ok(iface.includes('topExporters: ProductExporter[]'), 'CountryProduct must have topExporters: ProductExporter[]');
+    assert.ok(iface.includes('year: number'), 'CountryProduct must have year: number');
+  });
+});
+
+// ─── CountryDeepDivePanel product imports ────────────────────────────────────
+
+describe('CountryDeepDivePanel product imports section', () => {
+  const filePath = join(root, 'src', 'components', 'CountryDeepDivePanel.ts');
+  const src = readFileSync(filePath, 'utf-8');
+
+  it('updateProductImports method exists as public', () => {
+    assert.ok(
+      src.includes('public updateProductImports'),
+      'CountryDeepDivePanel: must have a public updateProductImports method',
+    );
+  });
+
+  it('has product search/filter input', () => {
+    assert.ok(
+      src.includes("'cdp-product-search'") || src.includes('"cdp-product-search"'),
+      'CountryDeepDivePanel: must create a search input element for product filtering',
+    );
+    assert.ok(
+      src.includes("placeholder = 'Search products") || src.includes('placeholder = "Search products'),
+      'CountryDeepDivePanel: product search input must have a search placeholder',
+    );
+  });
+
+  it('implements filter logic on product list', () => {
+    assert.ok(
+      src.includes('.filter(p =>') || src.includes('.filter((p)'),
+      'CountryDeepDivePanel: must filter products by search term',
+    );
+    assert.ok(
+      src.includes('toLowerCase'),
+      'CountryDeepDivePanel: filter must be case-insensitive via toLowerCase',
+    );
+  });
+
+  it('PRO gate check (hasPremiumAccess) guards product imports card', () => {
+    assert.ok(
+      src.includes("import { hasPremiumAccess }"),
+      'CountryDeepDivePanel: must import hasPremiumAccess for PRO gating',
+    );
+    const productImportsIdx = src.indexOf('productImportsCardBody');
+    assert.ok(
+      productImportsIdx !== -1,
+      'CountryDeepDivePanel: must have productImportsCardBody',
+    );
+    const nearbyIsPro = src.slice(Math.max(0, productImportsIdx - 200), productImportsIdx + 300);
+    assert.ok(
+      nearbyIsPro.includes('isPro'),
+      'CountryDeepDivePanel: productImportsCardBody must be gated by isPro check',
+    );
+  });
+
+  it('uses textContent for product rendering (XSS-safe, no innerHTML)', () => {
+    const renderStart = src.indexOf('private renderProductDetail');
+    assert.ok(renderStart !== -1, 'CountryDeepDivePanel: must have private renderProductDetail method');
+    const renderBody = src.slice(renderStart, src.indexOf('\n  }\n', renderStart + 100) + 5);
+    assert.ok(
+      renderBody.includes('.textContent'),
+      'renderProductDetail: must use textContent for safe text rendering',
+    );
+    assert.ok(
+      !renderBody.includes('.innerHTML'),
+      'renderProductDetail: must not use innerHTML (XSS risk with user-influenced product data)',
+    );
+  });
+
+  it('resetPanelContent clears productImportsBody', () => {
+    const resetIdx = src.indexOf('private resetPanelContent');
+    assert.ok(resetIdx !== -1, 'CountryDeepDivePanel: must have private resetPanelContent method');
+    const resetBody = src.slice(resetIdx, src.indexOf('\n  }\n', resetIdx + 50) + 5);
+    assert.ok(
+      resetBody.includes('this.productImportsBody = null'),
+      'resetPanelContent: must set productImportsBody to null',
+    );
+  });
+
+  it('sectionCard is used for the product imports card', () => {
+    assert.ok(
+      src.includes("this.sectionCard('Product Imports'"),
+      'CountryDeepDivePanel: product imports must use sectionCard for consistent card structure',
+    );
+  });
+
+  it('product imports card is appended to the body grid', () => {
+    assert.ok(
+      src.includes('productImportsCard'),
+      'CountryDeepDivePanel: productImportsCard must be appended to bodyGrid',
+    );
+  });
+});

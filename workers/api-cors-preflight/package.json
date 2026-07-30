@@ -1,0 +1,15 @@
+{
+  "name": "@worldmonitor/api-cors-preflight",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker that owns CORS for api.worldmonitor.app",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "deploy:dry-run": "wrangler deploy --dry-run --outdir=dist",
+    "test": "node --test index.test.mjs kv-shadow.test.mjs kv-serve.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^3.95.0"
+  }
+}

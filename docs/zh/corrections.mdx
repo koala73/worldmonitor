@@ -1,0 +1,141 @@
+---
+title: "修订日志（规划中）"
+description: "规划中的 World Monitor 公开修订日志详情：将展示 Energy Atlas 注册表中每一次证据变更、数据来源更新、字段修正与公开徽标状态转换记录。本页描述规划形态、字段设计、数据模型与上线状态，日志本身尚未正式上线，仅作为透明度承诺与实现草案供参考。"
+---
+
+<Note>
+**状态 — v1 发布：** 本页面记录的是规划中的
+修订日志展示界面。**公开日志本身尚未上线。**
+当前 Energy Atlas 上线的内容：每个
+RPC 响应（`ListPipelines`、`ListStorageFacilities`、
+`ListFuelShortages`、`ListEnergyDisruptions`）内的证据包，以及说明
+公开徽标如何从这些证据包推导而来的方法论页面。将修订日志条目作为正常运行
+副产物写入的分类器将在发布后的版本中上线。在此之前：
+`GetPipelineDetail.revisions` 和 `GetStorageFacilityDetail.revisions`
+返回空数组，且不存在自动化的纠错提交流程。
+本页面存在的目的是在展示界面上线**之前**（而非之后）记录数据契约和提交策略。
+</Note>
+
+## 修订日志将会是什么（上线时）
+
+WorldMonitor 的 Energy Atlas 发布的是证据包 — 而非观点 —
+涵盖管道、储存设施、燃料短缺和中断事件。一个确定性的、带版本号的分类器将这些证据包转换为
+公开徽标（资产为 `flowing` / `reduced` / `offline` / `disputed`；
+短缺为 `confirmed` / `watch`）。
+
+当分类器上线后，每次更改公开字段时 —
+无论是因为证据更新、因为陈旧度衰减了徽标、因为
+新版本分类器重新推导了旧资产，还是因为应用了
+运营方/监管方提交的更正 — 都会在此写入一条
+仅追加的条目。
+
+这是设计好的审计界面。证据注册表本身
+是前瞻性快照；而此日志一旦上线，将成为每个状态
+如何演变至今的历史记录。
+
+## 规划中的数据结构
+
+每条条目计划为包含以下字段的行：
+
+```ts
+{
+  date: string,                 // ISO8601 — when the change was written
+  assetOrEventId: string,       // matches an id in the pipeline / storage / shortage / disruption registry
+  fieldChanged: string,         // e.g. 'publicBadge', 'physicalState', 'severity', 'evidence.sanctionRefs'
+  previousValue: unknown,       // value before the change
+  newValue: unknown,            // value after the change
+  trigger: 'classifier' | 'source' | 'decay' | 'override',
+  sourcesUsed: string[],        // URLs cited by the classifier for this change
+  classifierVersion: string,    // version that produced newValue (e.g. 'badge-deriver-v1')
+}
+```
+
+对应的 proto 接口位于
+`GetPipelineDetail.revisions` 和 `GetStorageFacilityDetail.revisions`。
+两者目前按设计返回空数组 — 处理器在代码注释中记录了
+"修订日志将在发布后的版本中上线"，
+而不是假装该接口已上线。
+
+### 规划中的触发器词汇表
+
+- **`classifier`** — 例行分类器运行从当前证据包
+  重新推导该字段。预计上线后将是最常见的
+  触发器。
+- **`source`** — 新的证据源到达（监管方备案、
+  运营方新闻稿、制裁名单更新），分类器
+  相应地重新推导。
+- **`decay`** — 证据超出陈旧时间窗口
+  （注册表字段为 14 天，短缺证据为 30 天），分类器
+  将非正向徽标降级为 `disputed` 或 `watch`。
+- **`override`** — 应用了紧急手动覆盖。保留给
+  读者标记的明显错误的分类器输出。
+  覆盖条目将遵循与分类器条目相同的 `sourcesUsed` 规范。
+
+## 当前已上线的内容（v1 发布）
+
+- **每个资产上的证据包。** 点击 [Energy Atlas](https://energy.worldmonitor.app) 上的任何管道、储存
+  设施或短缺标记，即可查看其完整证据包：物理状态、商业
+  状态、运营方声明（含 URL 和日期）、制裁引用
+  （含授权方 + 名单 ID + URL）、分类器版本和置信度，
+  以及最近一次证据更新的时间戳。这是当前
+  主要的审计界面。
+- **公开的方法论页面。** 推导规则、陈旧度
+  窗口和证据阈值规范均已公开记录：
+  - [管道注册表](/zh/methodology/pipelines)
+  - [储存设施](/zh/methodology/storage)
+  - [燃料短缺](/zh/methodology/shortages)
+  - [中断事件日志](/zh/methodology/disruptions)
+  - [咽喉要道](/zh/methodology/chokepoints)
+- **带版本号的分类器输出。** 每个 RPC 响应都携带
+  `classifier_version` 字段。即使修订日志的版本历史
+  界面尚未发布，读者今天就可以
+  将预期锁定到某个版本。
+
+## 当前尚未上线的内容
+
+- 修订日志条目本身（分类器上线后，本页面将列出真实条目）。
+- 自动化的纠错提交流水线。如果您发现
+  错误，请使用
+  [worldmonitor.app](https://worldmonitor.app) 上的反馈渠道，或在
+  [公开仓库](https://github.com/koala73/worldmonitor/issues) 中提交 GitHub issue。
+  更正目前尚未进入分类器的处理路径 — 如今它们
+  是手动处理的。
+- `override` 触发器的条目写入器。同样的依赖：
+  随分类器一同上线。
+
+## 今天如何验证徽标（分类器上线前）
+
+在修订日志上线之前，Energy Atlas 上任何状态的
+审计路径为：
+
+1. 打开资产抽屉（点击管道 / 储存点 / 短缺
+   标记）。
+2. 阅读证据包 — 每个来源都附有发布
+   日期和授权方（`regulator` / `operator` / `press` /
+   `satellite`）的链接。
+3. 查看该资产类别对应的方法论页面 — 推导
+   规则是确定性的且带版本号的。
+4. 如果所有证据都是最新的，且在走完规则后
+   公开徽标仍然看起来有误，请在公开仓库
+   提交一个 issue，附上资产 ID、当前证据包和您的
+   推理。修订日志上线后，手动审核路径
+   将生成 `override` 条目。
+
+## 为什么在上线前记录此界面
+
+在写入器落地之前发布规范有两个原因：
+
+1. **契约稳定性。** `GetPipelineDetail.revisions` /
+   `GetStorageFacilityDetail.revisions`
+   中 `revisions` 的结构是 Agent 和 MCP 客户端消费的
+   RPC 契约的一部分。现在记录它意味着下游消费者可以在
+   实时数据到达之前就针对稳定结构编写代码。
+2. **策略信号。** 证据优先的分类只有在
+   审计轨迹被公开承诺的情况下才有效，而不能
+   被当作内部实现细节。在写入器之前发布规划的结构和
+   提交策略就是这种承诺。
+
+这两个原因都不能成为夸大当前状态的理由。当实时
+条目开始出现在本页面时，顶部的 `Status` 提示框
+将替换为"最后更新"时间戳，"尚未上线"
+部分将被移除。

@@ -1,0 +1,281 @@
+/**
+ * Regression tests for the (digestMode, sensitivity) invariant surface in
+ * src/services/notifications-settings.ts.
+ *
+ * These are source-grep tests rather than Playwright tests — the settings
+ * panel renders inline HTML strings via a long render function with no
+ * exports, the same shape the relay carries (cf.
+ * notification-relay-effective-sensitivity.test.mjs). Source-grep catches the
+ * regressions that matter for this plan: layout placement, disable-on-realtime
+ * state, snap-to-high logic, and atomic-save routing.
+ *
+ * See docs/archive/plans/forbid-realtime-all-events.md §2.
+ *
+ * Run: node --test tests/notifications-settings-ui-invariants.test.mjs
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(
+  resolve(__dirname, '..', 'src', 'services', 'notifications-settings.ts'),
+  'utf-8',
+);
+const channelsSvcSrc = readFileSync(
+  resolve(__dirname, '..', 'src', 'services', 'notification-channels.ts'),
+  'utf-8',
+);
+const watchlistModalSrc = readFileSync(
+  resolve(__dirname, '..', 'src', 'components', 'watchlist-modal.ts'),
+  'utf-8',
+);
+
+describe('notifications-settings.ts — sensitivity dropdown placement', () => {
+  it('Sensitivity select renders OUTSIDE usRealtimeSection (visible in digest mode)', () => {
+    // Locate the realtime section opener and the sensitivity select. The select
+    // must appear at a lower offset (i.e. earlier in the source) than the
+    // realtime-section opener.
+    const realtimeSectionIdx = src.indexOf('id="usRealtimeSection"');
+    const sensitivitySelectIdx = src.indexOf('id="usNotifSensitivity"');
+    assert.ok(realtimeSectionIdx > 0, 'usRealtimeSection marker must exist');
+    assert.ok(sensitivitySelectIdx > 0, 'usNotifSensitivity select must exist');
+    assert.ok(
+      sensitivitySelectIdx < realtimeSectionIdx,
+      'Sensitivity select must render BEFORE the realtime section opener so digest-mode users can see it',
+    );
+  });
+
+  it("'all' AND 'high' options both carry an isRealtime-conditional disabled attribute (tightened rule)", () => {
+    // The all+high options must both be disabled when isRealtime is true. Under
+    // the tightened rule (2026-04-27), only `critical` is allowed alongside
+    // realtime. This catches the foot-gun without disable: user re-picking
+    // (realtime, all) OR (realtime, high) through the UI.
+    assert.match(
+      src,
+      /<option value="all"\$\{isRealtime \? ' disabled' : ''\}/,
+      "the 'all' <option> must include `${isRealtime ? ' disabled' : ''}`",
+    );
+    assert.match(
+      src,
+      /<option value="high"\$\{isRealtime \? ' disabled' : ''\}/,
+      "the 'high' <option> must include `${isRealtime ? ' disabled' : ''}`",
+    );
+  });
+
+  it('helper text under sensitivity matches the server error wording', () => {
+    // The helper text and the server error message must agree — divergence
+    // confuses users who hit the constraint from different surfaces.
+    assert.match(
+      src,
+      /Real-time delivery is for Critical events only/,
+      'sensitivity helper text must match the server error wording',
+    );
+  });
+
+  it('helper text is conditionally hidden in digest mode (Greptile P2)', () => {
+    // The hint is only relevant when isRealtime — digest users would otherwise
+    // see "Real-time delivery requires..." copy that doesn't apply to them.
+    assert.match(
+      src,
+      /id="usSensitivityHint"\s+style="[^"]*\$\{isRealtime\s*\?\s*''\s*:\s*'display:none'\}/,
+      'usSensitivityHint must conditionally hide via display:none when !isRealtime',
+    );
+    assert.match(
+      src,
+      /hintEl\.style\.display\s*=\s*isRt\s*\?\s*''\s*:\s*'none'/,
+      'mode-change handler must toggle usSensitivityHint display on dimension change',
+    );
+  });
+});
+
+describe('notifications-settings.ts — mode-change behavior', () => {
+  it("snaps sensitivity to 'critical' when switching TO realtime with sensitivity in {all, high} (tightened rule)", () => {
+    // Under the tightened rule, both 'all' AND 'high' must trigger the snap.
+    // The handler must snap the value AND ALSO record the snapped sensitivity
+    // so the atomic save sends it to the server.
+    assert.match(
+      src,
+      /isRt\s*&&\s*\(sensitivityEl\?\.value\s*===\s*'all'\s*\|\|\s*sensitivityEl\?\.value\s*===\s*'high'\)/,
+      'mode-change must detect (switching to realtime) AND (current value is "all" OR "high")',
+    );
+    assert.match(
+      src,
+      /sensitivityEl\.value\s*=\s*'critical'/,
+      "mode-change must set the dropdown value to 'critical' (was 'high' before the tightened rule)",
+    );
+    assert.match(
+      src,
+      /snappedSensitivity\s*=\s*'critical'/,
+      "mode-change must record snappedSensitivity = 'critical' so the atomic save includes it",
+    );
+  });
+
+  it("toggles BOTH 'all' AND 'high' option disabled attributes on mode change", () => {
+    assert.match(
+      src,
+      /allOption\.disabled\s*=\s*isRt/,
+      "mode-change handler must toggle allOption.disabled with isRt",
+    );
+    assert.match(
+      src,
+      /highOption\.disabled\s*=\s*isRt/,
+      "mode-change handler must toggle highOption.disabled with isRt (tightened rule disables high too)",
+    );
+  });
+
+  it('routes mode-change save through setNotificationConfig (atomic), NOT setDigestSettings', () => {
+    // The atomic save was the whole point of the new wrapper. If the handler
+    // still called setDigestSettings, we'd race against the cross-field validator
+    // on (daily+all → realtime).
+    const handlerStart = src.indexOf("target.id === 'usDigestMode'");
+    assert.ok(handlerStart > 0, 'usDigestMode handler must exist');
+    // Find the next handler boundary by searching for the next `target.id === '`
+    // marker after handlerStart.
+    const handlerEndCandidate = src.indexOf("target.id === '", handlerStart + 1);
+    const handlerEnd = handlerEndCandidate > 0 ? handlerEndCandidate : src.length;
+    const handlerBody = src.slice(handlerStart, handlerEnd);
+    assert.match(
+      handlerBody,
+      /setNotificationConfig\(/,
+      'usDigestMode handler must call setNotificationConfig for atomic pair-update save',
+    );
+    assert.doesNotMatch(
+      handlerBody,
+      /setDigestSettings\(/,
+      'usDigestMode handler must NOT call setDigestSettings (races against the cross-field validator)',
+    );
+  });
+
+  it('handles IncompatibleDeliveryError by surfacing the message in the helper hint', () => {
+    assert.match(
+      src,
+      /err\s+instanceof\s+IncompatibleDeliveryError/,
+      'mode-change save must catch IncompatibleDeliveryError specifically',
+    );
+  });
+});
+
+describe('notifications-settings.ts — watchlist story alerts row (#4922 U3)', () => {
+  it('renders the watchlist toggle INSIDE usRealtimeSection (watchlist alerts are realtime-only)', () => {
+    const realtimeSectionIdx = src.indexOf('id="usRealtimeSection"');
+    const watchlistToggleIdx = src.indexOf('id="usWatchlistAlerts"');
+    const digestDetailsIdx = src.indexOf('id="usDigestDetails"');
+    assert.ok(watchlistToggleIdx > 0, 'usWatchlistAlerts toggle must exist');
+    assert.ok(
+      watchlistToggleIdx > realtimeSectionIdx && watchlistToggleIdx < digestDetailsIdx,
+      'watchlist toggle must render inside the realtime section (relay only matches realtime rules for this event type)',
+    );
+  });
+
+  it('reuses the existing toggle-row markup (ai-flow-switch), no new chip components', () => {
+    const rowStart = src.indexOf('id="usWatchlistAlerts"');
+    assert.ok(rowStart > 0, 'toggle input must exist');
+    const rowSlice = src.slice(Math.max(0, rowStart - 600), rowStart + 300);
+    assert.match(rowSlice, /Watchlist story alerts/, 'row label must exist next to the toggle');
+    assert.match(rowSlice, /ai-flow-toggle-row/, 'row must reuse ai-flow-toggle-row');
+    assert.match(rowSlice, /ai-flow-switch/, 'row must reuse ai-flow-switch');
+  });
+
+  it('checked state derives from eventTypes including the watchlist event type', () => {
+    assert.match(
+      src,
+      /eventTypes\??\.includes\(WATCHLIST_STORY_EVENT_TYPE\)/,
+      'toggle checked state must derive from the stored rule eventTypes',
+    );
+  });
+
+  it('form-state helper derives eventTypes from the toggle and tickers from the market watchlist', () => {
+    // The historical hardcoded wildcard must be gone…
+    assert.doesNotMatch(
+      src,
+      /eventTypes:\s*\[\],/,
+      'getCurrentAlertRuleFormState must no longer hardcode eventTypes: []',
+    );
+    // …replaced by the toggle-derived opt-in + watchlist tickers.
+    assert.match(
+      src,
+      /\[WATCHLIST_STORY_EVENT_TYPE\]\s*:\s*\[\]/,
+      'eventTypes must be [WATCHLIST_STORY_EVENT_TYPE] when the toggle is on, [] otherwise',
+    );
+    assert.match(
+      src,
+      /getMarketWatchlistEntries\(\)\.map\(\s*\(?e\)?\s*=>\s*e\.symbol\s*\)/,
+      'tickers must be sourced from the market watchlist symbols',
+    );
+  });
+
+  it('toggle change routes through the debounced saveAlertRules pipeline', () => {
+    assert.match(
+      src,
+      /target\.id === 'usNotifEnabled' \|\| target\.id === 'usNotifSensitivity' \|\| target\.id === 'usWatchlistAlerts'/,
+      'usWatchlistAlerts change must reuse the alert-rule debounce/save branch',
+    );
+  });
+});
+
+describe('watchlist tickers — client save + re-sync plumbing (#4922 U3)', () => {
+  it('AlertRule carries optional tickers and setNotificationConfig forwards them', () => {
+    assert.match(
+      channelsSvcSrc,
+      /tickers\?:\s*string\[\]/,
+      'AlertRule/setNotificationConfig types must carry tickers?: string[]',
+    );
+  });
+
+  it('service exposes syncWatchlistTickersToAlertRule gated on the enabled + opted-in rule', () => {
+    assert.match(
+      channelsSvcSrc,
+      /export async function syncWatchlistTickersToAlertRule\(/,
+      'notification-channels service must export the re-sync helper',
+    );
+    assert.match(
+      channelsSvcSrc,
+      /eventTypes\??\.includes\('watchlist_story_alert'\)/,
+      're-sync must no-op unless the rule opted into watchlist_story_alert',
+    );
+  });
+
+  it('watchlist-modal save path re-syncs tickers, gated on PRO tier (no anon/free 4xx flood)', () => {
+    assert.match(
+      watchlistModalSrc,
+      /syncWatchlistTickersToAlertRule/,
+      'watchlist-modal save must trigger the ticker re-sync',
+    );
+    assert.match(
+      watchlistModalSrc,
+      /hasTier\(1\)/,
+      're-sync must be gated on PRO tier client-side before hitting the API',
+    );
+  });
+
+  /**
+   * #5622/#5646: the server requires a BILLED entitlement row for notification
+   * writes (api/notification-channels.ts), and the reason that is a coherent
+   * product decision rather than a dead end is that the client draws the same
+   * line — it gates this panel on the Convex entitlement snapshot, not on the
+   * Clerk role.
+   *
+   * `isProUser()` (src/services/widget-store.ts) DOES accept the Clerk role
+   * alone and is used elsewhere for panel unlocks. Using it here would unlock
+   * the notifications UI for a complimentary/tester grant whose every write the
+   * server answers with 403 — the mismatch that produces a dead end. Pin the
+   * gate so that swap cannot happen silently.
+   */
+  it('gates the notifications panel on the entitlement snapshot, not the Clerk role', () => {
+    assert.match(
+      src,
+      /const isPro = !!host\.isSignedIn && hasTier\(1\)/,
+      'the panel must gate on hasTier(1) so client and server agree on who may write',
+    );
+    assert.doesNotMatch(
+      src,
+      /isProUser\(/,
+      'isProUser() accepts the Clerk role alone; using it here would unlock the UI '
+      + 'for accounts whose writes api/notification-channels.ts answers with 403',
+    );
+  });
+});

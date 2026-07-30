@@ -1,0 +1,168 @@
+/**
+ * Convex client error introspection for edge-runtime catch paths.
+ *
+ * Convex's HTTP runtime propagates `ConvexError.data` to the client ONLY when
+ * the server-side throw passes object-typed data. String-data ConvexErrors
+ * (e.g. `throw new ConvexError("CONFLICT")`) arrive at the client as a plain
+ * `Error("[Request ID: X] Server Error")` with `.data === undefined` — a
+ * `msg.includes('CONFLICT')` check NEVER matches and the throw gets
+ * misclassified as 500. See `node_modules/convex/dist/esm/browser/
+ * http_client.js:244` — when `respJSON.errorData === void 0` the client
+ * falls through to `throw new Error(respJSON.errorMessage)`.
+ *
+ * Always throw `ConvexError({ kind, ... })` with object data on the server,
+ * and read the kind via {@link extractConvexErrorKind} on the edge.
+ *
+ * Pure JS so test files (`.mjs`) and edge handlers (`.ts`) can both import
+ * directly without going through a build step. JSDoc carries the types.
+ */
+
+/**
+ * Match a Convex platform-error JSON body's `"code":"X"` field, tolerating the
+ * optional whitespace a non-default serializer may emit after the colon
+ * (`"code": "X"`). Convex's runtime uses `JSON.stringify` (no spaces) today, so
+ * this is defensive — it keeps the whole platform-code family
+ * (ServiceUnavailable / InternalServerError / WorkerOverloaded / Unauthenticated)
+ * from sharing a brittle no-whitespace assumption that would break them all at
+ * once if an intermediary ever re-serialized the body. The `code` values are
+ * fixed internal literals (no regex metacharacters), so interpolation is safe.
+ *
+ * @param {string} msg
+ * @param {string} code
+ * @returns {boolean}
+ */
+function hasConvexCode(msg, code) {
+  return new RegExp(`"code":\\s*"${code}"`).test(msg);
+}
+
+/**
+ * Match Convex opaque request-id server-error wrapper. The shape is ambiguous:
+ * it can represent platform/internal 5xxs or a deterministic function throw
+ * without structured ConvexError data. For /api/user-prefs, #4504 intentionally
+ * treats this exact wrapper as transient while Sentry keeps a distinct
+ * `convex_server_error` bucket for volume-based monitoring.
+ *
+ * Keep this helper shared between response classification and Sentry tagging so
+ * `SERVICE_UNAVAILABLE` responses never drift from the `convex_server_error`
+ * bucket.
+ *
+ * @param {string} msg
+ * @returns {boolean}
+ */
+export function isOpaqueConvexServerError(msg) {
+  return /^\[Request ID:\s*[\w-]+\]\s*Server Error$/i.test(msg);
+}
+
+/**
+ * Extract the named-error `kind` from a Convex client throw. Prefers the
+ * structured `err.data.kind` (server-side `ConvexError({ kind, ... })`),
+ * falls back to substring-matching the legacy string-data error message
+ * (`ConvexError("CONFLICT")`) for the deploy-ordering window where the
+ * Vercel build may run against an older Convex deployment.
+ *
+ * @param {unknown} err
+ * @param {string} msg `err.message` (passed in to avoid re-coercing in
+ *   callers that already computed it).
+ * @returns {string | null} the kind, or null when neither path matches.
+ */
+export function extractConvexErrorKind(err, msg) {
+  const data = /** @type {{ data?: unknown } | null | undefined} */ (err)?.data;
+  if (data && typeof data === 'object' && 'kind' in data) {
+    const kind = /** @type {Record<string, unknown>} */ (data).kind;
+    if (typeof kind === 'string') return kind;
+  }
+  // Convex platform-level 503: the runtime returns a JSON body
+  // `{"code":"ServiceUnavailable","message":"Service temporarily unavailable"}`
+  // when the deployment is briefly unreachable. The HTTP client surfaces
+  // this as `Error('{"code":"ServiceUnavailable",...}')` — `.data` is
+  // undefined (it's not a ConvexError, it's a transport-layer 503), so
+  // we detect via the JSON-shape substring. Edge maps this to a 503
+  // response with Retry-After so clients back off rather than treating
+  // it as a permanent 500.
+  if (hasConvexCode(msg, 'ServiceUnavailable')) return 'SERVICE_UNAVAILABLE';
+  // Client-side fetch timeout (AbortSignal.timeout fires) — Convex stalled
+  // long enough that we aborted before Vercel's 25s edge wall-clock could
+  // kill the function with a generic 500. Same remediation as the platform
+  // 503 (back off + retry), so reuse SERVICE_UNAVAILABLE. Sentry's
+  // `error_shape` classifier still discriminates these two cases via msg
+  // pattern (`transport_timeout` vs `convex_service_unavailable`).
+  const errName = /** @type {{ name?: string } | null | undefined} */ (err)?.name;
+  if (errName === 'TimeoutError' || errName === 'AbortError') return 'SERVICE_UNAVAILABLE';
+  // Vercel edge runtime transient: the upstream connection dropped mid-flight
+  // (Cloudflare Workers / Vercel edge surface `TypeError: Network connection
+  // lost.` from the inner `fetch` when the socket is reset during an in-flight
+  // request). Same recovery profile as the platform 503 — transient, retry
+  // with back-off. WORLDMONITOR-QE: was previously falling through to the
+  // 'unknown' error_shape bucket at error level instead of 503 + Retry-After.
+  // Sentry's classifier tags these as `transport_network` so they're queryable
+  // separately from genuine Convex 503s.
+  if (/Network connection lost/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  // Cloudflare edge errors (520-527) fronting the Convex deployment: a
+  // transient origin/connection failure where Cloudflare returns a text/HTML
+  // body containing `error code: 52x` instead of a JSON Convex response. The
+  // HTTP client surfaces this as `Error('error code: 520...')` — `.data` is
+  // undefined (the request never reached Convex's runtime). Same transient
+  // retry-with-back-off remediation as the platform 503. WORLDMONITOR-PG: was
+  // falling through to the 'unknown' error_shape bucket at error level instead
+  // of 503 + Retry-After. Sentry's classifier tags these `transport_cloudflare`
+  // so they stay queryable apart from genuine Convex platform 5xx.
+  if (/error code:\s*52[0-7]\b/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  // Convex platform-level 401: when Clerk's OIDC token fails Convex's own
+  // verification (token expired between our edge's `validateBearerToken`
+  // and Convex's check, or Clerk JWKS rotated), the SDK surfaces a JSON
+  // body `{"code":"Unauthenticated","message":"Could not verify OIDC token
+  // claim..."}` — case-mismatched against the structured-data
+  // `UNAUTHENTICATED` kind, so the substring check below would miss it.
+  // Map to the same UNAUTHENTICATED kind as the structured-data path so
+  // the edge handler maps it to 401 and tags it as `convex_auth_drift`
+  // (WORLDMONITOR-PG).
+  if (hasConvexCode(msg, 'Unauthenticated')) return 'UNAUTHENTICATED';
+  // Convex platform-level 500: `{"code":"InternalServerError","message":
+  // "Your request couldn't be completed. Try again later."}` — runtime
+  // signals an internal failure that the SDK can't classify further. Same
+  // remediation profile as the platform 503 (transient, retry with
+  // back-off), so reuse SERVICE_UNAVAILABLE → 503 + Retry-After response.
+  // Sentry `error_shape` discriminates via msg-pattern fallback so the
+  // dashboard can tell internal-500s apart from genuine ServiceUnavailable
+  // 503s (WORLDMONITOR-PG / WORLDMONITOR-PH).
+  if (hasConvexCode(msg, 'InternalServerError')) return 'SERVICE_UNAVAILABLE';
+  // Convex platform-level worker saturation: `{"code":"WorkerOverloaded",
+  // "message":"There are no available workers to process the request"}` —
+  // the deployment briefly has no free function workers. Same transient
+  // retry-with-back-off remediation as the platform 503/500, so reuse
+  // SERVICE_UNAVAILABLE → 503 + Retry-After rather than surfacing a 500.
+  // Without this match the catch fell to the 'unknown' error_shape bucket
+  // at error level (WORLDMONITOR-PG: 11 events / 9 users). Sentry's
+  // classifier tags these `convex_worker_overloaded` so they stay queryable
+  // apart from genuine ServiceUnavailable 503s and InternalServerError 500s.
+  if (hasConvexCode(msg, 'WorkerOverloaded')) return 'SERVICE_UNAVAILABLE';
+  // Convex generic platform/internal 5xx: when the SDK receives only an
+  // opaque request-id wrapper (`[Request ID: X] Server Error`) with no
+  // machine-readable `code` JSON and no structured ConvexError data, treat
+  // it like the recognized Convex platform 5xx family above. Keep the
+  // matcher exact-ish so unrelated free-form server errors still fall
+  // through to the unknown/500 path.
+  if (isOpaqueConvexServerError(msg)) return 'SERVICE_UNAVAILABLE';
+  if (msg.includes('CONFLICT')) return 'CONFLICT';
+  if (msg.includes('RATE_LIMITED')) return 'RATE_LIMITED';
+  if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
+  if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
+  return null;
+}
+
+/**
+ * Read a numeric field from `err.data` (e.g. `actualSyncVersion`,
+ * `BLOB_TOO_LARGE.size`). Returns undefined when the field is missing or
+ * not a number, so callers can build a strict response contract via
+ * `field !== undefined ? { ..., field } : { ... }`.
+ *
+ * @param {unknown} err
+ * @param {string} field
+ * @returns {number | undefined}
+ */
+export function readConvexErrorNumber(err, field) {
+  const data = /** @type {{ data?: unknown } | null | undefined} */ (err)?.data;
+  if (!data || typeof data !== 'object' || !(field in data)) return undefined;
+  const raw = /** @type {Record<string, unknown>} */ (data)[field];
+  return typeof raw === 'number' ? raw : undefined;
+}

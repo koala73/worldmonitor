@@ -1,16 +1,47 @@
 ---
 import { getCollection, render } from 'astro:content';
+import type { CollectionEntry } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
+
+type BlogEntry = CollectionEntry<'blog'>;
+type RelatedPost = { title: string; description: string; href: string };
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog');
+  const stopWords = new Set(['and', 'for', 'the', 'with', 'worldmonitor', 'world', 'monitor']);
+  const tokenize = (value: string | undefined): Set<string> => new Set((value || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 2 && !stopWords.has(token)));
+  const relatedByPost = new Map(posts.map((current) => {
+    const currentTerms = tokenize(`${current.data.keywords}, ${current.data.audience}, ${current.data.title}`);
+    const relatedPosts: RelatedPost[] = posts
+      .filter((post) => post.id !== current.id)
+      .map((post) => {
+        const candidateTerms = tokenize(`${post.data.keywords}, ${post.data.audience}, ${post.data.title}`);
+        let score = 0;
+        for (const term of candidateTerms) {
+          if (currentTerms.has(term)) score += 1;
+        }
+        if (post.data.audience === current.data.audience) score += 2;
+        return { post, score };
+      })
+      .sort((a, b) => b.score - a.score || b.post.data.pubDate.valueOf() - a.post.data.pubDate.valueOf())
+      .slice(0, 3)
+      .map(({ post }) => ({
+        title: post.data.title,
+        description: post.data.description,
+        href: `/blog/posts/${post.id}/`,
+      }));
+    return [current.id, relatedPosts];
+  }));
   return posts.map((post) => ({
     params: { id: post.id },
-    props: { post },
+    props: { post, relatedPosts: relatedByPost.get(post.id) ?? [] },
   }));
 }
 
-const { post } = Astro.props;
+const { post, relatedPosts } = Astro.props as { post: BlogEntry; relatedPosts: RelatedPost[] };
 const { Content } = await render(post);
 ---
 
@@ -28,6 +59,7 @@ const { Content } = await render(post);
   heroImage={post.data.heroImage}
   slug={post.id}
   rawBody={post.body}
+  relatedPosts={relatedPosts}
 >
   <Content />
 </BlogPost>

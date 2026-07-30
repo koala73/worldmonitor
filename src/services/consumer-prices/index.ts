@@ -1,20 +1,8 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  ConsumerPricesServiceClient,
-  type GetConsumerPriceOverviewResponse,
-  type GetConsumerPriceBasketSeriesResponse,
-  type ListConsumerPriceCategoriesResponse,
-  type ListConsumerPriceMoversResponse,
-  type ListRetailerPriceSpreadsResponse,
-  type GetConsumerPriceFreshnessResponse,
-  type CategorySnapshot,
-  type PriceMover,
-  type RetailerSpread,
-  type BasketPoint,
-  type RetailerFreshnessInfo,
-} from '@/generated/client/worldmonitor/consumer_prices/v1/service_client';
+import type { GetConsumerPriceOverviewResponse, GetConsumerPriceBasketSeriesResponse, ListConsumerPriceCategoriesResponse, ListConsumerPriceMoversResponse, ListRetailerPriceSpreadsResponse, GetConsumerPriceFreshnessResponse, CategorySnapshot, PriceMover, RetailerSpread, BasketPoint, RetailerFreshnessInfo } from '@/generated/client/worldmonitor/consumer_prices/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { ConsumerPricesServiceClient } from '@/services/generated-rpc-clients';
 
 export type {
   GetConsumerPriceOverviewResponse,
@@ -257,8 +245,17 @@ export async function fetchConsumerPriceFreshness(
   }
 }
 
+const allMarketsBreaker = createCircuitBreaker<GetConsumerPriceOverviewResponse[]>({
+  name: 'All Markets Overview',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
 export async function fetchAllMarketsOverview(): Promise<GetConsumerPriceOverviewResponse[]> {
-  return Promise.all(
-    SINGLE_MARKETS.map((m) => fetchConsumerPriceOverview(m.code, `essentials-${m.code}`)),
+  return allMarketsBreaker.execute(
+    () => Promise.all(
+      SINGLE_MARKETS.map((m) => fetchConsumerPriceOverview(m.code, `essentials-${m.code}`)),
+    ),
+    [],
   );
 }

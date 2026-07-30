@@ -44,6 +44,37 @@ export function parseYesPrice(market) {
   return null;
 }
 
+// Kalshi mirror of parseYesPrice: null for unreadable prices — a fabricated
+// default (e.g. 50) would flow downstream as a finite anchor and calibrate
+// forecasts against invented data. Whole-string validation: parseFloat would
+// accept malformed prefixes ('0.62oops' → 0.62, '0,62' → 0).
+export function parseKalshiYesPrice(market) {
+  const raw = market?.last_price_dollars;
+  const str = typeof raw === 'number' ? raw : String(raw ?? '').trim();
+  const p = str === '' ? NaN : Number(str);
+  if (!Number.isFinite(p) || p < 0 || p > 1) return null;
+  return +(p * 100).toFixed(1);
+}
+
+// Pick the highest-volume PRICED market of a Kalshi event; an unpriced
+// top-volume market must not sink the whole event when a priced sibling exists.
+export function selectPricedKalshiMarket(markets) {
+  let best = null;
+  let bestPrice = null;
+  let bestVol = -1;
+  for (const m of markets || []) {
+    const price = parseKalshiYesPrice(m);
+    if (price === null) continue;
+    const vol = parseFloat(m.volume_fp) || 0;
+    if (vol > bestVol) {
+      best = m;
+      bestVol = vol;
+      bestPrice = price;
+    }
+  }
+  return best ? { market: best, yesPrice: bestPrice } : null;
+}
+
 export function shouldInclude(m, relaxed = false) {
   const minPrice = relaxed ? 5 : 10;
   const maxPrice = relaxed ? 95 : 90;
@@ -54,10 +85,19 @@ export function shouldInclude(m, relaxed = false) {
   return true;
 }
 
+// Rank markets by crowd CONVICTION (distance from 50/50), not maximum
+// uncertainty. The analyst LLM should see the markets where collective
+// betting has converged on a directional answer, with volume as a tiebreaker.
+//
+// The previous formula inverted this — it weighted 50/50 markets highest,
+// burying high-signal contested markets (e.g. "Iran strike: 88% YES") below
+// coin-flip ones. See #3735 + #3726. Lopsided markets are not a concern here
+// because shouldInclude() already clips yesPrice to [10, 90] (relaxed [5, 95]),
+// so 99% locks-in never reach the ranker.
 export function scoreMarket(m) {
-  const uncertainty = 1 - (2 * Math.abs(m.yesPrice - 50) / 100);
+  const conviction = (2 * Math.abs(m.yesPrice - 50)) / 100;
   const vol = Math.log10(Math.max(m.volume, 1)) / Math.log10(10_000_000);
-  return (uncertainty * 0.6) + (Math.min(vol, 1) * 0.4);
+  return (conviction * 0.5) + (Math.min(vol, 1) * 0.5);
 }
 
 export function isExpired(endDate) {

@@ -52,6 +52,7 @@ export interface ParsedMapUrlState {
   layers?: MapLayers;
   country?: string;
   expanded?: boolean;
+  chokepoint?: string;
 }
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -95,6 +96,15 @@ export function parseMapUrlState(
   const expandedParam = params.get('expanded');
   const expanded = expandedParam === '1' ? true : undefined;
 
+  // Chokepoint deep-link (?chokepoint=bab_el_mandeb): opens the waterway popup on
+  // the live map. Value is a canonical chokepoint/waterway id (lowercase, snake).
+  // The map resolves it against STRATEGIC_WATERWAYS and no-ops on an unknown id,
+  // so this only needs to reject obviously malformed input.
+  const chokepointParam = params.get('chokepoint');
+  const chokepoint = chokepointParam && /^[a-z][a-z0-9_]{1,40}$/i.test(chokepointParam.trim())
+    ? chokepointParam.trim().toLowerCase()
+    : undefined;
+
   const layersParam = params.get('layers');
   let layers: MapLayers | undefined;
   if (layersParam !== null) {
@@ -130,6 +140,7 @@ export function parseMapUrlState(
     layers,
     country,
     expanded,
+    chokepoint,
   };
 }
 
@@ -143,6 +154,7 @@ export function buildMapUrl(
     layers: MapLayers;
     country?: string;
     expanded?: boolean;
+    chokepoint?: string;
   }
 ): string {
   let url: URL;
@@ -172,6 +184,10 @@ export function buildMapUrl(
 
   if (state.expanded) {
     params.set('expanded', '1');
+  }
+
+  if (state.chokepoint) {
+    params.set('chokepoint', state.chokepoint);
   }
 
   url.search = params.toString();

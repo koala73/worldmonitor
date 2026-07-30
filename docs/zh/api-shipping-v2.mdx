@@ -1,0 +1,200 @@
+---
+title: "航运 v2 API"
+description: "Shipping v2 API 提供全球咽喉要道路由情报查询、航运绕行成本估算、港口拥堵指标、AIS 船舶轨迹分析，以及供应链中断警报的 webhook 订阅管理端点，附带完整的请求与响应字段参考、认证要求、速率限制说明、错误处理、分页策略、示例代码与端到端集成场景。"
+---
+
+v2 航运 API 是构建在 WorldMonitor 咽喉要道注册表和 AIS 跟踪数据之上的 **PRO 级权限控制** 读取 + webhook 订阅接口。
+
+<Info>
+所有 v2 航运端点都需要 `X-WorldMonitor-Key`（服务器到服务器）。此处**不**信任浏览器来源 —— `validateApiKey` 以 `forceKey: true` 运行。
+</Info>
+
+## 路由情报
+
+### `GET /api/v2/shipping/route-intelligence`
+
+对国家对的贸易路线进行咽喉要道暴露度和当前中断风险的评分。
+
+**查询参数**：
+
+| 参数 | 必填 | 说明 |
+|-------|----------|-------------|
+| `fromIso2` | 是 | 原产国，ISO-3166-1 alpha-2（大写）。 |
+| `toIso2` | 是 | 目的国，ISO-3166-1 alpha-2（大写）。 |
+| `cargoType` | 否 | `container`（默认）、`tanker`、`bulk`、`roro` 之一。 |
+| `hs2` | 否 | 2 位 HS 大宗商品代码（默认 `27` —— 矿物燃料）。 |
+
+**示例**：
+```
+GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&hs2=27
+```
+
+**响应（`200`）**：
+```json
+{
+  "fromIso2": "AE",
+  "toIso2": "NL",
+  "cargoType": "tanker",
+  "hs2": "27",
+  "primaryRouteId": "ae-to-eu-via-hormuz-suez",
+  "chokepointExposures": [
+    { "chokepointId": "hormuz_strait", "chokepointName": "Strait of Hormuz", "exposurePct": 100 },
+    { "chokepointId": "suez",   "chokepointName": "Suez Canal",        "exposurePct": 100 }
+  ],
+  "bypassOptions": [
+    {
+      "id": "cape-of-good-hope",
+      "name": "Cape of Good Hope",
+      "type": "maritime_detour",
+      "addedTransitDays": 12,
+      "addedCostMultiplier": 1.35,
+      "activationThreshold": "DISRUPTION_SCORE_60"
+    }
+  ],
+  "warRiskTier": "WAR_RISK_TIER_ELEVATED",
+  "disruptionScore": 68,
+  "fetchedAt": "2026-04-19T12:00:00Z"
+}
+```
+
+- `disruptionScore` 取值 0-100，针对路线的**主要**咽喉要道（值越高 = 中断越严重）。
+- `warRiskTier` 是咽喉要道状态流中 `WAR_RISK_TIER_*` 枚举值之一。
+- `bypassOptions` 会筛选出 `suitableCargoTypes` 包含 `cargoType`（或未设置）的选项。
+
+**缓存**：`Cache-Control: public, max-age=60, stale-while-revalidate=120`。
+
+**错误**：
+
+| 状态码 | 原因 |
+|--------|-------|
+| 400 | `fromIso2` 或 `toIso2` 缺失/格式错误 |
+| 401 | 需要 API 密钥或密钥无效 |
+| 403 | `PRO subscription required` |
+| 405 | 非 `GET` 方法 |
+
+## Webhook 订阅
+
+### `POST /api/v2/shipping/webhooks`
+
+注册用于咽喉要道中断警报的 webhook。返回 `200 OK`。
+
+**请求**：
+```json
+{
+  "callbackUrl": "https://hooks.example.com/shipping-alerts",
+  "chokepointIds": ["hormuz_strait", "suez", "bab_el_mandeb"],
+  "alertThreshold": 60
+}
+```
+
+- `callbackUrl` —— 必填，仅限 HTTPS，不得解析为私有/回环地址（注册时有 SSRF 防护）。
+- `chokepointIds` —— 可选。省略或传入空数组则订阅**所有**已注册的咽喉要道。未知 ID 返回 `400`。
+- `alertThreshold` —— 数值 0-100（默认 `50`）。超出此范围的值返回 `400` 校验响应，描述为 `alertThreshold must be between 0 and 100`。
+
+**响应（`200`）**：
+```json
+{
+  "subscriberId": "wh_a1b2c3d4e5f6a7b8c9d0e1f2",
+  "secret": "64-char-lowercase-hex-string"
+}
+```
+
+- `subscriberId` —— `wh_` 前缀 + 24 个十六进制字符（12 个随机字节）。
+- `secret` —— 原始 64 字符小写十六进制（32 个随机字节）。没有 `whsec_` 前缀。请妥善保存 —— 服务器在轮换之前不会再次返回它。
+- **TTL**：订阅者记录和每所有者索引集均为 30 天。只有**重新注册**会通过原子管道刷新两者（对记录执行带 `EX` 的 `SET`，对所有者索引执行 `SADD` + `EXPIRE`）。`rotate-secret` 和 `reactivate` 仅刷新记录的 TTL —— 它们不会更改所有者索引集的过期时间，因此如果调用者在 30 天窗口内仅进行轮换或重新激活，所有者索引可能会独立过期。请重新注册以保持两者有效。
+- 所有权通过调用者 API 密钥的 SHA-256 进行跟踪（绝非密钥 —— 以 `ownerTag` 形式存储）。
+
+认证：`X-WorldMonitor-Key`（forceKey: true）+ PRO。否则返回 `401` / `403`。
+
+### `GET /api/v2/shipping/webhooks`
+
+列出调用者已注册的 webhook（按调用 API 密钥的 SHA-256 所有者标签过滤）。
+
+```json
+{
+  "webhooks": [
+    {
+      "subscriberId": "wh_...",
+      "callbackUrl": "https://hooks.example.com/...",
+      "chokepointIds": ["hormuz_strait", "suez"],
+      "alertThreshold": 60,
+      "createdAt": "2026-04-19T12:00:00Z",
+      "active": true
+    }
+  ]
+}
+```
+
+`secret` 在列表和状态响应中被有意省略。
+
+### `GET /api/v2/shipping/webhooks/{subscriberId}`
+
+单个 webhook 的状态读取。返回与 `GET /webhooks` 相同的记录结构（不含 `secret`）。未知则返回 `404`，由其他 API 密钥拥有则返回 `403`。
+
+### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
+
+生成并返回**新**密钥。记录的 `secret` 会被原地替换；旧密钥立即停止验证。
+
+```json
+{ "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
+```
+
+### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
+
+将记录上的 `active` 设为 `true`（在调查并修复导致停用的投递失败后使用）。
+
+```json
+{ "subscriberId": "wh_...", "active": true }
+```
+
+### 投递格式
+
+```
+POST <callbackUrl>
+Content-Type: application/json
+X-WM-Signature: sha256=<HMAC-SHA256(body, secret)>
+X-WM-Delivery-Id: whd_<32 lowercase hex chars>
+X-WM-Event: chokepoint.disruption
+
+{
+  "subscriberId": "wh_...",
+  "chokepointId": "hormuz_strait",
+  "score": 74,
+  "alertThreshold": 60,
+  "triggeredAt": "2026-04-19T12:03:00Z",
+  "reason": "ais_congestion_spike",
+  "details": { ... }
+}
+```
+
+投递 worker 在每次发送前重新解析 `callbackUrl`，并针对 `PRIVATE_HOSTNAME_PATTERNS` 重新检查，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
+
+### 验证投递
+
+每次投递都已签名，因此你可以确认它确实来自 WorldMonitor。`X-WM-Signature` 为 `sha256=<hex>`，其中 `<hex>` 是以注册时返回的 `secret` 为密钥的**原始请求体的 HMAC-SHA256**的小写十六进制值。
+
+验证方法：对**完全按接收时的**字节重新计算 `sha256=` + `hex(HMAC_SHA256(key=secret, message=rawBody))`（不要重新序列化 JSON），并与 `X-WM-Signature` 在常数时间内比较。将 `secret` 字符串**原样**作为 HMAC 密钥使用 — 不要对其进行十六进制解码。若签名不同则拒绝该投递。
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+// rawBody: the exact request body bytes; header: the X-WM-Signature value;
+// secret: the value returned by RegisterWebhook (used verbatim as the key).
+function verifyWorldMonitorWebhook(rawBody, header, secret) {
+  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(header ?? '');
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+签名契约也以机器可读形式发布于 [OpenAPI spec](https://worldmonitor.app/openapi.json) 中 `webhooks` 下的 `chokepoint.disruption` 条目。
+
+#### 用已签名样本测试你的验证
+
+一个可直接验证的样本投递发布于 [`/.well-known/webhook-sample.json`](https://www.worldmonitor.app/.well-known/webhook-sample.json)。它携带一个固定的样本 `secret`、确切的原始 `body` 字符串，以及所得的 `signature`。对 `body` 的确切字节重新计算 `sha256=` + `hex(HMAC_SHA256(key=secret, message=body))` 并确认它等于 `signature` — 如果匹配，你的验证将接受真实投递。（样本 `secret` 是固定值；每个正式订阅会从 RegisterWebhook 获得自己的 `secret`。）
+
+```js
+const s = await (await fetch('https://www.worldmonitor.app/.well-known/webhook-sample.json')).json();
+verifyWorldMonitorWebhook(s.body, s.signature, s.secret); // → true
+```

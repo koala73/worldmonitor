@@ -1,0 +1,62 @@
+---
+title: "消费者价格"
+description: "消费者价格面板追踪市场层面的零售杂货与生活必需品定价动态，提供整体价格概览、类别层级细分、涨幅与跌幅商品排行榜、跨零售商价差比较以及数据来源新鲜度指标，支持 7 天、30 天与 90 天多种时间窗口灵活切换，帮助分析师量化通胀走势、供应链成本传导与家庭日常消费支出变化的实际影响。"
+---
+
+**Consumer Prices** 面板是仪表盘的零售通胀和一篮子物价面。它跟踪市场（国家）层面的实际货架价格，按类别和零售商细分，并公开来源新鲜度，让读者可以看到底层爬取上次运行的时间。
+
+## 面板显示内容
+
+在市场 + 篮子选择器和时间范围控制下的五个标签页：
+
+| 标签页 | 回答的问题 |
+|---|---|
+| **概览** | 当前篮子水平、周期环比变化，以及所选范围的迷你图。 |
+| **类别** | 类别级快照（食品、饮料、家居、必需品等），附周期差值。 |
+| **涨跌品** | 所选窗口内篮子中涨幅最大和跌幅最大的品项 — 驱动整体变化的品项。 |
+| **价差** | 固定必需品篮子的零售商级价格差 — 哪个零售商最便宜，哪个最贵，以及差距。 |
+| **健康** | 数据源新鲜度 — 每个上游爬取上次完成的时间，如果数据过期有清晰指示。 |
+
+面板级控件：
+
+- **市场栏** — 每个支持市场一个按钮（默认 `AE`；完整列表来自 `src/services/consumer-prices` 中的 `MARKETS`）。选择一个市场隐式将篮子设为该市场的 `essentials-<code>` 变体（当 `all` 聚合视图激活时为默认篮子）— 没有独立的篮子选择器。
+- **范围栏** — `7d`、`30d` 或 `90d`。
+- **类别筛选** — 点击 **类别** 标签页上的类别行可将 **涨跌品** 标签页限定到该类别。有清除筛选交互可重置。
+
+设置在 `localStorage` 的 `wm-consumer-prices-v1` 下跨会话持久化。
+
+面板 id 为 `consumer-prices`；规范组件为 `src/components/ConsumerPricesPanel.ts`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *prices* 或 *consumer*。
+- **按变体的可用性**：在 **finance** 和 **commodity** 变体中默认启用。在 **full/geopolitical** 变体中注册但禁用（需手动启用）。在 tech 或 happy 变体中未注册。来源：`src/config/panels.ts` 中的 `FINANCE_PANELS`、`COMMODITY_PANELS`、`FULL_PANELS`。
+
+## 数据来源
+
+五个标签页 RPC 加一个迷你图 RPC 支持该面板：
+
+| 表面 | RPC |
+|---|---|
+| 概览 | `GET /api/consumer-prices/v1/get-consumer-price-overview` |
+| 概览迷你图 | `GET /api/consumer-prices/v1/get-consumer-price-basket-series` |
+| 类别 | `GET /api/consumer-prices/v1/list-consumer-price-categories` |
+| 涨跌品 | `GET /api/consumer-prices/v1/list-consumer-price-movers` |
+| 价差 | `GET /api/consumer-prices/v1/list-retailer-price-spreads` |
+| 健康 | `GET /api/consumer-prices/v1/get-consumer-price-freshness` |
+
+上游数据由配套的 `consumer-prices-core` 服务从零售商价格源爬取，并按市场和篮子发布为 Redis 快照。
+
+## 刷新频率
+
+底层种子器大约每天每市场+篮子组合运行一次。`api/health.js` 中的 Consumer Prices 键允许最多 **25 小时**（`maxStaleMin: 1500`）后健康面才会升级告警，为种子器在每日频率基础上提供了 1 小时的宽限窗口。
+
+面板内的 **健康** 标签页显示按源的获取时间戳，让你可以直接看到过期情况，而非依赖全局健康标志。
+
+## 层级与门控
+
+Consumer Prices 是**免费的**。面板在 `src/config/panels.ts` 中注册时未设置 `premium` 标志，因此任何人 — 包括未认证读者 — 都可以在启用的变体上看到它。
+
+## API 参考
+
+- [Consumer Prices service](/api/ConsumerPricesService.openapi.yaml) — 所有 5+1 RPC 的完整 OpenAPI。
