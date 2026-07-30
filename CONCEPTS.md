@@ -112,6 +112,14 @@ A term — an ordinary word, a vulnerability identifier, or a threat-group desig
 
 The stretch of time a derived statistic was *actually* computed over, as distinct from the retention horizon of the store it drew from. The two diverge whenever a bounded read — a row cap, a page size, a top-N — returns fewer rows than the horizon contains, and the divergence is silent: the read succeeds, the arithmetic runs, and only the result is wrong. Any rate, baseline, or per-unit-time figure must be divided by the span its rows demonstrably cover, and a consumer-facing statistic should report that measured span rather than the horizon constant, since a caller has no other way to tell the two apart. Truncation is also biased rather than random — a newest-first read starves the historical side of a recent-versus-baseline comparison, an oldest-first read starves the recent side. See also: Story Accumulator, Keyword Spike.
 
+## Prediction Markets
+
+### Market Pool
+
+One of the named category buckets a published prediction-market payload is divided into — geopolitical, tech, finance — where every market belongs to exactly one.
+
+The pools are a *partition*, not a set of overlapping views: membership is a single primary category assigned by a fixed precedence, so no market appears twice and no market is dropped. That property is load-bearing rather than incidental, because every consumer selects a pool **by name** — a site variant, an agent-facing category argument, a prompt builder — and a pool that quietly contains everything makes all of those selections meaningless while still looking healthy. Precedence, not tag exclusivity, is what resolves a market carrying signals from several categories; reordering the categories therefore moves real markets between pools. The complete set of markets is deliberately *not* a pool: a reader wanting every market asks for the union explicitly, because reaching for a single pool to mean "all" is only ever correct by accident. See also: Seed-Owned Key.
+
 ## MCP & Agent Discovery
 
 ### MCP Server Card
@@ -253,3 +261,7 @@ Provenance is what makes staleness detectable at all: a translation whose record
 A translated value whose English source has changed since the translation was made.
 
 Distinct from a *missing* translation, which has no value at all, and from an *orphaned* one, which is a value the current English no longer has a key for. The distinction is load-bearing because only the stale class is fixable by retranslation — no translation of a source string that no longer exists can be correct, so orphans must be pruned instead. Inserting an element into an English list makes every later entry stale at once, since each index then points at a different source string; removing the last element produces an orphan instead, leaving every earlier index matching so nothing registers as stale. See also: Translation Provenance.
+
+## Flagged ambiguities
+
+- *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
