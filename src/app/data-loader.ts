@@ -1219,9 +1219,11 @@ export class DataLoaderManager implements AppModule {
   }
 
   // `isCustom` marks a category from a user-added panel that isn't in the
-  // active variant's preset. The per-variant server digest never carries it,
-  // so it skips the digest-availability gate and fetches its full feed set
-  // directly client-side (the cost is borne only by users who customize).
+  // active variant's preset. The per-variant server digest never carries it, so
+  // it skips the digest-availability gate and fetches directly client-side —
+  // still capped by perFeedFallbackCategoryFeedLimit like any other per-feed
+  // fallback, because nothing bounds how many custom categories a session has
+  // (#5376). The cost is borne only by users who customize.
   private async loadNewsCategory(
     category: string,
     feeds: typeof FEEDS.politics,
@@ -1332,10 +1334,12 @@ export class DataLoaderManager implements AppModule {
         return staleItems;
       }
 
-      // The per-feed-fallback flag throttles the digest-down thundering herd
-      // (every preset category fetching at once). It does NOT apply to custom
-      // categories: those are NEVER in the digest by design — direct fetch is
-      // their only path, and there are only a handful of them per user.
+      // The per-feed-fallback flag is the kill switch for the digest-down
+      // thundering herd (every preset category fetching at once), so it does NOT
+      // apply to custom categories: those are NEVER in the digest by design and
+      // direct fetch is their only path — gating them here would leave a
+      // customized panel permanently empty rather than degraded. Their blast
+      // radius is bounded by the feed cap below instead.
       if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
@@ -1346,13 +1350,16 @@ export class DataLoaderManager implements AppModule {
         return [];
       }
 
-      // Custom categories fetch their full feed set (no thundering-herd risk);
-      // preset categories stay capped by perFeedFallbackCategoryFeedLimit.
-      const fallbackFeeds = isCustom
-        ? enabledFeeds
-        : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
+      // Every per-feed fallback is capped, custom categories included. They used
+      // to fetch their full feed set on the theory that a handful of customized
+      // panels carried "no thundering-herd risk" — three of them firing on every
+      // load, uncapped, was 19 direct proxy round-trips (#5376). Nothing bounds
+      // how many custom categories a session can have, so the cap has to be
+      // unconditional; a custom category is also the ONLY consumer of its feeds
+      // (it is never in the digest), so the cap is what it steadily shows.
+      const fallbackFeeds = this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
       if (isCustom) {
-        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length}/${enabledFeeds.length} feeds directly`);
       } else if (options.allowDigestPendingFallback) {
         console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else if (fallbackFeeds.length < enabledFeeds.length) {

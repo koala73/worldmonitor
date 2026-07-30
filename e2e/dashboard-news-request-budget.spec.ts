@@ -41,13 +41,43 @@ const RSS_PROXY_GLOB = '**/api/rss-proxy*';
 // margin over the interval being guarded.
 const SECOND_LOAD_SETTLE_MS = 8_000;
 
+// src/app/data-loader.ts `perFeedFallbackCategoryFeedLimit`. Every per-feed
+// fallback is capped at this many feeds per category, custom categories included.
+const PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT = 3;
+
+// A Tech news panel customized into a `full` session: absent from FULL_FEEDS, so
+// it resolves as a CUSTOM category and direct fetch is its only path. Priority 1
+// keeps it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
+// panels), and its 10 TECH_FEEDS entries are well past the per-category cap.
+const CUSTOM_CATEGORY_KEY = 'startups';
+const CUSTOM_CATEGORY_FEED_COUNT = 10;
+
 type NewsRequestLog = {
   digestUrls: string[];
   rssProxyUrls: string[];
 };
 
-async function seedFreshAnonymousFullVariant(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+/**
+ * Distinct feed URLs behind a set of /api/rss-proxy requests.
+ *
+ * The cap bounds how many FEEDS a category fetches, not how many HTTP attempts
+ * they cost — this spec aborts the proxy requests, so the RSS client's own retry
+ * of a failed feed would otherwise inflate a raw request count.
+ */
+function distinctProxiedFeeds(rssProxyUrls: string[]): string[] {
+  const feeds = new Set<string>();
+  for (const url of rssProxyUrls) {
+    const target = new URL(url).searchParams.get('url');
+    if (target) feeds.add(target);
+  }
+  return [...feeds];
+}
+
+async function seedFreshAnonymousFullVariant(
+  page: Page,
+  extraPanels: Record<string, { name: string; enabled: boolean; priority: number }> = {},
+): Promise<void> {
+  await page.addInitScript((panels: Record<string, unknown>) => {
     if (sessionStorage.getItem('__news_request_budget_e2e_init__')) return;
     localStorage.clear();
     sessionStorage.clear();
@@ -56,8 +86,13 @@ async function seedFreshAnonymousFullVariant(page: Page): Promise<void> {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    // Partial panel settings: App.ts merges every other ALL_PANELS key in at its
+    // variant default, so this only overrides the panels named here.
+    if (Object.keys(panels).length > 0) {
+      localStorage.setItem('worldmonitor-panels', JSON.stringify(panels));
+    }
     sessionStorage.setItem('__news_request_budget_e2e_init__', '1');
-  });
+  }, extraPanels as Record<string, unknown>);
 }
 
 async function installNewsRequestAccounting(page: Page): Promise<NewsRequestLog> {
@@ -133,6 +168,46 @@ test.describe('dashboard news request budget (#5376)', () => {
       log.digestUrls.length,
       `one page load must issue exactly one list-feed-digest request, got ${log.digestUrls.length}: ` +
         `${log.digestUrls.join(', ')}. More than one means loadAllData() re-ran the whole news load.`,
+    ).toBe(1);
+  });
+
+  // The other half of the fix: a category that legitimately STAYS custom — a
+  // cross-variant panel the user enabled on purpose — must still load (that is
+  // #3687, the bug panel-driven resolution was introduced to fix) and must be
+  // capped like every other per-feed fallback. Custom categories used to be
+  // exempt from the cap on the theory that there were only ever a handful.
+  test('a deliberately customized category still loads, capped at the per-category feed limit', async ({ page }) => {
+    await seedFreshAnonymousFullVariant(page, {
+      [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
+    });
+    const log = await installNewsRequestAccounting(page);
+
+    const firstDigest = page.waitForRequest(DIGEST_GLOB);
+    await page.goto('/');
+    await page.waitForFunction(
+      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    );
+    await firstDigest;
+    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+
+    const feeds = distinctProxiedFeeds(log.rssProxyUrls);
+
+    expect(
+      feeds.length,
+      `an enabled cross-variant news panel must still have its feeds fetched — a custom ` +
+        `category is never in the per-variant digest, so direct fetch is its only path (#3687)`,
+    ).toBeGreaterThan(0);
+
+    expect(
+      feeds.length,
+      `a custom category must not exceed perFeedFallbackCategoryFeedLimit ` +
+        `(${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT}); "${CUSTOM_CATEGORY_KEY}" has ` +
+        `${CUSTOM_CATEGORY_FEED_COUNT} feeds and fetched ${feeds.length}: ${feeds.join(', ')}`,
+    ).toBeLessThanOrEqual(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
+
+    expect(
+      log.digestUrls.length,
+      'customizing a category must not add a second news load either',
     ).toBe(1);
   });
 });
