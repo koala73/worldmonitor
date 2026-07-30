@@ -25,7 +25,7 @@ const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
 
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
-export { CHROME_UA };
+export { CHROME_UA, MAX_PAYLOAD_BYTES };
 
 /**
  * Resolve the CoinGecko base URL + auth header for the configured key tier.
