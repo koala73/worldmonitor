@@ -44,7 +44,7 @@ import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, t
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { createEntitlementReloadController } from '@/services/entitlement-reload-controller';
 import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -525,9 +525,9 @@ export class PanelLayoutManager implements AppModule {
         window.location.reload();
       },
     });
-    this.unsubscribeEntitlementChange = onEntitlementChange(() => {
+    this.unsubscribeEntitlementChange = onEntitlementChange((state) => {
       entitlementReloadController.handleSnapshot(
-        isEntitled(),
+        state === null ? null : isEntitlementActive(state, Date.now()),
         getAuthState().user?.id ?? null,
       );
     });

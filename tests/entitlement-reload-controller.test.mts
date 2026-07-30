@@ -26,6 +26,34 @@ class BlockedStorage {
   }
 }
 
+class ExistingGuardWithTransientReadFailureStorage {
+  reads = 0;
+  writes = 0;
+
+  getItem(): string | null {
+    this.reads += 1;
+    if (this.reads === 1) {
+      throw new DOMException('transient storage read failure', 'UnknownError');
+    }
+    return '1';
+  }
+
+  setItem(): void {
+    this.writes += 1;
+    throw new Error('an existing guard must never be rewritten');
+  }
+}
+
+class DroppedWriteStorage {
+  getItem(): string | null {
+    return null;
+  }
+
+  setItem(): void {
+    // Some storage shims accept writes without actually persisting them.
+  }
+}
+
 describe('entitlement reload controller', () => {
   it('reproduces daypesta cadence without a page reload loop', () => {
     const storage = new MemoryStorage();
@@ -124,6 +152,41 @@ describe('entitlement reload controller', () => {
     assert.equal(gatingPasses, 2, 'Pro access must still unlock in place');
   });
 
+  it('fails closed when the first read of an existing guard is unavailable', () => {
+    const storage = new ExistingGuardWithTransientReadFailureStorage();
+    let reloads = 0;
+    let gatingPasses = 0;
+    const controller = createEntitlementReloadController({
+      storage,
+      reload: () => { reloads += 1; },
+      onSnapshot: () => { gatingPasses += 1; },
+    });
+
+    controller.handleSnapshot(false, 'daypesta');
+    controller.handleSnapshot(true, 'daypesta');
+
+    assert.equal(reloads, 0, 'an unavailable guard read must never be retried into a reload');
+    assert.equal(storage.reads, 1, 'a failed guard read must end the navigation attempt');
+    assert.equal(storage.writes, 0, 'a failed guard read must not rewrite an existing marker');
+    assert.equal(gatingPasses, 2, 'Pro access must still unlock in place');
+  });
+
+  it('fails closed when a guard write is accepted but not persisted', () => {
+    let reloads = 0;
+    let gatingPasses = 0;
+    const controller = createEntitlementReloadController({
+      storage: new DroppedWriteStorage(),
+      reload: () => { reloads += 1; },
+      onSnapshot: () => { gatingPasses += 1; },
+    });
+
+    controller.handleSnapshot(false, 'daypesta');
+    controller.handleSnapshot(true, 'daypesta');
+
+    assert.equal(reloads, 0, 'navigation requires a verified persisted guard');
+    assert.equal(gatingPasses, 2, 'Pro access must still unlock in place');
+  });
+
   it('fails closed to in-place gating when the activation cannot be account-scoped', () => {
     let reloads = 0;
     let gatingPasses = 0;
@@ -152,6 +215,42 @@ describe('entitlement reload controller', () => {
     assert.equal(reloads, 0);
   });
 
+  it('does not turn an unavailable auth-handoff snapshot into a free state', () => {
+    const storage = new MemoryStorage();
+    let reloads = 0;
+    const existingPro = createEntitlementReloadController({
+      storage,
+      reload: () => { reloads += 1; },
+    });
+
+    existingPro.handleSnapshot(null, 'daypesta');
+    existingPro.handleSnapshot(true, 'daypesta');
+    assert.equal(reloads, 0, 'an existing Pro first snapshot must not look like a free-to-Pro transition');
+
+    const checkoutReturn = createEntitlementReloadController({
+      returnedFromCheckout: true,
+      storage,
+      reload: () => { reloads += 1; },
+    });
+    checkoutReturn.handleSnapshot(null, 'another-user');
+    checkoutReturn.handleSnapshot(true, 'another-user');
+    assert.equal(reloads, 1, 'an unavailable snapshot must preserve the checkout-return activation seed');
+  });
+
+  it('does not carry a free transition state into an existing Pro account', () => {
+    let reloads = 0;
+    const controller = createEntitlementReloadController({
+      storage: new MemoryStorage(),
+      reload: () => { reloads += 1; },
+    });
+
+    controller.handleSnapshot(false, 'free-user');
+    controller.handleSnapshot(null, 'daypesta');
+    controller.handleSnapshot(true, 'daypesta');
+
+    assert.equal(reloads, 0, 'each account must establish its own first real entitlement snapshot');
+  });
+
   it('wires the guarded controller into the live panel entitlement watcher', async () => {
     const panelLayout = await readFile(
       new URL('../src/app/panel-layout.ts', import.meta.url),
@@ -170,8 +269,8 @@ describe('entitlement reload controller', () => {
     );
     assert.match(
       panelLayout,
-      /entitlementReloadController\.handleSnapshot\(\s*isEntitled\(\),\s*getAuthState\(\)\.user\?\.id \?\? null,/,
-      'the live watcher must scope the cross-reload guard to the authenticated account',
+      /onEntitlementChange\(\(state\) => \{\s*entitlementReloadController\.handleSnapshot\(\s*state === null \? null : isEntitlementActive\(state, Date\.now\(\)\),\s*getAuthState\(\)\.user\?\.id \?\? null,/,
+      'the live watcher must preserve unavailable snapshots and scope the guard to the authenticated account',
     );
   });
 });
