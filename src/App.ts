@@ -77,7 +77,7 @@ import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
-import { trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
+import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
@@ -105,9 +105,10 @@ import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
+import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
-import { initAuthState, subscribeAuthState } from '@/services/auth-state';
+import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   install as installCloudPrefsSync,
@@ -115,7 +116,19 @@ import {
   onSignOut as cloudPrefsSignOut,
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
-import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
+import {
+  getConvexClient,
+  getConvexApi,
+  invalidateConvexAuthForSignOut,
+  rebindConvexAuthForWatchHandoff,
+  waitForConvexAuthForUser,
+} from '@/services/convex-client';
+import {
+  assertAccountStillCurrent,
+  isAccountStillCurrent,
+  settleAccountOperation,
+} from '@/services/account-operation';
+import type { Id } from '../convex/_generated/dataModel';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
@@ -582,6 +595,12 @@ export class App {
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
+    if (shouldPrime('china-corridors')) {
+      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
+    }
+    if (shouldPrime('china-activity-nowcast')) {
+      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast());
+    }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
     }
@@ -1005,6 +1024,10 @@ export class App {
           showToast('Country brief failed to open. Please try again.');
         });
       },
+      openSearch: () => {
+        track('search-open', { source: 'pro-onboarding' });
+        void this.openSearch();
+      },
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
@@ -1268,8 +1291,8 @@ export class App {
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
-    // sr-only <h1> are baked in English so search crawlers see something
-    // before JS runs; once i18n is ready we swap them to the user's locale.
+    // the accessible <h1> are baked in English before the app boots; once i18n
+    // is ready we swap them to the user's locale.
     document.title = t('shell.documentTitle');
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);
@@ -1392,6 +1415,7 @@ export class App {
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
+    let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
     // ONCE on a false→true transition (user signs in / purchase lands mid-session).
     // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
@@ -1442,13 +1466,34 @@ export class App {
 
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
-        void cloudPrefsSignIn(userId, SITE_VARIANT);
+        const handoffGeneration = ++_convexWatchHandoffGeneration;
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
-        destroyEntitlementSubscription();
-        destroySubscriptionWatch();
-        void initEntitlementSubscription(userId);
-        void initSubscriptionWatch(userId);
+        // destroyEntitlementSubscription deliberately PRESERVES the last
+        // snapshot so a WebSocket reconnect doesn't flash paying users back to
+        // locked. That preservation is wrong across an account change: until
+        // the new user's first snapshot lands, getEntitlementState() still
+        // describes the previous one. Anything reading it then attributes A's
+        // plan to B — e.g. premium-denial's clientBelievesPro would read B's
+        // legitimate 403 as A's entitlement desync and retry instead of
+        // showing the upgrade CTA. Sign-out already resets for this reason;
+        // an account switch carries the same hazard.
+        void startAccountAuthHandoff({
+          userId,
+          isCurrent: () => (
+            handoffGeneration === _convexWatchHandoffGeneration &&
+            getAuthState().user?.id === userId
+          ),
+          effects: {
+            destroyEntitlementSubscription,
+            resetEntitlementState,
+            destroySubscriptionWatch,
+            rebindConvexAuthForWatchHandoff,
+            initEntitlementSubscription,
+            initSubscriptionWatch,
+            cloudPrefsSignIn: (nextUserId) => cloudPrefsSignIn(nextUserId, SITE_VARIANT),
+          },
+        });
 
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = getStoredAnonId();
@@ -1459,16 +1504,21 @@ export class App {
             // Wait for ConvexClient WebSocket auth handshake to complete.
             // Without this, mutations arrive at Convex before the server
             // has the JWT → "Authentication required" errors.
-            const ready = await waitForConvexAuth(10_000);
+            const ready = await waitForConvexAuthForUser(userId, 10_000);
             if (!ready) {
               console.warn('[billing] claimSubscription skipped — Convex auth not ready');
               return;
             }
             const claimToken = getFreshStoredAnonClaimToken() ?? undefined;
-            const result = await client.mutation(api.payments.billing.claimSubscription, {
-              anonId,
-              ...(claimToken ? { claimToken } : {}),
-            });
+            const result = await settleAccountOperation(
+              userId,
+              'claiming the anonymous subscription',
+              () => client.mutation(api.payments.billing.claimSubscription, {
+                anonId,
+                ...(claimToken ? { claimToken } : {}),
+              }),
+            );
+            assertAccountStillCurrent(userId, 'claiming the anonymous subscription');
             const claimed = result.claimed;
             const totalClaimed = claimed.subscriptions + claimed.entitlements +
                                  claimed.customers + claimed.payments;
@@ -1479,14 +1529,72 @@ export class App {
             // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
             clearStoredAnonIdentity();
           })().catch((err: unknown) => {
+            if (!isAccountStillCurrent(userId)) return;
             console.warn('[billing] claimSubscription failed:', err);
             // Non-fatal — anon ID preserved for retry on next page load
           });
+        }
+
+        // Accept a Business Pro seat invite carried in the URL (mirror of the
+        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // Runs after sign-in so the invitee's Clerk email is available server-side.
+        const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
+        const businessInviteToken = new URLSearchParams(window.location.search).get('token');
+        if (businessInviteGrantId && businessInviteToken) {
+          void (async () => {
+            const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+            if (!client || !api) return;
+            const ready = await waitForConvexAuthForUser(userId, 10_000);
+            if (!ready) {
+              console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
+              return;
+            }
+            try {
+              await settleAccountOperation(
+                userId,
+                'accepting the Business Pro seat invite',
+                () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                  grantId: businessInviteGrantId as Id<'businessProGrants'>,
+                  token: businessInviteToken,
+                }),
+              );
+              assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
+              showToast('Pro seat activated');
+            } catch (err) {
+              if (!isAccountStillCurrent(userId)) return;
+              const msg = err instanceof Error ? err.message : 'Failed to accept invite';
+              if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+                showToast('This invite is for a different email address');
+              } else if (msg.includes('INVITE_EXPIRED')) {
+                showToast('This invite has expired');
+              } else if (msg.includes('BUSINESS_NOT_ACTIVE')) {
+                showToast('The Business plan that sent this invite is no longer active');
+              } else if (msg.includes('INVITE_ALREADY_USED')) {
+                showToast('This invite has already been used');
+              } else {
+                showToast('Could not accept invite');
+              }
+              console.warn('[business-seats] acceptBusinessInvite failed:', err);
+            } finally {
+              // Clear the invite params from the URL so a refresh does not retry.
+              const url = new URL(window.location.href);
+              url.searchParams.delete('accept-business-invite');
+              url.searchParams.delete('token');
+              window.history.replaceState({}, '', url.toString());
+            }
+          })();
         }
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
         });
       } else if (userId === null && _prevUserId !== null) {
+        // Clerk's mounted UserButton signs out through the SDK directly, so
+        // this observed transition is the authoritative place to invalidate
+        // cached/in-flight HTTP tokens and the authenticated Convex socket.
+        invalidateConvexAuthForSignOut();
+        // Supersede any server-auth wait that was started for the account
+        // being signed out before it gets a chance to attach user watches.
+        _convexWatchHandoffGeneration++;
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
         cloudPrefsSignOut();
@@ -2205,6 +2313,8 @@ export class App {
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
     }
 
     this.refreshScheduler.scheduleRefresh(

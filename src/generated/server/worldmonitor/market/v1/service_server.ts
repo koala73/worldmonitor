@@ -231,6 +231,23 @@ export interface AnalyzeStockResponse {
   marketSession: string;
   extendedPrice?: number;
   extendedChangePercent?: number;
+  fundamentals?: Fundamentals;
+  fundamentalScore?: number;
+  compositeScore: number;
+  nextEarningsDate?: string;
+  consensusEps?: number;
+  consensusRevenue?: number;
+  newsSentiment?: number;
+  realizedVolatility: number;
+  atr: number;
+  maxDrawdown: number;
+  ratingSignal: string;
+  ratingSummary: string;
+  ratingAction: string;
+  ratingConfidence: string;
+  ratingWhyNow: string;
+  ratingBullishFactors: string[];
+  ratingRiskFactors: string[];
 }
 
 export interface StockAnalysisHeadline {
@@ -265,6 +282,22 @@ export interface UpgradeDowngrade {
   fromGrade: string;
   action: string;
   epochGradeDate: number;
+}
+
+export interface Fundamentals {
+  profitMargin?: number;
+  grossMargin?: number;
+  operatingMargin?: number;
+  returnOnEquity?: number;
+  returnOnAssets?: number;
+  revenueGrowth?: number;
+  earningsGrowth?: number;
+  debtToEquity?: number;
+  totalCash?: number;
+  totalDebt?: number;
+  freeCashflow?: number;
+  ebitda?: number;
+  financialCurrency?: string;
 }
 
 export interface GetStockAnalysisHistoryRequest {
@@ -307,6 +340,7 @@ export interface BacktestStockResponse {
   generatedAt: string;
   evaluations: BacktestStockEvaluation[];
   engineVersion: string;
+  ratingBasis: string;
 }
 
 export interface BacktestStockEvaluation {

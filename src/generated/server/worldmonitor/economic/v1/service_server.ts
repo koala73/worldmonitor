@@ -156,6 +156,8 @@ export interface GetChinaMacroSnapshotResponse {
   sourceDecisions: ChinaMacroSourceDecision[];
   releaseEvents: ChinaReleaseEvent[];
   unavailable: boolean;
+  schemaVersion: number;
+  pillars: ChinaMacroPillarPulse[];
 }
 
 export interface ChinaMacroIndicator {
@@ -173,6 +175,38 @@ export interface ChinaMacroIndicator {
   stale: boolean;
   unavailableReason: string;
   contextOnly: boolean;
+  geography: string;
+  seasonalAdjustment: string;
+  periodKind: string;
+  observationPeriod: string;
+  releaseTime: string;
+  retrievalTime: string;
+  direction: string;
+  directionReason: string;
+  comparisonBasis: string;
+  comparisonValue: number;
+  hasComparisonValue: boolean;
+  revisionState: string;
+  vintageId: string;
+  revisionSequence: number;
+  provenanceJson: string;
+  vintages: ChinaMacroVintage[];
+  transportStatus: string;
+  transportFailureReason: string;
+}
+
+export interface ChinaMacroVintage {
+  vintageId: string;
+  sequence: number;
+  state: string;
+  value: number;
+  hasValue: boolean;
+  observationPeriod: string;
+  periodKind: string;
+  releaseTime: string;
+  retrievalTime: string;
+  supersededBy: string;
+  provenanceJson: string;
 }
 
 export interface ChinaMacroSourceDecision {
@@ -183,6 +217,12 @@ export interface ChinaMacroSourceDecision {
   checkedAt: string;
   optional: boolean;
   requestCount: number;
+  publisherId: string;
+  redirectBehavior: string;
+  requestBudget: number;
+  robotsStatus: string;
+  termsStatus: string;
+  sourceUrl: string;
 }
 
 export interface ChinaReleaseEvent {
@@ -196,6 +236,24 @@ export interface ChinaReleaseEvent {
   status: string;
   source: string;
   sourceUrl: string;
+}
+
+export interface ChinaMacroPillarPulse {
+  pillar: string;
+  direction: string;
+  reason: string;
+  observationIds: string[];
+}
+
+export interface GetChinaActivityNowcastRequest {
+}
+
+export interface GetChinaActivityNowcastResponse {
+  generatedAt: string;
+  methodVersion: string;
+  comparisonState: string;
+  upstreamUnavailable: boolean;
+  payloadJson: string;
 }
 
 export interface GetEnergyCapacityRequest {
@@ -826,6 +884,7 @@ export interface TenderSourceStatus {
   error?: string;
   lastSuccessfulAt: string;
   stale: boolean;
+  paced: boolean;
 }
 
 export interface FieldViolation {
@@ -878,6 +937,7 @@ export interface EconomicServiceHandler {
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
   getChinaMacroSnapshot(ctx: ServerContext, req: GetChinaMacroSnapshotRequest): Promise<GetChinaMacroSnapshotResponse>;
+  getChinaActivityNowcast(ctx: ServerContext, req: GetChinaActivityNowcastRequest): Promise<GetChinaActivityNowcastResponse>;
   getEnergyCapacity(ctx: ServerContext, req: GetEnergyCapacityRequest): Promise<GetEnergyCapacityResponse>;
   getBisPolicyRates(ctx: ServerContext, req: GetBisPolicyRatesRequest): Promise<GetBisPolicyRatesResponse>;
   getBisExchangeRates(ctx: ServerContext, req: GetBisExchangeRatesRequest): Promise<GetBisExchangeRatesResponse>;
@@ -1108,6 +1168,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getChinaMacroSnapshot(ctx, body);
           return new Response(JSON.stringify(result as GetChinaMacroSnapshotResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-china-activity-nowcast",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaActivityNowcastRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaActivityNowcast(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaActivityNowcastResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

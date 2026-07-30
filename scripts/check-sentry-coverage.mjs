@@ -2,16 +2,23 @@
 /**
  * Sentry-coverage lint guard.
  *
- * Flags catch blocks in api/ and convex/ that log via console.error /
- * console.warn but don't surface to Sentry — i.e., the silent-swallow
- * pattern that hid the canary OCC bug (Sentry issue WORLDMONITOR-PA)
- * for hours and made the post-mortem impossible.
+ * Flags catch blocks in api/, convex/ and server/ that swallow the error —
+ * the pattern that hid the canary OCC bug (Sentry issue WORLDMONITOR-PA)
+ * for hours and made the post-mortem impossible. `server/` counts because
+ * its code is bundled INTO the edge functions at deploy time, so a swallow
+ * there is invisible in exactly the same way.
  *
- * Heuristic: for each file under api/ or convex/, find catch blocks
- * (`} catch (...) { ... }`). If a block contains console.error/warn
- * but no `captureSilentError`, `captureEdgeException`, `Sentry.`, `throw`,
- * or `status: 5xx` (after stripping comments and string literals to avoid
- * matching those tokens inside text) — fail.
+ * Two heuristics run per catch block (`} catch (...) { ... }`), against a
+ * source with comments and string literals stripped so tokens inside text
+ * never count as code:
+ *
+ *   1. Logged but not reported — the body has console.error/warn but none
+ *      of `captureSilentError`, `captureEdgeException`, `Sentry.`, `throw`,
+ *      or `status: 5xx`.
+ *   2. Bare `catch {}` — no statements and no comment. Nothing reaches
+ *      Sentry, the console, or the next reader. Deliberate best-effort
+ *      swallows document themselves with a `/* why *\/` note (or the
+ *      override marker below), so this only fires on accidental ones.
  *
  * Mode:
  *   - `--diff` (default in pre-push): only flags catch blocks that
@@ -34,7 +41,7 @@ import { resolve } from 'node:path';
 const args = process.argv.slice(2);
 const SCAN_ALL = args.includes('--all');
 
-const TARGET_DIRS = ['api', 'convex'];
+const TARGET_DIRS = ['api', 'convex', 'server'];
 
 // A catch block is "OK" if it contains at least one of these markers.
 // `throw` covers re-throws (auto-Sentry catches the propagated throw).
@@ -308,17 +315,23 @@ function findUnsafeCatches(filePath, restrictToRanges) {
     const rawBody = rawSrc.slice(bodyOpenAbs + 1, bodyEnd - 1);
     const hasOverride = OVERRIDE_MARKER.test(rawBody);
 
-    if (
-      !hasOverride &&
-      LOG_PATTERN.test(body) &&
-      !SAFE_PATTERNS.some((p) => p.test(body))
-    ) {
+    const logsWithoutReporting =
+      LOG_PATTERN.test(body) && !SAFE_PATTERNS.some((p) => p.test(body));
+    // A bare `} catch {}` — no statements AND no comment explaining why the
+    // error is dropped. Deliberate best-effort swallows in this codebase
+    // carry a `/* why */` note, so requiring one keeps the intentional
+    // cases passing while flagging the accidental ones, where nothing
+    // reaches Sentry, the console, or the next reader.
+    const isSilent = body.trim() === '' && rawBody.trim() === '';
+
+    if (!hasOverride && (logsWithoutReporting || isSilent)) {
       const startLine = src.slice(0, absStart).split('\n').length;
       const endLine = src.slice(0, bodyEnd).split('\n').length;
       if (!restrictToRanges || rangesOverlap(startLine, endLine, restrictToRanges)) {
         offenders.push({
           filePath,
           lineNo: startLine,
+          reason: isSilent ? 'empty catch' : 'logged, not reported',
           snippet: rawBody.split('\n').find((l) => l.trim())?.trim().slice(0, 100) ?? '',
         });
       }
@@ -361,11 +374,12 @@ function main() {
   console.error('Sentry coverage check FAILED');
   console.error('');
   console.error(
-    `Found ${allOffenders.length} catch block(s) that log via console.error/warn`,
+    `Found ${allOffenders.length} catch block(s) that swallow the error`,
   );
-  console.error('but do not surface to Sentry. Either:');
+  console.error('(logged without reporting, or an empty catch body). Either:');
   console.error('  - call `captureSilentError(err, { tags: { ... } })` next to the log, OR');
-  console.error('  - re-throw the error (Convex auto-Sentry will capture it).');
+  console.error('  - re-throw the error (Convex auto-Sentry will capture it), OR');
+  console.error('  - if the swallow is intentional, add `// sentry-coverage-ok <reason>`.');
   console.error('');
   console.error('Helpers:');
   console.error('  api/ edge:  import { captureSilentError } from \'./_sentry-edge.js\';');
@@ -373,7 +387,7 @@ function main() {
   console.error('');
   console.error('Offenders:');
   for (const o of allOffenders) {
-    console.error(`  ${o.filePath}:${o.lineNo}  ${o.snippet}`);
+    console.error(`  ${o.filePath}:${o.lineNo}  [${o.reason}]  ${o.snippet}`);
   }
   console.error('============================================================');
   return 1;

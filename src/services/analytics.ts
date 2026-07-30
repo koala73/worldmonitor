@@ -10,8 +10,10 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
+import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
+const UMAMI_IDENTIFY_ENDPOINT = new URL('/api/send', UMAMI_SCRIPT_SRC).href;
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // data-domains is temporarily reduced to the worldmonitor.app hosts + happy
 // while upstream Umami issue #4183 (https://github.com/umami-software/umami/issues/4183)
@@ -30,15 +32,28 @@ const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.
 const UMAMI_QUEUE_LIMIT = 50;
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
+const UMAMI_IDENTIFY_RETRY_LIMIT = 2;
+const UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS = 1_000;
 
 type QueuedUmamiCall =
   | { kind: 'track'; event: UmamiEvent; data?: Record<string, unknown> }
-  | { kind: 'identify'; data: Record<string, unknown> };
+  | {
+      kind: 'identify';
+      data: Record<string, unknown>;
+      revision: number;
+      retryAttempt: number;
+    };
+type IdentifyCall = Extract<QueuedUmamiCall, { kind: 'identify' }>;
 
 const pendingUmamiCalls: QueuedUmamiCall[] = [];
 let umamiLoadScheduled = false;
 let umamiLoadStarted = false;
 let umamiLoadAttempts = 0;
+let latestIdentityRevision = 0;
+let identifyRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let identifyInFlight = false;
+let pendingIdentityCall: IdentifyCall | null = null;
+let identifyDeliveryGeneration = 0;
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -112,36 +127,208 @@ const EVENTS = {
   // whether the click target maps to a country the user follows;
   // correlate with non-followed threads to size the bias's effect.
   'brief-thread-open': true,
+  // Pro Activation Onboarding funnel (#4771) — day-0 activation interstitial:
+  // entered → per-step confirmed/skipped/blocked/failed → exit (with completion
+  // state). Names mirror ACTIVATION_EVENTS in @/services/pro-activation-state
+  // (the single naming source); this catalog matches those literals.
+  // `blocked` is a platform refusal, not a user choice (#5609); `failed`
+  // (#5600) is our own write erroring. Both used to land as `skipped`, which is
+  // how a day of broken day-0 activations read as user disinterest.
+  'pro-activation-entered': true,
+  'pro-activation-step-confirmed': true,
+  'pro-activation-step-skipped': true,
+  'pro-activation-step-blocked': true,
+  'pro-activation-step-failed': true,
+  'pro-activation-exit': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
 
 function queueUmamiCall(call: QueuedUmamiCall): void {
+  // Identity is a latest-snapshot write, not an append-only event. Auth and
+  // billing can both publish before the deferred tracker loads; replaying every
+  // intermediate snapshot concurrently is both wasteful and the trigger for
+  // Umami #4183's sessionData race. Keep only the newest queued identity.
+  if (call.kind === 'identify') {
+    for (let index = pendingUmamiCalls.length - 1; index >= 0; index -= 1) {
+      if (pendingUmamiCalls[index]?.kind === 'identify') {
+        pendingUmamiCalls.splice(index, 1);
+      }
+    }
+  }
   if (pendingUmamiCalls.length >= UMAMI_QUEUE_LIMIT) {
     pendingUmamiCalls.shift();
   }
   pendingUmamiCalls.push(call);
 }
 
+function clearScheduledIdentityRetry(): void {
+  if (identifyRetryTimer !== null) {
+    clearTimeout(identifyRetryTimer);
+    identifyRetryTimer = null;
+  }
+}
+
+function createIdentifyCall(data: Record<string, unknown>): QueuedUmamiCall {
+  latestIdentityRevision += 1;
+  clearScheduledIdentityRetry();
+  return {
+    kind: 'identify',
+    data,
+    revision: latestIdentityRevision,
+    retryAttempt: 0,
+  };
+}
+
+function scheduleIdentityRetry(call: IdentifyCall): void {
+  if (call.revision !== latestIdentityRevision) return;
+  if (call.retryAttempt >= UMAMI_IDENTIFY_RETRY_LIMIT) return;
+
+  clearScheduledIdentityRetry();
+  const generation = identifyDeliveryGeneration;
+  const retryCall = {
+    ...call,
+    retryAttempt: call.retryAttempt + 1,
+  };
+  const delay = UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS * (2 ** call.retryAttempt);
+  identifyRetryTimer = setTimeout(() => {
+    identifyRetryTimer = null;
+    if (generation !== identifyDeliveryGeneration) return;
+    if (retryCall.revision !== latestIdentityRevision) return;
+    if (!sendUmamiCall(retryCall)) {
+      queueUmamiCall(retryCall);
+    }
+  }, delay);
+}
+
+function isUmamiIdentifyBeacon(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const url = typeof input === 'string'
+    ? input
+    : input instanceof URL
+      ? input.href
+      : input.url;
+  const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+  if (url !== UMAMI_IDENTIFY_ENDPOINT || method.toUpperCase() !== 'POST' || typeof init?.body !== 'string') {
+    return false;
+  }
+  try {
+    return (JSON.parse(init.body) as { type?: unknown }).type === 'identify';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Umami v3.1.0 swallows its own fetch and JSON failures, including HTTP 500s,
+ * so its public identify() promise does not tell us whether the collector
+ * accepted an identity snapshot. Observe just this synchronous beacon while
+ * leaving the native request/promise chain untouched for Umami's cache update.
+ */
+function identifyWithDeliveryObserver(
+  umami: NonNullable<Window['umami']>,
+  data: Record<string, unknown>,
+): unknown {
+  const originalFetch = window.fetch;
+  let observedDelivery: Promise<Response> | undefined;
+  const observedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (!isUmamiIdentifyBeacon(input, init)) return originalFetch(input, init);
+    try {
+      const result = originalFetch(input, init);
+      const delivery = Promise.resolve(result).then((response) => {
+        if (!response.ok) throw new Error(`Umami identify collector returned HTTP ${response.status}`);
+        return response;
+      });
+      // Keep an unexpected synchronous tracker throw from turning the observer
+      // promise into a separate unhandled rejection. sendUmamiCall still
+      // receives the original rejecting delivery promise below.
+      void delivery.catch(() => {});
+      observedDelivery = delivery;
+      return result;
+    } catch (error) {
+      const delivery = Promise.reject<Response>(error);
+      void delivery.catch(() => {});
+      observedDelivery = delivery;
+      throw error;
+    }
+  }) as typeof window.fetch;
+
+  try {
+    window.fetch = observedFetch;
+  } catch {
+    // A non-writable fetch is not a delivery signal; preserve the native
+    // tracker behavior rather than fabricating a request or failing identity.
+    return umami.identify(data);
+  }
+  try {
+    const nativeResult = umami.identify(data);
+    return observedDelivery ?? nativeResult;
+  } finally {
+    window.fetch = originalFetch;
+  }
+}
+
+function finishIdentityDelivery(call: IdentifyCall, generation: number, failed: boolean): void {
+  if (generation !== identifyDeliveryGeneration) return;
+
+  identifyInFlight = false;
+  const nextCall = pendingIdentityCall;
+  pendingIdentityCall = null;
+  if (nextCall) {
+    if (!sendUmamiCall(nextCall)) {
+      queueUmamiCall(nextCall);
+    }
+    return;
+  }
+  if (failed) {
+    scheduleIdentityRetry(call);
+  }
+}
+
+function sendIdentityCall(
+  call: IdentifyCall,
+  umami: NonNullable<Window['umami']>,
+): boolean {
+  // Umami stores each identity field independently with an update-then-create
+  // sequence. Keep a single collector write active and retain only the latest
+  // snapshot received during that write so auth and billing cannot race the
+  // same sessionData key.
+  if (identifyInFlight) {
+    pendingIdentityCall = call;
+    return true;
+  }
+
+  identifyInFlight = true;
+  const generation = identifyDeliveryGeneration;
+  try {
+    const result = identifyWithDeliveryObserver(umami, call.data);
+    if (result && typeof (result as { then?: unknown }).then === 'function') {
+      void Promise.resolve(result).then(
+        () => finishIdentityDelivery(call, generation, false),
+        () => finishIdentityDelivery(call, generation, true),
+      );
+    } else {
+      finishIdentityDelivery(call, generation, false);
+    }
+  } catch {
+    finishIdentityDelivery(call, generation, true);
+  }
+  return true;
+}
+
 function sendUmamiCall(call: QueuedUmamiCall): boolean {
   if (typeof window === 'undefined') return false;
   const umami = window.umami;
   if (!umami) return false;
+  if (call.kind === 'identify') {
+    return sendIdentityCall(call, umami);
+  }
   try {
-    const result: unknown = call.kind === 'track'
-      ? umami.track(call.event, call.data)
-      : umami.identify(call.data);
-    // Umami's track()/identify() return the beacon `fetch()` promise, which
-    // rejects ASYNCHRONOUSLY on a transient network failure — offline, an
-    // ad-blocker extension that wraps window.fetch, or the self-hosted
-    // collector being briefly unreachable. This try/catch only guards a
-    // SYNCHRONOUS throw, so an unhandled rejection would otherwise escape to
-    // onunhandledrejection and surface in Sentry as a bare
-    // `TypeError: Failed to fetch` rooted in whatever first-party code fired
-    // the event (WORLDMONITOR-WW/WX/WY). A dropped analytics beacon is
-    // unactionable — swallow the rejection.
+    const result: unknown = umami.track(call.event, call.data);
+    // A tracker promise can reject ASYNCHRONOUSLY on a transient network
+    // failure. Track remains at-most-once: Umami #4183 can return 500 after
+    // committing the event row.
     if (result && typeof (result as { catch?: unknown }).catch === 'function') {
-      (result as Promise<unknown>).catch(() => {});
+      void (result as Promise<unknown>).catch(() => {});
     }
     // Durable-delivery contract for the terminal funnel event (#4934
     // round-2 F2): the marker written by trackCheckoutSuccess is cleared
@@ -238,14 +425,16 @@ export function identifyUser(
     ...(subStatus != null && { subStatus }),
     ...(planKey != null && { planKey }),
   };
-  if (!sendUmamiCall({ kind: 'identify', data })) {
-    queueUmamiCall({ kind: 'identify', data });
+  const call = createIdentifyCall(data);
+  if (!sendUmamiCall(call)) {
+    queueUmamiCall(call);
   }
 }
 
 export function clearIdentity(): void {
-  if (!sendUmamiCall({ kind: 'identify', data: {} })) {
-    queueUmamiCall({ kind: 'identify', data: {} });
+  const call = createIdentifyCall({});
+  if (!sendUmamiCall(call)) {
+    queueUmamiCall(call);
   }
 }
 
@@ -432,10 +621,15 @@ export function trackSignOut(): void {
  * across the shared module import in tests/secondary-startup.test.mts.
  */
 export function resetAnalyticsForTesting(): void {
+  clearScheduledIdentityRetry();
+  identifyDeliveryGeneration += 1;
+  identifyInFlight = false;
+  pendingIdentityCall = null;
   pendingUmamiCalls.length = 0;
   umamiLoadScheduled = false;
   umamiLoadStarted = false;
   umamiLoadAttempts = 0;
+  latestIdentityRevision = 0;
 }
 
 export function trackGateHit(feature: string): void {
@@ -623,6 +817,50 @@ const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'ca
 export function trackCheckoutFailed(rawStatus: string): void {
   const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
   track('checkout-failed', { status });
+}
+
+// ---------------------------------------------------------------------------
+// Pro Activation Onboarding funnel (#4771)
+// ---------------------------------------------------------------------------
+
+/** The activation funnel events — the leaf's ACTIVATION_EVENTS is the naming source. */
+export type ProActivationEvent = ActivationEventName;
+
+/**
+ * The ONLY fields allowed on an activation event payload. Deliberately narrow:
+ * the plan tier, the step id (step events), and the aggregate exit counts
+ * (exit event). NEVER the subscription id or any billing identifier — cohort
+ * joins key on the userId Umami already receives via identifyUser(). Mirrors
+ * the closed-vocabulary minimization of bucketProductIdForAnalytics above.
+ */
+export interface ProActivationEventFields {
+  planKey?: string | null;
+  step?: ActivationStepId;
+  completion?: 'complete' | 'partial' | 'none';
+  verified?: number;
+  pending?: number;
+  failed?: number;
+  total?: number;
+}
+
+/**
+ * Track a Pro-activation funnel event with a minimized payload. Every field is
+ * whitelisted here, so a caller cannot widen the payload into billing identity:
+ * only planKey / step / the aggregate exit counts ever reach Umami.
+ */
+export function trackProActivation(
+  event: ProActivationEvent,
+  fields: ProActivationEventFields = {},
+): void {
+  const data: Record<string, unknown> = {};
+  if (fields.planKey != null) data.planKey = fields.planKey;
+  if (fields.step != null) data.step = fields.step;
+  if (fields.completion != null) data.completion = fields.completion;
+  if (fields.verified != null) data.verified = fields.verified;
+  if (fields.pending != null) data.pending = fields.pending;
+  if (fields.failed != null) data.failed = fields.failed;
+  if (fields.total != null) data.total = fields.total;
+  track(event, data);
 }
 
 // ---------------------------------------------------------------------------

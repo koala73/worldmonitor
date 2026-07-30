@@ -158,7 +158,9 @@ export async function initI18n(): Promise<void> {
   try { localStorage.removeItem('i18nextLng'); } catch { /* private mode */ }
 
   // Custom detectors:
-  // - wmQuery honors shareable/SEO language URLs such as /dashboard?lang=fa.
+  // - wmQuery honors shareable application-language URLs such as
+  //   /dashboard?lang=fa. These remain base-canonical and are not advertised
+  //   as separately indexable hreflang documents.
   // - wmExplicit reads ONLY the explicit-choice key. Returns undefined when
   //   unset so detection falls through to navigator. This replaces the default
   //   `localStorage` step (which would read i18next's auto-cache key) so a user

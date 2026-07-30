@@ -47,6 +47,36 @@ describe('agent-mode view (/?mode=agent)', () => {
     assert.doesNotThrow(() => readFileSync(join(ROOT, 'public/sandbox/get-resilience-score.json')));
   });
 
+  it('advertises every official SDK ecosystem with an install command', () => {
+    const sdks = view.endpoints.sdks;
+    assert.deepEqual(
+      Object.keys(sdks).filter((k) => !['guide', 'note'].includes(k)).sort(),
+      ['go', 'javascript', 'python', 'ruby'],
+    );
+    assert.equal(sdks.python.install, 'pip install worldmonitor-sdk');
+    assert.match(sdks.go.install, /^go get github\.com\/koala73\/worldmonitor\/sdk\/go$/);
+    for (const key of ['javascript', 'python', 'ruby', 'go']) {
+      assert.match(sdks[key].url, /^https:\/\//, `sdks.${key}.url must be a registry URL`);
+    }
+    // The SDK sources these advertise must exist in-repo.
+    for (const dir of ['sdk/python', 'sdk/ruby', 'sdk/go']) {
+      assert.doesNotThrow(() => readFileSync(join(ROOT, dir, 'README.md')), `${dir} must exist`);
+    }
+  });
+
+  it('the marketing homepage points at the agent view via link rel=alternate', () => {
+    // Hand-synced pair: the pro-test source and the committed build artifact
+    // must both carry the pointer (the pre-push gate rebuilds and compares).
+    const linkTag =
+      '<link rel="alternate" type="application/json" href="https://www.worldmonitor.app/?mode=agent"';
+    for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
+      assert.ok(
+        readFileSync(join(ROOT, path), 'utf-8').includes(linkTag),
+        `${path} must advertise the agent-mode view via <link rel="alternate">`,
+      );
+    }
+  });
+
   it('advertises the schemamap and every section llms.txt', () => {
     assert.equal(view.discovery.schemamap, 'https://www.worldmonitor.app/schemamap.xml');
     assert.doesNotThrow(() => readFileSync(join(ROOT, 'public/schemamap.xml')));
@@ -55,7 +85,7 @@ describe('agent-mode view (/?mode=agent)', () => {
     const trackedSectionFiles = {
       api: 'public/api/llms.txt',
       developers: 'public/developers/llms.txt',
-      blog: 'blog-site/public/llms.txt', // copied to /blog/llms.txt by the Astro build
+      blog: 'blog-site/src/pages/llms.txt.ts', // generated at /blog/llms.txt by Astro
     };
     for (const [section, path] of Object.entries(trackedSectionFiles)) {
       assert.doesNotThrow(

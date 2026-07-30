@@ -619,14 +619,24 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         uri: 'ui://worldmonitor/news-intelligence.html',
         hostId: 'list',
         raw: { data: { insights: { topStories: [{
-          primaryTitle: 'Port disruption expands', primarySource: 'WorldMonitor Wire',
+          primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)',
+          sourceProvenance: {
+            risk: 'high', type: 'gov', riskDeclared: true, typeDeclared: true,
+            riskReviewed: true, typeReviewed: true,
+            stateAffiliated: 'China',
+          },
           category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
         }] } } },
         summary: { data: { insights: { topStories: { count: 1, sample: [{
-          primaryTitle: 'Summary news headline', primarySource: 'Summary Wire', category: 'politics',
+          primaryTitle: 'Summary news headline', primarySource: 'Unreviewed Source',
+          sourceProvenance: {
+            risk: 'unknown', type: 'unknown', riskDeclared: false, typeDeclared: false,
+            riskReviewed: false, typeReviewed: false,
+          },
+          category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /WorldMonitor Wire/, /Alert/, /Germany/],
-        summaryTokens: [/Summary news headline/, /Summary Wire/],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source: China/, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /\? Unreviewed/],
       },
       {
         uri: 'ui://worldmonitor/conflict-events.html',
@@ -737,6 +747,30 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       if (entry.uri.includes('prediction-markets')) assert.ok(widths.includes('0%'), `${entry.uri}: probability bars must clamp negative values to zero`);
       else assert.ok(widths.includes('25%'), `${entry.uri}: fractional forecast probability must scale to 0-100`);
     }
+  });
+
+  it('conflict-events widget distinguishes byte-truncated responses from complete results', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events.html')));
+    const html = (await res.json()).result.contents[0].text;
+    const payload = {
+      data: {
+        'ucdp-events': { events: [{ sideA: 'Side A', sideB: 'Side B' }] },
+        partial: true,
+        truncation: {
+          reason: 'output_budget',
+          original_event_count: 1000,
+          returned_event_count: 375,
+        },
+      },
+    };
+
+    const partialView = mountWidgetHtml(html);
+    partialView.sendToolResult(payload);
+    assert.match(partialView.text('foot'), /Source response includes 375 of 1,000 events \(output limit\)\./);
+
+    const completeView = mountWidgetHtml(html);
+    completeView.sendToolResult({ data: { 'ucdp-events': { events: [] } } });
+    assert.doesNotMatch(completeView.text('foot'), /output limit/i, 'complete responses must not show truncation copy');
   });
 
   it('EXPANSION WIDGETS: hostile tool text stays literal textContent in all five renderers', async () => {
@@ -1203,6 +1237,49 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(body.error?.code, -32029, 'cap-exceeded must use the -32029 quota code');
     assert.equal(pipe.count, 50,
       'counter must return to the cap after the rejected reservation rolls back (initialCount=50, no net change)');
+  });
+
+  it('auth symmetry extends to the PLAN limit: a Pro Business read is capped at 250, not 50', async () => {
+    // The plan-driven allowance (2026-07-25-001 U3) is resolved by the context
+    // pre-check and threaded through buildResourceResponse into the dispatcher.
+    // If that thread is dropped, a resources/read silently falls back to the
+    // 50/day default while the equivalent tools/call allows 250 — the exact
+    // asymmetry the auth-symmetry contract above exists to forbid, just
+    // pointing the other way (under-serving a paying customer).
+    const proBusiness = async () => ({
+      planKey: 'pro_business_monthly',
+      features: {
+        tier: 1,
+        mcpAccess: true,
+        planLimits: {
+          apiRequestsPerDay: 0,
+          apiBurstRequestsPerMinute: 0,
+          mcpCallsPerDay: 250,
+          mcpBurstRequestsPerMinute: 60,
+        },
+      },
+      validUntil: Date.now() + 86_400_000,
+    });
+
+    const { deps, pipe } = makeProDeps({
+      pipelineOpts: { initialCount: 60 },
+      getEntitlements: proBusiness,
+    });
+    const res = await mcpHandler(proReq('POST', readBody('worldmonitor://countries/de/risk')), deps);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `read at count 60 must succeed on a 250/day plan, got: ${JSON.stringify(body.error)}`);
+    assert.equal(pipe.count, 61);
+
+    const { deps: depsCapped, pipe: pipeCapped } = makeProDeps({
+      pipelineOpts: { initialCount: 250 },
+      getEntitlements: proBusiness,
+    });
+    const capped = await mcpHandler(proReq('POST', readBody('worldmonitor://countries/de/risk')), depsCapped);
+    assert.equal(capped.status, 429, 'the 251st read must still hit the plan cap');
+    const cappedBody = await capped.json();
+    assert.equal(cappedBody.error?.code, -32029);
+    assert.match(cappedBody.error.message, /\(250\/day\)/, 'the re-emitted inner message must quote the plan limit');
+    assert.equal(pipeCapped.count, 250);
   });
 
   it('cap-exhausted resources/read forwards Retry-After header (parity with tools/call)', async () => {

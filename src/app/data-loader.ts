@@ -121,6 +121,7 @@ import type {
   OtherTokensPanel,
   SectorValuation,
 } from '@/components/MarketPanel';
+import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
@@ -139,6 +140,8 @@ import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
 import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
 import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import type { ChinaCorridorPanel } from '@/components/ChinaCorridorPanel';
+import type { ChinaActivityNowcastPanel } from '@/components/ChinaActivityNowcastPanel';
 import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
 import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
 import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
@@ -169,7 +172,7 @@ import type {
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
-import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
+import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
@@ -181,13 +184,9 @@ import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
-const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
-  THREAT_LEVEL_UNSPECIFIED: 'info',
-  THREAT_LEVEL_LOW: 'low',
-  THREAT_LEVEL_MEDIUM: 'medium',
-  THREAT_LEVEL_HIGH: 'high',
-  THREAT_LEVEL_CRITICAL: 'critical',
-};
+// The proto-level -> label map lives in shared/news-clustering-core.js so the
+// client digest loader and the server-side MCP tools cannot drift (#5697).
+import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
 
 const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
   STORY_PHASE_BREAKING:   'breaking',
@@ -197,7 +196,7 @@ const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
 };
 
 function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
-  const level = PROTO_TO_CLIENT_LEVEL[p.threat?.level ?? 'THREAT_LEVEL_UNSPECIFIED'];
+  const level: ClientThreatLevel = protoThreatLevelToLabel(p.threat?.level);
   return {
     source: p.source,
     title: p.title,
@@ -794,6 +793,12 @@ export class DataLoaderManager implements AppModule {
         if (shouldLoad('supply-chain')) {
           tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
         }
+        if (shouldLoad('china-corridors')) {
+          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors()) });
+        }
+        if (shouldLoad('china-activity-nowcast')) {
+          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast()) });
+        }
       }
     }
 
@@ -847,7 +852,11 @@ export class DataLoaderManager implements AppModule {
           }
           const data = givingResult.data;
           this.callPanel('giving', 'setData', data);
-          if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
+          if (givingResult.state === 'cached-refresh-unavailable') {
+            dataFreshness.recordError('giving', `Giving refresh unavailable (${givingResult.refreshFailure ?? 'unknown'})`);
+          } else if (data.platforms.length > 0) {
+            dataFreshness.recordUpdate('giving', data.platforms.length);
+          }
         }),
       });
     }
@@ -1816,6 +1825,11 @@ export class DataLoaderManager implements AppModule {
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
       let stocksResult: Awaited<ReturnType<typeof fetchMultipleStocks>>;
       const marketsPanel = this.ctx.panels['markets'] as MarketPanel | undefined;
+      const hydratedDisclosures = getHydratedData('chinaCorporateDisclosures') as
+        ChinaCorporateDisclosureSnapshot | undefined;
+      if (hydratedDisclosures !== undefined) {
+        marketsPanel?.renderDisclosures(hydratedDisclosures);
+      }
 
       if (customEntries.length === 0 && hydratedMarkets?.quotes?.length) {
         const symbolMetaMap = new Map(effectiveSymbols.map((s) => [s.symbol, s]));
@@ -3521,6 +3535,28 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  async loadChinaCorridors(): Promise<void> {
+    const panel = this.ctx.panels['china-corridors'] as ChinaCorridorPanel | undefined;
+    if (!panel) return;
+    try {
+      await panel.fetchData();
+    } catch (error) {
+      console.error('[App] China corridors failed:', error);
+      panel.showError('China corridor data unavailable', () => void this.loadChinaCorridors());
+    }
+  }
+
+  async loadChinaActivityNowcast(): Promise<void> {
+    const panel = this.ctx.panels['china-activity-nowcast'] as ChinaActivityNowcastPanel | undefined;
+    if (!panel) return;
+    try {
+      await panel.fetchData();
+    } catch (error) {
+      console.error('[App] China activity nowcast failed:', error);
+      panel.showError('China activity comparison unavailable', () => void this.loadChinaActivityNowcast());
+    }
+  }
+
   async loadDiseaseOutbreaks(): Promise<void> {
     try {
       const data = await fetchDiseaseOutbreaks();
@@ -3875,11 +3911,11 @@ export class DataLoaderManager implements AppModule {
 
   private async loadRenewableData(): Promise<void> {
     const { fetchRenewableEnergyData, fetchEnergyCapacity } = await import('@/services/renewable-energy-data');
-    const data = await fetchRenewableEnergyData();
-    this.callPanel('renewable', 'setData', data);
-    if (SITE_VARIANT === 'happy' && data?.globalPercentage) {
+    const result = await fetchRenewableEnergyData();
+    this.callPanel('renewable', 'setData', result);
+    if (SITE_VARIANT === 'happy' && result.state === 'live' && result.data?.globalPercentage) {
       checkMilestones({
-        renewablePercent: data.globalPercentage,
+        renewablePercent: result.data.globalPercentage,
       });
     }
     try {

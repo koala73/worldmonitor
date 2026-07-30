@@ -2,8 +2,8 @@
  * Tests for server handler correctness after PR #106 review fixes.
  *
  * These tests verify:
- * - Humanitarian summary handler rejects unmapped country codes
- * - Humanitarian summary returns ISO-2 country_code (not ISO-3)
+ * - Humanitarian summary aggregation rejects unmapped country codes
+ * - Humanitarian summary aggregation returns ISO-2 country_code (not ISO-3)
  * - Hardcoded political context is removed from LLM prompts
  * - Headline deduplication logic works correctly
  * - Cache key builder produces deterministic output
@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
+import { aggregateHapiConflictEvents } from '../scripts/_conflict-hapi.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -27,50 +28,72 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. Humanitarian summary: country fallback + ISO-2 contract
 // ========================================================================
 
-describe('getHumanitarianSummary handler', () => {
+describe('aggregateHapiConflictEvents (scripts/_conflict-hapi.mjs)', () => {
+  // #5554: server/worldmonitor/conflict/v1/get-humanitarian-summary.ts no longer
+  // fetches HAPI at all — it's a cache-only read of what this seeder writes (HDX's
+  // app_identifier rate limiting is per-identifier, so a per-request RPC fetch would
+  // stack uncoordinated traffic on top of the seeder's bulk refresh). The
+  // BLOCKING-1/BLOCKING-2/MEDIUM-1 guards below (originally PR #106, against the old
+  // RPC-handler implementation) moved here with the fetch/aggregation logic itself.
+  it('rejects unmapped and out-of-scope ISO3 rows and returns the ISO2 proto contract', () => {
+    const updatedAt = Date.parse('2026-07-29T00:00:00Z');
+    const result = aggregateHapiConflictEvents([
+      {
+        location_code: 'ZZZ',
+        location_name: 'Unknown',
+        reference_period_start: '2026-07-01',
+        admin_level: 0,
+        event_type: 'political_violence',
+        events: 500,
+        fatalities: 500,
+      },
+      {
+        location_code: 'USA',
+        location_name: 'United States',
+        reference_period_start: '2026-07-01',
+        admin_level: 0,
+        event_type: 'political_violence',
+        events: 250,
+        fatalities: 250,
+      },
+      {
+        location_code: 'SDN',
+        location_name: 'Sudan',
+        reference_period_start: '2026-07-01',
+        admin_level: 0,
+        event_type: 'political_violence',
+        events: 12,
+        fatalities: 3,
+      },
+    ], { nowMs: updatedAt, countryCodes: ['SD'] });
+
+    assert.deepEqual(result, {
+      SD: {
+        summary: {
+          countryCode: 'SD',
+          countryName: 'Sudan',
+          conflictEventsTotal: 12,
+          conflictPoliticalViolenceEvents: 12,
+          conflictFatalities: 3,
+          referencePeriod: '2026-07-01',
+          conflictDemonstrations: 0,
+          updatedAt,
+        },
+      },
+    });
+    assert.equal('populationAffected' in result.SD.summary, false);
+    assert.equal('peopleInNeed' in result.SD.summary, false);
+  });
+});
+
+describe('getHumanitarianSummary handler (cache-only)', () => {
   const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
 
-  it('returns undefined when country has no ISO3 mapping (BLOCKING-1)', () => {
-    // Must have early return when no ISO3 mapping (before HAPI fetch)
-    assert.match(src, /if\s*\(\s*!iso3\s*\)\s*return\s+undefined/,
-      'Should return undefined when no ISO3 mapping exists');
-    // The countryCode branch must NOT fall back to Object.values(byCountry)[0]
-    // Extract only the "if (countryCode)" block for picking entry and verify no fallback
-    const pickSection = src.slice(
-      src.indexOf('// Pick the right country entry'),
-      src.indexOf('if (!entry) return undefined;'),
-    );
-    // Inside the countryCode branch, should NOT have Object.values(byCountry)[0] as fallback
-    const countryCodeBranch = pickSection.slice(0, pickSection.indexOf('} else {'));
-    assert.doesNotMatch(countryCodeBranch, /Object\.values\(byCountry\)\[0\]/,
-      'countryCode branch should not fallback to first entry');
-  });
-
-  it('returns ISO-2 country_code per proto contract (BLOCKING-2)', () => {
-    // Must NOT return ISO2_TO_ISO3[...] as countryCode
-    assert.doesNotMatch(src, /countryCode:\s*ISO2_TO_ISO3/,
-      'Should not return ISO-3 code in countryCode field');
-    // Should return the original countryCode (uppercased)
-    assert.match(src, /countryCode:\s*countryCode.*\.toUpperCase\(\)/,
-      'Should return original ISO-2 countryCode uppercased');
-  });
-
-  it('uses renamed conflict-event proto fields (MEDIUM-1)', () => {
-    assert.match(src, /conflictEventsTotal/,
-      'Should use conflictEventsTotal field');
-    assert.match(src, /conflictPoliticalViolenceEvents/,
-      'Should use conflictPoliticalViolenceEvents field');
-    assert.match(src, /conflictFatalities/,
-      'Should use conflictFatalities field');
-    assert.match(src, /referencePeriod/,
-      'Should use referencePeriod field');
-    assert.match(src, /conflictDemonstrations/,
-      'Should use conflictDemonstrations field');
-    // Old field names must not appear
-    assert.doesNotMatch(src, /populationAffected/,
-      'Should not reference old populationAffected field');
-    assert.doesNotMatch(src, /peopleInNeed/,
-      'Should not reference old peopleInNeed field');
+  it('never calls HAPI directly — reads the seeder-written cache only', () => {
+    assert.doesNotMatch(src, /hapi\.humdata\.org/,
+      'The RPC handler must not fetch HAPI directly (#5554 — per-identifier rate limiting means every direct-fetch call site shares one throttle bucket)');
+    assert.match(src, /getCachedJson\(/,
+      'Should read via a plain cache lookup, not a fetch-on-miss helper');
   });
 });
 

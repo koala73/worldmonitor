@@ -1,4 +1,22 @@
 import type { AuthSession } from './auth-state';
+import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from './billing';
+import { deriveBillingUxState, getBillingGateOverride, getReactivationHref } from './billing-state';
+import { getEntitlementState } from './entitlements';
+import {
+  isExportGateActive,
+  resolveExportGate,
+  resolveTabCap,
+  type ExportGateInputs,
+  type ExportGateLockReason,
+  type ExportGateVerdict,
+  type TabCapVerdict,
+} from './export-gate';
+import {
+  resolvePlaybackGate,
+  type PlaybackGateInputs,
+  type PlaybackGateVerdict,
+} from './playback-gate';
+import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
 import { isProUser } from './widget-store';
 
@@ -6,6 +24,12 @@ export enum PanelGateReason {
   NONE = 'none',           // show content (pro user, or desktop with API key, or non-premium panel)
   ANONYMOUS = 'anonymous', // "Sign In to Unlock"
   FREE_TIER = 'free_tier', // "Upgrade to Pro"
+  // #4771 billing-aware refinements of FREE_TIER — the user has (or had) paid
+  // evidence, so a generic Upgrade CTA would be misleading.
+  PAYMENT_ON_HOLD = 'payment_on_hold', // "Update Payment" (payment failed, retry window)
+  RENEWAL_PENDING = 'renewal_pending', // "Refresh Status" (renewal verification in progress)
+  RENEWAL_FAILED = 'renewal_failed',   // "Manage Billing" (provider check failed)
+  LAPSED = 'lapsed',                   // "Resubscribe" (provider confirmed coverage ended)
 }
 
 /**
@@ -34,6 +58,20 @@ export function hasPremiumAccess(authState?: AuthSession): boolean {
 }
 
 /**
+ * Snapshot what the CLIENT believes about this account's plan, for
+ * `classifyPremiumDenial` (#5608). Deliberately narrower than
+ * hasPremiumAccess: the desktop API key and the browser tester keys unlock
+ * panels locally but assert nothing about the signed-in Clerk account, so
+ * they must not suppress a legitimate upgrade CTA.
+ */
+export function readClientEntitlementBelief(authState: AuthSession): ClientEntitlementBelief {
+  return {
+    entitlementTier: getEntitlementState()?.features.tier ?? null,
+    authRole: authState.user?.role ?? null,
+  };
+}
+
+/**
  * Determine gating reason for a premium panel given current auth state.
  * Non-premium panels always return NONE.
  */
@@ -50,4 +88,156 @@ export function getPanelGateReason(
   // Web gating based on Clerk auth state
   if (!authState.user) return PanelGateReason.ANONYMOUS;
   return PanelGateReason.FREE_TIER;
+}
+
+/**
+ * #4771: refine a generic FREE_TIER verdict with the customer's billing
+ * state. A paying user whose local renewal evidence went stale (missed or
+ * exhausted webhook) must see "we're verifying your renewal" — not an
+ * Upgrade CTA that pushes them toward duplicate checkout. Reads the same
+ * reactive snapshots the payment-failure banner uses, so panel copy and
+ * banner always agree. Non-FREE_TIER reasons pass through untouched:
+ * anonymous users have no billing state, and NONE means access works.
+ */
+export function resolveBillingAwareGateReason(reason: PanelGateReason): PanelGateReason {
+  if (reason !== PanelGateReason.FREE_TIER) return reason;
+  const state = deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now());
+  switch (getBillingGateOverride(state)) {
+    case 'payment_on_hold':
+      return PanelGateReason.PAYMENT_ON_HOLD;
+    case 'renewal_pending':
+      return PanelGateReason.RENEWAL_PENDING;
+    case 'renewal_failed':
+      return PanelGateReason.RENEWAL_FAILED;
+    case 'lapsed':
+      return PanelGateReason.LAPSED;
+    default:
+      return reason;
+  }
+}
+
+/** Export-gate lock reasons carry the same string values as the enum. */
+const EXPORT_LOCK_TO_GATE_REASON: Record<ExportGateLockReason, PanelGateReason> = {
+  anonymous: PanelGateReason.ANONYMOUS,
+  free_tier: PanelGateReason.FREE_TIER,
+  payment_on_hold: PanelGateReason.PAYMENT_ON_HOLD,
+  renewal_pending: PanelGateReason.RENEWAL_PENDING,
+  renewal_failed: PanelGateReason.RENEWAL_FAILED,
+  lapsed: PanelGateReason.LAPSED,
+};
+
+export function exportLockToGateReason(reason: ExportGateLockReason): PanelGateReason {
+  return EXPORT_LOCK_TO_GATE_REASON[reason];
+}
+
+/**
+ * Snapshot the live inputs of the data-export gate (plan 2026-07-25-001, KTD2)
+ * and the dashboard tab cap (KTD8) — one reactive read shared by both.
+ * The decisions themselves live in the pure `export-gate` leaf so they can be
+ * unit-tested without a DOM; this function only reads the reactive sources.
+ */
+export function readExportGateInputs(authState: AuthSession): ExportGateInputs {
+  const entitlement = getEntitlementState();
+  return {
+    gateActive: isExportGateActive(),
+    desktopKeyPresent: getSecretState('WORLDMONITOR_API_KEY').present,
+    authPending: authState.isPending,
+    signedIn: Boolean(authState.user),
+    features: entitlement
+      ? {
+          tier: entitlement.features.tier,
+          dataExport: entitlement.features.dataExport,
+          maxDashboards: entitlement.features.maxDashboards,
+        }
+      : null,
+    billingState: deriveBillingUxState(getSubscription(), entitlement, Date.now()),
+  };
+}
+
+/** Current data-export verdict for the given auth session. */
+export function evaluateExportGate(authState: AuthSession): ExportGateVerdict {
+  return resolveExportGate(readExportGateInputs(authState));
+}
+
+/**
+ * May this session create another dashboard tab? Creation-only — the verdict
+ * never asks a caller to remove tabs that already exist (KTD8).
+ */
+export function evaluateTabCap(authState: AuthSession, currentTabCount: number): TabCapVerdict {
+  return resolveTabCap(readExportGateInputs(authState), currentTabCount);
+}
+
+/**
+ * Snapshot the live inputs of the historical-playback gate (#5632). Separate
+ * from `readExportGateInputs` because playback is a Pro takeaway resolved by
+ * `hasPremiumAccess()`, not a Pro Business one — it needs neither the catalog
+ * activation probe nor the billing-state refinement (the control has no CTA to
+ * route, so there is no denial reason to display).
+ */
+export function readPlaybackGateInputs(authState: AuthSession): PlaybackGateInputs {
+  return {
+    premiumAccess: hasPremiumAccess(authState),
+    authPending: authState.isPending,
+    signedIn: Boolean(authState.user),
+    entitlementLoaded: getEntitlementState() !== null,
+  };
+}
+
+/** Current playback-control verdict for the given auth session. */
+export function evaluatePlaybackGate(authState: AuthSession): PlaybackGateVerdict {
+  return resolvePlaybackGate(readPlaybackGateInputs(authState));
+}
+
+/**
+ * Every locked surface routes its CTA through here. Extracted from
+ * `PanelLayoutManager.getGateAction` (which was private and closed over
+ * `ctx.authModal`) so the export gate, the panel gate and future gates cannot
+ * drift — the auth-modal opener is injected instead.
+ */
+export interface GateActionDeps {
+  /** Opens the sign-in modal for the ANONYMOUS reason. */
+  openAuthModal: () => void;
+  /**
+   * Plan key used to preselect the pricing page's billing period on the LAPSED
+   * reason. Defaults to the live subscription row.
+   */
+  planKey?: string | null;
+}
+
+// Absolute origin: the desktop runtime's webview has no worldmonitor.app
+// origin, so a relative href would resolve against tauri://localhost.
+const PRO_PAGE_ORIGIN = 'https://worldmonitor.app';
+
+function openProPage(path: string): void {
+  window.open(`${PRO_PAGE_ORIGIN}${path}`, '_blank', 'noopener,noreferrer');
+}
+
+/** Return the action callback for a given gate reason. */
+export function resolveGateAction(reason: PanelGateReason, deps: GateActionDeps): () => void {
+  switch (reason) {
+    case PanelGateReason.ANONYMOUS:
+      return () => deps.openAuthModal();
+    case PanelGateReason.FREE_TIER:
+      return () => openProPage('/pro');
+    case PanelGateReason.PAYMENT_ON_HOLD:
+    case PanelGateReason.RENEWAL_FAILED:
+      // Pre-reserve the portal tab synchronously inside the click gesture
+      // so the async portal-session fetch survives the popup blocker
+      // (same pattern as payment-failure-banner.ts).
+      return () => {
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin);
+      };
+    case PanelGateReason.RENEWAL_PENDING:
+      // Verification resolves server-side; a reload re-pulls entitlements
+      // for users who don't want to wait for the reactive update.
+      return () => window.location.reload();
+    case PanelGateReason.LAPSED:
+      // A returning subscriber lands on the pricing anchor with their previous
+      // billing period preselected — the bare /pro redirect this replaced
+      // dropped both signals.
+      return () => openProPage(getReactivationHref(deps.planKey ?? getSubscription()?.planKey));
+    default:
+      return () => {};
+  }
 }

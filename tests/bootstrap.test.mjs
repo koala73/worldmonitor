@@ -122,7 +122,17 @@ describe('Bootstrap cache key registry', () => {
       .join('\n');
     const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf-8');
     const ciiKeySrc = readFileSync(join(root, 'scripts', '_cii-risk-cache-keys.mjs'), 'utf-8');
-    const allSearchable = allHandlerCode + '\n' + seedFiles + '\n' + healthSrc + '\n' + ciiKeySrc;
+    const chinaMacroContractSrc = readFileSync(
+      join(root, 'scripts', '_china-macro-contract.mjs'),
+      'utf-8',
+    );
+    const allSearchable = [
+      allHandlerCode,
+      seedFiles,
+      healthSrc,
+      ciiKeySrc,
+      chinaMacroContractSrc,
+    ].join('\n');
 
     for (const key of keys) {
       assert.ok(

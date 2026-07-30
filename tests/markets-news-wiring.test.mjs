@@ -255,10 +255,11 @@ describe('misplaced-opts guard (#4929 external review)', () => {
 });
 
 describe('recall benchmark fast-fail wiring (source-textual)', () => {
-  it('uses benchmark-grade limits and a shared GDELT deadline', () => {
+  it('uses one selected-route attempt and a shared GDELT deadline', () => {
     const src = readSrc('scripts/seed-recall-benchmark.mjs');
-    assert.match(src, /maxRetries: 1/);
+    assert.match(src, /maxRetries: 0/);
     assert.match(src, /proxyMaxAttempts: 1/);
     assert.match(src, /GDELT_DEADLINE_MS = 4 \* 60 \* 1000/);
+    assert.match(src, /opening GDELT circuit; remaining verticals skipped[\s\S]*?\n\s*break;/);
   });
 });

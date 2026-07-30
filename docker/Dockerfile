@@ -29,7 +29,7 @@ ENV VITE_WS_API_URL=${VITE_WS_API_URL}
 # sidecar image's builder. `npm run build` would chain build:blog
 # (blog-site has its own lockfile, not installed here) and the prebuild
 # openapi/agent-skills generators.
-RUN npm run build:crawlable-corpus && npm run build:content-corpus && npx tsc && npx vite build
+RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
 
 
 # Stage 2: Serve the built assets from nginx.
@@ -50,4 +50,3 @@ RUN chmod +x /docker-entrypoint.sh
 EXPOSE 80
 
 CMD ["/docker-entrypoint.sh"]
-

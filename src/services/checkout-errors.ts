@@ -176,6 +176,9 @@ export interface UpstreamSnapshot {
   /** First 200 chars of the response body (truncated). HTML 403 pages from
    *  CF/Vercel are distinctive; our own JSON errors fit comfortably. */
   bodySnippet?: string;
+  /** Key names only, for a body that parsed as our own JSON envelope. See
+   *  snapshotUpstreamBodyKeys for why values are withheld there. */
+  bodyKeys?: string[];
 }
 
 const BODY_SNIPPET_MAX = 200;
@@ -211,6 +214,88 @@ export function parseCheckoutErrorBody(rawText: string): CheckoutErrorBody {
   return parsed as CheckoutErrorBody;
 }
 
+/** Body of a 200 response from POST /api/create-checkout. */
+export interface CheckoutSuccessBody {
+  checkout_url?: unknown;
+  anonymous_claim_token?: unknown;
+}
+
+/**
+ * Why a 200 body could not be used, when it could not.
+ *
+ * These are separate arms rather than one `null` because they point at
+ * different layers, and the Sentry message must not claim more than was
+ * observed: `empty` and `invalid-json` suggest transport corruption or a
+ * middlebox, while `non-object` is valid JSON the relay should never have
+ * sent. Calling the latter a "non-JSON body" would be false.
+ */
+export type CheckoutSuccessBodyOutcome =
+  | { kind: 'object'; body: CheckoutSuccessBody }
+  | { kind: 'empty' }
+  | { kind: 'invalid-json' }
+  | { kind: 'non-object' };
+
+/**
+ * Parse a 200 create-checkout body.
+ *
+ * The success path used to call `resp.json()` directly. On a 200 whose
+ * body is not valid JSON that throws an engine-specific DOMException
+ * (Safari: `SyntaxError: The string did not match the expected pattern.`,
+ * code 12), which escaped past the "200 without a usable checkout_url"
+ * contract-violation reporter into the generic catch — losing the
+ * upstream snapshot and splitting one bug across a Sentry fingerprint per
+ * browser engine. WORLDMONITOR-XV.
+ *
+ * An unusable body stays distinct from a well-formed one missing
+ * checkout_url, which the caller reports separately. Same plain-object-only
+ * rule as parseCheckoutErrorBody — arrays and primitives cannot carry
+ * checkout_url, so accepting them would be a structural lie.
+ */
+export function parseCheckoutSuccessBody(rawText: string): CheckoutSuccessBodyOutcome {
+  if (rawText.length === 0) return { kind: 'empty' };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return { kind: 'invalid-json' };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { kind: 'non-object' };
+  }
+  return { kind: 'object', body: parsed as CheckoutSuccessBody };
+}
+
+/**
+ * Sentry `serverMessage` for each way a 200 body can be unusable. Keyed by
+ * the outcome so the message can never drift from the branch that produced
+ * it.
+ */
+export const UNUSABLE_SUCCESS_BODY_MESSAGE: Record<
+  Exclude<CheckoutSuccessBodyOutcome['kind'], 'object'>,
+  string
+> = {
+  empty: 'Server returned 200 with an empty body',
+  'invalid-json': 'Server returned 200 with a non-JSON body',
+  'non-object': 'Server returned 200 with a JSON body that is not an object',
+};
+
+/**
+ * Masks the `anonymous_claim_token` value in a raw body string.
+ *
+ * A 200 create-checkout body carries that token, which the client
+ * persists to localStorage as claim proof for migrating protected payment
+ * rows — i.e. a bearer-like credential that must never reach Sentry. The
+ * trailing `"?` makes the match tolerate a body cut mid-token, since a
+ * leaked prefix is still a leak. Applied inside the snapshot builder
+ * rather than at the call site so no future caller can forget it; it is a
+ * no-op for error bodies, which never carry the field.
+ */
+const ANON_CLAIM_TOKEN_PATTERN = /("anonymous_claim_token"\s*:\s*")(?:\\.|[^"\\])*"?/g;
+
+function redactCheckoutSecrets(rawBody: string): string {
+  return rawBody.replace(ANON_CLAIM_TOKEN_PATTERN, '$1[redacted]"');
+}
+
 /**
  * Build an UpstreamSnapshot from a fetch Response (already-read text body
  * is passed in because Response bodies are single-use; the caller must
@@ -223,17 +308,50 @@ export function snapshotUpstreamResponse(
   resp: Pick<Response, 'headers'>,
   rawBody: string,
 ): UpstreamSnapshot {
+  const snap = snapshotUpstreamHeaders(resp);
+  // Redact BEFORE truncating: the other order would emit the first 200
+  // chars verbatim, shipping any token that sits inside them in full.
+  const safeBody = redactCheckoutSecrets(rawBody);
+  if (safeBody.length > 0) {
+    snap.bodySnippet = safeBody.length > BODY_SNIPPET_MAX
+      ? safeBody.slice(0, BODY_SNIPPET_MAX)
+      : safeBody;
+  }
+  return snap;
+}
+
+function snapshotUpstreamHeaders(resp: Pick<Response, 'headers'>): UpstreamSnapshot {
   const headers = resp.headers;
-  const snap: UpstreamSnapshot = {
+  return {
     cfRay: headers.get('cf-ray') ?? undefined,
     server: headers.get('server') ?? undefined,
     vercelId: headers.get('x-vercel-id') ?? undefined,
     vercelCache: headers.get('x-vercel-cache') ?? undefined,
   };
-  if (rawBody.length > 0) {
-    snap.bodySnippet = rawBody.length > BODY_SNIPPET_MAX
-      ? rawBody.slice(0, BODY_SNIPPET_MAX)
-      : rawBody;
-  }
+}
+
+/**
+ * Snapshot for a body that already parsed as our own JSON envelope:
+ * headers plus the payload's KEY NAMES, never its values.
+ *
+ * The 200 create-checkout payload is built server-side as
+ * `{ ...result, anonymous_claim_token }` — a wholesale spread of the Dodo
+ * SDK's checkout-session response. Its field set is therefore defined by a
+ * third party, so value-level capture would be a standing bet that no
+ * future SDK field is sensitive, enforced only by a redaction deny-list
+ * that a schema change silently outruns.
+ *
+ * Key names carry the entire diagnostic here anyway — "had session_id, no
+ * checkout_url" is the finding — so withholding values costs nothing.
+ * Values are still captured for a body that did NOT parse as our envelope
+ * (see snapshotUpstreamResponse), where the raw bytes are the whole point.
+ * Sorted for stable Sentry grouping.
+ */
+export function snapshotUpstreamBodyKeys(
+  resp: Pick<Response, 'headers'>,
+  body: object,
+): UpstreamSnapshot {
+  const snap = snapshotUpstreamHeaders(resp);
+  snap.bodyKeys = Object.keys(body).sort();
   return snap;
 }

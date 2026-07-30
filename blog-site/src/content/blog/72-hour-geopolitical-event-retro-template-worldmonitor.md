@@ -6,6 +6,7 @@ keywords: "geopolitical event retro, intelligence after action review, 72 hour c
 audience: "Analysts, risk teams, OSINT researchers, security leads, editorial teams"
 heroImage: "/blog/images/blog/72-hour-geopolitical-event-retro-template-worldmonitor.jpg"
 pubDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 After a major geopolitical shock, the same question always appears:
@@ -176,6 +177,8 @@ For the pre-event side of this workflow, pair the retro with the [supply-chain s
 WorldMonitor can support retros through chokepoint status, Scenario Engine templates, country risk, forecasts, market implications, disease and disaster panels, displacement summaries, security advisories, and news context. But the retro owner still needs to record which data was actually visible at the time.
 
 Retros become dangerous when they turn hindsight into certainty. The better habit is humility: what was visible, what was missing, what was stale, and what threshold will make the next review less subjective?
+
+For a broader foundation in checking assumptions, evidence quality, and competing explanations, see the CIA Center for the Study of Intelligence's [Tradecraft Primer on structured analytic techniques](https://www.cia.gov/resources/csi/books-monographs/a-tradecraft-primer/).
 
 ## Frequently Asked Questions
 

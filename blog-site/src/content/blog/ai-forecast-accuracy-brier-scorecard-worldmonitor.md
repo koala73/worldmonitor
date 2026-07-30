@@ -1,6 +1,6 @@
 ---
 title: "We Grade Our Own Forecasts: Inside the Forecast Scorecard"
-description: "WorldMonitor grades its AI forecasts and prints the results: Brier 0.202 over 32 scored calls, the calibration table showing where we're overconfident, and a head-to-head loss to the markets."
+description: "WorldMonitor publishes a Brier-score audit of 32 AI forecasts, including calibration results, overconfidence patterns, and comparison with prediction markets."
 metaTitle: "AI Forecast Accuracy & Brier Scorecard | WorldMonitor"
 keywords: "AI forecast accuracy, Brier score forecasting, geopolitical forecast track record, forecast calibration, prediction accountability, forecast verification"
 audience: "Forecasters, superforecasting community, quant researchers, skeptical analysts, AI evaluation researchers"
@@ -68,6 +68,10 @@ The `get_forecast_scorecard` MCP tool returns the full scorecard — Brier and l
 ## Limits
 
 The ledger only proves what it contains: domains with few resolved forecasts have wide uncertainty around their scores, and the rolling window means the record is a moving sample, not an all-time monument. Resolution requires judgeable outcomes, so inherently vague geopolitical claims either get sharpened into resolvable form or don't enter the ledger. And a good historical Brier score is evidence, not a promise — regimes change, and calibration is always trailing.
+
+## Scoring Reference
+
+The scorecard uses the probability-scoring framework introduced in Glenn W. Brier's [1950 verification paper](https://journals.ametsoc.org/view/journals/mwre/78/1/1520-0493_1950_078_0001_vofeit_2_0_co_2.xml). Published sample sizes, voids, and calibration buckets are retained so readers can evaluate the result rather than rely on a headline accuracy claim.
 
 ## Frequently Asked Questions
 

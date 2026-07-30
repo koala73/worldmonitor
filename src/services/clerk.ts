@@ -25,6 +25,7 @@ import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 type ClerkInstance = Clerk;
+type ClerkSession = NonNullable<ClerkInstance['session']>;
 
 function readPublishableKey(): string | undefined {
   try {
@@ -35,6 +36,16 @@ function readPublishableKey(): string | undefined {
 }
 
 const PUBLISHABLE_KEY = readPublishableKey();
+
+/**
+ * True when a Clerk publishable key is configured. Used by surfaces that must
+ * distinguish "auth still hydrating" from "Clerk will never load" (e.g. the
+ * Pro banner deferral in #5728 — without this, `isPending` stays sticky when
+ * the key is absent and free users would never see the upsell).
+ */
+export function isClerkAuthEnabled(): boolean {
+  return Boolean(PUBLISHABLE_KEY);
+}
 
 let clerkInstance: ClerkInstance | null = null;
 let loadPromise: Promise<void> | null = null;
@@ -240,6 +251,13 @@ export async function initClerk(): Promise<void> {
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
+      // Flip auth isPending → false for queued subscribers even though
+      // clerkInstance stays null. Without this, surfaces that defer while
+      // auth is pending (Pro banner #5728, AuthHeaderWidget skeletons)
+      // hang forever on permanent load failures (blocked CDN, CN in-app
+      // browsers). Leave the queue intact so a later successful retry can
+      // still attachListener + re-fire with a real session.
+      notifyPendingSubscribersOfHydrationFailure();
       throw e;
     }
   })();
@@ -297,6 +315,23 @@ function attachPendingSubscribers(): void {
     // Fire once so subscribers learn about a cookie-backed signed-in
     // session that was already present before Clerk finished loading.
     cb();
+  }
+}
+
+/**
+ * Fire queued pre-load subscribers without consuming the queue.
+ * Used when initClerk fails so `subscribeAuthState` can snapshot
+ * `{ user: null, isPending: false }` instead of leaving the whole app
+ * stuck on the boot-default pending session.
+ */
+function notifyPendingSubscribersOfHydrationFailure(): void {
+  for (const cb of pendingSubscribers) {
+    if (pendingSubscriberDetachers.get(cb)?.detached) continue;
+    try {
+      cb();
+    } catch {
+      // One subscriber must not block the rest of the settle fan-out.
+    }
   }
 }
 
@@ -459,8 +494,9 @@ export function clearClerkTokenCache(): void {
  * Uses the 'convex' JWT template which includes the `plan` claim.
  * Returns null if no active session.
  *
- * Tokens are cached for 50s (Clerk tokens expire at 60s) with in-flight
- * deduplication to prevent concurrent panels from racing against Clerk.
+ * Tokens are cached with in-flight deduplication to prevent concurrent panels
+ * from racing against Clerk, bounded by BOTH the flat TTL below and the token's
+ * own `exp` (see shouldReuseCachedClerkToken — the TTL alone is not enough).
  * A monotonic _tokenGen counter lets clearClerkTokenCache() invalidate
  * any mid-flight fetch whose result would otherwise paint the previous
  * user's JWT into the new session.
@@ -471,8 +507,72 @@ let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
 
+/**
+ * How long before a token's own `exp` we stop reusing it.
+ *
+ * `server/auth-session.ts` applies only a small, bounded `clockTolerance`.
+ * This larger client-side margin keeps cache reuse and request flight time from
+ * consuming that entire server-side allowance.
+ */
+const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
+
+/**
+ * The `exp` claim of a Clerk JWT as epoch ms, or null when it cannot be read.
+ *
+ * Null (rather than throwing, or assuming expiry) keeps an unreadable token on
+ * the flat-TTL path — the behaviour that predates this function — so a Clerk
+ * token-format change degrades to the old caching instead of signing everyone
+ * out. Reading `exp` needs no signature check: the server is the authority, and
+ * a forged `exp` can only make this client refresh sooner.
+ */
+export function clerkTokenExpiresAtMs(token: string | null): number | null {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const exp = (
+      JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { exp?: unknown }
+    ).exp;
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1_000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the cached token can still sign a request. Both bounds must hold.
+ *
+ * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ): Clerk's `getToken()`
+ * is stale-while-revalidate — within 15s of expiry it returns the CACHED token
+ * immediately and refreshes in the background — so the premise this cache was
+ * built on ("Clerk tokens expire at 60s", i.e. every token arrives fresh) does
+ * not hold. Stamping a token that had 12s left with a flat 50s TTL left ~38s in
+ * which every request it signed came back 401, healing only when the TTL lapsed.
+ *
+ * The TTL is still enforced on top: it is what bounds how long a session that
+ * was revoked but not yet expired keeps working.
+ */
+export function shouldReuseCachedClerkToken(input: {
+  token: string | null;
+  cachedAt: number;
+  now: number;
+}): boolean {
+  const { token, cachedAt, now } = input;
+  if (!token) return false;
+  if (now - cachedAt >= TOKEN_CACHE_TTL_MS) return false;
+  const expiresAt = clerkTokenExpiresAtMs(token);
+  if (expiresAt === null) return true;
+  return now < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
+}
+
+async function fetchClerkToken(session: ClerkSession, skipCache = false): Promise<string | null> {
+  const cacheOptions = skipCache ? { skipCache: true } : {};
+  return (await session.getToken({ template: 'convex', ...cacheOptions }).catch(() => null))
+    ?? await session.getToken(cacheOptions).catch(() => null);
+}
+
 export async function getClerkToken(): Promise<string | null> {
-  if (_cachedToken && Date.now() - _cachedTokenAt < TOKEN_CACHE_TTL_MS) {
+  if (shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -492,17 +592,25 @@ export async function getClerkToken(): Promise<string | null> {
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.
-      const token = (await session.getToken({ template: 'convex' }).catch(() => null))
-        ?? await session.getToken().catch(() => null);
+      let token = await fetchClerkToken(session);
+      const firstFetchedAt = Date.now();
+      if (token && !shouldReuseCachedClerkToken({ token, cachedAt: firstFetchedAt, now: firstFetchedAt })) {
+        // Clerk may return a near-expiry cached token while refreshing it in the
+        // background. The initiating caller must not receive that stale token:
+        // force one server refresh, then accept only a token outside the margin.
+        token = await fetchClerkToken(session, true);
+      }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen) return null;
-      if (token) {
+      const fetchedAt = Date.now();
+      if (shouldReuseCachedClerkToken({ token, cachedAt: fetchedAt, now: fetchedAt })) {
         _cachedToken = token;
-        _cachedTokenAt = Date.now();
+        _cachedTokenAt = fetchedAt;
+        return token;
       }
-      return token;
+      return null;
     } catch {
       return null;
     } finally {
@@ -515,6 +623,11 @@ export async function getClerkToken(): Promise<string | null> {
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
+  clerkInstance = instance;
+  clearClerkTokenCache();
 }
 
 

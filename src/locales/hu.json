@@ -203,12 +203,15 @@
     "china": {
       "title": "Országáttekintés: Kína",
       "description": "Aktuális makro-, piaci, kereskedelmi, energia- és működési rendelkezésre állási adatok a meglévő nyilvános adatszerződésekből.",
-      "macroPolicy": "Makró és szakpolitika",
-      "marketCredit": "Piac és hitel",
-      "tradeSupply": "Kereskedelem és ellátási lánc",
+      "policyEvents": "Policy & Enforcement",
       "energy": "Energia",
       "availability": "Veszélyek és légi közlekedés",
       "observed": "Állapot:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Forrás:",
       "imfGrowth": "IMF növekedési előrejelzés",
       "creditGdp": "Hitel a GDP arányában",
@@ -217,8 +220,6 @@
       "gasDemand": "Gázkereslet",
       "energyMix": "Árammix",
       "coal": "szén",
-      "aviationAvailability": "Légi közlekedés rendelkezésre állása",
-      "hazardAvailability": "Veszélyadatok rendelkezésre állása",
       "noMajorDisruptions": "Nem jelentettek jelentős fennakadást",
       "activeDisruptions_one": "{{count}} aktív fennakadás",
       "activeDisruptions_other": "{{count}} aktív fennakadás",
@@ -230,18 +231,21 @@
       "ccfiSource": "Sanghaji Hajózási Tőzsde",
       "comtradeSource": "UN Comtrade, 156-os jelentő",
       "sourceUnavailable": "A forrás nem érhető el",
-      "macroUnavailable": "A makro- és szakpolitikai adatok jelenleg nem érhetők el.",
-      "marketUnavailable": "A piaci és hiteladatok jelenleg nem érhetők el.",
-      "tradeUnavailable": "A kereskedelmi és ellátásilánc-adatok jelenleg nem érhetők el.",
-      "energyUnavailable": "Az energiaadatok jelenleg nem érhetők el.",
-      "availabilityUnavailable": "A veszély- és légiközlekedési adatok jelenleg nem érhetők el.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Betöltés",
         "available": "Elérhető",
         "partial": "Részleges",
         "stale": "Elavult",
         "unavailable": "Nem elérhető"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -1697,7 +1701,26 @@
       "cafIndex": "CAF Index",
       "candidGrants": "Candid Grants",
       "dataLag": "Adatforgalom",
-      "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel."
+      "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Menekültek",
@@ -1896,7 +1919,11 @@
       "infoTooltip": "<strong>Katasztrófa Kaszkád</strong> Konvergens természeti katasztrófa és infrastruktúra jelek detektálása:<ul><li>Földrengéseket, erdőtüzeket, árvizeket és szélsőséges időjárási eseményeket korreláló</li><li>Az infrastruktúrára és ellátási láncolatra gyakorolt kaszkádhatásokat nyomon követi</li><li>Összetett katasztrófakockázatú régiókat emel ki</li></ul>Kattintson egy kártyára, hogy nagyítson az érintett régióra."
     },
     "markets": {
-      "infoTooltip": "<strong>Piacok</strong> Valós idejű részvényindexek, értékpapírok és kriptoárak. Szabja testre a megfigyelési listáját a Megfigyelési lista gombbal. A minitrendek a közelmúltbeli ártrend változást mutatják."
+      "infoTooltip": "<strong>Piacok</strong> Valós idejű részvényindexek, értékpapírok és kriptoárak. Szabja testre a megfigyelési listáját a Megfigyelési lista gombbal. A minitrendek a közelmúltbeli ártrend változást mutatják.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Szektoros Hőtérkép</strong> Az S&P 500 szektor teljesítménye egy pillantásra. A szín intenzitása a napi változás mértékét tükrözi. Zöld = nyereség, Piros = veszteség."
@@ -2239,11 +2266,101 @@
       "cta": "Frissítés Pro-ra →",
       "dismiss": "Eltüntetés"
     },
+    "billingState": {
+      "onHoldDesc": "A fizetés sikertelen. Frissítse fizetési módját a prémium hozzáférés visszaállításához.",
+      "onHoldBannerMessage": "A fizetés sikertelen. Frissítse fizetési módját, hogy előfizetése aktív maradjon.",
+      "updatePayment": "Fizetés frissítése",
+      "renewalPendingDesc": "Ellenőrizzük előfizetése megújítását. A prémium hozzáférés a megerősítés után automatikusan helyreáll.",
+      "refreshStatus": "Állapot frissítése",
+      "renewalFailedDesc": "Nem sikerült ellenőrizni előfizetése megújítását. Kezelje a számlázást, vagy lépjen kapcsolatba az ügyfélszolgálattal, ha a probléma továbbra is fennáll.",
+      "manageBilling": "Számlázás kezelése",
+      "lapsedDesc": "Pro előfizetése lejárt. Fizessen elő újra a prémium hozzáférés visszaszerzéséhez.",
+      "resubscribe": "Újra előfizetek"
+    },
     "checkoutFailureBanner": {
       "message": "A fizetés nem fejeződött be. Nem történt költség.",
       "retry": "Próbáld újra",
       "retrying": "Újrapróbálás…",
       "dismiss": "Eltüntetés"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "{{current}}. lépés / {{total}}",
+      "closeLabel": "Beállítás kihagyása",
+      "ariaLabel": "Pro aktiválás beállítása",
+      "signedInAs": "Bejelentkezve mint {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Napi összefoglalója minden reggel",
+          "body": "Válogatott hírszerzési összefoglaló a postafiókjában minden reggel — az éjszaka fontos jelei öt perces olvasmányba sűrítve.",
+          "confirmCta": "Reggeli összefoglaló bekapcsolása",
+          "confirming": "Bekapcsolás…",
+          "doneNote": "A reggeli összefoglalója már fut.",
+          "scheduleNote": "Megtartjuk a jelenlegi kézbesítési időpontját.",
+          "summaryLabel": "Reggeli összefoglaló",
+          "summaryVerified": "Bekapcsolva — a következő reggeli összefoglalóval indul.",
+          "deliverAt": "Kézbesítés ekkor",
+          "previewLoading": "Az első összefoglaló előnézetének előkészítése…",
+          "previewLabel": "A mai reggeli összefoglaló"
+        },
+        "alerts": {
+          "heading": "Kritikus riasztások",
+          "body": "Kapjon értesítést a böngészőjében, ha valami nagy dolog történik — konfliktusok eszkalációja, piaci sokkok, friss szankciók. A gyakoriságot bármikor módosíthatja a Beállításokban.",
+          "confirmCta": "Riasztások engedélyezése",
+          "confirming": "Engedélyezés…",
+          "doneNote": "A böngészőriasztások már be vannak kapcsolva.",
+          "blockedNote": "Az értesítések le vannak tiltva a böngészőjében. Kapcsolja be őket a böngésző webhelybeállításaiban, hogy riasztásokat kapjon.",
+          "declinedNote": "Semmi gond — nem küldünk böngészőriasztásokat. Később bármikor bekapcsolhatja őket a böngésző webhelybeállításaiban.",
+          "summaryLabel": "Kritikus riasztások",
+          "summaryVerified": "Bekapcsolva — a kritikus jelzések eljutnak a böngészőjéhez."
+        },
+        "power": {
+          "heading": "Az Ön Pro eszköztára",
+          "body": "Egyéni widgetek, MCP-kapcsolatok és az AI kutató fel vannak oldva. Építse fel azt az irányítópultot, amit valóban figyelni szeretne.",
+          "confirmCta": "Pro eszközök felfedezése",
+          "confirming": "Megnyitás…",
+          "doneNote": "Már használja Pro eszközeit.",
+          "summaryLabel": "Pro eszköztár",
+          "summaryVerified": "Feloldva és készen áll, amikor Ön is az.",
+          "channelsNote": "Inkább Telegramot, Slacket, Discordot vagy egy webhookot szeretne?",
+          "pointers": {
+            "search": "Keresés a teljes irányítópulton",
+            "widgets": "Egyéni widget létrehozása",
+            "analyst": "Kérdezze meg az AI elemzőt",
+            "mcpClients": "MCP beállítása",
+            "channels": "Állítsa be ezeket az értesítési beállításokban"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nincs beállítva",
+        "inFlight": "Beállítás…",
+        "verified": "Kész",
+        "failed": "Nem sikerült",
+        "blocked": "Blokkolva",
+        "unavailable": "Nem elérhető",
+        "blockedNote": "Ez most nem elérhető — később beállíthatja a beállításokban.",
+        "unavailableNote": "Ez nem elérhető az Ön eszközén — később beállíthatja.",
+        "failedBody": "Valami elromlott. Próbálja újra, vagy állítsa be később a beállításokban.",
+        "retry": "Próbálja újra"
+      },
+      "actions": {
+        "skip": "Kihagyás egyelőre",
+        "continue": "Folytatás"
+      },
+      "summary": {
+        "heading": "Minden készen áll",
+        "subVerified": "Íme, mi fut a fiókján.",
+        "subPending": "A beállítást bármikor befejezheti a beállításokban.",
+        "linePending": "Még nincs beállítva — bármikor befejezheti a beállításokban.",
+        "lineFailed": "Ezt nem sikerült beállítanunk — próbálja újra a beállításokban.",
+        "finish": "Ugrás az irányítópultomra"
+      },
+      "chip": {
+        "message": "Fejezze be Pro fiókja beállítását.",
+        "action": "Beállítás befejezése",
+        "dismissLabel": "Elvetés"
+      }
     },
     "frameworkSelector": {
       "label": "Elemzési Keretrendszer",
@@ -2455,6 +2572,22 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
     }
   },
   "popups": {

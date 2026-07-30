@@ -13,6 +13,7 @@
 // Chart window: last 30 days
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -177,26 +178,7 @@ async function fetchPbiCharts() {
   return charts;
 }
 
-// Decode common HTML entities in scraped text.
-function decodeHtmlEntities(s) {
-  return s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#039;/g, "'")
-    .replace(/&ldquo;/g, '\u201c')
-    .replace(/&rdquo;/g, '\u201d')
-    .replace(/&lsquo;/g, '\u2018')
-    .replace(/&rsquo;/g, '\u2019')
-    .replace(/&mdash;/g, '\u2014')
-    .replace(/&ndash;/g, '\u2013')
-    .replace(/&#8217;/g, '\u2019')
-    .replace(/&#8220;/g, '\u201c')
-    .replace(/&#8221;/g, '\u201d');
-}
-
-function stripTags(s) {
+export function stripTags(s) {
   return decodeHtmlEntities(s.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
 }
 
@@ -298,12 +280,16 @@ export function declareRecords(data) {
   return (data?.charts || []).reduce((s, c) => s + (c.series?.length || 0), 0);
 }
 
-await runSeed('supply_chain', 'hormuz_tracker', CANONICAL_KEY, buildPayload, {
-  ttlSeconds: CACHE_TTL,
-  validateFn: (d) => !!(d?.updatedDate || d?.summary || d?.title) && d?.charts?.some(c => (c.series?.length ?? 0) > 0),
+// Guarded so tests can import the exported helpers without triggering a seed run.
+const isMain = process.argv[1]?.endsWith('seed-hormuz.mjs');
+if (isMain) {
+  await runSeed('supply_chain', 'hormuz_tracker', CANONICAL_KEY, buildPayload, {
+    ttlSeconds: CACHE_TTL,
+    validateFn: (d) => !!(d?.updatedDate || d?.summary || d?.title) && d?.charts?.some(c => (c.series?.length ?? 0) > 0),
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 2880,
-  sourceVersion: 'hormuz-tracker-v1',
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
+    sourceVersion: 'hormuz-tracker-v1',
+  });
+}

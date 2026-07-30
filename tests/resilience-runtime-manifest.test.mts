@@ -253,6 +253,7 @@ describe('resilience runtime manifest gateway auth', () => {
       [
         '/api/conflict/v1/list-acled-events',
         '/api/natural/v1/list-natural-events',
+        '/api/intelligence/v1/get-china-decision-signals',
         '/api/resilience/v1/get-runtime-manifest',
         '/api/seismology/v1/list-earthquakes',
         '/api/unrest/v1/list-unrest-events',

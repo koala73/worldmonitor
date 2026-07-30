@@ -3,6 +3,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -42,19 +43,11 @@ const REGULATORY_FEEDS = [
   { agency: 'FINRA', url: 'http://feeds.finra.org/FINRANotices' },
 ];
 
+// Single-pass decode via the shared helper: `&amp;` must not decode before
+// the other entities (`&amp;lt;` must stay `&lt;`, not become `<`), and
+// out-of-range numeric references are dropped instead of throwing.
 function decodeEntities(input) {
-  if (!input) return '';
-  const named = input
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ');
-
-  return named
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+  return decodeHtmlEntities(input);
 }
 
 function stripHtml(input) {

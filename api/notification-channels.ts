@@ -22,7 +22,7 @@ import {
 } from './_idempotency.js';
 import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
-import { getEntitlements } from '../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -31,6 +31,62 @@ const CONVEX_SITE_URL =
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
+
+type NotificationChannelsDeps = {
+  validateBearerToken: typeof validateBearerToken;
+  getEntitlements: typeof getEntitlements;
+  fetch: typeof fetch;
+  // Injected so the billing-denial capture is observable in tests. It cannot be
+  // asserted through the real transport: api/_sentry-common.js's parseDsn()
+  // returns early when process.env.NODE_TEST_CONTEXT is set (which node:test
+  // always sets), so captureSilentError is a no-op under the test runner and
+  // the whole branch below could be deleted with every case still green.
+  captureSilentError: typeof captureSilentError;
+};
+
+function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
+  return {
+    validateBearerToken,
+    getEntitlements,
+    fetch: (...args) => globalThis.fetch(...args),
+    captureSilentError,
+  };
+}
+
+// Per-code dedup window for the billing-denial capture. The capture sits
+// downstream of the entitlement cache (server/_shared/entitlement-check.ts
+// serves a billing marker straight from Redis), so without this a Convex
+// brownout emits one Sentry event per denied POST per affected user rather than
+// one per incident. Module-level state is per-isolate, so this degrades with
+// edge fan-out instead of scaling with traffic.
+const DENIAL_CAPTURE_DEDUP_WINDOW_MS = 60_000;
+const lastDenialCaptureAtByCode = new Map<string, number>();
+
+function shouldCaptureDenial(code: string | null, now: number): boolean {
+  // `subscription_lapsed` is a confirmed terminal answer already visible in
+  // Convex — eventing it would turn ordinary churn into a permanent Sentry
+  // stream and bury the anomaly.
+  if (!code || code === 'subscription_lapsed') return false;
+  const last = lastDenialCaptureAtByCode.get(code);
+  if (last !== undefined && now - last < DENIAL_CAPTURE_DEDUP_WINDOW_MS) return false;
+  lastDenialCaptureAtByCode.set(code, now);
+  return true;
+}
+
+/** Test-only reset so dedup state cannot leak between cases. */
+export function __resetDenialCaptureDedupForTests(): void {
+  lastDenialCaptureAtByCode.clear();
+}
+
+let notificationChannelsDeps = createDefaultNotificationChannelsDeps();
+
+export function __setNotificationChannelsDepsForTests(
+  overrides: Partial<NotificationChannelsDeps> | null,
+): void {
+  notificationChannelsDeps = overrides
+    ? { ...createDefaultNotificationChannelsDeps(), ...overrides }
+    : createDefaultNotificationChannelsDeps();
+}
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
 // Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
@@ -88,23 +144,24 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     console.error('[notification-channels] publishWelcome: UPSTASH env vars missing — welcome not queued');
     return;
   }
-  console.log(`[notification-channels] publishWelcome: queuing ${channelType} for ${userId}`);
   const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
   try {
-    const res = await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        'User-Agent': 'worldmonitor-edge/1.0',
+    const res = await notificationChannelsDeps.fetch(
+      `${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${UPSTASH_TOKEN}`,
+          'User-Agent': 'worldmonitor-edge/1.0',
+        },
+        signal: AbortSignal.timeout(5000),
       },
-      signal: AbortSignal.timeout(5000),
-    });
-    const data = await res.json().catch(() => null) as { result?: unknown } | null;
-    console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
+    );
+    if (!res.ok) {
+      throw new Error(`publishWelcome: Upstash LPUSH returned HTTP ${res.status}`);
+    }
   } catch (err) {
     console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
-    // publishWelcome runs inside the handler's ctx.waitUntil chain; await
-    // keeps that chain pending until Sentry delivery completes.
     await captureSilentError(err, {
       tags: { route: 'api/notification-channels', step: 'publish-welcome' },
     });
@@ -115,14 +172,17 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
   if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
   const msg = JSON.stringify({ eventType: 'flush_quiet_held', userId, variant });
   try {
-    await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
+    await notificationChannelsDeps.fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-edge/1.0' },
       signal: AbortSignal.timeout(5000),
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+    // `level` (not the `severity` tag) is what buildEnvelope reads; without it
+    // this warn-intent capture also shipped at error level.
     await captureSilentError(err, {
+      level: 'warning',
       tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
     });
   }
@@ -139,15 +199,87 @@ function json(body: unknown, status: number, cors: Record<string, string>, noCac
   });
 }
 
-async function convexRelay(body: Record<string, unknown>): Promise<Response> {
-  return fetch(`${CONVEX_SITE_URL}/relay/notification-channels`, {
+const CONVEX_RELAY_TIMEOUT_MS = 15_000;
+
+async function convexRelay(
+  body: Record<string, unknown>,
+  signal = AbortSignal.timeout(CONVEX_RELAY_TIMEOUT_MS),
+): Promise<Response> {
+  return notificationChannelsDeps.fetch(`${CONVEX_SITE_URL}/relay/notification-channels`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${RELAY_SHARED_SECRET}`,
+      'User-Agent': 'worldmonitor-edge/1.0',
     },
     body: JSON.stringify(body),
+    // Matches the 15s timeout api/customer-portal.ts and
+    // api/create-checkout.ts already use for the same Convex host.
+    // Without this, a hung relay call outlives the edge runtime's invocation
+    // budget before the handler's own catch can run finish() to release the
+    // idempotency lock this endpoint holds across the call — leaving retries
+    // 409ing for its full 180s TTL (#5426).
+    signal,
   });
+}
+
+type WelcomeRelayResult = {
+  response: Response;
+  durableWelcomeScheduling: boolean;
+};
+
+/**
+ * Negotiate durable welcome scheduling before a first-connect mutation.
+ *
+ * Convex and Vercel deploy independently. New Convex only owns welcome
+ * scheduling when the new edge explicitly opts in; old edge therefore keeps
+ * its legacy publisher. New edge probes before opting in. An old Convex
+ * deployment answers "Unknown action", so edge fails closed before sending a
+ * mutation and releases the idempotency marker for retry. That short
+ * availability tradeoff avoids both mixed-version duplicate welcomes and the
+ * original timeout-after-commit ambiguity.
+ */
+async function convexRelayWithDurableWelcome(
+  body: Record<string, unknown>,
+): Promise<WelcomeRelayResult> {
+  // One deadline covers both negotiation and mutation. Two independent 15s
+  // waits can exceed the edge response-start budget before the handler reaches
+  // finish() and releases its idempotency marker.
+  const relaySignal = AbortSignal.timeout(CONVEX_RELAY_TIMEOUT_MS);
+  const capability = await convexRelay({
+    action: 'welcome-scheduling-capability',
+    userId: body.userId,
+  }, relaySignal);
+  if (capability.ok) {
+    const payload = await capability.json().catch(() => null) as {
+      durableWelcomeScheduling?: boolean;
+    } | null;
+    if (payload?.durableWelcomeScheduling !== true) {
+      throw new Error('Convex returned an invalid welcome scheduling capability response');
+    }
+    return {
+      response: await convexRelay(
+        { ...body, scheduleWelcome: true },
+        relaySignal,
+      ),
+      durableWelcomeScheduling: true,
+    };
+  }
+
+  const payload = await capability.clone().json().catch(() => null) as {
+    error?: string;
+  } | null;
+  if (capability.status === 400 && payload?.error === 'Unknown action') {
+    return {
+      response: Response.json(
+        { error: 'DURABLE_WELCOME_UNAVAILABLE' },
+        { status: 503 },
+      ),
+      durableWelcomeScheduling: false,
+    };
+  }
+
+  return { response: capability, durableWelcomeScheduling: false };
 }
 
 interface PostBody {
@@ -199,7 +331,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!token) return json({ error: 'Unauthorized' }, 401, corsHeaders);
 
-  const session = await validateBearerToken(token);
+  const session = await notificationChannelsDeps.validateBearerToken(token);
   if (!session.valid || !session.userId) return json({ error: 'Unauthorized' }, 401, corsHeaders);
 
   const idempotencyRequest = req.method === 'POST' ? req.clone() : null;
@@ -226,8 +358,105 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   }
 
   if (req.method === 'POST') {
-    const ent = await getEntitlements(session.userId);
+    // WHY notification writes require a BILLED entitlement row, and do NOT honor
+    // the Clerk `role === 'pro'` allowance that checkEntitlementDetailed grants
+    // for tier <= 1 (#5622 asked for this decision to be made either way):
+    //
+    // Because this gate is not the only one. Convex enforces `tier >= 1` against
+    // the entitlements table independently, inside the mutations themselves —
+    // assertProEntitlement in convex/alertRules.ts:36 and its twin in
+    // convex/notificationChannels.ts:64. A role-only Pro account has no
+    // entitlements row, so relaxing THIS gate does not grant access. It only
+    // moves the denial one hop later and degrades it:
+    //
+    //   set-channel             Convex 402 is not the 503 case below, so it
+    //                           falls through to `500 Operation failed` — and
+    //                           set-channel is what the day-0 wizard calls
+    //   set-alert-rules,        402 PRO_REQUIRED passes through structurally,
+    //   set-notification-config which the client surfaces as a generic failure
+    //
+    // Both are strictly worse for the user than the clean `403 pro_required`
+    // with an upgradeUrl this gate returns. An edge-only allowance was written
+    // and reverted for exactly that reason, verified against both Convex gates
+    // rather than assumed.
+    //
+    // So: notification delivery is gated on a billed row at the DATA layer, and
+    // this gate exists to say so cleanly and early. Granting it to complimentary
+    // / tester / legacy Clerk-role accounts is a real product decision that must
+    // change the Convex gates too — see #5646.
+    //
+    // The client agrees with this gate, which is why a role-only account gets a
+    // coherent experience rather than a dead end: renderNotificationsSettings
+    // (src/services/notifications-settings.ts) gates its content on
+    // `hasTier(1)` — the Convex entitlement snapshot, NOT the Clerk role — and
+    // renders the upgrade CTA otherwise. So such a user sees an upsell here and
+    // an upsell from this endpoint. (Note `isProUser()` in
+    // src/services/widget-store.ts DOES accept the Clerk role alone, but the
+    // notifications surface deliberately does not use it.)
+    //
+    // #5650 settled the same question for the sibling JSON gates on the same
+    // line this one draws: content reads (latest-brief, brief/share-url) accept
+    // either signal, while anything that creates a delivery obligation or a
+    // third-party grant (notify, slack/discord oauth-start) requires the billed
+    // row — as this endpoint does.
+    const ent = await notificationChannelsDeps.getEntitlements(session.userId);
     if (!ent || ent.features.tier < 1) {
+      // #5600: an entitlement the backend could not VERIFY (Convex 5xx/timeout,
+      // or a renewal re-check in flight) is not a confirmed free user. Answer
+      // it with the shared retryable contract — 503 + Retry-After +
+      // X-Billing-Verification — the same way the gateway, widget-agent, and
+      // MCP surfaces do, so the client can retry instead of rendering a
+      // terminal "upgrade to Pro".
+      //
+      // Scope note: this does NOT cover the day-0 poisoned-marker cohort. That
+      // one arrives as a plain tier-0 answer (no billingStatus, no
+      // verificationUnavailable), so the helper returns null and the buyer
+      // still gets the 403 below — bounded to
+      // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS by the other half of this fix.
+      // Making that state 503 instead would hand every never-subscribed free
+      // user a retryable error in place of a clean upsell.
+      const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
+      if (billingDenial) {
+        const code = billingDenial.headers.get('X-Billing-Verification');
+        console.warn('[notification-channels] billing-verification denial', JSON.stringify({
+          status: billingDenial.status,
+          code,
+          userId: session.userId,
+        }));
+        // Match this file's own convention (publishWelcome / publishFlushHeld
+        // above): a console.warn alone is a Sentry breadcrumb, not an event, so
+        // it would be invisible in exactly the way #5600's activation failures
+        // were. Tagged so these group with the wizard-side captures.
+        //
+        // Transient states only, and at most one event per code per
+        // DENIAL_CAPTURE_DEDUP_WINDOW_MS — see shouldCaptureDenial.
+        //
+        // `level: 'warning'` is load-bearing, not decorative: buildEnvelope in
+        // api/_sentry-common.js derives the Sentry level ONLY from ctx.level and
+        // defaults to 'error'. A `severity` TAG does not set it, so without this
+        // an expected transient denial pages on-call at error level — the exact
+        // "drowns real bugs in dashboards/alerting" outcome that file warns about.
+        //
+        // NOT awaited: makeCaptureSilentError registers ctx.waitUntil(promise)
+        // (api/_sentry-common.js), so the capture is guaranteed to run without
+        // holding the denial response open for its 2s transport timeout.
+        if (shouldCaptureDenial(code, Date.now())) {
+          void notificationChannelsDeps.captureSilentError(
+            new Error(`notification-channels billing-verification denial: ${code}`),
+            {
+              level: 'warning',
+              tags: {
+                route: 'api/notification-channels',
+                step: 'billing-verification-denial',
+                code: code as string,
+                severity: 'warn',
+              },
+              ctx,
+            },
+          );
+        }
+        return billingDenial;
+      }
       return json({
         error: 'pro_required',
         message: 'Real-time alerts are available on the Pro plan.',
@@ -264,6 +493,42 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
     const { action } = body;
 
+    // session.userId is narrowed to string by the auth guard above, but
+    // property narrowing does not flow into closures — capture it once.
+    const welcomeUserId = session.userId;
+    // Shared tail for the two durable-welcome mutations (set-channel,
+    // set-web-push): map relay failures (503 deploy-window fail-closed vs
+    // generic 500), then publish the legacy welcome only when Convex did not
+    // acknowledge scheduling ownership. Requiring the mutation response to
+    // re-acknowledge protects the success path even if Convex rolls back
+    // between the capability probe and the mutation.
+    const finishDurableWelcomeRelay = async (
+      relay: WelcomeRelayResult,
+      relayAction: string,
+      welcomeChannelType: string,
+    ): Promise<Response> => {
+      const resp = relay.response;
+      if (!resp.ok) {
+        console.error(`[notification-channels] POST ${relayAction} relay error:`, resp.status);
+        if (resp.status === 503) {
+          return finish(json({ error: 'Service unavailable' }, 503, corsHeaders));
+        }
+        return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
+      }
+      const result = await resp.json() as {
+        isNew?: boolean;
+        durableWelcomeScheduling?: boolean;
+      };
+      if (
+        result.isNew &&
+        (!relay.durableWelcomeScheduling ||
+          result.durableWelcomeScheduling !== true)
+      ) {
+        ctx.waitUntil(publishWelcome(welcomeUserId, welcomeChannelType));
+      }
+      return finish(json({ ok: true }, 200, corsHeaders));
+    };
+
     try {
       if (action === 'create-pairing-token') {
         const relayBody: Record<string, unknown> = { action: 'create-pairing-token', userId: session.userId };
@@ -299,16 +564,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
             return finish(json({ error: 'Encryption unavailable' }, 503, corsHeaders));
           }
         }
-        const resp = await convexRelay(relayBody);
-        if (!resp.ok) {
-          console.error('[notification-channels] POST set-channel relay error:', resp.status);
-          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
-        }
-        const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
-        console.log(`[notification-channels] set-channel ${channelType}: isNew=${setResult.isNew}`);
-        // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
-        if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
-        return finish(json({ ok: true }, 200, corsHeaders));
+        const relay = await convexRelayWithDurableWelcome(relayBody);
+        return finishDurableWelcomeRelay(relay, 'set-channel', channelType);
       }
 
       if (action === 'set-web-push') {
@@ -339,7 +596,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         } catch {
           return finish(json({ error: 'invalid endpoint' }, 400, corsHeaders));
         }
-        const resp = await convexRelay({
+        const relay = await convexRelayWithDurableWelcome({
           action: 'set-web-push',
           userId: session.userId,
           endpoint,
@@ -348,13 +605,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           // Trim user agent; it's cosmetic for the settings UI, not identity.
           userAgent: typeof userAgent === 'string' ? userAgent.slice(0, 200) : undefined,
         });
-        if (!resp.ok) {
-          console.error('[notification-channels] POST set-web-push relay error:', resp.status);
-          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
-        }
-        const wpResult = await resp.json() as { ok: boolean; isNew?: boolean };
-        if (wpResult.isNew) ctx.waitUntil(publishWelcome(session.userId, 'web_push'));
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finishDurableWelcomeRelay(relay, 'set-web-push', 'web_push');
       }
 
       if (action === 'delete-channel') {

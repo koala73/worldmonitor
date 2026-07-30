@@ -1,11 +1,12 @@
 ---
 title: "Critical Minerals and HHI: Measuring Supply Concentration Risk"
-description: "How WorldMonitor uses 2024 production data and Herfindahl-Hirschman Index scoring to explain concentration risk in lithium, cobalt, rare earths, gallium, and germanium."
+description: "How WorldMonitor uses 2024 production data and the Herfindahl-Hirschman Index to explain supply concentration in lithium, cobalt, rare earths, and more."
 metaTitle: "Critical Minerals HHI Supply Risk Explained | WorldMonitor"
 keywords: "critical minerals HHI, Herfindahl Hirschman Index minerals, supply concentration risk, rare earth supply risk, lithium cobalt gallium germanium"
 audience: "Supply chain teams, policy analysts, commodity researchers, semiconductor and battery strategists"
 heroImage: "/blog/images/blog/critical-minerals-hhi-supply-risk-explained.jpg"
 pubDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Critical minerals are not risky only because demand is rising. They are risky because supply is often concentrated in a small number of producing countries, processing hubs, or firms.
@@ -130,6 +131,8 @@ For operational follow-through, pair this structural concentration view with the
 WorldMonitor computes the Critical Minerals view from a committed 2024 production dataset and transparent scoring logic. The HHI formula is public in the codebase, and the risk thresholds are simple enough for a spreadsheet check.
 
 The dataset currently focuses on a small set of strategically important minerals rather than claiming exhaustive global mineral coverage. That is the right tradeoff for a dashboard surface: make the concentration mechanism clear first, then expand coverage carefully.
+
+The production inputs are derived from the U.S. Geological Survey's [Mineral Commodity Summaries 2025](https://www.usgs.gov/publications/mineral-commodity-summaries-2025), which publishes world production statistics for more than 90 nonfuel mineral commodities.
 
 ## Frequently Asked Questions
 

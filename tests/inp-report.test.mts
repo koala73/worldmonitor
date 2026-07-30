@@ -117,3 +117,44 @@ test('reportInpMetric tags the configured sampleRate for reweighting', () => {
   const { ctx } = capture({ value: 350, rating: 'needs-improvement' });
   assert.equal(ctx.tags.sampleRate, '0.2', 'sampleRate tag lets analysis rescale to true field volume');
 });
+
+// ── Globe marker load (#5368) ───────────────────────────────────────────────
+// The globe's DOM marker count is the dominant term in its frame cost, and
+// therefore in presentationDelay. Riding the existing INP event is what lets
+// the field settle a question the lab could not: a lab census measured ~120
+// markers in the mobile default view, yet mobile INP regressed hardest.
+
+function captureWithGlobe(
+  metric: InpMetricLike,
+  globeExtra: () => Record<string, unknown> | null,
+): { msg: string; ctx: any } {
+  let out: { msg: string; ctx: any } | null = null;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    fn({ captureMessage: (msg: string, ctx: unknown) => { out = { msg, ctx }; } });
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  reportInpMetric(metric, fakeEnqueue, () => true, globeExtra);
+  assert.ok(out, 'reportInpMetric must call enqueue exactly once');
+  return out!;
+}
+
+test('reportInpMetric attaches the globe marker load when the globe is mounted (#5368)', () => {
+  const { ctx } = captureWithGlobe({ value: 504, rating: 'poor' }, () => ({
+    globeMarkers: 2319,
+    globeMarkerBucket: '2000+',
+    globeActiveLayerCount: 9,
+    globeTruncated: ['military:300/1526'],
+  }));
+  assert.equal(ctx.extra.globeMarkers, 2319);
+  assert.equal(ctx.extra.globeMarkerBucket, '2000+');
+  assert.deepEqual(ctx.extra.globeTruncated, ['military:300/1526']);
+  // The existing INP fields must survive alongside it.
+  assert.equal(ctx.extra.value, 504);
+});
+
+test('reportInpMetric omits globe fields entirely on the flat map (#5368)', () => {
+  const { ctx } = captureWithGlobe({ value: 504, rating: 'poor' }, () => null);
+  for (const key of Object.keys(ctx.extra)) {
+    assert.ok(!key.startsWith('globe'), `flat-map reports must carry no globe fields, got ${key}`);
+  }
+  assert.equal(ctx.extra.value, 504, 'the ordinary INP payload is unaffected');
+});

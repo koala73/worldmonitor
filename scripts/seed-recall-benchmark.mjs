@@ -87,11 +87,10 @@ async function main() {
   // 2. External reference set from GDELT.
   const seenUrls = new Set();
   const externalItems = [];
-  // #4929 external review: production retry defaults (3 retries × 10s
-  // backoff + 5 proxy attempts, ×4 sequential queries) could consume much
-  // of the 25-minute workflow. Benchmark-grade fast-fail limits + a shared
-  // wall-clock deadline: partial reference sets are fine, a hung workflow
-  // is not.
+  // #4929 external review: partial reference sets are fine, a hung workflow
+  // is not. The shared GDELT transport now enforces one selected-route attempt,
+  // and the first route failure opens a circuit across the remaining queries.
+  // The wall-clock deadline remains a final bound for a healthy but slow route.
   const GDELT_DEADLINE_MS = 4 * 60 * 1000;
   const gdeltStartedAt = Date.now();
   for (const { label, q } of REFERENCE_QUERIES) {
@@ -103,8 +102,7 @@ async function main() {
       const json = await fetchGdeltJson(gdeltUrl(q), {
         label: `recall-${label}`,
         timeoutMs: 10_000,
-        maxRetries: 1,
-        retryBaseMs: 2_000,
+        maxRetries: 0,
         proxyMaxAttempts: 1,
       });
       const articles = Array.isArray(json?.articles) ? json.articles : [];
@@ -118,7 +116,8 @@ async function main() {
       }
       console.log(`  [gdelt:${label}] ${articles.length} articles`);
     } catch (err) {
-      console.warn(`  [gdelt:${label}] failed: ${err.message} — continuing with remaining verticals`);
+      console.warn(`  [gdelt:${label}] failed: ${err.message} — opening GDELT circuit; remaining verticals skipped`);
+      break;
     }
   }
   if (externalItems.length < 20) {

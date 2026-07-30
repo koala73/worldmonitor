@@ -35,7 +35,10 @@ interface RailwayServiceEntry {
   dockerfile?: string;
   service: string;
   startCommand?: string;
-  requiredEnv?: string[];
+  // A nested array is an any-of group: at least one of those variables must be
+  // configured. Mirrors the shape scripts/_bundle-runner.mjs accepts, for
+  // sources that resolve `SOURCE_SPECIFIC || SHARED` at runtime.
+  requiredEnv?: (string | string[])[];
   watchPatterns?: string[];
   cronSchedule?: string | null;
   documentedAt: string;
@@ -100,7 +103,11 @@ describe('Railway service registry coverage', () => {
       'R2_BOOTSTRAP_ACCESS_KEY_ID',
       'R2_BOOTSTRAP_SECRET_ACCESS_KEY',
     ]);
-    assert.deepEqual(publisher.watchPatterns, ['scripts/**', 'shared/**']);
+    assert.deepEqual(
+      publisher.watchPatterns,
+      [],
+      'empty watch paths intentionally rebuild the publisher for any repository change',
+    );
     assert.equal(publisher.cronSchedule, null, 'publisher must be always-on, never a Railway cron');
   });
 
@@ -109,15 +116,92 @@ describe('Railway service registry coverage', () => {
       if (entry.requiredEnv == null) continue;
       assert.ok(Array.isArray(entry.requiredEnv), `${entry.service}.requiredEnv must be an array`);
       assert.ok(entry.requiredEnv.length > 0, `${entry.service}.requiredEnv must not be empty`);
+      const flattened = entry.requiredEnv.flatMap((requirement) =>
+        Array.isArray(requirement) ? requirement : [requirement],
+      );
       assert.equal(
-        new Set(entry.requiredEnv).size,
-        entry.requiredEnv.length,
+        new Set(flattened).size,
+        flattened.length,
         `${entry.service}.requiredEnv must not contain duplicates`,
       );
-      for (const name of entry.requiredEnv) {
-        assert.match(name, /^[A-Z][A-Z0-9_]*$/, `${entry.service} has invalid requiredEnv name`);
+      for (const requirement of entry.requiredEnv) {
+        const alternatives = Array.isArray(requirement) ? requirement : [requirement];
+        assert.ok(
+          alternatives.length > 0,
+          `${entry.service}.requiredEnv must not contain an empty any-of group`,
+        );
+        for (const name of alternatives) {
+          assert.match(name, /^[A-Z][A-Z0-9_]*$/, `${entry.service} has invalid requiredEnv name`);
+        }
       }
     }
+  });
+
+  // A source that resolves `SOURCE_SPECIFIC || PROXY_URL` at runtime must
+  // declare that as an any-of group. Declared as two flat entries, the audit
+  // demands BOTH and reports drift for a service that routes perfectly well on
+  // the source-specific exit alone — the independently-replaceable property the
+  // per-source split exists to provide. Derived from the adapter sources so a
+  // future source-specific variable cannot be added flat by accident.
+  it('per-source proxy variables are declared any-of with their shared fallback', () => {
+    const fallbackPairs: Array<[string, string]> = [];
+    const PROXY_FALLBACK_RE =
+      /process\.env\.([A-Z][A-Z0-9_]*_PROXY_URL)\s*\|\|\s*process\.env\.(PROXY_URL)\b/g;
+    for (const file of [
+      'scripts/_gdelt-fetch.mjs',
+      'scripts/china-corporate-disclosures/adapters.mjs',
+      'scripts/cross-strait-activity/adapters.mjs',
+    ]) {
+      const src = readFileSync(resolve(repoRoot, file), 'utf8');
+      for (const m of src.matchAll(PROXY_FALLBACK_RE)) {
+        fallbackPairs.push([m[1]!, m[2]!]);
+      }
+    }
+    assert.ok(
+      fallbackPairs.length >= 3,
+      'expected the GDELT, SZSE and Japan MOD adapters to resolve a source-specific proxy with a PROXY_URL fallback',
+    );
+
+    for (const [specific, shared] of fallbackPairs) {
+      for (const entry of registry) {
+        if (entry.requiredEnv == null) continue;
+        const mentionsSpecific = entry.requiredEnv.some((requirement) =>
+          (Array.isArray(requirement) ? requirement : [requirement]).includes(specific),
+        );
+        if (!mentionsSpecific) continue;
+        const group = entry.requiredEnv.find(
+          (requirement) => Array.isArray(requirement) && requirement.includes(specific),
+        );
+        assert.ok(
+          Array.isArray(group),
+          `${entry.service} declares ${specific} flat; runtime falls back to ${shared}, so it must be an any-of group ["${specific}", "${shared}"]`,
+        );
+        assert.ok(
+          group.includes(shared),
+          `${entry.service} any-of group for ${specific} must include the ${shared} fallback the adapter actually uses`,
+        );
+      }
+    }
+  });
+
+  it('does not require an ineffective proxy route for HAPI', () => {
+    const conflictSeeder = readFileSync(
+      resolve(repoRoot, 'scripts/seed-conflict-intel.mjs'),
+      'utf8',
+    );
+    assert.doesNotMatch(
+      conflictSeeder,
+      /\bHAPI_PROXY_URL\b/,
+      'HAPI must fall back to the official HDX snapshot instead of retrying a blocked API through a proxy',
+    );
+
+    const conflictService = registry.find((entry) => entry.service === 'seed-conflict-intel');
+    assert.ok(conflictService, 'seed-conflict-intel must remain registered');
+    const requiredNames = (conflictService.requiredEnv ?? []).flat();
+    assert.ok(
+      !requiredNames.includes('HAPI_PROXY_URL'),
+      'seed-conflict-intel must not report a removed HAPI proxy route as a Railway dependency',
+    );
   });
 
   it('every Dockerfile.* CMD has a matching registry entry', () => {

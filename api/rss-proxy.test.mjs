@@ -234,6 +234,58 @@ test('preserves Railway relay fallback for direct-fetch transport failures', asy
   assert.equal(calls[1].headers['x-relay-key'], 'relay-secret');
 });
 
+test('preserves the original direct-fetch error when the relay fallback itself throws (#5398)', async () => {
+  // Both legs fail, but the relay's throw must not replace directError as the
+  // reported failure — the #5378 suite only ever covered relay returning
+  // null/Response, never throwing.
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  for (const relayError of [new Error('boom relay leg'), null]) {
+    const calls = [];
+
+    globalThis.fetch = async (input) => {
+      calls.push(String(input));
+      if (calls.length === 1) {
+        throw new Error('boom direct fetch');
+      }
+      throw relayError;
+    };
+
+    const feedUrl = 'https://techcrunch.com/feed';
+    const res = await handler(makeRequest(feedUrl));
+    const body = await res.json();
+
+    assert.equal(res.status, 502);
+    assert.equal(body.error, 'Failed to fetch feed');
+    assert.equal(body.details, 'boom direct fetch');
+    assert.equal(calls.length, 2);
+  }
+});
+
+test('preserves the original non-ok direct response when the relay retry itself throws (#5398)', async () => {
+  // Direct fetch succeeds but is non-ok; the relay retry then throws instead
+  // of returning null/a Response. The original non-ok direct response must
+  // still be what's returned, not an unhandled relay exception.
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  for (const relayError of [new Error('boom relay retry'), null]) {
+    const calls = [];
+
+    globalThis.fetch = async (input) => {
+      calls.push(String(input));
+      if (calls.length === 1) {
+        return new Response('not found', { status: 404 });
+      }
+      throw relayError;
+    };
+
+    const feedUrl = 'https://techcrunch.com/feed';
+    const res = await handler(makeRequest(feedUrl));
+
+    assert.equal(res.status, 404);
+    assert.equal(await res.text(), 'not found');
+    assert.equal(calls.length, 2);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Initial-host SSRF allowlist guard (#5378)
 //

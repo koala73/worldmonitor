@@ -9,6 +9,7 @@ import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
+import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
 
 export const config = { runtime: 'edge' };
 
@@ -104,6 +105,8 @@ const BOOTSTRAP_KEYS = {
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
+  crossStraitActivity: 'military:cross-strait-activity:v1',
+  crossStraitActivityBootstrap: 'military:cross-strait-activity-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   forecastsBootstrap: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
@@ -137,8 +140,11 @@ const BOOTSTRAP_KEYS = {
   euYieldCurve:      'economic:yield-curve-eu:v1',
   earningsCalendar:  'market:earnings-calendar:v1',
   econCalendar:      'economic:econ-calendar:v1',
-  chinaMacro:        'economic:china:macro:v1',
-  chinaReleaseCalendar: 'economic:china:release-calendar:v1',
+  chinaMacro:        BOOTSTRAP_CACHE_KEYS.chinaMacro,
+  chinaReleaseCalendar: BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar,
+  chinaCorporateDisclosures: 'market:china:corporate-disclosures:v1',
+  chinaPolicyEvents: 'china:policy-events:v1',
+  chinaDecisionSignals: BOOTSTRAP_CACHE_KEYS.chinaDecisionSignals,
   cotPositioning:    'market:cot:v1',
   hyperliquidFlow:   'market:hyperliquid:flow:v1',
   crudeInventories:  'economic:crude-inventories:v1',
@@ -171,6 +177,7 @@ const BOOTSTRAP_KEYS = {
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   hkoWarnings:        'weather:hko-warnings:v1',
+  humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
   // keys: health-monitored but NOT bootstrap-hydrated into page loads.
   newsFeedHealth:    'news:feed-health:v1',
@@ -198,8 +205,12 @@ const STANDALONE_KEYS = {
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
   minerals:              'supply_chain:minerals:v2',
-  giving:                'giving:summary:v1',
+  giving:                'giving:summary:v2',
   gpsjam:                'intelligence:gpsjam:v2',
+  // Corporate intelligence (issue #5695): SEC ticker→CIK registry + 8-K
+  // material-events stream. Health-monitored, not bootstrap-hydrated.
+  secCikMap:             'intelligence:sec-cik-map:v1',
+  sec8kStream:           'intelligence:sec-8k-stream:v1',
   theaterPosture:        'theater_posture:sebuf:stale:v1',
   theaterPostureLive:    'theater-posture:sebuf:v1',
   theaterPostureBackup:  'theater-posture:sebuf:backup:v1',
@@ -227,6 +238,8 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
+  crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
@@ -266,7 +279,7 @@ const STANDALONE_KEYS = {
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   resilienceRanking:        'resilience:ranking:v25',
-  productCatalog:           'product-catalog:v2',
+  productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
   energyMixAll:             'energy:mix:v1:_all',
@@ -333,9 +346,28 @@ const STANDALONE_KEYS = {
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
+  // #5736 — historical-intelligence ingest health, one record per collector.
+  // These are NOT the collectors' canonical keys: scripts/_seed-history.mjs
+  // appends to the Convex intel-history store fail-open, so a permanently
+  // broken relay leg (missing RELAY_SHARED_SECRET, rejecting relay, dead
+  // embedder) left every canonical key fresh and the store empty. The paired
+  // seed-meta below carries the last HEALTHY append, so "history stopped
+  // accumulating" ages into STALE_SEED while canonical publication stays OK.
+  intelHistoryIngestConflictAcled:    'intel-history:ingest-health:conflict:acled-intel:v1',
+  intelHistoryIngestMilitaryCrossStrait: 'intel-history:ingest-health:military:cross-strait-activity:v1',
+  intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',
 };
 
 const SEED_META = {
+  // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
+  // to one bulk refresh every 2h. Bounded above by
+  // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
+  // by cron headroom alone: this MUST fire before a per-country key can expire,
+  // or users see empty data for up to 6h before health notices (#5554 review;
+  // an earlier 720min value left exactly that blind spot). 300 (5h) is ~10x
+  // the HAPI refresh interval (headroom for missed/lock-contended ticks) while staying
+  // a full hour below the 6h data-expiry floor.
+  humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300, minRecordCount: 23 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
@@ -373,8 +405,15 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   submarineCables:  { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 25200 },
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy afterPublish-derived stress/macro key
-  chinaMacro:       { key: 'seed-meta:economic:china-macro', maxStaleMin: 4_320 }, // 36h gate; 72h tolerates one missed run
+  chinaMacro:       { key: 'seed-meta:economic:china-macro-transport', maxStaleMin: 4_320 }, // oldest required-source last success; preserved failures do not refresh it
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
+  chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
+  crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
+  crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
+  crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
+  chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
+  chinaDecisionSignals: { key: 'seed-meta:intelligence:china-decision-signals', maxStaleMin: 60, minRecordCount: 6 },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -427,7 +466,7 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 180 },
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
   globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
@@ -443,6 +482,7 @@ const SEED_META = {
   forecastResolutions: { key: 'seed-meta:forecast:resolutions',     maxStaleMin: 2160 }, // daily Bet-2 resolver; 36h catches a missed cron without flapping on normal daily jitter
   forecastScorecard:   { key: 'seed-meta:forecast:scorecard',       maxStaleMin: 2160 }, // scorecard extra key written by seed-forecast-resolutions
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
+  forecastMarketsResolution: { key: 'seed-meta:prediction:markets-resolution', maxStaleMin: 2160 }, // #5525 market settlement feed; written every resolver run (even zero-due), so it shares the resolver's 36h window
   forecastFunnel:      { key: 'seed-meta:forecast:funnel:health:v1', maxStaleMin: 180 }, // funnel-diversity guardrail (#5233); written by seed-forecasts afterPublish each hourly run (3× cadence). status:'error' → SEED_ERROR when the published funnel collapses (too few domains / mostly synthetic)
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
@@ -460,9 +500,11 @@ const SEED_META = {
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 720 }, // relay loop every 6h; 720 = 2× interval (was 480 = 1.3×, too tight)
   securityAdvisories:  { key: 'seed-meta:intelligence:advisories',           maxStaleMin: 120 },
+  secCikMap:           { key: 'seed-meta:intelligence:sec-cik-map',          maxStaleMin: 2880, minRecordCount: 5000 }, // daily bundle section; 2880min = 48h = 2x interval. minRecordCount mirrors MIN_CIK_ENTRIES in scripts/seed-sec-cik-map.mjs.
+  sec8kStream:         { key: 'seed-meta:intelligence:sec-8k-stream',        maxStaleMin: 120, minRecordCount: 50 }, // 30min bundle section; 120min = 4x interval. minRecordCount mirrors MIN_STREAM_EVENTS in scripts/seed-sec-8k-stream.mjs — a drained window means Atom-parse decay, not a quiet market.
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
-  comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 34560 }, // 24d freshness gate + 25d meta TTL; meta-only aggregate over sharded country keys
+  comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
   blsSeries:           { key: 'seed-meta:economic:bls-series',                maxStaleMin: 2880 }, // daily seed; 2880min = 48h = 2x interval
   sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 },
   crossSourceSignals:  { key: 'seed-meta:intelligence:cross-source-signals',  maxStaleMin: 30 }, // 15min cron; 30min = 2x interval
@@ -588,6 +630,16 @@ const SEED_META = {
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
+  // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
+  // last HEALTHY append (success, or a correctly-detected unconfigured run),
+  // NEVER the last attempt, so a relay that rejects every chunk ages this out
+  // while the collector's own seed-meta stays fresh. Budgets mirror each
+  // collector's canonical maxStaleMin above — the hook runs once per successful
+  // publish, so a tighter budget would alarm on the parent's cadence, not on
+  // history. Keep in step with api/seed-health.js (intervalMin = maxStaleMin/2).
+  intelHistoryIngestConflictAcled:       { key: 'seed-meta:intel-history:conflict:acled-intel',            maxStaleMin: 38 },  // mirrors acledIntel
+  intelHistoryIngestMilitaryCrossStrait: { key: 'seed-meta:intel-history:military:cross-strait-activity',  maxStaleMin: 720 }, // mirrors crossStraitActivity
+  intelHistoryIngestEnergyIntelligence:  { key: 'seed-meta:intel-history:energy:intelligence',             maxStaleMin: 720 }, // mirrors energyIntelligence
 };
 
 // Iran-events sunset: when disabled (default), drop it from all health
@@ -627,7 +679,9 @@ const ON_DEMAND_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit',
   // bisDsr/bisPropertyResidential/bisPropertyCommercial have dedicated SEED_META
   // entries (seed-bis-extended.mjs), so they are not on-demand.
-  'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
+  // shippingRates is a scheduled 6h producer and FAST bootstrap key;
+  // absence must be EMPTY/CRIT rather than on-demand.
+  'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
@@ -688,6 +742,14 @@ const ON_DEMAND_KEYS = new Set([
                                    // behind). STALE_SEED still fires if data goes stale after first seed.
                                    // Remove from this set after ~7 days of clean cron runs so
                                    // never-provisioned Railway promotes EMPTY_ON_DEMAND → EMPTY (CRIT).
+  // #5736 deployment-order bridge, activation-gated like chinaCoverage: Vercel
+  // ships this registry the moment the PR merges, but the record only exists
+  // after the collector's next Railway tick (up to 6h for energy/intelligence).
+  // Softening is revoked the instant the durable marker appears — after the
+  // first report, an absent record is EMPTY and a stalled one is STALE_SEED.
+  'intelHistoryIngestConflictAcled',
+  'intelHistoryIngestMilitaryCrossStrait',
+  'intelHistoryIngestEnergyIntelligence',
 ]);
 
 // Legacy broad empty-data exemptions. classifyKey uses this set in both the
@@ -705,6 +767,12 @@ const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
+  // Written by scripts/_seed-history.mjs on every ingest-health report,
+  // including an `unconfigured` one — "the hook ran" is the activation signal,
+  // not "the relay answered". See historyIngestActivationKey there.
+  intelHistoryIngestConflictAcled: 'seed-activated:intel-history:conflict:acled-intel',
+  intelHistoryIngestMilitaryCrossStrait: 'seed-activated:intel-history:military:cross-strait-activity',
+  intelHistoryIngestEnergyIntelligence: 'seed-activated:intel-history:energy:intelligence',
 };
 
 const EMPTY_DATA_OK_KEYS = new Set([
@@ -725,6 +793,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'ucdpEventsBootstrap',
   'forecastsBootstrap',
   'wildfiresBootstrap',
+  'crossStraitActivityBootstrap',
 ]);
 
 // These compact projections must leave a payload on every successful publish.
@@ -734,11 +803,17 @@ const EMPTY_DATA_OK_KEYS = new Set([
 // EMPTY_DATA_OK_KEYS so a pre-first-publish absence remains STALE_SEED rather
 // than a false-critical EMPTY; tests/health-empty-data-ok.test.mjs enforces it.
 const MISSING_DATA_IS_FAILURE_KEYS = new Set([
+  // These sparse feeds publish an explicit canonical payload on every
+  // successful cycle, including valid zero-record cycles. Fresh metadata
+  // therefore cannot excuse a vanished data key.
+  'cableHealth',
+  'notamClosures',
   'thermalEscalationBootstrap',
   'ucdpEventsBootstrap',
   'wildfiresBootstrap',
   'forecastsBootstrap',
   'positiveGeoEvents',
+  'crossStraitActivityBootstrap',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data
@@ -765,6 +840,18 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // sit in the broad set because their data key can be wholly absent on quiet
   // (writeSeedMeta-only path).
   'outages',
+  // Official disclosure categories are sparse. The canonical snapshot always
+  // exists after a successful query, but a quiet 90-day window can validly
+  // contain zero owned-category events.
+  'chinaCorporateDisclosures',
+  // #5736 ingest-health records. `recordCount` is the volume the relay accepted
+  // on the last successful append, and zero is legitimate — a run whose records
+  // were all deduped, or one with no noteworthy records at all. The record key
+  // itself must still exist, so this is the NARROW set: a vanished record is a
+  // real gap, not a quiet period.
+  'intelHistoryIngestConflictAcled',
+  'intelHistoryIngestMilitaryCrossStrait',
+  'intelHistoryIngestEnergyIntelligence',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -818,12 +905,12 @@ function keyHasData(redisKey, len) {
 
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: true, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -831,28 +918,49 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // true envelope reads at the canonical-key layer; this import establishes
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
+  const metaCount = meta?.count ?? meta?.recordCount ?? null;
+  const errorCode = typeof meta?.errorCode === 'string'
+    && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
+    ? meta.errorCode
+    : null;
   if (meta?.status === 'error') {
-    return { hasMeta: true, seedAge: null, seedStale: true, seedError: true, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return {
+      hasMeta: true,
+      seedAge: null,
+      seedStale: true,
+      seedError: true,
+      sourceUnavailable: false,
+      sourceBlocked: false,
+      metaReadFailed: false,
+      metaCount,
+      contentAge: null,
+      errorCode,
+    };
   }
   let seedAge = null;
   let seedStale = true;
-  if (meta?.fetchedAt) {
-    seedAge = Math.round((now - meta.fetchedAt) / 60_000);
+  const fetchedAt = Number(meta?.fetchedAt);
+  if (Number.isFinite(fetchedAt) && fetchedAt > 0) {
+    seedAge = Math.round((now - fetchedAt) / 60_000);
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
-  const metaCount = meta?.count ?? meta?.recordCount ?? null;
   // `unavailable` is the one sourceState that means "this deployment never opted
   // into the adapter" (the producer had no credential to try with), as opposed to
   // "the adapter was tried and is broken" (`stale`/`error`). Grading the two the
   // same makes an optional, deliberately-unconfigured source an eternal warn that
   // no amount of operator work can clear — so it is classified separately below.
   const sourceUnavailable = meta?.sourceState === 'unavailable';
+  // A current, bounded upstream classification can prove that every admitted
+  // transport path is externally blocked. Keep that state visible without
+  // treating it as a broken producer that can be repaired by another retry.
+  const sourceBlocked = meta?.sourceState === 'blocked';
   // Source-specific producers can preserve usable last-good records while a
   // current upstream attempt is degraded. Surface that state immediately as a
   // warning without discarding the retained record count from health output.
   const sourceDegraded = typeof meta?.sourceState === 'string'
     && meta.sourceState !== 'ok'
-    && !sourceUnavailable;
+    && !sourceUnavailable
+    && !sourceBlocked;
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
@@ -880,7 +988,18 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  return { hasMeta: meta != null, seedAge, seedStale, seedError: sourceDegraded, sourceUnavailable, metaReadFailed: false, metaCount, contentAge };
+  return {
+    hasMeta: meta != null,
+    seedAge,
+    seedStale,
+    seedError: sourceDegraded,
+    sourceUnavailable,
+    sourceBlocked,
+    metaReadFailed: false,
+    metaCount,
+    contentAge,
+    errorCode,
+  };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -915,7 +1034,17 @@ function classifyKey(name, redisKey, opts, ctx) {
 
   const strlen = keyStrens.get(redisKey) ?? 0;
   const hasData = keyHasData(redisKey, strlen);
-  const { hasMeta, seedAge, seedStale, seedError, sourceUnavailable, metaCount, contentAge } = meta;
+  const {
+    hasMeta,
+    seedAge,
+    seedStale,
+    seedError,
+    sourceUnavailable,
+    sourceBlocked,
+    metaCount,
+    contentAge,
+    errorCode,
+  } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -929,6 +1058,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // the moment the credential lands the next run reports sourceState 'ok' and this
   // flips to OK on its own — no health-config change needed.
   if (sourceUnavailable) status = 'NOT_CONFIGURED';
+  else if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
+    // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
+    // a reviewed-data contract and explicit two-path proof for this state.
+    status = 'SEED_ERROR';
+  }
+  else if (sourceBlocked && hasData && records > 0 && seedStale !== true) status = 'SOURCE_BLOCKED';
   else if (seedError) status = 'SEED_ERROR';
   else if (!hasData) {
     if (cascadeCovered) status = 'OK_CASCADE';
@@ -962,9 +1097,21 @@ function classifyKey(name, redisKey, opts, ctx) {
   else status = 'OK';
 
   const entry = { status, records };
+  // Source-level on-demand marker: "this key is RPC-populated or awaiting its
+  // first producer run", NOT "any failure here is acceptable". The status suffix
+  // (`EMPTY_ON_DEMAND`) cannot carry that, because it only covers the
+  // absent/zero-record branches — an on-demand key that HAS data and goes stale
+  // falls through to plain STALE_SEED. Emitted for every status so a consumer
+  // can combine source and status; deciding WHICH statuses the marker excuses is
+  // the consumer's call, and scripts/check-seed-freshness.mjs deliberately
+  // excuses only the empty/absent ones (see ON_DEMAND_SOFT_STATUSES there —
+  // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
+  // ON_DEMAND_KEYS policy block above exists to prevent).
+  if (isOnDemand) entry.onDemand = true;
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
+  if (status === 'SEED_ERROR' && errorCode) entry.errorCode = errorCode;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.
@@ -984,6 +1131,11 @@ const STATUS_COUNTS = {
   // Must stay registered here: the summary does `STATUS_COUNTS[status] ?? 'warn'`,
   // so an unlisted status would silently re-become the warn this exists to stop.
   NOT_CONFIGURED: 'ok',
+  // The producer ran and classified an external transport refusal with a
+  // documented reason. Retained reviewed data remains usable, and retrying the
+  // same bounded paths cannot clear it, so this is informational rather than a
+  // fleet-health warning.
+  SOURCE_BLOCKED: 'ok',
   STALE_SEED: 'warn',
   SEED_ERROR: 'warn',
   EMPTY_ON_DEMAND: 'warn',
@@ -1186,8 +1338,14 @@ function healthResponseBody(snapshot, compact) {
   // the full 20 KB check map. Passing a compact snapshot back through here is a
   // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
   const problems = snapshot.checks
-    ? Object.fromEntries(Object.entries(snapshot.checks).filter(([, check]) => isProblemStatus(check.status)))
-    : (snapshot.problems ?? {});
+    ? Object.fromEntries(Object.entries(snapshot.checks).filter(
+      ([name, check]) => name !== 'chinaDecisionSignals' && isProblemStatus(check.status),
+    ))
+    : { ...(snapshot.problems ?? {}) };
+  // Older compact snapshots may predate the operator-only China health
+  // projection. Strip it again at the response boundary so a cached value
+  // cannot leak source freshness details to anonymous status readers.
+  delete problems.chinaDecisionSignals;
   if (Object.keys(problems).length > 0) body.problems = problems;
   return body;
 }
@@ -1626,4 +1784,8 @@ export const __testing__ = {
   EMPTY_DATA_OK_KEYS,
   MISSING_DATA_IS_FAILURE_KEYS,
   ZERO_RECORD_DATA_OK_KEYS,
+  // Exposed so a registration test can prove a key's deployment-order softening
+  // is actually wired — membership here is what keeps a not-yet-published key
+  // out of CRIT, and nothing could assert it before (#5736).
+  ON_DEMAND_KEYS,
 };

@@ -1,7 +1,7 @@
-// Resilient GDELT conflict-event fallback using the official 15-minute bulk
-// event export. The DOC API is aggressively per-IP throttled; the bulk stream
-// is a single global stream and therefore remains usable when country-by-country
-// DOC queries all return 429.
+// Primary GDELT conflict-event source using the official 15-minute bulk
+// event export (#5849). The DOC API is aggressively per-IP throttled; the bulk
+// stream is a single global stream and therefore remains usable when
+// country-by-country DOC queries all return 429.
 
 import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';

@@ -4,7 +4,7 @@ Agent entry point for WorldMonitor. Read this first, then follow links for depth
 
 ## What This Project Is
 
-Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 163 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
+Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 179 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
 
 ## Repository Map
 
@@ -13,9 +13,9 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 163
 ├── src/                    # Browser SPA (TypeScript, class-based components)
 │   ├── app/                # App orchestration (data-loader, refresh-scheduler, panel-layout)
 │   ├── bootstrap/          # Startup/recovery (chunk reload, deferred Sentry, SW update)
-│   ├── components/         # 163 top-level TypeScript component files
+│   ├── components/         # 179 top-level TypeScript component files
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
-│   ├── services/           # Business logic (200 service modules and domain directories)
+│   ├── services/           # Business logic (217 service modules and domain directories)
 │   ├── shared/             # Cross-cutting helpers (premium paths, registries, staleness)
 │   ├── embed/              # Embeddable widget loader
 │   ├── styles/             # Global CSS (layers, themes, panel styles)
@@ -214,6 +214,7 @@ Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in
 ## Shipping Velocity (Agent Workflow)
 
 - **Before starting work on an issue:** check for parallel/duplicate work first — `gh pr list --search "<issue#>"` AND `git worktree list` (background codex/claude sessions ship PRs under the same account).
+- **PR delivery authority:** a user request to implement, fix, or ship a scoped change authorizes creating and updating the ready PRs needed to deliver it, including corrective follow-up PRs discovered by review or CI, plus monitoring and repairing those PRs without additional per-PR confirmation. This authority is limited to the requested change and its delivery branches; review-only or diagnostic requests remain read-only.
 - **Merge authority is explicit and non-delegable:** never merge a PR, enable auto-merge, queue a merge, or run any equivalent GitHub merge action unless the user has explicitly requested that specific action in the current conversation. A request to implement, ship, push, create a PR, or monitor CI does **not** authorize merging. Wait for clear approval and report the ready state instead.
 - **After pushing a PR:** do not sleep-poll CI. Start `gh pr checks <n> --watch` as a background task, or report the current check state; never turn on auto-merge without the explicit approval above.
 - **docs/plans/ is gitignored** — plan documents are local working state and do not travel between worktrees or ship in PRs.
@@ -234,6 +235,7 @@ Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in
 - Yahoo Finance requests must be staggered (150ms delays)
 - New data sources MUST have bootstrap hydration wired in `api/bootstrap.js`
 - Redis seed scripts MUST write `seed-meta:<key>` for health monitoring
+- Seed credentials load only via `loadEnvFile()` (inert under test runtimes, resolves `.env.local` at the checkout root, `only:` narrows the keys) — never hand-roll a `.env` reader or resolve one from `$HOME` or an absolute literal. Note `worktree:bootstrap` symlinks the source checkout's `.env.local`, so a bootstrapped worktree shares real credentials when a seeder is actually run
 
 ## External References
 
