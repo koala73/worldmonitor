@@ -93,6 +93,7 @@
     "test:e2e:happy": "cross-env VITE_VARIANT=happy playwright test",
     "test:e2e:runtime": "cross-env VITE_VARIANT=full playwright test e2e/runtime-fetch.spec.ts",
     "test:e2e:mcp-grant": "cross-env VITE_VARIANT=full playwright test e2e/mcp-grant-consent.spec.ts",
+    "test:e2e:news-budget": "cross-env VITE_VARIANT=full playwright test e2e/dashboard-news-request-budget.spec.ts",
     "test:e2e:variant-smoke:full": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:tech": "cross-env VITE_VARIANT=tech playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:finance": "cross-env VITE_VARIANT=finance playwright test e2e/variant-live-smoke.spec.ts",

@@ -409,10 +409,10 @@ export class DataLoaderManager implements AppModule {
   private readonly perFeedFallbackBatchSize = 2;
   private lastGoodDigest: ListFeedDigestResponse | null = null;
   /**
-   * Work-list signature of the last news load that actually landed its items,
-   * or `null` if none has. Gates loadAllData()'s `news` task — see
-   * `shouldHydrateNews`. Left unset when a load throws, so a failed load still
-   * gets retried by the next trigger.
+   * Work-list signature of the last news load that actually landed data, or
+   * `null` if none has. Gates loadAllData()'s `news` task — see
+   * `shouldHydrateNews`. Left unset when a load throws or comes back empty with
+   * no usable digest, so a failed load stays retryable.
    */
   private loadedNewsSignature: string | null = null;
 
@@ -1618,12 +1618,23 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.ctx.allNews = collectedNews;
-    // Items have landed: record what this run covered so loadAllData() can skip
-    // triggers that don't change the work-list. Set here rather than in a
-    // `finally` so a load that threw on the way in stays retryable, and before
-    // the post-load intelligence tail so a failure there doesn't force a full
-    // re-fetch of news that already arrived.
-    this.loadedNewsSignature = newsWorkListSignature(categories);
+    // Record what this run covered — but only when it actually landed something
+    // for the gate to protect. A run counts as landed when it had a usable digest
+    // (authoritative even where a bucket came back empty) or collected items by
+    // any path; a variant with no news categories has nothing to retry either.
+    //
+    // A digest outage lands NEITHER. `newsPerFeedFallback` is off on web, so every
+    // preset category renders empty, and recording that would make the gate treat
+    // an empty dashboard as "already loaded" and suppress every retry until
+    // RefreshScheduler's 20-minute tick. Leaving the signature unset keeps the next
+    // trigger a real retry — the recovery the pre-gate double-load provided by
+    // accident, now deliberate.
+    //
+    // Set here rather than in a `finally` so a load that threw on the way in stays
+    // retryable too, and before the post-load intelligence tail so a failure there
+    // doesn't force a re-fetch of news that already arrived.
+    const landed = newsPass.finalDigest !== null || collectedNews.length > 0 || categories.length === 0;
+    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 

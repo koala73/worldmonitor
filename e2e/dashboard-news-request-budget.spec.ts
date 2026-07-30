@@ -95,7 +95,10 @@ async function seedFreshAnonymousFullVariant(
   }, extraPanels as Record<string, unknown>);
 }
 
-async function installNewsRequestAccounting(page: Page): Promise<NewsRequestLog> {
+async function installNewsRequestAccounting(
+  page: Page,
+  options: { failDigestTimes?: number } = {},
+): Promise<NewsRequestLog> {
   const log: NewsRequestLog = { digestUrls: [], rssProxyUrls: [] };
 
   // Catch-all FIRST: later-registered routes win in Playwright, so the two
@@ -109,6 +112,14 @@ async function installNewsRequestAccounting(page: Page): Promise<NewsRequestLog>
   // bearing bucket would exercise rendering, not the request budget.
   await page.route(DIGEST_GLOB, async (route) => {
     log.digestUrls.push(route.request().url());
+    // Fail only the first N attempts. The data loader's own circuit breaker opens
+    // after 2 consecutive failures and then serves from cache WITHOUT a network
+    // request, so an always-failing stub would stop producing observable attempts
+    // and mask whether a retry happened at all.
+    if (log.digestUrls.length <= (options.failDigestTimes ?? 0)) {
+      await route.fulfill({ status: 503, contentType: 'text/plain', body: 'digest unavailable' });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -209,5 +220,45 @@ test.describe('dashboard news request budget (#5376)', () => {
       log.digestUrls.length,
       'customizing a category must not add a second news load either',
     ).toBe(1);
+  });
+
+  // The gate must not turn a transient digest outage into a stuck-empty dashboard.
+  // When the digest is down, `newsPerFeedFallback` is off on web, so every preset
+  // category renders empty and the load lands NOTHING. Recording the work-list for
+  // that run would make the gate treat an empty dashboard as "already loaded" and
+  // suppress every retry until RefreshScheduler's 20-minute tick — losing the
+  // recovery the pre-gate double-load provided by accident.
+  test('a news load that landed nothing recovers on the next trigger', async ({ page }) => {
+    await seedFreshAnonymousFullVariant(page);
+    const log = await installNewsRequestAccounting(page, { failDigestTimes: 1 });
+
+    const firstDigest = page.waitForRequest(DIGEST_GLOB);
+    await page.goto('/');
+    await page.waitForFunction(
+      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    );
+    await firstDigest;
+    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+
+    // Attempt 1 was served 503, so that load rendered every category empty. A
+    // second attempt is the whole point: it is served 200 and the dashboard
+    // recovers within the page load instead of waiting out the refresh interval.
+    expect(
+      log.digestUrls.length,
+      `a news load that landed nothing must stay retryable — the first digest was 503, ` +
+        `so a later trigger has to try again rather than be skipped as already-loaded ` +
+        `(attempts: ${log.digestUrls.length})`,
+    ).toBeGreaterThanOrEqual(2);
+
+    // ...and having recovered, it must settle: the successful load records the
+    // work-list, so the gate stops the retries rather than looping every trigger.
+    const afterRecovery = log.digestUrls.length;
+    await page.mouse.wheel(0, 1200);
+    await page.waitForTimeout(3_000);
+    expect(
+      log.digestUrls.length,
+      `once a load has landed, further triggers must not re-fetch the digest ` +
+        `(after recovery: ${afterRecovery}, after scroll: ${log.digestUrls.length})`,
+    ).toBe(afterRecovery);
   });
 });

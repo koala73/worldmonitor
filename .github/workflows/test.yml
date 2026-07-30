@@ -224,6 +224,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:variant-smoke:full
       - run: npm run test:e2e:mcp-grant
+      # Client request budget for the news load (#5376). Named explicitly because
+      # nothing in CI runs the e2e/ glob — a regression guard that no job invokes
+      # is a guard that reports green while the regression ships.
+      - run: npm run test:e2e:news-budget
 
   resilience-validation-smoke:
     needs: changes
