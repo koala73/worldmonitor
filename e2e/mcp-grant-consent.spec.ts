@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 /**
  * MCP Grant Consent Page — DOM-behavioural coverage (#5654).
@@ -55,7 +55,7 @@ const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
  * is why assertions here must never assume a single request.
  */
 async function stubClerkModule(
-  page: import('@playwright/test').Page,
+  page: Page,
   opts: { trackSignIn?: boolean } = {},
 ): Promise<void> {
   const openSignInBody = opts.trackSignIn ? 'window.__openSignInCalled = true;' : '';
@@ -68,10 +68,88 @@ async function stubClerkModule(
         export function getClerkToken() { return Promise.resolve('stub-jwt-token'); }
         export function getCurrentClerkUser() { return { email: 'e2e@worldmonitor.app' }; }
         export function openSignIn() { ${openSignInBody} }
-        export function subscribeClerk(cb) { cb(); return () => {}; }
+        export function subscribeClerk(cb) {
+          window.__emitClerkSubscription = cb;
+          cb();
+          return () => {
+            if (window.__emitClerkSubscription === cb) delete window.__emitClerkSubscription;
+          };
+        }
       `,
     });
   });
+}
+
+async function emitClerkSubscription(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const emit = (window as unknown as { __emitClerkSubscription?: () => void })
+      .__emitClerkSubscription;
+    if (!emit) throw new Error('Clerk subscription callback was not registered');
+    emit();
+  });
+}
+
+/**
+ * Observe the consent/error visibility invariant across an asynchronous Clerk
+ * reentry. Waiting for the mocked response alone is insufficient: the response
+ * event fires before the page has parsed the body and routed the denial.
+ */
+async function expectConsentPreservedAcrossClerkRefresh(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const consent = document.getElementById('consent');
+    const errorView = document.getElementById('errorView');
+    if (!consent || !errorView) throw new Error('Grant views were not rendered');
+
+    const wasDestroyed = (): boolean => consent.hidden || !errorView.hidden;
+    let destroyed = wasDestroyed();
+    const observer = new MutationObserver(() => {
+      destroyed ||= wasDestroyed();
+    });
+    observer.observe(consent, { attributes: true, attributeFilter: ['hidden'] });
+    observer.observe(errorView, { attributes: true, attributeFilter: ['hidden'] });
+
+    (
+      window as unknown as {
+        __finishConsentPreservationWatch?: () => boolean;
+      }
+    ).__finishConsentPreservationWatch = () => {
+      observer.takeRecords();
+      observer.disconnect();
+      return destroyed || wasDestroyed();
+    };
+  });
+
+  const deniedRefresh = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/internal/mcp-grant-context') && response.status() === 503,
+  );
+  await emitClerkSubscription(page);
+  await deniedRefresh;
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+
+  const consentWasDestroyed = await page.evaluate(() => {
+    const finish = (
+      window as unknown as {
+        __finishConsentPreservationWatch?: () => boolean;
+      }
+    ).__finishConsentPreservationWatch;
+    if (!finish) throw new Error('Consent preservation observer was not registered');
+    delete (
+      window as unknown as {
+        __finishConsentPreservationWatch?: () => boolean;
+      }
+    ).__finishConsentPreservationWatch;
+    return finish();
+  });
+
+  expect(consentWasDestroyed).toBe(false);
+  await expect(page.locator('#consent')).toBeVisible();
+  await expect(page.locator('#errorView')).toBeHidden();
 }
 
 /**
@@ -80,7 +158,7 @@ async function stubClerkModule(
  * the success path navigates and that a refused redirect navigates nowhere.
  */
 async function interceptGrantRedirect(
-  page: import('@playwright/test').Page,
+  page: Page,
 ): Promise<() => string[]> {
   const requested: string[] = [];
   await page.route('https://api.worldmonitor.app/**', async (route) => {
@@ -94,7 +172,7 @@ async function interceptGrantRedirect(
   return () => requested;
 }
 
-function stubContextSuccess(page: import('@playwright/test').Page): Promise<void> {
+function stubContextSuccess(page: Page): Promise<void> {
   return page.route('**/api/internal/mcp-grant-context*', async (route) => {
     await route.fulfill({
       status: 200,
@@ -105,7 +183,7 @@ function stubContextSuccess(page: import('@playwright/test').Page): Promise<void
 }
 
 function stubContextError(
-  page: import('@playwright/test').Page,
+  page: Page,
   error: string,
   status: number,
   headers?: Record<string, string>,
@@ -120,8 +198,40 @@ function stubContextError(
   });
 }
 
-function stubMintSuccess(page: import('@playwright/test').Page): Promise<void> {
+async function stubContextSuccessThenRetryable(
+  page: Page,
+): Promise<{ useRetryableDenial: () => void }> {
+  let retryable = false;
+  await page.route('**/api/internal/mcp-grant-context*', async (route) => {
+    if (retryable) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        headers: { 'Retry-After': '60' },
+        body: JSON.stringify({ error: 'SERVICE_UNAVAILABLE' }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ client_name: 'Claude Desktop', redirect_host: 'api.worldmonitor.app' }),
+    });
+  });
+  return { useRetryableDenial: () => { retryable = true; } };
+}
+
+function expectMintRequestContract(route: Route): void {
+  const request = route.request();
+  expect(request.method()).toBe('POST');
+  expect(request.headers().authorization).toBe('Bearer stub-jwt-token');
+  expect(request.headers()['content-type']).toContain('application/json');
+  expect(request.postDataJSON()).toEqual({ nonce: 'test-nonce-e2e' });
+}
+
+function stubMintSuccess(page: Page): Promise<void> {
   return page.route('**/api/internal/mcp-grant-mint', async (route) => {
+    expectMintRequestContract(route);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -131,12 +241,13 @@ function stubMintSuccess(page: import('@playwright/test').Page): Promise<void> {
 }
 
 function stubMintError(
-  page: import('@playwright/test').Page,
+  page: Page,
   error: string | undefined,
   status: number,
   headers?: Record<string, string>,
 ): Promise<void> {
   return page.route('**/api/internal/mcp-grant-mint', async (route) => {
+    expectMintRequestContract(route);
     await route.fulfill({
       status,
       contentType: 'application/json',
@@ -146,17 +257,19 @@ function stubMintError(
   });
 }
 
-function stubMintNetworkError(page: import('@playwright/test').Page): Promise<void> {
+function stubMintNetworkError(page: Page): Promise<void> {
   return page.route('**/api/internal/mcp-grant-mint', async (route) => {
+    expectMintRequestContract(route);
     await route.abort('connectionrefused');
   });
 }
 
 function stubMintRedirect(
-  page: import('@playwright/test').Page,
+  page: Page,
   redirect: string,
 ): Promise<void> {
   return page.route('**/api/internal/mcp-grant-mint', async (route) => {
+    expectMintRequestContract(route);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -340,6 +453,7 @@ test.describe('MCP grant consent page (#5654)', () => {
       resolveMint = resolve;
     });
     await page.route('**/api/internal/mcp-grant-mint', async (route) => {
+      expectMintRequestContract(route);
       await mintDelay;
       await route.fulfill({
         status: 200,
@@ -358,6 +472,42 @@ test.describe('MCP grant consent page (#5654)', () => {
     // Release the mint and let the resulting navigation settle INSIDE the test.
     // Returning here would leave a cross-origin request to the production host
     // racing page teardown.
+    resolveMint();
+    await page.waitForURL(/^https:\/\/api\.worldmonitor\.app\//);
+    expect(requestedRedirects()).toHaveLength(1);
+  });
+
+  test('Clerk refresh preserves consent while mint is in flight', async ({ page }) => {
+    await stubClerkModule(page);
+    const context = await stubContextSuccessThenRetryable(page);
+    const requestedRedirects = await interceptGrantRedirect(page);
+
+    let resolveMint!: () => void;
+    const mintDelay = new Promise<void>((resolve) => {
+      resolveMint = resolve;
+    });
+    await page.route('**/api/internal/mcp-grant-mint', async (route) => {
+      expectMintRequestContract(route);
+      await mintDelay;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ redirect: GRANT_REDIRECT }),
+      });
+    });
+
+    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#consent')).toBeVisible();
+
+    await page.locator('#authorizeBtn').click();
+    await expect(page.locator('#authorizeBtn')).toBeDisabled();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
+
+    context.useRetryableDenial();
+    await expectConsentPreservedAcrossClerkRefresh(page);
+    await expect(page.locator('#authorizeBtn')).toBeDisabled();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
+
     resolveMint();
     await page.waitForURL(/^https:\/\/api\.worldmonitor\.app\//);
     expect(requestedRedirects()).toHaveLength(1);
@@ -436,7 +586,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     page,
   }) => {
     await stubClerkModule(page);
-    await stubContextSuccess(page);
+    const context = await stubContextSuccessThenRetryable(page);
     // #5622: a transient entitlement failure must NOT destroy a still-valid
     // consent card. The nonce is still good and the same click would succeed a
     // moment later, so the card stays and the button comes back after the delay
@@ -454,6 +604,11 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#mintError')).toContainText('temporarily unavailable');
     await expect(page.locator('#consent')).toBeVisible();
     await expect(page.locator('#errorView')).toBeHidden();
+    await expect(page.locator('#authorizeBtn')).toBeDisabled();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Retry shortly…');
+
+    context.useRetryableDenial();
+    await expectConsentPreservedAcrossClerkRefresh(page);
     await expect(page.locator('#authorizeBtn')).toBeDisabled();
     await expect(page.locator('#authorizeBtn')).toHaveText('Retry shortly…');
 
@@ -547,6 +702,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     await stubClerkModule(page);
     await stubContextSuccess(page);
     await page.route('**/api/internal/mcp-grant-mint', async (route) => {
+      expectMintRequestContract(route);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

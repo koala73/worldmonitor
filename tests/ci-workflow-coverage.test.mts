@@ -27,6 +27,7 @@ const REQUIRED_PR_SCRIPTS = [
   'test:data',
   'test:sidecar',
   'test:convex',
+  'test:e2e:mcp-grant',
   'test:e2e:variant-smoke:full',
   'test:resilience-validation-smoke',
 ] as const;
