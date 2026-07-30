@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { isPlausiblePriceMove, MAX_MOVE_RATIO } from './worldmonitor.js';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+
+const mockQuery = vi.fn();
+vi.mock('../db/client.js', () => ({ query: mockQuery }));
+
+const { buildMoversSnapshot, isPlausiblePriceMove, MAX_MOVE_RATIO } = await import(
+  './worldmonitor.js'
+);
 
 describe('isPlausiblePriceMove', () => {
   it('rejects the parse-artifact movers reported in #5445', () => {
@@ -27,5 +33,69 @@ describe('isPlausiblePriceMove', () => {
   it('rejects non-finite change values', () => {
     expect(isPlausiblePriceMove(Number.NaN)).toBe(false);
     expect(isPlausiblePriceMove(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+describe('buildMoversSnapshot', () => {
+  const row = (id: string, changePct: string) => ({
+    product_id: id,
+    raw_title: `Product ${id}`,
+    category_text: 'grocery',
+    retailer_slug: 'lulu_ae',
+    current_price: '10.00',
+    currency_code: 'AED',
+    change_pct: changePct,
+  });
+
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockQuery.mockReset();
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('ranks risers/fallers over the gated set, not the raw rows (#5445)', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row('1', '874.68'), // White Sugar 1kg artifact — must be dropped
+        row('2', '-99.25'), // Yaumi bread artifact — must be dropped
+        row('3', '12.5'),
+        row('4', '-40'),
+      ],
+    });
+
+    const snap = await buildMoversSnapshot('ae', 7);
+
+    expect(snap.risers.map((m) => m.productId)).toEqual(['3']);
+    expect(snap.fallers.map((m) => m.productId)).toEqual(['4']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 2/4');
+  });
+
+  it('publishes an empty snapshot when every fetched row is implausible', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [row('1', '874.68'), row('2', '608.86'), row('3', '-99.25')],
+    });
+
+    const snap = await buildMoversSnapshot('ae', 7);
+
+    expect(snap.risers).toEqual([]);
+    expect(snap.fallers).toEqual([]);
+    expect(snap.upstreamUnavailable).toBe(false);
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 3/3');
+  });
+
+  it('does not warn when every mover is plausible', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row('1', '12.5'), row('2', '-40')] });
+
+    const snap = await buildMoversSnapshot('ae', 7);
+
+    expect(snap.risers).toHaveLength(1);
+    expect(snap.fallers).toHaveLength(1);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
