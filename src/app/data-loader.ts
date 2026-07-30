@@ -1543,7 +1543,17 @@ export class DataLoaderManager implements AppModule {
    */
   private shouldHydrateNews(forceAll: boolean): boolean {
     if (forceAll || this.loadedNewsSignature === null) return true;
-    return newsWorkListSignature(this.resolveEnabledNewsCategories()) !== this.loadedNewsSignature;
+    return this.newsWorkListSignature() !== this.loadedNewsSignature;
+  }
+
+  /**
+   * Signature of what a news load would cover right now — the resolved category
+   * set plus the disabled-source filter both loads apply. Comparing it to
+   * `loadedNewsSignature` is how `shouldHydrateNews` separates a trigger that
+   * changes the work-list from one that changes nothing.
+   */
+  private newsWorkListSignature(categories = this.resolveEnabledNewsCategories()): string {
+    return newsWorkListSignature(categories, this.ctx.disabledSources);
   }
 
   /**
@@ -1634,7 +1644,7 @@ export class DataLoaderManager implements AppModule {
     // retryable too, and before the post-load intelligence tail so a failure there
     // doesn't force a re-fetch of news that already arrived.
     const landed = newsPass.finalDigest !== null || collectedNews.length > 0 || categories.length === 0;
-    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories);
+    if (landed) this.loadedNewsSignature = this.newsWorkListSignature(categories);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 

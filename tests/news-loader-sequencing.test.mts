@@ -373,8 +373,9 @@ describe('newsWorkListSignature', () => {
   });
 
   it('an empty work-list has its own signature, distinct from a populated one', () => {
-    assert.equal(newsWorkListSignature([]), '');
     assert.notEqual(newsWorkListSignature([]), newsWorkListSignature([{ key: 'politics' }]));
+    // Stable across calls — an empty work-list must not look like a change to itself.
+    assert.equal(newsWorkListSignature([]), newsWorkListSignature([]));
   });
 
   // Keys are joined, not concatenated: two categories must not be able to
@@ -383,6 +384,45 @@ describe('newsWorkListSignature', () => {
     assert.notEqual(
       newsWorkListSignature([{ key: 'a' }, { key: 'b' }]),
       newsWorkListSignature([{ key: 'ab' }]),
+    );
+  });
+});
+
+// The load filters each category's feeds by ctx.disabledSources
+// (data-loader.ts loadNewsCategory: `feeds.filter(f => !this.ctx.disabledSources.has(f.name))`),
+// so two loads over the same categories with different disabled sets produce
+// different headlines. The signature has to say so, or toggling a source off in
+// settings leaves its headlines on screen until RefreshScheduler's 20-minute tick:
+// nothing in the toggle path reloads news, and the next loadAllData() trigger
+// would compare equal and skip (#5376 review).
+describe('newsWorkListSignature — disabled sources', () => {
+  const categories = [{ key: 'politics' }, { key: 'energy' }];
+
+  it('changes when a source is disabled', () => {
+    assert.notEqual(
+      newsWorkListSignature(categories, []),
+      newsWorkListSignature(categories, ['CNN World']),
+    );
+  });
+
+  it('changes when a source is re-enabled', () => {
+    assert.notEqual(
+      newsWorkListSignature(categories, ['CNN World', 'BBC World']),
+      newsWorkListSignature(categories, ['CNN World']),
+    );
+  });
+
+  it('is stable across disabled-source ordering', () => {
+    assert.equal(
+      newsWorkListSignature(categories, ['BBC World', 'CNN World']),
+      newsWorkListSignature(categories, ['CNN World', 'BBC World']),
+    );
+  });
+
+  it('does not let a category key and a source name cross-contaminate', () => {
+    assert.notEqual(
+      newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }], []),
+      newsWorkListSignature([{ key: 'politics' }], ['energy']),
     );
   });
 });
