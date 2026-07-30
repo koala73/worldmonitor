@@ -1543,20 +1543,8 @@ export class DataLoaderManager implements AppModule {
    */
   private shouldHydrateNews(forceAll: boolean): boolean {
     if (forceAll || this.loadedNewsSignature === null) return true;
-    return this.newsWorkListSignature() !== this.loadedNewsSignature;
-  }
-
-  /**
-   * Signature of what a news load would cover right now — the resolved category
-   * set plus the disabled-source filter both loads apply. Comparing it to
-   * `loadedNewsSignature` is how `shouldHydrateNews` separates a trigger that
-   * changes the work-list from one that changes nothing.
-   */
-  private newsWorkListSignature(
-    categories = this.resolveEnabledNewsCategories(),
-    disabledSources: Iterable<string> = this.ctx.disabledSources,
-  ): string {
-    return newsWorkListSignature(categories, disabledSources);
+    const current = newsWorkListSignature(this.resolveEnabledNewsCategories(), this.ctx.disabledSources);
+    return current !== this.loadedNewsSignature;
   }
 
   /**
@@ -1660,8 +1648,10 @@ export class DataLoaderManager implements AppModule {
     // unequal on the next trigger instead of being swallowed.
     const digestCategories = newsPass.finalDigest?.categories ?? {};
     const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
-    const landed = digestCovered || collectedNews.length > 0 || categories.length === 0;
-    if (landed) this.loadedNewsSignature = this.newsWorkListSignature(categories, disabledAtLoadStart);
+    const anyItemsCollected = collectedNews.length > 0;
+    const noCategoriesToLoad = categories.length === 0;
+    const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
+    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 
