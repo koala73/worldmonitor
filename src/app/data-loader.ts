@@ -1552,8 +1552,11 @@ export class DataLoaderManager implements AppModule {
    * `loadedNewsSignature` is how `shouldHydrateNews` separates a trigger that
    * changes the work-list from one that changes nothing.
    */
-  private newsWorkListSignature(categories = this.resolveEnabledNewsCategories()): string {
-    return newsWorkListSignature(categories, this.ctx.disabledSources);
+  private newsWorkListSignature(
+    categories = this.resolveEnabledNewsCategories(),
+    disabledSources: Iterable<string> = this.ctx.disabledSources,
+  ): string {
+    return newsWorkListSignature(categories, disabledSources);
   }
 
   /**
@@ -1583,6 +1586,10 @@ export class DataLoaderManager implements AppModule {
     const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
 
     const categories = this.resolveEnabledNewsCategories();
+    // Snapshot beside the categories: `ctx.disabledSources` is mutated IN PLACE by
+    // the settings source toggle, so reading it after the await would record the
+    // post-toggle set for a load that used the pre-toggle one.
+    const disabledAtLoadStart = new Set(this.ctx.disabledSources);
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
@@ -1628,23 +1635,33 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.ctx.allNews = collectedNews;
-    // Record what this run covered — but only when it actually landed something
-    // for the gate to protect. A run counts as landed when it had a usable digest
-    // (authoritative even where a bucket came back empty) or collected items by
-    // any path; a variant with no news categories has nothing to retry either.
+    // Record what this run covered — but only when it actually landed something for
+    // the gate to protect. A run counts as landed when the digest COVERED at least
+    // one preset category (authoritative even where that bucket came back empty),
+    // when items arrived by any path, or when there are no categories to retry.
     //
-    // A digest outage lands NEITHER. `newsPerFeedFallback` is off on web, so every
-    // preset category renders empty, and recording that would make the gate treat
-    // an empty dashboard as "already loaded" and suppress every retry until
-    // RefreshScheduler's 20-minute tick. Leaving the signature unset keeps the next
-    // trigger a real retry — the recovery the pre-gate double-load provided by
-    // accident, now deliberate.
+    // A digest outage lands none of those, and it has two shapes. The obvious one
+    // is a failed request. The one that bites is a 200 carrying an empty or partial
+    // `categories` map — non-null, so a plain null check would call it landed. Both
+    // render every preset category empty on web (`newsPerFeedFallback` is off), and
+    // recording either would make the gate treat an empty dashboard as "already
+    // loaded" and suppress every retry until RefreshScheduler's 20-minute tick.
+    // Leaving the signature unset keeps the next trigger a real retry — the recovery
+    // the pre-gate double-load provided by accident, now deliberate.
+    //
+    // Coverage is measured over PRESET categories only: a custom category succeeds
+    // on its own direct-fetch path, so counting it would let one customized panel
+    // mask an outage for every other category in the work-list.
     //
     // Set here rather than in a `finally` so a load that threw on the way in stays
     // retryable too, and before the post-load intelligence tail so a failure there
-    // doesn't force a re-fetch of news that already arrived.
-    const landed = newsPass.finalDigest !== null || collectedNews.length > 0 || categories.length === 0;
-    if (landed) this.loadedNewsSignature = this.newsWorkListSignature(categories);
+    // doesn't force a re-fetch of news that already arrived. The disabled-source set
+    // is the one snapshotted at load start, so a source toggled mid-load compares
+    // unequal on the next trigger instead of being swallowed.
+    const digestCategories = newsPass.finalDigest?.categories ?? {};
+    const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
+    const landed = digestCovered || collectedNews.length > 0 || categories.length === 0;
+    if (landed) this.loadedNewsSignature = this.newsWorkListSignature(categories, disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 

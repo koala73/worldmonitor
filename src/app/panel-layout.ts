@@ -680,8 +680,8 @@ export class PanelLayoutManager implements AppModule {
     for (const key of Object.keys(this.ctx.newsPanels)) {
       delete this.ctx.newsPanels[key];
     }
-    // Registrations are cleared below, so the category→panel-key registry must
-    // reset too: a re-init re-registers from scratch and would otherwise skip
+    // lazyPanelRegistrations was cleared above, so the category→panel-key registry
+    // must reset too: a re-init re-registers from scratch and would otherwise skip
     // recording keys it believes are already mapped.
     this.ctx.newsCategoryPanelKeys.clear();
 
@@ -1545,10 +1545,17 @@ export class PanelLayoutManager implements AppModule {
       this.attachRelatedAssetHandlers(panel);
       panel.setRiskScoreGetter(PanelLayoutManager.computeEventRisk);
       this.ctx.newsPanels[categoryKey] = panel;
+      // Backfill on PRESENCE, not length. A category that resolved to `[]` is a
+      // routine outcome — the digest simply carried no bucket for it — and this is
+      // the only chance a late-mounting panel gets to clear the skeleton its
+      // constructor installed. Skipping a cached `[]` used to be harmless because
+      // the second news load re-rendered every category; now that the load runs
+      // once per work-list that second chance is gone and the panel spins until the
+      // 20-minute refresh (#5376). `renderNews([])` is what shows the empty state.
       const existingItems = this.ctx.newsByCategory[categoryKey];
-      if (existingItems?.length) {
+      if (existingItems) {
         const filteredItems = this.filterItemsByTimeRange(existingItems);
-        if (filteredItems.length === 0) {
+        if (filteredItems.length === 0 && existingItems.length > 0) {
           panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
         } else {
           panel.renderNews(filteredItems);

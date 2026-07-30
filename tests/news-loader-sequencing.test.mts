@@ -354,14 +354,14 @@ describe('newsWorkListSignature', () => {
   });
 
   it('changes when a category is added (tab switch / panel toggle)', () => {
-    const before = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }]);
-    const after = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }, { key: 'startups' }]);
+    const before = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }], []);
+    const after = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }, { key: 'startups' }], []);
     assert.notEqual(before, after);
   });
 
   it('changes when a category is removed', () => {
-    const before = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }]);
-    const after = newsWorkListSignature([{ key: 'politics' }]);
+    const before = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }], []);
+    const after = newsWorkListSignature([{ key: 'politics' }], []);
     assert.notEqual(before, after);
   });
 
@@ -373,9 +373,9 @@ describe('newsWorkListSignature', () => {
   });
 
   it('an empty work-list has its own signature, distinct from a populated one', () => {
-    assert.notEqual(newsWorkListSignature([]), newsWorkListSignature([{ key: 'politics' }]));
+    assert.notEqual(newsWorkListSignature([]), newsWorkListSignature([{ key: 'politics' }], []));
     // Stable across calls — an empty work-list must not look like a change to itself.
-    assert.equal(newsWorkListSignature([]), newsWorkListSignature([]));
+    assert.equal(newsWorkListSignature([]), newsWorkListSignature([], []));
   });
 
   // Keys are joined, not concatenated: two categories must not be able to

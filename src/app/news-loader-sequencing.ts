@@ -73,10 +73,14 @@ type Delay = (ms: number) => Promise<void>;
  *
  * The two are serialized as separate arrays rather than concatenated, so a
  * category key can never combine with a source name to spoof a different pair.
+ *
+ * `disabledSources` is REQUIRED, with no empty default: a caller that forgets it
+ * would silently rebuild the source-blind signature this exists to replace, and
+ * that failure is invisible at runtime.
  */
 export function newsWorkListSignature(
   categories: readonly { key: string }[],
-  disabledSources: Iterable<string> = [],
+  disabledSources: Iterable<string>,
 ): string {
   return JSON.stringify([
     [...new Set(categories.map(category => category.key))].sort(),

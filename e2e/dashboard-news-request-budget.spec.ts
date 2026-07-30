@@ -52,6 +52,10 @@ const PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT = 3;
 const CUSTOM_CATEGORY_KEY = 'startups';
 const CUSTOM_CATEGORY_FEED_COUNT = 10;
 
+// A full-variant preset news panel that sits below the fold, so it mounts after the
+// news load rather than during it. The digest stub carries no bucket for it.
+const EMPTY_CATEGORY_PANEL = 'africa';
+
 type NewsRequestLog = {
   digestUrls: string[];
   rssProxyUrls: string[];
@@ -71,6 +75,33 @@ function distinctProxiedFeeds(rssProxyUrls: string[]): string[] {
     if (target) feeds.add(target);
   }
   return [...feeds];
+}
+
+/**
+ * Fire a real post-load hydration trigger and prove it fired.
+ *
+ * It has to be `resize`, not a scroll: the dashboard sets `overflow: hidden` on
+ * both html and body, so the document never scrolls and window-level scroll events
+ * never fire — a wheel-based trigger silently does nothing, which makes any
+ * "nothing was re-fetched" assertion after it vacuous. App.ts binds
+ * handleViewportPrime to BOTH events, and resize genuinely fires.
+ *
+ * The counter is the positive control: it proves the very event handleViewportPrime
+ * listens for was delivered, so a later "no new request" assertion means the gate
+ * suppressed the load rather than nothing having asked for one.
+ */
+async function fireHydrationTrigger(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { __wmResizeCount?: number }).__wmResizeCount = 0;
+    window.addEventListener('resize', () => {
+      const w = window as unknown as { __wmResizeCount?: number };
+      w.__wmResizeCount = (w.__wmResizeCount ?? 0) + 1;
+    });
+  });
+  await page.setViewportSize({ width: 1180, height: 800 });
+  await page.waitForFunction(
+    () => ((window as unknown as { __wmResizeCount?: number }).__wmResizeCount ?? 0) > 0,
+  );
 }
 
 async function seedFreshAnonymousFullVariant(
@@ -97,7 +128,7 @@ async function seedFreshAnonymousFullVariant(
 
 async function installNewsRequestAccounting(
   page: Page,
-  options: { failDigestTimes?: number } = {},
+  options: { failDigestTimes?: number; emptyDigestTimes?: number } = {},
 ): Promise<NewsRequestLog> {
   const log: NewsRequestLog = { digestUrls: [], rssProxyUrls: [] };
 
@@ -118,6 +149,17 @@ async function installNewsRequestAccounting(
     // and mask whether a retry happened at all.
     if (log.digestUrls.length <= (options.failDigestTimes ?? 0)) {
       await route.fulfill({ status: 503, contentType: 'text/plain', body: 'digest unavailable' });
+      return;
+    }
+    // A DEGRADED digest: HTTP 200, well-formed, but carrying no categories. This is
+    // the outage shape the server actually emits, and the one a plain non-null
+    // check would mistake for a successful load.
+    if (log.digestUrls.length <= (options.failDigestTimes ?? 0) + (options.emptyDigestTimes ?? 0)) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ categories: {}, feedStatuses: {}, generatedAt: new Date(0).toISOString() }),
+      });
       return;
     }
     await route.fulfill({
@@ -188,6 +230,12 @@ test.describe('dashboard news request budget (#5376)', () => {
   // capped like every other per-feed fallback. Custom categories used to be
   // exempt from the cap on the theory that there were only ever a handful.
   test('a deliberately customized category still loads, capped at the per-category feed limit', async ({ page }) => {
+    const capWarnings: string[] = [];
+    page.on('console', (message) => {
+      const text = message.text();
+      if (text.includes('[News] Custom category')) capWarnings.push(text);
+    });
+
     await seedFreshAnonymousFullVariant(page, {
       [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
     });
@@ -209,17 +257,88 @@ test.describe('dashboard news request budget (#5376)', () => {
         `category is never in the per-variant digest, so direct fetch is its only path (#3687)`,
     ).toBeGreaterThan(0);
 
+    // Exactly the cap, not merely under it. `toBeLessThanOrEqual` alone would pass
+    // with the uncapped code restored the moment the category's feed list shrank to
+    // the cap — the assertion has to have a floor as well as a ceiling.
     expect(
       feeds.length,
-      `a custom category must not exceed perFeedFallbackCategoryFeedLimit ` +
-        `(${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT}); "${CUSTOM_CATEGORY_KEY}" has ` +
-        `${CUSTOM_CATEGORY_FEED_COUNT} feeds and fetched ${feeds.length}: ${feeds.join(', ')}`,
-    ).toBeLessThanOrEqual(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
+      `a custom category must fetch exactly perFeedFallbackCategoryFeedLimit ` +
+        `(${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT}) feeds; "${CUSTOM_CATEGORY_KEY}" fetched ` +
+        `${feeds.length}: ${feeds.join(', ')}`,
+    ).toBe(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
+
+    // ...and the category must actually HAVE more sources than the cap, or the
+    // assertion above proves nothing. The warning carries the real ratio.
+    const ratio = capWarnings.join(' ').match(/fetching (\d+)\/(\d+) feeds directly/);
+    expect(ratio, `expected a "[News] Custom category" warning naming the N/M feed ratio, got: ${capWarnings.join(' | ')}`).not.toBeNull();
+    expect(
+      Number(ratio?.[2]),
+      `"${CUSTOM_CATEGORY_KEY}" must declare more than ${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT} sources ` +
+        `for the cap assertion to mean anything (expected ~${CUSTOM_CATEGORY_FEED_COUNT})`,
+    ).toBeGreaterThan(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
 
     expect(
       log.digestUrls.length,
       'customizing a category must not add a second news load either',
     ).toBe(1);
+  });
+
+  // The other outage shape, and the one that actually happens: the digest answers
+  // HTTP 200 with a well-formed body carrying no categories. It is non-null, so a
+  // plain null check calls it a successful load — while every preset category
+  // rendered empty. Coverage, not nullness, is what makes a load "landed".
+  test('a degraded 200 digest with no categories is not mistaken for a landed load', async ({ page }) => {
+    await seedFreshAnonymousFullVariant(page);
+    const log = await installNewsRequestAccounting(page, { emptyDigestTimes: 1 });
+
+    const firstDigest = page.waitForRequest(DIGEST_GLOB);
+    await page.goto('/');
+    await page.waitForFunction(
+      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    );
+    await firstDigest;
+    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+
+    expect(
+      log.digestUrls.length,
+      `a 200 digest carrying no categories leaves every panel empty, so it must stay ` +
+        `retryable exactly like a failed request (attempts: ${log.digestUrls.length})`,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  // A news panel that mounts AFTER the load (below the fold, deferred) is backfilled
+  // from ctx.newsByCategory. An empty category is a real, routine outcome — the digest
+  // simply carries no bucket for it — and the panel must land on its empty state, not
+  // sit on the skeleton the Panel constructor installs. Before the gate, the second
+  // news load re-rendered every category and cleared the spinner as a side effect;
+  // with one load per work-list that second chance is gone, so the backfill itself has
+  // to handle it (#5376 review).
+  test('a late-mounting panel for an empty category shows its empty state, not a spinner', async ({ page }) => {
+    await seedFreshAnonymousFullVariant(page);
+    // Digest carries politics + intel only, so every other preset category resolves
+    // to [] — exactly the shape a partial digest produces in production.
+    await installNewsRequestAccounting(page);
+
+    const firstDigest = page.waitForRequest(DIGEST_GLOB);
+    await page.goto('/');
+    await page.waitForFunction(
+      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    );
+    await firstDigest;
+    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+
+    const panel = page.locator(`[data-panel="${EMPTY_CATEGORY_PANEL}"]`);
+    await panel.scrollIntoViewIfNeeded();
+    await expect(panel).toBeVisible();
+    // Give the deferred mount + backfill a moment after it enters the viewport.
+    await page.waitForTimeout(3_000);
+
+    await expect(
+      panel.locator('.panel-loading'),
+      `"${EMPTY_CATEGORY_PANEL}" resolved to an empty category, so its panel must show ` +
+        `the empty state rather than spin — the backfill skips a cached [] and nothing ` +
+        `re-renders it now that the news load runs once per work-list`,
+    ).toHaveCount(0);
   });
 
   // The gate must not turn a transient digest outage into a stuck-empty dashboard.
@@ -253,12 +372,12 @@ test.describe('dashboard news request budget (#5376)', () => {
     // ...and having recovered, it must settle: the successful load records the
     // work-list, so the gate stops the retries rather than looping every trigger.
     const afterRecovery = log.digestUrls.length;
-    await page.mouse.wheel(0, 1200);
+    await fireHydrationTrigger(page);
     await page.waitForTimeout(3_000);
     expect(
       log.digestUrls.length,
       `once a load has landed, further triggers must not re-fetch the digest ` +
-        `(after recovery: ${afterRecovery}, after scroll: ${log.digestUrls.length})`,
+        `(after recovery: ${afterRecovery}, after trigger: ${log.digestUrls.length})`,
     ).toBe(afterRecovery);
   });
 });
