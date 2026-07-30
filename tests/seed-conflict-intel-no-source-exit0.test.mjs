@@ -349,7 +349,7 @@ test('GDELT route circuit opens after one SSL/timeout canary failure', async () 
         error: 'curl failed: curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL', // no 429 anywhere
       };
     },
-    fetchBulkEvents: async () => { throw new Error('bulk unused'); },
+    fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
     pace: async () => {},
     now: () => 0,
     deadlineAt: 10_000_000,
@@ -383,48 +383,72 @@ test('GDELT route circuit opens after one proxy-auth canary failure', async () =
     assert.equal(
       attempted.length,
       1,
-      `HTTP ${status} proxy auth failure must fall through to bulk without another country request`,
+      `HTTP ${status} proxy auth failure must not be repeated for another country`,
     );
   }
 });
 
 test('GDELT route circuit opens after one endpoint-wide HTTP canary failure', async () => {
+  // Post-#5849 the sweep only runs after a bulk failure, so the circuit's job
+  // is to stop a dead DOC route from burning the remaining 19 requests before
+  // the combined failure surfaces to runSeed.
   for (const status of [404, 406, 410, 451]) {
     const attempted = [];
-    let bulkCalls = 0;
     const now = Date.parse('2026-07-29T12:00:00Z');
-    const result = await fetchGdeltConflictEvents({
-      fetchCountryEvents: async (cc) => {
-        attempted.push(cc);
-        return {
-          country: cc, ok: false, events: [],
-          error: `GDELT_SOURCE_PROXY_HTTP_${status}`,
-        };
-      },
-      fetchBulkEvents: async () => {
-        bulkCalls += 1;
-        return {
-          events: [{ id: `route-failure-${status}`, country: 'Sudan' }],
-          exportTimestamp: '20260729110000',
-          exportsRequested: 1,
-          exportsSucceeded: 1,
-        };
-      },
-      pace: async () => {},
-      now: () => now,
-      deadlineAt: now + 10_000_000,
-      loadPreviousSnapshot: async () => null,
-    });
+    await assert.rejects(
+      fetchGdeltConflictEvents({
+        fetchCountryEvents: async (cc) => {
+          attempted.push(cc);
+          return {
+            country: cc, ok: false, events: [],
+            error: `GDELT_SOURCE_PROXY_HTTP_${status}`,
+          };
+        },
+        fetchBulkEvents: async () => { throw new Error('mirror unreachable'); },
+        pace: async () => {},
+        now: () => now,
+        deadlineAt: now + 10_000_000,
+        loadPreviousSnapshot: async () => null,
+      }),
+      /bulk event export failed: mirror unreachable.*coverage below floor/s,
+    );
 
     assert.equal(
       attempted.length,
       1,
-      `HTTP ${status} endpoint failure must fall through to bulk without another country request`,
+      `HTTP ${status} endpoint failure must not be repeated for another country`,
     );
-    assert.equal(bulkCalls, 1);
-    assert.equal(result.source, 'gdelt-bulk');
-    assert.deepEqual(result.events.map(event => event.id), [`route-failure-${status}`]);
   }
+});
+
+test('bulk-first: a healthy bulk export short-circuits the DOC route entirely (#5849)', async () => {
+  const attempted = [];
+  let bulkCalls = 0;
+  const now = Date.parse('2026-07-29T12:00:00Z');
+  const result = await fetchGdeltConflictEvents({
+    fetchCountryEvents: async (cc) => {
+      attempted.push(cc);
+      return { country: cc, ok: true, events: [] };
+    },
+    fetchBulkEvents: async () => {
+      bulkCalls += 1;
+      return {
+        events: [{ id: 'bulk-primary', country: 'Sudan' }],
+        exportTimestamp: '20260729110000',
+        exportsRequested: 1,
+        exportsSucceeded: 1,
+      };
+    },
+    pace: async () => {},
+    now: () => now,
+    deadlineAt: now + 10_000_000,
+    loadPreviousSnapshot: async () => null,
+  });
+
+  assert.equal(attempted.length, 0, 'zero DOC requests when the bulk path is healthy');
+  assert.equal(bulkCalls, 1);
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.deepEqual(result.events.map(event => event.id), ['bulk-primary']);
 });
 
 test('GDELT route circuit stays closed for a request-specific HTTP failure', async () => {
@@ -444,7 +468,7 @@ test('GDELT route circuit stays closed for a request-specific HTTP failure', asy
         events: [{ id: `country-${cc}`, country: cc, event_date: '2026-07-29' }],
       };
     },
-    fetchBulkEvents: async () => { throw new Error('bulk unused'); },
+    fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
     pace: async () => {},
     now: () => 0,
     deadlineAt: 10_000_000,
@@ -466,7 +490,7 @@ test('GDELT storm abort does NOT fire when a country in the batch succeeds', asy
       if (attempted.length % 4 === 1) return { country: cc, ok: true, events: [{ country: cc, event_date: '2026-07-13' }] };
       return { country: cc, ok: false, events: [], error: 'HTTP 429' };
     },
-    fetchBulkEvents: async () => { throw new Error('bulk unused'); },
+    fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
     pace: async () => {},
     now: () => 0,
     deadlineAt: 10_000_000,

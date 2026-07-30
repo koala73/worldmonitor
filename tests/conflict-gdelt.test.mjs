@@ -121,37 +121,53 @@ test('fetchGdeltConflictEvents fails closed when too many country fetches fail',
   );
 });
 
-test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds but yields zero events', async () => {
+test('fetchGdeltConflictEvents uses the bulk export as PRIMARY: a healthy bulk path makes zero DOC requests (#5849)', async () => {
+  let docCalls = 0;
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
     now: () => BULK_FIXTURE_NOW,
     loadPreviousSnapshot: async () => null,
-    fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
+    // A DOC route that would happily serve every country — the old DOC-first
+    // order returns source 'gdelt' with 20 requests here; bulk-first makes none.
+    fetchCountryEvents: async (cc) => {
+      docCalls += 1;
+      return { country: cc, ok: true, events: [{ country: 'Sudan', event_date: '2026-07-13' }] };
+    },
     fetchBulkEvents: async () => ({
-      events: [{ id: 'gdelt-event-empty-doc', country: 'Sudan' }],
+      events: [{ id: 'gdelt-event-primary', country: 'Sudan' }],
       exportTimestamp: '20260713110000',
       exportsRequested: 8,
       exportsSucceeded: 8,
     }),
   });
 
+  assert.equal(docCalls, 0, `healthy bulk path must make zero DOC API requests, made ${docCalls}`);
   assert.equal(result.source, 'gdelt-bulk');
-  assert.equal(result.events.length, 1);
-  assert.equal(result.pagination.countriesSucceeded, 20);
-  assert.equal(result.pagination.countriesFailed, 0);
+  assert.deepEqual(result.events.map(event => event.id), ['gdelt-event-primary']);
 });
 
-test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk event feed', async () => {
+test('fetchGdeltConflictEvents rejects when bulk fails and the DOC sweep succeeds but yields zero events', async () => {
+  // Post-#5849 the zero-yield sweep has nothing left to fall through to: bulk
+  // already failed ahead of it. The run must throw (runSeed retries / preserves
+  // last-good), never resolve to a legitimate-looking empty payload.
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      now: () => BULK_FIXTURE_NOW,
+      loadPreviousSnapshot: async () => null,
+      fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
+      fetchBulkEvents: async () => { throw new Error('mirror unreachable'); },
+    }),
+    /bulk event export failed: mirror unreachable.*returned zero events across 20\/20 successful countries/s,
+  );
+});
+
+test('fetchGdeltConflictEvents publishes bulk pagination telemetry on the primary path', async () => {
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
     now: () => BULK_FIXTURE_NOW,
     loadPreviousSnapshot: async () => null,
-    fetchCountryEvents: async (cc) => ({
-      country: cc,
-      ok: false,
-      events: [],
-      error: 'HTTP 429',
-    }),
+    fetchCountryEvents: async () => { throw new Error('DOC sweep must not run when bulk is healthy'); },
     fetchBulkEvents: async () => ({
       events: [{
         id: 'gdelt-event-1',
@@ -170,13 +186,15 @@ test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk
   assert.equal(result.source, 'gdelt-bulk');
   assert.equal(result.events.length, 1);
   assert.equal(result.events[0].country, 'Sudan');
-  assert.equal(result.pagination.countriesTotal, Object.keys(GDELT_COUNTRY_NAMES).length);
-  assert.equal(result.pagination.countriesSucceeded, 0);
-  assert.equal(result.pagination.countriesFailed, Object.keys(GDELT_COUNTRY_NAMES).length);
   assert.equal(result.pagination.exportTimestamp, '20260713110000');
   assert.equal(result.pagination.exportsRequested, 8);
   assert.equal(result.pagination.exportsSucceeded, 8);
   assert.equal(result.pagination.countriesWithEvents, 1);
+  assert.equal(result.pagination.rollingWindowHours, 24);
+  // The sweep never ran, so its telemetry must not appear at all — 0/20 would
+  // read as a failed sweep to anyone inspecting the published snapshot.
+  assert.ok(!('countriesSucceeded' in result.pagination));
+  assert.ok(!('countriesFailed' in result.pagination));
 });
 
 test('fetchGdeltConflictEvents carries prior bulk events through the EMA 24h window', async () => {
@@ -251,32 +269,30 @@ test('fetchGdeltConflictEvents publishes fresh bulk events when the previous sna
   assert.equal(result.pagination.rollingWindowComplete, false);
 });
 
-test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bulk recovery', async () => {
-  let calls = 0;
+test('fetchGdeltConflictEvents falls back to the DOC sweep when the bulk export fails', async () => {
+  let bulkCalls = 0;
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
     now: () => BULK_FIXTURE_NOW,
     loadPreviousSnapshot: async () => null,
-    fetchCountryEvents: async (cc) => {
-      calls += 1;
-      return calls <= GDELT_MIN_SUCCESSFUL_COUNTRIES
-        ? { country: cc, ok: true, events: [] }
-        : { country: cc, ok: false, events: [], error: 'HTTP 429' };
-    },
-    fetchBulkEvents: async () => ({
-      events: [{ id: 'gdelt-event-partial-doc', country: 'Sudan' }],
-      exportTimestamp: '20260713110000',
-      exportsRequested: 8,
-      exportsSucceeded: 8,
+    fetchCountryEvents: async (cc) => ({
+      country: cc,
+      ok: true,
+      events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }],
     }),
+    fetchBulkEvents: async () => {
+      bulkCalls += 1;
+      throw new Error('mirror unreachable');
+    },
   });
 
-  assert.equal(result.source, 'gdelt-bulk');
-  assert.equal(result.pagination.countriesSucceeded, GDELT_MIN_SUCCESSFUL_COUNTRIES);
-  assert.equal(
-    result.pagination.countriesFailed,
-    Object.keys(GDELT_COUNTRY_NAMES).length - GDELT_MIN_SUCCESSFUL_COUNTRIES,
-  );
+  assert.equal(bulkCalls, 1);
+  assert.equal(result.source, 'gdelt');
+  assert.equal(result.events.length, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.countriesTotal, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.countriesSucceeded, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.countriesFailed, 0);
+  assert.equal(result.pagination.minSuccessfulCountries, GDELT_MIN_SUCCESSFUL_COUNTRIES);
 });
 
 // #5140: the sweep's former retry fanout exceeded runSeed's fetch deadline, so

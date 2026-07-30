@@ -375,11 +375,13 @@ async function fetchAcledEvents({
 
 // ─── GDELT conflict-events fallback (used when ACLED has no credentials) ───
 // ACLED requires a registered account. When its credentials are absent, keep a
-// near-real-time conflict signal from GDELT. The DOC 2.0 path counts recent
-// conflict-tagged articles per priority country and emits synthetic events in the
-// SAME {country, event_date} shape the EMA engine reads (_ema-threat-engine.mjs).
-// When DOC coverage is throttled or yields no events, the official 15-minute bulk
-// event export supplies material-conflict records instead.
+// near-real-time conflict signal from GDELT. The official 15-minute bulk event
+// export is PRIMARY (#5849): it serves real material-conflict records from the
+// unthrottled GCS mirror with no proxy involvement. The DOC 2.0 per-country
+// sweep — which counts recent conflict-tagged articles and emits synthetic
+// events in the SAME {country, event_date} shape the EMA engine reads
+// (_ema-threat-engine.mjs) — is supply-side load-shed (#5843: 0/20 countries
+// for weeks) and runs only when the bulk path itself fails.
 export async function fetchGdeltCountryEvents(cc) {
   if (!GDELT_COUNTRY_NAMES[cc]) {
     return { country: cc, ok: false, events: [], error: 'unknown country code' };
@@ -403,6 +405,48 @@ export async function fetchGdeltConflictEvents({
   deadlineAt,
   loadPreviousSnapshot = () => readSeedSnapshot(ACLED_CACHE_KEY, { strict: true }),
 } = {}) {
+  // Bulk export first (#5849). On any bulk failure — mirror outage, empty
+  // exports, empty rolling window — fall through to the DOC sweep below.
+  let bulkFailure;
+  try {
+    const bulk = await fetchBulkEvents();
+    if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
+    let previousSnapshot = null;
+    try {
+      previousSnapshot = await loadPreviousSnapshot();
+    } catch (snapshotError) {
+      console.warn(
+        '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
+        + ` ${snapshotError?.message || snapshotError}`,
+      );
+    }
+    const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
+    if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
+    console.log(
+      `  GDELT bulk conflict-events: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
+      + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
+    );
+    return {
+      events: rolling.events,
+      pagination: {
+        exportTimestamp: bulk.exportTimestamp,
+        exportsRequested: bulk.exportsRequested,
+        exportsSucceeded: bulk.exportsSucceeded,
+        countriesWithEvents: new Set(rolling.events.map(event => event.country)).size,
+        rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
+        rollingWindowStartedAt: rolling.rollingWindowStartedAt,
+        rollingWindowComplete: rolling.rollingWindowComplete,
+        retainedPreviousEvents: rolling.retainedPreviousEvents,
+      },
+      source: 'gdelt-bulk',
+    };
+  } catch (bulkError) {
+    bulkFailure = `GDELT bulk event export failed: ${bulkError?.message || bulkError}`;
+    console.warn(`  ${bulkFailure}; falling back to the DOC country sweep`);
+  }
+
+  // DOC sweep fallback — canary, batch, budget, floor, and circuit semantics
+  // unchanged from when it was primary (#5140).
   const events = [];
   const failedCountries = [];
   let successfulCountries = 0;
@@ -457,48 +501,9 @@ export async function fetchGdeltConflictEvents({
       ? `GDELT conflict-events coverage below floor: ${successfulCountries}/${CONFLICT_COUNTRIES.length} countries succeeded ` +
         `(min ${GDELT_MIN_SUCCESSFUL_COUNTRIES})${sample ? `; failures: ${sample}` : ''}`
       : `GDELT conflict-events returned zero events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful countries`;
-    console.warn(`  ${docFailure}; trying official bulk event export`);
-    try {
-      const bulk = await fetchBulkEvents();
-      if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
-      let previousSnapshot = null;
-      try {
-        previousSnapshot = await loadPreviousSnapshot();
-      } catch (snapshotError) {
-        console.warn(
-          '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
-          + ` ${snapshotError?.message || snapshotError}`,
-        );
-      }
-      const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
-      if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
-      console.log(
-        `  GDELT bulk conflict-events fallback: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
-        + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
-      );
-      return {
-        events: rolling.events,
-        pagination: {
-          countriesTotal: CONFLICT_COUNTRIES.length,
-          countriesSucceeded: successfulCountries,
-          countriesFailed: failedCountries.length,
-          minSuccessfulCountries: GDELT_MIN_SUCCESSFUL_COUNTRIES,
-          exportTimestamp: bulk.exportTimestamp,
-          exportsRequested: bulk.exportsRequested,
-          exportsSucceeded: bulk.exportsSucceeded,
-          countriesWithEvents: new Set(rolling.events.map(event => event.country)).size,
-          rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
-          rollingWindowStartedAt: rolling.rollingWindowStartedAt,
-          rollingWindowComplete: rolling.rollingWindowComplete,
-          retainedPreviousEvents: rolling.retainedPreviousEvents,
-        },
-        source: 'gdelt-bulk',
-      };
-    } catch (bulkError) {
-      throw new Error(`${docFailure}; bulk fallback failed: ${bulkError?.message || bulkError}`);
-    }
+    throw new Error(`${bulkFailure}; DOC sweep fallback failed: ${docFailure}`);
   }
-  console.log(`  GDELT conflict-events (ACLED fallback): ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
+  console.log(`  GDELT conflict-events DOC sweep fallback: ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
   return {
     events,
     pagination: {
@@ -959,8 +964,9 @@ export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents }
     // when ACLED credentials ARE present but the display fetch failed (#5106).
     const missingCredentials = acled.status === 'fulfilled';
     if (missingCredentials) {
-      // No ACLED credentials → fall back to the GDELT article-volume proxy so the
-      // conflict escalation EMA keeps a near-real-time signal (#5099). This runs only
+      // No ACLED credentials → fall back to GDELT (bulk event export primary, DOC
+      // article-volume sweep as emergency fallback — #5849) so the conflict
+      // escalation EMA keeps a near-real-time signal (#5099). This runs only
       // on the no-creds path: a credentialed-but-failed fetch still throws below, and a
       // credentialed-but-empty ACLED result is trusted (returns `ac`) rather than
       // overwritten by GDELT volume.
