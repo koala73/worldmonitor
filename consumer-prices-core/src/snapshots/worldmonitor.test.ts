@@ -74,19 +74,43 @@ describe('buildMoversSnapshot', () => {
     expect(snap.fallers.map((m) => m.productId)).toEqual(['4']);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('dropped 2/4');
+    // the gate is bilateral — the warn must not claim only the >4x direction
+    expect(String(warn.mock.calls[0][0])).toContain('outside 0.25x-4x');
   });
 
-  it('publishes an empty snapshot when every fetched row is implausible', async () => {
+  it('throws instead of publishing an empty snapshot when every row is gated', async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [row('1', '874.68'), row('2', '608.86'), row('3', '-99.25')],
     });
+
+    // The publish job's per-snapshot catch skips the write on throw, keeping
+    // the previous (real) snapshot alive instead of overwriting it with a
+    // false-healthy empty one.
+    await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(
+      /all 3 candidates gated as implausible/,
+    );
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 3/3');
+  });
+
+  it('returns an empty snapshot when the window has no movers at all', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const snap = await buildMoversSnapshot('ae', 7);
 
     expect(snap.risers).toEqual([]);
     expect(snap.fallers).toEqual([]);
     expect(snap.upstreamUnavailable).toBe(false);
-    expect(String(warn.mock.calls[0][0])).toContain('dropped 3/3');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('fetches a 200-row candidate window so the gate cannot starve the top-10 lists', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await buildMoversSnapshot('ae', 7);
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain('LIMIT 200');
+    expect(sql).toContain('ORDER BY ABS');
   });
 
   it('does not warn when every mover is plausible', async () => {

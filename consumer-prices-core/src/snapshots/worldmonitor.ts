@@ -348,7 +348,10 @@ export async function buildMoversSnapshot(
      JOIN past p ON p.id = l.id
      WHERE p.past_price > 0
      ORDER BY ABS((l.price - p.past_price) / p.past_price) DESC
-     LIMIT 30`,
+     -- 200 (not 30): the biggest-magnitude rows are exactly the ones the
+     -- plausibility gate below rejects, so the window needs headroom or
+     -- artifacts starve the top-10 lists (#5445)
+     LIMIT 200`,
     [marketCode, rangeDays],
   );
 
@@ -368,7 +371,16 @@ export async function buildMoversSnapshot(
   const dropped = all.length - plausible.length;
   if (dropped > 0) {
     console.warn(
-      `[movers] ${marketCode} ${range}: dropped ${dropped}/${all.length} implausible movers (>${MAX_MOVE_RATIO}x — likely unit/parse artifacts)`,
+      `[movers] ${marketCode} ${range}: dropped ${dropped}/${all.length} implausible movers (outside ${1 / MAX_MOVE_RATIO}x-${MAX_MOVE_RATIO}x — likely unit/parse artifacts)`,
+    );
+  }
+  if (all.length > 0 && plausible.length === 0) {
+    // Every candidate was gated as a parse artifact. Publishing an empty but
+    // "healthy" snapshot would overwrite the last good one and render as a
+    // false "no movers" — fail loudly instead; the publish job's per-snapshot
+    // catch keeps the previous snapshot alive under its TTL (#5445).
+    throw new Error(
+      `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
     );
   }
 
