@@ -38,6 +38,36 @@ interface BootstrapData {
   fetchedAt?: number;
 }
 
+const DEGENERATE_MARKET_SLUGS = new Set(['undefined', 'null', 'nan', '']);
+
+function bootstrapMarketIdentity(market: BootstrapMarket): string {
+  const url = String(market?.url ?? '').trim();
+  if (url) {
+    const path = url.split(/[?#]/)[0] ?? '';
+    const slug = path.replace(/\/+$/, '').split('/').pop() ?? '';
+    if (!DEGENERATE_MARKET_SLUGS.has(slug.toLowerCase())) return `url:${url}`;
+  }
+  return `title:${String(market?.title ?? '').trim().toLowerCase()}`;
+}
+
+function dedupeBootstrapMarkets(markets: BootstrapMarket[]): BootstrapMarket[] {
+  const best = new Map<string, BootstrapMarket>();
+  for (const market of markets) {
+    const identity = bootstrapMarketIdentity(market);
+    const incumbent = best.get(identity);
+    if (!incumbent) {
+      best.set(identity, market);
+      continue;
+    }
+    const incumbentVolume = Number(incumbent.volume);
+    const challengerVolume = Number(market.volume);
+    const incumbentRank = Number.isFinite(incumbentVolume) ? incumbentVolume : -Infinity;
+    const challengerRank = Number.isFinite(challengerVolume) ? challengerVolume : -Infinity;
+    if (challengerRank > incumbentRank) best.set(identity, market);
+  }
+  return [...best.values()];
+}
+
 function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
   return {
     id: m.url?.split('/').pop() || '',
@@ -82,15 +112,11 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
     // correct for either payload vintage. Volume-sorted so it stays ranked
     // rather than ordered pool-by-pool.
     const unionAllPools = () => {
-      const seen = new Set<string>();
-      const out: BootstrapMarket[] = [];
-      for (const m of [...(bootstrap.geopolitical ?? []), ...(bootstrap.tech ?? []), ...(bootstrap.finance ?? [])]) {
-        const id = String(m?.url || m?.title || '');
-        if (id && seen.has(id)) continue;
-        if (id) seen.add(id);
-        out.push(m);
-      }
-      return out.sort((a, b) => (Number(b?.volume) || 0) - (Number(a?.volume) || 0));
+      return dedupeBootstrapMarkets([
+        ...(bootstrap.geopolitical ?? []),
+        ...(bootstrap.tech ?? []),
+        ...(bootstrap.finance ?? []),
+      ]).sort((a, b) => (Number(b?.volume) || 0) - (Number(a?.volume) || 0));
     };
 
     // A finance request must NOT fall back to the geopolitical pool. That was

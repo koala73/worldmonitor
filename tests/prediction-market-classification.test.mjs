@@ -21,6 +21,8 @@ import { isGeopoliticalMarket } from '../scripts/_bet-templates-markets-classify
 import {
   CATEGORIES,
   DEFAULT_CATEGORY,
+  MIN_PUBLISHED_MARKETS,
+  allBootstrapMarkets,
   buildBootstrapPools,
   classifyMarket,
   dedupeMarkets,
@@ -300,6 +302,20 @@ describe('partitionMarkets / published pools', () => {
   });
 });
 
+describe('allBootstrapMarkets', () => {
+  it('dedupes the legacy near-duplicate pools and keeps the highest-volume record', () => {
+    const market = RAW[0];
+    const result = allBootstrapMarkets({
+      geopolitical: [{ ...market, volume: 10 }],
+      tech: [{ ...market, volume: 30 }],
+      finance: [{ ...market, volume: 20 }],
+    });
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].volume, 30);
+  });
+});
+
 describe('poolIntegrityViolations (the publish gate)', () => {
   it('passes the pools the producer actually builds', () => {
     assert.deepEqual(poolIntegrityViolations(buildPools(RAW)), []);
@@ -488,6 +504,12 @@ describe('validateBootstrapPayload (the seeder\'s validateFn)', () => {
     assert.equal(validateBootstrapPayload({ geopolitical: pools.geopolitical, tech: [], finance: [] }, silent), true);
     assert.equal(validateBootstrapPayload({ geopolitical: [], tech: pools.tech, finance: [] }, silent), true);
     assert.equal(validateBootstrapPayload({ geopolitical: [], tech: [], finance: pools.finance }, silent), true);
+  });
+
+  it('rejects a non-empty but severely partial snapshot', () => {
+    const oneMarket = { geopolitical: [RAW[0]], tech: [], finance: [] };
+    assert.equal(MIN_PUBLISHED_MARKETS, 5);
+    assert.equal(validateBootstrapPayload(oneMarket, silent), false);
   });
 
   it('rejects a payload whose pools are mislabeled — the #5733 regression gate', () => {

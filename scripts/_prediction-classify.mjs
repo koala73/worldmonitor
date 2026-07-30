@@ -58,6 +58,11 @@ import predictionTags from './data/prediction-tags.json' with { type: 'json' };
 // enum and the bootstrap payload's top-level keys — do not reorder casually.
 export const CATEGORIES = Object.freeze(['geopolitical', 'tech', 'finance']);
 
+// The smallest healthy single-pool cycle in the production fixture contains
+// eight records. Keep this floor below that so a legitimate category outage
+// can still publish, while refusing a one-record partial fetch outright.
+export const MIN_PUBLISHED_MARKETS = 5;
+
 // Pool that owns records matching no category tag (see header).
 export const DEFAULT_CATEGORY = 'finance';
 
@@ -111,9 +116,11 @@ export function classifyMarket(market) {
 // geopolitical, and those readers would silently lose every macro, rates,
 // crypto, and AI market. One helper so they cannot drift apart again.
 export function allBootstrapMarkets(payload) {
-  return [payload?.geopolitical, payload?.tech, payload?.finance]
-    .filter(Array.isArray)
-    .flat();
+  return dedupeMarkets(
+    [payload?.geopolitical, payload?.tech, payload?.finance]
+      .filter(Array.isArray)
+      .flat(),
+  );
 }
 
 // Split candidates into the three disjoint pools. Every valid record lands in
@@ -281,7 +288,7 @@ export function formatIntegrityViolations(violations, limit = 10) {
 // rather than serving pools whose labels lie — which is how #5733 stayed
 // invisible. That also means a WRONG rejection is a 90-minute-latent data
 // outage, so the population floor below is deliberately the weakest one that
-// still protects last-good.
+// still protects last-good while allowing a legitimate single-pool cycle.
 //
 // WHY THE PER-POOL FLOOR IS GONE. The pre-#5733 check required
 // `(geopolitical || tech) && finance` to be non-empty. That was safe only
@@ -290,8 +297,8 @@ export function formatIntegrityViolations(violations, limit = 10) {
 // CONTENT, a legitimate run can empty any single pool: a cycle whose Kalshi
 // records are all geopolitical by title and whose Polymarket finance tags all
 // 429'd yields real, publishable geo+tech data that the old floor would have
-// thrown away, freezing the feed. Any non-empty classified payload is therefore
-// publishable; a genuinely empty fetch is already caught upstream by runSeed's
+// thrown away, freezing the feed. Any payload at or above MIN_PUBLISHED_MARKETS
+// is therefore publishable; a genuinely empty fetch is already caught upstream by runSeed's
 // contract mode (declareRecords === 0 -> RETRY, which preserves last-good
 // without ever reaching validateFn). Detecting a partial-volume collapse is a
 // coverage-floor job (api/health.js minRecordCount), not this gate's.
@@ -300,7 +307,10 @@ export function validateBootstrapPayload(data, { log = console.error } = {}) {
     (sum, category) => sum + (Array.isArray(data?.[category]) ? data[category].length : 0),
     0,
   );
-  if (total === 0) return false;
+  if (total < MIN_PUBLISHED_MARKETS) {
+    log(`  COVERAGE: only ${total} published market(s); refusing a partial snapshot below ${MIN_PUBLISHED_MARKETS} (#5733)`);
+    return false;
+  }
   const violations = poolIntegrityViolations(data);
   if (violations.length === 0) return true;
   log(`  INTEGRITY: ${violations.length} pool-classification violation(s) — refusing to publish mislabeled pools (#5733)`);
