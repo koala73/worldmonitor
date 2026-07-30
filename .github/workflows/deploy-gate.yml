@@ -43,7 +43,13 @@ jobs:
           # `audit-lockfile (root)`, `audit-lockfile (scripts)`, … so a bare
           # entry would wait on a check run that is never published; the
           # always()-running `security-audit` aggregate blocks for it instead.
-          required='["changes","docs-stats","unit","consumer-prices","sidecar","convex-tests","dom-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit"]'
+          #
+          # Entries are check-run NAMES, and the lookup below keeps only the
+          # last-completed run per name. Test, Typecheck and Lint Code each
+          # define a job with the id `changes`; the latter two publish under
+          # `typecheck-changes` / `lint-changes` so all three are evaluated
+          # instead of two being masked by the third (#5822).
+          required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","sidecar","convex-tests","dom-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit"]'
 
           if [ -n "$SHA" ]; then
             # workflow_run event — evaluate exactly the triggering SHA.

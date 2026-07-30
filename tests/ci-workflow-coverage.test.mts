@@ -347,6 +347,56 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  // #5822: the gate matches check runs by name alone, then keeps only the one
+  // that finished last. Two jobs publishing the same name — in different
+  // workflows or the same one — collapse to that single run and the others'
+  // conclusions are discarded, so a failure in any of them is invisible.
+  //
+  // For a `changes`-style filter job that is fail-open twice over: its
+  // dependents are `if: needs.changes.outputs.code == 'true'`, so when it fails
+  // they are *skipped* rather than failed, and the gate deliberately counts
+  // `skipped` as passing (docs-only PRs). A masked `changes` failure therefore
+  // takes an entire required suite green with it.
+  //
+  // Scan every workflow, not just the four the gate aggregates: the gate reads
+  // all check runs on the SHA regardless of which workflow published them, and
+  // it evaluates main pushes too, where a push- or schedule-triggered workflow
+  // lands its check runs on the very same commit.
+  it('keeps every gate-required check-run name published by exactly one job', () => {
+    const publishers = new Map<string, string[]>();
+
+    for (const file of readdirSync(workflowsDir).filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'))) {
+      const source = read(resolve(workflowsDir, file));
+
+      for (const job of workflowJobNames(source, file)) {
+        const { name, templated } = effectiveCheckName(source, job);
+        if (templated) {
+          continue;
+        }
+        publishers.set(name, [...(publishers.get(name) ?? []), `${file}:${job}`]);
+      }
+    }
+
+    // Every gated job's effective name has to be in `required` (asserted
+    // above), so keying off `required` still covers all four gated workflows
+    // while leaving harmless duplicates alone — two cron-only workflows may
+    // both call a job `monitor` without the gate ever reading either.
+    //
+    // Exactly one, not at-least-one: a zero-publisher name hangs the gate at
+    // "pending" forever, and checking both directions means an empty or
+    // mis-parsed scan above fails here instead of vacuously passing.
+    const misrouted = deployGateRequiredChecks()
+      .map((check) => ({ check, sites: publishers.get(check) ?? [] }))
+      .filter(({ sites }) => sites.length !== 1)
+      .map(({ check, sites }) => `${check} <- ${sites.length > 0 ? sites.join(', ') : 'no job publishes it'}`);
+
+    assert.deepEqual(
+      misrouted,
+      [],
+      `deploy-gate.yml keys on the check-run name only and keeps just the last-completed run, so a required name published by more than one job masks every other publisher's failure, and one published by none never leaves "pending" (#5822). Give each job a distinct name: ${misrouted.join('; ')}`,
+    );
+  });
+
   it('paginates gate status history during the scheduled self-healing sweep', () => {
     const deployGateJob = workflowJobBlock(deployGateWorkflow, 'gate');
 
