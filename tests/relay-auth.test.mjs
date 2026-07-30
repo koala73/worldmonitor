@@ -211,6 +211,15 @@ describe('relay startup auth guard (#3801)', () => {
       assert.equal(r.child.exitCode, null, 'relay should remain available without the optional AIS upstream');
       const res = await httpGet(port, '/health');
       assert.equal(res.status, 200);
+      assert.equal(JSON.parse(res.body).connected, false);
+
+      const snapshot = await httpGet(port, '/ais/snapshot', { 'x-relay-key': 'good-secret' });
+      assert.equal(snapshot.status, 200);
+      assert.doesNotMatch(
+        r.stdout(),
+        /\[Relay\] Connecting to aisstream\.io/,
+        'missing AIS credentials must suppress upstream connection attempts',
+      );
     } finally {
       await killRelay(r.child);
     }
