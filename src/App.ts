@@ -947,6 +947,7 @@ export class App {
       container: el,
       panels: {},
       newsPanels: {},
+      newsCategoryPanelKeys: new Map(),
       panelSettings,
       mapLayers,
       allNews: [],

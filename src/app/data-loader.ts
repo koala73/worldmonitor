@@ -20,7 +20,7 @@ import {
   LAYER_TO_SOURCE,
   isPanelInVariantDefaults,
 } from '@/config';
-import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
+import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
 import {
   runNewsLoadPass,
   type NewsCategoryLoadOptions,
@@ -1493,6 +1493,21 @@ export class DataLoaderManager implements AppModule {
     return intel;
   }
 
+  /**
+   * Panel-driven, not variant-driven: the active variant's preset categories
+   * PLUS any extra categories required by enabled news panels the user added
+   * beyond the preset (e.g. Tech panels customized into `full`). Custom
+   * categories aren't in the per-variant server digest, so they're flagged
+   * `isCustom` and fetched directly client-side in loadNewsCategory().
+   */
+  private resolveEnabledNewsCategories(): ResolvedCategory[] {
+    return resolveNewsCategories(
+      FEEDS,
+      CANONICAL_FEEDS,
+      enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings),
+    );
+  }
+
   async loadNews(): Promise<void> {
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -1507,16 +1522,7 @@ export class DataLoaderManager implements AppModule {
     });
     const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
 
-    // Panel-driven, not variant-driven: load the active variant's preset
-    // categories PLUS any extra categories required by enabled news panels the
-    // user added beyond the preset (e.g. Tech panels customized into `full`).
-    // Custom categories aren't in the per-variant server digest, so they're
-    // flagged `isCustom` and fetched directly client-side in loadNewsCategory().
-    const categories = resolveNewsCategories(
-      FEEDS,
-      CANONICAL_FEEDS,
-      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)),
-    );
+    const categories = this.resolveEnabledNewsCategories();
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
