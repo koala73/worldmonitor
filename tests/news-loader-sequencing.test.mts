@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   loadNewsCategoryBatches,
+  newsWorkListSignature,
   resolveInitialNewsDigest,
   runNewsLoadPass,
   type NewsCategorySpec,
@@ -335,5 +336,53 @@ describe('news loader digest sequencing', () => {
     assert.deepEqual(result.intelItems, ['intel-fallback']);
     assert.equal(result.initialDigest.pending, true);
     assert.equal(result.finalDigest, null);
+  });
+});
+
+// The signature loadAllData() compares to decide whether to re-run the news
+// load. Production issued TWO list-feed-digest requests per page load because
+// the `news` task was unconditional and loadAllData's drain loop re-runs the
+// whole task list when a second call overlaps the first (#5376). News is the one
+// hydration task that is not viewport-gated, so scroll/viewport triggers — which
+// change nothing about the work-list — must compare equal.
+describe('newsWorkListSignature', () => {
+  it('is stable across the same work-list in a different order', () => {
+    assert.equal(
+      newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }, { key: 'intel' }]),
+      newsWorkListSignature([{ key: 'intel' }, { key: 'politics' }, { key: 'energy' }]),
+    );
+  });
+
+  it('changes when a category is added (tab switch / panel toggle)', () => {
+    const before = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }]);
+    const after = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }, { key: 'startups' }]);
+    assert.notEqual(before, after);
+  });
+
+  it('changes when a category is removed', () => {
+    const before = newsWorkListSignature([{ key: 'politics' }, { key: 'energy' }]);
+    const after = newsWorkListSignature([{ key: 'politics' }]);
+    assert.notEqual(before, after);
+  });
+
+  it('collapses duplicate keys so a repeated entry is not a change', () => {
+    assert.equal(
+      newsWorkListSignature([{ key: 'politics' }, { key: 'politics' }]),
+      newsWorkListSignature([{ key: 'politics' }]),
+    );
+  });
+
+  it('an empty work-list has its own signature, distinct from a populated one', () => {
+    assert.equal(newsWorkListSignature([]), '');
+    assert.notEqual(newsWorkListSignature([]), newsWorkListSignature([{ key: 'politics' }]));
+  });
+
+  // Keys are joined, not concatenated: two categories must not be able to
+  // masquerade as one differently-named category.
+  it('does not collide across different key partitions', () => {
+    assert.notEqual(
+      newsWorkListSignature([{ key: 'a' }, { key: 'b' }]),
+      newsWorkListSignature([{ key: 'ab' }]),
+    );
   });
 });

@@ -1039,6 +1039,7 @@ export class App {
       openSearch: (options) => { void this.openSearch(options); },
       updateSearchIndex: () => this.updateSearchIndexIfReady(),
       loadAllData: () => this.dataLoader.loadAllData(),
+      invalidateNewsHydration: () => this.dataLoader.invalidateNewsHydration(),
       flushStaleRefreshes: () => this.refreshScheduler.flushStaleRefreshes(),
       setHiddenSince: (ts) => this.refreshScheduler.setHiddenSince(ts),
       loadDataForLayer: (layer) => { void this.dataLoader.loadDataForLayer(layer as keyof MapLayers); },

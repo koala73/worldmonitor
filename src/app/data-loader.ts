@@ -23,6 +23,7 @@ import {
 import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
 import {
   runNewsLoadPass,
+  newsWorkListSignature,
   type NewsCategoryLoadOptions,
   type NewsIntelLoadOptions,
 } from '@/app/news-loader-sequencing';
@@ -407,6 +408,13 @@ export class DataLoaderManager implements AppModule {
   private readonly perFeedFallbackIntelFeedLimit = 6;
   private readonly perFeedFallbackBatchSize = 2;
   private lastGoodDigest: ListFeedDigestResponse | null = null;
+  /**
+   * Work-list signature of the last news load that actually landed its items,
+   * or `null` if none has. Gates loadAllData()'s `news` task — see
+   * `shouldHydrateNews`. Left unset when a load throws, so a failed load still
+   * gets retried by the next trigger.
+   */
+  private loadedNewsSignature: string | null = null;
 
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
@@ -746,9 +754,10 @@ export class DataLoaderManager implements AppModule {
     const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
     const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
 
-    const tasks: HydrationTask[] = [
-      { name: 'news', task: () => runGuarded('news', () => this.loadNews()) },
-    ];
+    const tasks: HydrationTask[] = [];
+    if (this.shouldHydrateNews(forceAll)) {
+      tasks.push({ name: 'news', task: () => runGuarded('news', () => this.loadNews()) });
+    }
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
@@ -1508,6 +1517,40 @@ export class DataLoaderManager implements AppModule {
     );
   }
 
+  /**
+   * Whether loadAllData() should (re)run the news load.
+   *
+   * Unlike every other hydration task, the news load is NOT viewport-gated — it
+   * always loaded everything — so an unconditional `news` task meant each of
+   * loadAllData()'s many triggers re-fetched the digest. Boot alone fires two
+   * (panel-layout's hydration trigger, then App.ts's bootstrap fan-out) and the
+   * drain loop turns overlapping calls into a second full run: two
+   * `list-feed-digest` requests per page load, plus a second round of per-feed
+   * fetches (#5376).
+   *
+   * The category set is what the load actually keys on, so re-run when it has
+   * changed (tab switch, mission preset, panel toggle) and skip when it has not
+   * (viewport entry, scroll, playback exit). Periodic refresh stays owned by
+   * RefreshScheduler's `news` loop at REFRESH_INTERVALS.feeds, which calls
+   * loadNews() directly and is unaffected by this gate.
+   */
+  private shouldHydrateNews(forceAll: boolean): boolean {
+    if (forceAll || this.loadedNewsSignature === null) return true;
+    return newsWorkListSignature(this.resolveEnabledNewsCategories()) !== this.loadedNewsSignature;
+  }
+
+  /**
+   * Drop the record of what the last news load covered, so the next
+   * loadAllData() reloads news even though the category set is unchanged.
+   *
+   * Callers are the paths that take the rendered headlines away without
+   * changing the work-list — playback replay puts every news panel back into a
+   * loading state and relies on the exit calling loadAllData() to refill them.
+   */
+  invalidateNewsHydration(): void {
+    this.loadedNewsSignature = null;
+  }
+
   async loadNews(): Promise<void> {
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -1568,6 +1611,12 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.ctx.allNews = collectedNews;
+    // Items have landed: record what this run covered so loadAllData() can skip
+    // triggers that don't change the work-list. Set here rather than in a
+    // `finally` so a load that threw on the way in stays retryable, and before
+    // the post-load intelligence tail so a failure there doesn't force a full
+    // re-fetch of news that already arrived.
+    this.loadedNewsSignature = newsWorkListSignature(categories);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 

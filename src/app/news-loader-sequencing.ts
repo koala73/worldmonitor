@@ -54,6 +54,22 @@ export interface RunNewsLoadPassResult<TDigest, TItem> {
 
 type Delay = (ms: number) => Promise<void>;
 
+/**
+ * Order-independent signature of a resolved news work-list.
+ *
+ * `loadAllData()` uses it to tell a trigger that genuinely changes WHAT news to
+ * load (tab switch, mission preset, panel toggle) from one that changes nothing
+ * (viewport entry, scroll, playback exit). Nothing about the news load is
+ * viewport-gated, so re-running it on every trigger only re-fetched the digest —
+ * twice per page load in production, because loadAllData's drain loop re-runs the
+ * whole task list when a second call arrives while the first is in flight
+ * (#5376). The category set is what the news load actually keys on, so it is the
+ * honest thing to compare.
+ */
+export function newsWorkListSignature(categories: readonly { key: string }[]): string {
+  return [...new Set(categories.map(category => category.key))].sort().join('|');
+}
+
 const defaultDelay: Delay = (ms) => new Promise(resolve => {
   setTimeout(resolve, Math.max(0, ms));
 });

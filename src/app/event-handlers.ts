@@ -193,6 +193,12 @@ export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
+  /**
+   * Tell the data loader that the rendered news no longer reflects the last
+   * load, so the next loadAllData() refetches it even though the category set
+   * is unchanged. See DataLoader.invalidateNewsHydration.
+   */
+  invalidateNewsHydration: () => void;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
   loadDataForLayer: (layer: string) => void;
@@ -2024,6 +2030,11 @@ export class EventHandlerManager implements AppModule {
   }
 
   restoreSnapshot(snapshot: DashboardSnapshot): void {
+    // Replay parks every news panel on a loading state and never refills it —
+    // leaving playback calls loadAllData() to do that. Its news task is skipped
+    // when the category set is unchanged (#5376), which replay does not touch,
+    // so drop the record here and the exit reload happens.
+    this.callbacks.invalidateNewsHydration();
     for (const panel of Object.values(this.ctx.newsPanels)) {
       panel.showLoading();
     }
