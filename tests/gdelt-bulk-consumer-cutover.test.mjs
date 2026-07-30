@@ -108,6 +108,16 @@ describe('GDELT consumers read materialized Redis products', () => {
       /fetchGdeltFallback = readMaterializedGdeltConflictEvents/,
       'the production no-credentials fallback must stay wired to the tested reader',
     );
+    // The default-param pin alone stays green if a stray direct call is added
+    // next to it, so forbid the DOC fetcher inside fetchAll's body too
+    // (#5863 review — verified mutation-passable without this).
+    const conflictSource = read('scripts/seed-conflict-intel.mjs');
+    const fetchAllBody = conflictSource.slice(conflictSource.indexOf('export async function fetchAll('));
+    assert.doesNotMatch(
+      fetchAllBody,
+      /\bfetchGdeltConflictEvents\(/,
+      'the direct GDELT country sweep must not be called from the production path',
+    );
   });
 
   it('unrest accepts the exact product-age boundary and preserves its fetchedAt', async () => {
@@ -161,10 +171,21 @@ describe('GDELT consumers read materialized Redis products', () => {
 
     const source = read('scripts/seed-unrest-events.mjs');
     assert.equal(GDELT_BULK_UNREST_KEY, 'gdelt:bulk:unrest-events:v1');
+    // Scope the guard to the merge array itself and forbid the old direct
+    // fetcher INSIDE it. A file-spanning `assert.match` stayed green with
+    // fetchGdeltEvents() reinserted alongside the new reader — a wiring guard
+    // that cannot fail with the bug restored (#5863 review).
+    const unrestMerge = source.match(/Promise\.allSettled\(\[[\s\S]*?\]\)/);
+    assert.ok(unrestMerge, 'the production unrest merge array must be locatable');
     assert.match(
-      source,
-      /Promise\.allSettled\(\[[\s\S]*readMaterializedGdeltEvents\(\)/,
+      unrestMerge[0],
+      /readMaterializedGdeltEvents\(\)/,
       'the production unrest merge must stay wired to the tested reader',
+    );
+    assert.doesNotMatch(
+      unrestMerge[0],
+      /\bfetchGdeltEvents\(/,
+      'the direct GDELT proxy fetch must not be reactivated in the merge',
     );
     assert.match(
       source,

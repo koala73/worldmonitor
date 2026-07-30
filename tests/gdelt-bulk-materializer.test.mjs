@@ -6,6 +6,7 @@ import {
   materializeGdeltBulk,
   parseGdeltBulkDescriptors,
   parseGdeltGkgCsv,
+  toArticle as gdeltArticleForTests,
 } from '../scripts/_gdelt-bulk-materializer.mjs';
 
 function gkgRow({
@@ -17,6 +18,10 @@ function gkgRow({
   themes,
   tone = '3.5,10,2,8,1,2,3',
   locations = '1#Cairo, Egypt#EG#EG11#30.0444#31.2357#-290692',
+  // V2ENHANCEDLOCATIONS carries an EXTRA ADM2 sub-field (9 total) and must not
+  // be read with the V1 offsets — reading it as V1 puts ADM2 in latitude and
+  // the real latitude in longitude (#5863 review, P0 on live data).
+  enhancedLocations = '1#Cairo, Egypt#EG#EG11#3086#30.0444#31.2357#-290692#128',
   image = 'https://images.example.test/photo.jpg',
 }) {
   const fields = Array.from({ length: 27 }, () => '');
@@ -25,7 +30,8 @@ function gkgRow({
   fields[3] = domain;
   fields[4] = url;
   fields[8] = themes;
-  fields[10] = locations;
+  fields[9] = locations;
+  fields[10] = enhancedLocations;
   fields[15] = tone;
   fields[18] = image;
   fields[26] = `<PAGE_TITLE>${title}</PAGE_TITLE>`;
@@ -432,5 +438,88 @@ describe('GDELT bulk derived products', () => {
     assert.equal(result.timelines.cyber.toneFetchedAt, oldToneAt);
     assert.equal(result.timelines.cyber.volFetchedAt, currentVolumeAt);
     assert.equal(result.timelines.cyber.fetchedAt, currentVolumeAt);
+  });
+});
+
+
+describe('GKG column layout — #5863 review round', () => {
+  it('reads coordinates from V1LOCATIONS, not the V2 enhanced column whose layout differs', () => {
+    // Verbatim-shaped real rows: V1LOCATIONS is 7 '#'-fields
+    // (Type#FullName#CC#ADM1#Lat#Lon#FeatureID); V2ENHANCEDLOCATIONS is 9
+    // (Type#FullName#CC#ADM1#ADM2#Lat#Lon#FeatureID#Offset). On a live cohort
+    // reading the V2 column with V1 offsets produced latitude 0 for 2831/2831
+    // locations, with the real latitude shifted into longitude.
+    const numericAdm2 = gkgRow({
+      id: 'gkg-v2-numeric-adm2',
+      url: 'https://reuters.com/brussels',
+      title: 'Brussels summit opens',
+      themes: 'TAX_FNCACT',
+      locations: '4#Brussels, Bruxelles-Brussel, Belgium#BE#BE11#50.8333#4.33333#-1955538',
+      enhancedLocations: '4#Brussels, Bruxelles-Brussel, Belgium#BE#BE11#5850#50.8333#4.33333#-1955538#8',
+    });
+    const emptyAdm2 = gkgRow({
+      id: 'gkg-v2-empty-adm2',
+      url: 'https://reuters.com/minnesota',
+      title: 'Minnesota storm warning',
+      themes: 'NATURAL_DISASTER',
+      locations: '2#Minnesota, United States#US#USMN#45.7326#-93.9196#MN',
+      // The empty-ADM2 shape is what survived the mis-parse as latitude 0.
+      enhancedLocations: '2#Minnesota, United States#US#USMN##45.7326#-93.9196#MN#153',
+    });
+
+    const [brussels, minnesota] = parseGdeltGkgCsv([numericAdm2, emptyAdm2].join('\n'));
+
+    assert.deepEqual(brussels.locations, [{
+      name: 'Brussels, Bruxelles-Brussel, Belgium',
+      countryCode: 'BE',
+      latitude: 50.8333,
+      longitude: 4.33333,
+    }], 'a numeric ADM2 must never be read as latitude');
+    assert.deepEqual(minnesota.locations, [{
+      name: 'Minnesota, United States',
+      countryCode: 'US',
+      latitude: 45.7326,
+      longitude: -93.9196,
+    }], 'an empty ADM2 must not collapse latitude to 0 and shift longitude');
+    for (const record of [brussels, minnesota]) {
+      assert.notEqual(record.locations[0].latitude, 0, 'derived geo events must not land on the equator');
+    }
+  });
+
+  it('publishes article dates in the GDELT compact seendate format the UI parses', () => {
+    // src/services/gdelt-intel.ts formatArticleDate slices positionally
+    // (YYYYMMDDTHHMMSSZ). An ISO date parses to '' there and every UI age
+    // label renders blank (#5863 review).
+    const [record] = parseGdeltGkgCsv([gkgRow({
+      id: 'gkg-date-format',
+      url: 'https://reuters.com/date',
+      title: 'Date format check',
+      themes: 'TAX_FNCACT',
+      timestamp: '20260730123000',
+    })].join('\n'));
+    const article = gdeltArticleForTests(record);
+    assert.equal(article.date, '20260730T123000Z', 'artlist parity: compact seendate, not ISO');
+    // Mirror the consumer's positional parse to prove it resolves.
+    const d = article.date;
+    const parsed = Date.parse(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T${d.slice(9, 11)}:${d.slice(11, 13)}:${d.slice(13, 15)}Z`);
+    assert.ok(Number.isFinite(parsed), `the UI positional parser must resolve ${d}`);
+  });
+
+  it('caps per-record themes and locations so one degenerate row cannot bloat the state key', () => {
+    const manyThemes = Array.from({ length: 400 }, (_, i) => `THEME_${i},10`).join(';');
+    const manyLocations = Array.from({ length: 200 }, (_, i) =>
+      `1#Place ${i}${'x'.repeat(300)}#EG#EG11#${(10 + (i % 70)).toFixed(4)}#${(20 + (i % 100)).toFixed(4)}#${i}`).join(';');
+    const [record] = parseGdeltGkgCsv([gkgRow({
+      id: 'gkg-degenerate',
+      url: 'https://reuters.com/degenerate',
+      title: 'Degenerate row',
+      themes: manyThemes,
+      locations: manyLocations,
+    })].join('\n'));
+    assert.ok(record.themes.length <= 60, `themes must be capped, got ${record.themes.length}`);
+    assert.ok(record.locations.length <= 20, `locations must be capped, got ${record.locations.length}`);
+    for (const location of record.locations) {
+      assert.ok(location.name.length <= 200, 'location names must be bounded');
+    }
   });
 });

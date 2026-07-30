@@ -59,7 +59,13 @@ const TIMELINE_TTL = 7 * 86_400;
 const STATE_TTL = 14 * 86_400;
 const CONFLICT_TTL = 6 * 60 * 60;
 const UNREST_TTL = 4.5 * 60 * 60;
-const POSITIVE_TTL = 45 * 60;
+// 3h, NOT 45min: api/health.js gates positiveGeoEvents at maxStaleMin 60 AND
+// treats a missing payload as a hard failure, so a TTL under that window makes a
+// merely-late materializer page as EMPTY/crit before STALE_SEED can warn — the
+// #5309 ACLED_TTL zero-headroom class. The old warm relay masked this with a
+// 5-min in-process retry loop; a single-shot 15-min cron has no such cover, and
+// a skipped tick must degrade to a warning, not a page (#5863 review).
+const POSITIVE_TTL = 3 * 60 * 60;
 const ARTICLES_TTL = 2 * 86_400;
 const POSITIVE_EVENTS_META_KEY = 'seed-meta:positive-events:geo';
 
@@ -532,14 +538,40 @@ export async function afterPublish(data, _meta, deps = {}) {
     return [];
   });
   if (failures.length > 0) {
-    throw new AggregateError(
-      failures,
-      `GDELT bulk output publication failed: ${failures.map((error) => error?.message || error).join('; ')}`,
-    );
+    // DEGRADE, do not throw (#5863 review). This runs AFTER atomicPublish has
+    // already written the canonical key, so throwing turns an
+    // already-successful publish into FATAL exit 1 — precisely the #5478
+    // incident the predecessor fixed with a degrade-not-crash afterPublish.
+    // The cursor is deliberately NOT advanced, so the next tick replays the
+    // same static cohort idempotently, and the error status + reason land on
+    // seed-meta so health alarms instead of the process crash-looping.
+    const summary = failures.map((error) => error?.message || error).join('; ');
+    console.warn(`  WARNING: GDELT bulk output publication incomplete (cursor held): ${summary}`);
+    return {
+      completionState: 'DEGRADED',
+      freshnessMetaPatch: {
+        status: 'error',
+        errorReason: 'gdelt_bulk_outputs_incomplete',
+        failedOutputs: failures.length,
+      },
+    };
   }
   // State is the cursor/rolling accumulator. Write it last so a partial output
   // failure replays the same static files on the next tick.
-  await _writeExtraKey(GDELT_BULK_STATE_KEY, data._state, STATE_TTL);
+  try {
+    await _writeExtraKey(GDELT_BULK_STATE_KEY, data._state, STATE_TTL);
+  } catch (error) {
+    // Same reasoning: a cursor write failure must not crash a run whose
+    // products all landed. Holding the cursor replays the cohort next tick.
+    console.warn(`  WARNING: GDELT bulk cursor write failed (cohort will replay): ${error?.message || error}`);
+    return {
+      completionState: 'DEGRADED',
+      freshnessMetaPatch: {
+        status: 'error',
+        errorReason: 'gdelt_bulk_cursor_write_failed',
+      },
+    };
+  }
   return { completionState: 'OK' };
 }
 

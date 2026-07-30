@@ -650,6 +650,32 @@ const GDELT_TONE_TOPICS = ['military', 'nuclear', 'maritime'];
 // skipped and the bundled-canonical fallback below still provides a coarse
 // tone signal.
 const MAX_TONE_SIGNAL_AGE_MS = 48 * 3600 * 1000;
+// A "declining trend" must span real time, not just three adjacent samples.
+// The producer's cadence is not a stable contract: it published ~daily DOC
+// timeline points, and the bulk materializer (#5843) publishes one point per
+// 15-minute cohort, which would turn 45 minutes of small-sample noise into a
+// deterioration signal. Requiring a minimum span makes this consumer correct
+// under either cadence, and denser series simply need more points (#5863
+// review).
+const MIN_TONE_TREND_SPAN_MS = 24 * 3600 * 1000;
+
+// Pick the sparsest 3-point window that spans at least MIN_TONE_TREND_SPAN_MS:
+// walk back from the newest point and keep the two earlier anchors far enough
+// away in time. Returns null when the series does not cover enough ground.
+function toneTrendWindow(series) {
+  const dated = series
+    .map((point) => ({ value: safeNum(point?.value), ms: Date.parse(point?.date) }))
+    .filter((point) => Number.isFinite(point.ms) && Number.isFinite(point.value))
+    .sort((a, b) => a.ms - b.ms);
+  if (dated.length < 3) return null;
+  const newest = dated[dated.length - 1];
+  const step = MIN_TONE_TREND_SPAN_MS / 2;
+  const mid = [...dated].reverse().find((point) => newest.ms - point.ms >= step);
+  if (!mid) return null;
+  const oldest = [...dated].reverse().find((point) => mid.ms - point.ms >= step);
+  if (!oldest) return null;
+  return [oldest, mid, newest].map((point) => point.value);
+}
 
 function extractMediaToneDeterioration(d) {
   const signals = [];
@@ -660,8 +686,8 @@ function extractMediaToneDeterioration(d) {
     if (!Number.isFinite(fetchedMs) || Date.now() - fetchedMs > MAX_TONE_SIGNAL_AGE_MS) continue;
     const series = Array.isArray(tonePayload.data) ? tonePayload.data : [];
     if (series.length < 3) continue;
-    const last3 = series.slice(-3);
-    const vals = last3.map(p => safeNum(p.value));
+    const vals = toneTrendWindow(series);
+    if (!vals) continue;
     const isDeclining = vals[0] > vals[1] && vals[1] > vals[2];
     const finalVal = vals[2];
     if (!isDeclining || finalVal >= -1.5) continue;

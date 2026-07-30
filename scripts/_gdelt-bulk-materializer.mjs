@@ -1,4 +1,8 @@
 import { decodeHtmlEntities } from './_html-entities.mjs';
+// Pure, import-safe shared parser: accepts both the published compact seendate
+// and the ISO form legacy snapshots carry, so the article window/sort survives
+// the format change (#5863 review).
+import { gdeltSeenDateToMs } from './_conflict-gdelt.mjs';
 import { inflateRawSync } from 'node:zlib';
 
 const GDELT_STORAGE_ORIGIN = 'https://storage.googleapis.com/data.gdeltproject.org';
@@ -210,11 +214,19 @@ function timestampToIso(value) {
   return Number.isFinite(Date.parse(iso)) ? iso : '';
 }
 
+// Caps bound the persisted state payload: recentGkgBatches retains thousands of
+// records, and writeExtraKey has no byte ceiling, so one degenerate row could
+// push the state key past Upstash's limit AFTER the products published —
+// freezing the cursor in a fail-after-publish loop (#5863 review).
+const MAX_RECORD_THEMES = 60;
+const MAX_RECORD_LOCATIONS = 20;
+const MAX_LOCATION_NAME_CHARS = 200;
+
 function parseThemes(value) {
   return [...new Set(String(value || '')
     .split(';')
     .map((entry) => entry.split(',')[0]?.trim())
-    .filter(Boolean))];
+    .filter(Boolean))].slice(0, MAX_RECORD_THEMES);
 }
 
 function parseLocations(value) {
@@ -223,7 +235,8 @@ function parseLocations(value) {
   for (const entry of String(value || '').split(';')) {
     const fields = entry.split('#');
     if (fields.length < 7) continue;
-    const name = fields[1]?.trim();
+    if (locations.length >= MAX_RECORD_LOCATIONS) break;
+    const name = fields[1]?.trim().slice(0, MAX_LOCATION_NAME_CHARS);
     const countryCode = fields[2]?.trim();
     const latitude = Number(fields[4]);
     const longitude = Number(fields[5]);
@@ -276,7 +289,12 @@ export function parseGdeltGkgCsv(csv) {
       image: safeHttpUrl(fields[18]),
       tone: Number.isFinite(tone) ? tone : 0,
       themes: parseThemes(fields[8]),
-      locations: parseLocations(fields[10]),
+      // fields[9] = V1LOCATIONS (Type#FullName#CC#ADM1#Lat#Lon#FeatureID) — the
+      // 7-field layout parseLocations reads. fields[10] (V2ENHANCEDLOCATIONS)
+      // inserts ADM2 before Lat, so reading it here put the admin code in
+      // latitude and the real latitude in longitude: on a live cohort every one
+      // of 2831 parsed locations landed at latitude 0 (#5863 review, P0).
+      locations: parseLocations(fields[9]),
     });
   }
   return records;
@@ -286,12 +304,23 @@ function recordMatchesTopic(record, topic) {
   return topic.pattern.test(`${record.themes.join(' ')} ${record.title}`);
 }
 
-function toArticle(record) {
+// Exported for tests: the published article shape is a cross-layer contract
+// (src/services/gdelt-intel.ts parses `date` positionally).
+// GDELT compact seendate ('YYYYMMDDTHHMMSSZ'). src/services/gdelt-intel.ts's
+// formatArticleDate slices this positionally, so publishing an ISO string there
+// blanked every UI age label (#5863 review).
+function toSeenDate(iso) {
+  const digits = String(iso || '').replace(/\D/g, '');
+  if (digits.length < 14) return '';
+  return `${digits.slice(0, 8)}T${digits.slice(8, 14)}Z`;
+}
+
+export function toArticle(record) {
   return {
     title: record.title,
     url: record.url,
     source: record.source,
-    date: record.date,
+    date: toSeenDate(record.date),
     image: record.image,
     language: 'English',
     tone: record.tone,
@@ -310,12 +339,12 @@ function mergeArticles(
     ...currentRecords.map(toArticle),
     ...(Array.isArray(previousArticles) ? previousArticles : []),
   ]) {
-    const dateMs = Date.parse(article?.date);
+    const dateMs = gdeltSeenDateToMs(article?.date);
     if (!article?.url || !Number.isFinite(dateMs) || dateMs < cutoff || byUrl.has(article.url)) continue;
     byUrl.set(article.url, article);
   }
   return [...byUrl.values()]
-    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)
+    .sort((a, b) => gdeltSeenDateToMs(b.date) - gdeltSeenDateToMs(a.date)
       || a.url.localeCompare(b.url))
     .slice(0, limit);
 }

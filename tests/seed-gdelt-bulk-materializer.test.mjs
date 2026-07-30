@@ -672,8 +672,8 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       { key: GDELT_BULK_CONFLICT_KEY, ttlSeconds: 6 * 60 * 60 },
       { key: GDELT_BULK_UNREST_KEY, ttlSeconds: 4.5 * 60 * 60 },
       { key: GDELT_BULK_ARTICLES_KEY, ttlSeconds: 2 * 86_400 },
-      { key: POSITIVE_EVENTS_RPC_KEY, ttlSeconds: 45 * 60 },
-      { key: POSITIVE_EVENTS_BOOTSTRAP_KEY, ttlSeconds: 45 * 60 },
+      { key: POSITIVE_EVENTS_RPC_KEY, ttlSeconds: 3 * 60 * 60 },
+      { key: POSITIVE_EVENTS_BOOTSTRAP_KEY, ttlSeconds: 3 * 60 * 60 },
       { key: 'seed-meta:positive-events:geo', ttlSeconds: 7 * 86_400 },
       { key: GDELT_BULK_STATE_KEY, ttlSeconds: 14 * 86_400 },
     ];
@@ -699,13 +699,17 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       },
       _writeExtraKeyWithMeta: async () => false,
     });
-    const rejection = assert.rejects(publish, /metadata write returned false/i);
-
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(stateWritten, false);
     assert.equal(slowWriteSettled, false);
     releaseSlowWrite();
-    await rejection;
+    // DEGRADE, not reject: the canonical key is already published by the time
+    // afterPublish runs, so throwing would FATAL an otherwise-successful run
+    // (#5478 / #5863 review). The cursor stays unwritten so the cohort replays.
+    const outcome = await publish;
+    assert.equal(outcome.completionState, 'DEGRADED');
+    assert.equal(outcome.freshnessMetaPatch.status, 'error');
+    assert.equal(outcome.freshnessMetaPatch.errorReason, 'gdelt_bulk_outputs_incomplete');
     assert.equal(slowWriteSettled, true);
     assert.equal(stateWritten, false);
   });
@@ -728,12 +732,25 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       },
       _writeExtraKeyWithMeta: async () => true,
     });
-    const rejection = assert.rejects(publish, /timeline failed/i);
-
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(stateWritten, false);
     releaseSlowWrite();
-    await rejection;
-    assert.equal(stateWritten, false);
+    const outcome = await publish;
+    assert.equal(outcome.completionState, 'DEGRADED', 'a failed sibling output degrades, never FATALs');
+    assert.equal(outcome.freshnessMetaPatch.errorReason, 'gdelt_bulk_outputs_incomplete');
+    assert.equal(stateWritten, false, 'the cursor is held so the cohort replays next tick');
+  });
+
+  it('degrades instead of crashing when only the cursor write fails', async () => {
+    const data = publicationData();
+    const outcome = await afterPublish(data, undefined, {
+      _writeExtraKey: async (key) => {
+        if (key === GDELT_BULK_STATE_KEY) throw new Error('cursor write failed');
+        return undefined;
+      },
+      _writeExtraKeyWithMeta: async () => true,
+    });
+    assert.equal(outcome.completionState, 'DEGRADED');
+    assert.equal(outcome.freshnessMetaPatch.errorReason, 'gdelt_bulk_cursor_write_failed');
   });
 });
