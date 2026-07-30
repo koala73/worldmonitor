@@ -20,6 +20,10 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key.
 
+### Source Tag
+
+The field a seeder stamps on its published snapshot naming which rung of its source ladder produced the payload — the credentialed primary, the preferred bulk feed, or an emergency sweep. Consumers of the data itself ignore it, but stateful merge logic keys on it: a run only carries forward accumulated state (such as a rolling event window) from a predecessor snapshot bearing the expected tag, so a single tick published under a different tag resets that accumulation. Inverting which rung is primary changes how often each tag is published and therefore how exposed that accumulated state is. See also: Seed-Owned Key.
+
 ### One-Shot Hydration
 
 The delivery contract of the boot payload: a hydrated value can be read exactly once, and reading it consumes it. Its consequence is the important part — any *recurring* reader (a periodic refresh tick, a retry) is guaranteed to miss hydration and fall through to whatever fallback path exists. When that fallback is not CDN-shielded, one-shot hydration plus a refresh timer silently manufactures origin traffic. Audit every refresh path's fallthrough whenever a payload is one-shot. See also: The Lever Test, On-Demand Key.
