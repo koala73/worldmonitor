@@ -67,9 +67,19 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
 
     const isTech = category && TECH_CATEGORY_TAGS.includes(category);
     const isFinance = !isTech && category && FINANCE_CATEGORY_TAGS.includes(category);
+    // `category` is optional on this public endpoint, and omitting it must keep
+    // meaning "every market" (#5733). Before the producer's pools were made
+    // disjoint, `bootstrap.geopolitical` WAS every market, so the no-category
+    // caller and an explicit geopolitical-ish category (the site variant sends
+    // 'politics') could share one branch. Now they must not: the pool is
+    // strictly geopolitical, so an empty category has to union all three or the
+    // documented default response silently narrows to geo-only. Volume-sorted so
+    // the union is ranked rather than concatenated pool-by-pool.
     const variant = isTech ? bootstrap.tech
       : isFinance ? (bootstrap.finance ?? bootstrap.geopolitical)
-      : bootstrap.geopolitical;
+      : category ? bootstrap.geopolitical
+      : [...(bootstrap.geopolitical ?? []), ...(bootstrap.tech ?? []), ...(bootstrap.finance ?? [])]
+        .sort((a, b) => (Number(b?.volume) || 0) - (Number(a?.volume) || 0));
 
     if (!variant || variant.length === 0) return { markets: [], pagination: undefined, fetchedAt, dataAvailable: false };
 
