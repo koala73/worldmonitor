@@ -1,5 +1,5 @@
 {
-  "_comment": "Real prediction:markets-bootstrap:v1 records captured from production on 2026-07-30 (union of the geopolitical/tech/finance pools, deduplicated by url). This is the shape scripts/seed-prediction-markets.mjs holds in its `markets` array before classification. Used by tests/prediction-market-classification.test.mjs to exercise the classifier against real venue titles + real Polymarket tag slugs (including Kalshi records, which always carry an empty tags array). Fixture for #5733.",
+  "_comment": "Real prediction:markets-bootstrap:v1 records captured from production on 2026-07-30 (union of the geopolitical/tech/finance pools, deduplicated by url). NOTE ON PROVENANCE: these are PUBLISHED records, so each already passed the seeder's shouldInclude gates (price band, volume floor, exclude/meme keywords) and carries the added `regions` field's inputs — it is the raw-candidate SHAPE, but a pre-filtered SAMPLE, not an unfiltered fetch. That is what makes it the right fixture for classification (real venue titles and real Polymarket tag slugs, including Kalshi records which always carry an empty tags array) and the wrong one for exercising shouldInclude's own thresholds. Fixture for #5733.",
   "markets": [
     {
       "title": "Will no Fed rate cuts happen in 2026?",

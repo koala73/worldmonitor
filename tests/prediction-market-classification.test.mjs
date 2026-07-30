@@ -203,6 +203,26 @@ describe('classifyMarket', () => {
     }
   });
 
+  it('resolves a multi-list market by PRECEDENCE, not by tag disjointness', () => {
+    // Disjoint classify lists guarantee no single tag maps to two categories.
+    // They do NOT make markets unambiguous: a market routinely carries tags from
+    // several lists, and then the order in CATEGORIES decides. Reordering
+    // CATEGORIES would silently move these between published pools.
+    assert.deepEqual([...CATEGORIES], ['geopolitical', 'tech', 'finance'], 'precedence order is a contract');
+
+    // crypto (tech) + business/finance (finance) -> tech wins, because tech is first.
+    const kraken = RAW.find((m) => m.title === 'Kraken IPO by December 31, 2026?');
+    assert.ok(kraken.tags.includes('crypto') && kraken.tags.includes('business'));
+    assert.equal(classifyMarket(kraken), 'tech');
+
+    // A geo tag beats both, whatever else the market carries.
+    assert.equal(classifyMarket({ title: 'x', tags: ['geopolitics', 'ai', 'economy'] }), 'geopolitical');
+    // Title geo beats every tag.
+    assert.equal(classifyMarket({ title: 'Iran coup attempt by December 31?', tags: ['ai', 'economy'] }), 'geopolitical');
+    // tech beats finance when both match and neither is geo.
+    assert.equal(classifyMarket({ title: 'x', tags: ['ai', 'economy'] }), 'tech');
+  });
+
   it('matches tags case-insensitively (Polymarket ships mixed-case slugs like Global-Rates)', () => {
     assert.ok(hasCategoryTag(['GLOBAL-RATES', 'Interest-Rates'], 'finance'));
     assert.ok(hasCategoryTag([' Crypto '], 'tech'));

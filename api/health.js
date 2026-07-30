@@ -390,7 +390,7 @@ const SEED_META = {
   hkoWarnings:      { key: 'seed-meta:weather:hko-warnings',    maxStaleMin: 540 }, // successful HKO responses publish a snapshot even when no tropical-cyclone warning is active.
   flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 90 }, // CACHE_TTL=7200s; matches notamClosures from same cron
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
-  predictionMarkets: { key: 'seed-meta:prediction:markets',     maxStaleMin: 90 },
+  predictionMarkets: { key: 'seed-meta:prediction:markets',     maxStaleMin: 90, minRecordCount: 20 }, // #5733: declareRecords now counts DISTINCT markets (it triple-counted across the pre-partition near-duplicate pools, reporting ~75 for 46 real markets), so a volume collapse is finally measurable. Floor is deliberately well under the ~46 steady state and well over a broken run — the publish gate only catches mislabeling, so without this a run that shrinks every pool while each stays non-empty stays GREEN.
   newsInsights:     { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
   newsFeedHealth:   { key: 'seed-meta:news:feed-health',        maxStaleMin: 2880 },

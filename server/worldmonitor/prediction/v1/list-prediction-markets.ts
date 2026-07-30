@@ -73,13 +73,33 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
     // caller and an explicit geopolitical-ish category (the site variant sends
     // 'politics') could share one branch. Now they must not: the pool is
     // strictly geopolitical, so an empty category has to union all three or the
-    // documented default response silently narrows to geo-only. Volume-sorted so
-    // the union is ranked rather than concatenated pool-by-pool.
+    // documented default response silently narrows to geo-only.
+    //
+    // The union is DEDUPED, not just concatenated: for up to the seeder's cron
+    // interval after this ships, Redis still holds a pre-#5733 payload whose
+    // pools are near-duplicates, and a naive concat would answer the default
+    // request with the same market three times. Deduping keeps the response
+    // correct for either payload vintage. Volume-sorted so it stays ranked
+    // rather than ordered pool-by-pool.
+    const unionAllPools = () => {
+      const seen = new Set<string>();
+      const out: BootstrapMarket[] = [];
+      for (const m of [...(bootstrap.geopolitical ?? []), ...(bootstrap.tech ?? []), ...(bootstrap.finance ?? [])]) {
+        const id = String(m?.url || m?.title || '');
+        if (id && seen.has(id)) continue;
+        if (id) seen.add(id);
+        out.push(m);
+      }
+      return out.sort((a, b) => (Number(b?.volume) || 0) - (Number(a?.volume) || 0));
+    };
+
+    // A finance request must NOT fall back to the geopolitical pool. That was
+    // harmless while geopolitical was a superset of every market; now it would
+    // answer "give me finance" with conflict and election markets.
     const variant = isTech ? bootstrap.tech
-      : isFinance ? (bootstrap.finance ?? bootstrap.geopolitical)
+      : isFinance ? bootstrap.finance
       : category ? bootstrap.geopolitical
-      : [...(bootstrap.geopolitical ?? []), ...(bootstrap.tech ?? []), ...(bootstrap.finance ?? [])]
-        .sort((a, b) => (Number(b?.volume) || 0) - (Number(a?.volume) || 0));
+      : unionAllPools();
 
     if (!variant || variant.length === 0) return { markets: [], pagination: undefined, fetchedAt, dataAvailable: false };
 

@@ -20,8 +20,16 @@
 // THE MODEL. Each market gets exactly ONE primary category, decided by a fixed
 // precedence: geopolitical, then tech, then finance. Precedence (rather than
 // three independent predicates) is what makes the pools disjoint by
-// construction, and the tag lists in prediction-tags.json `classify` are kept
-// mutually disjoint so precedence never silently decides a coin-flip.
+// construction.
+//
+// PRECEDENCE IS LOAD-BEARING, not a tie-breaker of last resort. The `classify`
+// tag lists in prediction-tags.json are mutually disjoint, which guarantees no
+// single TAG maps to two categories — but a market routinely carries tags from
+// more than one list, and then the ORDER decides. "Kraken IPO by December 31,
+// 2026?" is tagged both `crypto` (tech) and `business`/`finance` (finance), and
+// lands in tech purely because tech is checked first. So reordering CATEGORIES
+// silently moves real markets between published pools; the order is pinned by
+// tests/prediction-market-classification.test.mjs, not merely documented here.
 //
 // WHY GEOPOLITICAL IS FIRST, AND WHY IT READS BOTH TITLE AND TAGS.
 // WorldMonitor's identity is geopolitical intelligence, so a genuine geo market
