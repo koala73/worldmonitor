@@ -161,7 +161,6 @@ async function loadModel(modelId: string): Promise<void> {
     });
 
     loadedPipelines.set(modelId, pipe);
-    loadingPromises.delete(modelId);
     console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
 
     // Notify manager that model is now available (no id = unsolicited notification)
@@ -169,6 +168,23 @@ async function loadModel(modelId: string): Promise<void> {
   })();
 
   loadingPromises.set(modelId, loadPromise);
+
+  // Clear the de-dupe entry once the load settles, on both the success and
+  // failure paths, so a transient failure (offline, flaky connection, HF CDN
+  // hiccup) doesn't permanently pin a rejected promise here and disable the
+  // model for the rest of the worker's lifetime. Attached after `.set(...)`
+  // rather than via try/finally inside the IIFE above, so a synchronous throw
+  // before the entry is inserted can never delete it prematurely.
+  loadPromise
+    .finally(() => {
+      loadingPromises.delete(modelId);
+    })
+    .catch(() => {
+      // Already surfaced to the caller via the returned/awaited loadPromise;
+      // this only suppresses the duplicate unhandled-rejection warning on
+      // the derived promise that .finally() creates.
+    });
+
   return loadPromise;
 }
 
