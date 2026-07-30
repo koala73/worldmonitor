@@ -9,6 +9,7 @@ export const DODO_PRODUCTS = {
   API_STARTER_MONTHLY: 'pdt_0NbttVmG1SERrxhygbbUq',
   API_STARTER_ANNUAL: 'pdt_0Nbu2lawHYE3dv2THgSEV',
   API_BUSINESS: 'pdt_0Nbttg7NuOJrhbyBGCius',
+  API_BUSINESS_ANNUAL: 'pdt_0NkHjzMhGp3m45sZLQ7BQ',
   ENTERPRISE: 'pdt_0Nbttnqrfh51cRqhMdVLx',
 } as const;
 
@@ -21,6 +22,7 @@ export const PLAN_LIMITS = {
   "api_starter": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
   "api_starter_annual": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
   "api_business": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},
+  "api_business_annual": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},
   "enterprise": {"apiRequestsPerDay":null,"apiBurstRequestsPerMinute":1000,"mcpCallsPerDay":null,"mcpBurstRequestsPerMinute":1000},
 } as const;
 

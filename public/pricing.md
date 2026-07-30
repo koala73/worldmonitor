@@ -41,7 +41,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 ## Pro Business
 
 - Price: $49.99/month
-- Annual price: $449/year
+- Annual price: $449.99/year
 - Annual savings: 3 months free versus monthly billing
 - Best for: Consultants, agencies and teams who use the Pro dashboard for client work, internal tools or reporting
 - Includes: Everything in Pro, plus data export (CSV, JSON and PDF reports)
@@ -53,7 +53,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 ## API Starter
 
 - Price: $99.99/month
-- Annual price: $899/year
+- Annual price: $899.99/year
 - Annual savings: about 25 percent versus monthly billing
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
 - Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
@@ -64,6 +64,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 ## API Business
 
 - Price: $299.99/month
+- Annual price: $2,699.99/year
+- Annual savings: about 25 percent versus monthly billing
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
 - Includes: Everything in API Starter, redistribution rights, 5 Pro licenses included and priority support
 - License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats all require the same company email domain
@@ -127,7 +129,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
     {
       "name": "Pro Business",
       "price_usd_monthly": 49.99,
-      "price_usd_yearly": 449,
+      "price_usd_yearly": 449.99,
       "features": [
         "Everything in Pro",
         "commercial license",
@@ -140,7 +142,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
     {
       "name": "API",
       "price_usd_monthly": 99.99,
-      "price_usd_yearly": 899,
+      "price_usd_yearly": 899.99,
       "features": [
         "REST API",
         "license / API key included",
@@ -154,6 +156,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
     {
       "name": "API Business",
       "price_usd_monthly": 299.99,
+      "price_usd_yearly": 2699.99,
       "features": [
         "Everything in API Starter",
         "300 requests/minute",
