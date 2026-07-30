@@ -371,7 +371,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
-    priceCents: 49900,
+    priceCents: 44900,
     billingPeriod: "annual",
     tierGroup: "pro_business",
     features: PRO_BUSINESS_FEATURES,
