@@ -3,13 +3,13 @@ import { mountUserButton, openSignIn, openSignUp } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
-
 export class AuthHeaderWidget {
   private container: HTMLElement;
   private unsubscribeAuth: (() => void) | null = null;
   private unmountUserButton: (() => void) | null = null;
   private onSignInClick?: () => void;
   private onSettingsClick?: () => void;
+  private isDestroyed = false;
 
   constructor(onSignInClick?: () => void, onSettingsClick?: () => void) {
     this.onSignInClick = onSignInClick;
@@ -18,6 +18,8 @@ export class AuthHeaderWidget {
     this.container.className = 'auth-header-widget';
 
     this.unsubscribeAuth = subscribeAuthState((state: AuthSession) => {
+      if (this.isDestroyed) return;
+
       if (state.isPending) {
         this.renderPending();
         return;
@@ -31,20 +33,27 @@ export class AuthHeaderWidget {
   }
 
   public destroy(): void {
-    this.unmountUserButton?.();
-    this.unmountUserButton = null;
+    this.isDestroyed = true;
+    this.cleanupUI();
+
     if (this.unsubscribeAuth) {
       this.unsubscribeAuth();
       this.unsubscribeAuth = null;
     }
   }
 
+  private cleanupUI(): void {
+    if (this.unmountUserButton) {
+      this.unmountUserButton();
+      this.unmountUserButton = null;
+    }
+    this.container.replaceChildren(); // Safely clears all child nodes
+  }
+
   private render(state: AuthSession): void {
-    this.unmountUserButton?.();
-    this.unmountUserButton = null;
+    this.cleanupUI();
     this.container.classList.remove('auth-header-widget-pending');
     this.container.removeAttribute('aria-busy');
-    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
 
     if (!state.user) {
       this.renderSignedOut();
@@ -54,44 +63,48 @@ export class AuthHeaderWidget {
   }
 
   private renderPending(): void {
-    this.unmountUserButton?.();
-    this.unmountUserButton = null;
+    this.cleanupUI();
     this.container.classList.add('auth-header-widget-pending');
     this.container.setAttribute('aria-busy', 'true');
-    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
 
     const signInSkeleton = document.createElement('span');
     signInSkeleton.className = 'auth-header-skeleton auth-header-skeleton-signin';
     signInSkeleton.setAttribute('aria-hidden', 'true');
-    this.container.appendChild(signInSkeleton);
 
     const signUpSkeleton = document.createElement('span');
     signUpSkeleton.className = 'auth-header-skeleton auth-header-skeleton-signup';
     signUpSkeleton.setAttribute('aria-hidden', 'true');
-    this.container.appendChild(signUpSkeleton);
+
+    this.container.append(signInSkeleton, signUpSkeleton);
   }
 
   private renderSignedOut(): void {
     const signInBtn = document.createElement('button');
+    signInBtn.type = 'button';
     signInBtn.className = 'auth-signin-btn';
     signInBtn.textContent = t('auth.signIn');
     signInBtn.addEventListener('click', () => {
-      if (this.onSignInClick) this.onSignInClick();
-      else openSignIn();
+      if (this.onSignInClick) {
+        this.onSignInClick();
+      } else {
+        openSignIn();
+      }
     });
-    this.container.appendChild(signInBtn);
 
     const signUpLink = document.createElement('button');
+    signUpLink.type = 'button';
     signUpLink.className = 'auth-signup-link';
     signUpLink.textContent = t('auth.createAccount');
     signUpLink.addEventListener('click', () => openSignUp());
-    this.container.appendChild(signUpLink);
+
+    this.container.append(signInBtn, signUpLink);
   }
 
   private renderSignedIn(): void {
     const userBtnEl = document.createElement('div');
     userBtnEl.className = 'auth-clerk-user-button';
     this.container.appendChild(userBtnEl);
+
     this.unmountUserButton = mountUserButton(userBtnEl);
 
     if (this.onSettingsClick) {
@@ -101,6 +114,7 @@ export class AuthHeaderWidget {
       settingsBtn.setAttribute('aria-label', t('auth.settings'));
       settingsBtn.title = t('auth.settings');
       setTrustedHtml(settingsBtn, trustedHtml(SETTINGS_ICON, "legacy direct innerHTML migration"));
+      
       settingsBtn.addEventListener('click', () => this.onSettingsClick?.());
       this.container.appendChild(settingsBtn);
     }
