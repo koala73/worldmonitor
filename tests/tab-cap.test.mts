@@ -223,10 +223,22 @@ describe('FREE_TAB_CAP — catalog drift guard', () => {
  * Source-grep wiring guards (the project's regression pattern): a correct
  * resolver only bites if the tab bar actually consults it, re-evaluates on
  * BOTH reactive sources, and never removes an existing tab.
+ *
+ * KNOWN WEAKNESS — these are source greps, and a source grep goes green on a
+ * name existing in a file; it never drives the decision (see docs/solutions/
+ * logic-errors/playback-control-gated-on-a-clerk-role-field-with-no-writer.md).
+ * The `addTab` and re-evaluation guards below survive only because replacing
+ * them needs a live `PanelLayoutManager`, and nothing can mount one today: its
+ * constructor pulls 49 imports and runs checkout-return handling plus
+ * ProActivationController on the way up, so a DOM harness for it is its own
+ * piece of work rather than a line-item in a refactor. Tracked in #5892.
+ *
+ * Do NOT re-point these at a new path if the code moves — build the harness
+ * and delete them, the way #5813 replaced the allowance-forwarding greps with
+ * tests/dom/gate-reader-forwarding.test.mts.
  */
 describe('tab-cap wiring', () => {
   const panelLayout = readFileSync(resolve(process.cwd(), 'src/app/panel-layout.ts'), 'utf8');
-  const tabBar = readFileSync(resolve(process.cwd(), 'src/components/PanelTabBar.ts'), 'utf8');
 
   const addTabBody = panelLayout.slice(
     panelLayout.indexOf('private addTab(): void {'),
@@ -282,14 +294,14 @@ describe('tab-cap wiring', () => {
   // now proven behaviourally, by calling the real `evaluateTabCap` against a
   // stubbed entitlement snapshot — see tests/dom/gate-reader-forwarding.test.mts.
 
-  it('the add button carries the locked reason and announces unlocks politely', () => {
-    assert.match(tabBar, /components\.tabCap\.lockedAriaLabel/);
-    assert.match(tabBar, /components\.tabCap\.unlockedAnnouncement/);
-    assert.match(tabBar, /aria-live'?,\s*'polite'/);
-  });
-
-  it('the tab bar exposes the locked state and the anchored notice separately', () => {
-    assert.match(tabBar, /setAddLock\(/);
-    assert.match(tabBar, /showAddLockNotice\(/);
-  });
+  // The two PanelTabBar greps that used to close this block are gone (#5813).
+  // They asserted that `components.tabCap.lockedAriaLabel`,
+  // `components.tabCap.unlockedAnnouncement`, `aria-live'/'polite'`,
+  // `setAddLock(` and `showAddLockNotice(` appear somewhere in the component's
+  // source. tests/dom/panel-tab-bar-lock-notice.test.mts already proves all
+  // five behaviourally and strictly more strongly — it asserts the rendered
+  // aria-label VALUE, the live region's actual announcement text and
+  // role="status", selects the region by [aria-live="polite"], and calls both
+  // methods for real. A grep that a name exists adds nothing on top of a test
+  // that drives it.
 });
