@@ -152,6 +152,32 @@ test('afterPublish reports only the failed key from mixed EXPIRE results', async
   assert.deepEqual(outcome.freshnessMetaPatch.missingTimelineKeys, ['gdelt:intel:vol:cyber']);
 });
 
+test('afterPublish surfaces the bounded transport code even while last-good timelines survive', async () => {
+  globalThis.fetch = async (url, opts = {}) => {
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u: String(url), body });
+    if (String(url).endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    return jsonResponse({ result: 'OK' });
+  };
+
+  const outcome = await afterPublish({
+    fetchedAt: '2026-07-29T08:00:00.000Z',
+    _gdeltFailureCode: 'GDELT_SHARED_PROXY_TLS',
+    _freshTopicCount: 0,
+    topics: [{ id: 'military', _tone: [], _vol: [] }],
+  });
+
+  assert.deepEqual(outcome, {
+    completionState: 'DEGRADED',
+    freshnessMetaPatch: {
+      status: 'error',
+      errorReason: 'gdelt_upstream_unavailable',
+      errorCode: 'GDELT_SHARED_PROXY_TLS',
+      freshTopicCount: 0,
+    },
+  });
+});
+
 test('fetchTopicTimeline keeps normal fetches best-effort but rethrows in strict repair mode', async () => {
   const exhausted = new Error('GDELT exhausted after proxy attempts: HTTP 429');
   const topic = { id: 'military', query: 'military sourcelang:eng' };
@@ -218,6 +244,29 @@ test('repairTimelines does not report OK when any absent key cannot be fetched',
       && warning.includes('GDELT exhausted after proxy attempts: HTTP 429')),
     `repair warning must retain the exhausted fetch error; warnings were: ${JSON.stringify(warns)}`,
   );
+});
+
+test('repairTimelines opens a circuit after the first transport failure', async () => {
+  let fetchCount = 0;
+  const transportError = Object.assign(new Error('SSL_ERROR_SYSCALL'), {
+    code: 'GDELT_SHARED_PROXY_TLS',
+  });
+  const result = await repairTimelines({
+    _readTimeline: async () => null,
+    _fetchTimeline: async () => {
+      fetchCount += 1;
+      throw transportError;
+    },
+    _writeTimeline: async () => assert.fail('failed transport must not write'),
+    _extendTtl: async () => false,
+    _sleep: async () => {},
+    _interRequestDelayMs: 0,
+  });
+
+  assert.equal(fetchCount, 1, 'the remaining eleven keys must not repeat the failed route');
+  assert.equal(result.completionState, 'DEGRADED');
+  assert.equal(result.errorCode, 'GDELT_SHARED_PROXY_TLS');
+  assert.equal(result.failedKeys.length, 12);
 });
 
 test('repairTimelines preserves existing data when TTL extension succeeds and repairs when it fails', async () => {
@@ -609,7 +658,7 @@ test('contentMeta ignores articleless topics so a total outage cannot mask STALE
 test('runSeed opts wire in the content-age trio and the resilient afterPublish', () => {
   assert.equal(RUN_SEED_OPTS.contentMeta, contentMeta, 'content-age opt-in must use the exported contentMeta');
   assert.equal(RUN_SEED_OPTS.maxContentAgeMin, 1440,
-    '24h = 4x the 6h cadence; only a real brownout (every topic failing every run for a day) trips STALE_CONTENT');
+    '24h = 6x the 4h cadence; only a real brownout (every topic failing every run for a day) trips STALE_CONTENT');
   assert.equal(RUN_SEED_OPTS.lockTtlMs, GDELT_LOCK_TTL_MS,
     'scheduled seed and repair must share the same full-operation ownership budget');
   assert.ok(RUN_SEED_OPTS.lockTtlMs > 75 * 60_000,
@@ -617,4 +666,23 @@ test('runSeed opts wire in the content-age trio and the resilient afterPublish',
   assert.equal(RUN_SEED_OPTS.afterPublish, afterPublish, 'main entry must run the degrade-not-crash afterPublish');
   assert.equal(typeof RUN_SEED_OPTS.validateFn, 'function');
   assert.equal(RUN_SEED_OPTS.declareRecords.length, 1);
+});
+
+test('canonical publication strips run diagnostics while seed-meta can still consume them', () => {
+  const published = RUN_SEED_OPTS.publishTransform({
+    fetchedAt: '2026-07-29T08:00:00.000Z',
+    _gdeltFailureCode: 'GDELT_SHARED_PROXY_HTTP_429',
+    _freshTopicCount: 0,
+    topics: [{
+      id: 'military',
+      articles: [{ title: 'cached', url: 'https://example.test/cached' }],
+      failureCode: 'GDELT_SHARED_PROXY_HTTP_429',
+      budgetExceeded: false,
+      _tone: [],
+      _vol: [],
+    }],
+  });
+  assert.equal(Object.hasOwn(published, '_gdeltFailureCode'), false);
+  assert.equal(Object.hasOwn(published, '_freshTopicCount'), false);
+  assert.deepEqual(Object.keys(published.topics[0]).sort(), ['articles', 'id']);
 });

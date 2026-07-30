@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import YAML from 'yaml';
 
+import { __testing__ as healthTesting } from '../api/health.js';
 import {
   applyAcceptanceBaseline,
   findOperationalProblems,
@@ -12,6 +13,11 @@ import {
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
+
+const COMMITTED_BASELINE_URL = new URL('../scripts/seed-freshness-baseline.json', import.meta.url);
+const RAILWAY_SERVICES_URL = new URL('../scripts/railway-services.json', import.meta.url);
+const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
+const readRailwayServices = () => JSON.parse(readFileSync(RAILWAY_SERVICES_URL, 'utf8'));
 
 describe('scheduled seed freshness monitor', () => {
   it('grades every actionable status, not only STALE_SEED', () => {
@@ -100,6 +106,84 @@ describe('scheduled seed freshness monitor', () => {
       }).map((p) => p.name),
       ['gdeltIntel', 'shippingRates'],
     );
+  });
+
+  it('blocks when the scheduled shipping data expires after recovery', () => {
+    const { SEED_META, STANDALONE_KEYS, classifyKey } = healthTesting;
+    const name = 'shippingRates';
+    const dataKey = STANDALONE_KEYS[name];
+    const metaKey = SEED_META[name].key;
+    const now = Date.parse('2026-07-28T21:00:00Z');
+    assert.equal(
+      dataKey,
+      'supply_chain:shipping:v2',
+      'health must keep the canonical shipping key registered',
+    );
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true }, {
+      keyStrens: new Map([[dataKey, 0]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify({
+        fetchedAt: now - 9 * 60 * 60 * 1000,
+        recordCount: 9,
+      })]]),
+      keyMetaErrors: new Map(),
+      activatedNames: new Set(),
+      now,
+    });
+    const committed = readCommittedBaseline();
+    const result = applyAcceptanceBaseline(
+      findOperationalProblems({ status: 'WARNING', problems: { [name]: entry } }),
+      committed,
+      now,
+    );
+
+    assert.equal(entry.status, 'EMPTY');
+    assert.deepEqual(result.blocking.map((problem) => problem.name), [name]);
+  });
+
+  it('binds stale shipping health to the producer heartbeat and cadence', () => {
+    const { SEED_META, STANDALONE_KEYS, classifyKey } = healthTesting;
+    const name = 'shippingRates';
+    const dataKey = STANDALONE_KEYS[name];
+    const expectedMeta = {
+      key: 'seed-meta:supply_chain:shipping',
+      maxStaleMin: 420,
+    };
+    const now = Date.parse('2026-07-28T21:00:00Z');
+
+    assert.deepEqual(
+      SEED_META[name],
+      expectedMeta,
+      'health must read the heartbeat written by the scheduled shipping producer',
+    );
+    const service = readRailwayServices().find((entry) => entry.service === 'seed-supply-chain-trade');
+    assert.equal(service?.cronSchedule, '0 */6 * * *');
+    assert.equal(
+      expectedMeta.maxStaleMin,
+      6 * 60 + 60,
+      'health must allow one hour of headroom beyond the six-hour cron',
+    );
+
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true }, {
+      keyStrens: new Map([[dataKey, 1]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[expectedMeta.key, JSON.stringify({
+        fetchedAt: now - (expectedMeta.maxStaleMin + 1) * 60 * 1000,
+        recordCount: 9,
+      })]]),
+      keyMetaErrors: new Map(),
+      activatedNames: new Set(),
+      now,
+    });
+    const result = applyAcceptanceBaseline(
+      findOperationalProblems({ status: 'WARNING', problems: { [name]: entry } }),
+      readCommittedBaseline(),
+      now,
+    );
+
+    assert.equal(entry.status, 'STALE_SEED');
+    assert.equal(entry.maxStaleMin, expectedMeta.maxStaleMin);
+    assert.deepEqual(result.blocking.map((problem) => problem.name), [name]);
   });
 
   it('treats an all-absent on-demand payload as clean', () => {
@@ -196,10 +280,29 @@ describe('scheduled seed freshness monitor', () => {
     });
 
     it('ships a valid, unexpired committed baseline', () => {
-      const committed = JSON.parse(
-        readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'),
-      );
+      const committed = readCommittedBaseline();
       validateAcceptanceBaseline(committed);
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'shippingRates'),
+        false,
+        'shippingRates recovered across the canonical cadence; do not suppress it again',
+      );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'gdeltIntel'),
+        false,
+        'gdeltIntel recovered after the bulk-materializer cutover; do not suppress it again',
+      );
+      const gdeltFailure = applyAcceptanceBaseline(
+        [{ name: 'gdeltIntel', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-01'),
+      );
+      assert.deepEqual(
+        gdeltFailure.blocking.map((problem) => problem.name),
+        ['gdeltIntel'],
+        'a recovered gdeltIntel failure must block the committed acceptance gate',
+      );
+      assert.deepEqual(gdeltFailure.acknowledged, []);
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',
@@ -215,6 +318,10 @@ describe('scheduled seed freshness monitor', () => {
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
       const issues = committed.acknowledged.map((entry) => entry.issue);
+      assert.ok(
+        !issues.includes(5771),
+        'recovered chinaCoverage degradation must not remain acknowledged',
+      );
       assert.equal(
         new Set(issues).size,
         issues.length,

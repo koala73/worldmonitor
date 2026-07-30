@@ -34,6 +34,10 @@ function validReq(overrides = {}) {
 let submitContact;
 let ValidationError;
 let ApiError;
+let EdgeFreeEmailDomains;
+let ConvexHttpClient;
+let ConvexError;
+let originalConvexMutation;
 
 describe('LeadsService.submitContact', () => {
   beforeEach(async () => {
@@ -45,13 +49,20 @@ describe('LeadsService.submitContact', () => {
     // Handler + error classes share one module instance so `instanceof` works.
     const mod = await import('../server/worldmonitor/leads/v1/submit-contact.ts');
     submitContact = mod.submitContact;
+    EdgeFreeEmailDomains = mod.FREE_EMAIL_DOMAINS;
     const gen = await import('../src/generated/server/worldmonitor/leads/v1/service_server.ts');
     ValidationError = gen.ValidationError;
     ApiError = gen.ApiError;
+    ({ ConvexHttpClient } = await import('convex/browser'));
+    ({ ConvexError } = await import('convex/values'));
+    originalConvexMutation = ConvexHttpClient.prototype.mutation;
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    if (ConvexHttpClient && originalConvexMutation) {
+      ConvexHttpClient.prototype.mutation = originalConvexMutation;
+    }
     Object.keys(process.env).forEach((k) => {
       if (!(k in originalEnv)) delete process.env[k];
     });
@@ -100,6 +111,16 @@ describe('LeadsService.submitContact', () => {
       await assert.rejects(
         () => submitContact(makeCtx(), validReq({ email: 'test@gmail.com' })),
         (err) => err instanceof ApiError && err.statusCode === 422 && /work email/i.test(err.message),
+      );
+    });
+
+    it('keeps the edge and Convex free-email policies aligned', async () => {
+      const { FREE_EMAIL_DOMAINS: ConvexFreeEmailDomains } =
+        await import('../convex/lib/emailDomain.ts');
+
+      assert.deepEqual(
+        [...EdgeFreeEmailDomains].sort(),
+        [...ConvexFreeEmailDomains].sort(),
       );
     });
 
@@ -255,6 +276,33 @@ describe('LeadsService.submitContact', () => {
         return new Response('{}');
       };
       await assert.rejects(() => submitContact(makeCtx(), validReq()));
+    });
+
+    it('translates Convex free-email policy failures into 422 ApiError', async () => {
+      globalThis.fetch = async (url) => {
+        if (typeof url === 'string' && url.includes('turnstile')) {
+          return new Response(JSON.stringify({ success: true }));
+        }
+        return new Response('{}');
+      };
+      const policyError = {
+        kind: 'FREE_EMAIL_NOT_ALLOWED',
+        message: 'Please use a corporate email address.',
+      };
+
+      for (const errorData of [policyError, JSON.stringify(policyError)]) {
+        ConvexHttpClient.prototype.mutation = async () => {
+          throw new ConvexError(errorData);
+        };
+
+        await assert.rejects(
+          () => submitContact(makeCtx(), validReq()),
+          (err) =>
+            err instanceof ApiError
+            && err.statusCode === 422
+            && /corporate email/i.test(err.message),
+        );
+      }
     });
   });
 });

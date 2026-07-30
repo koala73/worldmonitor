@@ -93,8 +93,8 @@ For a concrete, current example (full details on the [pricing page](https://www.
 | Plan | Price | Built for |
 |---|---|---|
 | Free | $0, no signup | Public situational awareness: 56 map layers, 500+ feeds, country briefs, chokepoints, watchlists |
-| Pro | $39.99/month or $399.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 59 tools |
-| API | $99.99/month or $999/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
+| Pro | $39.99/month or $359.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 59 tools |
+| API | $99.99/month or $899,99.99/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
 | API Business | $299.99/month | Teams: 300 requests/minute, 10,000 requests/day, priority support |
 | Enterprise | Custom | Organizations: SSO/MFA/RBAC, team workspaces, white-label, on-prem or air-gapped deployment |
 
@@ -116,7 +116,7 @@ Delivery. Free tiers require you to look at the dashboard; paid tiers push intel
 
 **How much should an individual analyst expect to pay in 2026?**
 
-Around $30–80/month for the prosumer tier. World Monitor Pro is $39.99/month ($399.99/year). Compare that against enterprise anchors — Bloomberg Terminal at $24,000/year per seat, Dataminr licenses in six figures — and price the specific capability gap, not the brand.
+Around $30–80/month for the prosumer tier. World Monitor Pro is $39.99/month ($359.99/year). Compare that against enterprise anchors — Bloomberg Terminal at $24,000/year per seat, Dataminr licenses in six figures — and price the specific capability gap, not the brand.
 
 **Do paid intelligence platforms train AI on my queries?**
 

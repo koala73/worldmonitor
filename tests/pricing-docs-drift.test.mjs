@@ -163,6 +163,7 @@ test('pricing.md machine-readable JSON block matches productCatalog.ts numerical
     ['API', 'price_usd_monthly', 'api_starter'],
     ['API', 'price_usd_yearly', 'api_starter_annual'],
     ['API Business', 'price_usd_monthly', 'api_business'],
+    ['API Business', 'price_usd_yearly', 'api_business_annual'],
   ];
   for (const [plan, field, planKey] of EXPECT) {
     assert.ok(planByName[plan], `JSON summary must have a "${plan}" plan`);
@@ -184,6 +185,7 @@ const PRICE_EXPECT = [
   ['API Starter Monthly', 'api_starter'],
   ['API Starter Annual', 'api_starter_annual'],
   ['API Business', 'api_business'],
+  ['API Business Annual', 'api_business_annual'],
 ];
 const FEATURE_OFFERS = [
   ['free', 'Free'],

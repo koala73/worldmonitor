@@ -324,7 +324,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
     planKey: "pro_annual",
     displayName: "Pro Annual",
-    priceCents: 39999,
+    priceCents: 35999,
     billingPeriod: "annual",
     tierGroup: "pro",
     features: PRO_FEATURES,
@@ -371,7 +371,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
-    priceCents: 49900,
+    priceCents: 44999,
     billingPeriod: "annual",
     tierGroup: "pro_business",
     features: PRO_BUSINESS_FEATURES,
@@ -410,7 +410,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nbu2lawHYE3dv2THgSEV",
     planKey: "api_starter_annual",
     displayName: "API Starter Annual",
-    priceCents: 99900,
+    priceCents: 89999,
     billingPeriod: "annual",
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
@@ -457,6 +457,21 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // customer portal surfaces the prorated Starter→Business upgrade. Flipping
     // this promotes the plan-limit-notice CTA from contact_support → billing_portal.
     canChangePlanSelfServe: true,
+    publicVisible: true,
+  },
+
+  api_business_annual: {
+    dodoProductId: "pdt_0NkHjzMhGp3m45sZLQ7BQ",
+    planKey: "api_business_annual",
+    displayName: "API Business Annual",
+    priceCents: 269999,
+    billingPeriod: "annual",
+    tierGroup: "api_business",
+    features: API_BUSINESS_FEATURES,
+    marketingFeatures: [],
+    selfServe: true,
+    highlighted: false,
+    currentForCheckout: true,
     publicVisible: true,
   },
 
@@ -534,6 +549,7 @@ export const PLAN_PRECEDENCE: Record<string, number> = {
   api_starter: 20,
   api_starter_annual: 21,
   api_business: 30, // higher capability than api_starter at same tier 2
+  api_business_annual: 31,
   enterprise: 40,
 };
 

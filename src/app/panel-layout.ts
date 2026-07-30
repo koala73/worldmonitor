@@ -24,9 +24,7 @@ import { MobilePanelNav } from '@/components/MobilePanelNav';
 import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
-  FEEDS,
   CANONICAL_FEEDS,
-  INTEL_SOURCES,
   STORAGE_KEYS,
   SITE_VARIANT,
   ALL_PANELS,
@@ -36,7 +34,6 @@ import {
   isPanelEntitled,
   enforceFreePanelLimit,
 } from '@/config';
-import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
@@ -44,7 +41,8 @@ import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, t
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { createEntitlementReloadController } from '@/services/entitlement-reload-controller';
 import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
@@ -492,10 +490,10 @@ export class PanelLayoutManager implements AppModule {
       email: getAuthState().user?.email ?? null,
     }));
 
-    // Reload only on a free→pro transition. Legacy-pro users whose first
-    // snapshot is already pro (lastEntitled === null) must not trigger a
-    // reload loop, but a user who pays mid-session (false → true) must see
-    // their panels unlock without manual refresh.
+    // Reload at most once per account and browser tab on a free→pro
+    // transition. Legacy-pro users whose first snapshot is already pro must
+    // not reload, while a newly upgraded user gets one clean boot with every
+    // premium panel initialized against the paid entitlement.
     //
     // When we just returned from a Dodo full-page redirect checkout, seed
     // lastEntitled = false instead of null. The webhook may have already
@@ -505,31 +503,30 @@ export class PanelLayoutManager implements AppModule {
     // the user would see locked panels until a manual refresh — exactly the
     // symptom that caused the 2026-04-17/18 duplicate-subscription incident.
     //
-    // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — the watcher is the SOLE
-    // automatic reload source for post-checkout success (the overlay
-    // handler in checkout.ts deliberately does NOT reload). If PR #3163's
-    // fix to `skipInitialSnapshot` is ever reverted, this detector
-    // swallows the activation silently and users see locked panels for
-    // 30s until the extended-unlock timeout fires a manual-refresh CTA.
-    // Regression guard: tests/entitlement-transition.test.mts locks the
-    // "incident sequence" semantics; see mirror marker in checkout.ts.
-    let lastEntitled: boolean | null = returnedFromCheckout ? false : null;
-    this.unsubscribeEntitlementChange = onEntitlementChange(() => {
-      const entitled = isEntitled();
-      const reload = shouldReloadOnEntitlementChange(lastEntitled, entitled);
-      lastEntitled = entitled;
-      if (reload) {
-        console.log('[entitlements] Subscription activated — reloading to unlock panels');
+    // The guard is persisted and verified BEFORE navigation. If storage is
+    // blocked, we fail closed to updatePanelGating() without reloading. This
+    // prevents the customer-visible failure where each new page boot receives
+    // another transient free→pro sequence and reloads again every ~500ms.
+    //
+    // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — this remains the sole
+    // automatic reload source for post-checkout success (the overlay handler
+    // in checkout.ts deliberately does NOT reload). Regression guards:
+    // tests/entitlement-transition.test.mts locks the raw transition semantics;
+    // tests/entitlement-reload-controller.test.mts locks the cross-boot
+    // one-navigation invariant from the daypesta customer recording.
+    const entitlementReloadController = createEntitlementReloadController({
+      returnedFromCheckout,
+      onSnapshot: () => this.updatePanelGating(getAuthState()),
+      reload: () => {
+        console.log('[entitlements] Subscription activated — reloading once to unlock panels');
         window.location.reload();
-        return;
-      }
-      // Re-run panel gating on every entitlement snapshot. hasPremiumAccess()
-      // now consults isEntitled(), so a legacy-pro user whose first snapshot
-      // is already pro (null→true — intentionally not reloaded to avoid a
-      // loop) still needs the paywall overlay lifted; likewise on WS reconnect
-      // or entitlement revocation, the lock state must follow the current
-      // snapshot synchronously rather than waiting for the next auth event.
-      this.updatePanelGating(getAuthState());
+      },
+    });
+    this.unsubscribeEntitlementChange = onEntitlementChange((state) => {
+      entitlementReloadController.handleSnapshot(
+        state === null ? null : isEntitlementActive(state, Date.now()),
+        getAuthState().user?.id ?? null,
+      );
     });
 
     // #4771: billing-state transitions can arrive on the SUBSCRIPTION row
@@ -683,6 +680,10 @@ export class PanelLayoutManager implements AppModule {
     for (const key of Object.keys(this.ctx.newsPanels)) {
       delete this.ctx.newsPanels[key];
     }
+    // lazyPanelRegistrations was cleared above, so the category→panel-key registry
+    // must reset too: a re-init re-registers from scratch and would otherwise skip
+    // recording keys it believes are already mapped.
+    this.ctx.newsCategoryPanelKeys.clear();
 
     // Clean up billing subscription watch + entitlement subscription
     destroySubscriptionWatch();
@@ -1533,15 +1534,28 @@ export class PanelLayoutManager implements AppModule {
     categoryKey = panelKey,
   ): void {
     if (!this.shouldCreatePanel(panelKey)) return;
-    this.lazyImportedPanel(panelKey, () => import('@/components/NewsPanel'), 'NewsPanel', (NewsPanel) => {
+    // Record the category→panel-key mapping ONLY when the lazy registration
+    // actually took `panelKey`. A key already claimed by a non-news panel
+    // (CommoditiesPanel, SupplyChainPanel, LiveNewsPanel …) makes lazyPanel a
+    // no-op, and the category must then stay out of the registry so the data
+    // layer never resolves it as a news category — there is no NewsPanel to
+    // render into and every feed it fetches is waste (#5376).
+    const registered = this.lazyImportedPanel(panelKey, () => import('@/components/NewsPanel'), 'NewsPanel', (NewsPanel) => {
       const panel = new NewsPanel(panelKey, label, tooltip);
       this.attachRelatedAssetHandlers(panel);
       panel.setRiskScoreGetter(PanelLayoutManager.computeEventRisk);
       this.ctx.newsPanels[categoryKey] = panel;
+      // Backfill on PRESENCE, not length. A category that resolved to `[]` is a
+      // routine outcome — the digest simply carried no bucket for it — and this is
+      // the only chance a late-mounting panel gets to clear the skeleton its
+      // constructor installed. Skipping a cached `[]` used to be harmless because
+      // the second news load re-rendered every category; now that the load runs
+      // once per work-list that second chance is gone and the panel spins until the
+      // 20-minute refresh (#5376). `renderNews([])` is what shows the empty state.
       const existingItems = this.ctx.newsByCategory[categoryKey];
-      if (existingItems?.length) {
+      if (existingItems) {
         const filteredItems = this.filterItemsByTimeRange(existingItems);
-        if (filteredItems.length === 0) {
+        if (filteredItems.length === 0 && existingItems.length > 0) {
           panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
         } else {
           panel.renderNews(filteredItems);
@@ -1549,6 +1563,7 @@ export class PanelLayoutManager implements AppModule {
       }
       return panel;
     });
+    if (registered) this.ctx.newsCategoryPanelKeys.set(categoryKey, panelKey);
   }
 
   // 0-100 event risk score: 0.40×severity + 0.30×geoConvergence + 0.30×CII
@@ -3117,8 +3132,8 @@ export class PanelLayoutManager implements AppModule {
     createPanel: (PanelClass: PanelExport<M, K>, module: M) => ImportedPanel<M, K> | null,
     setup?: (panel: ImportedPanel<M, K>) => void,
     lockedFeatures?: string[],
-  ): void {
-    this.lazyPanel(
+  ): boolean {
+    return this.lazyPanel(
       key,
       () => this.importPanel(key, importer, exportName, createPanel),
       setup,
@@ -3132,18 +3147,27 @@ export class PanelLayoutManager implements AppModule {
     exportName: K,
     setup?: (panel: ImportedPanel<M, K>) => void,
     lockedFeatures?: string[],
-  ): void {
-    this.lazyImportedPanel(key, importer, exportName, (PanelClass) => new PanelClass() as ImportedPanel<M, K>, setup, lockedFeatures);
+  ): boolean {
+    return this.lazyImportedPanel(key, importer, exportName, (PanelClass) => new PanelClass() as ImportedPanel<M, K>, setup, lockedFeatures);
   }
 
+  /**
+   * Register a lazily-loaded panel under `key`.
+   *
+   * Returns whether THIS call claimed the key: `false` means the key is unknown
+   * to `panelSettings`, or some earlier registration (often a non-news data
+   * panel) already owns it and this registration is a no-op. Callers that index
+   * a panel by something other than its panel key rely on that signal — see
+   * `createNewsPanelWithLabel`.
+   */
   private lazyPanel<T extends Panel>(
     key: string,
     loader: () => Promise<T | null>,
     setup?: (panel: T) => void,
     lockedFeatures?: string[],
-  ): void {
-    if (!this.shouldCreatePanel(key)) return;
-    if (this.ctx.panels[key] || this.lazyPanelRegistrations.has(key)) return;
+  ): boolean {
+    if (!this.shouldCreatePanel(key)) return false;
+    if (this.ctx.panels[key] || this.lazyPanelRegistrations.has(key)) return false;
     this.lazyPanelRegistrations.set(key, {
       loading: null,
       load: async () => {
@@ -3171,6 +3195,7 @@ export class PanelLayoutManager implements AppModule {
         return basePanel;
       },
     });
+    return true;
   }
 
   private async loadRegisteredPanel(key: string): Promise<Panel | null> {
@@ -3594,13 +3619,4 @@ export class PanelLayoutManager implements AppModule {
     return localized === lookup ? fallback : localized;
   }
 
-  getAllSourceNames(): string[] {
-    const sources = new Set<string>();
-    // Preset feeds + sources from any custom news panels the user added, so
-    // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
-    categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
-    INTEL_SOURCES.forEach(f => sources.add(f.name));
-    return Array.from(sources).sort((a, b) => a.localeCompare(b));
-  }
 }

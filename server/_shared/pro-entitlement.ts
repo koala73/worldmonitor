@@ -11,6 +11,9 @@
 import {
   getBillingVerificationDenial,
   getEntitlements,
+  isEntitlementBackendConfigured,
+  renderBillingVerificationDenial,
+  unverifiableEntitlementDenial,
   type EntitlementCheckOptions,
 } from './entitlement-check';
 
@@ -47,6 +50,29 @@ export async function checkTierProEntitlement(
   const entitlements = await loadEntitlements(userId);
   if (entitlements && entitlements.features.tier >= 1) {
     return { allowed: true };
+  }
+
+  // An absent row is a verdict ("this account has no entitlement") only when a
+  // lookup could actually run. With CONVEX_SITE_URL or the shared secret
+  // missing, getEntitlements returns null before attempting one — for everyone,
+  // paying customers included — and rendering that as `pro_required` sells the
+  // plan they already own back to them because of OUR deploy defect (#5619).
+  //
+  // The null deliberately stays a null upstream: server/gateway.ts detects this
+  // same state with isEntitlementBackendConfigured() and serves wm_-key traffic
+  // fail-open, because 503ing a missing env var turns a config regression into
+  // a fleet-wide API outage. That exception is for key-authenticated machine
+  // traffic; a browser gate has no such trade-off to make, so it answers the
+  // honest retryable contract instead.
+  if (!entitlements && !isEntitlementBackendConfigured()) {
+    return {
+      allowed: false,
+      billingDenial: renderBillingVerificationDenial(
+        unverifiableEntitlementDenial(),
+        corsHeaders,
+        1,
+      ),
+    };
   }
 
   return {

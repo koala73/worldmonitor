@@ -198,20 +198,20 @@
       "currencies": "मुद्राएं",
       "area": "क्षेत्रफल"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "लचीलापन स्कोर लोड हो रहा है…",
+    "resilienceScoreUnavailable": "लचीलापन स्कोर उपलब्ध नहीं है।",
     "china": {
       "title": "देश अवलोकन: चीन",
       "description": "मौजूदा सार्वजनिक डेटा अनुबंधों से वर्तमान मैक्रो, बाज़ार, व्यापार, ऊर्जा और परिचालन उपलब्धता।",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "नीति और प्रवर्तन",
       "energy": "ऊर्जा",
       "availability": "खतरे और विमानन",
       "observed": "तिथि:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "प्रकाशित:",
+      "effective": "प्रभावी:",
+      "sectors": "क्षेत्र:",
+      "entities": "संस्थाएँ:",
+      "translation": "अनुवाद:",
       "source": "स्रोत:",
       "imfGrowth": "IMF वृद्धि पूर्वानुमान",
       "creditGdp": "GDP की तुलना में ऋण",
@@ -231,8 +231,8 @@
       "ccfiSource": "शंघाई शिपिंग एक्सचेंज",
       "comtradeSource": "UN Comtrade, रिपोर्टर 156",
       "sourceUnavailable": "स्रोत अनुपलब्ध",
-      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
-      "policyPartial": "{{count}} official agencies are temporarily degraded.",
+      "policyUnavailable": "आधिकारिक नीति और प्रवर्तन घटनाएँ वर्तमान में उपलब्ध नहीं हैं।",
+      "policyPartial": "{{count}} आधिकारिक एजेंसियाँ अस्थायी रूप से निम्नीकृत हैं।",
       "status": {
         "loading": "लोड हो रहा है",
         "available": "उपलब्ध",
@@ -240,12 +240,12 @@
         "stale": "पुराना",
         "unavailable": "अनुपलब्ध"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "मैक्रो संकेत",
+      "crossStraitActivity": "जलडमरूमध्य पार गतिविधि",
+      "corporateDisclosures": "कॉर्पोरेट प्रकटीकरण",
+      "corridorConditions": "गलियारा स्थितियाँ",
+      "activityNowcast": "गतिविधि नाउकास्ट",
+      "decisionSignalsUnavailable": "चीन का निर्णय-संकेत स्नैपशॉट वर्तमान में अनुपलब्ध है।"
     }
   },
   "header": {
@@ -326,7 +326,7 @@
     "panelCatCommodityEcon": "अर्थव्यवस्था और व्यापार",
     "panelCatHappyNews": "अच्छी खबरें",
     "panelCatHappyPlanet": "प्लैनेट और दान",
-    "embed": "Embed"
+    "embed": "एम्बेड"
   },
   "panels": {
     "liveNews": "ताजा खबरें",
@@ -988,7 +988,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "FY{{year}} के मुकाबले",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "अमेरिकी खजाना विभाग",
       "colDate": "तिथि",
       "colMonthly": "मासिक",
       "colFytd": "FY YTD",
@@ -1413,8 +1413,8 @@
       "_methodologyLink_translatorNote": "अनुवाद की आवश्यकता (#3725): methodologyLink स्थानीयकरण करें। अंग्रेजी मान सभी भाषाओं में भेजा जाता है ताकि methodology लिंक मौजूद रहे। स्वतंत्र रूप से अनुवादित करें।",
       "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "निम्नीकृत",
+        "stale": "पुराना"
       }
     },
     "insights": {
@@ -1573,10 +1573,10 @@
         "hoursAgo": "{{count}} घंटे पहले"
       },
       "infoTooltip": "<strong>विधि</strong> मिश्रित स्कोर (0-100) इन संकेतों को मिलाता है:<ul><li>50% देश अस्थिरता (शीर्ष 5 भारित)</li><li>30% भौगोलिक संगम क्षेत्र</li><li>20% इन्फ्रास्ट्रक्चर घटनाएं</li></ul>हर 5 मिनट में स्वचालित रिफ्रेश।",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "कैश्ड CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "निम्नीकृत",
+        "stale": "पुराना"
       }
     },
     "techEvents": {
@@ -1702,25 +1702,25 @@
       "candidGrants": "कैंडिड ग्रांट्स",
       "dataLag": "डेटा विलंब",
       "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "वैश्विक दान बेंचमार्क",
+      "benchmarkInfoTooltip": "<strong>वैश्विक दान बेंचमार्क</strong> स्रोत अवधि और सत्यापन स्थिति के साथ प्रकाशित प्लेटफ़ॉर्म और संस्थागत दावे। वार्षिक आंकड़े अनुमान हैं, वास्तविक गतिविधि नहीं।",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "सत्यापित स्रोत कवरेज के साथ प्रकाशित बेंचमार्क।",
+        "partial": "आंशिक स्रोत कवरेज के साथ प्रकाशित बेंचमार्क।",
+        "legacy": "पुराना स्नैपशॉट; स्रोत विवरण उपलब्ध नहीं है।",
+        "cached": "कैश्ड स्नैपशॉट दिखाया जा रहा है; रीफ्रेश उपलब्ध नहीं।"
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "ट्रैक किया गया प्लेटफ़ॉर्म दान — वार्षिक अनुमान",
+      "annualizedDaily": "दैनिक वार्षिक अनुमान",
+      "atLeast": "कम से कम",
+      "about": "लगभग",
+      "sourceNotVerified": "स्रोत सत्यापित नहीं",
+      "reportedCumulative": "रिपोर्ट किया गया संचयी कुल",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "प्रकाशित बेंचमार्क",
+      "sourcesMethodology": "स्रोत और पद्धति",
+      "methodologyIntro": "केवल सत्यापित वार्षिक या उचित रूप से वार्षिकीकृत प्लेटफ़ॉर्म दावे शीर्षक में शामिल होते हैं। संचयी और संस्थागत आंकड़े अलग संदर्भ में रहते हैं।",
+      "partialEstimate": "आंशिक रूप से सत्यापित अनुमान"
     },
     "displacement": {
       "refugees": "शरणार्थी",
@@ -1921,8 +1921,8 @@
     "markets": {
       "infoTooltip": "<strong>बाजार</strong> रियल-टाइम स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "{{symbol}} मूल्य चार्ट",
+        "close": "चार्ट बंद करें"
       }
     },
     "heatmap": {
@@ -2535,59 +2535,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "पैनल श्रेणियाँ"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "ताज़ा",
+        "stale": "पुराना",
+        "veryStale": "बहुत पुराना",
+        "noData": "कोई डेटा नहीं",
+        "disabled": "अक्षम",
+        "error": "त्रुटि"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "डेटा ताज़गी: {{status}}। {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "अंतिम अपडेट {{time}}",
+      "neverUpdated": "कभी अपडेट नहीं हुआ",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "आंशिक कवरेज",
+        "contentStale": "सामग्री पुरानी",
+        "seedStale": "सीड पुराना",
+        "noSourceData": "कोई स्रोत डेटा नहीं",
+        "sourceErrorReported": "स्रोत त्रुटि रिपोर्ट की गई",
+        "freshnessStoreUnavailable": "फ्रेशनेस स्टोर अनुपलब्ध",
+        "freshnessStoreDegraded": "फ्रेशनेस स्टोर निम्नीकृत"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "कभी नहीं",
+        "justNow": "अभी",
+        "minutesAgo": "{{count}}मि पहले",
+        "hoursAgo": "{{count}}घ पहले",
+        "daysAgo": "{{count}}दि पहले",
+        "compactNow": "अभी",
+        "compactMinutes": "{{count}}मि",
+        "compactHours": "{{count}}घ",
+        "compactDays": "{{count}}दि"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "CSV, JSON या PDF के रूप में डैशबोर्ड डेटा निर्यात करने के लिए साइन इन करें।",
+      "upgradeDesc": "डेटा निर्यात (CSV, JSON, PDF) Pro Business के साथ शामिल है।",
+      "upgradeCta": "Pro Business में अपग्रेड करें",
+      "lockedAriaLabel": "डेटा निर्यात — लॉक्ड। {{reason}}",
+      "unlockedAnnouncement": "डेटा निर्यात अनलॉक हो गया।",
+      "preparingPdf": "PDF तैयार हो रही है…",
+      "pdfFailed": "PDF रिपोर्ट तैयार नहीं हो सकी। पुनः प्रयास करें, या JSON निर्यात का उपयोग करें।"
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "साइन आउट वर्कस्पेस {{cap}} डैशबोर्ड टैब तक सीमित हैं। अधिक जोड़ने के लिए साइन इन करें।",
+      "upgradeDesc": "आप {{cap}} डैशबोर्ड टैब की सीमा तक पहुँच गए हैं।",
+      "upgradeCta": "अधिक के लिए अपग्रेड करें",
+      "lockedAriaLabel": "टैब जोड़ें — लॉक्ड। {{reason}}",
+      "unlockedAnnouncement": "डैशबोर्ड टैब सीमा हटाई गई।"
     }
   },
   "popups": {
@@ -3322,16 +3322,16 @@
     "visualizationFailed": "विज़ुअलाइज़ेशन असफल"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "डैशबोर्ड टैब",
+    "defaultName": "मुख्य",
+    "newTabName": "नया टैब",
+    "newTabCreated": "नया टैब बनाया गया",
+    "tabDeleted": "टैब \"{{name}}\" हटाया गया",
+    "addTab": "टैब जोड़ें",
+    "addTabTitle": "नया टैब (डिफ़ॉल्ट पैनल के साथ शुरू होता है)",
+    "renameHint": "{{name}} — नाम बदलने के लिए डबल-क्लिक करें",
+    "deleteTab": "टैब हटाएं",
+    "deleteTabAria": "{{name}} टैब हटाएं",
+    "tabNameAria": "टैब नाम"
   }
 }

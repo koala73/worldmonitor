@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 $ / měsíc",
-    "priceAnnual": "399,99 $ / rok",
-    "annualSavingsNote": "2 měsíce zdarma"
+    "priceAnnual": "359,99 $ / rok",
+    "annualSavingsNote": "3 měsíce zdarma"
   },
   "proShowcase": {
     "proTier": "PRO ÚROVEŇ",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Od monitorování v reálném čase až po kompletní infrastrukturu pro zpravodajství. Zvolte úroveň, která vyhovuje vaší misi.",
     "billingMonthly": "Měsíčně",
     "billingAnnual": "Ročně",
-    "saveAnnual": "Ušetřete 17 %",
+    "saveAnnual": "Ušetřete 25 %",
     "mostPopular": "Nejpopulárnější",
     "promoCodeNote": "Máte propagační kód? Zadejte jej během platby.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API a oficiální SDK — 59 nástrojů pod jedním klíčem",
       "proF5": "Vlastní konstruktor widgetů pro vaše vlastní panely",
       "cta": "Zobrazit plány a ceny",
-      "note": "Od 39,99 Kč/měs · 2 měsíce zdarma při ročním fakturaci"
+      "note": "Od 39,99 Kč/měs · 3 měsíce zdarma při ročním fakturaci"
     },
     "faq": {
       "eyebrow": "Bez háčku",

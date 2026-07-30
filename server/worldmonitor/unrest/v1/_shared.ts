@@ -5,12 +5,6 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/unrest/v1/service_server';
 
 // ========================================================================
-// API URLs
-// ========================================================================
-
-export const GDELT_GEO_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
-
-// ========================================================================
 // ACLED Event Type Mapping (ported from src/services/protests.ts lines 39-46)
 // ========================================================================
 

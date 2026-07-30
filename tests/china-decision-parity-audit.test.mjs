@@ -221,6 +221,17 @@ const STRUCTURAL_MUTATIONS = [
     substringStillPresent: 'bounded_public_summary',
     mutate: (source) => source.replace("\n    || access?.anonymous !== 'bounded_public_summary'", ''),
   },
+  {
+    checkId: 'access-tier-validator',
+    name: 'the validator comparison survives only in unreachable code',
+    substringStillPresent: "access?.anonymous !== 'bounded_public_summary'",
+    mutate: (source) => source
+      .replace("\n    || access?.anonymous !== 'bounded_public_summary'", '')
+      .replace(
+        '\n  ) return false;',
+        "\n  ) return false;\n  if (false) return access?.anonymous !== 'bounded_public_summary';",
+      ),
+  },
 ];
 
 describe('China decision-signal structural wiring checks (#5643)', () => {

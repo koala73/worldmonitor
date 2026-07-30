@@ -481,6 +481,12 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
           ? t('components.proActivation.summary.lineFailed', {
               defaultValue: "We couldn't set this up — try again from settings.",
             })
+          : line.outcome === 'blocked'
+            ? // Reuse the single per-step-id source of truth (blockedNote also
+              // handles ids other than 'alerts' with generic copy) so a future
+              // blockable step can never fall through to the app-settings
+              // promise this branch exists to avoid.
+              blockedNote(line.id, false)
           : t('components.proActivation.summary.linePending', {
               defaultValue: 'Not set up yet — finish any time in settings.',
             });
@@ -498,19 +504,22 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   const summaryHtml = (): string => {
     const lines = buildExitSummary(buildResults());
     const anyVerified = lines.some((line) => line.status === 'verified');
+    const anyBlocked = lines.some((line) => line.outcome === 'blocked');
     const sub = anyVerified
       ? t('components.proActivation.summary.subVerified', {
           defaultValue: "Here's what's running on your account.",
         })
-      : t('components.proActivation.summary.subPending', {
-          defaultValue: 'You can finish setup any time from settings.',
-        });
+      : anyBlocked
+        ? null
+        : t('components.proActivation.summary.subPending', {
+            defaultValue: 'You can finish setup any time from settings.',
+          });
     return `
       <div class="pro-activation-summary">
         <h2 class="pro-activation-heading">${escapeHtml(
           t('components.proActivation.summary.heading', { defaultValue: "You're all set" }),
         )}</h2>
-        <p class="pro-activation-summary-sub">${escapeHtml(sub)}</p>
+        ${sub ? `<p class="pro-activation-summary-sub">${escapeHtml(sub)}</p>` : ''}
         <ul class="pro-activation-summary-list">${lines.map(summaryLineHtml).join('')}</ul>
         <div class="pro-activation-actions">
           <button type="button" class="btn btn-primary pro-activation-primary" data-action="finish">${escapeHtml(
@@ -733,8 +742,8 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
           case 'advance-skip': {
             // `blocked` (mount-time or mid-flow) records as its own outcome so
             // the durable record can still tell a browser refusal from a
-            // voluntary skip. The exit summary still reads it as pending, so
-            // nothing changes for the user (#5617).
+            // voluntary skip. The exit summary keeps the pending status/icon
+            // while rendering browser-specific guidance (#5617, #5727).
             const advanced = selectAdvanceOutcome(effectiveState(step));
             reportAdvanceEvent(step.id, advanced);
             outcomes.set(step.id, advanced);

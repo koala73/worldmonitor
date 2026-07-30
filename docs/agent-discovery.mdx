@@ -40,6 +40,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON linkset bundling every other discovery URL — start here if you want one fetch and a map |
 | [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | Single bundled spec covering **every** REST service (Conflict, Resilience, Market, Economic, Maritime, Aviation, Climate, …) — feed it to any code-generator |
 | [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | Byte-identical bundle as minified JSON — same spec as `/openapi.yaml`, for tooling and scanners that only parse JSON |
+| [`/docs/api-versioning`](https://www.worldmonitor.app/docs/api-versioning) | Policy | REST compatibility, deprecation notice, and sunset-header contract |
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, streaming, capability flags |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
@@ -121,5 +122,6 @@ The point isn't novelty — RFCs 8414, 8288, 9727, 9728 are old. The point is th
 - [MCP Server](/mcp-overview) — full client setup (Claude Desktop, Cursor, claude.ai, MCP Inspector, Claude Code)
 - [Agent Skills Catalog](/agent-skills) — human-readable catalog of the 25 public agent recipes
 - [API Reference](/api-reference) — human-readable service catalog and MCP→REST tool mapping
+- [API versioning and deprecation](/api-versioning) — compatibility guarantees and retirement signals
 - [Authentication](/usage-auth) — browser, API key, and OAuth modes
 - [Quickstart](/usage-quickstart) — first call in under a minute

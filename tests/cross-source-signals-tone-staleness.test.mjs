@@ -64,3 +64,41 @@ describe('extractMediaToneDeterioration staleness guard', () => {
     assert.equal(signals.length, 0, 'undatable payloads are not signal-grade');
   });
 });
+
+// #5863 review: the bulk materializer publishes one tone point per 15-minute
+// cohort, so three ADJACENT points can span 45 minutes. A deterioration signal
+// must require a real multi-day span, or dense series mint noise as signal.
+describe('extractMediaToneDeterioration trend-span guard (#5863 review)', () => {
+  const at = (msAgo, value) => ({ date: new Date(Date.now() - msAgo).toISOString(), value });
+  const HOUR = 3600 * 1000;
+
+  it('ignores a decline that spans only minutes of 15-minute cohorts', () => {
+    const dense = [
+      at(45 * 60 * 1000, -0.5),
+      at(30 * 60 * 1000, -1.2),
+      at(15 * 60 * 1000, -2.4),
+    ];
+    const signals = extractMediaToneDeterioration({
+      'gdelt:intel:tone:military': { data: dense, fetchedAt: new Date().toISOString() },
+    });
+    // Length, not deepEqual: the extractor runs in a vm realm, so its arrays
+    // have a different prototype and deepStrictEqual([], []) fails.
+    assert.equal(signals.length, 0, '45 minutes of small-sample tone is not a deterioration trend');
+  });
+
+  it('still emits when a dense series covers a real multi-day decline', () => {
+    // 15-minute cadence, but sampled anchors span >24h in total.
+    const series = [];
+    for (let i = 0; i < 200; i++) {
+      const msAgo = (48 * HOUR) - (i * 15 * 60 * 1000);
+      if (msAgo < 0) break;
+      // monotonic decline across the whole window
+      series.push(at(msAgo, -0.5 - (i * 0.01)));
+    }
+    const signals = extractMediaToneDeterioration({
+      'gdelt:intel:tone:military': { data: series, fetchedAt: new Date().toISOString() },
+    });
+    assert.equal(signals.length, 1, 'a genuine multi-day decline must still signal');
+    assert.match(signals[0].summary, /Media tone deterioration/);
+  });
+});

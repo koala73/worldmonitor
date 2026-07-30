@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 $ / ay",
-    "priceAnnual": "399,99 $ / yıl",
-    "annualSavingsNote": "2 ay ücretsiz"
+    "priceAnnual": "359,99 $ / yıl",
+    "annualSavingsNote": "3 ay ücretsiz"
   },
   "proShowcase": {
     "proTier": "PRO SEVİYESİ",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Gerçek zamanlı izlemeden tam istihbarat altyapısına kadar. Görevinize uygun katmanı seçin.",
     "billingMonthly": "Aylık",
     "billingAnnual": "Yıllık",
-    "saveAnnual": "%17 Tasarruf Edin",
+    "saveAnnual": "%25 Tasarruf Edin",
     "mostPopular": "En Popüler",
     "promoCodeNote": "Promosyon kodunuz var mı? Ödeme sırasında girin.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API ve resmi SDK'lar — 59 araç tek bir anahtarın altında",
       "proF5": "Kendi panelleriniz için özel widget oluşturucu",
       "cta": "Planları & fiyatlandırmayı görmek",
-      "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 2 ay ücretsiz"
+      "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 3 ay ücretsiz"
     },
     "faq": {
       "eyebrow": "Ek koşul yok",

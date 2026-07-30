@@ -39,7 +39,11 @@ message AnalyzeStockResponse {
 
   double current_price = 6;
   double change_percent = 7;
+  // Technical-analysis score (0-100), retained as a stable pair with signal
+  // for clients that predate the fundamentals-blended rating.
   double signal_score = 8;
+  // Technical-only signal paired with signal_score. New clients should use
+  // rating_signal with composite_score for the surfaced investment rating.
   string signal = 9;
   string trend_status = 10;
   string volume_status = 11;
@@ -109,6 +113,15 @@ message AnalyzeStockResponse {
   // module (already fetched for price targets). Any field may be unset.
   Fundamentals fundamentals = 60;
 
+  // Fundamental health score (0-100) blended from the quality/growth/leverage
+  // fundamentals above. Unset when too few fundamentals are available to score,
+  // in which case composite_score falls back to signal_score.
+  optional double fundamental_score = 61;
+  // Blend of signal_score (technicals) and fundamental_score that drives
+  // rating_signal, so a Strong buy/sell no longer fires on price action alone.
+  // Equals signal_score when fundamental_score is unset.
+  double composite_score = 62;
+
   // Next scheduled earnings date (YYYY-MM-DD) plus consensus EPS / revenue for
   // the symbol, joined from the market:earnings-calendar:v1 seed. Unset when the
   // symbol has no upcoming (not-yet-reported) entry in the seed's ~2-week window.
@@ -116,6 +129,53 @@ message AnalyzeStockResponse {
   optional string next_earnings_date = 63;
   optional double consensus_eps = 64;
   optional double consensus_revenue = 65;
+
+  // LLM-derived news sentiment for the analyzed symbol: a signed score in
+  // [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),
+  // emitted by the same overlay model that already reads the headlines — no
+  // extra call. Omitted when the analysis falls back to rules (no LLM overlay).
+  // (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals
+  // into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight
+  // risk-analytics PR.)
+  optional double news_sentiment = 69;
+
+  // Risk analytics computed from the 6-month daily candles already fetched for
+  // the technical snapshot (no extra upstream call).
+  // (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that
+  // blends fundamentals into the rating, and 63-65 by the merged earnings join.)
+  //
+  // Annualized realized volatility — sample stdev of daily log returns × √252 —
+  // as a fractional ratio where 0.25 means 25%. 0 when history is insufficient.
+  double realized_volatility = 66;
+  // Wilder's 14-period Average True Range, in the response currency's price
+  // units. 0 when history is insufficient.
+  double atr = 67;
+  // Maximum peak-to-trough drawdown over the window, as a non-positive fractional
+  // ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
+  double max_drawdown = 68;
+
+  // Fundamentals-blended signal paired with composite_score. Kept separate
+  // from the legacy technical-only signal/signal_score pair so already-loaded
+  // web, desktop, and API clients never render a mixed-version rating.
+  string rating_signal = 70;
+  // Fundamentals-blended narrative paired with rating_signal/composite_score.
+  // Legacy summary remains paired with signal/signal_score during rollout.
+  string rating_summary = 71;
+  // Fundamentals-blended action paired with rating_signal/composite_score.
+  // Legacy action remains paired with signal/signal_score during rollout.
+  string rating_action = 72;
+  // Fundamentals-blended confidence paired with rating_signal/composite_score.
+  // Legacy confidence remains paired with signal/signal_score during rollout.
+  string rating_confidence = 73;
+  // Fundamentals-blended explanation paired with rating_signal/composite_score.
+  // Legacy why_now remains paired with signal/signal_score during rollout.
+  string rating_why_now = 74;
+  // Fundamentals-aware positive factors supporting the composite rating.
+  // Legacy bullish_factors remain technical-only during rollout.
+  repeated string rating_bullish_factors = 75;
+  // Fundamentals-aware risks supporting the composite rating.
+  // Legacy risk_factors remain technical-only during rollout.
+  repeated string rating_risk_factors = 76;
 }
 
 message Fundamentals {

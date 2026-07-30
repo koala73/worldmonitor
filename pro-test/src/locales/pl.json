@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 USD / miesiąc",
-    "priceAnnual": "399,99 USD / rok",
-    "annualSavingsNote": "2 miesiące gratis"
+    "priceAnnual": "359,99 USD / rok",
+    "annualSavingsNote": "3 miesiące gratis"
   },
   "proShowcase": {
     "proTier": "POZIOM PRO",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Od monitorowania w czasie rzeczywistym do pełnej infrastruktury analitycznej. Wybierz poziom pasujący do Twojej misji.",
     "billingMonthly": "Miesięcznie",
     "billingAnnual": "Rocznie",
-    "saveAnnual": "Oszczędź 17%",
+    "saveAnnual": "Oszczędź 25%",
     "mostPopular": "Najpopularniejszy",
     "promoCodeNote": "Masz kod promocyjny? Wpisz go podczas finalizowania zamówienia.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API i oficjalne SDK — 59 narzędzia pod jednym kluczem",
       "proF5": "Konstruktor niestandardowych widżetów dla Twoich paneli",
       "cta": "Zobacz plany i ceny",
-      "note": "Od $39,99/mies. · 2 miesiące za darmo przy rocznej opłacie"
+      "note": "Od $39,99/mies. · 3 miesiące za darmo przy rocznej opłacie"
     },
     "faq": {
       "eyebrow": "Bez zasadzki",

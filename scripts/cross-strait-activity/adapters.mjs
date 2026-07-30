@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 
 const {
   parseProxyConfig,
+  proxyConnectTunnel,
   proxyFetch,
 } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
@@ -14,6 +15,18 @@ export const MND_REQUIRED_REPORTING_DAYS = 91;
 export const MND_RETENTION_REPORTING_DAYS = 365;
 export const MND_MAX_REVISION_VINTAGES_PER_DAY = 20;
 export const CROSS_STRAIT_ACTIVITY_MAX_SERIALIZED_BYTES = 4 * 1024 * 1024;
+/**
+ * Reasons that justify reporting a source as durably blocked rather than
+ * failing. Both mean no configured transport path can reach the publisher, so
+ * retained reviewed records are the best obtainable truth and health must not
+ * be pinned on an outage that will never clear on its own. Every consumer that
+ * branches on `blockedReason` reads this list — widening it in one place only
+ * is how a new reason silently degrades to `error`.
+ */
+export const CROSS_STRAIT_BLOCKED_SOURCE_REASONS = Object.freeze([
+  'HTTP_403',
+  'PROXY_TARGET_FORBIDDEN',
+]);
 
 const USER_AGENT = 'WorldMonitor/2.10 (+https://worldmonitor.app)';
 const MND_LIST_URL = 'https://www.mnd.gov.tw/en/news/plaactlist';
@@ -86,6 +99,14 @@ export const CROSS_STRAIT_SOURCE_CONTRACTS = Object.freeze({
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     documentAdmission: 'manual_review_required',
     runtimePdfRequestsPerRun: 0,
+    // A proxy CONNECT refusal is emitted before the tunnel reaches Japan MOD,
+    // so on its own it cannot separate "this provider forbids this destination"
+    // from "the proxy is down for everything". One CONNECT-only control tunnel
+    // to a host we already contract with settles that, and is torn down without
+    // sending a byte — so it is transport telemetry, not a source request, and
+    // it deliberately targets a host other than the one under test.
+    proxyControlProbeHost: 'www.mnd.gov.tw',
+    maxProxyControlProbesPerRun: 1,
     preflight: Object.freeze({
       environment: 'railway-production',
       checkedAt: '2026-07-26',
@@ -1824,6 +1845,9 @@ export function buildCrossStraitActivitySnapshot({
       ...(japanOutcome?.proxyFailureDetail
         ? { proxyFailureDetail: japanOutcome.proxyFailureDetail }
         : {}),
+      ...(japanOutcome?.proxyControlProbe
+        ? { proxyControlProbe: japanOutcome.proxyControlProbe }
+        : {}),
       errorCodes: japanOutcome?.errorCodes ?? [],
       lastSuccessAt: japanOutcome?.ok
         ? generatedAt
@@ -1931,12 +1955,42 @@ function proxyErrorCode(error) {
   return String(error?.message ?? '').match(/PROXY_[A-Z0-9_]+/)?.[0] ?? code;
 }
 
-function blockedJapanProxyReason(directFailureCode, proxyFailureCode) {
+function blockedJapanProxyReason(directFailureCode, proxyFailureCode, proxyControlProbe) {
   if (directFailureCode !== 'HTTP_403') return null;
-  // A CONNECT refusal is emitted by the proxy before the TLS tunnel reaches
-  // Japan MOD. Only a 403 response received after CONNECT proves that both
-  // source-facing transport paths are externally blocked.
-  return proxyFailureCode === 'HTTP_403' ? proxyFailureCode : null;
+  // A 403 received *after* CONNECT is Japan MOD itself refusing the proxied
+  // request, so both source-facing paths are externally blocked.
+  if (proxyFailureCode === 'HTTP_403') return 'HTTP_403';
+  // A CONNECT refusal never reaches Japan MOD, so it cannot prove a source
+  // block on its own — that is why #5718 left it degraded. What it does prove,
+  // once a control tunnel to a different host succeeds in the same run through
+  // the same credentials, is that the provider forbids this destination
+  // specifically. Direct egress is refused by the source and the only proxy
+  // refuses the target, so no configured transport path exists and the state is
+  // durable rather than an outage awaiting remediation. Without that control
+  // evidence a proxy-wide failure would masquerade as an upstream block, so the
+  // unprobed and probe-failed cases stay degraded and operator-visible.
+  if (proxyFailureCode === 'PROXY_CONNECT_FORBIDDEN' && proxyControlProbe === 'reachable') {
+    return 'PROXY_TARGET_FORBIDDEN';
+  }
+  return null;
+}
+
+/**
+ * Opens a CONNECT tunnel through the configured proxy to the control host and
+ * immediately tears it down. No HTTP request is issued and no application byte
+ * is written, so this measures exactly one thing: whether the proxy is willing
+ * to tunnel anywhere at all.
+ */
+async function probeJapanProxyControlTunnel(host, {
+  proxyUrl,
+  proxyConnectFn,
+}) {
+  const proxyConfig = parseProxyConfig(proxyUrl);
+  if (!proxyConfig) throw new Error('PROXY_CONFIG_INVALID');
+  const tunnel = await proxyConnectFn(host, proxyConfig, {
+    timeoutMs: REQUEST_TIMEOUT_MS,
+  });
+  tunnel?.destroy?.();
 }
 
 function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
@@ -1969,6 +2023,7 @@ function hasMndOutboundBudget({ runStartedAt, nowFn, cadenceMs }) {
 
 async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
   proxyFetchFn = null,
+  proxyConnectProbeFn = null,
 } = {}) {
   const contract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
   let html;
@@ -1999,7 +2054,37 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
       proxyResponseDetail = proxyResult.detail;
     } catch (proxyError) {
       const failureCode = proxyErrorCode(proxyError);
-      const blockedReason = blockedJapanProxyReason(fallbackReason, failureCode);
+      // Only a CONNECT refusal is ambiguous enough to be worth a control
+      // tunnel; every other proxy failure already reached Japan MOD or names
+      // its own cause, so it must not spend an extra outbound connection.
+      //
+      // The probe is a diagnostic and must never be able to fail the run that
+      // uses it: this sits inside the proxy catch block and the caller awaits
+      // the Japan outcome unguarded, so an escaping throw would take down the
+      // healthy Taiwan MND feed too. Any failure -- rejection, synchronous
+      // throw, or a non-thenable return -- resolves to `unreachable`, which
+      // fails closed and keeps the source degraded and operator-visible.
+      const proxyControlProbe = failureCode === 'PROXY_CONNECT_FORBIDDEN' && proxyConnectProbeFn
+        ? await (async () => {
+            try {
+              const pending = proxyConnectProbeFn(contract.proxyControlProbeHost);
+              // Only an awaited tunnel counts as evidence. A probe that returns
+              // a non-thenable never opened anything, and `await` on it would
+              // resolve immediately and read as `reachable` -- a false green on
+              // exactly the axis this probe exists to guard.
+              if (typeof pending?.then !== 'function') return 'unreachable';
+              await pending;
+              return 'reachable';
+            } catch {
+              return 'unreachable';
+            }
+          })()
+        : undefined;
+      const blockedReason = blockedJapanProxyReason(
+        fallbackReason,
+        failureCode,
+        proxyControlProbe,
+      );
       return {
         ok: false,
         ...(blockedReason ? { blockedReason } : {}),
@@ -2008,6 +2093,7 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
         fallbackReason,
         proxyFailureReason: failureCode,
         proxyFailureDetail: proxyFailureDetail(proxyError),
+        ...(proxyControlProbe ? { proxyControlProbe } : {}),
         availableDocumentUrls: [],
         errorCodes: [...new Set([fallbackReason, failureCode])],
       };
@@ -2062,6 +2148,8 @@ export async function fetchCrossStraitActivitySnapshot({
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   proxyUrl = process.env.JAPAN_MOD_PROXY_URL || process.env.PROXY_URL || '',
   proxyRequestFn = proxyFetch,
+  proxyConnectFn = proxyConnectTunnel,
+  proxyConnectProbeFn = null,
 } = {}) {
   const generatedAt = new Date(now).toISOString();
   const previousMnd = (previousSnapshot?.observations ?? [])
@@ -2081,8 +2169,15 @@ export async function fetchCrossStraitActivitySnapshot({
         proxyRequestFn,
       })
     : null;
+  const resolvedJapanProxyConnectProbeFn = proxyUrl
+    ? (proxyConnectProbeFn ?? ((host) => probeJapanProxyControlTunnel(host, {
+        proxyUrl,
+        proxyConnectFn,
+      })))
+    : null;
   const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn, {
     proxyFetchFn: resolvedJapanProxyFetchFn,
+    proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
   });
   let discoveredCount = 0;
   let requestCount = 0;

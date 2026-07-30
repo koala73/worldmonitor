@@ -10,7 +10,7 @@
     "headerSubtitle": "From real-time monitoring to full intelligence infrastructure. Pick the tier that fits your mission.",
     "billingMonthly": "Monthly",
     "billingAnnual": "Annual",
-    "saveAnnual": "Save 17%",
+    "saveAnnual": "Save 25%",
     "mostPopular": "Most Popular",
     "axisPersonal": "Personal",
     "axisPersonalNote": "individual use",
@@ -252,8 +252,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "$39.99 / month",
-    "priceAnnual": "$399.99 / year",
-    "annualSavingsNote": "2 months free"
+    "priceAnnual": "$359.99 / year",
+    "annualSavingsNote": "3 months free"
   },
   "proShowcase": {
     "proTier": "PRO TIER",
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API & official SDKs — 59 tools under one key",
       "proF5": "Custom widget builder for your own panels",
       "cta": "See plans & pricing",
-      "note": "From $39.99/mo · 2 months free when billed annually"
+      "note": "From $39.99/mo · 3 months free when billed annually"
     },
     "faq": {
       "eyebrow": "No catch",

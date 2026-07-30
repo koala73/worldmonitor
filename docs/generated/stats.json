@@ -11,7 +11,7 @@
   },
   "variantCount": 6,
   "componentTopLevelTsFiles": 179,
-  "serviceTopLevelEntries": 213,
+  "serviceTopLevelEntries": 217,
   "apiEndpointEntries": 89,
   "panelClasses": 107,
   "protoFiles": 290,
@@ -257,5 +257,25 @@
     "get_natural_disasters",
     "get_prediction_markets",
     "get_forecast_predictions"
-  ]
+  ],
+  "bootstrapCache": {
+    "tierCache": {
+      "slow": "max-age=300, stale-while-revalidate=600, stale-if-error=3600",
+      "fast": "max-age=60, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "tierCdnCache": {
+      "slow": "public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200",
+      "fast": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "onDemandProfiles": {
+      "chinaDecisionSignals": {
+        "browser": "max-age=60, stale-while-revalidate=120, stale-if-error=900",
+        "cdn": "public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900"
+      }
+    },
+    "onDemandDefaultTier": "slow",
+    "defaultCacheControl": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900",
+    "defaultCdnTier": "fast",
+    "nonCacheable": "no-store"
+  }
 }

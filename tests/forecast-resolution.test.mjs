@@ -387,6 +387,32 @@ describe('buildResolutionSpec — prediction_market deadline is the market endDa
     assert.notEqual(spec.deadline, GENERATED_AT + HORIZON_MS['30d']);
   });
 
+  // #5733: the endDate index reads all three pools. It used to read only
+  // `.geopolitical`, which was every market while the producer published
+  // near-duplicate pools; now the pools are a disjoint partition, so a
+  // market-anchored forecast whose market classifies as tech or finance would
+  // silently lose its real settlement deadline and fall back to the horizon.
+  for (const pool of ['tech', 'finance']) {
+    it(`deadline resolves from a market in the ${pool} pool`, () => {
+      const endDateMs = Date.parse('2026-12-31');
+      const forecast = pred({
+        domain: 'economic',
+        region: 'United States',
+        title: 'Will no Fed rate cuts happen in 2026?',
+        timeHorizon: '30d',
+        signals: [{ type: 'prediction_market', value: 'Polymarket: 62%', weight: 0.8 }],
+      });
+      const spec = buildResolutionSpec(forecast, {
+        predictionMarkets: {
+          geopolitical: [],
+          [pool]: [{ title: 'Will no Fed rate cuts happen in 2026?', yesPrice: 62, endDate: '2026-12-31' }],
+        },
+      }, GENERATED_AT);
+      assert.equal(spec.deadline, endDateMs, `${pool}-pool market must supply the settlement deadline`);
+      assert.notEqual(spec.deadline, GENERATED_AT + HORIZON_MS['30d']);
+    });
+  }
+
   it('falls back to the horizon deadline when the market endDate is missing (still non-null)', () => {
     const forecast = pred({
       domain: 'political',

@@ -510,9 +510,9 @@ const TOKEN_CACHE_TTL_MS = 50_000;
 /**
  * How long before a token's own `exp` we stop reusing it.
  *
- * `server/auth-session.ts` verifies with `jose`'s `jwtVerify` and sets no
- * `clockTolerance`, so an `exp` in the past is a hard 401. This margin is the
- * only thing absorbing client/server clock skew plus the request's flight time.
+ * `server/auth-session.ts` applies only a small, bounded `clockTolerance`.
+ * This larger client-side margin keeps cache reuse and request flight time from
+ * consuming that entire server-side allowance.
  */
 const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
 

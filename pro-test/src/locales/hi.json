@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "₹39.99 / माह",
-    "priceAnnual": "₹399.99 / वर्ष",
-    "annualSavingsNote": "2 माह निःशुल्क"
+    "priceAnnual": "₹359.99 / वर्ष",
+    "annualSavingsNote": "3 माह निःशुल्क"
   },
   "proShowcase": {
     "proTier": "PRO TIER",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Real-time monitoring से full intelligence infrastructure तक। अपनी mission के लिए सही tier चुनें।",
     "billingMonthly": "Monthly",
     "billingAnnual": "Annual",
-    "saveAnnual": "17% बचाएँ",
+    "saveAnnual": "25% बचाएँ",
     "mostPopular": "सबसे लोकप्रिय",
     "promoCodeNote": "Promo code है? Checkout के दौरान enter करें।",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API और आधिकारिक SDK — 59 उपकरण एक कुंजी के तहत",
       "proF5": "अपने स्वयं के पैनल के लिए कस्टम विजेट बिल्डर",
       "cta": "योजनाएं और मूल्य देखें",
-      "note": "$39.99/माह से · वार्षिक बिलिंग पर 2 महीने मुफ़्त"
+      "note": "$39.99/माह से · वार्षिक बिलिंग पर 3 महीने मुफ़्त"
     },
     "faq": {
       "eyebrow": "कोई पकड़ नहीं",

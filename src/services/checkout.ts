@@ -41,7 +41,7 @@ import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
-import { decideNoUserPathOutcome } from './checkout-no-user-policy';
+import { runNoUserPath } from './checkout-no-user-policy';
 import { shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
@@ -748,6 +748,11 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
 }
 
 let _checkoutInFlight = false;
+let _checkoutRateLimitedUntilMs = 0;
+
+function checkoutRateLimitRemainingSeconds(): number {
+  return Math.max(0, Math.ceil((_checkoutRateLimitedUntilMs - Date.now()) / 1000));
+}
 
 /**
  * True when the checkout being blocked was for a Pro Business product — the
@@ -805,23 +810,36 @@ export async function startCheckout(
       classifySyntheticCheckoutError('unauthorized'),
       { productId, action: 'no-user' },
     );
-    // Pure policy decision lives in checkout-no-user-policy.ts; tested
-    // against regression in tests/checkout-no-user-policy.test.mts. The
-    // contract: redirect path MUST NOT write sessionStorage (would
+    // Both the decision AND the effect sequencing live in
+    // checkout-no-user-policy.ts, exercised in
+    // tests/checkout-no-user-policy.test.mts against a recording double.
+    // The contract: redirect path MUST NOT write sessionStorage (would
     // create a stale dashboard intent that a later unrelated sign-in
-    // would auto-resume); inline path MUST write so the post-auth
-    // Clerk listener can resume the exact checkout.
-    const outcome = decideNoUserPathOutcome(fallbackToPricingPage);
-    if (outcome.kind === 'redirect-pro') {
-      window.location.assign(outcome.redirectUrl);
-    } else {
-      savePendingCheckoutIntent(intent);
-      saveCheckoutAttempt({
-        ...intent,
-        startedAt: Date.now(),
-      });
-      openSignIn();
-    }
+    // would auto-resume); inline path MUST write BEFORE openSignIn so the
+    // post-auth Clerk listener can resume the exact checkout. Keeping that
+    // ordering in the policy module (not this if/else) is deliberate —
+    // #5380-High-3 proved a source-grep guard over this file stays green
+    // with either contract violated.
+    runNoUserPath(fallbackToPricingPage, {
+      navigate: (url) => window.location.assign(url),
+      persistIntent: () => savePendingCheckoutIntent(intent),
+      persistAttempt: () => saveCheckoutAttempt({ ...intent, startedAt: Date.now() }),
+      openSignIn: () => openSignIn(),
+    });
+    return false;
+  }
+
+  const cooldownSeconds = checkoutRateLimitRemainingSeconds();
+  if (cooldownSeconds > 0) {
+    // A prior 429 already told this browser when it may try again. Keep
+    // repeated CTA clicks local during that window instead of recreating the
+    // provider request amplification this rate-limit path is meant to stop.
+    const error = classifyHttpCheckoutError(
+      429,
+      { error: 'CHECKOUT_RATE_LIMITED' },
+      String(cooldownSeconds),
+    );
+    showCheckoutErrorToast(error.userMessage);
     return false;
   }
 
@@ -888,7 +906,14 @@ export async function startCheckout(
       // runtime — defensive against future consumers that don't add their
       // own optional chaining. Greptile P2 review of PR #3894.
       const body = parseCheckoutErrorBody(rawText);
-      const error = classifyHttpCheckoutError(resp.status, body);
+      const error = classifyHttpCheckoutError(
+        resp.status,
+        body,
+        resp.headers.get('Retry-After'),
+      );
+      if (error.code === 'rate_limited' && error.retryAfterSeconds !== undefined) {
+        _checkoutRateLimitedUntilMs = Date.now() + error.retryAfterSeconds * 1000;
+      }
       reportCheckoutError(error, { productId, action: 'http-error' }, undefined, upstream);
       // 409 duplicate-subscription — confirm with the user BEFORE
       // navigating to the billing portal. Previously the portal opened
@@ -1081,6 +1106,7 @@ const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
   'unauthorized',
   'session_expired',
   'duplicate_subscription',
+  'rate_limited',
 ]);
 
 export function checkoutErrorTelemetryLevel(error: Pick<CheckoutError, 'code'>): SentryLevel {
@@ -1110,6 +1136,7 @@ function reportCheckoutError(
       productId: context.productId,
       httpStatus: error.httpStatus,
       serverMessage: error.serverMessage,
+      retryAfterSeconds: error.retryAfterSeconds,
       ...(upstream ? { upstream } : {}),
     },
   };
@@ -1144,6 +1171,13 @@ function renderCheckoutErrorSurface(
   error: CheckoutError,
   fallbackToPricingPage: boolean,
 ): void {
+  // A 429 already carries a safe local recovery path. Keep the user on the
+  // current surface so the message and in-memory cooldown remain active
+  // instead of redirecting them to /pro and discarding the wait contract.
+  if (error.code === 'rate_limited') {
+    showCheckoutErrorToast(error.userMessage);
+    return;
+  }
   if (fallbackToPricingPage) {
     window.location.assign('https://worldmonitor.app/pro');
     return;

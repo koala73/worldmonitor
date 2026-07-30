@@ -49,7 +49,14 @@ test('default _loadPrevious retries the Redis read and warns loudly when it stay
     _fetchTimeline: async () => [],
   });
 
-  assert.equal(redisCalls, 3, 'previous-snapshot read must be retried (3 attempts)');
+  // Two logical reads x 3 retried attempts each. Since issue #5848 the fetch
+  // order is chosen from the same snapshot, so the run reads it up front too — but
+  // a read that degraded to null is deliberately NOT memoized, because "Upstash
+  // was unreachable" and "there is no previous snapshot" arrive as the same value.
+  // Caching the first failure would silently disable the cache-merge for the whole
+  // run; leaving it unmemoized buys the merge an independent attempt minutes later,
+  // when the blip may have passed.
+  assert.equal(redisCalls, 6, 'each of the two previous-snapshot reads must be retried (3 attempts each)');
   assert.ok(
     warns.some((w) => w.includes('cache-merge')),
     `a failed merge read must warn loudly; warns were: ${JSON.stringify(warns)}`,

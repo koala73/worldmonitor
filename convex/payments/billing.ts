@@ -173,7 +173,13 @@ const DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP = 5;
 // `NotFoundError extends APIError<404>` (a `.status` of 404). Transient failures
 // (network, timeout, 5xx, 429) carry a different/absent status and must stay on
 // the backoff-and-retry path, never downgrade.
-function isDefinitiveDodoNotFound(err: unknown): boolean {
+//
+// Exported for #5380 census #10: every reconciliation test drives this through
+// a hand-rolled `Object.assign(new Error(), { status })` stub, so nothing pinned
+// it against the SDK's REAL error classes. It is the gate that decides whether a
+// paying customer gets downgraded, so the vendor's error shape is a contract —
+// see the real-instance table in convex/__tests__/webhook-rollback-boundaries.test.ts.
+export function isDefinitiveDodoNotFound(err: unknown): boolean {
   return (
     typeof err === "object" &&
     err !== null &&

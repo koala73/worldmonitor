@@ -18,11 +18,16 @@ import {
  * (`timeline`) or by semantic similarity (`search`), and a daily cron ages
  * rows out (`prune`).
  *
- * Everything here is `internal*` on purpose. The only ways in are the three
+ * Append-only in the steady state, with one deliberate exception: `retract`
+ * (#5743) removes named events and tombstones their identity so the producing
+ * seeder cannot re-add them. Nothing is ever updated in place.
+ *
+ * Everything here is `internal*` on purpose. The only ways in are the
  * secret-guarded HTTP routes in convex/http.ts — `/relay/intel-history`
- * (ingest, Railway seeders), `/api/internal-intel-timeline` and
- * `/api/internal-intel-search` (reads, Vercel edge). No client-facing
- * function touches this table.
+ * (ingest, Railway seeders), `/relay/intel-history/retract` and
+ * `/relay/intel-history/restore` (operator-driven retraction),
+ * `/api/internal-intel-timeline` and `/api/internal-intel-search` (reads,
+ * Vercel edge). No client-facing function touches this table.
  */
 
 /**
@@ -40,6 +45,19 @@ export const INTEL_HISTORY_EMBED_DIMS = 512;
  * body the relay route has to parse. Seeders chunk larger runs.
  */
 export const INTEL_HISTORY_MAX_APPEND_RECORDS = 100;
+
+/**
+ * Per-call cap on identifiers handed to `retract` / `restore` (#5743).
+ *
+ * Retraction is a hand-driven incident operation, not a bulk pipe: an operator
+ * has identified specific poisoned or wrong rows and is removing them. The cap
+ * keeps one call's write set bounded and makes a fat-fingered "retract
+ * everything" fail at the boundary rather than half-succeed.
+ */
+export const INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS = 100;
+
+/** Bound on one `listRetractions` page — a review read, not a bulk export. */
+export const INTEL_HISTORY_MAX_RETRACTION_PAGE = 200;
 
 /**
  * Documented retention policy: history older than this is deleted by the
@@ -215,6 +233,7 @@ export const append = internalMutation({
     const ingestedAt = Date.now();
     let inserted = 0;
     let skipped = 0;
+    let retracted = 0;
     // Within-batch dedupe: two records sharing a key in one payload would
     // both miss the index lookup (neither is committed yet at read time).
     const seenInBatch = new Set<string>();
@@ -232,16 +251,53 @@ export const append = internalMutation({
     // together: this is up to 100 indexed reads, and running them serially
     // holds the mutation's read set open far longer than needed while three
     // seeders write to this table on overlapping schedules.
-    const existing = await Promise.all(
-      candidates.map((rec) =>
-        ctx.db
-          .query("intelHistory")
-          .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", rec.dedupeKey))
-          .first(),
+    //
+    // The retraction lookup rides in the same batch. It has to happen HERE,
+    // inside the append transaction: an operator retracts a row because the
+    // upstream feed served something poisoned or wrong, and that feed keeps
+    // serving it — the seeders republish a rolling window, so without this
+    // check the very next tick finds no row for the dedupeKey and re-inserts
+    // it. See `retract` below.
+    const [existing, tombstones] = await Promise.all([
+      Promise.all(
+        candidates.map((rec) =>
+          ctx.db
+            .query("intelHistory")
+            .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", rec.dedupeKey))
+            .first(),
+        ),
       ),
-    );
+      Promise.all(
+        candidates.map((rec) =>
+          ctx.db
+            .query("intelHistoryRetractions")
+            .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", rec.dedupeKey))
+            .first(),
+        ),
+      ),
+    ]);
 
     for (const [index, rec] of candidates.entries()) {
+      // Checked before the existence test so a retracted key is reported as
+      // retracted rather than folded into the ordinary dedupe count — the two
+      // are indistinguishable in the row state (both end with nothing written)
+      // and only this counter tells an operator the tombstone is still doing
+      // work.
+      const tombstone = tombstones[index];
+      if (tombstone) {
+        // Restart the tombstone's clock. Expiry is what eventually lets a
+        // retracted identity back in, and the only question that should decide
+        // it is "has the producer stopped offering this item?" — not "how long
+        // ago did the operator act?". This record being in THIS run's payload
+        // is direct evidence the feed is still serving it, so keying expiry on
+        // the last suppressed attempt makes the tombstone outlive the item by
+        // construction instead of by a bet on the retention constant. Only
+        // fires for records an operator actually retracted, so the write cost
+        // is proportional to tombstones, not to ingest volume.
+        await ctx.db.patch(tombstone._id, { retractedAt: ingestedAt });
+        retracted += 1;
+        continue;
+      }
       if (existing[index] !== null) {
         skipped += 1;
         continue;
@@ -264,7 +320,7 @@ export const append = internalMutation({
       inserted += 1;
     }
 
-    return { inserted, skipped };
+    return { inserted, skipped, retracted };
   },
 });
 
@@ -287,6 +343,302 @@ export const _seedAppendLock = internalMutation({
       lastTouchedAt: Date.now(),
     });
     return { seeded: 1 };
+  },
+});
+
+/**
+ * Best-effort append-lock touch for the retraction mutations.
+ *
+ * `retract` and `restore` write the same identity space `append` reads, so
+ * they patch the same singleton to inherit its OCC serialization: a concurrent
+ * append either commits before the retraction (and its row is then deleted) or
+ * retries after it (and is then skipped by the tombstone). Neither can
+ * interleave into a re-inserted row that no tombstone covers.
+ *
+ * Unlike `append`, a missing lock is NOT fatal here. `append` throws without
+ * it, so an unseeded deploy has no concurrent writer to serialize against —
+ * and refusing to retract in that state would block an incident cleanup for a
+ * race that cannot happen. Log it and proceed.
+ */
+async function touchAppendLock(ctx: MutationCtx): Promise<void> {
+  const lock = await ctx.db
+    .query("intelHistoryAppendLocks")
+    .withIndex("by_lockKey", (q) => q.eq("lockKey", APPEND_LOCK_KEY))
+    .first();
+  if (!lock) {
+    console.warn(
+      JSON.stringify({
+        breadcrumb: "intel_history_retract_without_append_lock",
+        lockKey: APPEND_LOCK_KEY,
+      }),
+    );
+    return;
+  }
+  await ctx.db.patch(lock._id, { lastTouchedAt: Date.now() });
+}
+
+/**
+ * Resolve the caller's identifiers to the set of `dedupeKey`s to act on.
+ *
+ * Document ids are what a reader has in hand — every retrieval path projects
+ * `id` — but `dedupeKey` is what `append` matches on, so an id is only ever a
+ * way to LOOK UP the key that actually has to be tombstoned. An id that no
+ * longer resolves is reported back rather than ignored: it usually means the
+ * row was already pruned or retracted, and an operator acting on a poisoned
+ * record needs to know which of those it was.
+ */
+async function resolveRetractionKeys(
+  ctx: MutationCtx,
+  args: { ids?: string[]; dedupeKeys?: string[] },
+): Promise<{ keys: string[]; unresolvedIds: string[] }> {
+  const keys = new Set<string>(args.dedupeKeys ?? []);
+  const unresolvedIds: string[] = [];
+
+  const ids = args.ids ?? [];
+  // normalizeId rather than a v.id() validator: a malformed id typed by an
+  // operator should come back as "this id did not resolve", not as an opaque
+  // argument-validation throw from the mutation boundary.
+  const resolved = await Promise.all(
+    ids.map(async (raw) => {
+      const id = ctx.db.normalizeId("intelHistory", raw);
+      return { raw, doc: id === null ? null : await ctx.db.get(id) };
+    }),
+  );
+  for (const { raw, doc } of resolved) {
+    if (doc === null) unresolvedIds.push(raw);
+    else keys.add(doc.dedupeKey);
+  }
+
+  return { keys: [...keys], unresolvedIds };
+}
+
+function assertRetractionIdentifierBudget(
+  args: { ids?: string[]; dedupeKeys?: string[] },
+  // Named so the message matches the caller's actual argument surface —
+  // `restore` accepts no ids at all, and telling its caller to "supply ids"
+  // sends them after an argument the mutation would reject.
+  accepts = "ids or dedupeKeys",
+): void {
+  const total = (args.ids?.length ?? 0) + (args.dedupeKeys?.length ?? 0);
+  if (total === 0) {
+    throw new Error(`intelHistory: at least one of ${accepts} is required`);
+  }
+  if (total > INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS) {
+    throw new Error(
+      `intelHistory: at most ${INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS} identifiers per call, got ${total}`,
+    );
+  }
+}
+
+/**
+ * Remove specific events from the history and keep them out (#5743).
+ *
+ * The store is agent-facing and durable for 180 days, so a single poisoned or
+ * factually wrong feed item is retrievable for far longer than the live
+ * snapshot that produced it. This is the supported way to take one back
+ * without a hand-run Convex console operation.
+ *
+ * Deletion alone would not hold. `append` treats "no row with this dedupeKey"
+ * as "never seen", and the producing feed keeps serving the item, so a bare
+ * delete is reversed by the next seed tick. Each retraction therefore writes a
+ * tombstone on the `dedupeKey` as well, which `append` consults.
+ *
+ * Scoped deliberately narrowly — explicit ids and/or dedupe keys, nothing
+ * pattern-shaped. A retraction erases evidence from an intelligence archive;
+ * "delete everything matching this substring" is the wrong amount of power to
+ * hand a shared relay secret, and the identifiers are cheap to enumerate from
+ * a search result.
+ */
+export const retract = internalMutation({
+  args: {
+    ids: v.optional(v.array(v.string())),
+    dedupeKeys: v.optional(v.array(v.string())),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertRetractionIdentifierBudget(args);
+    const reason = args.reason.trim();
+    if (!reason) {
+      throw new Error("intelHistory.retract: reason is required");
+    }
+
+    await touchAppendLock(ctx);
+
+    const { keys, unresolvedIds } = await resolveRetractionKeys(ctx, args);
+
+    // Fail loudly rather than report a successful no-op. A document id is the
+    // handle an operator copies out of a search result, and a row that was
+    // already pruned — or already retracted — no longer resolves to one. With
+    // no key to tombstone the loop below does nothing, and a 200 saying
+    // `deleted: 0, tombstoned: 0` reads as "already clean" when the truth is
+    // "nothing was suppressed and the next seed tick will re-add it". The
+    // recovery is in the message because the operator needs it right there.
+    if (keys.length === 0) {
+      throw new Error(
+        `intelHistory.retract: no identifier resolved to a dedupeKey — nothing was tombstoned. ` +
+          `Unresolved ids: ${unresolvedIds.join(", ")}. A deleted or pruned row cannot be ` +
+          `retracted by id; re-run with --dedupe-key to suppress the identity itself.`,
+      );
+    }
+
+    const retractedAt = Date.now();
+
+    let deleted = 0;
+    let tombstoned = 0;
+    let refreshed = 0;
+    for (const dedupeKey of keys) {
+      const [rows, existingTombstone] = await Promise.all([
+        // `collect` over the dedupe index rather than `first`: the index is
+        // meant to hold one row per key, and if an old bug ever put two there
+        // a retraction that removed only one would leave the poisoned text
+        // live while reporting success.
+        ctx.db
+          .query("intelHistory")
+          .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
+          .collect(),
+        ctx.db
+          .query("intelHistoryRetractions")
+          .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
+          .first(),
+      ]);
+
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+
+      if (existingTombstone) {
+        // Re-retracting restarts the tombstone's own 180-day clock. An
+        // operator repeating the call is telling us the item is still live
+        // upstream, which is exactly when expiry would be premature.
+        await ctx.db.patch(existingTombstone._id, { retractedAt, reason });
+        refreshed += 1;
+      } else {
+        await ctx.db.insert("intelHistoryRetractions", {
+          dedupeKey,
+          retractedAt,
+          reason,
+        });
+        tombstoned += 1;
+      }
+    }
+
+    // Deliberately loud, and deliberately naming the identities rather than
+    // counting them. Retraction removes intelligence from an archive on the
+    // authority of a shared secret, and the tombstone row — the only other
+    // record of what was taken out — is deletable by that same credential via
+    // `restore`. A count cannot answer "which records were removed, and why?"
+    // six weeks later; the arrays can, and both are already bounded (100 keys
+    // x 256 chars) by the caller's identifier budget.
+    console.info(
+      JSON.stringify({
+        breadcrumb: "intel_history_retracted",
+        keys,
+        deleted,
+        tombstoned,
+        refreshed,
+        unresolvedIds,
+        reason,
+      }),
+    );
+
+    return { deleted, tombstoned, refreshed, keys, unresolvedIds };
+  },
+});
+
+/**
+ * Lift a retraction (#5743). Removes the tombstones so the producing seeder
+ * may store the event again.
+ *
+ * It does NOT resurrect the deleted rows — their embeddings are gone and this
+ * mutation has no way to recompute one. If the event is still inside the
+ * seeder's live window it reappears on the next tick; if it is not, the
+ * retraction is effectively permanent for that row, which is the honest
+ * outcome and the reason `retract` demands a stated reason up front.
+ */
+export const restore = internalMutation({
+  args: {
+    dedupeKeys: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertRetractionIdentifierBudget({ dedupeKeys: args.dedupeKeys }, "dedupeKeys");
+
+    await touchAppendLock(ctx);
+
+    // De-duplicated like `retract` does. Without it a repeated key deletes its
+    // tombstone on the first pass and then — read-your-writes inside the
+    // mutation — finds nothing on the second, so the same call reports the key
+    // as both removed AND never-retracted.
+    const dedupeKeys = [...new Set(args.dedupeKeys)];
+
+    let removed = 0;
+    const notRetracted: string[] = [];
+    for (const dedupeKey of dedupeKeys) {
+      // The schema intentionally does not claim uniqueness for this index.
+      // Remove every matching tombstone so legacy or manually introduced
+      // duplicates cannot leave the key partially retracted.
+      const tombstones = await ctx.db
+        .query("intelHistoryRetractions")
+        .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", dedupeKey))
+        .collect();
+      if (tombstones.length === 0) {
+        notRetracted.push(dedupeKey);
+        continue;
+      }
+      for (const tombstone of tombstones) {
+        await ctx.db.delete(tombstone._id);
+        removed += 1;
+      }
+    }
+
+    // Names the keys for the same reason `retract` does: this is the operation
+    // that destroys the other record of what was retracted.
+    console.info(
+      JSON.stringify({
+        breadcrumb: "intel_history_restored",
+        dedupeKeys,
+        removed,
+        notRetracted,
+      }),
+    );
+
+    return { removed, notRetracted };
+  },
+});
+
+/**
+ * Review read over the tombstones, newest retraction first.
+ *
+ * Retractions are invisible by construction — the whole point is that the row
+ * is gone and stays gone — so without this the only record of what was taken
+ * out is a log line that ages out long before the tombstone does.
+ */
+export const listRetractions = internalQuery({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = clamp(
+      args.limit ?? INTEL_HISTORY_MAX_RETRACTION_PAGE,
+      1,
+      INTEL_HISTORY_MAX_RETRACTION_PAGE,
+    );
+    // Over-fetch by one to distinguish "that is all of them" from "the page
+    // filled". Without the flag an operator checking whether a key is still
+    // suppressed reads a truncated page as an exhaustive one and concludes the
+    // retraction was lifted — the same `partial` contract `timeline` and
+    // `search` already return, for the same reason.
+    const rows = await ctx.db
+      .query("intelHistoryRetractions")
+      .withIndex("by_retractedAt")
+      .order("desc")
+      .take(limit + 1);
+    return {
+      retractions: rows.slice(0, limit).map((row) => ({
+        dedupeKey: row.dedupeKey,
+        retractedAt: row.retractedAt,
+        reason: row.reason,
+      })),
+      partial: rows.length > limit,
+    };
   },
 });
 
@@ -527,7 +879,37 @@ export const prune = internalMutation({
       await ctx.db.delete(doc._id);
     }
 
-    const rescheduled = stale.length >= batch;
+    // Tombstones age out on the same clock (#5743), measured from when the
+    // operator retracted rather than when the event happened: a retraction
+    // only has to outlive the upstream item's presence in the seeder's live
+    // window, and one retention window past the operator's action is a
+    // generous bound on that. They drain in the same pass rather than under
+    // their own cron — there are a handful of them, hand-created, and a second
+    // scheduled function for that volume is cost with no signal. The row is
+    // tiny next to a 512-float history row, so the batch budget is unaffected.
+    // Tombstones use the FULL retention window no matter what the caller
+    // passed. `retentionMs` is an operator-callable override inherited from
+    // the apiPlanLimit prune this was modelled on, where shortening it merely
+    // deletes old rows early — recoverable, and nothing depends on them. Here
+    // it is a security control: `prune({ retentionMs: 0 })` would set the
+    // cutoff to `now`, drain EVERY tombstone, and hand every retracted
+    // identity back to the producing feed on its next tick, silently undoing
+    // every retraction anyone had ever made. Clamping to the floor lets the
+    // override only ever LENGTHEN suppression, never shorten it — the same
+    // shape as the `limit` floor above, for the same reason.
+    const tombstoneCutoff = now - Math.max(args.retentionMs ?? RETENTION_MS, RETENTION_MS);
+    const staleRetractions = await ctx.db
+      .query("intelHistoryRetractions")
+      .withIndex("by_retractedAt", (q) => q.lt("retractedAt", tombstoneCutoff))
+      .take(batch);
+    for (const doc of staleRetractions) {
+      await ctx.db.delete(doc._id);
+    }
+
+    // Either table filling its batch means more aged rows remain. Each pass
+    // deletes at least one row from whichever table is still full, so the
+    // self-drain terminates.
+    const rescheduled = stale.length >= batch || staleRetractions.length >= batch;
     if (rescheduled) {
       await ctx.scheduler.runAfter(0, internal.intelHistory.prune, {
         now,
@@ -536,6 +918,10 @@ export const prune = internalMutation({
       });
     }
 
-    return { deleted: stale.length, rescheduled };
+    return {
+      deleted: stale.length,
+      deletedRetractions: staleRetractions.length,
+      rescheduled,
+    };
   },
 });

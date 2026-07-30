@@ -2,10 +2,11 @@
 // `/api/bootstrap?keys=<name>&public=1`, sent with `credentials: 'omit'`.
 //
 // The server serves that URL publicly for ONE key drawn from the on-demand
-// tier (isPublicOnDemandBootstrapRequest, api/bootstrap.js). For any other key
-// it falls through to validateApiKey, sees no credential — the request omitted
-// them — and answers 401 {"error":"API key required"}. Verified against
-// production 2026-07-27:
+// tier (isPublicOnDemandBootstrapRequest, api/bootstrap.js) — plus weatherAlerts,
+// which has its own public URL (#5386) but is read by src/services/weather.ts
+// rather than through ensureHydrated. For any other key it falls through to
+// validateApiKey, sees no credential — the request omitted them — and answers
+// 401 {"error":"API key required"}. Verified against production 2026-07-27:
 //
 //   ?keys=crossStraitActivity&public=1   no cookie -> 401
 //   ?keys=crossStraitActivity&public=1   w/ cookie -> 200
@@ -14,9 +15,11 @@
 // So a non-on-demand key can never be served by this URL, and the request is
 // guaranteed-dead work. Worse, it is not inert: the wm-session interceptor only
 // waves through credential-less bootstrap reads whose key IS on-demand
-// (PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS, wm-session.ts), so this one enters session
+// (PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS, wm-session.ts), so this one enters session
 // recovery — which mints a fresh cookie and replays a request that omits
-// credentials, gets the same 401, and reports `wm_session_route_401`. That is
+// credentials, gets the same 401, and reports `wm_session_route_401`. (The
+// interceptor set is PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS in wm-session.ts; it is
+// the on-demand tier plus weatherAlerts, never an arbitrary key.) That is
 // WORLDMONITOR-XP: 100% of its events were route `/api/bootstrap`, ~125/hr,
 // each one blaming the anonymous session for a request that never presented it.
 //

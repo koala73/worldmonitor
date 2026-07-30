@@ -4,7 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { orderColdFetchQueue } from '../scripts/seed-portwatch-port-activity.mjs';
+import {
+  classifyDeferredPayload,
+  orderColdFetchQueue,
+} from '../scripts/seed-portwatch-port-activity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -182,14 +185,14 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
   });
 
   it('canonical/seed-meta advance at the recovery publish floor, below the 174 health target', () => {
-    // Gate=5 lets per-country writes through (cache rotation accumulates)
-    // but CANONICAL_KEY + META_KEY require a higher coverage floor before
-    // they advance — protects consumers from a 5-country canonical
-    // published as fresh during a recovery from full outage.
+    // Per-country recovery state persists at every coverage level, but
+    // CANONICAL_KEY + META_KEY require a higher activity coverage floor and
+    // the complete reference universe before they advance — protecting
+    // consumers from a tiny or reference-truncated canonical published fresh.
     assert.match(src, /export const PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES\s*=\s*174/);
     assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*50/);
     // The gate is evaluated and used to conditionally write canonical/meta:
-    assert.match(src, /const canonicalAdvances = shouldAdvanceCanonical\(countryData\.size\)/);
+    assert.match(src, /const canonicalAdvances = coverageGatePassed && shouldAdvanceCanonicalForRun\(\{/);
     assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
     // Below the floor, extendExistingTtl preserves canonical + meta +
     // prior per-country keys, and a PARTIAL PERSIST log line surfaces
@@ -215,13 +218,15 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /freshFetchedCount\+\+/);
     // Counts are surfaced out of fetchAll:
     assert.match(src, /freshFetchedCount,[\s\n]+cacheHitCount: cacheHits/);
-    // main() gates the bypass on the combined fresh upstream contact:
+    // main() gates the bypass on the complete reference universe plus the
+    // combined fresh upstream contact:
     assert.match(src, /const upstreamContactCount = freshFetchedCount \+ cacheHitCount/);
-    assert.match(src, /const capBypassEarned = capTriggered && upstreamContactCount >= MIN_FRESH_FETCH_FOR_CAP_BYPASS/);
-    // When cap-mode is triggered but bypass NOT earned, refuse to publish
-    // a stale-only set and fall through to the 80% guard (which will fire
-    // and extendExistingTtl).
+    assert.match(src, /const referenceGatePassed =[\s\S]{0,100}coverage\.referenceCountryCount >= PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES/);
+    assert.match(src, /const capBypassEarned = capTriggered[\s\n]+&& referenceGatePassed[\s\n]+&& upstreamContactCount >= MIN_FRESH_FETCH_FOR_CAP_BYPASS/);
+    // When cap-mode is triggered but bypass is not earned, canonical + meta
+    // must stay at last-good even when stale fallback keeps recordCount high.
     assert.match(src, /CAP-MODE BYPASS REFUSED/);
+    assert.match(src, /Canonical \+ seed-meta will be preserved/);
   });
 
   it('inter-batch sleep is abort-aware (PR #3701 review P2)', () => {
@@ -285,6 +290,16 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /setTimeout\(resolve,\s*BATCH_BACKOFF_MS\)/);
   });
 
+  it('circuit-breaker retains selected countries that were never attempted', () => {
+    assert.match(src, /const completedFetches\s*=\s*new Set\(\)/);
+    assert.match(src, /completedFetches\.add\(iso2\)/);
+    assert.match(
+      src,
+      /const unattemptedFetches\s*=\s*needsFetch\.filter\(\(\{\s*iso2\s*\}\)\s*=>\s*!completedFetches\.has\(iso2\)\)/,
+    );
+    assert.match(src, /retainPriorState\(item\.iso2,\s*item\.prevPayload,\s*evaluatedAt\)/);
+  });
+
   it('MIN_VALID_COUNTRIES is temporarily lowered to 5 (ArcGIS degraded further)', () => {
     // 2026-05-18: lowered 20 → 5 because actual success rate dropped to
     // 6-10/30 per cold-fetch batch — well below the gate=20 set on
@@ -319,7 +334,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /droppedNoCacheCount,/);
     // main() must read those fields off the fetchAll result (plus the
     // PR #3701 review P1 additions: freshFetchedCount + cacheHitCount).
-    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,\s*\n\s*droppedTooOldCount,\s*\n\s*droppedNoCacheCount,\s*\n\s*freshFetchedCount,\s*\n\s*cacheHitCount,\s*\n\s*\}\s*=\s*await fetchAll/);
+    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,\s*\n\s*droppedTooOldCount,\s*\n\s*droppedNoCacheCount,\s*\n\s*freshFetchedCount,\s*\n\s*cacheHitCount,\s*\n\s*retryState,\s*\n\s*coverage,\s*\n\s*\}\s*=\s*await fetchAll/);
     // The earned-bypass branch (PR #3701 review P1) must lead to the
     // PARTIAL PUBLISH log; falling through to the 80%-degradation-guard
     // branch is the silent-loss protection.
@@ -348,19 +363,10 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // Assert by structure: a DEGRADATION GUARD error+return follows the
     // prevCount × 0.8 comparison.
     assert.match(src, /prevCount\s*\*\s*0\.8[\s\S]{0,400}DEGRADATION GUARD/);
-    // PR #3701 review P1 introduces a SECOND 80%-guard branch inside the
-    // `capTriggered && !capBypassEarned` block (cap-mode without enough
-    // fresh upstream contact also falls back to the 80% guard). So the
-    // threshold now appears in two condition + two Math.ceil sites = 4.
-    // More than 4 would imply a duplicated check leaked outside the
-    // guard scoping.
+    // The runtime branch has one comparison plus one Math.ceil in its log.
+    // Cap-mode uses upstream-contact gating instead.
     const matches = src.match(/prevCount\s*\*\s*0\.8/g) ?? [];
-    assert.equal(
-      matches.length,
-      4,
-      `expected exactly 4 prevCount × 0.8 references (2 conditions + 2 Math.ceil error-msg suggestions, ` +
-      `one set per guard branch — cap-mode-without-bypass-earned + non-cap-mode), found ${matches.length}`,
-    );
+    assert.equal(matches.length, 2, `expected condition + operator-log prevCount × 0.8 references, found ${matches.length}`);
   });
 
   it('batch loop wires eager .catch for mid-batch SIGTERM diagnostics', () => {
@@ -412,9 +418,10 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /MAX_CACHE_AGE_MS/);
   });
 
-  it('cached payloads store asof + cacheWrittenAt for next-run invalidation', () => {
+  it('cached payloads store asof plus success and attempt timestamps', () => {
     assert.match(src, /asof:\s*upstreamMaxDate/);
-    assert.match(src, /cacheWrittenAt:\s*Date\.now\(\)/);
+    assert.match(src, /cacheWrittenAt:\s*refreshedAt/);
+    assert.match(src, /refreshAttemptedAt:\s*attemptedAt/);
   });
 
   it('redisMgetJson failure degrades to cold-path (does not abort the seed)', () => {
@@ -916,22 +923,24 @@ describe('proxyFetch signal propagation (runtime)', () => {
 describe('validateFn', () => {
   let validateFn;
   let shouldAdvanceCanonical;
+  let shouldAdvanceCanonicalForRun;
   let PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES;
 
   before(async () => {
     ({
       validateFn,
       shouldAdvanceCanonical,
+      shouldAdvanceCanonicalForRun,
       PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES,
     } = await import('../scripts/seed-portwatch-port-activity.mjs'));
   });
 
-  it('keeps the per-country write gate permissive so partial recovery can accumulate', () => {
+  it('accepts five countries as a usable partial snapshot', () => {
     const data = { countries: Array.from({ length: 5 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
     assert.equal(validateFn(data), true);
   });
 
-  it('returns false below the per-country write gate', () => {
+  it('rejects fewer than five countries as a usable partial snapshot', () => {
     const data = { countries: ['US', 'SA', 'GB', 'JP'], fetchedAt: new Date().toISOString() };
     assert.equal(validateFn(data), false);
   });
@@ -948,6 +957,30 @@ describe('validateFn', () => {
     assert.equal(shouldAdvanceCanonical(173), true);
     assert.equal(shouldAdvanceCanonical(174), true);
     assert.equal(shouldAdvanceCanonical(175), true);
+  });
+
+  it('requires real upstream contact before canonical + seed-meta advance', () => {
+    assert.equal(shouldAdvanceCanonicalForRun({
+      countryCount: 174,
+      previousCountryCount: 174,
+      referenceCountryCount: 174,
+      capTriggered: true,
+      upstreamContactCount: 0,
+    }), false);
+    assert.equal(shouldAdvanceCanonicalForRun({
+      countryCount: 174,
+      previousCountryCount: 174,
+      referenceCountryCount: 174,
+      capTriggered: true,
+      upstreamContactCount: 30,
+    }), true);
+    assert.equal(shouldAdvanceCanonicalForRun({
+      countryCount: 120,
+      previousCountryCount: 174,
+      referenceCountryCount: 174,
+      capTriggered: false,
+      upstreamContactCount: 30,
+    }), false);
   });
 });
 
@@ -1107,8 +1140,8 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
   it('MAX_COLD_FETCH_PER_RUN constant is declared with a sane value', () => {
     // The cap value must allow the cold-fetch loop to fit comfortably inside
     // the 570s bundle budget at the observed ~3-5s/country with concurrency
-    // 12. 30 × 5s / 12 ≈ 13s — well under budget, with plenty of room for
-    // preflight + write phases.
+    // 6. 30 × 5s / 6 + four 5s backoffs ≈ 45s — well under budget, with
+    // plenty of room for preflight + write phases.
     assert.match(src, /const MAX_COLD_FETCH_PER_RUN\s*=\s*30/);
   });
 
@@ -1124,7 +1157,11 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     // output — that's the same as a hard-fail for the consumer. Marking
     // staleAsof preserves the country's data shape but signals "one window
     // behind" so downstream can render or warn accordingly.
-    assert.match(src, /\.\.\.prev,\s*staleAsof:\s*true/);
+    const prior = { iso2: 'US', cacheWrittenAt: 1_000, ports: [{ portId: 'US-1' }] };
+    const classified = classifyDeferredPayload(prior, 2_000);
+    assert.equal(classified.status, 'stale');
+    assert.deepEqual(classified.payload, { ...prior, staleAsof: true });
+    assert.match(src, /countryData\.set\(iso2,\s*deferredState\.payload\)/);
   });
 
   it('deferred-stale path respects MAX_CACHE_AGE_MS hard-drop (Greptile P1)', () => {
@@ -1134,18 +1171,14 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     // upstream was frozen >4 days could publish data older than the intended
     // hard-drop threshold (window-drift). Greptile review P1 on PR #3676.
     //
-    // Assert the age comparison appears inside the cap block (between the
-    // shuffle and the needsFetch reassignment) — using a multi-line regex
-    // that requires shuffle → cacheWrittenAt → MAX_CACHE_AGE_MS in order.
+    // The cap path must delegate to the shared classifier, and that classifier
+    // must use the same strict hard-expiry boundary as the cache-hit path.
     const capBlock = src.match(
       /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?needsFetch\s*=\s*ordered\.slice/,
     );
     assert.ok(capBlock, 'cap block found');
-    assert.match(
-      capBlock[0],
-      /cacheWrittenAt[\s\S]{0,200}MAX_CACHE_AGE_MS/,
-      'deferred-stale path must compare prev.cacheWrittenAt against MAX_CACHE_AGE_MS',
-    );
+    assert.match(capBlock[0], /retainPriorState\(item\.iso2,\s*item\.prevPayload,\s*now\)/);
+    assert.match(src, /\(now\s*-\s*prevPayload\.cacheWrittenAt\)\s*>=\s*maxCacheAgeMs/);
     // And the failure-bucket counter exists so operators can see how many
     // countries dropped via the age gate (vs no-cache).
     assert.match(src, /droppedTooOld/);
@@ -1174,7 +1207,7 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
   });
 
   it('rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly, not needsFetch.length (Greptile P2)', () => {
-    // After `needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN)`,
+    // After `needsFetch = ordered.slice(0, MAX_COLD_FETCH_PER_RUN)`,
     // `needsFetch.length` numerically equals MAX_COLD_FETCH_PER_RUN — so the
     // pre-fix arithmetic was coincidentally correct. But if the log block
     // is ever reordered above the reassignment (or the cap value changes
@@ -1220,18 +1253,17 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
 });
 
 // ── cold-fetch prioritisation (WM #4293 coverage-freeze fix) ──────────────────
-// Never-cached countries (prevPayload=null) have no served-stale fallback, so if
-// the random cap deferred them they were dropped entirely (droppedNoCache),
-// freezing /api/health coverage below the 174 target (observed stuck at 158).
-// orderColdFetchQueue must sort them ahead of cached-but-stale countries so they
-// always win a cold-fetch slot (uncached count << MAX_COLD_FETCH_PER_RUN).
-describe('orderColdFetchQueue — never-cached-first prioritisation', () => {
+// Never-cached countries (prevPayload=null) have no served-stale fallback.
+// The oldest-attempt scheduler treats them as never-attempted, so they sort
+// ahead of legacy cached countries while retaining a durable cursor once an
+// attempt succeeds or fails.
+describe('orderColdFetchQueue — never-attempted prioritisation', () => {
   const noCache = (iso2) => ({ iso2, prevPayload: null });
   const cached = (iso2) => ({ iso2, prevPayload: { asof: '2026-06-26', cacheWrittenAt: Date.now() } });
 
   it('places every no-prior-cache country ahead of every cached one', () => {
     const q = [cached('US'), noCache('MY'), cached('GB'), noCache('IE'), noCache('EC')];
-    const ordered = orderColdFetchQueue(q, () => 0);
+    const ordered = orderColdFetchQueue(q);
     const firstCachedIdx = ordered.findIndex((it) => it.prevPayload);
     const noCacheIdxs = ordered.flatMap((it, i) => (it.prevPayload ? [] : [i]));
     assert.ok(Math.max(...noCacheIdxs) < firstCachedIdx, 'all uncached must sort before all cached');

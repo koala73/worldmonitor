@@ -262,10 +262,19 @@ describe('tab-cap wiring', () => {
   it('the cap re-evaluates on BOTH auth and entitlement emissions', () => {
     // updatePanelGating is the single gating pass; it is driven by
     // subscribeAuthState AND onEntitlementChange (the auth-only-subscription
-    // bug is documented in this file at the proBlock wiring).
+    // bug is documented in this file at the proBlock wiring). Entitlement
+    // emissions now flow through the reload controller so a null auth-handoff
+    // snapshot is not collapsed to a false entitlement transition.
     assert.match(gatingBody, /this\.updateTabCapLock\(\)/);
     assert.match(panelLayout, /subscribeAuthState\(\(state\) => \{\s*this\.updatePanelGating\(state\);/);
-    assert.match(panelLayout, /onEntitlementChange\(\(\) => \{[\s\S]*?this\.updatePanelGating\(getAuthState\(\)\)/);
+    assert.match(
+      panelLayout,
+      /onSnapshot:\s*\(\) => this\.updatePanelGating\(getAuthState\(\)\)/,
+    );
+    assert.match(
+      panelLayout,
+      /onEntitlementChange\(\(state\) => \{[\s\S]*?entitlementReloadController\.handleSnapshot\(/,
+    );
   });
 
   it('panel-gating forwards the dashboard allowance into the shared inputs', () => {

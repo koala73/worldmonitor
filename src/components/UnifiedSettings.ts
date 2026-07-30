@@ -28,7 +28,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -69,6 +69,7 @@ export interface UnifiedSettingsConfig {
 }
 
 type TabId = UnifiedSettingsTabId;
+type AccountRequest = { userId: string; generation: number };
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -92,6 +93,7 @@ export class UnifiedSettings {
   private newlyCreatedKey: string | null = null;
   private planLimitNotices: ApiPlanLimitNotice[] = [];
   private planLimitNoticesLoading = false;
+  private planLimitNoticesError = '';
   // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
   private readonly businessSeatsSection: BusinessSeatsSection;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
@@ -101,6 +103,10 @@ export class UnifiedSettings {
   private mcpQuota: McpQuota | null = null;
   /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
   private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
+  private accountUserId: string | null = getAuthState().user?.id ?? null;
+  private accountDataGeneration = 0;
+  private accountEntitlementRefreshPending = false;
+  private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
   // Bounded "entitlement snapshot might still arrive" window. Starts false
@@ -360,6 +366,49 @@ export class UnifiedSettings {
 
     this.render();
     document.body.appendChild(this.overlay);
+    this.unsubscribeAuth = subscribeAuthState((state) => {
+      this.handleAccountIdentityChange(state.user?.id ?? null);
+    });
+  }
+
+  private handleAccountIdentityChange(nextUserId: string | null): void {
+    if (nextUserId === this.accountUserId) return;
+
+    this.accountUserId = nextUserId;
+    this.accountDataGeneration += 1;
+    this.accountEntitlementRefreshPending = true;
+    this.apiKeys = [];
+    this.apiKeysLoading = false;
+    this.apiKeysError = '';
+    this.newlyCreatedKey = null;
+    this.planLimitNotices = [];
+    this.planLimitNoticesLoading = false;
+    this.planLimitNoticesError = '';
+    this.mcpClients = [];
+    this.mcpClientsLoading = false;
+    this.mcpClientsError = '';
+    this.mcpQuota = null;
+    this.stopMcpQuotaPolling();
+    this.businessSeatsSection.resetForAccountChange();
+
+    // Replace any rendered A-owned plaintext/list data synchronously. Account
+    // loaders stay suppressed until the new entitlement snapshot rerenders.
+    if (this.overlay.classList.contains('active')) {
+      this.entitlementReady = false;
+      this.render(false);
+    }
+  }
+
+  private captureAccountRequest(): AccountRequest | null {
+    const userId = getAuthState().user?.id ?? null;
+    if (!userId || userId !== this.accountUserId) return null;
+    return { userId, generation: this.accountDataGeneration };
+  }
+
+  private isAccountRequestCurrent(request: AccountRequest): boolean {
+    return request.generation === this.accountDataGeneration
+      && request.userId === this.accountUserId
+      && request.userId === getAuthState().user?.id;
   }
 
   public open(tab?: TabId): void {
@@ -383,12 +432,30 @@ export class UnifiedSettings {
     // hasFeature('apiAccess') returns false until the Convex subscription
     // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
     this.unsubscribeEntitlement?.();
-    this.unsubscribeEntitlement = onEntitlementChange(() => {
+    this.unsubscribeEntitlement = onEntitlementChange((state) => {
       this.entitlementReady = true;
+      if (this.accountEntitlementRefreshPending) {
+        // Entitlements are account-scoped. Rebuild every account surface so a
+        // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
+        // Keep the marker through the reset(null) emission; the first real B
+        // snapshot must rebuild once more before ordinary targeted refreshes.
+        if (state !== null) this.accountEntitlementRefreshPending = false;
+        this.render();
+        return;
+      }
+
+      const hasMcpClientsTab = this.overlay.querySelector('[data-tab="mcp-clients"]') !== null;
+      if (hasMcpClientsTab !== hasFeature('mcpAccess')) {
+        // Entitlements can legitimately progress from a free/default snapshot
+        // to Pro after the account handoff's first non-null emission. Rebuild
+        // the tab shape whenever MCP capability changes in either direction.
+        this.render();
+        return;
+      }
+
       const panel = this.overlay.querySelector<HTMLElement>('[data-panel-id="api-keys"]');
       if (panel) {
         setTrustedHtml(panel, trustedHtml(this.renderApiKeysContent(), "legacy direct innerHTML migration"));
-        // Re-attach CTA and input handlers for the refreshed content
         this.attachApiKeysHandlers();
         if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
           void this.loadApiKeys();
@@ -497,6 +564,8 @@ export class UnifiedSettings {
     this.unsubscribeEntitlement = null;
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
+    this.unsubscribeAuth?.();
+    this.unsubscribeAuth = null;
     // Mirror close() — without this, a destroy() during the 12s fallback
     // window leaves the timer live; it fires after teardown and calls
     // replaceUpgradeSection() against a detached overlay (no-op via the
@@ -529,7 +598,7 @@ export class UnifiedSettings {
     nextTab.focus();
   }
 
-  private render(): void {
+  private render(loadAccountData = true): void {
     this.prefsCleanup?.();
     this.prefsCleanup = null;
     this.notifCleanup?.();
@@ -646,15 +715,17 @@ export class UnifiedSettings {
     this.updateSourcesCounter();
 
     this.attachApiKeysHandlers();
-    if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
-      void this.loadPlanLimitNotices();
-    }
-    if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
-      void this.loadApiKeys();
-    }
-    if (this.activeTab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
-      void this.loadMcpClients();
-      this.startMcpQuotaPolling();
+    if (loadAccountData) {
+      if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
+        void this.loadPlanLimitNotices();
+      }
+      if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+        void this.loadApiKeys();
+      }
+      if (this.activeTab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
+        void this.loadMcpClients();
+        this.startMcpQuotaPolling();
+      }
     }
   }
 
@@ -1109,16 +1180,25 @@ export class UnifiedSettings {
   }
 
   private async loadPlanLimitNotices(): Promise<void> {
-    if (!getAuthState().user || this.planLimitNoticesLoading) return;
+    const request = this.captureAccountRequest();
+    if (!request || this.planLimitNoticesLoading) return;
     this.planLimitNoticesLoading = true;
+    this.planLimitNoticesError = '';
     try {
-      this.planLimitNotices = await listCurrentPlanLimitNotices();
+      const notices = await listCurrentPlanLimitNotices();
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.planLimitNotices = notices;
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       console.warn('[settings] Failed to load API plan-limit notices:', err);
-      this.planLimitNotices = [];
+      this.planLimitNoticesError = err instanceof Error
+        ? err.message
+        : 'Failed to load API plan-limit notices';
     } finally {
-      this.planLimitNoticesLoading = false;
-      this.renderPlanLimitNoticeBlocks();
+      if (this.isAccountRequestCurrent(request)) {
+        this.planLimitNoticesLoading = false;
+        this.renderPlanLimitNoticeBlocks();
+      }
     }
   }
 
@@ -1145,10 +1225,14 @@ export class UnifiedSettings {
   }
 
   private renderPlanLimitNotices(): string {
-    if (this.planLimitNotices.length === 0) return '';
+    if (!this.planLimitNoticesError && this.planLimitNotices.length === 0) return '';
+    const error = this.planLimitNoticesError
+      ? `<div class="api-keys-error api-plan-limit-notices-error" role="alert">${escapeHtml(this.planLimitNoticesError)}</div>`
+      : '';
     const nf = new Intl.NumberFormat();
     return `
       <div class="api-plan-limit-notices" aria-live="polite">
+        ${error}
         ${this.planLimitNotices.map((notice) => {
           const limit = notice.limit == null ? 'unlimited' : nf.format(notice.limit);
           const usage = nf.format(notice.usage);
@@ -1181,11 +1265,15 @@ export class UnifiedSettings {
   }
 
   private async handleAcknowledgePlanLimitNotice(noticeId: string): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request) return;
     try {
       await acknowledgePlanLimitNotice(noticeId);
+      if (!this.isAccountRequestCurrent(request)) return;
       this.planLimitNotices = this.planLimitNotices.filter((notice) => notice._id !== noticeId);
       this.renderPlanLimitNoticeBlocks();
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       console.warn('[settings] Failed to acknowledge API plan-limit notice:', err);
       showToast('Could not dismiss this notice. Try again.');
     }
@@ -1308,17 +1396,24 @@ export class UnifiedSettings {
   }
 
   private async loadApiKeys(): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request || this.apiKeysLoading) return;
     this.apiKeysLoading = true;
     this.apiKeysError = '';
     this.renderApiKeysList();
 
     try {
-      this.apiKeys = await listApiKeys();
+      const keys = await listApiKeys();
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.apiKeys = keys;
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       this.apiKeysError = err instanceof Error ? err.message : 'Failed to load keys';
     } finally {
-      this.apiKeysLoading = false;
-      this.renderApiKeysList();
+      if (this.isAccountRequestCurrent(request)) {
+        this.apiKeysLoading = false;
+        this.renderApiKeysList();
+      }
     }
   }
 
@@ -1327,6 +1422,8 @@ export class UnifiedSettings {
     const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
     const name = input?.value.trim();
     if (!name || !input || !btn) return;
+    const request = this.captureAccountRequest();
+    if (!request) return;
 
     btn.disabled = true;
     btn.textContent = 'Creating...';
@@ -1336,11 +1433,13 @@ export class UnifiedSettings {
 
     try {
       const result = await createApiKey(name);
+      if (!this.isAccountRequestCurrent(request)) return;
       this.newlyCreatedKey = result.key;
       input.value = '';
       this.showCreatedBanner(result.key);
       await this.loadApiKeys();
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       const msg = err instanceof Error ? err.message : 'Failed to create key';
       this.apiKeysError = msg.includes('KEY_LIMIT_REACHED')
         ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
@@ -1349,20 +1448,26 @@ export class UnifiedSettings {
         : msg;
       this.renderApiKeysError();
     } finally {
-      btn.disabled = false;
-      btn.textContent = 'Create Key';
+      if (this.isAccountRequestCurrent(request)) {
+        btn.disabled = false;
+        btn.textContent = 'Create Key';
+      }
     }
   }
 
   private async handleRevokeApiKey(keyId: string): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request) return;
     const keyInfo = this.apiKeys.find(k => k.id === keyId);
     const keyName = keyInfo?.name ?? 'this key';
     if (!confirm(`Revoke "${keyName}"? This cannot be undone. Any applications using this key will stop working.`)) return;
 
     try {
       await revokeApiKey(keyId);
+      if (!this.isAccountRequestCurrent(request)) return;
       await this.loadApiKeys();
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       this.apiKeysError = err instanceof Error ? err.message : 'Failed to revoke key';
       this.renderApiKeysError();
     }
@@ -1521,32 +1626,44 @@ export class UnifiedSettings {
   }
 
   private async loadMcpClients(): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request || this.mcpClientsLoading) return;
     this.mcpClientsLoading = true;
     this.mcpClientsError = '';
     this.renderMcpClientsList();
 
     try {
-      this.mcpClients = await listMcpClients();
+      const clients = await listMcpClients();
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.mcpClients = clients;
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       this.mcpClientsError = err instanceof Error ? err.message : 'Failed to load MCP clients';
     } finally {
-      this.mcpClientsLoading = false;
-      this.renderMcpClientsList();
+      if (this.isAccountRequestCurrent(request)) {
+        this.mcpClientsLoading = false;
+        this.renderMcpClientsList();
+      }
     }
 
     // Kick a fresh quota fetch alongside the list so the user sees current
     // numbers immediately on tab open (the polling timer takes 30s otherwise).
-    void this.refreshMcpQuota();
+    if (this.isAccountRequestCurrent(request)) void this.refreshMcpQuota();
   }
 
   private async refreshMcpQuota(): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request) return;
     try {
-      this.mcpQuota = await fetchMcpQuota();
+      const quota = await fetchMcpQuota();
+      if (!this.isAccountRequestCurrent(request)) return;
+      this.mcpQuota = quota;
     } catch {
+      if (!this.isAccountRequestCurrent(request)) return;
       // fetchMcpQuota already returns sane fallbacks, but defensive catch.
       this.mcpQuota = null;
     }
-    this.renderMcpQuotaInPlace();
+    if (this.isAccountRequestCurrent(request)) this.renderMcpQuotaInPlace();
   }
 
   private renderMcpQuotaInPlace(): void {
@@ -1576,17 +1693,21 @@ export class UnifiedSettings {
   }
 
   private async handleRevokeMcpClient(tokenId: string): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request) return;
     const client = this.mcpClients.find(c => c.id === tokenId);
     const label = client?.name?.trim() ? `"${client.name}"` : 'this client';
     if (!confirm(`Revoke ${label}? The connected AI client will need to re-authorize before its next request.`)) return;
 
     try {
       await revokeMcpClient(tokenId);
+      if (!this.isAccountRequestCurrent(request)) return;
       // Refresh both list (Convex query result cached locally) and quota
       // (revoke does not change the daily counter, but the user might have
       // crossed the boundary while the modal was open).
       await this.loadMcpClients();
     } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
       this.mcpClientsError = err instanceof Error ? err.message : 'Failed to revoke MCP client';
       this.renderMcpClientsError();
     }

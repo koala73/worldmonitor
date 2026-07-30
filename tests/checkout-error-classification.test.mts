@@ -12,6 +12,7 @@ import {
   classifyHttpCheckoutError,
   classifySyntheticCheckoutError,
   classifyThrownCheckoutError,
+  parseCheckoutRetryAfterSeconds,
 } from '../src/services/checkout-errors.ts';
 
 describe('classifyHttpCheckoutError', () => {
@@ -71,6 +72,22 @@ describe('classifyHttpCheckoutError', () => {
     assert.equal(err.httpStatus, 403);
   });
 
+  it('preserves 429 as a bounded rate-limited outcome', () => {
+    const err = classifyHttpCheckoutError(429, {
+      error: 'CHECKOUT_RATE_LIMITED',
+    }, '12');
+    assert.equal(err.code, 'rate_limited');
+    assert.equal(err.retryable, true);
+    assert.equal(err.httpStatus, 429);
+    assert.equal(err.retryAfterSeconds, 12);
+    assert.match(err.userMessage, /wait 12 seconds/i);
+  });
+
+  it('defaults malformed or absent 429 retry hints to the safe edge fallback', () => {
+    assert.equal(classifyHttpCheckoutError(429, undefined, 'later').retryAfterSeconds, 10);
+    assert.equal(classifyHttpCheckoutError(429).retryAfterSeconds, 10);
+  });
+
   it('maps 500 to service_unavailable', () => {
     const err = classifyHttpCheckoutError(500);
     assert.equal(err.code, 'service_unavailable');
@@ -118,6 +135,16 @@ describe('classifyHttpCheckoutError', () => {
     });
     assert.ok(!err.userMessage.includes('leaked'));
     assert.ok(!err.userMessage.includes('db.prod'));
+  });
+});
+
+describe('parseCheckoutRetryAfterSeconds', () => {
+  it('accepts only the numeric 1-4 digit edge contract', () => {
+    assert.equal(parseCheckoutRetryAfterSeconds('0'), 0);
+    assert.equal(parseCheckoutRetryAfterSeconds('9999'), 9999);
+    assert.equal(parseCheckoutRetryAfterSeconds('10000'), undefined);
+    assert.equal(parseCheckoutRetryAfterSeconds('Wed, 21 Oct 2015 07:28:00 GMT'), undefined);
+    assert.equal(parseCheckoutRetryAfterSeconds('-1'), undefined);
   });
 });
 

@@ -13,6 +13,7 @@ import { resolvePlanDrivenMcpAllowance } from './quota';
 import {
   getBillingVerificationDenial,
   getEntitlements,
+  isEntitlementBackendConfigured,
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import type { BillingVerificationCode } from './billing-denial';
@@ -461,7 +462,9 @@ async function checkMcpEntitlementGate(
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
-  const gate = checkProMcpAccess(ent, Date.now());
+  const gate = checkProMcpAccess(ent, Date.now(), {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
   if (!gate) {
     return passed();
   }

@@ -16,9 +16,12 @@ import {
   decideProBannerMount,
   isPremiumEntitlementHint,
   resolveBannerPremium,
+  stabilizeProBannerPremium,
+  PRO_BANNER_DOWNGRADE_SETTLE_MS,
   PRO_BANNER_ENTITLEMENT_HINT_KEY,
   PRO_BANNER_ENTITLEMENT_HINT_VALUE,
   type ProBannerDecisionInput,
+  type ProBannerPremiumStabilityState,
 } from '@/services/pro-banner-policy';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +55,35 @@ describe('decideProBannerMount (#5728)', () => {
       })),
       'suppress',
     );
+  });
+
+  it('never mounts the free upsell between half-second snapshots for a confirmed Pro session', () => {
+    let state: ProBannerPremiumStabilityState | null = null;
+    const decisions = [true, false, true, false, true].map((premium, index) => {
+      const stable = stabilizeProBannerPremium({
+        now: index * 500,
+        userId: 'user_pro',
+        premiumHint: true,
+        live: { premium, accountBacked: premium },
+        previous: state,
+      });
+      state = stable.state;
+      return decideProBannerMount(base({
+        hasPremiumAccess: stable.premium,
+        premiumHint: true,
+        authPending: false,
+        signedIn: true,
+        entitlementLoaded: true,
+      }));
+    });
+
+    assert.deepEqual(decisions, [
+      'suppress',
+      'suppress',
+      'suppress',
+      'suppress',
+      'suppress',
+    ]);
   });
 
   it('defers while Clerk auth is still hydrating (the init race)', () => {
@@ -147,8 +179,9 @@ describe('resolveBannerPremium (#5728 sign-out + local keys)', () => {
         authPending: false,
         signedIn: false,
         localUnlockPremium: false,
-        rawPremium: true, // stale isEntitled from previous account
-        accountBackedPremium: true,
+        identityBoundPremium: false,
+        unscopedAccountPremium: true,
+        acceptUnscopedAccountPremium: true,
       }),
       { premium: false, accountBacked: false },
     );
@@ -160,8 +193,9 @@ describe('resolveBannerPremium (#5728 sign-out + local keys)', () => {
         authPending: false,
         signedIn: false,
         localUnlockPremium: true,
-        rawPremium: true,
-        accountBackedPremium: false,
+        identityBoundPremium: false,
+        unscopedAccountPremium: false,
+        acceptUnscopedAccountPremium: true,
       }),
       { premium: true, accountBacked: false },
     );
@@ -173,10 +207,50 @@ describe('resolveBannerPremium (#5728 sign-out + local keys)', () => {
         authPending: false,
         signedIn: true,
         localUnlockPremium: false,
-        rawPremium: true,
-        accountBackedPremium: true,
+        identityBoundPremium: false,
+        unscopedAccountPremium: true,
+        acceptUnscopedAccountPremium: true,
       }),
       { premium: true, accountBacked: true },
+    );
+  });
+
+  it('ignores stale Convex premium during a direct account switch', () => {
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: false,
+        signedIn: true,
+        localUnlockPremium: false,
+        identityBoundPremium: false,
+        unscopedAccountPremium: true,
+        acceptUnscopedAccountPremium: false,
+      }),
+      { premium: false, accountBacked: false },
+    );
+  });
+
+  it('preserves current-user and local-unlock premium while Convex is blocked', () => {
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: false,
+        signedIn: true,
+        localUnlockPremium: false,
+        identityBoundPremium: true,
+        unscopedAccountPremium: true,
+        acceptUnscopedAccountPremium: false,
+      }),
+      { premium: true, accountBacked: true },
+    );
+    assert.deepEqual(
+      resolveBannerPremium({
+        authPending: false,
+        signedIn: true,
+        localUnlockPremium: true,
+        identityBoundPremium: false,
+        unscopedAccountPremium: true,
+        acceptUnscopedAccountPremium: false,
+      }),
+      { premium: true, accountBacked: false },
     );
   });
 
@@ -186,11 +260,150 @@ describe('resolveBannerPremium (#5728 sign-out + local keys)', () => {
         authPending: true,
         signedIn: false,
         localUnlockPremium: false,
-        rawPremium: false,
-        accountBackedPremium: false,
+        identityBoundPremium: false,
+        unscopedAccountPremium: false,
+        acceptUnscopedAccountPremium: true,
       }),
       { premium: false, accountBacked: false },
     );
+  });
+});
+
+describe('stabilizeProBannerPremium (confirmed Pro anti-flap)', () => {
+  it('requires a continuous settled-free window before showing a downgrade', () => {
+    const confirmed = stabilizeProBannerPremium({
+      now: 0,
+      userId: 'user_pro',
+      premiumHint: false,
+      live: { premium: true, accountBacked: true },
+      previous: null,
+    });
+    const transientFree = stabilizeProBannerPremium({
+      now: 500,
+      userId: 'user_pro',
+      premiumHint: true,
+      live: { premium: false, accountBacked: false },
+      previous: confirmed.state,
+    });
+    assert.equal(transientFree.premium, true);
+    assert.equal(transientFree.heldPremium, true);
+    assert.equal(transientFree.recheckAt, 500 + PRO_BANNER_DOWNGRADE_SETTLE_MS);
+
+    const settledFree = stabilizeProBannerPremium({
+      now: 500 + PRO_BANNER_DOWNGRADE_SETTLE_MS,
+      userId: 'user_pro',
+      premiumHint: true,
+      live: { premium: false, accountBacked: false },
+      previous: transientFree.state,
+    });
+    assert.equal(settledFree.premium, false);
+    assert.equal(settledFree.heldPremium, false);
+    assert.equal(settledFree.recheckAt, null);
+  });
+
+  it('restarts the downgrade window after a local unlock clears', () => {
+    const confirmed = stabilizeProBannerPremium({
+      now: 0,
+      userId: 'user_pro',
+      premiumHint: false,
+      live: { premium: true, accountBacked: true },
+      previous: null,
+    });
+    const settlingFree = stabilizeProBannerPremium({
+      now: 500,
+      userId: 'user_pro',
+      premiumHint: false,
+      live: { premium: false, accountBacked: false },
+      previous: confirmed.state,
+    });
+    assert.equal(settlingFree.recheckAt, 500 + PRO_BANNER_DOWNGRADE_SETTLE_MS);
+
+    const locallyUnlocked = stabilizeProBannerPremium({
+      now: 1_000,
+      userId: 'user_pro',
+      premiumHint: false,
+      live: { premium: true, accountBacked: false },
+      previous: settlingFree.state,
+    });
+    assert.equal(locallyUnlocked.state.accountPremiumConfirmed, true);
+    assert.equal(locallyUnlocked.state.freeSince, null);
+    assert.equal(locallyUnlocked.recheckAt, null);
+
+    const freeAgain = stabilizeProBannerPremium({
+      now: 1_500,
+      userId: 'user_pro',
+      premiumHint: false,
+      live: { premium: false, accountBacked: false },
+      previous: locallyUnlocked.state,
+    });
+    assert.equal(freeAgain.premium, true);
+    assert.equal(freeAgain.heldPremium, true);
+    assert.equal(freeAgain.recheckAt, 1_500 + PRO_BANNER_DOWNGRADE_SETTLE_MS);
+  });
+
+  it('bounds a stale post-checkout hint for a genuinely free account', () => {
+    const hinted = stabilizeProBannerPremium({
+      now: 10_000,
+      userId: 'user_free',
+      premiumHint: true,
+      live: { premium: false, accountBacked: false },
+      previous: null,
+    });
+    assert.equal(hinted.premium, true);
+    assert.equal(hinted.recheckAt, 10_000 + PRO_BANNER_DOWNGRADE_SETTLE_MS);
+
+    const expired = stabilizeProBannerPremium({
+      now: 10_000 + PRO_BANNER_DOWNGRADE_SETTLE_MS,
+      userId: 'user_free',
+      premiumHint: true,
+      live: { premium: false, accountBacked: false },
+      previous: hinted.state,
+    });
+    assert.equal(expired.premium, false);
+    assert.equal(expired.state.accountPremiumConfirmed, false);
+  });
+
+  it('clears remembered Pro immediately on sign-out', () => {
+    const confirmed = stabilizeProBannerPremium({
+      now: 0,
+      userId: 'user_pro',
+      premiumHint: false,
+      live: { premium: true, accountBacked: true },
+      previous: null,
+    });
+    const signedOut = stabilizeProBannerPremium({
+      now: 500,
+      userId: null,
+      premiumHint: true,
+      live: { premium: false, accountBacked: false },
+      previous: confirmed.state,
+    });
+    assert.equal(signedOut.premium, false);
+    assert.deepEqual(signedOut.state, {
+      userId: null,
+      accountPremiumConfirmed: false,
+      freeSince: null,
+    });
+  });
+
+  it('does not carry a Pro hint across a direct account switch', () => {
+    const accountA = stabilizeProBannerPremium({
+      now: 0,
+      userId: 'user_pro_a',
+      premiumHint: true,
+      live: { premium: true, accountBacked: true },
+      previous: null,
+    });
+    const accountB = stabilizeProBannerPremium({
+      now: 500,
+      userId: 'user_free_b',
+      premiumHint: true,
+      live: { premium: false, accountBacked: false },
+      previous: accountA.state,
+    });
+    assert.equal(accountB.premium, false);
+    assert.equal(accountB.heldPremium, false);
+    assert.equal(accountB.recheckAt, null);
   });
 });
 
@@ -275,6 +488,8 @@ describe('wiring contracts (#5728)', () => {
     const src = readFileSync(resolve(root, 'src/components/ProBanner.ts'), 'utf-8');
     assert.match(src, /decideProBannerMount\(/);
     assert.match(src, /resolveBannerPremium\(/);
+    assert.match(src, /stabilizeProBannerPremium\(/);
+    assert.match(src, /schedulePremiumStabilityRecheck\(/);
     assert.match(src, /subscribeAuthState\(/);
     assert.match(src, /isClerkAuthEnabled\(/);
     assert.match(src, /accountBacked/);
@@ -298,13 +513,27 @@ describe('wiring contracts (#5728)', () => {
     assert.doesNotMatch(failureFn, /\.splice\(/);
   });
 
-  it('resetEntitlementState notifies listeners so free surfaces re-evaluate', () => {
-    const src = readFileSync(resolve(root, 'src/services/entitlements.ts'), 'utf-8');
-    assert.match(
-      src,
-      /export function resetEntitlementState\(\): void \{[\s\S]*?for \(const cb of listeners\)/,
+  it('resetEntitlementState notifies listeners so free surfaces re-evaluate', async () => {
+    // Was a source grep for `for (const cb of listeners)` inside
+    // resetEntitlementState. That pinned the loop's LOCATION, not its
+    // behaviour, so hoisting the fan-out into a shared helper reddened it
+    // while the guarantee was intact. Driving the real functions covers the
+    // same regression and also catches a fan-out that runs but delivers the
+    // wrong value — which the grep could not see.
+    const { onEntitlementChange, resetEntitlementState } = await import(
+      '@/services/entitlements'
     );
-    assert.match(src, /cb\(null\)/);
+
+    resetEntitlementState(); // normalise: a null currentState means no replay on subscribe
+    const seen: Array<unknown> = [];
+    const off = onEntitlementChange((state) => seen.push(state));
+    try {
+      resetEntitlementState();
+    } finally {
+      off();
+    }
+
+    assert.deepEqual(seen, [null]);
   });
 
   it('checkout success paths write the pro banner entitlement hint', () => {

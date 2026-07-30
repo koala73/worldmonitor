@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 USD / månad",
-    "priceAnnual": "399,99 USD / år",
-    "annualSavingsNote": "2 månader gratis"
+    "priceAnnual": "359,99 USD / år",
+    "annualSavingsNote": "3 månader gratis"
   },
   "proShowcase": {
     "proTier": "PRO-NIVÅ",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Från realtidsövervakning till fullständig underrättelseinfrastruktur. Välj den nivå som passar din uppdrag.",
     "billingMonthly": "Månadsvis",
     "billingAnnual": "Årligen",
-    "saveAnnual": "Spara 17%",
+    "saveAnnual": "Spara 25%",
     "mostPopular": "Mest populär",
     "promoCodeNote": "Har du en kampanjkod? Ange den vid kassan.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API & officiella SDK:er — 59 verktyg under en nyckel",
       "proF5": "Anpassad widgetbyggare för dina egna paneler",
       "cta": "Se planer och prissättning",
-      "note": "Från 39,99 USD/mån · 2 månader gratis vid årlig fakturering"
+      "note": "Från 39,99 USD/mån · 3 månader gratis vid årlig fakturering"
     },
     "faq": {
       "eyebrow": "Ingen fålla",

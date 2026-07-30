@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   CROSS_STRAIT_ACTIVITY_KEY,
+  CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
   fetchCrossStraitActivitySnapshot,
   validateCrossStraitActivitySnapshot,
 } from './cross-strait-activity/adapters.mjs';
@@ -39,8 +40,20 @@ function withoutRevisionHistory(observation) {
   return currentRevision;
 }
 
-function withoutProxyFailureDetail(source) {
-  const { proxyFailureDetail: _proxyFailureDetail, ...publicSource } = source;
+/**
+ * Strips operator-only proxy diagnostics from the anonymous bootstrap. Both
+ * fields describe OUR egress rather than the source: the response detail can
+ * carry upstream body text, and the control probe reports whether our own proxy
+ * is currently working. The bounded reason codes that remain (`blockedReason`,
+ * `fallbackReason`, `proxyFailureReason`) are what the disclosure UI reads, and
+ * they explain the state without publishing our transport's health.
+ */
+function withoutProxyOperatorDiagnostics(source) {
+  const {
+    proxyFailureDetail: _proxyFailureDetail,
+    proxyControlProbe: _proxyControlProbe,
+    ...publicSource
+  } = source;
   return publicSource;
 }
 
@@ -60,7 +73,7 @@ export function projectCrossStraitActivityBootstrap(snapshot) {
     schemaVersion: snapshot?.schemaVersion,
     generatedAt: snapshot?.generatedAt,
     status: snapshot?.status,
-    sources: (snapshot?.sources ?? []).map(withoutProxyFailureDetail),
+    sources: (snapshot?.sources ?? []).map(withoutProxyOperatorDiagnostics),
     coverage: snapshot?.coverage ?? {},
     observations: [...mnd, ...reviewedJapan].map(withoutRevisionHistory),
     baselines: snapshot?.baselines ?? {},
@@ -89,7 +102,7 @@ function sourceRecordCount(snapshot, sourceId) {
 export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
     const healthy = source?.transportStatus === 'fresh';
-    const blocked = source?.blockedReason === 'HTTP_403';
+    const blocked = CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(source?.blockedReason);
     const fetchedAt = Date.parse(
       blocked ? snapshot?.generatedAt ?? '' : source?.lastSuccessAt ?? '',
     );

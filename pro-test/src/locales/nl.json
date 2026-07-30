@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "$39,99 / maand",
-    "priceAnnual": "$399,99 / jaar",
-    "annualSavingsNote": "2 maanden gratis"
+    "priceAnnual": "$359,99 / jaar",
+    "annualSavingsNote": "3 maanden gratis"
   },
   "proShowcase": {
     "proTier": "PRO-NIVEAU",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Van real-time monitoring tot volledige intelligence-infrastructuur. Kies de laag die bij uw missie past.",
     "billingMonthly": "Maandelijks",
     "billingAnnual": "Jaarlijks",
-    "saveAnnual": "Bespaar 17%",
+    "saveAnnual": "Bespaar 25%",
     "mostPopular": "Meest Populair",
     "promoCodeNote": "Hebt u een promotiecode? Voer deze in bij het afrekenen.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API en officiële SDK's — 59 tools onder één sleutel",
       "proF5": "Custom widget builder voor je eigen panelen",
       "cta": "Zie plannen & prijzen",
-      "note": "Vanaf $39,99/mnd · 2 maanden gratis bij jaarlijkse betaling"
+      "note": "Vanaf $39,99/mnd · 3 maanden gratis bij jaarlijkse betaling"
     },
     "faq": {
       "eyebrow": "Geen addertje onder het gras",

@@ -25,7 +25,7 @@ const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
 
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
-export { CHROME_UA };
+export { CHROME_UA, MAX_PAYLOAD_BYTES };
 
 /**
  * Resolve the CoinGecko base URL + auth header for the configured key tier.
@@ -251,6 +251,24 @@ function findCheckoutRoot(startDir) {
  * the test-runtime guard and the checkout scoping, which is exactly how #5767
  * survived in two files.
  */
+/**
+ * Resolve the Convex HTTP-actions origin from an env bag.
+ *
+ * `CONVEX_URL` is the client/websocket origin (`*.convex.cloud`); HTTP actions
+ * — every `/relay/*` route — are served from the sibling `*.convex.site`. The
+ * mapping is a one-line string swap, but it is a one-line string swap that
+ * three callers were each carrying their own copy of, and a caller that gets
+ * it wrong silently POSTs to a host that does not route the request.
+ * Returns '' when neither variable is set, so callers can report what is
+ * missing rather than building a URL against `undefined`.
+ *
+ * @param {Record<string, string | undefined>} env
+ */
+export function resolveConvexSiteUrl(env) {
+  const raw = env.CONVEX_SITE_URL || (env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+  return raw ? raw.replace(/\/+$/, '') : '';
+}
+
 export function loadEnvFile(metaUrl, { only } = {}) {
   // Loading credentials is part of *running* a seeder, never part of importing
   // one. CI already runs the whole suite with no .env.local present, so staying
@@ -1014,8 +1032,8 @@ export function sleep(ms) {
 // ─── Proxy helpers for sources that block Railway container IPs ───
 const { resolveProxyString, resolveProxyStringConnect } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
-export function resolveProxy() {
-  return resolveProxyString();
+export function resolveProxy(raw = process.env.PROXY_URL || '') {
+  return resolveProxyString(raw);
 }
 
 // For HTTP CONNECT tunneling (httpsProxyFetchJson); keeps gate.decodo.com, not us.decodo.com.
@@ -1037,8 +1055,14 @@ export function redactProxyCredentials(text) {
 //
 // `exec` is an injection seam for tests ONLY — the credential scrubbing below lives in a
 // catch around execFileSync, and there is no other way to drive that branch deterministically.
-export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } = {}) {
-  const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
+export function curlFetch(
+  url,
+  proxyAuth,
+  headers = {},
+  { exec = execFileSync, timeoutMs = 15_000 } = {},
+) {
+  const curlTimeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const args = ['-sS', '--compressed', '--max-time', String(curlTimeoutSeconds), '-L'];
   if (proxyAuth) {
     const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
     args.push('-x', proxyUrl);
@@ -1048,7 +1072,11 @@ export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } 
   args.push(url);
   let raw;
   try {
-    raw = exec('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+    raw = exec('curl', args, {
+      encoding: 'utf8',
+      timeout: timeoutMs + 5_000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
   } catch (err) {
     // SECURITY: when curl itself exits non-zero (SSL_ERROR_SYSCALL, "CONNECT tunnel
     // failed", DNS), execFileSync builds an Error whose message is the ENTIRE argv —
@@ -1058,12 +1086,10 @@ export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } 
     // with curl's own stderr, which names the failure without echoing the command.
     //
     // Dropping `.status` is load-bearing, not incidental: execFileSync sets it to curl's
-    // EXIT CODE (35, 56, 7…). _gdelt-fetch.mjs discriminates "upstream returned non-2xx"
-    // from "network/curl failure" purely on `typeof status === 'number'`, so leaking the
-    // exit code through made it read curl exit 35 as an HTTP status, find it absent from
-    // RETRYABLE_STATUSES, and refuse to retry the proxy — defeating the Decodo per-attempt
-    // IP rotation on exactly the TLS tears it exists to survive. Only a genuine HTTP
-    // status may carry `.status`.
+    // EXIT CODE (35, 56, 7…). _gdelt-fetch.mjs uses `.status` to distinguish upstream
+    // HTTP responses from transport failures, so leaking the exit code would classify
+    // curl exit 35 as an HTTP response and publish the wrong route diagnostic. Only a
+    // genuine HTTP status may carry `.status`.
     const stderr = redactProxyCredentials(err?.stderr || '').trim().split('\n').filter(Boolean).pop();
     throw Object.assign(
       new Error(`curl failed: ${stderr || redactProxyCredentials(err?.message) || 'unknown error'}`),
@@ -1709,8 +1735,13 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
+    // Opt-in companion keys whose write TTL differs from the canonical key.
+    // Each declaration is preserved at its own TTL; preserveKeys keeps its
+    // existing canonical-TTL behavior for backward compatibility.
+    preserveKeyTtls = [],
     beforePublish,
     afterPublish,
+    afterValidationSkip,
     afterPreservedValidationSkip,
     afterFreshness,
     publishTransform,
@@ -1749,14 +1780,72 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       process.exit(1);
     }
   }
+  if (!Array.isArray(preserveKeyTtls)) {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} preserveKeyTtls must be an array`);
+    process.exit(1);
+  }
+  const normalizedPreserveKeyTtls = [];
+  const declaredTtlByKey = new Map();
+  for (const declaration of preserveKeyTtls) {
+    const key = declaration?.key;
+    const declaredTtl = declaration?.ttlSeconds;
+    if (
+      !declaration
+      || typeof declaration !== 'object'
+      || Array.isArray(declaration)
+      || typeof key !== 'string'
+      || key.trim().length === 0
+      || !Number.isInteger(declaredTtl)
+      || declaredTtl <= 0
+    ) {
+      console.error(
+        `  CONTRACT VIOLATION: ${domain}:${resource} preserveKeyTtls entries must be `
+        + `{ key: non-empty string, ttlSeconds: positive integer }`,
+      );
+      process.exit(1);
+    }
+    if (declaredTtlByKey.has(key) && declaredTtlByKey.get(key) !== declaredTtl) {
+      console.error(
+        `  CONTRACT VIOLATION: ${domain}:${resource} preserveKeyTtls declares conflicting TTLs for ${key}`,
+      );
+      process.exit(1);
+    }
+    declaredTtlByKey.set(key, declaredTtl);
+    normalizedPreserveKeyTtls.push({ key, ttlSeconds: declaredTtl });
+  }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const startMs = Date.now();
-  const preservationKeys = () => [...new Set([
+  const defaultPreservationTtl = ttlSeconds || 600;
+  const defaultPreservationKeys = [...new Set([
     canonicalKey,
     `seed-meta:${domain}:${resource}`,
     ...(extraKeys || []).map((ek) => ek.key),
     ...preserveKeys,
   ].filter((key) => typeof key === 'string' && key.length > 0))];
+
+  // Single preservation seam for fetch failure, fetch-phase SIGTERM, contract
+  // RETRY, validation skip, and per-extra-key empty skips. Grouping keys by TTL
+  // keeps one Redis pipeline per TTL while allowing explicit declarations to
+  // override a key that also appears in the default canonical-TTL cohort.
+  const preserveExistingKeys = async (targets) => {
+    const ttlByKey = new Map();
+    if (targets) {
+      for (const target of targets) ttlByKey.set(target.key, target.ttlSeconds);
+    } else {
+      for (const key of defaultPreservationKeys) ttlByKey.set(key, defaultPreservationTtl);
+      for (const target of normalizedPreserveKeyTtls) ttlByKey.set(target.key, target.ttlSeconds);
+    }
+
+    const keysByTtl = new Map();
+    for (const [key, targetTtl] of ttlByKey) {
+      if (!keysByTtl.has(targetTtl)) keysByTtl.set(targetTtl, []);
+      keysByTtl.get(targetTtl).push(key);
+    }
+    const results = await Promise.all(
+      [...keysByTtl].map(([targetTtl, keys]) => extendExistingTtl(keys, targetTtl)),
+    );
+    return results.every(Boolean);
+  };
 
   console.log(`=== ${domain}:${resource} Seed ===`);
   console.log(`  Run ID:  ${runId}`);
@@ -1801,10 +1890,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
     try {
       if (currentPhase === 'fetch') {
-        const ttl = ttlSeconds || 600;
         await Promise.allSettled([
           releaseLock(`${domain}:${resource}`, runId),
-          extendExistingTtl(preservationKeys(), ttl),
+          preserveExistingKeys(),
         ]);
       } else {
         await releaseLock(`${domain}:${resource}`, runId);
@@ -1849,8 +1937,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error(`  FETCH FAILED: ${err.message || err}${cause}`);
 
-    const ttl = ttlSeconds || 600;
-    await extendExistingTtl(preservationKeys(), ttl);
+    await preserveExistingKeys();
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
@@ -1941,7 +2028,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // and /api/health already carries the alarm).
     if (contractState === 'RETRY') {
       const durationMs = Date.now() - startMs;
-      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await preserveExistingKeys();
 
       // #5256: the RETRY-FAILED exit below assumes A LATER TICK CAN RESTORE THE DATA. When
       // the seeder reports it had no usable source at all (primary unconfigured AND every
@@ -1992,8 +2079,22 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
-      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await preserveExistingKeys();
       const strictFailure = Boolean(opts.emptyDataIsFailure);
+      const validationSkipContext = {
+        canonicalKey,
+        ttlSeconds,
+        recordCount: contractRecordCount,
+        runId,
+        preservationSucceeded: preserved,
+      };
+      // Some rejected snapshots carry failure evidence that must survive even
+      // when there is no complete last-good cohort to preserve. Keep this hook
+      // in the publish phase so its persistence cannot make withRetry(fetchFn)
+      // repeat upstream source requests.
+      if (!strictFailure && afterValidationSkip) {
+        await afterValidationSkip(data, validationSkipContext);
+      }
       if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
         // empty data as a real upstream failure. Do NOT refresh seed-meta —
@@ -2049,12 +2150,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         }
       }
       if (!strictFailure && preserved && afterPreservedValidationSkip) {
-        await afterPreservedValidationSkip(data, {
-          canonicalKey,
-          ttlSeconds,
-          recordCount: contractRecordCount,
-          runId,
-        });
+        await afterPreservedValidationSkip(data, validationSkipContext);
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
@@ -2124,7 +2220,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // whose IDs the upstream dropped this cycle). Preserve last-good by
           // extending the existing key's TTL instead.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
-            await extendExistingTtl([ek.key], ek.ttl || ttlSeconds || 600);
+            await preserveExistingKeys([{
+              key: ek.key,
+              ttlSeconds: ek.ttl || ttlSeconds || 600,
+            }]);
             console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
             continue;
           }

@@ -1365,9 +1365,20 @@ describe('PRO widget — store and sanitizer', () => {
           readyMessages.push({ payload, targetOrigin });
         },
       };
+      function FakeEventTarget() {}
+      FakeEventTarget.prototype.addEventListener = (type, listener) => {
+        listeners.set(type, listener);
+      };
+      function FakeEvent() {}
+      FakeEvent.prototype.stopImmediatePropagation = () => {};
+      const sandboxWindow = new FakeEventTarget();
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token' };
+      sandboxWindow.parent = parent;
       const context = {
         URL,
         URLSearchParams,
+        Event: FakeEvent,
+        EventTarget: FakeEventTarget,
         document: {
           referrer,
           open() {},
@@ -1376,13 +1387,7 @@ describe('PRO widget — store and sanitizer', () => {
           },
           close() {},
         },
-        window: {
-          location: { hash: '#id=wm-1&token=test-token' },
-          parent,
-          addEventListener(type, listener) {
-            listeners.set(type, listener);
-          },
-        },
+        window: sandboxWindow,
       };
       vm.runInNewContext(script, context);
       const message = listeners.get('message');
@@ -1404,6 +1409,40 @@ describe('PRO widget — store and sanitizer', () => {
       source: allowed.parent,
     });
     assert.deepEqual(allowed.writes, ['<p>ok</p>']);
+    allowed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>second</p>' },
+      origin: 'https://worldmonitor-git-feature-eliewm.vercel.app',
+      source: allowed.parent,
+    });
+    assert.deepEqual(allowed.writes, ['<p>ok</p>'], 'only the first accepted message may write');
+
+    const invalidMessages = [
+      {
+        data: { type: 'other', id: 'wm-1', token: 'test-token', html: '<p>bad type</p>' },
+        origin: 'https://worldmonitor.app',
+      },
+      {
+        data: { type: 'wm-html', id: 'wrong-id', token: 'test-token', html: '<p>bad id</p>' },
+        origin: 'https://worldmonitor.app',
+      },
+      {
+        data: { type: 'wm-html', id: 'wm-1', token: 'wrong-token', html: '<p>bad token</p>' },
+        origin: 'https://worldmonitor.app',
+      },
+    ];
+    for (const invalidMessage of invalidMessages) {
+      const rejected = runSandbox('https://worldmonitor.app/dashboard');
+      rejected.message({ ...invalidMessage, source: rejected.parent });
+      assert.deepEqual(rejected.writes, []);
+    }
+
+    const wrongSource = runSandbox('https://worldmonitor.app/dashboard');
+    wrongSource.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>bad source</p>' },
+      origin: 'https://worldmonitor.app',
+      source: {},
+    });
+    assert.deepEqual(wrongSource.writes, []);
 
     const spoofed = runSandbox('https://worldmonitor-git-feature-eliewm.vercel.app.evil.com/');
     assert.deepEqual(spoofed.readyMessages, []);
@@ -1413,6 +1452,127 @@ describe('PRO widget — store and sanitizer', () => {
       source: spoofed.parent,
     });
     assert.deepEqual(spoofed.writes, []);
+  });
+
+  it('widget sandbox blocks beforeunload without breaking normal events before widget execution', () => {
+    const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
+    assert.ok(script, 'sandbox inline script not found');
+
+    function FakeEvent(type) {
+      this.type = type;
+      this.immediatePropagationStopped = false;
+    }
+
+    FakeEvent.prototype.stopImmediatePropagation = function () {
+      this.immediatePropagationStopped = true;
+    };
+
+    function FakeEventTarget() {
+      this.listeners = new Map();
+    }
+
+    FakeEventTarget.prototype.addEventListener = function (type, listener, options) {
+      const entries = this.listeners.get(type) ?? [];
+      entries.push({ listener, options });
+      this.listeners.set(type, entries);
+    };
+
+    FakeEventTarget.prototype.dispatchEvent = function (event) {
+      const entries = [...(this.listeners.get(event.type) ?? [])];
+      for (const entry of entries) {
+        if (typeof entry.listener === 'function') {
+          entry.listener.call(this, event);
+        } else {
+          entry.listener.handleEvent.call(entry.listener, event);
+        }
+        if (event.immediatePropagationStopped) break;
+        if (entry.options?.once) {
+          const current = this.listeners.get(event.type) ?? [];
+          this.listeners.set(event.type, current.filter((candidate) => candidate !== entry));
+        }
+      }
+      return true;
+    };
+
+    const parent = { postMessage() {} };
+    const sandboxWindow = new FakeEventTarget();
+    sandboxWindow.location = { hash: '#id=wm-1&token=test-token' };
+    sandboxWindow.parent = parent;
+
+    let guardedAtWrite = false;
+    let vmContext;
+    const document = {
+      referrer: 'https://worldmonitor.app/dashboard',
+      open() {
+        // Real document.open() clears Window listeners. The guard must restore
+        // its stopper after this reset and before widget HTML begins parsing.
+        sandboxWindow.listeners.clear();
+      },
+      write(html) {
+        sandboxWindow.onbeforeunload = () => 'too late';
+        sandboxWindow.addEventListener('beforeunload', () => {
+          sandboxWindow.beforeUnloadCalls++;
+        });
+        guardedAtWrite = sandboxWindow.onbeforeunload === null
+          && (sandboxWindow.listeners.get('beforeunload')?.length ?? 0) === 1;
+
+        for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/gi)) {
+          vm.runInContext(match[1], vmContext);
+        }
+      },
+      close() {},
+    };
+
+    vmContext = vm.createContext({
+      URL,
+      URLSearchParams,
+      Event: FakeEvent,
+      EventTarget: FakeEventTarget,
+      document,
+      window: sandboxWindow,
+    });
+    vm.runInContext(script, vmContext);
+
+    const message = sandboxWindow.listeners.get('message')?.[0]?.listener;
+    assert.equal(typeof message, 'function', 'message listener must be registered');
+
+    const widgetHtml = `<script>
+window.beforeUnloadCalls = 0;
+window.clickCalls = 0;
+window.onbeforeunload = function () {
+  window.beforeUnloadCalls++;
+  return 'blocked';
+};
+window.addEventListener('beforeunload', function () {
+  window.beforeUnloadCalls++;
+});
+EventTarget.prototype.addEventListener.call(window, 'beforeunload', function () {
+  window.beforeUnloadCalls++;
+});
+window.addEventListener('click', {
+  handleEvent: function () {
+    window.clickCalls++;
+  }
+}, { once: true, passive: true });
+window.dispatchEvent(new Event('beforeunload'));
+window.dispatchEvent(new Event('click'));
+window.dispatchEvent(new Event('click'));
+</script>`;
+
+    assert.doesNotThrow(() => {
+      message.call(sandboxWindow, {
+        data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: widgetHtml },
+        origin: 'https://worldmonitor.app',
+        source: parent,
+      });
+    });
+
+    assert.equal(guardedAtWrite, true, 'beforeunload guard must be active when document.write starts');
+    assert.equal(sandboxWindow.onbeforeunload, null, 'onbeforeunload assignments must remain inert');
+    sandboxWindow.onbeforeunload = () => 'still blocked';
+    assert.equal(sandboxWindow.onbeforeunload, null, 'ordinary reassignment must not restore onbeforeunload');
+    assert.equal(sandboxWindow.beforeUnloadCalls, 0, 'the native stopper must block later beforeunload handlers');
+    assert.equal(sandboxWindow.clickCalls, 1, 'listener objects and normal event options must still work');
   });
 
   it('PRO widget message listener has AbortController cleanup wired to iframe removal', () => {

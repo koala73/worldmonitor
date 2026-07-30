@@ -278,6 +278,20 @@ describe('keyword-preceded regex literals', () => {
     assert.equal(objectLiteralEntryValue(body, 'small'), '1');
   });
 
+  it('keeps identifiers and properties named like keywords in division context', () => {
+    const source = [
+      'const of = width;',
+      'const first = of / total; // drop first',
+      'const second = obj.in / total; // drop second',
+      'const third = obj?.default / total; // drop third',
+    ].join('\n');
+    const stripped = stripJsComments(source);
+    assert.ok(stripped.includes('of / total;'));
+    assert.ok(stripped.includes('obj.in / total;'));
+    assert.ok(stripped.includes('obj?.default / total;'));
+    assert.doesNotMatch(stripped, /drop first|drop second|drop third/);
+  });
+
   it('treats an unterminated slash as division rather than eating the line', () => {
     const source = 'const half = value / 2;\nconst SIZES = { small: 1 };\n';
     const body = extractDelimitedBlock(source, 'const SIZES');

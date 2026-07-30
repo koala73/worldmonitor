@@ -335,6 +335,53 @@ describe('China coverage manifest', () => {
     );
   });
 
+  it('keeps disclosure coverage degraded during a successful transport recovery run', () => {
+    const disclosures = CHINA_COVERAGE_ENTRIES.find(
+      (entry) => entry.id === 'market.china-corporate-disclosures',
+    );
+    const result = evaluate(
+      disclosures,
+      {
+        'market:china:corporate-disclosures:v1': {
+          status: 'degraded',
+          coverageThrough: null,
+          events: [],
+          sources: [
+            {
+              id: 'sse',
+              transportStatus: 'fresh',
+              contentStatus: 'current',
+              transportReliability: { status: 'stable' },
+            },
+            {
+              id: 'szse',
+              transportStatus: 'fresh',
+              contentStatus: 'current',
+              transportReliability: {
+                status: 'recovering',
+                consecutiveSuccesses: 1,
+                consecutiveFailures: 0,
+              },
+            },
+          ],
+        },
+      },
+      {
+        'seed-meta:market:china-corporate-disclosures': {
+          fetchedAt: NOW,
+          status: 'ok',
+        },
+      },
+    );
+
+    assert.equal(result.entries[0].status, 'degraded');
+    assert.equal(result.entries[0].content.status, 'partial');
+    assert.deepEqual(
+      result.entries[0].reasonCodes,
+      [CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL],
+    );
+  });
+
   it('keeps a healthy zero-event disclosure window healthy when fetched filings are outside the owned taxonomy', () => {
     const disclosures = CHINA_COVERAGE_ENTRIES.find(
       (entry) => entry.id === 'market.china-corporate-disclosures',

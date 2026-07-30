@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { fetchAllHumanitarianSummaries } from '../scripts/seed-conflict-intel.mjs';
 import { fetchChinaCorporateDisclosureSnapshot } from '../scripts/china-corporate-disclosures/adapters.mjs';
 import { fetchCrossStraitActivitySnapshot } from '../scripts/cross-strait-activity/adapters.mjs';
 
@@ -16,20 +15,11 @@ import { fetchCrossStraitActivitySnapshot } from '../scripts/cross-strait-activi
 
 const PROXY_VARS = [
   'PROXY_URL',
-  'HAPI_PROXY_URL',
   'SZSE_PROXY_URL',
   'JAPAN_MOD_PROXY_URL',
 ];
 
-// The HAPI path reaches extendExistingTtl() through a module-level import, which
-// is not injectable through the function's options. On a machine that carries
-// Redis credentials it therefore issues real EXPIRE commands against production
-// keys just by running this test. extendExistingTtlDetailed() guards on these
-// two variables and returns without any network call when either is absent, so
-// clearing them for the whole file makes the test hermetic regardless of who
-// runs it. Restored in afterEach alongside the proxy variables.
-const REDIS_VARS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'];
-const MANAGED_VARS = [...PROXY_VARS, ...REDIS_VARS];
+const MANAGED_VARS = PROXY_VARS;
 
 const saved = new Map();
 for (const name of MANAGED_VARS) saved.set(name, process.env[name]);
@@ -60,14 +50,6 @@ function recordingProxyFetch() {
     },
   };
 }
-
-const botBlockedResponse = async () => ({
-  ok: false,
-  status: 429,
-  headers: { get: () => 'application/json' },
-  text: async () => JSON.stringify({ message: 'Blocked due to bot activity' }),
-  json: async () => ({ message: 'Blocked due to bot activity' }),
-});
 
 describe('source-specific proxy resolution', () => {
   describe('SZSE / china corporate disclosures', () => {
@@ -116,50 +98,6 @@ describe('source-specific proxy resolution', () => {
         fetchFn: async () => { throw new Error('direct blocked'); },
         proxyRequestFn,
         sleepFn: async () => {},
-      }).catch(() => {});
-      assert.ok(hosts.length > 0, 'proxy transport must be reached');
-      assert.equal(hosts[0], 'shared');
-    });
-  });
-
-  describe('HAPI / humanitarian summaries', () => {
-    it('prefers HAPI_PROXY_URL when both are set', async () => {
-      setProxyEnv({ PROXY_URL: 'http://shared:1', HAPI_PROXY_URL: 'http://hapi:2' });
-      const { hosts, proxyRequestFn } = recordingProxyFetch();
-      await fetchAllHumanitarianSummaries({
-        // HAPI only switches to the proxy on the specific bot-block signature
-        // (429 + "blocked due to bot activity"); a generic transport error takes
-        // the failure-backoff path instead and never touches the proxy.
-        fetchFn: botBlockedResponse,
-        proxyRequestFn,
-        pace: async () => {},
-        countryCodes: ['SY'],
-        requiredCountryCodes: ['SY'],
-        loadPreviousMarker: async () => null,
-        loadFailureBackoff: async () => null,
-        writeFailureBackoff: async () => {},
-        writeFailureMeta: async () => {},
-      }).catch(() => {});
-      assert.ok(hosts.length > 0, 'proxy transport must be reached');
-      assert.equal(hosts[0], 'hapi');
-    });
-
-    it('falls back to PROXY_URL when the source-specific var is unset', async () => {
-      setProxyEnv({ PROXY_URL: 'http://shared:1' });
-      const { hosts, proxyRequestFn } = recordingProxyFetch();
-      await fetchAllHumanitarianSummaries({
-        // HAPI only switches to the proxy on the specific bot-block signature
-        // (429 + "blocked due to bot activity"); a generic transport error takes
-        // the failure-backoff path instead and never touches the proxy.
-        fetchFn: botBlockedResponse,
-        proxyRequestFn,
-        pace: async () => {},
-        countryCodes: ['SY'],
-        requiredCountryCodes: ['SY'],
-        loadPreviousMarker: async () => null,
-        loadFailureBackoff: async () => null,
-        writeFailureBackoff: async () => {},
-        writeFailureMeta: async () => {},
       }).catch(() => {});
       assert.ok(hosts.length > 0, 'proxy transport must be reached');
       assert.equal(hosts[0], 'shared');

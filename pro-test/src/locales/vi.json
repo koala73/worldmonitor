@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "$39,99 / tháng",
-    "priceAnnual": "$399,99 / năm",
-    "annualSavingsNote": "tiết kiệm 2 tháng"
+    "priceAnnual": "$359,99 / năm",
+    "annualSavingsNote": "tiết kiệm 3 tháng"
   },
   "proShowcase": {
     "proTier": "CẤP ĐỘ PRO",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Từ giám sát thời gian thực đến cơ sở hạ tầng trí tuệ toàn diện. Chọn mức giá phù hợp với nhiệm vụ của bạn.",
     "billingMonthly": "Hàng tháng",
     "billingAnnual": "Hàng năm",
-    "saveAnnual": "Tiết kiệm 17%",
+    "saveAnnual": "Tiết kiệm 25%",
     "mostPopular": "Phổ biến nhất",
     "promoCodeNote": "Có mã khuyến mãi? Nhập nó khi thanh toán.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API & SDK chính thức — 59 công cụ dưới một khóa",
       "proF5": "Trình xây dựng tiện ích tùy chỉnh cho bảng điều khiển của bạn",
       "cta": "Xem các gói & giá cả",
-      "note": "Từ $39.99/tháng · Miễn phí 2 tháng khi thanh toán hàng năm"
+      "note": "Từ $39.99/tháng · Miễn phí 3 tháng khi thanh toán hàng năm"
     },
     "faq": {
       "eyebrow": "Không có điều kiện kèm theo",

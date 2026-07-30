@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "$39.99 / 月\t",
-    "priceAnnual": "$399.99 / 年\t",
-    "annualSavingsNote": "节省 2 个月\t"
+    "priceAnnual": "$359.99 / 年\t",
+    "annualSavingsNote": "节省 3 个月\t"
   },
   "proShowcase": {
     "proTier": "PRO 等级",
@@ -330,7 +330,7 @@
     "headerSubtitle": "从实时监控到完整的情报基础设施。选择适合您任务的层级。",
     "billingMonthly": "月度",
     "billingAnnual": "年度",
-    "saveAnnual": "节省 17%",
+    "saveAnnual": "节省 25%",
     "mostPopular": "最受欢迎",
     "promoCodeNote": "有促销代码？在结账时输入。",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP、REST API 及官方 SDK — 59 个工具统一密钥管理",
       "proF5": "自定义小部件构建器，用于您自己的面板",
       "cta": "查看计划和定价",
-      "note": "起价 $39.99/月 · 按年计费可免费享受 2 个月"
+      "note": "起价 $39.99/月 · 按年计费可免费享受 3 个月"
     },
     "faq": {
       "eyebrow": "无隐藏条件",

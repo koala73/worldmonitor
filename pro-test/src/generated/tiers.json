@@ -26,7 +26,7 @@
     "name": "Pro",
     "localeKey": "pro",
     "monthlyPrice": 39.99,
-    "annualPrice": 399.99,
+    "annualPrice": 359.99,
     "description": "Full intelligence dashboard",
     "features": [
       "Everything in Free",
@@ -55,7 +55,7 @@
     "name": "Pro Business",
     "localeKey": "proBusiness",
     "monthlyPrice": 49.99,
-    "annualPrice": 499,
+    "annualPrice": 449.99,
     "description": "The Pro dashboard, licensed for work",
     "features": [
       "Everything in Pro",
@@ -82,7 +82,7 @@
     "name": "API Starter",
     "localeKey": "api",
     "monthlyPrice": 99.99,
-    "annualPrice": 999,
+    "annualPrice": 899.99,
     "description": "Build internal tools on live intelligence data",
     "features": [
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
@@ -109,6 +109,7 @@
     "name": "API Business",
     "localeKey": "apiBusiness",
     "monthlyPrice": 299.99,
+    "annualPrice": 2699.99,
     "description": "Launch your own product on WorldMonitor data",
     "features": [
       "Everything in API Starter",
@@ -128,6 +129,7 @@
       "mcpBurstRequestsPerMinute": 300
     },
     "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
+    "annualProductId": "pdt_0NkHjzMhGp3m45sZLQ7BQ",
     "highlighted": false
   },
   {

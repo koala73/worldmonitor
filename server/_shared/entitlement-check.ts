@@ -10,9 +10,11 @@
  *   - Redis miss + Convex failure -> 403 (unable to verify entitlements)
  *   - Endpoint not in ENDPOINT_ENTITLEMENTS -> allow (unrestricted)
  *
- * Transient Redis/Convex failures return a verificationUnavailable marker so
- * callers can answer with a retryable 503 instead of a misleading hard denial.
- * A null means the backend is unconfigured or returned no usable entitlement.
+ * A lookup that was attempted but produced no answer — Redis/Convex failure,
+ * Convex 5xx, or a Convex 4xx that means our own credential is wrong — returns a
+ * verificationUnavailable marker so callers answer with a retryable 503 instead
+ * of a misleading hard denial. A null means either that no lookup was attempted
+ * (backend unconfigured) or that Convex confirmed the user has no entitlement.
  * The user-key gateway fails closed on null when the backend is configured and
  * retains a logged fail-open exception only when lookup is wholly unconfigured.
  *
@@ -95,17 +97,23 @@ export interface CachedEntitlements {
     status: 'not_applicable';
     checkedAt: number;
   };
-  // Synthesized by getEntitlements() when the backend lookup failed
-  // TRANSIENTLY (fetch abort at the 3s budget — which the #4770 on-demand
-  // provider re-check can consume — network error, Convex 5xx): a free-shaped,
-  // deny-side value that getBillingVerificationDenial turns into the retryable
+  // Synthesized by getEntitlements() when a lookup was ATTEMPTED and produced
+  // no answer about this user: a fetch abort at the 3s budget (which the #4770
+  // on-demand provider re-check can consume), a network error, a Convex 5xx, or
+  // a Convex 4xx (#5619 — our own shared secret or contract is wrong, which
+  // says nothing about the caller's plan). A free-shaped, deny-side value that
+  // getBillingVerificationDenial turns into the retryable
   // entitlement_verification_unavailable 503 instead of a hard "upgrade
   // required"/401. Never originates from Convex and is never written to the
   // Redis cache (it IS held for a few seconds in the in-process negative cache
   // below, which bounds outage amplification without making the state durable
-  // or visible to another isolate). A null return now means the backend is
-  // unconfigured or gave a confirmed/malformed answer — callers keep their
-  // fail-closed posture there.
+  // or visible to another isolate).
+  //
+  // A null return therefore means one of exactly two things: the backend is
+  // unconfigured so no lookup was attempted (server/gateway.ts detects that
+  // with isEntitlementBackendConfigured() and keeps its wm_-key fail-open
+  // exception), or Convex answered and this user has no entitlement row — a
+  // confirmed free account, which is the one state that may honestly upsell.
   verificationUnavailable?: true;
 }
 
@@ -232,14 +240,23 @@ const UNAVAILABLE_NEGATIVE_CACHE_TTL_MS = 3_000;
  */
 const UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES = 1_000;
 
-/** userId -> epoch ms after which the cached transient failure expires. */
-const _unavailableUntil = new Map<string, number>();
+/**
+ * userId -> when the cached transient failure expires, plus any upstream-supplied
+ * cooldown that produced it.
+ *
+ * `retryAfterSeconds` rides along because the cache HIT re-synthesizes the
+ * marker rather than storing it: without this, a 429's own Retry-After would be
+ * honored on the first response and silently downgraded to the generic default
+ * for every hit inside the window — sending clients back at the upstream sooner
+ * than it asked, which is the amplification the header exists to prevent.
+ */
+const _unavailableUntil = new Map<string, { expiresAt: number; retryAfterSeconds?: number }>();
 
-function rememberVerificationUnavailable(userId: string): void {
+function rememberVerificationUnavailable(userId: string, retryAfterSeconds?: number): void {
   const now = Date.now();
   if (_unavailableUntil.size >= UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES) {
-    for (const [key, expiresAt] of _unavailableUntil) {
-      if (expiresAt <= now) _unavailableUntil.delete(key);
+    for (const [key, entry] of _unavailableUntil) {
+      if (entry.expiresAt <= now) _unavailableUntil.delete(key);
     }
     while (_unavailableUntil.size >= UNAVAILABLE_NEGATIVE_CACHE_MAX_ENTRIES) {
       const oldest = _unavailableUntil.keys().next();
@@ -247,7 +264,10 @@ function rememberVerificationUnavailable(userId: string): void {
       _unavailableUntil.delete(oldest.value);
     }
   }
-  _unavailableUntil.set(userId, now + UNAVAILABLE_NEGATIVE_CACHE_TTL_MS);
+  _unavailableUntil.set(userId, {
+    expiresAt: now + UNAVAILABLE_NEGATIVE_CACHE_TTL_MS,
+    retryAfterSeconds,
+  });
 }
 
 /**
@@ -423,9 +443,11 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
   // rather than re-paying the backend's 3s budget. Only the synthesized
   // verificationUnavailable answer is cached here — never a confirmed row and
   // never a fail-closed null, both of which have their own (Redis) cache policy.
-  const unavailableUntil = _unavailableUntil.get(userId);
-  if (unavailableUntil !== undefined) {
-    if (unavailableUntil > Date.now()) return unavailableEntitlements();
+  const unavailable = _unavailableUntil.get(userId);
+  if (unavailable !== undefined) {
+    if (unavailable.expiresAt > Date.now()) {
+      return unavailableEntitlements(unavailable.retryAfterSeconds);
+    }
     _unavailableUntil.delete(userId);
   }
 
@@ -436,7 +458,9 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
   _inFlight.set(userId, promise);
   try {
     const result = await promise;
-    if (result?.verificationUnavailable) rememberVerificationUnavailable(userId);
+    if (result?.verificationUnavailable) {
+      rememberVerificationUnavailable(userId, result.retryAfterSeconds);
+    }
     return result;
   } finally {
     _inFlight.delete(userId);
@@ -446,7 +470,12 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
 // Free-shaped deny-side value for transient lookup failures. Grants nothing
 // (tier 0, no apiAccess/mcpAccess, validUntil 0); its only power is steering
 // the gates to the retryable 503 via getBillingVerificationDenial.
-function unavailableEntitlements(): CachedEntitlements {
+//
+// `retryAfterSeconds` is optional and only supplied when the upstream told us
+// how long to wait (a 429's own Retry-After). Omitted, the denial constructors
+// fall back to the generic clamp default, which is the behavior every other
+// failure mode here wants.
+function unavailableEntitlements(retryAfterSeconds?: number): CachedEntitlements {
   return {
     planKey: 'free',
     features: {
@@ -460,7 +489,21 @@ function unavailableEntitlements(): CachedEntitlements {
     },
     validUntil: 0,
     verificationUnavailable: true,
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
   };
+}
+
+/**
+ * Parse an HTTP `Retry-After` header into seconds.
+ *
+ * Only the delta-seconds form is honored. The HTTP-date form is legal but
+ * Convex does not emit it, and guessing at clock skew to support it would be
+ * worse than falling back to the caller's default.
+ */
+function parseRetryAfterSeconds(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header.trim());
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }
 
 async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements | null> {
@@ -517,10 +560,31 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       signal: AbortSignal.timeout(3_000),
     });
     if (!response.ok) {
-      // 5xx = Convex/platform blip -> retryable-503 posture at the gates.
-      // 4xx (bad shared secret, contract rejection) = deploy defect, not a
-      // transient: keep the fail-closed null so callers hold the hard posture.
-      return response.status >= 500 ? unavailableEntitlements() : null;
+      // Neither a 5xx (Convex/platform blip) nor a 4xx (bad shared secret,
+      // contract rejection) produced an answer about this user, so neither may
+      // reach the wire as one.
+      //
+      // #5661 split them — 4xx returned the fail-closed null on the reasoning
+      // that a deploy defect is not transient. True, but "not transient" and
+      // "is a verdict about this account's plan" are different axes, and the
+      // gates only read the second: a null renders as `pro_required` /
+      // INSUFFICIENT_TIER, i.e. an upsell shown to a paying customer because
+      // OUR credential is wrong (#5619, the #5600 failure mode). The marker
+      // denies exactly as hard — tier 0, nothing granted — and only changes the
+      // wording to the retryable contract, which is already what
+      // server/gateway.ts answers for this state on wm_-key traffic. A client
+      // that keeps retrying spends its transient budget and lands on `give_up`:
+      // still terminal, still not an upsell.
+      //
+      // A 429 is the one status that tells us how long to wait. Re-advertising
+      // the generic 5s default would send clients back inside the upstream's
+      // own cooldown and amplify the throttling we were just asked to ease, so
+      // its Retry-After rides along on the marker.
+      return unavailableEntitlements(
+        response.status === 429
+          ? parseRetryAfterSeconds(response.headers.get('Retry-After'))
+          : undefined,
+      );
     }
     const result = await response.json() as CachedEntitlements | null;
 
@@ -599,6 +663,27 @@ export interface BillingVerificationDenial {
 }
 
 /**
+ * The "we could not verify" denial, built in ONE place.
+ *
+ * Two situations produce it and they must not drift apart on the wire: the
+ * synthesized `verificationUnavailable` marker below, and a caller that already
+ * knows no lookup could have answered — `getEntitlements` returns null WITHOUT
+ * attempting one when the backend is unconfigured, so an absent row there is a
+ * deploy defect rather than a verdict about the account (#5619).
+ */
+export function unverifiableEntitlementDenial(
+  retryAfterSeconds?: number,
+): BillingVerificationDenial {
+  return {
+    retryable: true,
+    code: 'entitlement_verification_unavailable',
+    retryAfterSeconds: clampRetryAfterSeconds(retryAfterSeconds),
+    message: 'Unable to verify API access',
+    status: 503,
+  };
+}
+
+/**
  * The billing-verification decision, as a pure predicate over an entitlement
  * row — no Response, no headers, no transport.
  *
@@ -618,15 +703,9 @@ export function classifyBillingVerification(
   entitlements: BillingVerificationInput | null | undefined,
 ): BillingVerificationDenial | null {
   if (entitlements?.verificationUnavailable) {
-    // Transient lookup failure: same wire contract as server/gateway.ts's
-    // wm_-key null-entitlement branch (docs/usage-errors.mdx).
-    return {
-      retryable: true,
-      code: 'entitlement_verification_unavailable',
-      retryAfterSeconds: clampRetryAfterSeconds(entitlements.retryAfterSeconds),
-      message: 'Unable to verify API access',
-      status: 503,
-    };
+    // Lookup failure: same wire contract as server/gateway.ts's wm_-key
+    // null-entitlement branch (docs/usage-errors.mdx).
+    return unverifiableEntitlementDenial(entitlements.retryAfterSeconds);
   }
 
   const status = entitlements?.billingStatus;
@@ -767,6 +846,23 @@ export async function checkEntitlementDetailed(
 
   const ent = await getEntitlements(userId);
   if (!ent) {
+    // An absent row is a verdict about the account only when a lookup could
+    // actually run. With the backend unconfigured getEntitlements returns null
+    // BEFORE attempting one — for everyone, paying customers included — so the
+    // hard 403 below would tell every subscriber their entitlement could not be
+    // verified because of our own deploy defect. This gate is reached from
+    // server/gateway.ts on every tier-gated session request, which makes it the
+    // widest surface of the #5619 asymmetry (#5600 is the precedent).
+    if (!isEntitlementBackendConfigured()) {
+      return {
+        response: renderBillingVerificationDenial(
+          unverifiableEntitlementDenial(),
+          corsHeaders,
+          requiredTier,
+        ),
+        entitlements: null,
+      };
+    }
     // Fail-closed: unable to verify entitlements -> block the request
     return {
       response: new Response(

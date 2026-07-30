@@ -94,6 +94,22 @@ export interface CrossStraitProxyFailureDetail {
   errorMessage: string | null;
 }
 
+/**
+ * Mirrors CROSS_STRAIT_BLOCKED_SOURCE_REASONS in
+ * scripts/cross-strait-activity/adapters.mjs. The producer lives under scripts/
+ * because Railway's nixpacks service copies only that directory, so this list
+ * is a hand-kept mirror rather than an import; the production-registration test
+ * pins the two together, because a producer reason missing here is not a type
+ * error — it silently fails the runtime source-health guard and drops the whole
+ * snapshot on the client.
+ */
+export const CROSS_STRAIT_BLOCKED_SOURCE_REASONS = [
+  'HTTP_403',
+  'PROXY_TARGET_FORBIDDEN',
+] as const;
+
+export type CrossStraitBlockedReason = typeof CROSS_STRAIT_BLOCKED_SOURCE_REASONS[number];
+
 export interface CrossStraitActivitySourceHealth {
   id: CrossStraitSourceId;
   publisher: string;
@@ -102,10 +118,23 @@ export interface CrossStraitActivitySourceHealth {
   transportStatus: 'fresh' | 'error';
   requestCount: number;
   transportPath?: 'direct' | 'proxy';
-  blockedReason?: 'HTTP_403';
+  blockedReason?: CrossStraitBlockedReason;
   fallbackReason?: string;
   proxyFailureReason?: string;
+  /**
+   * Operator-only. Stripped from the anonymous bootstrap projection, so this is
+   * never populated on a client-hydrated snapshot -- it is modelled here because
+   * this interface describes the durable source-health record the seeder writes,
+   * of which the bootstrap is a narrowed projection.
+   */
   proxyFailureDetail?: CrossStraitProxyFailureDetail;
+  /**
+   * Operator-only, same projection carve-out as `proxyFailureDetail`. Present
+   * only when a proxy CONNECT refusal was tested against a control host:
+   * `reachable` means the proxy tunnels elsewhere and refuses this target
+   * specifically, which is what licenses `PROXY_TARGET_FORBIDDEN`.
+   */
+  proxyControlProbe?: 'reachable' | 'unreachable';
   errorCodes: string[];
   lastSuccessAt: string | null;
   admittedDocumentCount?: number;

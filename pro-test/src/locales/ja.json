@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "$39.99 / 月",
-    "priceAnnual": "$399.99 / 年",
-    "annualSavingsNote": "2 ヶ月分無料"
+    "priceAnnual": "$359.99 / 年",
+    "annualSavingsNote": "3 ヶ月分無料"
   },
   "proShowcase": {
     "proTier": "PRO ティア",
@@ -330,7 +330,7 @@
     "headerSubtitle": "リアルタイム監視から完全なインテリジェンスインフラストラクチャまで。あなたのミッションに合ったティアを選びましょう。",
     "billingMonthly": "月額",
     "billingAnnual": "年額",
-    "saveAnnual": "17%節約",
+    "saveAnnual": "25%節約",
     "mostPopular": "最も人気",
     "promoCodeNote": "プロモコードをお持ちですか？チェックアウト時に入力してください。",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP、REST API、公式SDK — 59個のツールが1つのキーに統合",
       "proF5": "独自のパネル用カスタムウィジェットビルダー",
       "cta": "プランと価格を見る",
-      "note": "$39.99/月から · 年間課金時は2ヶ月無料"
+      "note": "$39.99/月から · 年間課金時は3ヶ月無料"
     },
     "faq": {
       "eyebrow": "落とし穴なし",

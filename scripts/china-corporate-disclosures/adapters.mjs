@@ -6,7 +6,7 @@ import {
 } from '../shared/china-corporate-disclosure-policy.js';
 
 const {
-  parseProxyConfig,
+  parseProxyConfigForAttempt,
   proxyFetch,
 } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
@@ -14,6 +14,7 @@ export const CHINA_CORPORATE_DISCLOSURE_KEY = 'market:china:corporate-disclosure
 
 export const DISCLOSURE_TYPES = CHINA_CORPORATE_DISCLOSURE_TYPES;
 export const EMPTY_RESULT_DEGRADE_AFTER = 3;
+export const SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS = 2;
 
 export const REVIEWED_DISCLOSURE_ISSUERS = Object.freeze([
   { id: 'issuer:sse:600519', exchange: 'SSE', securityCode: '600519', symbol: '600519.SS', name: 'Kweichow Moutai', nameOriginal: '贵州茅台', mappingConfidence: 1 },
@@ -37,8 +38,15 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://query.sse.com.cn/security/stock/queryCompanyBulletin.do',
     metadataHost: 'query.sse.com.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SSE,
-    maxRequestsPerRun: 4,
+    maxRequestsPerRun: 8,
+    maxDirectRequestsPerRun: 4,
+    maxProxyRequestsPerRun: 4,
     maxConcurrentRequests: 2,
+    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
+    // SSE_PROXY_URL can override the China route independently. When absent,
+    // the snapshot fetcher deliberately reuses SZSE_PROXY_URL before the
+    // shared PROXY_URL so both mainland exchanges use the proven China exit.
+    proxyEnvironmentVariable: 'SSE_PROXY_URL',
     maxResponseBytes: 262_144,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
@@ -74,14 +82,15 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://www.szse.cn/api/disc/announcement/annList',
     metadataHost: 'www.szse.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SZSE,
-    maxRequestsPerRun: 3,
+    maxRequestsPerRun: 4,
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 2,
-    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
-    // Railway registers SZSE_PROXY_URL as required config for this service: without
-    // it the source still runs direct-only (no hard failure), but it loses
-    // the one capability this contract exists to provide, so an unset
-    // SZSE_PROXY_URL in production is a deployment gap worth alerting on.
+    maxEdgeRequestsPerRun: 1,
+    transportRecoverySuccessRuns: SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS,
+    fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
+    // SZSE_PROXY_URL is an optional source-specific override; Railway requires
+    // the shared PROXY_URL fallback and the fixed edge hop's
+    // RELAY_SHARED_SECRET at the bundle boundary.
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
@@ -158,23 +167,36 @@ const MAX_UNCLASSIFIED_REVISIONS = 100;
 // the complete response remains comfortably below the 256 KiB byte ceiling
 // (largest live response observed 2026-07-26: 143,020 bytes).
 const SSE_PAGE_SIZE = 100;
-const SSE_REQUEST_TIMEOUT_MS = 30_000;
+const SSE_DIRECT_TIMEOUT_MS = 20_000;
+const SSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PAGE_SIZE = 50;
-// Worst case (direct attempt times out, then both proxy attempts time out) this
-// source can take about 39s before the bundle moves on. Keep this comfortably
+// Worst case (direct, two proxy attempts, then edge fallback all time out) this
+// source can take about 55s before the bundle moves on. Keep this comfortably
 // inside the per-section timeoutMs configured in seed-bundle-market-backup.mjs.
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
 const SZSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PROXY_RETRY_DELAY_MS = 250;
+const SZSE_EDGE_TIMEOUT_MS = 16_000;
+const CHINA_EXCHANGE_EDGE_EGRESS_URL = 'https://api.worldmonitor.app/api/internal/china-exchange-egress';
+const CHINA_EXCHANGE_EDGE_ERROR_CODES = new Set([
+  'upstream_timeout',
+  'upstream_fetch_failed',
+  'upstream_response_too_large',
+]);
 export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
   Math.ceil(
-    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxRequestsPerRun
+    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxDirectRequestsPerRun
     / OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxConcurrentRequests
-  ) * SSE_REQUEST_TIMEOUT_MS
+  ) * SSE_DIRECT_TIMEOUT_MS
+  + Math.ceil(
+    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxProxyRequestsPerRun
+    / OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxConcurrentRequests
+  ) * SSE_PROXY_TIMEOUT_MS
   + SZSE_DIRECT_TIMEOUT_MS
   + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun * SZSE_PROXY_TIMEOUT_MS
   + (OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun - 1)
     * SZSE_PROXY_RETRY_DELAY_MS
+  + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxEdgeRequestsPerRun * SZSE_EDGE_TIMEOUT_MS
 );
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
@@ -386,19 +408,16 @@ export function normalizeSzseAnnouncements(payload, { retrievedAt = new Date().t
   return normalized;
 }
 
-export async function readBoundedJsonResponse(response, maxBytes) {
+async function readBoundedResponseBytes(response, maxBytes) {
   const contentLength = Number(response?.headers?.get?.('content-length'));
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     throw sourceError('RESPONSE_TOO_LARGE');
   }
   if (!response?.body?.getReader) {
     const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > maxBytes) throw sourceError('RESPONSE_TOO_LARGE');
-    try {
-      return JSON.parse(text);
-    } catch (error) {
-      throw sourceError('MALFORMED_RESPONSE', error);
-    }
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.byteLength > maxBytes) throw sourceError('RESPONSE_TOO_LARGE');
+    return bytes;
   }
 
   const reader = response.body.getReader();
@@ -420,6 +439,11 @@ export async function readBoundedJsonResponse(response, maxBytes) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  return bytes;
+}
+
+export async function readBoundedJsonResponse(response, maxBytes) {
+  const bytes = await readBoundedResponseBytes(response, maxBytes);
   try {
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
@@ -488,7 +512,7 @@ const RETRYABLE_SZSE_PROXY_FAILURE_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
-function shouldProxySzseFailure(error) {
+function shouldProxyExchangeFailure(error) {
   const code = errorCodeFor(error);
   if (code === 'FETCH_FAILED' || code === 'TIMEOUT') return true;
   return code === 'HTTP_403' || isRetryableSzseHttpStatus(code);
@@ -496,19 +520,34 @@ function shouldProxySzseFailure(error) {
 
 function shouldRetrySzseProxyFailure(error) {
   const reason = transportFailureReason(error);
+  // A CONNECT-layer rejection is the gateway refusing the tunnel -- proxy auth,
+  // an exhausted account traffic limit, a provider policy block. Every sticky
+  // port on the same account answers identically, so retrying only burns the
+  // bounded budget. Socket-level codes still retry: those are transient.
+  if (error?.cause?.proxyConnect === true || error?.proxyConnect === true) {
+    return RETRYABLE_SZSE_PROXY_FAILURE_CODES.has(reason);
+  }
   return reason === 'FETCH_FAILED'
     || reason === 'TIMEOUT'
     || RETRYABLE_SZSE_PROXY_FAILURE_CODES.has(reason)
+    // The origin blocking this exit IP is the one failure a different sticky
+    // session can actually fix, and shouldProxyExchangeFailure already classifies
+    // HTTP_403 that way for the direct hop.
+    || reason === 'HTTP_403'
     || isRetryableSzseHttpStatus(reason);
 }
 
 async function fetchViaConfiguredProxy(input, init, {
   proxyUrl,
+  attempt,
   maxBytes,
+  timeoutMs,
   proxyRequestFn,
+  onExitPort,
 }) {
-  const proxyConfig = parseProxyConfig(proxyUrl);
+  const proxyConfig = parseProxyConfigForAttempt(proxyUrl, attempt);
   if (!proxyConfig) throw sourceError('PROXY_NOT_CONFIGURED');
+  onExitPort?.(Number(proxyConfig.port));
   // init.headers carries the same Referer/User-Agent/Content-Type the direct
   // request used (requestInit() below), deliberately: we're routing the exact
   // same declared client through a different egress point, not masquerading
@@ -519,11 +558,11 @@ async function fetchViaConfiguredProxy(input, init, {
     method: init?.method,
     body: init?.body,
     maxResponseBytes: maxBytes,
-    // signal already enforces requestInit()'s timeoutMs; timeoutMs here is a
+    // signal already enforces the caller's timeout; timeoutMs here is a
     // second, independent backstop inside proxyFetch's own socket/tunnel
     // handling in case the AbortSignal doesn't propagate through a stalled
-    // CONNECT tunnel. Both are pinned to SZSE_PROXY_TIMEOUT_MS on purpose.
-    timeoutMs: SZSE_PROXY_TIMEOUT_MS,
+    // CONNECT tunnel. Both are pinned to the source-specific timeout.
+    timeoutMs,
     signal: init?.signal,
   });
   if (result.buffer.byteLength > maxBytes) throw sourceError('RESPONSE_TOO_LARGE');
@@ -536,7 +575,115 @@ async function fetchViaConfiguredProxy(input, init, {
   });
 }
 
-async function fetchSseAnnouncements(fetchFn, now) {
+export function resolveChinaExchangeEdgeEgress(env = process.env) {
+  const isRailwayProduction = env.RAILWAY_ENVIRONMENT === 'production'
+    || env.RAILWAY_ENVIRONMENT_NAME === 'production';
+  const secret = String(env.RELAY_SHARED_SECRET || '');
+  if (!isRailwayProduction || !secret) return null;
+  return { url: CHINA_EXCHANGE_EDGE_EGRESS_URL, secret };
+}
+
+function normalizedResponseContentType(response) {
+  return String(response?.headers?.get?.('content-type') || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+}
+
+function edgeFailureDiagnostic(response, rawContentType = normalizedResponseContentType(response)) {
+  const cfRay = String(response?.headers?.get?.('cf-ray') || '');
+  const vercelId = String(response?.headers?.get?.('x-vercel-id') || '');
+  const rawServer = String(response?.headers?.get?.('server') || '').toLowerCase();
+  const server = rawServer === 'cloudflare' || rawServer === 'vercel'
+    ? rawServer
+    : null;
+  const safeCfRay = /^[a-f0-9]{8,32}-[A-Z]{3}$/u.test(cfRay) ? cfRay : null;
+  const safeVercelId = /^[A-Za-z0-9:_-]{1,96}$/u.test(vercelId) ? vercelId : null;
+  // contentType is emitted even when no intermediary identifies itself: it is
+  // already collapsed to the enum below, so it carries no intermediary-controlled
+  // text, and an unrecognised box terminating the connection is exactly the case
+  // where "did this come from our handler?" is hardest to answer from the code.
+  const contentType = ['application/json', 'text/html', 'text/plain'].includes(rawContentType)
+    ? rawContentType
+    : rawContentType
+      ? 'other'
+      : 'missing';
+  return {
+    contentType,
+    ...(server ? { server } : {}),
+    ...(safeCfRay ? { cfRay: safeCfRay } : {}),
+    ...(safeVercelId ? { vercelId: safeVercelId } : {}),
+  };
+}
+
+async function readEdgeEgressFailure(response, maxBytes, diagnostic) {
+  const fallback = `HTTP_${Number(response?.status) || 0}`;
+  const contentType = normalizedResponseContentType(response);
+  if (contentType !== 'application/json') {
+    try {
+      await response?.body?.cancel?.();
+    } catch {
+      // A diagnostic must never fail because an intermediary body could not be cancelled.
+    }
+    return { code: fallback, diagnostic };
+  }
+  try {
+    const bytes = await readBoundedResponseBytes(response, maxBytes);
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return {
+      code: CHINA_EXCHANGE_EDGE_ERROR_CODES.has(payload?.error)
+        ? payload.error
+        : fallback,
+      diagnostic,
+    };
+  } catch {
+    return { code: fallback, diagnostic };
+  }
+}
+
+async function fetchViaEdgeEgress(_input, init, {
+  edgeEgress,
+  maxBytes,
+  edgeRequestFn,
+  onDiagnostic,
+}) {
+  const response = await edgeRequestFn(edgeEgress.url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${edgeEgress.secret}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
+    },
+    body: init?.body,
+    redirect: 'error',
+    signal: init?.signal,
+  });
+  // Captured before branching on status. A 2xx interstitial -- an HTML challenge
+  // page, or a 200 whose body is not the JSON envelope -- fails downstream in the
+  // caller's parser as MALFORMED_RESPONSE, and reporting it through onDiagnostic
+  // here is the only way that error reaches the decision log carrying the routing
+  // metadata that separates an intermediary from our own handler.
+  const diagnostic = edgeFailureDiagnostic(response);
+  if (diagnostic) onDiagnostic?.(diagnostic);
+  if (!response.ok) {
+    const failure = await readEdgeEgressFailure(response, maxBytes, diagnostic);
+    const error = sourceError(failure.code);
+    if (failure.diagnostic) error.edgeFailureDiagnostic = failure.diagnostic;
+    throw error;
+  }
+  const bytes = await readBoundedResponseBytes(response, maxBytes);
+  return new Response(bytes, {
+    status: response.status,
+    headers: {
+      'Content-Length': String(bytes.byteLength),
+      'Content-Type': response.headers.get('content-type') || 'application/json',
+    },
+  });
+}
+
+async function fetchSseAnnouncements(fetchFn, now, {
+  proxyFetchFn = null,
+} = {}) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse;
   const issuers = REVIEWED_DISCLOSURE_ISSUERS.filter((issuer) => issuer.exchange === 'SSE');
   const { begin, end } = dateWindow(now);
@@ -546,6 +693,11 @@ async function fetchSseAnnouncements(fetchFn, now) {
   let contentTruncated = false;
   let successfulRequests = 0;
   let requestCount = 0;
+  let proxyRequestCount = 0;
+  let transportPath = 'direct';
+  let fallbackReason = null;
+  let proxyFailureReason = null;
+  const proxyExitPorts = [];
   for (let offset = 0; offset < issuers.length; offset += contract.maxConcurrentRequests) {
     const batch = issuers.slice(offset, offset + contract.maxConcurrentRequests);
     if (requestCount + batch.length > contract.maxRequestsPerRun) {
@@ -566,15 +718,15 @@ async function fetchSseAnnouncements(fetchFn, now) {
         'pageHelp.endPage': '1',
       };
       for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-      try {
-        const response = await fetchFn(url, {
+      const request = async (requestFn, timeoutMs) => {
+        const response = await requestFn(url, {
           headers: {
             Accept: 'application/json',
             Referer: 'https://www.sse.com.cn/',
             'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
           },
           redirect: contract.redirectPolicy,
-          signal: AbortSignal.timeout(SSE_REQUEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(timeoutMs),
         });
         assertMetadataResponse(response, contract);
         const payload = await readBoundedJsonResponse(response, contract.maxResponseBytes);
@@ -582,8 +734,35 @@ async function fetchSseAnnouncements(fetchFn, now) {
           announcements: normalizeSseAnnouncements(payload, { retrievedAt }),
           contentTruncated: Number(payload.pageHelp.total) > SSE_PAGE_SIZE,
         };
+      };
+      try {
+        return await request(fetchFn, SSE_DIRECT_TIMEOUT_MS);
       } catch (error) {
-        return { errorCode: errorCodeFor(error) };
+        if (!proxyFetchFn || !shouldProxyExchangeFailure(error)) {
+          return { errorCode: errorCodeFor(error) };
+        }
+        if (proxyRequestCount >= contract.maxProxyRequestsPerRun) {
+          return { errorCode: 'REQUEST_BUDGET_EXCEEDED' };
+        }
+        const attempt = proxyRequestCount;
+        proxyRequestCount += 1;
+        requestCount += 1;
+        transportPath = 'proxy';
+        fallbackReason ??= transportFailureReason(error);
+        try {
+          return await request(
+            (input, init) => proxyFetchFn(
+              input,
+              init,
+              attempt,
+              (port) => { proxyExitPorts.push(port); },
+            ),
+            SSE_PROXY_TIMEOUT_MS,
+          );
+        } catch (proxyError) {
+          proxyFailureReason ??= transportFailureReason(proxyError);
+          return { errorCode: errorCodeFor(proxyError) };
+        }
       }
     }));
 
@@ -606,11 +785,16 @@ async function fetchSseAnnouncements(fetchFn, now) {
     requestCount,
     announcements,
     errorCode: errors[0] ?? (contentTruncated ? 'PAGE_LIMIT_REACHED' : null),
+    transportPath,
+    ...(fallbackReason ? { fallbackReason } : {}),
+    ...(proxyFailureReason ? { proxyFailureReason } : {}),
+    ...(proxyExitPorts.length ? { proxyExitPorts: [...proxyExitPorts] } : {}),
   };
 }
 
 async function fetchSzseAnnouncements(fetchFn, now, {
   proxyFetchFn = null,
+  edgeFetchFn = null,
 } = {}) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse;
   const { begin, end } = dateWindow(now);
@@ -651,39 +835,84 @@ async function fetchSzseAnnouncements(fetchFn, now, {
   let requestCount = 1;
   let transportPath = 'direct';
   let fallbackReason = null;
+  let proxyFailureReason = null;
+  // Gateway ports actually dialled, in attempt order. Routing metadata, not a
+  // credential -- it is what makes "the fix never engaged" distinguishable from
+  // "two distinct exits are both blocked" in the decision log.
+  const proxyExitPorts = [];
   try {
     fetched = await request(fetchFn, SZSE_DIRECT_TIMEOUT_MS);
   } catch (directError) {
     fallbackReason = transportFailureReason(directError);
-    if (!proxyFetchFn || !shouldProxySzseFailure(directError)) throw directError;
-    transportPath = 'proxy';
+    if (!shouldProxyExchangeFailure(directError)) throw directError;
     let proxyError = null;
-    for (let attempt = 0; attempt < contract.maxProxyRequestsPerRun; attempt += 1) {
-      requestCount += 1;
-      try {
-        fetched = await request(proxyFetchFn, SZSE_PROXY_TIMEOUT_MS);
-        proxyError = null;
-        break;
-      } catch (error) {
-        proxyError = error;
-        if (
-          attempt + 1 < contract.maxProxyRequestsPerRun
-          && shouldRetrySzseProxyFailure(error)
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
-          continue;
+    if (proxyFetchFn) {
+      transportPath = 'proxy';
+      for (let attempt = 0; attempt < contract.maxProxyRequestsPerRun; attempt += 1) {
+        requestCount += 1;
+        try {
+          fetched = await request(
+            (input, init) => proxyFetchFn(
+              input,
+              init,
+              attempt,
+              (port) => { proxyExitPorts.push(port); },
+            ),
+            SZSE_PROXY_TIMEOUT_MS,
+          );
+          proxyError = null;
+          break;
+        } catch (error) {
+          proxyError = error;
+          if (
+            attempt + 1 < contract.maxProxyRequestsPerRun
+            && shouldRetrySzseProxyFailure(error)
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
+            continue;
+          }
+          break;
         }
-        break;
+      }
+      proxyFailureReason = proxyError ? transportFailureReason(proxyError) : null;
+    }
+
+    if (!fetched && edgeFetchFn) {
+      transportPath = 'edge';
+      requestCount += 1;
+      // A 2xx interstitial throws downstream of edgeFetchFn, so the diagnostic
+      // cannot ride on that error -- it is reported out through this sink while
+      // the response is still in hand.
+      let edgeDiagnostic = null;
+      try {
+        fetched = await request(
+          (input, init) => edgeFetchFn(input, init, (entry) => { edgeDiagnostic = entry; }),
+          SZSE_EDGE_TIMEOUT_MS,
+        );
+      } catch (edgeError) {
+        const failure = sourceError(errorCodeFor(edgeError), edgeError);
+        failure.requestCount = requestCount;
+        failure.transportPath = transportPath;
+        failure.fallbackReason = fallbackReason;
+        if (proxyFailureReason) failure.proxyFailureReason = proxyFailureReason;
+        if (proxyExitPorts.length) failure.proxyExitPorts = [...proxyExitPorts];
+        failure.edgeFailureReason = transportFailureReason(edgeError);
+        const diagnostic = edgeError?.edgeFailureDiagnostic ?? edgeDiagnostic;
+        if (diagnostic) failure.edgeFailureDiagnostic = diagnostic;
+        throw failure;
       }
     }
-    if (proxyError) {
+
+    if (!fetched && proxyError) {
       const failure = sourceError(errorCodeFor(proxyError), proxyError);
       failure.requestCount = requestCount;
       failure.transportPath = transportPath;
       failure.fallbackReason = fallbackReason;
-      failure.proxyFailureReason = transportFailureReason(proxyError);
+      failure.proxyFailureReason = proxyFailureReason;
+      if (proxyExitPorts.length) failure.proxyExitPorts = [...proxyExitPorts];
       throw failure;
     }
+    if (!fetched) throw directError;
   }
 
   const contentTruncated = Number(fetched.payload.announceCount) > SZSE_PAGE_SIZE;
@@ -697,6 +926,8 @@ async function fetchSzseAnnouncements(fetchFn, now, {
     errorCode: contentTruncated ? 'PAGE_LIMIT_REACHED' : null,
     transportPath,
     ...(fallbackReason ? { fallbackReason } : {}),
+    ...(proxyFailureReason ? { proxyFailureReason } : {}),
+    ...(proxyExitPorts.length ? { proxyExitPorts: [...proxyExitPorts] } : {}),
   };
 }
 
@@ -766,7 +997,103 @@ function nextEmptyResultCount(outcome, previous) {
     : previousCount + 1;
 }
 
-function sourceStates(outcomes, previousSnapshot, generatedAt) {
+function priorTransportReliability(previous, previousFailure) {
+  const previousCheckedAt = Date.parse(previous?.checkedAt);
+  const previousFailureAt = Date.parse(previousFailure?.checkedAt);
+  if (
+    Number.isFinite(previousFailureAt)
+    && (!Number.isFinite(previousCheckedAt) || previousFailureAt > previousCheckedAt)
+  ) {
+    const failureReason = typeof previousFailure?.errorCode === 'string'
+      && /^[a-z0-9_]{1,80}$/iu.test(previousFailure.errorCode)
+      ? previousFailure.errorCode
+      : 'FETCH_FAILED';
+    return {
+      status: 'degraded',
+      consecutiveSuccesses: 0,
+      consecutiveFailures: Number.isInteger(previousFailure?.consecutiveFailures)
+        && previousFailure.consecutiveFailures > 0
+        ? previousFailure.consecutiveFailures
+        : 1,
+      lastFailureAt: new Date(previousFailureAt).toISOString(),
+      lastFailureReason: failureReason,
+    };
+  }
+  const value = previous?.transportReliability;
+  if (
+    value
+    && ['stable', 'recovering', 'degraded'].includes(value.status)
+    && Number.isInteger(value.consecutiveSuccesses)
+    && value.consecutiveSuccesses >= 0
+    && Number.isInteger(value.consecutiveFailures)
+    && value.consecutiveFailures >= 0
+  ) {
+    return value;
+  }
+  if (!previous) return null;
+  if (previous.transportStatus === 'error') {
+    return {
+      status: 'degraded',
+      consecutiveSuccesses: 0,
+      consecutiveFailures: 1,
+      ...(previous.checkedAt ? { lastFailureAt: previous.checkedAt } : {}),
+      ...(previous.errorCode ? { lastFailureReason: previous.errorCode } : {}),
+    };
+  }
+  return {
+    status: 'stable',
+    consecutiveSuccesses: 1,
+    consecutiveFailures: 0,
+  };
+}
+
+function nextTransportReliability(
+  outcome,
+  previous,
+  previousFailure,
+  checkedAt,
+  requiredSuccessRuns = 1,
+) {
+  const prior = priorTransportReliability(previous, previousFailure);
+  const transportSucceeded = outcome?.ok === true
+    || (outcome?.partial === true && outcome?.transportOk === true);
+  if (!transportSucceeded) {
+    return {
+      status: 'degraded',
+      consecutiveSuccesses: 0,
+      consecutiveFailures: prior?.status === 'degraded'
+        ? prior.consecutiveFailures + 1
+        : 1,
+      lastFailureAt: checkedAt,
+      lastFailureReason: outcome?.errorCode ?? 'NOT_ATTEMPTED',
+    };
+  }
+
+  const recovering = prior?.status === 'degraded' || prior?.status === 'recovering';
+  const consecutiveSuccesses = recovering
+    ? prior.consecutiveSuccesses + 1
+    : Math.min(
+        requiredSuccessRuns,
+        Math.max(1, (prior?.consecutiveSuccesses ?? 0) + 1),
+      );
+  return {
+    status: recovering && consecutiveSuccesses < requiredSuccessRuns
+      ? 'recovering'
+      : 'stable',
+    consecutiveSuccesses,
+    consecutiveFailures: 0,
+    ...(prior?.lastFailureAt ? { lastFailureAt: prior.lastFailureAt } : {}),
+    ...(prior?.lastFailureReason ? { lastFailureReason: prior.lastFailureReason } : {}),
+  };
+}
+
+function sourceIsOperationallyHealthy(source) {
+  return source.transportStatus === 'fresh'
+    && source.contentStatus === 'current'
+    && source.transportReliability?.status === 'stable';
+}
+
+function sourceStates(outcomes, previousSnapshot, previousTransportFailures, generatedAt) {
   const outcomeMap = new Map(outcomes.map((outcome) => [outcome.sourceId, outcome]));
   const previousMap = new Map(
     (Array.isArray(previousSnapshot?.sources) ? previousSnapshot.sources : [])
@@ -786,6 +1113,11 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         requestCount: 0,
         transportPath: 'not_applicable',
         emptyResultCount: 0,
+        transportReliability: {
+          status: 'not_applicable',
+          consecutiveSuccesses: 0,
+          consecutiveFailures: 0,
+        },
         errorCode: contract.blockedReason,
       };
     }
@@ -793,6 +1125,13 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
     const previous = previousMap.get(id);
     const emptyResultCount = nextEmptyResultCount(outcome, previous);
     const coverageGap = emptyResultCount >= EMPTY_RESULT_DEGRADE_AFTER;
+    const transportReliability = nextTransportReliability(
+      outcome,
+      previous,
+      previousTransportFailures[id],
+      generatedAt,
+      contract.transportRecoverySuccessRuns ?? 1,
+    );
     if (outcome?.ok) {
       return {
         id,
@@ -805,7 +1144,11 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         requestCount: outcome.requestCount,
         transportPath: outcome.transportPath ?? 'direct',
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.proxyFailureReason
+          ? { proxyFailureReason: outcome.proxyFailureReason }
+          : {}),
         emptyResultCount,
+        transportReliability,
         errorCode: coverageGap ? 'COVERAGE_GAP' : null,
       };
     }
@@ -822,7 +1165,11 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         requestCount: outcome.requestCount,
         transportPath: outcome.transportPath ?? 'direct',
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.proxyFailureReason
+          ? { proxyFailureReason: outcome.proxyFailureReason }
+          : {}),
         emptyResultCount,
+        transportReliability,
         errorCode: outcome.errorCode ?? (coverageGap ? 'COVERAGE_GAP' : 'PARTIAL_FETCH'),
       };
     }
@@ -840,7 +1187,11 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
       ...(outcome?.proxyFailureReason
         ? { proxyFailureReason: outcome.proxyFailureReason }
         : {}),
+      ...(outcome?.edgeFailureReason
+        ? { edgeFailureReason: outcome.edgeFailureReason }
+        : {}),
       emptyResultCount,
+      transportReliability,
       errorCode: outcome?.errorCode ?? 'NOT_ATTEMPTED',
     };
   });
@@ -1151,10 +1502,16 @@ function buildEvents(announcements, sources, generatedAt) {
 export function buildChinaCorporateDisclosureSnapshot({
   outcomes,
   previousSnapshot = null,
+  previousTransportFailures = {},
   generatedAt = new Date().toISOString(),
 }) {
   const checkedAt = ensureIsoInstant(generatedAt, 'GENERATED_AT');
-  const sources = sourceStates(outcomes, previousSnapshot, checkedAt);
+  const sources = sourceStates(
+    outcomes,
+    previousSnapshot,
+    previousTransportFailures,
+    checkedAt,
+  );
   const announcements = previousAnnouncements(previousSnapshot);
   for (const outcome of outcomes) {
     if ((outcome?.ok || outcome?.partial) && Array.isArray(outcome.announcements)) {
@@ -1167,7 +1524,7 @@ export function buildChinaCorporateDisclosureSnapshot({
     (source) => source.contentStatus === 'current' || source.contentStatus === 'partial',
   );
   const status = launched.every(
-    (source) => source.transportStatus === 'fresh' && source.contentStatus === 'current',
+    sourceIsOperationallyHealthy,
   )
     ? 'healthy'
     : usable.length > 0
@@ -1198,6 +1555,12 @@ export function buildChinaCorporateDisclosureSnapshot({
       ...(contract.maxProxyRequestsPerRun
         ? { maxProxyRequestsPerRun: contract.maxProxyRequestsPerRun }
         : {}),
+      ...(contract.maxEdgeRequestsPerRun
+        ? { maxEdgeRequestsPerRun: contract.maxEdgeRequestsPerRun }
+        : {}),
+      ...(contract.transportRecoverySuccessRuns
+        ? { transportRecoverySuccessRuns: contract.transportRecoverySuccessRuns }
+        : {}),
       maxResponseBytes: contract.maxResponseBytes,
       redirectPolicy: contract.redirectPolicy,
       documentRetrieval: contract.documentRetrieval,
@@ -1218,16 +1581,44 @@ export function buildChinaCorporateDisclosureSnapshot({
 export async function fetchChinaCorporateDisclosureSnapshot({
   fetchFn = globalThis.fetch,
   proxyUrl = process.env.SZSE_PROXY_URL || process.env.PROXY_URL || '',
+  sseProxyUrl = process.env.SSE_PROXY_URL || proxyUrl,
   proxyRequestFn = proxyFetch,
+  edgeEgress = undefined,
+  edgeRequestFn = globalThis.fetch,
   now = Date.now(),
   previousSnapshot = null,
+  previousTransportFailures = {},
   onDecision = (entry) => console.log(JSON.stringify({ event: 'china_corporate_disclosure_source', ...entry })),
 } = {}) {
-  const resolvedProxyFetchFn = proxyUrl
-    ? (input, init) => fetchViaConfiguredProxy(input, init, {
-        proxyUrl,
-        maxBytes: OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
+  const proxyFetchFor = (url, contract, timeoutMs) => url
+    ? (input, init, attempt = 0, onExitPort = undefined) => fetchViaConfiguredProxy(input, init, {
+        proxyUrl: url,
+        attempt,
+        maxBytes: contract.maxResponseBytes,
+        timeoutMs,
         proxyRequestFn,
+        onExitPort,
+      })
+    : null;
+  const resolvedSseProxyFetchFn = proxyFetchFor(
+    sseProxyUrl,
+    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse,
+    SSE_PROXY_TIMEOUT_MS,
+  );
+  const resolvedSzseProxyFetchFn = proxyFetchFor(
+    proxyUrl,
+    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse,
+    SZSE_PROXY_TIMEOUT_MS,
+  );
+  const resolvedEdgeEgress = edgeEgress === undefined
+    ? resolveChinaExchangeEdgeEgress()
+    : edgeEgress;
+  const resolvedEdgeFetchFn = resolvedEdgeEgress?.url && resolvedEdgeEgress?.secret
+    ? (input, init, onDiagnostic = undefined) => fetchViaEdgeEgress(input, init, {
+        edgeEgress: resolvedEdgeEgress,
+        maxBytes: OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
+        edgeRequestFn,
+        onDiagnostic,
       })
     : null;
   const outcomes = [];
@@ -1238,7 +1629,12 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         requestCount += 1;
         return fetchFn(input, init);
       }, now, {
-        proxyFetchFn: sourceId === 'szse' ? resolvedProxyFetchFn : null,
+        proxyFetchFn: sourceId === 'sse'
+          ? resolvedSseProxyFetchFn
+          : sourceId === 'szse'
+            ? resolvedSzseProxyFetchFn
+            : null,
+        edgeFetchFn: sourceId === 'szse' ? resolvedEdgeFetchFn : null,
       });
       outcomes.push(outcome);
     } catch (error) {
@@ -1252,6 +1648,15 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         ...(error?.proxyFailureReason
           ? { proxyFailureReason: error.proxyFailureReason }
           : {}),
+        ...(error?.edgeFailureReason
+          ? { edgeFailureReason: error.edgeFailureReason }
+          : {}),
+        ...(error?.edgeFailureDiagnostic
+          ? { edgeFailureDiagnostic: error.edgeFailureDiagnostic }
+          : {}),
+        ...(error?.proxyExitPorts?.length
+          ? { proxyExitPorts: error.proxyExitPorts }
+          : {}),
       };
       outcomes.push(outcome);
     }
@@ -1259,18 +1664,33 @@ export async function fetchChinaCorporateDisclosureSnapshot({
   const snapshot = buildChinaCorporateDisclosureSnapshot({
     outcomes,
     previousSnapshot,
+    previousTransportFailures,
     generatedAt: new Date(now).toISOString(),
   });
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.sourceId, outcome]));
   for (const source of snapshot.sources) {
+    const outcome = outcomeMap.get(source.id);
+    const transportRecoverySuccessRuns = source.launchStatus === 'launched'
+      ? OFFICIAL_EXCHANGE_SOURCE_CONTRACTS[source.id].transportRecoverySuccessRuns ?? 1
+      : null;
+    const operationallyHealthy = source.launchStatus === 'launched'
+      && sourceIsOperationallyHealthy(source);
+    const reliabilityReason = source.transportReliability?.status === 'recovering'
+      ? 'TRANSPORT_RECOVERING'
+      : null;
     onDecision({
       sourceId: source.id,
       status: source.launchStatus === 'blocked'
         ? 'blocked'
-        : source.transportStatus === 'fresh' && source.contentStatus === 'current'
+        : operationallyHealthy
           ? 'accepted'
           : 'degraded',
       requestCount: source.requestCount,
-      ...(source.errorCode ? { reason: source.errorCode } : {}),
+      ...(source.errorCode
+        ? { reason: source.errorCode }
+        : reliabilityReason
+          ? { reason: reliabilityReason }
+          : {}),
       ...(source.launchStatus === 'launched'
         ? { emptyResultCount: source.emptyResultCount }
         : {}),
@@ -1278,6 +1698,34 @@ export async function fetchChinaCorporateDisclosureSnapshot({
       ...(source.fallbackReason ? { fallbackReason: source.fallbackReason } : {}),
       ...(source.proxyFailureReason
         ? { proxyFailureReason: source.proxyFailureReason }
+        : {}),
+      ...(source.edgeFailureReason
+        ? { edgeFailureReason: source.edgeFailureReason }
+        : {}),
+      ...(outcome?.edgeFailureDiagnostic
+        ? { edgeFailureDiagnostic: outcome.edgeFailureDiagnostic }
+        : {}),
+      ...(outcome?.proxyExitPorts?.length
+        ? {
+            proxyExitPorts: outcome.proxyExitPorts,
+            proxyExitRotated: new Set(outcome.proxyExitPorts).size > 1,
+          }
+        : {}),
+      ...(source.launchStatus === 'launched'
+        ? {
+            reliabilityStatus: source.transportReliability.status,
+            requiredRecoverySuccesses: transportRecoverySuccessRuns,
+            consecutiveTransportSuccesses:
+              source.transportReliability.consecutiveSuccesses,
+            consecutiveTransportFailures:
+              source.transportReliability.consecutiveFailures,
+          }
+        : {}),
+      ...(source.transportReliability?.lastFailureAt
+        ? { lastTransportFailureAt: source.transportReliability.lastFailureAt }
+        : {}),
+      ...(source.transportReliability?.lastFailureReason
+        ? { lastTransportFailureReason: source.transportReliability.lastFailureReason }
         : {}),
       checkedAt: source.checkedAt,
     });

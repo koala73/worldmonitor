@@ -76,7 +76,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `OK` | Green | Data present, seed fresh |
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
 | `NOT_CONFIGURED` | Green | An optional source adapter this deployment never supplied a credential for (producer wrote `sourceState: "unavailable"`, e.g. the Global Tenders SAM.gov adapter without `SAM_GOV_API_KEY`). Not a fault and not counted as a problem; flips to `OK` on the first run after the credential is added |
-| `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved a direct HTTP 403 and another upstream HTTP 403 after a successful proxy CONNECT while retaining fresh reviewed records. CONNECT-layer refusals, stale, empty, or unreviewed states still fail closed |
+| `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved no transport path reaches the publisher while retaining fresh reviewed records — either an upstream HTTP 403 after a successful proxy CONNECT (`HTTP_403`), or a target-scoped proxy CONNECT refusal corroborated by a successful control tunnel (`PROXY_TARGET_FORBIDDEN`). Uncorroborated CONNECT refusals, stale, empty, or unreviewed states still fail closed |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
 | `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints or 139/174 PortWatch port-activity countries) |
@@ -113,12 +113,21 @@ observations are regional augmentation and do not satisfy the Taiwan MND
 content requirement. `/api/health` separately monitors
 `military:cross-strait-activity-bootstrap:v1`; fresh canonical data cannot hide
 a missing compact UI projection. It also exposes dedicated MND and Japan Joint
-Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED` when
-retained reviewed records exist and the current direct request plus an
-upstream response after a successful proxy CONNECT both return HTTP 403.
-CONNECT-layer refusals, stale metadata, a missing source record, or any other
-source using the blocked state still fail closed through the existing
-`STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. Other current fetch failures
+Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED`, and
+only when retained reviewed records exist and one of two evidenced conditions
+holds. `HTTP_403` means the direct request and an upstream response received
+after a successful proxy CONNECT both returned HTTP 403 — the publisher itself
+refused both paths. `PROXY_TARGET_FORBIDDEN` means the direct request returned
+HTTP 403 and the proxy refused CONNECT for the target *while a control CONNECT
+to a different contracted host succeeded in the same run through the same
+credentials* — the proxy provider forbids this destination specifically, so no
+configured transport path exists. An uncorroborated CONNECT refusal, a control
+tunnel that also fails, `PROXY_AUTH_FAILED`, stale metadata, a missing source
+record, or any other source using the blocked state still fail closed through
+the existing `STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. The distinction
+matters operationally: `PROXY_TARGET_FORBIDDEN` is durable and needs a
+different egress to change, whereas a bare CONNECT refusal is a proxy fault to
+remediate. Other current fetch failures
 report `SEED_ERROR` while the last-good archive remains available.
 The bundle freshness gate advances only after the archive, projection, and
 both source-health records publish successfully. The public bootstrap retains
@@ -255,6 +264,28 @@ A seed is considered stale when its age exceeds **2x the configured interval**. 
 | Shipping rates, satellites | 90-120 | 180-240 |
 | GPS jamming, displacement | 360 | 720 |
 | Iran events, UCDP | 210-5040 | 420-10080 |
+
+### History ingestion (`intel-history:*`)
+
+Domains prefixed `intel-history:` do **not** describe a seeder's canonical publish. They track whether that collector's post-publish append to the historical intelligence store is still landing:
+
+| Domain | Tracks |
+|--------|--------|
+| `intel-history:conflict:acled-intel` | history appends from `seed-conflict-intel` |
+| `intel-history:military:cross-strait-activity` | history appends from `seed-cross-strait-activity` |
+| `intel-history:energy:intelligence` | history appends from `seed-energy-intelligence` |
+
+The append is fail-open by design — the canonical publish has already committed when it runs, so a failure must never fail the run. That means the collector's own entry (`conflict:acled-intel`, …) stays `ok` while history silently stops accumulating. These entries are the separate signal:
+
+- `fetchedAt` is the last **healthy** append, never the last attempt. A run that reached the relay advances it; a run that delivered nothing (every chunk rejected, or the wall-clock budget died before the first request) does not. So a broken relay freezes it and the entry goes `stale` on the ordinary 2x-interval rule.
+- `status: "error"` means the append failed on two consecutive runs — or, on the very first tick, that a relay credential present during an earlier successful append has since been removed.
+- `lastErrorCode` names the cause when there is one: `http_401`, `budget_exhausted`, `all_chunks_failed`, `config_removed`, or a clamped error-class name. Absent when the ingest has never failed.
+- `status: "not_configured"` means this deployment has **never** had relay credentials. It is visible but never an alarm — no operator action clears it except provisioning the relay. Losing credentials after a successful append is not this state; it reports `error` with `lastErrorCode: "config_removed"`.
+- `recordCount` is the volume the relay accepted on the last successful append. Zero is valid: a run whose records were all deduped still proves the pipeline works.
+
+The richer per-run detail — `lastErrorReason`, `consecutiveFailures`, `missingConfig`, and the inserted/deduped/abandoned counts — is **not** returned by either endpoint. It lives in the Redis record `intel-history:ingest-health:<domain>:<resource>:v1`, which the endpoints project from.
+
+A `stale` or `error` here alongside an `ok` collector means canonical data is fine and the history store is the thing to investigate.
 
 ### Example Request
 

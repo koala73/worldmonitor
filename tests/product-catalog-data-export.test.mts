@@ -42,9 +42,9 @@ describe('U1 — Pro Business catalog entries', () => {
     );
   });
 
-  it('prices the tier at $49.99/mo and $499/yr', () => {
+  it('prices the tier at $49.99/mo and $449.99/yr', () => {
     assert.equal(PRODUCT_CATALOG.pro_business_monthly.priceCents, 4999);
-    assert.equal(PRODUCT_CATALOG.pro_business_annual.priceCents, 49900);
+    assert.equal(PRODUCT_CATALOG.pro_business_annual.priceCents, 44999);
   });
 
   it('is purchasable and published on /pro (U7 flipped visibility)', () => {

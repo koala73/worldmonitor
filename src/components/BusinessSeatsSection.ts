@@ -25,6 +25,7 @@ export class BusinessSeatsSection {
   // corporate" rejection during the async listBusinessSeats() round-trip —
   // the server call is the authoritative gate at submit time regardless.
   private ownerIsCorporateDomain = true;
+  private accountGeneration = 0;
   // grantIds with a removeSeat mutation currently in flight — lets two
   // DIFFERENT seats be removed concurrently while still preventing a
   // double-click on the SAME seat's button from firing twice.
@@ -33,20 +34,36 @@ export class BusinessSeatsSection {
   /** `overlay` is the settings modal's root element; content is rendered into `#usBusinessSeats` within it. */
   constructor(private readonly overlay: HTMLElement) {}
 
+  resetForAccountChange(): void {
+    this.accountGeneration += 1;
+    this.seats = [];
+    this.loading = false;
+    this.error = '';
+    this.ownerDomain = null;
+    this.ownerIsCorporateDomain = true;
+    this.removingGrantIds.clear();
+    this.renderInPlace();
+  }
+
   async load(): Promise<void> {
     if (this.loading) return;
+    const generation = this.accountGeneration;
     this.loading = true;
     this.error = '';
     try {
       const result = await listBusinessSeats();
+      if (generation !== this.accountGeneration) return;
       this.seats = result.seats;
       this.ownerDomain = result.ownerDomain;
       this.ownerIsCorporateDomain = result.ownerIsCorporateDomain;
     } catch (err) {
+      if (generation !== this.accountGeneration) return;
       this.error = err instanceof Error ? err.message : 'Failed to load seats';
     } finally {
-      this.loading = false;
-      this.renderInPlace();
+      if (generation === this.accountGeneration) {
+        this.loading = false;
+        this.renderInPlace();
+      }
     }
   }
 
@@ -124,6 +141,7 @@ export class BusinessSeatsSection {
   }
 
   async handleInvite(): Promise<void> {
+    const generation = this.accountGeneration;
     const input = this.overlay.querySelector<HTMLInputElement>('.business-seats-email-input');
     const btn = this.overlay.querySelector<HTMLButtonElement>('.business-seats-invite-btn');
     const email = input?.value.trim();
@@ -134,6 +152,7 @@ export class BusinessSeatsSection {
     this.error = '';
     try {
       const result = await inviteBusinessSeats([email]);
+      if (generation !== this.accountGeneration) return;
       if (result.invited[0]?.status === 'created') {
         showToast('Invite sent');
       } else {
@@ -141,6 +160,7 @@ export class BusinessSeatsSection {
       }
       await this.load();
     } catch (err) {
+      if (generation !== this.accountGeneration) return;
       const msg = err instanceof Error ? err.message : 'Failed to send invite';
       if (msg.includes('SEAT_CAP_REACHED')) {
         this.error = 'All 4 seats are used. Remove a seat first.';
@@ -162,6 +182,7 @@ export class BusinessSeatsSection {
   }
 
   async handleRemove(grantId: string): Promise<void> {
+    const generation = this.accountGeneration;
     if (this.removingGrantIds.has(grantId)) return;
     if (!confirm('Remove this seat? The invitee will lose Pro access immediately.')) return;
 
@@ -169,14 +190,18 @@ export class BusinessSeatsSection {
     this.renderInPlace();
     try {
       const result = await removeBusinessSeat(grantId);
+      if (generation !== this.accountGeneration) return;
       showToast(result.status === 'already_inactive' ? 'Seat was already inactive' : 'Seat removed');
       await this.load();
     } catch (err) {
+      if (generation !== this.accountGeneration) return;
       this.error = err instanceof Error ? err.message : 'Failed to remove seat';
       this.renderInPlace();
     } finally {
-      this.removingGrantIds.delete(grantId);
-      this.renderInPlace();
+      if (generation === this.accountGeneration) {
+        this.removingGrantIds.delete(grantId);
+        this.renderInPlace();
+      }
     }
   }
 }

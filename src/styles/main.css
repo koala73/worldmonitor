@@ -26544,6 +26544,16 @@ body.map-width-resizing {
   white-space: nowrap;
 }
 
+.us-notif-ch-sub-wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.us-notif-ch-sub-warn {
+  color: var(--settings-red);
+}
+
 .us-notif-ch-actions {
   display: flex;
   align-items: center;
@@ -26560,6 +26570,11 @@ body.map-width-resizing {
   background: rgba(52, 211, 153, 0.12);
   padding: 2px 7px;
   border-radius: 4px;
+}
+
+.us-notif-ch-badge-blocked {
+  color: var(--settings-red);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .us-notif-ch-btn {

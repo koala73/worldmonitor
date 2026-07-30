@@ -20,9 +20,10 @@ import {
   LAYER_TO_SOURCE,
   isPanelInVariantDefaults,
 } from '@/config';
-import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
+import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
 import {
   runNewsLoadPass,
+  newsWorkListSignature,
   type NewsCategoryLoadOptions,
   type NewsIntelLoadOptions,
 } from '@/app/news-loader-sequencing';
@@ -407,6 +408,13 @@ export class DataLoaderManager implements AppModule {
   private readonly perFeedFallbackIntelFeedLimit = 6;
   private readonly perFeedFallbackBatchSize = 2;
   private lastGoodDigest: ListFeedDigestResponse | null = null;
+  /**
+   * Work-list signature of the last news load that actually landed data, or
+   * `null` if none has. Gates loadAllData()'s `news` task — see
+   * `shouldHydrateNews`. Left unset when a load throws or comes back empty with
+   * no usable digest, so a failed load stays retryable.
+   */
+  private loadedNewsSignature: string | null = null;
 
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
@@ -746,9 +754,10 @@ export class DataLoaderManager implements AppModule {
     const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
     const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
 
-    const tasks: HydrationTask[] = [
-      { name: 'news', task: () => runGuarded('news', () => this.loadNews()) },
-    ];
+    const tasks: HydrationTask[] = [];
+    if (this.shouldHydrateNews(forceAll)) {
+      tasks.push({ name: 'news', task: () => runGuarded('news', () => this.loadNews()) });
+    }
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
@@ -1210,9 +1219,11 @@ export class DataLoaderManager implements AppModule {
   }
 
   // `isCustom` marks a category from a user-added panel that isn't in the
-  // active variant's preset. The per-variant server digest never carries it,
-  // so it skips the digest-availability gate and fetches its full feed set
-  // directly client-side (the cost is borne only by users who customize).
+  // active variant's preset. The per-variant server digest never carries it, so
+  // it skips the digest-availability gate and fetches directly client-side —
+  // still capped by perFeedFallbackCategoryFeedLimit like any other per-feed
+  // fallback, because nothing bounds how many custom categories a session has
+  // (#5376). The cost is borne only by users who customize.
   private async loadNewsCategory(
     category: string,
     feeds: typeof FEEDS.politics,
@@ -1323,10 +1334,12 @@ export class DataLoaderManager implements AppModule {
         return staleItems;
       }
 
-      // The per-feed-fallback flag throttles the digest-down thundering herd
-      // (every preset category fetching at once). It does NOT apply to custom
-      // categories: those are NEVER in the digest by design — direct fetch is
-      // their only path, and there are only a handful of them per user.
+      // The per-feed-fallback flag is the kill switch for the digest-down
+      // thundering herd (every preset category fetching at once), so it does NOT
+      // apply to custom categories: those are NEVER in the digest by design and
+      // direct fetch is their only path — gating them here would leave a
+      // customized panel permanently empty rather than degraded. Their blast
+      // radius is bounded by the feed cap below instead.
       if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
@@ -1337,13 +1350,16 @@ export class DataLoaderManager implements AppModule {
         return [];
       }
 
-      // Custom categories fetch their full feed set (no thundering-herd risk);
-      // preset categories stay capped by perFeedFallbackCategoryFeedLimit.
-      const fallbackFeeds = isCustom
-        ? enabledFeeds
-        : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
+      // Every per-feed fallback is capped, custom categories included. They used
+      // to fetch their full feed set on the theory that a handful of customized
+      // panels carried "no thundering-herd risk" — three of them firing on every
+      // load, uncapped, was 19 direct proxy round-trips (#5376). Nothing bounds
+      // how many custom categories a session can have, so the cap has to be
+      // unconditional; a custom category is also the ONLY consumer of its feeds
+      // (it is never in the digest), so the cap is what it steadily shows.
+      const fallbackFeeds = this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
       if (isCustom) {
-        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length}/${enabledFeeds.length} feeds directly`);
       } else if (options.allowDigestPendingFallback) {
         console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else if (fallbackFeeds.length < enabledFeeds.length) {
@@ -1493,6 +1509,56 @@ export class DataLoaderManager implements AppModule {
     return intel;
   }
 
+  /**
+   * Panel-driven, not variant-driven: the active variant's preset categories
+   * PLUS any extra categories required by enabled news panels the user added
+   * beyond the preset (e.g. Tech panels customized into `full`). Custom
+   * categories aren't in the per-variant server digest, so they're flagged
+   * `isCustom` and fetched directly client-side in loadNewsCategory().
+   */
+  private resolveEnabledNewsCategories(): ResolvedCategory[] {
+    return resolveNewsCategories(
+      FEEDS,
+      CANONICAL_FEEDS,
+      enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings),
+    );
+  }
+
+  /**
+   * Whether loadAllData() should (re)run the news load.
+   *
+   * Unlike every other hydration task, the news load is NOT viewport-gated — it
+   * always loaded everything — so an unconditional `news` task meant each of
+   * loadAllData()'s many triggers re-fetched the digest. Boot alone fires two
+   * (panel-layout's hydration trigger, then App.ts's bootstrap fan-out) and the
+   * drain loop turns overlapping calls into a second full run: two
+   * `list-feed-digest` requests per page load, plus a second round of per-feed
+   * fetches (#5376).
+   *
+   * The category set is what the load actually keys on, so re-run when it has
+   * changed (tab switch, mission preset, panel toggle) and skip when it has not
+   * (viewport entry, scroll, playback exit). Periodic refresh stays owned by
+   * RefreshScheduler's `news` loop at REFRESH_INTERVALS.feeds, which calls
+   * loadNews() directly and is unaffected by this gate.
+   */
+  private shouldHydrateNews(forceAll: boolean): boolean {
+    if (forceAll || this.loadedNewsSignature === null) return true;
+    const current = newsWorkListSignature(this.resolveEnabledNewsCategories(), this.ctx.disabledSources);
+    return current !== this.loadedNewsSignature;
+  }
+
+  /**
+   * Drop the record of what the last news load covered, so the next
+   * loadAllData() reloads news even though the category set is unchanged.
+   *
+   * Callers are the paths that take the rendered headlines away without
+   * changing the work-list — playback replay puts every news panel back into a
+   * loading state and relies on the exit calling loadAllData() to refill them.
+   */
+  invalidateNewsHydration(): void {
+    this.loadedNewsSignature = null;
+  }
+
   async loadNews(): Promise<void> {
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -1507,16 +1573,11 @@ export class DataLoaderManager implements AppModule {
     });
     const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
 
-    // Panel-driven, not variant-driven: load the active variant's preset
-    // categories PLUS any extra categories required by enabled news panels the
-    // user added beyond the preset (e.g. Tech panels customized into `full`).
-    // Custom categories aren't in the per-variant server digest, so they're
-    // flagged `isCustom` and fetched directly client-side in loadNewsCategory().
-    const categories = resolveNewsCategories(
-      FEEDS,
-      CANONICAL_FEEDS,
-      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)),
-    );
+    const categories = this.resolveEnabledNewsCategories();
+    // Snapshot beside the categories: `ctx.disabledSources` is mutated IN PLACE by
+    // the settings source toggle, so reading it after the await would record the
+    // post-toggle set for a load that used the pre-toggle one.
+    const disabledAtLoadStart = new Set(this.ctx.disabledSources);
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
@@ -1562,6 +1623,35 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.ctx.allNews = collectedNews;
+    // Record what this run covered — but only when it actually landed something for
+    // the gate to protect. A run counts as landed when the digest COVERED at least
+    // one preset category (authoritative even where that bucket came back empty),
+    // when items arrived by any path, or when there are no categories to retry.
+    //
+    // A digest outage lands none of those, and it has two shapes. The obvious one
+    // is a failed request. The one that bites is a 200 carrying an empty or partial
+    // `categories` map — non-null, so a plain null check would call it landed. Both
+    // render every preset category empty on web (`newsPerFeedFallback` is off), and
+    // recording either would make the gate treat an empty dashboard as "already
+    // loaded" and suppress every retry until RefreshScheduler's 20-minute tick.
+    // Leaving the signature unset keeps the next trigger a real retry — the recovery
+    // the pre-gate double-load provided by accident, now deliberate.
+    //
+    // Coverage is measured over PRESET categories only: a custom category succeeds
+    // on its own direct-fetch path, so counting it would let one customized panel
+    // mask an outage for every other category in the work-list.
+    //
+    // Set here rather than in a `finally` so a load that threw on the way in stays
+    // retryable too, and before the post-load intelligence tail so a failure there
+    // doesn't force a re-fetch of news that already arrived. The disabled-source set
+    // is the one snapshotted at load start, so a source toggled mid-load compares
+    // unequal on the next trigger instead of being swallowed.
+    const digestCategories = newsPass.finalDigest?.categories ?? {};
+    const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
+    const anyItemsCollected = collectedNews.length > 0;
+    const noCategoriesToLoad = categories.length === 0;
+    const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
+    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 

@@ -59,9 +59,20 @@ export function __resetKeyPrefixCacheForTests(): void {
   cachedPrefix = undefined;
 }
 
-type CacheReadResult = { status: 'hit'; value: unknown } | { status: 'miss' } | { status: 'error'; error: unknown };
+export type CacheReadResult = { status: 'hit'; value: unknown } | { status: 'miss' } | { status: 'error'; error: unknown };
 
-async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
+/**
+ * Cache read that keeps "miss" and "error" distinguishable. `getCachedJson`
+ * collapses both to `null`, which is right for callers that degrade the same
+ * way either way. Export it for the callers that must NOT: a read failure that
+ * looks like an empty key is exactly how a dead upstream stays invisible in
+ * every dashboard (issue #5850).
+ *
+ * `raw = true` skips the deployment key prefix (`getKeyPrefix()`); use it for
+ * seed-owned keys written unprefixed by the Railway seeders, mirroring
+ * `getCachedJson`'s own raw flag. Leave false for keys this app writes.
+ */
+export async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     try {
       const { sidecarCacheGet } = await import('./sidecar-cache');
@@ -648,19 +659,32 @@ export interface UsageHook {
  * Returns { data, source, leader } where source is:
  *   'cache'  — served from Redis
  *   'fresh'  — fetcher ran (leader) or joined an in-flight fetch (follower)
+ *   'skipped' — caller-local gate prevented a fetch after cache/in-flight miss
  * and leader is true only for the caller that actually ran the fetcher.
  *
  * If `opts.usage` is supplied, an upstream event is emitted on the fresh
  * path (issue #3381). Pass-through for callers that don't care about
  * telemetry — backwards-compatible.
+ *
+ * If `opts.shouldFetch` returns false after all cache and in-flight checks,
+ * the fetcher is skipped without writing a negative sentinel. Use this for
+ * caller-local availability gates whose result must not poison a shared key.
+ * `opts.cacheFailures: false` similarly makes nulls, no-store payloads, and
+ * thrown fetches non-cacheable. `opts.inflightKey` lets callers share positive
+ * cache entries while isolating provider-local work and failures.
  */
 export async function cachedFetchJsonWithMeta<T extends object>(
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds = 120,
-  opts?: CachedFetchOpts & { usage?: UsageHook },
-): Promise<{ data: T | null; source: 'cache' | 'fresh'; leader: boolean }> {
+  opts?: CachedFetchOpts & {
+    usage?: UsageHook;
+    shouldFetch?: () => boolean;
+    cacheFailures?: boolean;
+    inflightKey?: string;
+  },
+): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
   const cached = await readCachedJson(key);
   if (cached.status === 'hit') {
     if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache', leader: false };
@@ -677,10 +701,15 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     throw new Error(`cachedFetchJsonWithMeta unavailable backoff active for "${key}"`);
   }
 
-  const existing = inflight.get(key);
+  const inflightKey = opts?.inflightKey ?? key;
+  const existing = inflight.get(inflightKey);
   if (existing) {
     const data = (await existing) as T | null;
     return { data, source: 'fresh', leader: false };
+  }
+
+  if (opts?.shouldFetch && !opts.shouldFetch()) {
+    return { data: null, source: 'skipped', leader: false };
   }
 
   const fetchT0 = Date.now();
@@ -700,9 +729,11 @@ export async function cachedFetchJsonWithMeta<T extends object>(
         const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
         if (noStoreReason) {
           upstreamStatus = 0;
-          cacheStatus = 'neg-sentinel';
-          armLocalNegativeCooldown(key, negativeTtlSeconds);
-          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+          if (opts?.cacheFailures !== false) {
+            cacheStatus = 'neg-sentinel';
+            armLocalNegativeCooldown(key, negativeTtlSeconds);
+            await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+          }
         } else {
           upstreamStatus = 200;
           const wrote = await setCachedJson(key, result, ttlSeconds);
@@ -714,15 +745,19 @@ export async function cachedFetchJsonWithMeta<T extends object>(
         }
       } else {
         upstreamStatus = 0;
-        cacheStatus = 'neg-sentinel';
-        armLocalNegativeCooldown(key, negativeTtlSeconds);
-        await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+        if (opts?.cacheFailures !== false) {
+          cacheStatus = 'neg-sentinel';
+          armLocalNegativeCooldown(key, negativeTtlSeconds);
+          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+        }
       }
       return result;
     })
     .catch(async (err: unknown) => {
       upstreamStatus = 0;
-      if (opts?.cacheFetcherErrors !== false) {
+      if (opts?.cacheFailures === false) {
+        // Provider-local failures must not mutate a provider-independent key.
+      } else if (opts?.cacheFetcherErrors !== false) {
         cacheStatus = 'neg-sentinel';
         const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
         armLocalNegativeCooldown(key, errorTtlSeconds);
@@ -734,10 +769,10 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       throw err;
     })
     .finally(() => {
-      inflight.delete(key);
+      inflight.delete(inflightKey);
     });
 
-  inflight.set(key, promise);
+  inflight.set(inflightKey, promise);
   let data: T | null;
   try {
     data = await promise;

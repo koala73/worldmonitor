@@ -92,7 +92,7 @@ import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { primeExportGateActivation } from '@/services/export-gate';
-import { evaluateExportGate, exportLockToGateReason, resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
+import { evaluateExportGate, evaluatePlaybackGate, exportLockToGateReason, resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
@@ -193,6 +193,12 @@ export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
+  /**
+   * Tell the data loader that the rendered news no longer reflects the last
+   * load, so the next loadAllData() refetches it even though the category set
+   * is unchanged. See DataLoader.invalidateNewsHydration.
+   */
+  invalidateNewsHydration: () => void;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
   loadDataForLayer: (layer: string) => void;
@@ -1967,12 +1973,35 @@ export class EventHandlerManager implements AppModule {
       headerRight.insertBefore(el, headerRight.firstChild);
     }
 
-    const applyProGate = (isPro: boolean, initial = false) => {
-      el.style.display = isPro ? '' : 'none';
-      if (initial && !isPro) trackGateHit('playback');
+    // #5632: gate on the entitlement chain, NOT `user.role === 'pro'` — nothing
+    // writes Clerk publicMetadata, so that field read 'free' for paying
+    // subscribers and the control rendered for nobody.
+    let gateHitTracked = false;
+    const applyGate = (): void => {
+      if (this.ctx.isDestroyed) return;
+      const verdict = evaluatePlaybackGate(getAuthState());
+      const visible = verdict === 'visible';
+      el.style.display = visible ? '' : 'none';
+      // Losing access mid-replay must also LEAVE playback. `display: none`
+      // alone strands the dashboard on historical data — the "Live" button is
+      // inside the element we just hid. No-ops unless playback is active.
+      if (!visible) this.ctx.playbackControl?.exitPlayback();
+      // Affirmative denials only, once per session. 'pending' also hides, but
+      // counting it would tick the funnel on every page load — including for
+      // subscribers whose control appears a moment later.
+      if (verdict === 'denied' && !gateHitTracked) {
+        gateHitTracked = true;
+        trackGateHit('playback');
+      }
     };
-    applyProGate(getAuthState().user?.role === 'pro', true);
-    this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
+
+    applyGate();
+    // BOTH subscriptions, same as setupExportPanel above: the Convex
+    // entitlement watcher (services/entitlements.ts) is a separate emitter from
+    // Clerk's, so an auth-only subscription never re-runs when a snapshot lands
+    // after sign-in — exactly the post-checkout unlock path.
+    this.proGateUnsubscribers.push(subscribeAuthState(() => applyGate()));
+    this.proGateUnsubscribers.push(onEntitlementChange(() => applyGate()));
   }
 
   setupSnapshotSaving(): void {
@@ -2001,6 +2030,11 @@ export class EventHandlerManager implements AppModule {
   }
 
   restoreSnapshot(snapshot: DashboardSnapshot): void {
+    // Replay parks every news panel on a loading state and never refills it —
+    // leaving playback calls loadAllData() to do that. Its news task is skipped
+    // when the category set is unchanged (#5376), which replay does not touch,
+    // so drop the record here and the exit reload happens.
+    this.callbacks.invalidateNewsHydration();
     for (const panel of Object.values(this.ctx.newsPanels)) {
       panel.showLoading();
     }
@@ -2330,7 +2364,7 @@ export class EventHandlerManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));

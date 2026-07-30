@@ -31,9 +31,14 @@ interface CapturedReport {
 interface HarnessState {
   reports: CapturedReport[];
   assignedUrls: string[];
+  checkoutEffects: string[];
+  toastMessages: string[];
+  fetchCalls: number;
+  currentUser: { id: string; email: string } | null;
   /** Body + headers the stub fetch should answer the create-checkout POST with. */
   responseBody: string;
   responseHeaders: Record<string, string>;
+  responseStatus: number;
   /** When set, text() rejects — models a stream that dies mid-read. */
   failBodyRead?: boolean;
 }
@@ -45,11 +50,13 @@ declare global {
 
 class MemoryStorage {
   private readonly store = new Map<string, string>();
+  constructor(private readonly onSet?: (key: string) => void) {}
   getItem(key: string): string | null {
     return this.store.has(key) ? (this.store.get(key) as string) : null;
   }
   setItem(key: string, value: string): void {
     this.store.set(key, String(value));
+    this.onSet?.(key);
   }
   removeItem(key: string): void {
     this.store.delete(key);
@@ -60,7 +67,10 @@ class MemoryStorage {
 }
 
 function installBrowserGlobals(): void {
-  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: new MemoryStorage() });
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    configurable: true,
+    value: new MemoryStorage((key) => globalThis.__xvHarness.checkoutEffects.push(`session:${key}`)),
+  });
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: new MemoryStorage() });
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
@@ -77,6 +87,7 @@ function installBrowserGlobals(): void {
         hash: '',
         assign: (url: string) => {
           globalThis.__xvHarness.assignedUrls.push(url);
+          globalThis.__xvHarness.checkoutEffects.push(`navigate:${url}`);
         },
       },
       history: { replaceState: () => {} },
@@ -86,12 +97,13 @@ function installBrowserGlobals(): void {
     configurable: true,
     value: async () => {
       const harness = globalThis.__xvHarness;
+      harness.fetchCalls += 1;
       // A faithful Response double: real ones always expose text(), and
       // text() never rejects on a malformed payload — only json() does.
       // That asymmetry is the whole point of the fix.
       return {
-        ok: true,
-        status: 200,
+        ok: harness.responseStatus >= 200 && harness.responseStatus < 300,
+        status: harness.responseStatus,
         text: async () => {
           if (harness.failBodyRead) throw new TypeError('network error');
           return harness.responseBody;
@@ -103,8 +115,23 @@ function installBrowserGlobals(): void {
   });
 }
 
-function resetHarness(responseBody: string, responseHeaders: Record<string, string> = {}): void {
-  globalThis.__xvHarness = { reports: [], assignedUrls: [], responseBody, responseHeaders };
+function resetHarness(
+  responseBody: string,
+  responseHeaders: Record<string, string> = {},
+  currentUser: HarnessState['currentUser'] = { id: 'user_1', email: 'pro@example.com' },
+  responseStatus = 200,
+): void {
+  globalThis.__xvHarness = {
+    reports: [],
+    assignedUrls: [],
+    checkoutEffects: [],
+    toastMessages: [],
+    fetchCalls: 0,
+    currentUser,
+    responseBody,
+    responseHeaders,
+    responseStatus,
+  };
   installBrowserGlobals();
 }
 
@@ -130,9 +157,9 @@ const stubSources: Record<string, string> = {
     export const prereserveBillingPortalTab = () => null;
   `,
   './clerk': `
-    export const getCurrentClerkUser = () => ({ id: 'user_1', email: 'pro@example.com' });
+    export const getCurrentClerkUser = () => globalThis.__xvHarness.currentUser;
     export const getClerkToken = async () => 'tok_test';
-    export const openSignIn = () => {};
+    export const openSignIn = () => globalThis.__xvHarness.checkoutEffects.push('openSignIn');
   `,
   './analytics': `
     export const trackCheckoutStart = () => {};
@@ -141,15 +168,12 @@ const stubSources: Record<string, string> = {
     export const subscribeAuthState = () => () => {};
   `,
   './checkout-attempt': `
-    export const saveCheckoutAttempt = () => {};
+    export const saveCheckoutAttempt = () => globalThis.__xvHarness.checkoutEffects.push('saveCheckoutAttempt');
     export const loadCheckoutAttempt = () => null;
     export const clearCheckoutAttempt = () => {};
   `,
   './checkout-error-toast': `
-    export const showCheckoutErrorToast = () => {};
-  `,
-  './checkout-no-user-policy': `
-    export const decideNoUserPathOutcome = () => ({ kind: 'inline-signin', persist: true });
+    export const showCheckoutErrorToast = (message) => globalThis.__xvHarness.toastMessages.push(message);
   `,
   './entitlements': `
     export const isEntitled = () => false;
@@ -217,6 +241,37 @@ function soleReport(): CapturedReport {
   assert.equal(reports.length, 1, `expected exactly one Sentry report, got ${reports.length}`);
   return reports[0];
 }
+
+describe('signed-out checkout production wiring', () => {
+  it('redirects without persisting checkout state on the default path', async () => {
+    resetHarness('', {}, null);
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('prod_monthly'), false);
+    assert.deepEqual(globalThis.__xvHarness.checkoutEffects, [
+      'navigate:https://worldmonitor.app/pro',
+    ]);
+  });
+
+  it('persists intent and attempt before opening inline sign-in', async () => {
+    resetHarness('', {}, null);
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(
+      await checkout.startCheckout(
+        'prod_monthly',
+        undefined,
+        { fallbackToPricingPage: false },
+      ),
+      false,
+    );
+    assert.deepEqual(globalThis.__xvHarness.checkoutEffects, [
+      'session:wm-pending-checkout',
+      'saveCheckoutAttempt',
+      'openSignIn',
+    ]);
+  });
+});
 
 describe('create-checkout 200 with an unparsable body (WORLDMONITOR-XV)', () => {
   it('reports the contract violation instead of letting the parse error escape', async () => {
@@ -401,5 +456,46 @@ describe('create-checkout 200 with an unparsable body (WORLDMONITOR-XV)', () => 
       (globalThis.localStorage as unknown as MemoryStorage).getItem('wm-anon-claim-token'),
       'tok_live_KEEP',
     );
+  });
+});
+
+describe('create-checkout provider cooldown', () => {
+  it('keeps Retry-After in the typed error and blocks repeated provider calls', async () => {
+    resetHarness(
+      JSON.stringify({
+        error: 'CHECKOUT_RATE_LIMITED',
+        message: 'Checkout is temporarily rate limited. Retry shortly.',
+      }),
+      { 'retry-after': '10' },
+      { id: 'user_1', email: 'pro@example.com' },
+      429,
+    );
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(
+      await checkout.startCheckout(
+        'prod_monthly',
+        undefined,
+        { fallbackToPricingPage: false },
+      ),
+      false,
+    );
+    assert.equal(globalThis.__xvHarness.fetchCalls, 1);
+    assert.match(globalThis.__xvHarness.toastMessages.at(-1) ?? '', /wait 10 seconds/i);
+    const report = soleReport();
+    assert.equal(report.tags?.code, 'rate_limited');
+    assert.equal(report.level, 'info');
+    assert.equal(report.extra?.retryAfterSeconds, 10);
+
+    assert.equal(
+      await checkout.startCheckout(
+        'prod_monthly',
+        undefined,
+        { fallbackToPricingPage: false },
+      ),
+      false,
+    );
+    assert.equal(globalThis.__xvHarness.fetchCalls, 1, 'cooldown click must stay local');
+    assert.match(globalThis.__xvHarness.toastMessages.at(-1) ?? '', /wait 10 seconds/i);
   });
 });

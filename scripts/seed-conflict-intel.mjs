@@ -29,10 +29,33 @@ import {
 } from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
-import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
-import { parseProxyConfig, proxyFetch } from './_proxy-utils.cjs';
+import { fetchGdeltBulkConflictEvents, GDELT_BULK_WORST_NETWORK_MS, GDELT_ROLLING_WINDOW_MS, gdeltTimestampToMs, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { GDELT_BULK_CONFLICT_KEY } from './_gdelt-bulk-contract.mjs';
+import {
+  HAPI_HDX_MAX_RESPONSE_BYTES,
+  HAPI_HDX_PACKAGE_URL,
+  HAPI_MAX_PAGES,
+  HAPI_PAGE_LIMIT,
+  aggregateHapiConflictEvents,
+  buildHapiConflictEventsUrl,
+  fetchHapiHdxSnapshotRows,
+  hapiCountryCodeForIso3,
+  hapiHdxFailureReason,
+  parseHapiHdxConflictCsv,
+  selectHapiHdxCsvResources,
+} from './_conflict-hapi.mjs';
 import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 import { resolveIso2 } from './_country-resolver.mjs';
+
+export {
+  HAPI_HDX_MAX_RESPONSE_BYTES,
+  HAPI_HDX_PACKAGE_URL,
+  aggregateHapiConflictEvents,
+  buildHapiConflictEventsUrl,
+  fetchHapiHdxSnapshotRows,
+  parseHapiHdxConflictCsv,
+  selectHapiHdxCsvResources,
+};
 
 loadEnvFile(import.meta.url);
 
@@ -83,9 +106,6 @@ export const HAPI_FAILURE_BACKOFF_MS = 2 * 60 * 60 * 1000;
 const HAPI_FAILURE_BACKOFF_KEY = 'conflict:humanitarian:hapi-backoff:v1';
 const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
-const HAPI_PAGE_LIMIT = 10_000;
-const HAPI_MAX_PAGES = 3;
-const HAPI_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const PIZZINT_TTL = 600;
 
 export const CONFLICT_COUNTRIES = [
@@ -117,31 +137,53 @@ export const HAPI_REQUIRED_COUNTRIES = [
   ...new Set([...HAPI_CRISIS_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES]),
 ];
 const HAPI_COUNTRIES = [...new Set([...HAPI_ONLY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES, ...CONFLICT_COUNTRIES])];
-// A throttled failure, as it reaches us: fetchGdeltCountryEvents flattens the direct and
-// proxy attempts into one message, e.g. "...(last direct: HTTP 429) (last proxy: HTTP 429)".
-const RATE_LIMIT_ERROR = /\b429\b|rate.?limit|too many requests/i;
+// The bounded transport emits stable route-specific failure codes. Treat the
+// failures known to implicate the selected route as a run-scoped circuit
+// signal; repeating them for another country cannot improve source reachability.
+const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_(?:CONFIG|HTTP_(?:401|403|404|406|407|408|410|429|451|5\d\d)|INVALID_JSON|TLS|TIMEOUT|DNS|TRANSPORT)\b|\bHTTP 429\b|SSL_ERROR_SYSCALL|\b(?:timed?\s*out|timeout)\b/i;
 // #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
 // fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
 // an absolute deadline down, so slow aux feeds automatically shrink the sweep
-// window instead of stacking on top of it). HAPI now uses one bounded bulk request
-// instead of a 38-country sequential sweep. One
+// window instead of stacking on top of it). HAPI now uses one bounded API request
+// plus, only on bot detection, an official snapshot instead of a 38-country
+// sequential sweep. One
 // in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
-// (15s concurrent direct legs + 4 × 20s SERIALIZED sync proxy curls — curlFetch is
-// execFileSync, so "concurrent" proxy attempts block the event loop one at a time;
-// 92s observed live 2026-07-10). Worst single fetchAll attempt before the bulk
+// (either 15s concurrent direct legs when no proxy is configured, or 4 × 20s
+// SERIALIZED sync proxy curls — curlFetch is execFileSync, so "concurrent"
+// proxy attempts block the event loop one at a time). Worst single fetchAll attempt before the bulk
 // fallback is now dominated by the GDELT path. Without this cap a
 // GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
-// The bulk fallback runs after those parallel feeds settle, so its 60s bound
-// and 30s publish slack are additive: 220s + 60s + 30s = 310s — still
-// comfortably under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
+// HAPI's 15s API plus 60s metadata and, only at the January boundary, at most
+// two 120s annual snapshot downloads run inside the parallel auxiliary stage,
+// not after the sweep. The resulting ≤315s HAPI bound remains comfortably under
+// ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
 // below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
-// maxRetries: 0 — a second direct attempt would honor GDELT's Retry-After header
-// (≤60s sleep, _gdelt-fetch.mjs MAX_RETRY_AFTER_MS), blowing any per-batch bound;
-// the proxy leg (IP-rotating) is the designed 429 answer, not a same-IP retry.
-// proxyMaxAttempts: 1 — proxy curls are synchronous (execFileSync, ≤20s each) and
-// serialize across the whole batch: each extra attempt adds 4 × 20s of worst case.
-export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxAttempts: 1 });
+// Cold-start floor for the bulk-primary path (#5849 review): only consulted
+// on a TRUE cold start (no previous snapshot of any kind — #5855 review). Kept
+// deliberately low — a quiet-but-healthy 2h export window still clears it,
+// while a partially-degraded mirror serving a single-country handful does not.
+const GDELT_BULK_COLD_START_MIN_COUNTRIES = 3;
+// Freshness gate for the bulk-primary path (#5855 review): a mirror that stops
+// updating keeps serving the same aging exports, and without an age check every
+// tick publishes a "fresh" seed-meta write while a possibly-healthy DOC route
+// is never consulted. 3h = 12 export cycles of lag — beyond any routine GDELT
+// publication gap, far under the 24h rolling window. An unparseable newest
+// export timestamp fails closed (treated as stale).
+export const GDELT_BULK_MAX_EXPORT_AGE_MS = 3 * 60 * 60 * 1000;
+// Materialized exports come from the same 15-minute Railway cadence, so they
+// should never lead this consumer's clock materially. Allow a small deployment
+// clock skew, then fail closed instead of pinning a future export as fresh.
+export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+// The shared GDELT transport enforces one selected-route attempt. These explicit
+// values pin that contract at this high-fanout caller. timeoutMs is pinned too:
+// _gdelt-fetch.mjs's default rose from 15s to 30s for seed-gdelt-intel's slow
+// residential-proxy route (issue #5830), but this sweep's own budget was never
+// re-tuned for that — GDELT_SWEEP_BUDGET_MS (120s) launches batches of 4 and
+// needs 16/20 countries to clear GDELT_MIN_SUCCESSFUL_COUNTRIES. Inheriting the
+// 30s default would let a single degraded batch eat a quarter of the whole
+// sweep budget, so this call site keeps the prior 15s ceiling explicitly.
+export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxAttempts: 1, timeoutMs: 15_000 });
 // Lock must outlive the worst legitimate run (runSeed's documented invariant —
 // _seed-utils.mjs: "a healthy seeder is designed never to outlive its own lock");
 // it also sets the fetch deadline (lockTtlMs + 120s margin = 540s). The default
@@ -149,31 +191,13 @@ export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxA
 // 15min, so a hard-crashed run's dangling lock costs at most 7 of those minutes.
 export const ACLED_INTEL_LOCK_TTL_MS = 420_000;
 
-const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
-const ISO3_TO_ISO2 = new Map(
-  Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [String(iso3).toUpperCase(), iso2]),
-);
-
 // HDX HAPI's `app_identifier` is used for per-client tracking/rate-limiting, not
-// just auth. The previous identifier (`worldmonitor:monitor@worldmonitor.app`)
-// got persistently 429'd — confirmed NOT an IP-level block (a fresh identifier
-// from the same IP at the same instant got 200) and NOT a generic per-identifier
-// rate limit either: live probing found HDX is flagging any app_identifier whose
-// `application` field case-insensitively CONTAINS the substring "worldmonitor"
-// specifically (e.g. `worldmonitor2`, `WorldMonitor`, `xworldmonitorx` all 429;
-// `world-monitor`, `monitorworld`, `wm-crisis-tracker` all 200 from the same IP
-// in the same probe run) — almost certainly a manual flag HDX ops placed on the
-// name after our prior uncoordinated traffic pattern (see #5554). Only the
-// `application` field matters here — separately confirmed live that the `email`
-// field containing "worldmonitor" (monitor@worldmonitor.app, unchanged, kept as
-// the real contact address) is NOT part of the trigger: `totally-different-app-
-// name:monitor@worldmonitor.app` also got 200 in the same probe run. shared/
-// hapi-app-identifier.json's `application` value intentionally avoids the
-// substring for this reason; `email` doesn't need to. Whatever identifier is
-// configured there must ALSO stay low-volume going forward. This seeder is the
-// ONLY source of HAPI traffic; the RPC handlers only ever read the Redis keys
-// this writes. The current implementation makes one bulk request at most every
-// two hours, rather than 38 per-country requests every 15 minutes.
+// just auth. The API remains the preferred route, but HAPI now bot-blocks both
+// Railway's direct egress and the configured residential proxy. A bot block
+// therefore falls back to HAPI's official annual CSV snapshot on HDX instead of
+// retrying the identical API endpoint through another egress. This seeder is
+// the only source of HAPI traffic; the RPC handlers only read the Redis keys it
+// writes, and the freshness gate permits one attempt at most every two hours.
 const HAPI_APP_IDENTIFIER_CONFIG = loadSharedConfig('hapi-app-identifier.json');
 const HAPI_APP_IDENTIFIER = Buffer.from(
   `${HAPI_APP_IDENTIFIER_CONFIG.application}:${HAPI_APP_IDENTIFIER_CONFIG.email}`,
@@ -233,6 +257,12 @@ function buildAcledParams({ startDate, endDate, limit, page }) {
   return params;
 }
 
+function stableAcledEventId(event) {
+  if (typeof event?.event_id_cnty !== 'string') return null;
+  const id = event.event_id_cnty.trim();
+  return id || null;
+}
+
 async function fetchAcledPage(token, params) {
   const resp = await fetch(`${ACLED_API_URL}?${params}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
@@ -244,15 +274,24 @@ async function fetchAcledPage(token, params) {
   return Array.isArray(data.data) ? data.data : [];
 }
 
-function normalizeAcledConflictEvents(rawEvents) {
-  return rawEvents
-    .filter(e => {
-      const lat = parseFloat(e.latitude || '');
-      const lon = parseFloat(e.longitude || '');
-      return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
-    })
-    .map(e => ({
-      id: `acled-${e.event_id_cnty}`,
+export function normalizeAcledConflictEvents(rawEvents) {
+  return rawEvents.flatMap((e) => {
+    const eventId = stableAcledEventId(e);
+    const lat = parseFloat(e?.latitude || '');
+    const lon = parseFloat(e?.longitude || '');
+    if (
+      !eventId
+      || !Number.isFinite(lat)
+      || !Number.isFinite(lon)
+      || lat < -90
+      || lat > 90
+      || lon < -180
+      || lon > 180
+    ) {
+      return [];
+    }
+    return [{
+      id: `acled-${eventId}`,
       eventType: e.event_type || '',
       country: e.country || '',
       // event_date ('YYYY-MM-DD') is the field the EMA engine reads
@@ -265,7 +304,17 @@ function normalizeAcledConflictEvents(rawEvents) {
       actors: [e.actor1, e.actor2].filter(Boolean),
       source: e.source || '',
       admin1: e.admin1 || '',
-    }));
+    }];
+  });
+}
+
+export function shouldStopAcledPagination({
+  pageSize,
+  limit,
+  stableEventIdCount,
+  addedEventCount,
+}) {
+  return pageSize < limit || (stableEventIdCount === pageSize && addedEventCount === 0);
 }
 
 async function fetchAcledEvents({
@@ -287,6 +336,7 @@ async function fetchAcledEvents({
   const seen = new Set();
   let pagesFetched = 0;
   let lastPageCount = 0;
+  let missingEventIdCount = 0;
   const pageLimit = paginated ? Math.max(1, maxPages) : 1;
 
   for (let page = 1; page <= pageLimit; page += 1) {
@@ -300,17 +350,39 @@ async function fetchAcledEvents({
     pagesFetched = page;
     lastPageCount = pageEvents.length;
     const before = rawEvents.length;
+    let stableEventIdCount = 0;
     for (const event of pageEvents) {
-      const id = event.event_id_cnty || `${event.event_date}:${event.country}:${event.latitude}:${event.longitude}:${event.notes || event.source || ''}`;
+      // ACLED documents event_id_cnty as the stable identifier that survives
+      // detail updates. A composite fallback changes when notes/source details
+      // are revised and therefore cannot safely key history or retractions.
+      const id = stableAcledEventId(event);
+      if (!id) {
+        missingEventIdCount += 1;
+        continue;
+      }
+      stableEventIdCount += 1;
       if (seen.has(id)) continue;
       seen.add(id);
       rawEvents.push(event);
     }
-    if (!paginated || pageEvents.length < limit || rawEvents.length === before) break;
+    if (
+      !paginated
+      || shouldStopAcledPagination({
+        pageSize: pageEvents.length,
+        limit,
+        stableEventIdCount,
+        addedEventCount: rawEvents.length - before,
+      })
+    ) {
+      break;
+    }
     await sleep(ACLED_PAGE_DELAY_MS);
   }
 
   const events = normalizeAcledConflictEvents(rawEvents);
+  if (missingEventIdCount > 0) {
+    console.warn(`  ${label}: dropped ${missingEventIdCount} event(s) missing stable event_id_cnty`);
+  }
   const pagination = paginated
     ? { lookbackDays, limit, pagesFetched, maxPages, truncated: pagesFetched >= maxPages && lastPageCount >= limit }
     : undefined;
@@ -320,11 +392,13 @@ async function fetchAcledEvents({
 
 // ─── GDELT conflict-events fallback (used when ACLED has no credentials) ───
 // ACLED requires a registered account. When its credentials are absent, keep a
-// near-real-time conflict signal from GDELT. The DOC 2.0 path counts recent
-// conflict-tagged articles per priority country and emits synthetic events in the
-// SAME {country, event_date} shape the EMA engine reads (_ema-threat-engine.mjs).
-// When DOC coverage is throttled or yields no events, the official 15-minute bulk
-// event export supplies material-conflict records instead.
+// near-real-time conflict signal from GDELT. The official 15-minute bulk event
+// export is PRIMARY (#5849): it serves real material-conflict records from the
+// unthrottled GCS mirror with no proxy involvement. The DOC 2.0 per-country
+// sweep — which counts recent conflict-tagged articles and emits synthetic
+// events in the SAME {country, event_date} shape the EMA engine reads
+// (_ema-threat-engine.mjs) — is supply-side load-shed (#5843: 0/20 countries
+// for weeks) and runs only when the bulk path itself fails.
 export async function fetchGdeltCountryEvents(cc) {
   if (!GDELT_COUNTRY_NAMES[cc]) {
     return { country: cc, ok: false, events: [], error: 'unknown country code' };
@@ -340,6 +414,16 @@ export async function fetchGdeltCountryEvents(cc) {
   return { country: cc, ok: true, events: mapGdeltArticlesToEvents(data?.articles, cc) };
 }
 
+// #5855 review: a programming defect in our own code must crash loud and
+// attributable to the deploy — never be reclassified as an upstream outage and
+// quietly degraded to sourceUnavailable/exit 0 under the mirror-outage runbook.
+function isProgrammingDefect(error) {
+  return error instanceof TypeError
+    || error instanceof ReferenceError
+    || error instanceof RangeError
+    || error instanceof SyntaxError;
+}
+
 export async function fetchGdeltConflictEvents({
   fetchCountryEvents = fetchGdeltCountryEvents,
   fetchBulkEvents = fetchGdeltBulkConflictEvents,
@@ -348,12 +432,115 @@ export async function fetchGdeltConflictEvents({
   deadlineAt,
   loadPreviousSnapshot = () => readSeedSnapshot(ACLED_CACHE_KEY, { strict: true }),
 } = {}) {
+  // Bulk export first (#5849). On any bulk failure — mirror outage, stale
+  // mirror, empty rolling window — fall through to the DOC sweep below. An
+  // empty CURRENT tick is not by itself a failure: the retained rolling window
+  // still publishes, and only empty-current + nothing-retained falls through
+  // (#5855 review).
+  const bulkStartedAt = now();
+  let bulkFailure;
+  try {
+    const bulk = await fetchBulkEvents();
+    const newestExportAgeMs = now() - gdeltTimestampToMs(bulk?.exportTimestamp);
+    if (!Number.isFinite(newestExportAgeMs) || newestExportAgeMs > GDELT_BULK_MAX_EXPORT_AGE_MS) {
+      throw new Error(
+        `bulk export stale or unparseable: newest export ${bulk?.exportTimestamp}`
+        + ` is ${Number.isFinite(newestExportAgeMs) ? Math.round(newestExportAgeMs / 60000) : '?'}min old`
+        + ` (max ${GDELT_BULK_MAX_EXPORT_AGE_MS / 60000}min)`,
+      );
+    }
+    let previousSnapshot = null;
+    let previousSnapshotReadFailed = false;
+    try {
+      previousSnapshot = await loadPreviousSnapshot();
+    } catch (snapshotError) {
+      previousSnapshotReadFailed = true;
+      console.warn(
+        '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
+        + ` ${snapshotError?.message || snapshotError}`,
+      );
+    }
+    const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
+    if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
+    const countriesWithEvents = new Set(rolling.events.map(event => event.country)).size;
+    if (bulk.exportsSucceeded < bulk.exportsRequested) {
+      // Partial mirror degradation normally still publishes (each 15-min slice
+      // gets ~RECENT_EXPORT_COUNT retries before aging out of the manifest
+      // tail, and the rolling merge retains prior events), but say so — a
+      // silent thin tick is how a persistent asymmetric outage hides (#5849
+      // review). Logged ahead of the cold-start floor so a thin cold-start
+      // tick — exactly the degraded-mirror shape — still reports the ratio
+      // (#5855 review).
+      console.warn(`  GDELT bulk exports partially degraded: ${bulk.exportsSucceeded}/${bulk.exportsRequested} export files fetched`);
+    }
+    // Cold-start coverage floor (#5849 review, flagged independently by two
+    // reviewers): on a true first-ever run, an implausibly thin bulk result —
+    // a partially-degraded mirror serving one usable export — must not become
+    // the primary feed. Fall through to the sweep (and, both-fail, to
+    // runSeed's sourceUnavailable last-good preservation) instead.
+    // The floor arms ONLY on a true cold start (#5855 review):
+    // - a transient snapshot-read failure means "could not read", not
+    //   "first-ever run" (previousSnapshotReadFailed guard), and
+    // - a previous snapshot that exists but is DOC-sourced also zeroes
+    //   retainedPreviousEvents; flooring that state ping-pongs recovery back
+    //   onto the load-shed DOC route every time DOC briefly succeeds (#5852's
+    //   floor half). Publishing thin-but-real bulk re-primes the window.
+    if (
+      !previousSnapshotReadFailed
+      && previousSnapshot == null
+      && rolling.retainedPreviousEvents === 0
+      && countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES
+    ) {
+      throw new Error(
+        `cold-start bulk window too thin: ${countriesWithEvents} countries with events`
+        + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
+      );
+    }
+    console.log(
+      `  GDELT bulk conflict-events: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
+      + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
+    );
+    return {
+      events: rolling.events,
+      pagination: {
+        exportTimestamp: bulk.exportTimestamp,
+        exportsRequested: bulk.exportsRequested,
+        exportsSucceeded: bulk.exportsSucceeded,
+        countriesWithEvents,
+        rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
+        rollingWindowStartedAt: rolling.rollingWindowStartedAt,
+        rollingWindowComplete: rolling.rollingWindowComplete,
+        retainedPreviousEvents: rolling.retainedPreviousEvents,
+      },
+      source: 'gdelt-bulk',
+    };
+  } catch (bulkError) {
+    // Reclassified as a "bulk failure", a code defect would route to the
+    // load-shed DOC sweep and end in a quiet sourceUnavailable exit 0,
+    // sending operators down the mirror-outage runbook (#5855 review).
+    if (isProgrammingDefect(bulkError)) throw bulkError;
+    bulkFailure = `GDELT bulk event export failed: ${bulkError?.message || bulkError}`;
+    console.warn(`  ${bulkFailure}; falling back to the DOC country sweep`);
+  }
+
+  // DOC sweep fallback — canary, batch, budget, floor, and circuit semantics
+  // unchanged from when it was primary (#5140). The bulk attempt's elapsed time
+  // is credited back to the cutoff: the deadline invariant already budgets
+  // GDELT_BULK_WORST_NETWORK_MS ON TOP of the sweep window (seed-fetch-deadline-
+  // budget-invariants.test.mjs), and without the credit a slow-failing mirror
+  // (up to ~60s of timeouts) would hand the healthy DOC fallback an already-
+  // expired budget every tick. Aux-stage time still comes out of the window,
+  // and the credit is clamped to the same GDELT_BULK_WORST_NETWORK_MS constant
+  // the invariant test models, so the modelled and actual worst-case envelopes
+  // stay the same number (#5140 arithmetic unchanged).
   const events = [];
   const failedCountries = [];
   let successfulCountries = 0;
-  const CONCURRENCY = 4; // bound the run window (20 countries × proxy retries)
-  const launchCutoffAt = deadlineAt ?? now() + GDELT_SWEEP_BUDGET_MS;
-  for (let i = 0; i < CONFLICT_COUNTRIES.length; i += CONCURRENCY) {
+  const CONCURRENCY = 4;
+  const launchCutoffAt = deadlineAt != null
+    ? deadlineAt + Math.min(now() - bulkStartedAt, GDELT_BULK_WORST_NETWORK_MS)
+    : now() + GDELT_SWEEP_BUDGET_MS;
+  for (let i = 0; i < CONFLICT_COUNTRIES.length;) {
     // #5140: stop LAUNCHING batches once the phase cutoff passes or the floor can
     // no longer be reached — either way the caller degrades to aux-only and exits 0,
     // instead of grinding retries into the fetch-phase deadline (exit 75).
@@ -367,7 +554,12 @@ export async function fetchGdeltConflictEvents({
       console.warn(`  [GDELT] conflict sweep stopped early (${why}) with ${i}/${CONFLICT_COUNTRIES.length} countries attempted`);
       break;
     }
-    const batch = remaining.slice(0, CONCURRENCY);
+    // Probe one country before widening. A selected-route failure on the canary
+    // aborts the sweep after a single request (bulk has already failed by this
+    // point — see top of function) instead of repeating the same blocked path
+    // across a four-country batch.
+    const batchSize = successfulCountries === 0 ? 1 : CONCURRENCY;
+    const batch = remaining.slice(0, batchSize);
     const results = await Promise.all(batch.map(cc => fetchCountryEvents(cc)));
     for (const result of results) {
       if (result?.ok) {
@@ -377,26 +569,20 @@ export async function fetchGdeltConflictEvents({
         failedCountries.push({ country: result?.country || 'unknown', error: result?.error || 'unknown failure' });
       }
     }
-    // #5256: back off out of a rate-limit storm instead of grinding into it. On
-    // 2026-07-13 GDELT 429'd every country, direct AND through the proxy — reproducible
-    // off-Railway, so it is a GLOBAL throttle, not our egress. Once a whole batch comes
-    // back throttled with zero successes anywhere, the remaining batches cannot succeed
-    // either; they just burn the run window and deepen the limit we are already hitting.
-    // (The floor check above would stop us eventually, but only after ~2× the requests.)
-    // A throttled batch rarely comes back UNIFORMLY 429: under load GDELT also times out and
-    // tears TLS mid-handshake, so a real storm looks like 3×429 + 1×SSL. Requiring every
-    // result to be a 429 would miss that and grind on for another batch. Trigger on the
-    // honest signal instead — the whole batch failed, nothing has succeeded anywhere, and at
-    // least one failure is an explicit rate-limit.
+    i += batch.length;
+
+    // A whole batch of selected-route failures means the route, not a country
+    // query, is unavailable. Open the circuit for 429, TLS, timeout, DNS,
+    // malformed upstream JSON, and route-wide HTTP statuses alike.
     const batchAllFailed = results.every(r => !r?.ok);
-    const anyRateLimited = results.some(r => RATE_LIMIT_ERROR.test(String(r?.error ?? '')));
-    if (batchAllFailed && anyRateLimited && successfulCountries === 0) {
-      const why = 'GDELT rate-limit storm (batch fully throttled, 0 successes)';
-      for (const cc of remaining.slice(CONCURRENCY)) failedCountries.push({ country: cc, error: why });
-      console.warn(`  [GDELT] conflict sweep backed off (${why}) after ${i + batch.length}/${CONFLICT_COUNTRIES.length} countries`);
+    const routeFailed = results.some(r => GDELT_ROUTE_FAILURE.test(String(r?.error ?? '')));
+    if (batchAllFailed && routeFailed) {
+      const why = 'GDELT selected-route circuit open (batch fully failed)';
+      for (const cc of CONFLICT_COUNTRIES.slice(i)) failedCountries.push({ country: cc, error: why });
+      console.warn(`  [GDELT] conflict sweep backed off (${why}) after ${i}/${CONFLICT_COUNTRIES.length} countries`);
       break;
     }
-    if (i + CONCURRENCY < CONFLICT_COUNTRIES.length) await pace(500); // inter-batch only; no trailing wait
+    if (i < CONFLICT_COUNTRIES.length) await pace(500); // inter-batch only; no trailing wait
   }
   if (successfulCountries < GDELT_MIN_SUCCESSFUL_COUNTRIES || events.length === 0) {
     const sample = failedCountries.slice(0, 6).map(({ country, error }) => `${country}:${error}`).join(', ');
@@ -404,48 +590,9 @@ export async function fetchGdeltConflictEvents({
       ? `GDELT conflict-events coverage below floor: ${successfulCountries}/${CONFLICT_COUNTRIES.length} countries succeeded ` +
         `(min ${GDELT_MIN_SUCCESSFUL_COUNTRIES})${sample ? `; failures: ${sample}` : ''}`
       : `GDELT conflict-events returned zero events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful countries`;
-    console.warn(`  ${docFailure}; trying official bulk event export`);
-    try {
-      const bulk = await fetchBulkEvents();
-      if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
-      let previousSnapshot = null;
-      try {
-        previousSnapshot = await loadPreviousSnapshot();
-      } catch (snapshotError) {
-        console.warn(
-          '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
-          + ` ${snapshotError?.message || snapshotError}`,
-        );
-      }
-      const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
-      if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
-      console.log(
-        `  GDELT bulk conflict-events fallback: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
-        + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
-      );
-      return {
-        events: rolling.events,
-        pagination: {
-          countriesTotal: CONFLICT_COUNTRIES.length,
-          countriesSucceeded: successfulCountries,
-          countriesFailed: failedCountries.length,
-          minSuccessfulCountries: GDELT_MIN_SUCCESSFUL_COUNTRIES,
-          exportTimestamp: bulk.exportTimestamp,
-          exportsRequested: bulk.exportsRequested,
-          exportsSucceeded: bulk.exportsSucceeded,
-          countriesWithEvents: new Set(rolling.events.map(event => event.country)).size,
-          rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
-          rollingWindowStartedAt: rolling.rollingWindowStartedAt,
-          rollingWindowComplete: rolling.rollingWindowComplete,
-          retainedPreviousEvents: rolling.retainedPreviousEvents,
-        },
-        source: 'gdelt-bulk',
-      };
-    } catch (bulkError) {
-      throw new Error(`${docFailure}; bulk fallback failed: ${bulkError?.message || bulkError}`);
-    }
+    throw new Error(`${bulkFailure}; DOC sweep fallback failed: ${docFailure}`);
   }
-  console.log(`  GDELT conflict-events (ACLED fallback): ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
+  console.log(`  GDELT conflict-events DOC sweep fallback: ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
   return {
     events,
     pagination: {
@@ -458,112 +605,63 @@ export async function fetchGdeltConflictEvents({
   };
 }
 
-// ─── Humanitarian Summary (HAPI) ───
-
-function previousMonthStart(nowMs) {
-  const now = new Date(nowMs);
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
-    .toISOString()
-    .slice(0, 10);
-}
-
-export function buildHapiConflictEventsUrl({
-  nowMs = Date.now(),
-  offset = 0,
-  countryCode,
-  adminLevel = '0',
+// The bulk materializer owns GDELT downloads and the 24h rolling window.
+// Conflict remains the publisher of the established ACLED-compatible key, but
+// its no-credentials fallback is now a single Redis read instead of a second
+// bulk download followed by a 20-country DOC sweep.
+export async function readMaterializedGdeltConflictEvents({
+  readSnapshot = () => readSeedSnapshot(GDELT_BULK_CONFLICT_KEY, { strict: true }),
+  now = Date.now,
 } = {}) {
-  const url = new URL('https://hapi.humdata.org/api/v2/coordination-context/conflict-events');
-  url.searchParams.set('output_format', 'json');
-  if (adminLevel != null) url.searchParams.set('admin_level', String(adminLevel));
-  url.searchParams.set('start_date', previousMonthStart(nowMs));
-  url.searchParams.set('limit', String(HAPI_PAGE_LIMIT));
-  url.searchParams.set('offset', String(offset));
-  if (countryCode) {
-    const iso3 = ISO2_TO_ISO3[countryCode];
-    if (!iso3) throw new Error(`No ISO3 mapping for HAPI country ${countryCode}`);
-    url.searchParams.set('location_code', iso3);
+  const snapshot = await readSnapshot();
+  if (
+    snapshot?.source !== 'gdelt-bulk'
+    || !Array.isArray(snapshot?.events)
+    || snapshot.events.length === 0
+  ) {
+    throw new Error(`${GDELT_BULK_CONFLICT_KEY} missing or empty`);
   }
-  return url.toString();
-}
-
-function finiteCount(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-export function aggregateHapiConflictEvents(
-  records,
-  { nowMs = Date.now(), countryCodes = HAPI_COUNTRIES } = {},
-) {
-  const targetCountries = new Set(countryCodes);
-  const aggregates = new Map();
-
-  for (const row of Array.isArray(records) ? records : []) {
-    const countryCode = ISO3_TO_ISO2.get(String(row?.location_code || '').toUpperCase());
-    if (!countryCode || !targetCountries.has(countryCode)) continue;
-
-    const referencePeriod = String(row?.reference_period_start || '');
-    if (!referencePeriod) continue;
-    const parsedAdminLevel = Number(row?.admin_level ?? 0);
-    const adminLevel = Number.isFinite(parsedAdminLevel) ? parsedAdminLevel : 0;
-
-    let aggregate = aggregates.get(countryCode);
-    if (
-      !aggregate
-      || referencePeriod > aggregate.referencePeriod
-      || (referencePeriod === aggregate.referencePeriod && adminLevel > aggregate.adminLevel)
-    ) {
-      aggregate = {
-        referencePeriod,
-        adminLevel,
-        countryName: String(row?.location_name || ''),
-        eventsTotal: 0,
-        eventsPV: 0,
-        eventsCT: 0,
-        eventsDem: 0,
-        fatalitiesPV: 0,
-        fatalitiesCT: 0,
-      };
-      aggregates.set(countryCode, aggregate);
-    }
-    if (
-      referencePeriod !== aggregate.referencePeriod
-      || adminLevel !== aggregate.adminLevel
-    ) continue;
-
-    const eventType = String(row?.event_type || '').toLowerCase();
-    const events = finiteCount(row?.events);
-    const fatalities = finiteCount(row?.fatalities);
-    aggregate.eventsTotal += events;
-    if (eventType === 'political_violence') {
-      aggregate.eventsPV += events;
-      aggregate.fatalitiesPV += fatalities;
-    } else if (eventType === 'civilian_targeting') {
-      aggregate.eventsCT += events;
-      aggregate.fatalitiesCT += fatalities;
-    } else if (eventType === 'demonstration') {
-      aggregate.eventsDem += events;
+  const exportTimestamp = snapshot?.pagination?.exportTimestamp;
+  const exportMs = gdeltTimestampToMs(exportTimestamp);
+  const nowMs = now();
+  if (!Number.isFinite(exportMs)) {
+    throw new Error(`${GDELT_BULK_CONFLICT_KEY} export timestamp is unparseable: ${exportTimestamp}`);
+  }
+  const ageMs = nowMs - exportMs;
+  if (ageMs > GDELT_BULK_MAX_EXPORT_AGE_MS) {
+    throw new Error(
+      `${GDELT_BULK_CONFLICT_KEY} stale export ${exportTimestamp}`
+      + ` (${Math.round(ageMs / 60000)}min old; max ${GDELT_BULK_MAX_EXPORT_AGE_MS / 60000}min)`,
+    );
+  }
+  if (ageMs < -GDELT_BULK_MAX_FUTURE_SKEW_MS) {
+    throw new Error(
+      `${GDELT_BULK_CONFLICT_KEY} future export ${exportTimestamp}`
+      + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
+    );
+  }
+  // Cold-start coverage floor, carried onto the materialized path (#5864).
+  // #5855 added this so an implausibly thin window could not become the whole
+  // conflict feed; after the #5863 cutover it survived only in the unwired DOC
+  // seam. It arms ONLY before the rolling window is complete — steady-state
+  // ticks always carry a full 24h window and are never floored. Throwing here
+  // routes to fetchAll's sourceUnavailable path, which preserves last-good.
+  if (snapshot?.pagination?.rollingWindowComplete === false) {
+    const countriesWithEvents = new Set(
+      snapshot.events.map((event) => event?.country).filter(Boolean),
+    ).size;
+    if (countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES) {
+      throw new Error(
+        `${GDELT_BULK_CONFLICT_KEY} cold-start window too thin:`
+        + ` ${countriesWithEvents} countries with events`
+        + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
+      );
     }
   }
-
-  const results = {};
-  for (const [countryCode, aggregate] of aggregates) {
-    results[countryCode] = {
-      summary: {
-        countryCode,
-        countryName: aggregate.countryName,
-        conflictEventsTotal: aggregate.eventsTotal,
-        conflictPoliticalViolenceEvents: aggregate.eventsPV + aggregate.eventsCT,
-        conflictFatalities: aggregate.fatalitiesPV + aggregate.fatalitiesCT,
-        referencePeriod: aggregate.referencePeriod,
-        conflictDemonstrations: aggregate.eventsDem,
-        updatedAt: nowMs,
-      },
-    };
-  }
-  return results;
+  return snapshot;
 }
+
+// ─── Humanitarian Summary (HAPI) ───
 
 async function defaultPreserveHapiLastGood() {
   await extendExistingTtl(
@@ -577,7 +675,7 @@ async function defaultPreserveHapiLastGood() {
 }
 
 function hapiFailureReason(status, providerMessage = '') {
-  if (Number(status) === 429 && /blocked due to bot activity/i.test(providerMessage)) {
+  if (/blocked due to bot activity/i.test(providerMessage)) {
     return 'HAPI_BOT_BLOCK';
   }
   if (Number(status) === 429) return 'HAPI_RATE_LIMIT';
@@ -604,45 +702,6 @@ async function hapiResponseError(resp) {
       reasonCode: hapiFailureReason(resp.status, providerMessage),
     },
   );
-}
-
-function hapiProxyFailureReason(error) {
-  if (
-    Number(error?.status) === 407
-    || /Proxy CONNECT:[^\n]*\b407\b/i.test(String(error?.message ?? ''))
-  ) return 'PROXY_AUTH_FAILED';
-  if (error?.reasonCode) return error.reasonCode;
-  if (/PROXY_CONFIG_INVALID/i.test(String(error?.message ?? ''))) return 'PROXY_CONFIG_INVALID';
-  if (
-    error?.code === 'RESPONSE_TOO_LARGE'
-    || /RESPONSE_TOO_LARGE/i.test(String(error?.message ?? ''))
-  ) return 'RESPONSE_TOO_LARGE';
-  return 'PROXY_FETCH_FAILED';
-}
-
-async function fetchHapiViaConfiguredProxy(input, init, {
-  proxyConfig,
-  proxyRequestFn,
-}) {
-  if (!proxyConfig) throw new Error('PROXY_CONFIG_INVALID');
-  const result = await proxyRequestFn(String(input), proxyConfig, {
-    accept: 'application/json',
-    headers: init?.headers,
-    method: init?.method ?? 'GET',
-    maxResponseBytes: HAPI_MAX_RESPONSE_BYTES,
-    timeoutMs: HAPI_REQUEST_TIMEOUT_MS,
-    signal: init?.signal,
-  });
-  if (result.buffer.byteLength > HAPI_MAX_RESPONSE_BYTES) {
-    throw new Error('RESPONSE_TOO_LARGE');
-  }
-  return new Response(result.buffer, {
-    status: result.status,
-    headers: {
-      'Content-Length': String(result.buffer.byteLength),
-      'Content-Type': result.contentType || 'application/json',
-    },
-  });
 }
 
 async function fetchHapiRows({
@@ -695,8 +754,7 @@ export async function fetchAllHumanitarianSummaries({
   requiredCountryCodes = countryCodes === HAPI_COUNTRIES ? HAPI_REQUIRED_COUNTRIES : countryCodes,
   loadPreviousMarker = () => readSeedSnapshot(HAPI_CACHE_KEY_PREFIX),
   loadFailureBackoff = () => readSeedSnapshot(HAPI_FAILURE_BACKOFF_KEY),
-  proxyUrl = process.env.HAPI_PROXY_URL || process.env.PROXY_URL || '',
-  proxyRequestFn = proxyFetch,
+  snapshotFetchFn = (...args) => globalThis.fetch(...args),
   writeFailureBackoff = (value) => writeExtraKey(
     HAPI_FAILURE_BACKOFF_KEY,
     value,
@@ -731,48 +789,60 @@ export async function fetchAllHumanitarianSummaries({
     return null;
   }
 
-  const proxyConfig = proxyUrl ? parseProxyConfig(proxyUrl) : null;
-  const configuredProxyFetch = proxyUrl
-    ? (input, init) => fetchHapiViaConfiguredProxy(input, init, {
-        proxyConfig,
-        proxyRequestFn,
-      })
-    : null;
-  let useProxy = false;
-  let proxyTriggerFailure = null;
-  const fetchRowsViaProxy = async (options) => {
+  let useSnapshot = false;
+  let snapshotTriggerFailure = null;
+  let snapshotRowsPromise;
+  const loadSnapshotRows = () => {
+    if (!snapshotRowsPromise) {
+      snapshotRowsPromise = fetchHapiHdxSnapshotRows({
+        fetchFn: snapshotFetchFn,
+        nowMs,
+        countryCodes,
+      });
+    }
+    return snapshotRowsPromise;
+  };
+  const fetchRowsFromSnapshot = async ({ countryCode, adminLevel }) => {
     try {
-      return await fetchHapiRows({ ...options, fetchFn: configuredProxyFetch });
-    } catch (proxyFailure) {
+      const snapshotRows = await loadSnapshotRows();
+      return snapshotRows.filter((row) => {
+        const rowCountryCode = hapiCountryCodeForIso3(row?.location_code);
+        if (countryCode && rowCountryCode !== countryCode) return false;
+        if (adminLevel != null && String(row?.admin_level ?? '0') !== String(adminLevel)) {
+          return false;
+        }
+        return true;
+      });
+    } catch (snapshotFailure) {
+      const snapshotFailureReason = hapiHdxFailureReason(snapshotFailure);
       throw Object.assign(
-        new Error('HAPI proxy fallback failed after direct bot detection'),
+        new Error(
+          `HAPI HDX snapshot fallback failed after direct bot detection: ${snapshotFailureReason}`,
+        ),
         {
-          status: Number.isFinite(Number(proxyFailure?.status))
-            ? Number(proxyFailure.status)
-            : Number(proxyTriggerFailure?.status),
-          reasonCode: 'HAPI_PROXY_FALLBACK_FAILED',
-          directFailureReason: proxyTriggerFailure?.reasonCode ?? 'HAPI_BOT_BLOCK',
-          proxyFailureReason: hapiProxyFailureReason(proxyFailure),
+          status: Number.isFinite(Number(snapshotFailure?.status))
+            ? Number(snapshotFailure.status)
+            : Number(snapshotTriggerFailure?.status),
+          reasonCode: 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED',
+          directFailureReason: snapshotTriggerFailure?.reasonCode ?? 'HAPI_BOT_BLOCK',
+          snapshotFailureReason,
         },
       );
     }
   };
   const fetchRows = async (options) => {
-    if (useProxy) {
-      return fetchRowsViaProxy(options);
+    if (useSnapshot) {
+      return fetchRowsFromSnapshot(options);
     }
     try {
       return await fetchHapiRows({ ...options, fetchFn });
     } catch (directFailure) {
-      if (
-        !configuredProxyFetch
-        || directFailure?.reasonCode !== 'HAPI_BOT_BLOCK'
-      ) throw directFailure;
+      if (directFailure?.reasonCode !== 'HAPI_BOT_BLOCK') throw directFailure;
 
-      useProxy = true;
-      proxyTriggerFailure = directFailure;
-      console.warn('  HAPI direct request hit provider bot detection — retrying through configured proxy');
-      return fetchRowsViaProxy(options);
+      useSnapshot = true;
+      snapshotTriggerFailure = directFailure;
+      console.warn('  HAPI direct request hit provider bot detection — loading official HDX snapshot');
+      return fetchRowsFromSnapshot(options);
     }
   };
 
@@ -808,10 +878,12 @@ export async function fetchAllHumanitarianSummaries({
       } catch (error) {
         fallbackFailure = error;
         console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
-        if (error.reasonCode === 'HAPI_PROXY_FALLBACK_FAILED') throw error;
+        if (error.reasonCode === 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED') throw error;
         if (error.status === 429 || error.status === 403) break;
       }
-      if (i < missingCountries.length - 1) await pace(HAPI_REQUEST_DELAY_MS);
+      if (i < missingCountries.length - 1 && !useSnapshot) {
+        await pace(HAPI_REQUEST_DELAY_MS);
+      }
     }
 
     if (Object.keys(results).length === 0) {
@@ -828,8 +900,8 @@ export async function fetchAllHumanitarianSummaries({
               ...(fallbackFailure.directFailureReason
                 ? { directFailureReason: fallbackFailure.directFailureReason }
                 : {}),
-              ...(fallbackFailure.proxyFailureReason
-                ? { proxyFailureReason: fallbackFailure.proxyFailureReason }
+              ...(fallbackFailure.snapshotFailureReason
+                ? { snapshotFailureReason: fallbackFailure.snapshotFailureReason }
                 : {}),
             }
           : {},
@@ -869,8 +941,8 @@ export async function fetchAllHumanitarianSummaries({
     ...(failure?.directFailureReason
       ? { directFailureReason: failure.directFailureReason }
       : {}),
-    ...(failure?.proxyFailureReason
-      ? { proxyFailureReason: failure.proxyFailureReason }
+    ...(failure?.snapshotFailureReason
+      ? { snapshotFailureReason: failure.snapshotFailureReason }
       : {}),
   }).catch((error) => console.warn(`  HAPI failure health write failed: ${error.message}`));
   await writeFailureBackoff({
@@ -954,7 +1026,9 @@ async function fetchGdeltTensions() {
 // runSeed invokes this as `fetchFn()` with no arguments, so the injected dep is for tests
 // only — the GDELT fallback reaches its proxy through a `curl` child process, which no
 // global-fetch stub can intercept, so it must be injectable to keep tests hermetic.
-export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents } = {}) {
+export async function fetchAll({
+  fetchGdeltFallback = readMaterializedGdeltConflictEvents,
+} = {}) {
   // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
   // not at sweep entry — the aux feeds below and the sweep share runSeed's
   // single fetch deadline, so time the aux stage burns must come out of the
@@ -1037,12 +1111,16 @@ export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents }
     // when ACLED credentials ARE present but the display fetch failed (#5106).
     const missingCredentials = acled.status === 'fulfilled';
     if (missingCredentials) {
-      // No ACLED credentials → fall back to the GDELT article-volume proxy so the
-      // conflict escalation EMA keeps a near-real-time signal (#5099). This runs only
+      // No ACLED credentials → fall back to GDELT (bulk event export primary, DOC
+      // article-volume sweep as emergency fallback — #5849) so the conflict
+      // escalation EMA keeps a near-real-time signal (#5099). This runs only
       // on the no-creds path: a credentialed-but-failed fetch still throws below, and a
       // credentialed-but-empty ACLED result is trusted (returns `ac`) rather than
       // overwritten by GDELT volume.
       const gdeltEvents = await fetchGdeltFallback({ deadlineAt: sweepDeadlineAt }).catch((e) => {
+        // Outages degrade to sourceUnavailable below; our own defects must
+        // escape to runSeed and fail attributably (#5855 review).
+        if (isProgrammingDefect(e)) throw e;
         console.warn(`  GDELT conflict-events fallback failed: ${e.message}`);
         return null;
       });

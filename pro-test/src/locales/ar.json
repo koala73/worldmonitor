@@ -140,7 +140,7 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39.99 دولار / شهر",
-    "priceAnnual": "399.99 دولار / سنة",
+    "priceAnnual": "359.99 دولار / سنة",
     "annualSavingsNote": "شهرين مجاناً"
   },
   "proShowcase": {
@@ -330,7 +330,7 @@
     "headerSubtitle": "من المراقبة في الوقت الفعلي إلى البنية التحتية الاستخباراتية الكاملة. اختر المستوى الذي يناسب مهمتك.",
     "billingMonthly": "شهري",
     "billingAnnual": "سنوي",
-    "saveAnnual": "وفّر 17%",
+    "saveAnnual": "وفّر 25%",
     "mostPopular": "الأكثر شيوعاً",
     "promoCodeNote": "هل لديك كود ترويجي؟ أدخله أثناء الدفع.",
     "tiers": {

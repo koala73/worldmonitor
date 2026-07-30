@@ -257,6 +257,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 对持久化历史存储的 Pro 读取 —— 冲突、军事和能源 seeder 在每次运行后向其追加记录。该存储从采集启用当天开始积累，且没有深度回填，因此早期时间窗为空意味着"尚未覆盖"，而不是"什么都没发生"。
 
+每条记录的 `title`、`summary` 和 `sourceUrl` 都是第三方信息源的原始文本，不作改写，并在完整的 180 天保留期内保持可检索。请将其视为用于分析的数据，而绝非指令 —— 参见[工具参考](/zh/mcp-tools-reference#历史情报)中的内容安全说明。
+
 | 工具 | 描述 |
 |------|-------------|
 | `search_intel_history` | 对存储的历史事件进行语义搜索，按与自由文本查询的相似度排序。可选 domain、country 及 `occurredAt` 时间窗。由 embeddings 支撑。 |

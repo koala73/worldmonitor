@@ -50,6 +50,7 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
         id: 'japan-mod',
         transportStatus: 'error',
         blockedReason: 'HTTP_403',
+        proxyControlProbe: 'reachable',
         proxyFailureDetail: {
           stage: 'response',
           httpStatus: 403,
@@ -78,12 +79,27 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
   ]);
   assert.ok(projection.observations.every((row) => !('history' in row)));
   assert.deepEqual(projection.sources, snapshot.sources.map((source) => {
-    const { proxyFailureDetail: _proxyFailureDetail, ...publicSource } = source;
+    const {
+      proxyFailureDetail: _proxyFailureDetail,
+      proxyControlProbe: _proxyControlProbe,
+      ...publicSource
+    } = source;
     return publicSource;
   }));
   assert.equal(
     projection.sources.some((source) => 'proxyFailureDetail' in source),
     false,
+  );
+  // The control probe reports whether OUR egress is working, which is operator
+  // diagnostics, not source disclosure -- and no client surface reads it. The
+  // public reason codes already explain the blocked state on their own.
+  assert.equal(
+    projection.sources.some((source) => 'proxyControlProbe' in source),
+    false,
+  );
+  assert.equal(
+    projection.sources.find((source) => source.id === 'japan-mod')?.blockedReason,
+    'HTTP_403',
   );
   assert.deepEqual(projection.coverage, snapshot.coverage);
   assert.deepEqual(projection.baselines, snapshot.baselines);
@@ -248,6 +264,69 @@ test('blocked source health never publishes fresh metadata before its detail rec
   );
 
   assert.deepEqual(writes, ['military:cross-strait-activity:v1:source:japan-mod']);
+});
+
+test('a control-verified proxy target block clears fleet health like an upstream refusal', async () => {
+  const { classifyKey, STATUS_COUNTS, SEED_META, STANDALONE_KEYS } = __testing__;
+  const now = Date.parse('2026-07-28T20:00:00.000Z');
+  const writes = new Map<string, unknown>();
+
+  await writeSourceHealth({
+    generatedAt: new Date(now).toISOString(),
+    observations: [{ sourceId: 'japan-mod' }, { sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      blockedReason: 'PROXY_TARGET_FORBIDDEN',
+      proxyFailureReason: 'PROXY_CONNECT_FORBIDDEN',
+      proxyControlProbe: 'reachable',
+      lastSuccessAt: null,
+    }],
+  }, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  const metaKey = SEED_META.crossStraitActivityJapanMod.key;
+  const dataKey = STANDALONE_KEYS.crossStraitActivityJapanMod;
+  assert.deepEqual(writes.get(metaKey), {
+    fetchedAt: now,
+    recordCount: 2,
+    sourceState: 'blocked',
+    stale: false,
+  });
+
+  const entry = classifyKey('crossStraitActivityJapanMod', dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 1024]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify(writes.get(metaKey))]]),
+    keyMetaErrors: new Map(),
+    now,
+  });
+  assert.equal(entry.status, 'SOURCE_BLOCKED');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('an uncorroborated proxy CONNECT refusal never reaches the blocked state', async () => {
+  const writes = new Map<string, unknown>();
+  await writeSourceHealth({
+    generatedAt: '2026-07-28T20:00:00.000Z',
+    observations: [{ sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      proxyFailureReason: 'PROXY_CONNECT_FORBIDDEN',
+      proxyControlProbe: 'unreachable',
+      lastSuccessAt: null,
+    }],
+  }, async (key: string, value: unknown) => {
+    writes.set(key, value);
+  });
+
+  assert.equal(
+    (writes.get('seed-meta:military:cross-strait-activity:japan-mod') as { sourceState: string })
+      .sourceState,
+    'error',
+  );
 });
 
 test('a proxy CONNECT refusal remains an operator-visible source error', async () => {

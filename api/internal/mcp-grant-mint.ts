@@ -62,7 +62,10 @@
 export const config = { runtime: 'edge' };
 
 import { resolveClerkSession } from '../../server/_shared/auth-session';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import {
+  getEntitlements,
+  isEntitlementBackendConfigured,
+} from '../../server/_shared/entitlement-check';
 import {
   checkProMcpAccess,
   proMcpGateDenialResponse,
@@ -258,7 +261,9 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   // token row, then 401 every call — and an entitlement that could not be
   // VERIFIED answers the retryable 503 rather than the terminal
   // INSUFFICIENT_TIER (#5622).
-  const gate = checkProMcpAccess(ent, now);
+  const gate = checkProMcpAccess(ent, now, {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
   if (gate) return proMcpGateDenialResponse(gate);
 
   // Mint the signed grant first (cheaper to fail before the Redis write).

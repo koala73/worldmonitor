@@ -125,8 +125,10 @@ export const CHINA_DECISION_STRUCTURAL_CHECKS = Object.freeze([
     verify(source) {
       const body = extractDelimitedBlock(source, 'export function isChinaDecisionSignalSnapshot');
       if (body === null) return 'isChinaDecisionSignalSnapshot is missing or was renamed';
+      const rejection = extractDelimitedBlock(body, 'if', '(', ')');
+      if (rejection === null) return 'isChinaDecisionSignalSnapshot no longer has a rejection condition';
       for (const [tier, value] of ACCESS_TIERS) {
-        if (!body.includes(`access?.${tier} !== '${value}'`)) {
+        if (!rejection.includes(`access?.${tier} !== '${value}'`)) {
           return `isChinaDecisionSignalSnapshot no longer rejects a wrong access.${tier}`;
         }
       }

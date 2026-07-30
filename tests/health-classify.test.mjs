@@ -16,7 +16,14 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 
-const { classifyKey, STATUS_COUNTS, BOOTSTRAP_KEYS, STANDALONE_KEYS, SEED_META } = __testing__;
+const {
+  classifyKey,
+  healthResponseBody,
+  STATUS_COUNTS,
+  BOOTSTRAP_KEYS,
+  STANDALONE_KEYS,
+  SEED_META,
+} = __testing__;
 
 const NOW = 1_700_000_000_000;
 const ONE_MIN_MS = 60_000;
@@ -125,7 +132,7 @@ test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is p
     }));
   assert.equal(entry.status, 'SEED_ERROR');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
-  assert.equal(entry.records, 1);
+  assert.equal(entry.records, 5);
 });
 
 test('classifyKey: gdelt timeline repair metadata → SEED_ERROR while canonical articles remain available', () => {
@@ -137,14 +144,53 @@ test('classifyKey: gdelt timeline repair metadata → SEED_ERROR while canonical
           recordCount: 6,
           status: 'error',
           errorReason: 'timeline_keys_missing_or_unconfirmed',
+          errorCode: 'GDELT_SHARED_PROXY_TLS',
           missingTimelineKeys: ['gdelt:intel:vol:military'],
         }),
       },
     }));
   assert.equal(entry.status, 'SEED_ERROR');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
-  assert.equal(entry.records, 1,
-    'SEED_ERROR preserves the canonical data-presence signal while surfacing the timeline outage');
+  assert.equal(entry.records, 6,
+    'SEED_ERROR preserves the declared canonical record count while surfacing the timeline outage');
+  assert.equal(entry.errorCode, 'GDELT_SHARED_PROXY_TLS');
+});
+
+test('classifyKey: unsafe free-form error codes are not reflected into health', () => {
+  const entry = classifyKey('gdeltIntel', BOOTSTRAP_KEYS.gdeltIntel, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.gdeltIntel]: 4096 },
+      metaValues: {
+        'seed-meta:intelligence:gdelt-intel': seedMeta({
+          status: 'error',
+          errorCode: 'proxy failed at https://user:pass@example.test',
+        }),
+      },
+    }));
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(Object.hasOwn(entry, 'errorCode'), false);
+});
+
+test('compact health preserves the bounded GDELT failure code', () => {
+  const snapshot = {
+    status: 'WARNING',
+    summary: { ok: 1, warn: 1, crit: 0 },
+    checkedAt: '2026-07-29T08:00:00.000Z',
+    checks: {
+      gdeltIntel: {
+        status: 'SEED_ERROR',
+        records: 6,
+        maxStaleMin: 720,
+        errorCode: 'GDELT_SHARED_PROXY_TLS',
+      },
+    },
+  };
+  assert.deepEqual(healthResponseBody(snapshot, true).problems.gdeltIntel, {
+    status: 'SEED_ERROR',
+    records: 6,
+    maxStaleMin: 720,
+    errorCode: 'GDELT_SHARED_PROXY_TLS',
+  });
 });
 
 test('classifyKey: degraded source with a non-positive or invalid fetchedAt exposes unknown age', () => {
@@ -218,7 +264,7 @@ test('classifyKey: a permanently blocked humanitarian provider surfaces as SEED_
       metaValues: {
         [metaKey]: seedMeta({
           status: 'error',
-          errorReason: 'HAPI_PROXY_FALLBACK_FAILED',
+          errorReason: 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED',
         }),
       },
     }));

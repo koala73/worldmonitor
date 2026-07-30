@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 USD / hó",
-    "priceAnnual": "399,99 USD / év",
-    "annualSavingsNote": "2 hónap ingyenes"
+    "priceAnnual": "359,99 USD / év",
+    "annualSavingsNote": "3 hónap ingyenes"
   },
   "proShowcase": {
     "proTier": "PRO SZINT",
@@ -330,7 +330,7 @@
     "headerSubtitle": "A valós idejű monitoringtól a teljes hírszerzési infrastruktúráig. Válassza ki a küldetéséhez illő szintet.",
     "billingMonthly": "Havi",
     "billingAnnual": "Éves",
-    "saveAnnual": "17% megtakarítás",
+    "saveAnnual": "25% megtakarítás",
     "mostPopular": "Legnépszerűbb",
     "promoCodeNote": "Van promóciós kódja? Adja meg fizetéskor.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API és hivatalos SDK-k — 59 eszköz egy kulcs alatt",
       "proF5": "Egyéni widgetépítő saját panelek készítéséhez",
       "cta": "Tekintsd meg a csomagokat és árakat",
-      "note": "Már $39,99/hó · 2 hónap ingyenes éves számlázás esetén"
+      "note": "Már $39,99/hó · 3 hónap ingyenes éves számlázás esetén"
     },
     "faq": {
       "eyebrow": "Nincs másodszándék",

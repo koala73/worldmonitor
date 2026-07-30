@@ -152,7 +152,10 @@ const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
 })();
 
 const GDELT_TOPIC_EXAMPLE_ID = (() => {
-  const src = readRepoText('scripts/seed-gdelt-intel.mjs');
+  // Sourced from the ACTIVE producer (#5864): scripts/seed-gdelt-intel.mjs no
+  // longer runs on any Railway service after the #5843 materializer cutover,
+  // so reading its topic ids would silently drift from what is published.
+  const src = readRepoText('scripts/_gdelt-bulk-materializer.mjs');
   const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
   return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
 })();

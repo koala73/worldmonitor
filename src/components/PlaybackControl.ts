@@ -167,6 +167,24 @@ export class PlaybackControl {
     }
   }
 
+  /**
+   * Return to live data and close the panel — for the premium gate revoking
+   * access while a snapshot is being replayed (#5632). Hiding the control is
+   * not enough on its own: the "Live" button lives INSIDE the element being
+   * hidden, so the dashboard would be stranded on historical data with no way
+   * back.
+   *
+   * The `isPlaybackMode` guard is load-bearing. The gate evaluates to a
+   * non-visible verdict at least once on every page load ('pending' while
+   * Clerk hydrates), and an unguarded call would fire `onSnapshotChange(null)`
+   * — and therefore a full `loadAllData()` — on each of them.
+   */
+  public exitPlayback(): void {
+    if (!this.isPlaybackMode) return;
+    this.element.querySelector('.playback-panel')?.classList.add('hidden');
+    this.goLive();
+  }
+
   public onSnapshot(callback: (snapshot: DashboardSnapshot | null) => void): void {
     this.onSnapshotChange = callback;
   }

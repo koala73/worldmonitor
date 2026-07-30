@@ -64,6 +64,14 @@ export interface AppContext {
 
   panels: Record<string, import('@/components').Panel>;
   newsPanels: Record<string, import('@/components').NewsPanel>;
+  /**
+   * `feed category key → the panel key its NewsPanel registered under`, filled
+   * by panel-layout as it registers news panels. A category whose key was
+   * already claimed by a non-news panel never lands here, which is what stops
+   * the data layer resolving it as a news category (#5376). See
+   * `enabledNewsCategoryKeys` in src/config/feed-resolution.ts.
+   */
+  newsCategoryPanelKeys: Map<string, string>;
   panelSettings: Record<string, PanelConfig>;
 
   mapLayers: MapLayers;
