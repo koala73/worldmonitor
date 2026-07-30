@@ -94,6 +94,15 @@ Streaming chat endpoint for the "Ask the analyst" in-dashboard assistant. Takes 
 - Streams: `text/event-stream`
 - Back-end: `intelligence/v1/chat-analyst-*` handlers compose context + prompt
 
+Denials carry the same three-way split as the brief endpoints above, so a
+client can tell a plan verdict from a session problem from an outage:
+
+| Status | Response |
+|--------|----------|
+| 401 | `UNAUTHENTICATED` — no credential, or one that did not validate. Sign in; retrying is futile |
+| 403 | `Pro subscription required` (entitlement confirmed non-Pro) / `Subscription lapsed` (lapse confirmed with the provider, `X-Billing-Verification` set) |
+| 503 | Entitlement verification in doubt: `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, with `Retry-After` and `X-Billing-Verification`. See [Error handling](/usage-errors) |
+
 ### `POST /api/widget-agent`
 
 Single-shot completion endpoint used by embedded widget iframes. Auth via `X-WorldMonitor-Key` (partner keys). Rate-limited per key.

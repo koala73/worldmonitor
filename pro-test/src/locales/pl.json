@@ -583,7 +583,7 @@
       "s10l": "Punkty hotspot ze wynikami",
       "s11v": "92",
       "s11l": "Giełdy i aktywa",
-      "s12v": "42",
+      "s12v": "59",
       "s12l": "Narzędzia MCP",
       "s13v": "154",
       "s13l": "Komendy ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Dla twórców i agentów AI",
       "title": "Buduj na żywej inteligencji świata — z dowolnego stosu.",
       "sub": "Wszystko na mapie to także API. Integruj to z Claude'em poprzez MCP, wywoływaj punkty końcowe REST skąd chcesz, lub zainstaluj natywnego klienta dla Pythona, Ruby'ego, Go lub JavaScriptu — twój kod prowadzi badania na żywych danych zamiast na wspomnieniach danych treningowych.",
-      "b1": "42 narzędzia MCP — oceny ryzyka, wąskie gardła, konflikty, rynki, briefingi",
+      "b1": "59 narzędzia MCP — oceny ryzyka, wąskie gardła, konflikty, rynki, briefingi",
       "b2": "Udokumentowany REST API — 193 operacje, jedna specyfikacja OpenAPI 3.1, jeden klucz",
       "b3": "Oficjalne SDK na npm, PyPI, RubyGems i Go — bez zależności, MCP-first",
       "b4": "Projekcja JMESPath przy każdym wywołaniu — pobieraj dokładnie potrzebne pola",
@@ -620,7 +620,7 @@
       "termQuery": "Czy nasza ekspozycja na Morzu Czerwonym pogarsza się w tym tygodniu?",
       "termAnswer": "Liczba tranzytów spadła tydzień do tygodnia; poziom ryzyka wojennego podniesiony; dwie anomalie gęstości w ostatnich 48h.",
       "termDocs": "Przejrzyj pełną dokumentację narzędzi →",
-      "promise": "Jeden klucz. 42 narzędzia MCP. Pełny REST API. Klienty natywne dla języków."
+      "promise": "Jeden klucz. 59 narzędzia MCP. Pełny REST API. Klienty natywne dla języków."
     },
     "pricing": {
       "eyebrow": "Dostęp",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — czat z ponad 30 usługami na żywo, z cytowaniami",
       "proF2": "Silnik scenariuszy i Route Explorer — przewiduj zakłócenia zanim się pojawią",
       "proF3": "Osobisty skrót z AI — codziennie, dwa razy dziennie lub tygodniowo na Slack, Telegram lub e-mail",
-      "proF4": "MCP, REST API i oficjalne SDK — 42 narzędzia pod jednym kluczem",
+      "proF4": "MCP, REST API i oficjalne SDK — 59 narzędzia pod jednym kluczem",
       "proF5": "Konstruktor niestandardowych widżetów dla Twoich paneli",
       "cta": "Zobacz plany i ceny",
       "note": "Od $39,99/mies. · 2 miesiące za darmo przy rocznej opłacie"
@@ -659,13 +659,15 @@
       "q6": "Dlaczego powinienem ufać alertowi?",
       "a6": "Baner przerwania pojawia się tylko gdy niezależne typy źródeł się potwierdzą — klasyfikacja wiadomości, prędkość słów kluczowych, eskalacja gorących punktów, surge wojskowości, oficjalne syreny — deduplikowane i ograniczone. Mniej alertów, prawdziwe.",
       "q7": "Czy agenci AI takie jak Claude lub GPT mogą go używać?",
-      "a7": "Tak. World Monitor udostępnia serwer MCP z 42 narzędziami, dzięki czemu Claude, GPT lub każdy agent kompatybilny z MCP może pytać o bieżące oceny ryzyka, status wąskich gardeł, konflikty, rynki i briefingi — z projekcją JMESPath, aby agenci pobierali dokładnie to, czego potrzebują.",
+      "a7": "Tak. World Monitor udostępnia serwer MCP z 59 narzędziami, dzięki czemu Claude, GPT lub każdy agent kompatybilny z MCP może pytać o bieżące oceny ryzyka, status wąskich gardeł, konflikty, rynki i briefingi — z projekcją JMESPath, aby agenci pobierali dokładnie to, czego potrzebują.",
       "q8": "Czy potrzebuję konta?",
       "a8": "Nie. Pulpit nawigacyjny działa natychmiast bez rejestracji. Konto ma znaczenie tylko gdy uaktualnisz do Pro lub chcesz synchronizować ustawienia na różnych urządzeniach.",
       "q9": "Czy to open source?",
       "a9": "Tak — open source na AGPL-3.0 na GitHub: przeczytaj kod, samodzielnie go hostuj, lub na nim buduj. Natywne aplikacje desktopowe dla Windows, macOS i Linux są również dostępne, a także aplikacja Android TV do wyświetlaczy ściennych.",
       "q10": "Dlaczego World Monitor nie jest Palantir?",
-      "a10": "Palantir sprawia, że własne dane instytucji stają się operacyjne w ramach tej instytucji. World Monitor zaczyna od drugiej strony: zbiera, normalizuje, koreluje i monitoruje dane z publicznej domeny, następnie publikuje tę warstwę analizy poprzez bezpłatny dashboard i kod open-source. Inne zadanie, inny produkt."
+      "a10": "Palantir sprawia, że własne dane instytucji stają się operacyjne w ramach tej instytucji. World Monitor zaczyna od drugiej strony: zbiera, normalizuje, koreluje i monitoruje dane z publicznej domeny, następnie publikuje tę warstwę analizy poprzez bezpłatny dashboard i kod open-source. Inne zadanie, inny produkt.",
+      "q11": "Which World Monitor license do I need?",
+      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
       "title": "Mapa świata nie czeka na Ciebie.",

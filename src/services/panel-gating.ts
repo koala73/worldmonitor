@@ -11,6 +11,11 @@ import {
   type ExportGateVerdict,
   type TabCapVerdict,
 } from './export-gate';
+import {
+  resolvePlaybackGate,
+  type PlaybackGateInputs,
+  type PlaybackGateVerdict,
+} from './playback-gate';
 import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
 import { isProUser } from './widget-store';
@@ -160,6 +165,27 @@ export function evaluateExportGate(authState: AuthSession): ExportGateVerdict {
  */
 export function evaluateTabCap(authState: AuthSession, currentTabCount: number): TabCapVerdict {
   return resolveTabCap(readExportGateInputs(authState), currentTabCount);
+}
+
+/**
+ * Snapshot the live inputs of the historical-playback gate (#5632). Separate
+ * from `readExportGateInputs` because playback is a Pro takeaway resolved by
+ * `hasPremiumAccess()`, not a Pro Business one — it needs neither the catalog
+ * activation probe nor the billing-state refinement (the control has no CTA to
+ * route, so there is no denial reason to display).
+ */
+export function readPlaybackGateInputs(authState: AuthSession): PlaybackGateInputs {
+  return {
+    premiumAccess: hasPremiumAccess(authState),
+    authPending: authState.isPending,
+    signedIn: Boolean(authState.user),
+    entitlementLoaded: getEntitlementState() !== null,
+  };
+}
+
+/** Current playback-control verdict for the given auth session. */
+export function evaluatePlaybackGate(authState: AuthSession): PlaybackGateVerdict {
+  return resolvePlaybackGate(readPlaybackGateInputs(authState));
 }
 
 /**

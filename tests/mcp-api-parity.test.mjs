@@ -118,9 +118,14 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/v2/shipping/webhooks",
     "mutating: webhook/registration write — POSTs persistent record"],
 
-  // === llm-passthrough (2) ===
-  ["GET /api/intelligence/v1/classify-event",
-    "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
+  // === llm-passthrough (1) ===
+  // classify-event moved to covered in #5697: the classify_event MCP tool wraps
+  // it behind an enum-validated, temperature-0, 50-output-token handler with a
+  // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
+  // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
+  // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
+  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // quota bounds it" without qualifying the env-key path.
   ["GET /api/market/v1/analyze-stock",
     "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
 
@@ -151,12 +156,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/infrastructure/v1/list-service-statuses",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
-  ["GET /api/intelligence/v1/get-company-enrichment",
-    "deferred-to-future-tool: handler disabled, returns empty envelope until a verified {domain to github_org} registry + proper SEC CIK match are wired (issues #3754, #3755)"],
   ["GET /api/intelligence/v1/get-country-facts",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
-  ["GET /api/intelligence/v1/list-company-signals",
-    "deferred-to-future-tool: handler disabled, returns empty envelope until a verified attribution model + authoritative jobs/funding source are wired (issues #3754, #3755)"],
   ["GET /api/maritime/v1/list-navigational-warnings",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
   ["GET /api/market/v1/backtest-stock",
@@ -192,8 +193,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/batch/v1/execute",
     "manual-mapping: REST-only transport multiplexer — fans out to documented GET RPCs that are each individually covered by a tool's _apiPaths or excluded here; the MCP equivalent is native parallel tool calls, so a batch tool would double-map every covered op"],
   ["GET /api/aviation/v1/search-flight-prices",
-    "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["GET /api/displacement/v1/get-population-exposure",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
   ["GET /api/economic/v1/get-bls-series",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],

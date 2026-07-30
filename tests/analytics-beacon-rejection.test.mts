@@ -5,23 +5,18 @@ import assert from 'node:assert/strict';
  * WORLDMONITOR-WW/WX/WY — `TypeError: Failed to fetch`, onunhandledrejection,
  * 2026-07-20.
  *
- * Umami's `track()` / `identify()` return the beacon `fetch()` promise from
- * their internal send(); that promise rejects ASYNCHRONOUSLY on a transient
- * network failure (offline, an ad-blocker extension that wraps window.fetch —
- * the observed `frame_ant.js` case — or the self-hosted collector being
- * briefly unreachable). `sendUmamiCall`'s `try/catch` only guards a SYNCHRONOUS
- * throw, so the rejection escaped to `onunhandledrejection` and surfaced in
- * Sentry as a bare `TypeError: Failed to fetch` rooted in first-party frames
- * (e.g. applyMapLayerChange → track). A dropped analytics beacon is
- * unactionable; sendUmamiCall must attach a rejection handler to the returned
- * beacon promise so it never leaks.
+ * Umami's native tracker catches fetch/JSON failures internally, including a
+ * non-OK collector response, so its public promise resolves even when the
+ * identity write was not delivered. The facade observes only the synchronous
+ * `/api/send` identify fetch, then keeps native processing intact while it
+ * converts an actual delivery failure into its bounded retry signal.
  *
- * The tests below exercise the real failure mode: `umami.track()` /
- * `identify()` return a genuinely rejected promise, and the test fails if that
- * rejection reaches the process-level `unhandledRejection` hook — the exact
- * path that fed Sentry. Both call kinds are covered because `sendUmamiCall`
- * branches on `call.kind`.
+ * The fake tracker below deliberately has that same catch-and-resolve shape.
+ * The unhandled-rejection coverage remains because the observer must consume
+ * its own delivery promise too.
  */
+
+const UMAMI_SEND_URL = 'https://abacus.worldmonitor.app/api/send';
 
 const _store = new Map<string, string>();
 before(() => {
@@ -33,6 +28,7 @@ before(() => {
         setItem: (k: string, v: string) => { _store.set(k, v); },
         removeItem: (k: string) => { _store.delete(k); },
       },
+      fetch: () => Promise.reject(new TypeError('Failed to fetch')),
     },
   });
 });
@@ -43,11 +39,27 @@ type WinWithUmami = {
   umami?: { track: (...a: unknown[]) => unknown; identify: (...a: unknown[]) => unknown };
 };
 
-/** Install umami stubs whose beacon rejects async, exactly like a failed fetch(). */
+function nativeTrackerBeacon(type: 'event' | 'identify', data: Record<string, unknown> = {}): Promise<unknown> {
+  return window.fetch(UMAMI_SEND_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type, data }),
+  }).then((response) => response.json()).catch(() => undefined);
+}
+
+function collectorResponse(ok: boolean, status: number): Response {
+  return {
+    ok,
+    status,
+    json: async () => ({}),
+  } as Response;
+}
+
+/** Install a v3.1.0-shaped tracker: fetch errors are caught and resolve. */
 function stubFailingUmami(): void {
   (globalThis.window as WinWithUmami).umami = {
-    track: () => Promise.reject(new TypeError('Failed to fetch')),
-    identify: () => Promise.reject(new TypeError('Failed to fetch')),
+    track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+    identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
   };
 }
 
@@ -78,6 +90,7 @@ describe('umami beacon rejection is swallowed (WORLDMONITOR-WW/WX/WY)', () => {
   });
 
   afterEach(() => {
+    resetAnalyticsForTesting();
     delete (globalThis.window as WinWithUmami).umami;
   });
 
@@ -87,5 +100,186 @@ describe('umami beacon rejection is swallowed (WORLDMONITOR-WW/WX/WY)', () => {
 
   it('identifyUser(): a failed beacon fetch never escapes to unhandledRejection', async () => {
     await assertNoLeak(() => identifyUser('user_1', 'free'), 'identify');
+  });
+});
+
+type ScheduledTimer = {
+  id: number;
+  callback: () => void;
+  delay: number;
+  cancelled: boolean;
+};
+
+function installFakeTimers(): {
+  timers: ScheduledTimer[];
+  restore: () => void;
+} {
+  const timers: ScheduledTimer[] = [];
+  const savedSetTimeout = Object.getOwnPropertyDescriptor(globalThis, 'setTimeout');
+  const savedClearTimeout = Object.getOwnPropertyDescriptor(globalThis, 'clearTimeout');
+  let nextId = 1;
+
+  Object.defineProperty(globalThis, 'setTimeout', {
+    configurable: true,
+    value: ((callback: () => void, delay = 0) => {
+      const timer = { id: nextId, callback, delay, cancelled: false };
+      nextId += 1;
+      timers.push(timer);
+      return timer.id;
+    }) as typeof setTimeout,
+  });
+  Object.defineProperty(globalThis, 'clearTimeout', {
+    configurable: true,
+    value: ((timerId: number) => {
+      const timer = timers.find((candidate) => candidate.id === timerId);
+      if (timer) timer.cancelled = true;
+    }) as typeof clearTimeout,
+  });
+
+  return {
+    timers,
+    restore: () => {
+      if (savedSetTimeout) Object.defineProperty(globalThis, 'setTimeout', savedSetTimeout);
+      if (savedClearTimeout) Object.defineProperty(globalThis, 'clearTimeout', savedClearTimeout);
+    },
+  };
+}
+
+async function drainPromiseHandlers(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+describe('Umami client retry policy (#5715)', () => {
+  beforeEach(() => {
+    resetAnalyticsForTesting();
+  });
+
+  afterEach(() => {
+    delete (globalThis.window as WinWithUmami).umami;
+  });
+
+  it('retries a swallowed HTTP 500 identity write twice at 1s and 2s, then stops after three failures', async () => {
+    const fakeTimers = installFakeTimers();
+    let calls = 0;
+    const collectorFetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(false, 500));
+    }) as typeof window.fetch;
+    window.fetch = collectorFetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    try {
+      identifyUser('user_1', 'pro');
+      await drainPromiseHandlers();
+      assert.equal(calls, 1);
+      assert.equal(window.fetch, collectorFetch, 'the synchronous delivery observer restores window.fetch');
+      assert.equal(fakeTimers.timers[0]?.delay, 1_000);
+
+      fakeTimers.timers[0]!.callback();
+      await drainPromiseHandlers();
+      assert.equal(calls, 2);
+      assert.equal(fakeTimers.timers[1]?.delay, 2_000);
+
+      fakeTimers.timers[1]!.callback();
+      await drainPromiseHandlers();
+      assert.equal(calls, 3);
+      assert.equal(fakeTimers.timers.length, 2, 'the terminal failed attempt schedules no third timer');
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('never retries track calls because an Umami 500 may already have committed the event row', async () => {
+    const fakeTimers = installFakeTimers();
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(false, 500));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    try {
+      track('checkout-success', { source: 'url-return' });
+      await drainPromiseHandlers();
+      assert.equal(calls, 1);
+      assert.deepEqual(fakeTimers.timers, []);
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('cancels a stale retry when a newer identity snapshot is sent', async () => {
+    const fakeTimers = installFakeTimers();
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(calls !== 1, calls === 1 ? 500 : 200));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    try {
+      identifyUser('user_1', 'free');
+      await drainPromiseHandlers();
+      assert.equal(fakeTimers.timers.length, 1);
+
+      identifyUser('user_1', 'pro');
+      await drainPromiseHandlers();
+      assert.equal(calls, 2);
+      assert.equal(fakeTimers.timers[0]!.cancelled, true);
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('serializes live identity writes and coalesces updates received while one is in flight', async () => {
+    let resolveFirstResponse: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirstResponse = resolve;
+    });
+    const payloads: Array<{ type: string; data: Record<string, unknown> }> = [];
+    let calls = 0;
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      payloads.push(JSON.parse(String(init?.body)));
+      return calls === 1
+        ? firstResponse
+        : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    identifyUser('user_1', 'free');
+    identifyUser('user_1', 'pro', 'active', 'monthly');
+    identifyUser('user_1', 'pro', 'cancelled', 'annual');
+    await drainPromiseHandlers();
+
+    assert.equal(calls, 1, 'a newer snapshot waits for the active collector write');
+
+    resolveFirstResponse!(collectorResponse(true, 200));
+    await drainPromiseHandlers();
+
+    assert.equal(calls, 2, 'only one coalesced snapshot follows the active write');
+    assert.deepEqual(payloads[1], {
+      type: 'identify',
+      data: {
+        userId: 'user_1',
+        plan: 'pro',
+        subStatus: 'cancelled',
+        planKey: 'annual',
+      },
+    });
   });
 });

@@ -12,9 +12,10 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 为仪表盘提供单次往返的初始数据加载。在单次响应中返回**所有已注册引导的 Redis 缓存键**,从其 seed 封装中解包出来。
 
 - **认证**:浏览器 `wm-session` cookie、`X-WorldMonitor-Key` 或 `X-Api-Key` 别名。用户签发的密钥会针对当前 API 访问权限进行验证。
-- **匿名天气**:`?keys=weatherAlerts` 仅在**未发送任何 API 密钥头时**公开。如果你附加 `X-WorldMonitor-Key` / `X-Api-Key`,即使是天气请求也会被完全验证 —— 格式错误的密钥返回 `401`,没有当前 API 访问权限的密钥返回 `403`。始终发送密钥的调用方必须发送有效的、有权限的密钥(或省略该头以使用匿名天气路径)。
+- **匿名天气**:`?keys=weatherAlerts` 仅在**未发送任何 API 密钥头时**公开。如果你附加 `X-WorldMonitor-Key` / `X-Api-Key`,即使是天气请求也会被完全验证 —— 格式错误的密钥返回 `401`,没有当前 API 访问权限的密钥返回 `403`。始终发送密钥的调用方必须发送有效的、有权限的密钥(或省略该头以使用匿名天气路径)。该 URL 为 `no-store`,这正是该约定在边缘层与源站同样成立的原因:没有任何缓存持有它,因此无效密钥永远不会被已预热的匿名缓存条目应答。
+- **公开天气**:`?keys=weatherAlerts&public=1` 是经 CDN 缓存的天气读取。与 `?tier=fast&public=1` 一样,它对所有调用方返回同一份共享种子负载,并忽略你附加的任何凭据 —— CDN 命中先于鉴权发生,正是该标记让响应可以被安全缓存。高频匿名读取请优先使用它;需要校验自己的密钥时使用不带标记的 URL。
 - **服务器到服务器**:直接用 `X-WorldMonitor-Key: wm_...` 调用 `https://api.worldmonitor.app/api/bootstrap`。此端点没有单独的网关主机、令牌交换、激活步骤或 IP 白名单要求。
-- **缓存**:浏览器/会话响应保留默认分层缓存策略:全键响应使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 加上快速层的 `CDN-Cache-Control`;显式 `?tier=fast` / `?tier=slow` 请求使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。密钥认证的响应使用 `Cache-Control: no-store` 且不发出 CDN 缓存头。
+- **缓存**:只有显式标记的 `?...&public=1` URL 可被共享缓存,因为只有它们对每个调用方返回相同结果。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL:on-demand 键(`?keys=<onDemandName>&public=1`)在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`;目前仅 `chinaDecisionSignals` 声明了自有配置(浏览器 `max-age=60`、CDN `s-maxage=900`);`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL,以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头。这一区分是有意为之:CDN 命中先于鉴权发生,因此答案取决于凭据的 URL 绝不能可缓存。
 - **速率限制**:此端点上的用户 API 密钥验证具有 fail-closed 的固定每 IP 60 秒 600 次预验证上限,与默认的 API 滑动窗口限流器分开。
 - **结构**:`{ "data": { "earthquakes": ..., "outages": ..., "marketQuotes": ... }, "missing": [] }` —— 约 40+ 个已解包的已 seed 领域负载嵌套在 `data` 之下,外加一个 `missing` 列表用于 Redis 中不存在的缓存键。
 

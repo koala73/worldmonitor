@@ -18,6 +18,7 @@
 
 import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw, describeErr } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 import countryNames from './shared/country-names.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -401,20 +402,6 @@ export function extractListedCountries(html, nameLookup) {
     unmatchedCandidates.add(anchorText);
   }
   return { listed: isoSet, unmatchedCandidates };
-}
-
-// Minimal HTML entity decoder for the entities FATF emits in anchor
-// text (&#39; for apostrophe, &amp; for ampersand, &nbsp; for space).
-// Full-fledged decoders pull in 100KB of dependencies; this targeted
-// list covers what we actually see in the fixtures.
-function decodeHtmlEntities(s) {
-  return String(s)
-    .replace(/&#39;/g, "'")
-    .replace(/&#34;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
 }
 
 // Try to extract the publication date from the URL slug or the page

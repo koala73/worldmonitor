@@ -133,6 +133,14 @@ export default async function handler(req: Request): Promise<Response> {
         );
         if (denial) return denial;
       }
+      // A caller we could not identify is not a caller on the free plan (#5619).
+      // Selling a subscription to someone who is merely signed out is both wrong
+      // and unactionable, and it left the client's `sign_in_required` verdict
+      // (#5608) unreachable on this route — every denial arrived as a 403.
+      // Matches api/latest-brief.ts, which has always answered 401 here.
+      if (premiumIdentity.unauthenticated) {
+        return json({ error: 'UNAUTHENTICATED' }, 401, corsHeaders);
+      }
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
     }
     if (!premiumIdentity.quotaExempt) {

@@ -39,7 +39,7 @@ paths:
                                             "value": 1.5
                                       "indexId": "example-id"
                                       "name": "WorldMonitor Analyst"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetShippingRatesResponse'
                 "400":
@@ -128,7 +128,7 @@ paths:
                                       "congestionLevel": "example"
                                       "description": "Example WorldMonitor observation."
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetChokepointStatusResponse'
                 "400":
@@ -312,7 +312,7 @@ paths:
                                             "countryCode": "US"
                                             "productionTonnes": 1.5
                                             "sharePct": 1.5
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetCriticalMineralsResponse'
                 "400":
@@ -400,7 +400,7 @@ paths:
                                 "fetchedAt": 1717200000000
                                 "stressLevel": "example"
                                 "stressScore": 42.5
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetShippingStressResponse'
                 "400":
@@ -1396,7 +1396,7 @@ paths:
                                               "date": "2026-01-15"
                                               "text": "example"
                                               "url": "https://example.com/worldmonitor"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListPipelinesResponse'
                 "400":
@@ -1506,7 +1506,7 @@ paths:
                                       "fieldChanged": "example"
                                       "newValue": "example"
                                       "previousValue": "example"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetPipelineDetailResponse'
                 "400":
@@ -1612,7 +1612,7 @@ paths:
                                           "fillDisclosed": true
                                           "fillSource": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListStorageFacilitiesResponse'
                 "400":
@@ -1717,7 +1717,7 @@ paths:
                                       "fieldChanged": "example"
                                       "newValue": "example"
                                       "previousValue": "example"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetStorageFacilityDetailResponse'
                 "400":
@@ -1840,7 +1840,7 @@ paths:
                                           "lastEvidenceUpdate": "2026-01-15"
                                       "firstSeen": "example"
                                       "id": "example-id"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListFuelShortagesResponse'
                 "400":
@@ -1945,7 +1945,7 @@ paths:
                                         "lastEvidenceUpdate": "2026-01-15"
                                     "firstSeen": "example"
                                     "id": "example-id"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetFuelShortageDetailResponse'
                 "400":
@@ -2059,7 +2059,7 @@ paths:
                                       "causeChain":
                                           - "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListEnergyDisruptionsResponse'
                 "400":
@@ -3718,6 +3718,7 @@ components:
                     items:
                         type: string
                 directionalDwt:
+                    deprecated: true
                     type: array
                     items:
                         $ref: '#/components/schemas/DirectionalDwt'

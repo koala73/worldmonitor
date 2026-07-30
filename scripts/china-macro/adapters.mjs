@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { readCanonicalValue } from '../_seed-utils.mjs';
 import {
   CHINA_MACRO_CACHE_KEY,
@@ -79,13 +80,10 @@ function semanticFingerprint(observation) {
 }
 
 function decodeHtml(value) {
-  return String(value)
-    .replace(/&nbsp;|&#160;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
+  // The helper decodes `&#160;` to a literal U+00A0; normalize it back to a
+  // plain space to keep this decoder's historical `&nbsp;|&#160;` -> ' '
+  // contract for `metaContent` (which only trims, never collapses).
+  return decodeHtmlEntities(String(value)).replace(/\u00A0/g, ' ');
 }
 
 function stripHtml(value) {

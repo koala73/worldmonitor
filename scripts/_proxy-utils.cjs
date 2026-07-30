@@ -4,6 +4,11 @@ const net = require('node:net');
 const tls = require('node:tls');
 const https = require('node:https');
 const zlib = require('node:zlib');
+
+const DECODO_GATE_HOST = 'gate.decodo.com';
+const DECODO_STICKY_PORT_MIN = 10_001;
+const DECODO_STICKY_PORT_MAX = 49_999;
+
 function parseProxyConfig(raw) {
   if (!raw) return null;
 
@@ -48,6 +53,36 @@ function parseProxyConfig(raw) {
 }
 
 /**
+ * Parse a proxy configuration and, for Decodo sticky gateway ports, advance
+ * each retry to a distinct sticky session. Other providers and Decodo rotating
+ * ports retain their configured route exactly.
+ */
+function parseProxyConfigForAttempt(raw, attempt = 0) {
+  const config = parseProxyConfig(raw);
+  if (!config) return null;
+  const port = Number(config.port);
+  // Normalize for provider detection only: the host:port:user:pass form keeps
+  // whatever casing the operator typed, while the URL form is lowercased by the
+  // URL parser. config.host stays verbatim so the connection is unchanged.
+  const host = String(config.host || '').toLowerCase().replace(/\.$/u, '');
+  if (
+    host !== DECODO_GATE_HOST
+    || !Number.isInteger(port)
+    || port < DECODO_STICKY_PORT_MIN
+    || port > DECODO_STICKY_PORT_MAX
+  ) {
+    return config;
+  }
+
+  const stickyPortCount = DECODO_STICKY_PORT_MAX - DECODO_STICKY_PORT_MIN + 1;
+  return {
+    ...config,
+    port: DECODO_STICKY_PORT_MIN
+      + ((port - DECODO_STICKY_PORT_MIN + attempt) % stickyPortCount),
+  };
+}
+
+/**
  * Resolve proxy from PROXY_URL only. Returns { host, port, auth } or null.
  * Use this for sources where OREF (IL-exit) proxy must NOT be used (e.g. USNI).
  */
@@ -68,8 +103,8 @@ function resolveProxyConfigWithFallback() {
  * Decodo: gate.decodo.com → us.decodo.com (curl endpoint differs from CONNECT endpoint).
  * Returns empty string if no proxy configured.
  */
-function resolveProxyString() {
-  const cfg = resolveProxyConfigWithFallback();
+function resolveProxyString(raw = process.env.PROXY_URL || '') {
+  const cfg = parseProxyConfig(raw);
   if (!cfg) return '';
   const host = cfg.host.replace(/^gate\./, 'us.');
   return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
@@ -267,6 +302,7 @@ function proxyFetch(url, proxyConfig, {
 
 module.exports = {
   parseProxyConfig,
+  parseProxyConfigForAttempt,
   resolveProxyConfig,
   resolveProxyConfigWithFallback,
   resolveProxyString,

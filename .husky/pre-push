@@ -28,8 +28,8 @@ if [ -z "${WM_ALLOW_FOREIGN_HOOKS:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
   fi
 fi
 
-echo "Checking for local Vercel env dumps..."
-node scripts/check-local-secret-dumps.mjs || exit 1
+echo "Checking for local environment dumps..."
+node scripts/check-local-secret-dumps.mjs --pre-push "${1:-}" || exit 1
 
 echo "Checking Vite-prefixed environment variables..."
 node scripts/check-vite-env-secrets.mjs || exit 1
@@ -119,46 +119,177 @@ fi
 # (mirroring how the test categories were already scoped), and a tree that
 # passed the full gate once is cached so an immediate re-push (remote-side
 # failure, message-only amend) doesn't re-pay minutes of checks.
+#
+# Every changed-path read below goes through scripts/prepush-attest.sh, which
+# talks to git NUL-delimited and answers the three questions that decide
+# whether this run may be cached at all (#5800). The path list is a bash array
+# from here down: `git diff --name-only` C-quotes unicode, backslash and
+# newline paths under git's default core.quotePath, and a C-quoted path matches
+# no file on disk — so the old line-read string dropped those paths silently
+# and the gate went green having run nothing.
+ATTEST="scripts/prepush-attest.sh"
+CHANGED_NUL=$(mktemp) || exit 1
+CHANGED_LIVE_NUL=$(mktemp) || exit 1
+NODE_TESTS_NUL=$(mktemp) || exit 1
+DOM_TESTS_NUL=$(mktemp) || exit 1
+WORKTREE_NUL=$(mktemp) || exit 1
+trap 'rm -f "$CHANGED_NUL" "$CHANGED_LIVE_NUL" "$NODE_TESTS_NUL" "$DOM_TESTS_NUL" "$WORKTREE_NUL"' EXIT
+
+# read_paths: NUL stdin -> the _collected array (bash 3.2 has no namerefs, so
+# callers copy it out immediately).
+_collected=()
+read_paths() {
+  local path
+  _collected=()
+  while IFS= read -r -d '' path; do
+    [ -n "$path" ] || continue
+    _collected+=("$path")
+  done
+}
+
+# nul_list: emit an array as a NUL stream, and emit NOTHING for an empty array
+# so a consumer never sees a phantom blank entry.
+nul_list() { [ "$#" -eq 0 ] || printf '%s\0' "$@"; }
+
+# show_paths: NUL stdin -> an indented list for a human. Strips control bytes
+# first: whoever authored the commit chose these filenames, and an embedded ESC
+# or CR could repaint the line and scroll the error that follows out of view.
+# Octal ranges: keep \011 (tab) and \012 (newline), drop everything else below
+# \040 plus \177 — note \015 (CR) sits between them and must be inside the
+# range, not skipped.
+show_paths() {
+  tr '\0' '\n' | LC_ALL=C tr -d '\001-\010\013-\037\177' | sed 's/^/  /'
+}
+
 RUN_ALL=false
 RUN_ALL_REASON=""
 DIFF_RESOLVED=true
-if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
-  :
+CHANGED_PATHS=()
+CHANGED_LIVE=()
+if bash "$ATTEST" changed origin/main > "$CHANGED_NUL" 2>/dev/null; then
+  read_paths < "$CHANGED_NUL"
+  CHANGED_PATHS=("${_collected[@]}")
+  # The same diff minus what the push deletes. Test runners get THIS list: a
+  # path that exists in the pushed commit but not on disk means the worktree
+  # drifted, which is a blocked push (below), never a file to quietly skip.
+  if ! bash "$ATTEST" changed-live origin/main > "$CHANGED_LIVE_NUL" 2>/dev/null; then
+    echo "ERROR: could not enumerate the pushed files — refusing to guess which tests to run."
+    exit 1
+  fi
+  read_paths < "$CHANGED_LIVE_NUL"
+  CHANGED_LIVE=("${_collected[@]}")
 else
   # origin/main is not resolvable (offline, fresh clone, missing remote ref).
   # Force EVERYTHING: the HEAD~1 fallback only sees the last commit, so using
   # it to scope safety gates would silently skip typechecks/lints for earlier
-  # commits in the push — and then the green-tree cache would stamp that tree.
-  # HEAD~1 is kept ONLY to narrow the changed-test list (informational).
-  CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
+  # commits in the push. HEAD~1 is kept ONLY to narrow the changed-test list
+  # (informational) — and this run may not be cached at all, because RUN_ALL
+  # skips the local unit suite (see the cache write at the end).
+  if bash "$ATTEST" changed HEAD~1 > "$CHANGED_NUL" 2>/dev/null; then
+    read_paths < "$CHANGED_NUL"
+    CHANGED_PATHS=("${_collected[@]}")
+    # Checked for the same reason as the resolved branch above, even though the
+    # sibling call that just succeeded makes a failure here all but impossible:
+    # the redirect truncates the file, so an unchecked failure hands the
+    # partition an EMPTY list, which reads as "no test files changed" and skips
+    # every changed test with exit 0. That is the precise bug this file exists
+    # to close, so it must not survive in the fallback.
+    if ! bash "$ATTEST" changed-live HEAD~1 > "$CHANGED_LIVE_NUL" 2>/dev/null; then
+      echo "ERROR: could not enumerate the pushed files — refusing to guess which tests to run."
+      exit 1
+    fi
+    read_paths < "$CHANGED_LIVE_NUL"
+    CHANGED_LIVE=("${_collected[@]}")
+  fi
   RUN_ALL=true
   DIFF_RESOLVED=false
   RUN_ALL_REASON="changed files could not be resolved from origin/main"
   echo "WARNING: Could not resolve branch diff from origin/main — running ALL invariant checks as safety fallback."
 fi
-if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then
+
+# path_matches <ERE>: true when any changed path matches. Pure bash rather than
+# `echo "$list" | grep`, which re-linearizes the array and would split a path
+# containing a newline back into two paths that match nothing.
+path_matches() {
+  local regex="$1" path
+  for path in "${CHANGED_PATHS[@]}"; do
+    if [[ $path =~ $regex ]]; then return 0; fi
+  done
+  return 1
+}
+
+# changed <ERE>: true when RUN_ALL is forced or any changed path matches.
+changed() { [ "$RUN_ALL" = true ] || path_matches "$1"; }
+
+if path_matches 'package\.json|tsconfig'; then
   RUN_ALL=true
   RUN_ALL_REASON="${RUN_ALL_REASON:-config changed}"
 fi
 
-# changed <ERE>: true when RUN_ALL is forced or any changed file matches.
-changed() { [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "$1"; }
-
 # Green-tree cache: if this exact tree already passed the full gate, skip the
 # tree-dependent checks. State-dependent checks (secrets, PR state, branch
-# contamination, lockfile sync) have already run above and always do.
-#
-# Cache READS are disabled when the branch diff could not be resolved: the
-# tree hash captures content-derived plan inputs (a package.json change is in
-# the tree), but NOT state-derived ones — a blind run must not trust an
-# attestation minted under a scoped plan it can no longer verify. Writes stay
-# enabled: a fallback run executes everything, the strongest attestation.
+# contamination, lockfile sync) have already run above and always do. The
+# read/write rules live in prepush-attest.sh, where tests execute them.
 GATE_CACHE="$(git rev-parse --git-dir)/wm-prepush-green"
 TREE_HASH=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo "")
-if [ "$DIFF_RESOLVED" = true ] && [ -n "$TREE_HASH" ] && [ -f "$GATE_CACHE" ] && grep -qxF "$TREE_HASH" "$GATE_CACHE" 2>/dev/null; then
+if bash "$ATTEST" cache-read "$GATE_CACHE" "$TREE_HASH" "$DIFF_RESOLVED"; then
   echo "Pre-push gates: this exact tree already passed ($TREE_HASH)."
   echo "  Skipping tree-dependent checks (delete $GATE_CACHE to force a re-run)."
   exit 0
+fi
+
+# Everything below runs against the WORKTREE, git pushes HEAD, and the cache at
+# the end stamps HEAD^{tree}. Those are the same bytes only when the worktree
+# matches HEAD, so measure that NOW — before `make generate` and the pro-test
+# build touch anything.
+#
+# Two tiers, because they cost differently. Drift INSIDE the branch diff is the
+# dangerous one and blocks the push: an unstaged fix makes the suite pass over
+# the broken bytes being pushed, an unstaged delete drops a changed test from
+# the run entirely. Dirt anywhere else only costs the attestation — blocking
+# every push that has an unrelated scratch edit would be a gate nobody passes.
+#
+# Escape hatch for a deliberate "push the committed state, keep editing":
+# WM_ALLOW_WORKTREE_DRIFT=1 (same convention as WM_ALLOW_FOREIGN_HOOKS). It is
+# scoped on purpose — unlike `--no-verify` every other gate still runs, and it
+# cannot mint a false attestation, because a drifted worktree is by definition
+# dirty and the cache write below refuses on that. It also does not cover a
+# changed test file that is MISSING from the worktree: the partition refuses
+# that separately, because there is no way to run a file that is not there.
+if [ "$DIFF_RESOLVED" = true ] && [ -z "${WM_ALLOW_WORKTREE_DRIFT:-}" ]; then
+  bash "$ATTEST" drift origin/main > "$WORKTREE_NUL" 2>/dev/null
+  DRIFT_STATUS=$?
+  if [ "$DRIFT_STATUS" -eq 3 ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: these files differ between your worktree and the commit being pushed:"
+    show_paths < "$WORKTREE_NUL"
+    echo "The gates run your worktree; git pushes HEAD. Testing one and"
+    echo "shipping the other is how a green push lands broken bytes."
+    echo "Fix: commit these changes, or stash them, then push again."
+    echo "Deliberate? Re-run with WM_ALLOW_WORKTREE_DRIFT=1 — every other gate"
+    echo "still runs, and the run still will not be cached. (A changed test file"
+    echo "that is missing from the worktree still stops the push: it cannot run.)"
+    echo "============================================================"
+    exit 1
+  fi
+  if [ "$DRIFT_STATUS" -ne 0 ]; then
+    echo "WARNING: could not compare the worktree against HEAD (status $DRIFT_STATUS)."
+  fi
+fi
+
+ATTESTABLE=false
+bash "$ATTEST" dirty > "$WORKTREE_NUL" 2>/dev/null
+DIRTY_STATUS=$?
+if [ "$DIRTY_STATUS" -eq 0 ]; then
+  ATTESTABLE=true
+elif [ "$DIRTY_STATUS" -eq 3 ]; then
+  echo "Worktree is not byte-identical to HEAD — this run will not be cached:"
+  show_paths < "$WORKTREE_NUL"
+else
+  # Fail closed, and say which failure it was: printing the "not byte-identical"
+  # list when the list is empty because the CHECK broke reads as a lie.
+  echo "Could not compare the worktree against HEAD (status $DIRTY_STATUS) — this run will not be cached."
 fi
 
 if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
@@ -191,7 +322,12 @@ fi
 if changed '^scripts/.*\.cjs$'; then
   echo "Running CJS syntax check..."
   for f in scripts/*.cjs; do
-    [ -f "$f" ] && node -c "$f" || exit 1
+    # An unmatched glob expands to the literal pattern, and
+    # `[ -f "$f" ] && node -c "$f" || exit 1` then took the `|| exit 1` branch —
+    # so "there are no .cjs files" failed the push with no message at all.
+    # Split so only a real syntax error exits.
+    [ -f "$f" ] || continue
+    node -c "$f" || exit 1
   done
 fi
 
@@ -252,16 +388,16 @@ else
 fi
 
 # Determine which test categories to run based on changed files
-# (CHANGED_FILES + RUN_ALL were computed above, before the invariant gates.)
+# (CHANGED_PATHS + RUN_ALL were computed above, before the invariant gates.)
 RUN_RESILIENCE=false
 RUN_SEED=false
 RUN_SERVER=false
 RUN_FRONTEND=false
 
-if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
-if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
-if echo "$CHANGED_FILES" | grep -q "resilience"; then RUN_RESILIENCE=true; fi
-if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
+if path_matches '^scripts/'; then RUN_SEED=true; fi
+if path_matches '^server/'; then RUN_SERVER=true; fi
+if path_matches 'resilience'; then RUN_RESILIENCE=true; fi
+if path_matches '^(src/|api/)'; then RUN_FRONTEND=true; fi
 # RUN_ALL means "run broad invariant checks below", not "run every unit test".
 # Touching tests/ used to trigger the full local suite, but that suite now
 # exceeds this hook's 300s budget. CI remains the full-suite merge gate; this
@@ -271,7 +407,54 @@ if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
 # Test files that changed in this push — run these specifically when
 # RUN_ALL didn't fire, so editing a test doesn't escalate to the full
 # 10k-test suite. Matches both .mjs and .mts under tests/.
-TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" | while read -r t; do [ -f "$t" ] && echo "$t"; done || true)
+#
+# tests/dom/ is a vitest + happy-dom project, NOT a node:test suite — handing
+# those files to `tsx --test` fails on the `vitest` imports and reads as a
+# broken DOM test (#5795), so they are partitioned out here and run under their
+# own runner below. scripts/prepush-changed-tests.sh owns the split for both
+# halves (tested in tests/prepush-changed-tests.test.mjs) so the two lists
+# cannot drift into overlapping or, worse, leaving a file in neither.
+#
+# Both partitions must SUCCEED, not merely return output. A helper that is
+# missing or errors would otherwise substitute to an empty list, and empty
+# reads here as "no test files changed" — the gate would sail past every
+# changed test instead of saying anything. Fail loudly instead.
+# The list handed over is CHANGED_LIVE, not CHANGED_PATHS: git already removed
+# what this push deletes, so the partition never has to infer deletion from
+# `[ -f ]` — the inference that turned an unstaged `rm` into a silently skipped
+# test (#5800). NUL in, NUL out, via files: command substitution cannot carry
+# NUL bytes, and a newline-delimited round trip is what loses quoted paths.
+if ! nul_list "${CHANGED_LIVE[@]}" | bash scripts/prepush-changed-tests.sh node > "$NODE_TESTS_NUL"; then
+  echo "ERROR: scripts/prepush-changed-tests.sh node failed — cannot decide which tests to run."
+  exit 1
+fi
+read_paths < "$NODE_TESTS_NUL"
+TESTS_CHANGED=("${_collected[@]}")
+
+if ! nul_list "${CHANGED_LIVE[@]}" | bash scripts/prepush-changed-tests.sh dom > "$DOM_TESTS_NUL"; then
+  echo "ERROR: scripts/prepush-changed-tests.sh dom failed — cannot decide which tests to run."
+  exit 1
+fi
+read_paths < "$DOM_TESTS_NUL"
+DOM_TESTS_CHANGED=("${_collected[@]}")
+
+# The routing and attestation contract spans this hook, the two scripts it
+# delegates to, the vitest project that defines what "a DOM test" is, and the
+# package.json script the DOM half invokes. Their tests must run when ANY of
+# those changes, not only when a test file itself is edited — otherwise the
+# assertions are absent exactly when the contract they pin is being rewritten.
+# Same convention as the invariant lints above, which each fire on their own
+# implementation script.
+if path_matches '^(\.husky/pre-push|scripts/prepush-changed-tests\.sh|scripts/prepush-attest\.sh|vitest\.dom\.config\.mts|package\.json)$'; then
+  for contract_test in tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs; do
+    [ -f "$contract_test" ] || continue
+    already_listed=false
+    for listed in "${TESTS_CHANGED[@]}"; do
+      if [ "$listed" = "$contract_test" ]; then already_listed=true; break; fi
+    done
+    if [ "$already_listed" = false ]; then TESTS_CHANGED+=("$contract_test"); fi
+  done
+fi
 
 # Compute SEED_TESTS and SERVER_TESTS up-front (rather than inside their
 # RUN_* blocks) so the TESTS_CHANGED subtraction below can deduplicate
@@ -279,8 +462,19 @@ TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" | 
 # RUN_SEED / RUN_SERVER blocks consume these same variables — single
 # source of truth prevents drift between "what runs" and "what's
 # subtracted from TESTS_CHANGED".
-SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | grep "^tests/" | while read -r t; do [ -f "$t" ] && echo "$t"; done)
-SERVER_TESTS=$(printf '%s\n' "tests/handlers.test.mts" "tests/server-handlers.test.mjs")
+SEED_TESTS=()
+for changed_path in "${CHANGED_PATHS[@]}"; do
+  case "$changed_path" in
+    scripts/seed-*.mjs) ;;
+    *) continue ;;
+  esac
+  seed_stem="${changed_path#scripts/seed-}"
+  seed_candidate="tests/${seed_stem%.mjs}-seed.test.mjs"
+  # Filesystem check on a DERIVED name, not an inference about the push: this
+  # naming convention is a guess, and most seeders have no matching test.
+  [ -f "$seed_candidate" ] && SEED_TESTS+=("$seed_candidate")
+done
+SERVER_TESTS=("tests/handlers.test.mts" "tests/server-handlers.test.mjs")
 
 # Subtract any test file that's already going to be run by a category
 # glob (RUN_RESILIENCE's resilience-* glob, RUN_SERVER's SERVER_TESTS
@@ -295,23 +489,27 @@ SERVER_TESTS=$(printf '%s\n' "tests/handlers.test.mts" "tests/server-handlers.te
 # would silently drop them from the TESTS_CHANGED runner too, since that
 # block runs regardless of RUN_ALL. Net effect of an unconditional dedup:
 # changed test files don't run anywhere locally when RUN_ALL fires.
-if [ "$RUN_ALL" != true ] && [ -n "$TESTS_CHANGED" ]; then
-  if [ "$RUN_RESILIENCE" = true ]; then
-    TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -v "^tests/resilience-" || true)
-  fi
-  if [ "$RUN_SERVER" = true ]; then
-    # grep -vxF -f <(...): drop lines from TESTS_CHANGED that exactly
-    # match (full line, literal string, no regex) the SERVER_TESTS list.
-    # Exact literal match here — not a regex like (handlers|server-handlers)
-    # over (mjs|mts) — so we never strip a file from TESTS_CHANGED that
-    # the category run isn't actually going to execute.
-    TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -vxF -f <(echo "$SERVER_TESTS") || true)
-  fi
-  if [ -n "$SEED_TESTS" ]; then
-    # grep -vxF -f <(...): drop lines from TESTS_CHANGED that exactly
-    # match (full line, literal string, no regex) any line in SEED_TESTS.
-    TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -vxF -f <(echo "$SEED_TESTS") || true)
-  fi
+if [ "$RUN_ALL" != true ] && [ "${#TESTS_CHANGED[@]}" -gt 0 ]; then
+  # Exact string comparison against the SAME arrays the category runs execute —
+  # not a regex like (handlers|server-handlers) over (mjs|mts) — so we never
+  # strip a file from TESTS_CHANGED that the category run isn't going to run.
+  ALREADY_COVERED=()
+  if [ "$RUN_SERVER" = true ]; then ALREADY_COVERED+=("${SERVER_TESTS[@]}"); fi
+  if [ "${#SEED_TESTS[@]}" -gt 0 ]; then ALREADY_COVERED+=("${SEED_TESTS[@]}"); fi
+
+  DEDUPED=()
+  for candidate in "${TESTS_CHANGED[@]}"; do
+    # RUN_RESILIENCE runs a `tests/resilience-*` glob, so match it by prefix.
+    if [ "$RUN_RESILIENCE" = true ]; then
+      case "$candidate" in tests/resilience-*) continue ;; esac
+    fi
+    covered=false
+    for other in "${ALREADY_COVERED[@]}"; do
+      if [ "$candidate" = "$other" ]; then covered=true; break; fi
+    done
+    if [ "$covered" = false ]; then DEDUPED+=("$candidate"); fi
+  done
+  TESTS_CHANGED=("${DEDUPED[@]}")
 fi
 
 if [ "$RUN_ALL" = true ]; then
@@ -325,27 +523,31 @@ if [ "$RUN_ALL" != true ]; then
   fi
   if [ "$RUN_SEED" = true ]; then
     echo "Running seed tests (scripts/ changed)..."
-    if [ -n "$SEED_TESTS" ]; then
-      timeout 120 npx tsx --test $SEED_TESTS || exit 1
+    if [ "${#SEED_TESTS[@]}" -gt 0 ]; then
+      # Quoted expansion, not word-splitting: `tests/trade flows-seed.test.mjs`
+      # is one argument, not two nonexistent ones.
+      timeout 120 npx tsx --test "${SEED_TESTS[@]}" || exit 1
     else
       echo "  No matching seed tests found, skipping."
     fi
   fi
   if [ "$RUN_SERVER" = true ]; then
     echo "Running server handler tests (server/ changed)..."
-    # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
-    timeout 120 npx tsx --test $SERVER_TESTS || exit 1
+    timeout 120 npx tsx --test "${SERVER_TESTS[@]}" || exit 1
   fi
-  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ]; then
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] \
+    && [ "${#TESTS_CHANGED[@]}" -eq 0 ] && [ "${#DOM_TESTS_CHANGED[@]}" -eq 0 ]; then
     echo "Skipping unit tests (frontend-only changes; CI runs the full suite on PR open)."
   fi
 fi
 
-if [ -n "$TESTS_CHANGED" ]; then
-  echo "Running changed test files only..."
-  # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
-  timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
-fi
+# Both dispatches are UNCONDITIONAL: the "is this list empty" test and the
+# choice of runner live in the script, where a test can execute them against
+# stubbed runners. Held inline here, they could only be guarded by grepping
+# this file's source — and a source grep stays green when `-n` is flipped to
+# `-z` or `|| exit 1` is dropped, which is a silent skip of the whole suite.
+nul_list "${TESTS_CHANGED[@]}" | bash scripts/prepush-changed-tests.sh run-node || exit 1
+nul_list "${DOM_TESTS_CHANGED[@]}" | bash scripts/prepush-changed-tests.sh run-dom || exit 1
 
 echo "Running edge function tests..."
 if [ "$RUN_FRONTEND" = true ] || [ "$RUN_ALL" = true ]; then
@@ -355,14 +557,14 @@ else
 fi
 
 echo "Running markdown lint..."
-if echo "$CHANGED_FILES" | grep -qE "\.md$|\.mdx$" || [ "$RUN_ALL" = true ]; then
+if path_matches '\.(md|mdx)$' || [ "$RUN_ALL" = true ]; then
   npm run lint:md || exit 1
 else
   echo "  Skipped (no markdown changes)."
 fi
 
 echo "Running MDX lint (Mintlify compatibility)..."
-if echo "$CHANGED_FILES" | grep -q "\.mdx$" || [ "$RUN_ALL" = true ]; then
+if path_matches '\.mdx$' || [ "$RUN_ALL" = true ]; then
   node --test tests/mdx-lint.test.mjs || exit 1
 else
   echo "  Skipped (no MDX changes)."
@@ -426,7 +628,7 @@ echo "Running pro-test bundle freshness check..."
 # (see PR #3227 → #3228: source fix merged but deploy still broken because
 # public/pro/ was stale).
 #
-# Scope to the BRANCH delta ($CHANGED_FILES, computed earlier from
+# Scope to the BRANCH delta ($CHANGED_PATHS, computed earlier from
 # `git diff origin/main...HEAD`), not the worktree, so unstaged local
 # pro-test/ scratch edits don't trigger a slow rebuild on unrelated
 # branches. RUN_ALL forces the check when the branch delta couldn't be
@@ -436,7 +638,7 @@ echo "Running pro-test bundle freshness check..."
 # pro-test/src/generated/tiers.json. Catalog-only pricing-copy changes are
 # otherwise able to ship stale /pro bundles because Vercel serves public/pro/
 # as committed bytes.
-if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/pro)/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$"; then
+if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$'; then
   npx tsx scripts/generate-product-config.mjs >/dev/null || {
     echo "ERROR: product config generation failed"
     exit 1
@@ -487,10 +689,19 @@ fi
 echo "Running version sync check..."
 npm run version:check || exit 1
 
+echo "All pre-push gates passed."
+
 # Record this tree as gate-green: a re-push of the identical tree (remote-side
 # failure, network blip, commit-message-only amend) skips straight past the
 # tree-dependent checks above. Any content change produces a new tree hash.
-if [ -n "$TREE_HASH" ]; then
-  echo "$TREE_HASH" > "$GATE_CACHE"
+#
+# prepush-attest.sh refuses the write when the run cannot honestly vouch for
+# HEAD — an unresolved branch diff (RUN_ALL skipped the unit suite) or a
+# worktree that is not byte-identical to HEAD. A refusal prints its reason and
+# is NOT a failed push: the gates all passed, they just do not get to suppress
+# the next run. Hence the explicit `exit 0` — the refusal's status must not
+# become the hook's.
+if bash "$ATTEST" cache-write "$GATE_CACHE" "$TREE_HASH" "$DIFF_RESOLVED" "$ATTESTABLE"; then
+  echo "  Tree cached — an identical re-push skips straight to the end."
 fi
-echo "All pre-push gates passed — tree cached."
+exit 0

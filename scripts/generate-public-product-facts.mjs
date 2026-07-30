@@ -69,6 +69,10 @@ function replaceMcpToolCounts(source, count) {
     .replace(/\b\d+\+(?=\s+(?:MCP\s+)?tools\b)/g, String(count))
     .replace(/\b\d+(?=\s+\[MCP tools\])/g, String(count))
     .replace(/\b\d+(?=\s+tool definitions\b)/g, String(count))
+    // docs/mcp-quickstart.mdx phrasing — pinned by scripts/docs-stats.mjs
+    // (`receives (\d+) compressed tool descriptions`), so it must be rewritten
+    // here or every count bump reds the docs check.
+    .replace(/\b\d+(?=\s+compressed tool descriptions\b)/g, String(count))
     .replace(/\b\d+(?=\s*个\s*(?:MCP\s*)?(?:实时|压缩的)?工具)/g, String(count));
 }
 
@@ -256,13 +260,21 @@ for (const [path, groups] of [
   transform(path, (source) => rewriteApplicationJsonLd(source, groups));
 }
 
+// Every pro-test locale publishes the MCP tool count (guarded by
+// tests/public-product-facts.test.mjs across the full locale sweep), so
+// enumerate the directory instead of hand-listing a subset.
+const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
+  .filter((name) => name.endsWith('.json'))
+  .map((name) => `pro-test/src/locales/${name}`)
+  .sort();
+
 const mcpCountSurfaces = [
   'server.json',
   'cli/README.md',
-  'pro-test/src/locales/en.json',
-  'pro-test/src/locales/fa.json',
+  ...proLocalePaths,
   'pro-test/prerender.mjs',
   'pro-test/welcome.html',
+  'public/pro/welcome.html',
   'blog-site/src/content/blog/ask-claude-whats-happening-worldmonitor-mcp.md',
   'blog-site/src/content/blog/build-geopolitical-risk-agent-worldmonitor-mcp.md',
   'blog-site/src/content/blog/daily-intelligence-briefing-workflow-15-minutes.md',
@@ -293,21 +305,70 @@ for (const path of mcpCountSurfaces) {
   transform(path, (source) => replaceMcpToolCounts(source, mcpToolCount));
 }
 
-for (const path of [
-  'pro-test/src/locales/en.json',
-  'pro-test/src/locales/fa.json',
-]) {
+// The server card is the machine-readable tool catalog consumed by docs-stats
+// and external MCP discovery. Generate it from the same registry as the count
+// so adding tools cannot leave a syntactically valid but incomplete card.
+transform('public/.well-known/mcp/server-card.json', (source) => {
+  const card = JSON.parse(source);
+  card.tools = TOOL_REGISTRY.map(({ name, description }) => ({ name, description }));
+  return json(card);
+});
+
+transform('public/agent-view.json', (source) => {
+  const view = JSON.parse(source);
+  view.endpoints.mcp.tools = mcpToolCount;
+  return json(view);
+});
+
+// Every locale publishes the MCP tool count in one stat tile and four
+// localized prose claims. The prose phrasings vary per language, so they
+// cannot be matched by replaceMcpToolCounts — instead rewrite any 2+ digit
+// integer inside exactly these keys (verified: the only other number in any
+// locale is a single-digit "1" in ja.json). Guarded by the full-locale sweep
+// in tests/public-product-facts.test.mjs.
+const LOCALE_TOOL_COUNT_PROSE_KEYS = [
+  ['welcome', 'agents', 'b1'],
+  ['welcome', 'agents', 'promise'],
+  ['welcome', 'pricing', 'proF4'],
+  ['welcome', 'faq', 'a7'],
+];
+for (const path of proLocalePaths) {
   transform(path, (source) => {
     const locale = JSON.parse(source);
-    locale.welcome.depth.s12v = String(mcpToolCount);
+    if (typeof locale.welcome?.depth?.s12v === 'string') {
+      locale.welcome.depth.s12v = String(mcpToolCount);
+    }
+    for (const keys of LOCALE_TOOL_COUNT_PROSE_KEYS) {
+      let node = locale;
+      for (const key of keys.slice(0, -1)) node = node?.[key];
+      const leaf = keys[keys.length - 1];
+      if (node && typeof node[leaf] === 'string') {
+        node[leaf] = node[leaf].replace(/\b\d{2,}\b/g, String(mcpToolCount));
+      }
+    }
     return json(locale);
   });
 }
 
-const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
-  .filter((name) => name.endsWith('.json'))
-  .map((name) => `pro-test/src/locales/${name}`)
-  .sort();
+// The translation baseline records the English string each committed
+// translation was made from. A tool-count bump is a pure numeral
+// substitution already applied to EVERY locale above, so the baseline gets
+// the same substitution — otherwise every count change would report the five
+// count-bearing keys as drifted and demand a full LLM translation pass for a
+// number. Guarded by tests/pro-locale-freshness.test.mjs.
+transform('scripts/locale-baselines/pro-test.json', (source) => {
+  const baseline = JSON.parse(source);
+  if (typeof baseline['welcome.depth.s12v'] === 'string') {
+    baseline['welcome.depth.s12v'] = String(mcpToolCount);
+  }
+  for (const keys of LOCALE_TOOL_COUNT_PROSE_KEYS) {
+    const flatKey = keys.join('.');
+    if (typeof baseline[flatKey] === 'string') {
+      baseline[flatKey] = baseline[flatKey].replace(/\b\d{2,}\b/g, String(mcpToolCount));
+    }
+  }
+  return json(baseline);
+});
 
 for (const path of proLocalePaths) {
   transform(path, (source) => {

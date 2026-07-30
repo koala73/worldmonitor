@@ -14,8 +14,16 @@
  *     of truth — no client-side enforcement, just display).
  */
 
-import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
-import { getClerkToken } from './clerk';
+import {
+  getConvexClient,
+  getConvexApi,
+  waitForConvexAuthForUser,
+} from './convex-client';
+import { getClerkToken, getCurrentClerkUser } from './clerk';
+import {
+  assertAccountStillCurrent,
+  settleAccountOperation,
+} from './account-operation';
 
 export interface McpClientInfo {
   id: string;
@@ -34,17 +42,26 @@ export interface McpQuota {
 
 /** List all Pro MCP tokens for the current user. */
 export async function listMcpClients(): Promise<McpClientInfo[]> {
-  const client = await getConvexClient();
-  const api = await getConvexApi();
-  if (!client || !api) return [];
+  const userId = getCurrentClerkUser()?.id;
+  if (!userId) return [];
 
-  await waitForConvexAuth();
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) return [];
+  if (!await waitForConvexAuthForUser(userId)) {
+    assertAccountStillCurrent(userId, 'loading MCP clients');
+    throw new Error('Authentication unavailable while loading MCP clients. Try again.');
+  }
 
   // Mirror services/api-keys.ts:listApiKeys cast pattern — the generated
   // Convex `api` is fully typed at module level but each service casts
   // `as any` at the call-site to avoid pulling the entire generated index
   // type into every service file.
-  const rows = await client.query((api as any).mcpProTokens.listProMcpTokens, {});
+  const rows = await settleAccountOperation(
+    userId,
+    'loading MCP clients',
+    () => client.query((api as any).mcpProTokens.listProMcpTokens, {}),
+  );
+  assertAccountStillCurrent(userId, 'loading MCP clients');
   return rows as McpClientInfo[];
 }
 

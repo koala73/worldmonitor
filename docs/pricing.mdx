@@ -24,10 +24,28 @@ World Monitor has a free public dashboard and paid tiers for analyst workflows, 
 
 Prices above mirror `convex/config/productCatalog.ts` (the source of truth behind `/api/product-catalog`); a drift guard test keeps this page honest.
 
+## Which license do I need?
+
+Choose by who benefits from the work and where World Monitor data will appear:
+
+| Your use | Plan license |
+| --- | --- |
+| You use World Monitor for your own research, learning, investing, or decisions | **Pro — Personal license** |
+| One licensed user uses the dashboard, exports, MCP, or SDK for company work, client analysis, reports, presentations, or their own internal workflow | **Pro Business — Commercial license** |
+| Your organization calls the API from private systems, dashboards, automations, or internal tools | **API Starter — Commercial license for your organization** |
+| Your organization displays, embeds, or delivers API outputs inside a product or service used by customers | **API Business — Commercial license for your customers** |
+| You need higher-volume redistribution, additional seats, white-labeling, a standalone data feed, or a custom deployment | **Enterprise — Custom agreement** |
+
+Pro Business permits normal client deliverables such as analysis and reports; it does not permit a live customer-facing data product. API Starter crosses the programmatic boundary inside your organization; it does not cross the customer boundary. API Business crosses that customer boundary when World Monitor data is part of a product or service with its own material value, but it does not permit raw-data resale, shared API access, or a standalone substitute for World Monitor.
+
+World Monitor attribution is optional in reports, presentations, and derived analysis permitted by your plan. If you choose to credit us, "Source: World Monitor" or "via World Monitor" is sufficient. Source-specific notices supplied with an output still apply.
+
+These are subscription licenses for the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. See the [Terms of Service](/terms#subscription-license-scope) for the full scope, restrictions, examples, and post-cancellation rules.
+
 ## What each plan includes
 
 - **Free** — 56 map layers, 500+ curated feeds, country briefs, hotspots, instability scores, chokepoints, cascade analysis, breaking alerts, and watchlists, across 3 dashboard tabs. Dashboard refresh cadence is typically 5–15 minutes.
-- **Pro** — everything in Free, plus WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest (daily / twice-daily / weekly via Slack, Discord, Telegram, email, webhook), custom widget builder (10 custom dashboards), and MCP access (42 tools under one key, 50 calls/day). Personal license.
+- **Pro** — everything in Free, plus WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest (daily / twice-daily / weekly via Slack, Discord, Telegram, email, webhook), custom widget builder (10 custom dashboards), and MCP access (59 tools under one key, 50 calls/day). Personal license.
 - **Pro Business** — the Pro dashboard licensed for work: everything in Pro, plus a commercial license covering client work, internal tools and reporting, data export (CSV, JSON, and PDF reports), 25 custom dashboards, MCP + SDK at 250 calls/day, and priority support. Pro and Pro Business are separate products rather than a self-serve plan change — cancel Pro in the billing portal, then start the Pro Business checkout; Pro access runs to the end of the term already paid for.
 - **API Starter** — programmatic access: REST API with structured JSON and cache headers, official SDKs (npm, PyPI, RubyGems, Go), self-serve license / API keys (the `wm_` key the desktop app asks for — see [API keys](/api-keys)), real-time data streams, and webhook notifications (5 rules on Starter). Commercial license for your own organization; redistributing the data to your customers requires API Business.
 - **API Business** — the high-volume API tier for teams: everything in API Starter with redistribution rights (embed our data in what you sell), 300 requests/minute and 10,000 requests/day, 5 Pro licenses included (all under the same company email), and priority support. Starter customers upgrade from the billing portal (prorated immediately).

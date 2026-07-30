@@ -616,6 +616,109 @@ describe('activation interstitial blocked transition (#5609)', () => {
     assert.doesNotMatch(html, /steps\.alerts\.declinedNote/);
   });
 
+  it('renders blocked-specific summary guidance while preserving pending status', async () => {
+    installPushState('denied', true);
+    activeDom = installDom();
+    const mod = await loadInterstitial();
+    const { dom, exits } = openAlertsStep(mod, async () => 'blocked', 'blocked');
+
+    assert.equal(clickPrimary(dom), 'advance-skip');
+    const html = renderedHtml(dom);
+    assert.match(html, /summary-line status-pending/, 'blocked keeps the pending icon/status');
+    assert.match(
+      html,
+      /steps\.alerts\.blockedNote/,
+      'blocked summary detail must point to browser site settings',
+    );
+    assert.doesNotMatch(
+      html,
+      /summary\.linePending/,
+      'blocked alerts must not reuse the generic app-settings promise',
+    );
+    assert.doesNotMatch(html, /summary\.lineFailed/, 'a browser refusal is not a failed write');
+    assert.doesNotMatch(
+      html,
+      /summary\.subPending/,
+      'a blocked-only summary must not repeat the false app-settings promise',
+    );
+
+    assert.equal(clickPrimary(dom), 'finish');
+    assert.deepEqual(exits, [[{ id: 'alerts', outcome: 'blocked' }]]);
+  });
+
+  it('keeps an ordinary skipped alert on the generic pending summary path', async () => {
+    installPushState('default', false);
+    activeDom = installDom();
+    const mod = await loadInterstitial();
+    const { dom, exits } = openAlertsStep(mod, async () => 'verified');
+
+    const skip = dom.document.body.querySelector('.pro-activation-skip');
+    assert.ok(skip, 'a confirmable alert step must offer Skip');
+    skip!.dispatchEvent(new Event('click'));
+
+    const html = renderedHtml(dom);
+    assert.match(html, /summary-line status-pending/);
+    assert.match(html, /summary\.linePending/, 'a real skip keeps ordinary pending guidance');
+    assert.match(html, /summary\.subPending/, 'skip-only setup can still be finished in settings');
+    assert.doesNotMatch(
+      html,
+      /steps\.alerts\.blockedNote/,
+      'ordinary skips must not receive browser-blocked copy',
+    );
+    assert.doesNotMatch(html, /summary\.lineFailed/);
+
+    assert.equal(clickPrimary(dom), 'finish');
+    assert.deepEqual(exits, [[{ id: 'alerts', outcome: 'skipped' }]]);
+  });
+
+  it('renders blocked and skipped details distinctly in a mixed summary', async () => {
+    installPushState('denied', true);
+    activeDom = installDom();
+    const mod = await loadInterstitial();
+    const dom = activeDom!;
+    const exits: Array<Array<{ id: string; outcome: string }>> = [];
+    mod.openProActivationInterstitial({
+      steps: [
+        { id: 'alerts', state: 'blocked' },
+        { id: 'power', state: 'confirmable' },
+      ],
+      accountEmail: 'pro@worldmonitor.test',
+      onConfirmStep: (async () => 'verified') as never,
+      onSkipStep: () => {},
+      onExit: (results) => exits.push(results as never),
+    });
+    activeClose = mod.closeProActivationInterstitial;
+
+    assert.equal(clickPrimary(dom), 'advance-skip');
+    const skip = dom.document.body.querySelector('.pro-activation-skip');
+    assert.ok(skip, 'the ordinary power step must remain skippable');
+    skip!.dispatchEvent(new Event('click'));
+
+    const html = renderedHtml(dom);
+    assert.equal(
+      (html.match(/steps\.alerts\.blockedNote/g) ?? []).length,
+      1,
+      'only the blocked alert line gets browser guidance',
+    );
+    assert.equal(
+      (html.match(/summary\.linePending/g) ?? []).length,
+      1,
+      'only the ordinary skipped line gets app-settings guidance',
+    );
+    assert.doesNotMatch(
+      html,
+      /summary\.subPending/,
+      'the overall subtitle must not promise app Settings can resolve every unfinished step',
+    );
+    assert.doesNotMatch(html, /summary\.lineFailed/);
+
+    assert.equal(clickPrimary(dom), 'finish');
+    assert.deepEqual(exits, [[
+      { id: 'alerts', outcome: 'blocked' },
+      { id: 'power', outcome: 'skipped' },
+    ]]);
+  });
+
   it('keeps offering "Try again" when the confirm merely failed', async () => {
     installPushState('default', true);
     activeDom = installDom();

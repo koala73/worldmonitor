@@ -13,7 +13,7 @@ import "worldmonitor/conflict/v1/get_humanitarian_summary_batch.proto";
 service ConflictService {
   option (sebuf.http.service_config) = {base_path: "/api/conflict/v1"};
 
-  // ListAcledEvents retrieves armed conflict events from the ACLED dataset.
+  // ListAcledEvents retrieves ACLED armed-conflict events with country, location, actors, event type and fatalities, filterable by country and inclusive time range.
   rpc ListAcledEvents(ListAcledEventsRequest) returns (ListAcledEventsResponse) {
     option (sebuf.http.config) = {path: "/list-acled-events", method: HTTP_METHOD_GET};
   }
@@ -28,7 +28,7 @@ service ConflictService {
     option (sebuf.http.config) = {path: "/get-humanitarian-summary", method: HTTP_METHOD_GET};
   }
 
-  // ListIranEvents retrieves scraped conflict events from LiveUAMap Iran.
+  // ListIranEvents is disabled by default; enable IRAN_EVENTS_ENABLED to return cached LiveUAMap Iran conflict records, otherwise an empty list with scrapedAt zero.
   rpc ListIranEvents(ListIranEventsRequest) returns (ListIranEventsResponse) {
     option (sebuf.http.config) = {path: "/list-iran-events", method: HTTP_METHOD_GET};
   }

@@ -1,21 +1,12 @@
 #!/usr/bin/env node
 /**
- * Mark deprecated operations in the generated OpenAPI specs.
+ * Propagate proto deprecation metadata into generated OpenAPI and TypeScript.
  *
- * protoc-gen-openapiv3 (sebuf v0.11.1) does NOT propagate a method's
- * `option deprecated = true;` to the OpenAPI operation's `deprecated: true`
- * flag, so a disabled/retired RPC renders in Mintlify as a normal, usable
- * endpoint (only its prose description says "DISABLED"). This post-generation
- * step reads the proto `option deprecated` — the single source of truth — and
- * stamps `deprecated: true` on the matching operation across the per-service
- * JSON + YAML specs and the bundle. Any future RPC that gains the proto option
- * is covered automatically.
- *
- * Wired into `make generate` (after the other OpenAPI injectors) and exposed as
- * `npm run gen:openapi:deprecated`. Idempotent + byte-faithful (JSON re-serialized
- * with the shared sorted, Go-escaped strategy; YAML via surgical insertion).
- *
- * See umbrella issue #4599.
+ * sebuf v0.11.1 omits both RPC `option deprecated = true` and field
+ * `[deprecated = true]` metadata. This idempotent post-generator treats proto
+ * as the source of truth and patches:
+ *   - OpenAPI operation, query-parameter, and component-property flags
+ *   - generated client/server interface fields with `/** @deprecated *\/`
  */
 
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
@@ -27,39 +18,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const protoDir = resolve(root, 'proto/worldmonitor');
 const CHECK = process.argv.includes('--check');
-
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 
-// ── Source of truth: proto RPCs carrying `option deprecated = true;` ─────────
-// Split each service.proto into `rpc ... { ... }` blocks; a block that carries
-// both `option deprecated = true` and an http `path: "..."` yields the exact
-// generated OpenAPI path (`base_path` + RPC path). Fails closed: if a
-// service.proto can't be read it is skipped, never silently marking an op
-// deprecated.
-function readDeprecatedPaths() {
-  const paths = new Set();
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = resolve(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.name === 'service.proto') scan(full);
-    }
-  };
-  const scan = (file) => {
-    const src = readFileSync(file, 'utf8');
-    const serviceConfig = src.match(/\(sebuf\.http\.service_config\)\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
-    const basePath = serviceConfig.match(/\bbase_path:\s*"([^"]+)"/)?.[1] ?? '';
-    // Match each `rpc ... { ... }` body (non-greedy to the first closing brace at
-    // the rpc's own indent).
-    for (const block of src.matchAll(/\brpc\s+\w+\s*\([^)]*\)\s*returns\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{2}\}/g)) {
-      const body = block[1];
-      if (!/option\s+deprecated\s*=\s*true\s*;/.test(body)) continue;
-      const pathMatch = body.match(/path:\s*"([^"]+)"/);
-      if (pathMatch) paths.add(joinOpenApiPath(basePath, pathMatch[1]));
-    }
-  };
-  walk(protoDir);
-  return paths;
+function walkFiles(dir, predicate) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkFiles(full, predicate));
+    else if (predicate(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+function lowerCamel(name) {
+  return name.replace(/_([a-z0-9])/g, (_match, char) => char.toUpperCase());
 }
 
 function joinOpenApiPath(basePath, rpcPath) {
@@ -68,24 +40,100 @@ function joinOpenApiPath(basePath, rpcPath) {
   return basePath.replace(/\/+$/, '') + '/' + rpcPath.replace(/^\/+/, '');
 }
 
-const DEPRECATED_PATHS = readDeprecatedPaths();
+function readProtoDeprecations() {
+  const deprecatedPaths = new Set();
+  const deprecatedFields = new Map();
+  const requestByOperationId = new Map();
 
-function isDeprecatedPath(path) {
-  return DEPRECATED_PATHS.has(path);
+  for (const file of walkFiles(protoDir, name => name.endsWith('.proto'))) {
+    const src = readFileSync(file, 'utf8');
+
+    // Top-level message bodies end at a column-zero brace in this corpus.
+    for (const message of src.matchAll(/^message\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
+      const [, messageName, body] = message;
+      const fields = new Map();
+      for (const field of body.matchAll(
+        /^\s*(?:repeated\s+)?(?:map<[^>]+>|[\w.]+)\s+(\w+)\s*=\s*\d+\s*\[([^\]]*\bdeprecated\s*=\s*true[^\]]*)\]\s*;/gm,
+      )) {
+        const [, protoName, options] = field;
+        const jsonName = lowerCamel(protoName);
+        const queryName = options.match(/\(sebuf\.http\.query\)\s*=\s*\{\s*name:\s*"([^"]+)"/)?.[1] ?? jsonName;
+        fields.set(jsonName, { queryName });
+      }
+      if (fields.size > 0) deprecatedFields.set(messageName, fields);
+    }
+
+    if (!file.endsWith('/service.proto')) continue;
+    const serviceConfig = src.match(/\(sebuf\.http\.service_config\)\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+    const basePath = serviceConfig.match(/\bbase_path:\s*"([^"]+)"/)?.[1] ?? '';
+    for (const rpc of src.matchAll(
+      /\brpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)\s*returns\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{2}\}/g,
+    )) {
+      const [, operationId, requestTypeRaw, body] = rpc;
+      const requestType = requestTypeRaw.split('.').pop();
+      requestByOperationId.set(operationId, requestType);
+      if (!/option\s+deprecated\s*=\s*true\s*;/.test(body)) continue;
+      const path = body.match(/path:\s*"([^"]+)"/)?.[1];
+      if (path) deprecatedPaths.add(joinOpenApiPath(basePath, path));
+    }
+  }
+
+  return { deprecatedPaths, deprecatedFields, requestByOperationId };
 }
 
-// ── Per-service JSON ────────────────────────────────────────────────────────
+const {
+  deprecatedPaths: DEPRECATED_PATHS,
+  deprecatedFields: DEPRECATED_FIELDS,
+  requestByOperationId: REQUEST_BY_OPERATION_ID,
+} = readProtoDeprecations();
+
+function deprecatedQueryNames(operationId) {
+  const requestType = REQUEST_BY_OPERATION_ID.get(operationId);
+  const fields = DEPRECATED_FIELDS.get(requestType);
+  return new Set(fields ? [...fields.values()].map(field => field.queryName) : []);
+}
+
+function deprecatedFieldsForSchema(schemaName) {
+  const exact = DEPRECATED_FIELDS.get(schemaName);
+  if (exact) return exact;
+  for (const [messageName, fields] of DEPRECATED_FIELDS) {
+    if (schemaName.endsWith(`_${messageName}`)) return fields;
+  }
+  return null;
+}
+
 function injectJson(spec) {
   let changed = false;
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
-    const shouldBeDeprecated = isDeprecatedPath(path);
     for (const [method, op] of Object.entries(ops)) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
-      if (shouldBeDeprecated && op.deprecated !== true) {
+      const operationDeprecated = DEPRECATED_PATHS.has(path);
+      if (operationDeprecated && op.deprecated !== true) {
         op.deprecated = true;
         changed = true;
-      } else if (!shouldBeDeprecated && op.deprecated !== undefined) {
+      } else if (!operationDeprecated && op.deprecated !== undefined) {
         delete op.deprecated;
+        changed = true;
+      }
+
+      const queryNames = deprecatedQueryNames(op.operationId);
+      for (const parameter of op.parameters ?? []) {
+        if (!parameter || parameter.in !== 'query' || !queryNames.has(parameter.name)) continue;
+        if (parameter.deprecated !== true) {
+          parameter.deprecated = true;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  for (const [messageName, fields] of DEPRECATED_FIELDS) {
+    const properties = spec.components?.schemas?.[messageName]?.properties;
+    if (!properties) continue;
+    for (const fieldName of fields.keys()) {
+      const property = properties[fieldName];
+      if (property && property.deprecated !== true) {
+        property.deprecated = true;
         changed = true;
       }
     }
@@ -93,93 +141,146 @@ function injectJson(spec) {
   return changed;
 }
 
-// ── YAML (formatting-preserving surgical insertion) ─────────────────────────
-// Insert `            deprecated: true` (12-space op-level indent) immediately
-// after the `        <method>:` line of a deprecated op. Path lines are at 4
-// spaces, method lines at 8, op children at 12.
+function ensureYamlFlag(lines, index, indent) {
+  const flag = `${' '.repeat(indent)}deprecated: true`;
+  for (let cursor = index + 1; cursor < lines.length; cursor++) {
+    if (lines[cursor].trim() && lines[cursor].search(/\S/) <= indent - 2) break;
+    if (lines[cursor].trim().startsWith('deprecated:')) {
+      if (lines[cursor] === flag) return false;
+      lines[cursor] = flag;
+      return true;
+    }
+  }
+  lines.splice(index + 1, 0, flag);
+  return true;
+}
+
 function injectYaml(text) {
   const lines = text.split('\n');
   let changed = false;
   let currentPath = null;
+  let currentOperationId = '';
+  let currentSchema = '';
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const pathMatch = line.match(/^ {4}(\/\S+):\s*$/);
     if (pathMatch) {
       currentPath = pathMatch[1];
+      currentOperationId = '';
       continue;
     }
     if (/^\S/.test(line)) {
-      currentPath = null; // left the paths: block
-      continue;
+      currentPath = null;
+      currentOperationId = '';
     }
 
     const methodMatch = line.match(/^ {8}([a-z]+):\s*$/);
-    if (!methodMatch || !currentPath || !HTTP_METHODS.has(methodMatch[1])) continue;
-
-    const shouldBeDeprecated = isDeprecatedPath(currentPath);
-    let deprecatedIndex = -1;
-    for (let j = i + 1; j < lines.length; j++) {
-      if (/^ {0,8}\S/.test(lines[j])) break; // next method (8) or path (4) or top-level
-      if (/^ {12}deprecated:/.test(lines[j])) {
-        deprecatedIndex = j;
-        break;
+    if (methodMatch && currentPath && HTTP_METHODS.has(methodMatch[1])) {
+      if (DEPRECATED_PATHS.has(currentPath)) {
+        changed = ensureYamlFlag(lines, i, 12) || changed;
+        if (changed && lines[i + 1]?.trim() === 'deprecated: true') i++;
       }
+      continue;
     }
 
-    if (shouldBeDeprecated) {
-      if (deprecatedIndex === -1) {
-        lines.splice(i + 1, 0, '            deprecated: true');
-        changed = true;
-        i++;
-      } else if (lines[deprecatedIndex] !== '            deprecated: true') {
-        lines[deprecatedIndex] = '            deprecated: true';
-        changed = true;
-      }
-    } else if (deprecatedIndex !== -1) {
-      lines.splice(deprecatedIndex, 1);
-      changed = true;
+    const operationMatch = line.match(/^ {12}operationId:\s*"?([^"]+)"?\s*$/);
+    if (operationMatch) {
+      currentOperationId = operationMatch[1];
+      continue;
+    }
+    const parameterMatch = line.match(/^ {16}- name:\s*"?([^"]+)"?\s*$/);
+    if (parameterMatch && deprecatedQueryNames(currentOperationId).has(parameterMatch[1])) {
+      changed = ensureYamlFlag(lines, i, 18) || changed;
+      if (lines[i + 1]?.trim() === 'deprecated: true') i++;
+      continue;
+    }
+
+    const schemaMatch = line.match(/^ {8}(\w+):\s*$/);
+    if (schemaMatch) {
+      currentSchema = schemaMatch[1];
+      continue;
+    }
+    const propertyMatch = line.match(/^ {16}(\w+):\s*$/);
+    if (propertyMatch && deprecatedFieldsForSchema(currentSchema)?.has(propertyMatch[1])) {
+      changed = ensureYamlFlag(lines, i, 20) || changed;
+      if (lines[i + 1]?.trim() === 'deprecated: true') i++;
     }
   }
   return { text: lines.join('\n'), changed };
 }
 
-// ── Run ──────────────────────────────────────────────────────────────────────
-const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+function injectTypeScript(text) {
+  const lines = text.split('\n');
+  let changed = false;
+  let currentInterface = '';
+  for (let i = 0; i < lines.length; i++) {
+    const interfaceMatch = lines[i].match(/^export interface (\w+) \{$/);
+    if (interfaceMatch) {
+      currentInterface = interfaceMatch[1];
+      continue;
+    }
+    if (currentInterface && lines[i] === '}') {
+      currentInterface = '';
+      continue;
+    }
+    const fieldMatch = lines[i].match(/^ {2}(\w+)\??:/);
+    if (!fieldMatch || !DEPRECATED_FIELDS.get(currentInterface)?.has(fieldMatch[1])) continue;
+    if (lines[i - 1] !== '  /** @deprecated */') {
+      lines.splice(i, 0, '  /** @deprecated */');
+      changed = true;
+      i++;
+    }
+  }
+  return { text: lines.join('\n'), changed };
+}
+
+const jsonFiles = readdirSync(apiDir).filter(file => /Service\.openapi\.json$/.test(file)).sort();
 const yamlFiles = readdirSync(apiDir)
-  .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+  .filter(file => /Service\.openapi\.yaml$/.test(file) || file === 'worldmonitor.openapi.yaml')
   .sort();
+const tsFiles = [
+  ...walkFiles(resolve(root, 'src/generated/client'), name => name.endsWith('.ts')),
+  ...walkFiles(resolve(root, 'src/generated/server'), name => name.endsWith('.ts')),
+].sort();
+
 let wouldChange = 0;
 const touched = [];
 
 for (const file of jsonFiles) {
   const path = resolve(apiDir, file);
   const spec = JSON.parse(readFileSync(path, 'utf8'));
-  if (injectJson(spec)) {
-    wouldChange++;
-    touched.push(file);
-    if (!CHECK) writeFileSync(path, serialize(spec));
-  }
+  if (!injectJson(spec)) continue;
+  wouldChange++;
+  touched.push(file);
+  if (!CHECK) writeFileSync(path, serialize(spec));
 }
 
 for (const file of yamlFiles) {
   const path = resolve(apiDir, file);
   const result = injectYaml(readFileSync(path, 'utf8'));
-  if (result.changed) {
-    wouldChange++;
-    touched.push(file);
-    if (!CHECK) writeFileSync(path, result.text);
-  }
+  if (!result.changed) continue;
+  wouldChange++;
+  touched.push(file);
+  if (!CHECK) writeFileSync(path, result.text);
 }
 
+for (const path of tsFiles) {
+  const result = injectTypeScript(readFileSync(path, 'utf8'));
+  if (!result.changed) continue;
+  wouldChange++;
+  touched.push(path.replace(root + '/', ''));
+  if (!CHECK) writeFileSync(path, result.text);
+}
+
+const fieldCount = [...DEPRECATED_FIELDS.values()].reduce((sum, fields) => sum + fields.size, 0);
 if (CHECK) {
   if (wouldChange > 0) {
-    console.error(`✗ ${wouldChange} OpenAPI artifact(s) missing a deprecated flag: ${touched.join(', ')}`);
+    console.error(`✗ ${wouldChange} generated artifact(s) missing deprecation metadata: ${touched.join(', ')}`);
     console.error('  Run: npm run gen:openapi:deprecated');
     process.exit(1);
   }
-  console.log(`✓ deprecated flags in sync (${DEPRECATED_PATHS.size} deprecated RPC path(s) tracked)`);
+  console.log(`✓ deprecation metadata in sync (${DEPRECATED_PATHS.size} RPC path(s), ${fieldCount} field(s))`);
 } else {
-  console.log(
-    `openapi-inject-deprecated: updated ${wouldChange} artifact(s) — ${DEPRECATED_PATHS.size} deprecated RPC path(s): ${[...DEPRECATED_PATHS].join(', ') || '(none)'}`,
-  );
+  console.log(`openapi-inject-deprecated: updated ${wouldChange} artifact(s) — ${DEPRECATED_PATHS.size} RPC path(s), ${fieldCount} field(s)`);
 }

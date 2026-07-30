@@ -48,7 +48,6 @@ import type {
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
-// @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
 

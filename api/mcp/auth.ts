@@ -8,12 +8,12 @@ import { timingSafeIncludes } from '../_crypto.js';
 import { getClientIp } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-// @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
 import { resolvePlanDrivenMcpAllowance } from './quota';
 import {
   getBillingVerificationDenial,
   getEntitlements,
+  isEntitlementBackendConfigured,
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import type { BillingVerificationCode } from './billing-denial';
@@ -343,8 +343,8 @@ export async function resolveAuthContext(
       }
       userKey = await deps.validateUserApiKey(candidateKey);
     } catch {
-      // Production validateUserApiKey fail-softs to null; a throw means the
-      // auth backend itself is unreachable — 503 mirrors the bearer path.
+      // validateUserApiKey throws UserApiKeyUnavailableError when Convex is
+      // unreachable/misconfigured — 503 mirrors the bearer path (not 401).
       return {
         ok: false,
         response: new Response(
@@ -462,7 +462,9 @@ async function checkMcpEntitlementGate(
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
-  const gate = checkProMcpAccess(ent, Date.now());
+  const gate = checkProMcpAccess(ent, Date.now(), {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
   if (!gate) {
     return passed();
   }

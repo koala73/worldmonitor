@@ -1194,7 +1194,8 @@ export default defineConfig(({ mode }) => {
             // lazy-load it via dynamic import. Kept off the eager @/config
             // barrel. Co-chunk both files so the merged list and its raw data
             // ship together off the entry chunk. (#4478)
-            if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')) {
+            if (id.endsWith('/src/config/military-bases.ts') || id.endsWith('/src/config/bases-expanded.ts')
+                || id.endsWith('/shared/military-bases-data.ts')) {
               return 'military-bases-data';
             }
             // Correlation engine (engine + 4 adapters) is dynamic-imported at its

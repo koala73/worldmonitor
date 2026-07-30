@@ -48,6 +48,20 @@ An Alert Rule's optional country restriction. Empty means unscoped — every eve
 
 The country identity a notification publisher attaches to an event at publish time, normalized to ISO-3166 alpha-2 through the shared country-name map. Attribution is the publisher's job, not the dispatcher's: a publisher that knows the country must attach it, because a missing or unresolvable attribution is indistinguishable downstream from a genuinely global event. A name-normalization miss that silently omits the attribution converts "lookup failed" into "field never existed" — the failure mode that lets scoped delivery leak. See also: Country Scope.
 
+## Company Attribution
+
+### Filer
+
+The company identity that a securities regulator publishes under a stable registry key, and the only unit that corporate intelligence attributes data to. A filer is not a brand, a website owner, or a market ticker: several tickers (share classes) can belong to one filer, and a familiar company name may sit under a legal title that shares its prefix with unrelated filers. Everything the product says about a company — filings, material events, market profile, news — hangs off a resolved filer, so resolving to the wrong one silently misattributes every downstream field at once. See also: Filer Resolution.
+
+### Filer Resolution
+
+Turning a caller's reference into a specific filer. Only two keys are accepted: an exact registry ticker, and a company name that identifies exactly one filer. An ambiguous name resolves to nothing rather than to a tie-break — ranking candidates by title length or any similar proxy is a guess, not a resolution.
+
+The rule that shapes this: uniqueness is not identity. That a label matches exactly one filer answers a question about the registry's contents, not about which company the caller meant — so a low-precision key (a domain, a slug) is admissible only when some field the registry itself publishes can confirm the pairing, and only while failing closed when that evidence is missing. A key with no such confirming field is not offered at all, because a guard that can never pass reads as safety while delivering nothing.
+
+Resolution distinguishes three outcomes, not two: the company resolved, no such company (a real answer, cacheable), and the registry could not be read (an infrastructure failure that must never be cached as an authoritative negative). See also: Filer, Event Attribution.
+
 ## Panel Mounting & Layout Stability
 
 ### Immediate Tier
@@ -74,11 +88,25 @@ The element that *causes* a layout shift by changing its own footprint — growi
 
 ### Vacuous Guard
 
-A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files, and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof.
+A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files, and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. Two further levers arise from *substitution* rather than filtering: a stub standing in for the unit under test, which makes every branch inside it — error returns especially — unreachable by a contract assertion that still passes for every other tool in the registry; and a lookup that parses a value out of another file, whose miss branch yields a plausible default (`0`, empty, `null`) instead of raising, so a moved or renamed target reads as a real answer rather than a lost one. Both are refactor-triggered: nothing in the import graph follows a path held as a string, so the compiler and the suite stay silent. A third shape does not shrink the input at all but asserts against the wrong artefact: a *wiring* guard that greps a script's source text for the command it should invoke, rather than executing the decision and observing what ran. Such a guard survives the bug restored verbatim, because inverting the condition that reaches the command, or dropping the `|| exit` that propagates its failure, leaves the grepped token in place — the remedy is to move the decision into something callable and run it against stubbed executables, asserting the invocation. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof.
 
 ### Mutation Proof
 
 This project's standard of evidence that a guard actually guards: deliberately break the thing the guard protects, observe the guard turn red, then restore the source byte-identically. Reading a guard establishes what it intends; only the mutation establishes what it covers. A guard that stays green when its subject is broken has not been shown to work, regardless of how carefully it was reviewed. The obligation applies recursively — a guard written to protect another guard needs its own mutation proof, and is a common place to skip one, because having just written it supplies the feeling of coverage without the evidence. See also: Vacuous Guard.
+
+## News Story Tracking & Trend Detection
+
+### Story Accumulator
+
+The rolling corpus of recently-tracked news stories, ordered by when each story was last seen, that downstream consumers read to answer "what has been in the feed lately?". It is a *retention window*, not a queue: entries age out on a fixed horizon rather than being consumed, and several unrelated consumers — the digest cron, trend detection — sample the same corpus independently for different spans. Its retention horizon states how far back entries *may* reach; it says nothing about how many are there, and on a busy feed the corpus holds far more stories than any single consumer intends to read at once. See also: Sampled Span, Seed-Owned Key.
+
+### Keyword Spike
+
+A term — an ordinary word, a vulnerability identifier, or a threat-group designator — appearing materially more often in a recent window than its own recent history predicts. A spike is deliberately harder to earn than "appeared a lot": the term must clear a floor of distinct mentions, exceed its baseline rate by a strict multiplier, and be carried by more than one outlet, so a single prolific source cannot manufacture one. When no baseline exists yet the decision falls back to the floor alone, which is why a corpus that yields no usable baseline silently converts spike detection into simple frequency counting. See also: Sampled Span.
+
+### Sampled Span
+
+The stretch of time a derived statistic was *actually* computed over, as distinct from the retention horizon of the store it drew from. The two diverge whenever a bounded read — a row cap, a page size, a top-N — returns fewer rows than the horizon contains, and the divergence is silent: the read succeeds, the arithmetic runs, and only the result is wrong. Any rate, baseline, or per-unit-time figure must be divided by the span its rows demonstrably cover, and a consumer-facing statistic should report that measured span rather than the horizon constant, since a caller has no other way to tell the two apart. Truncation is also biased rather than random — a newest-first read starves the historical side of a recent-versus-baseline comparison, an oldest-first read starves the recent side. See also: Story Accumulator, Keyword Spike.
 
 ## MCP & Agent Discovery
 
@@ -129,6 +157,14 @@ Two properties make that corroboration mean what it says. It is time-bounded, be
 The per-user record granting feature access — a plan key, feature flags with a tier, and a validity horizon — derived from subscriptions by the server and replicated to clients as a reactive snapshot. An entitlement is evidence of paid access *now*; it says nothing about why access exists or when it will renew. When its validity horizon passes without a renewal being recorded, readers fall back to free-tier defaults, which is the moment stale local state can misrepresent a still-paying customer.
 
 Feature flags are resolved by merging the plan's catalog defaults under the stored row, so a record written before a flag existed still reports that flag's current default for its plan — "the row predates the field" is therefore never on its own a reason a capability would read as absent.
+
+### Affirmative Denial
+
+The rule governing every client-side premium gate: a surface may be withheld only on positive evidence that the session is unentitled — a settled signed-out session, or a loaded entitlement snapshot that fails the access predicate — never on the mere absence of evidence. Reading "no snapshot yet" as "not entitled" is what locks paying customers out, because a snapshot that has not arrived is indistinguishable from one that never will.
+
+Which way an unknown resolves depends on whether waiting terminates. A *bounded* unknown — one guaranteed to settle on its own within a known window, such as auth hydration — may withhold briefly, since the cost is a delay rather than a lockout; it must not be counted as a denial in funnel metrics, because no user was gated. An *unbounded* unknown — one that may simply never arrive, such as an entitlement subscription that gives up silently when its backend is unreachable or unconfigured — must resolve to access. A corollary follows from that asymmetry: a gate that fails open can revoke access mid-use, so any surface reachable during the open window must define what happens when the verdict flips. A fail-open gate is only safe when losing access has a specified behavior instead of stranding the user in a state whose exit affordance was just hidden. See also: Entitlement, Billing UX State.
+
+A gate is also only as live as the signal it reads. A predicate keyed on a field nothing in the system writes denies every caller forever while looking perfectly reasonable in review, and it raises no error and draws no complaint, because the surface never renders for anyone to miss.
 
 ### Plan Family
 

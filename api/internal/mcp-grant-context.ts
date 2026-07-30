@@ -37,7 +37,10 @@
 export const config = { runtime: 'edge' };
 
 import { resolveClerkSession } from '../../server/_shared/auth-session';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import {
+  getEntitlements,
+  isEntitlementBackendConfigured,
+} from '../../server/_shared/entitlement-check';
 import {
   checkProMcpAccess,
   proMcpGateDenialResponse,
@@ -113,7 +116,9 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   // VERIFIED answers a retryable 503 instead of the terminal INSUFFICIENT_TIER
   // (#5622). Both paths still reveal nothing about the nonce or client.
   const ent = await deps.getEntitlements(userId);
-  const gate = checkProMcpAccess(ent, deps.now());
+  const gate = checkProMcpAccess(ent, deps.now(), {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
   if (gate) return proMcpGateDenialResponse(gate);
 
   // F2 (U7+U8 review pass): if `mcp-grant:<n>` exists with a userId that

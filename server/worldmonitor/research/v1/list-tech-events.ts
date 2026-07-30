@@ -28,6 +28,14 @@ import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 const REDIS_CACHE_KEY = 'research:tech-events:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — weekly event data
 
+/**
+ * Set on the response when neither the seeder nor the cold-start fetch could
+ * supply upstream data. Doubles as the gateway's no-store signal — see the
+ * comment at the early return in `listTechEvents`. Exported for the tests that
+ * pin that contract.
+ */
+export const TECH_EVENTS_UNAVAILABLE_ERROR = 'tech events unavailable: no upstream data';
+
 // ---------- Constants ----------
 
 const ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
@@ -303,6 +311,9 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
 
 // ---------- Fetch ----------
 
+/** Number of external feeds (Techmeme ICS + dev.events RSS) behind a fetch. */
+const EXTERNAL_SOURCE_COUNT = 2;
+
 async function fetchTechEvents(
   req: ListTechEventsRequest,
   pagingPresence: TechEventsPagingPresence,
@@ -389,7 +400,7 @@ async function fetchTechEvents(
   const mappableCount = conferences.filter(e => e.coords && !e.coords.virtual).length;
 
   if (externalSourcesFailed > 0) {
-    console.warn(`[tech-events] ${externalSourcesFailed}/2 external sources failed, returning ${events.length} events (curated fallback)`);
+    console.warn(`[tech-events] ${externalSourcesFailed}/${EXTERNAL_SOURCE_COUNT} external sources failed, returning ${events.length} events (curated fallback)`);
   }
 
   return {
@@ -454,6 +465,65 @@ function filterEvents(
 
 // ---------- Handler ----------
 
+/**
+ * The cold-start fallback must cache the WIDEST payload under the shared,
+ * request-independent `research:tech-events:v1` key: the Railway relay seeds
+ * the full list there, and `filterEvents()` re-narrows per caller. Forwarding
+ * the live request's `type`/`mappable`/`limit`/`days` into the fetcher pinned
+ * one caller's narrowed view for every client for the full 6h TTL (#5427).
+ * `limit`/`days` mirror `resolveTechEventsPaging`'s clamp maxima, so this
+ * request cannot resolve narrower than the documented widest bounds.
+ * Exported for the regression test.
+ */
+export const WIDEST_TECH_EVENTS_REQUEST: Readonly<ListTechEventsRequest> = Object.freeze({
+  type: 'all',
+  mappable: false,
+  limit: 200,
+  days: 365,
+});
+
+/**
+ * The cache-miss fetcher, exactly as handed to `cachedFetchJson`.
+ *
+ * It takes NO parameters on purpose. The bug this fixes was the handler
+ * threading the live request into the fetcher, so the shared key ended up
+ * holding one caller's narrowed view; with a zero-argument fetcher that
+ * regression cannot be reintroduced silently — passing caller state back in
+ * requires changing this signature, which is a type error at the call site
+ * rather than a behaviour change no test would notice.
+ *
+ * Exported so the wiring itself is executable in tests, not just the constant
+ * above (the constant being right proves nothing about what the handler does
+ * with it).
+ */
+export async function fetchWidestTechEvents(): Promise<ListTechEventsResponse | null> {
+  const response = await fetchTechEvents(WIDEST_TECH_EVENTS_REQUEST, { hasLimit: true, hasDays: true });
+
+  // Returning null makes cachedFetchJson write a 120s NEG_SENTINEL instead of
+  // a REDIS_CACHE_TTL (6h) payload, so the shared key recovers on the next
+  // request rather than on the seeder's next cycle.
+  //
+  // The test is whether any event actually came from UPSTREAM, not whether a
+  // fetch threw. `CURATED_EVENTS` alone always clears an `events.length > 0`
+  // bar, so a curated-only payload would otherwise be pinned under the
+  // seeder-owned key for 6h and served to every client as `success: true`.
+  // Keying on a fetch-failure counter misses the common shape where a feed
+  // answers HTTP 200 with an error page or an empty calendar: the body clears
+  // fetchTextWithRelay's 100-char floor, so the fetch "succeeded" while
+  // parsing yields nothing. Both shapes collapse to the same question --
+  // did upstream give us anything? -- so ask that directly.
+  //
+  // This is the Seed-Owned Key contract in CONCEPTS.md: a reader answers a
+  // miss with a short-TTL fallback and never poisons the key with a degraded
+  // payload.
+  //
+  // A PARTIAL fetch still caches: one live feed is materially complete
+  // (~26 or ~100 events), and refusing it would drop every caller into the
+  // empty-response window for as long as the other feed stayed down.
+  const hasUpstreamData = response.events.some(e => e.source !== 'curated');
+  return hasUpstreamData ? response : null;
+}
+
 export async function listTechEvents(
   ctx: ServerContext,
   req: ListTechEventsRequest,
@@ -461,15 +531,34 @@ export async function listTechEvents(
   try {
     const pagingPresence = readTechEventsPagingPresence(ctx);
 
-    // Primary: read from seed-populated Redis key (Railway relay seeds this every 6h)
-    const result = await cachedFetchJson<ListTechEventsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
-      // Fallback fetcher: only runs on cold start when seed hasn't populated yet
-      const fetched = await fetchTechEvents(req, pagingPresence);
-      return fetched.events.length > 0 ? fetched : null;
-    });
+    // Primary: read from seed-populated Redis key (Railway relay seeds this every 6h).
+    // The cold-start fallback is request-independent by construction — see
+    // fetchWidestTechEvents. Per-request narrowing happens in filterEvents()
+    // below, never in what gets cached under the shared key.
+    const result = await cachedFetchJson<ListTechEventsResponse>(
+      REDIS_CACHE_KEY,
+      REDIS_CACHE_TTL,
+      fetchWidestTechEvents,
+    );
 
+    // No data at all: the seeder has not populated the key and the cold-start
+    // fetch found nothing upstream. This is NOT the same as "your filters
+    // matched nothing" -- that case flows through filterEvents() below and
+    // legitimately returns count 0 with an empty `error`.
+    //
+    // The non-empty `error` is load-bearing, not decoration: the gateway reads
+    // it via getRpcNoStoreReasonFromJson (server/gateway.ts:1933) and answers
+    // `Cache-Control: no-store`. Without it this route falls to its 'daily'
+    // tier (gateway.ts:265 -> s-maxage=14400), so an outage that Redis now
+    // shrugs off in 120s would instead sit at the shared CDN edge for 4h.
+    // It also lets a client tell "upstream is down" from "no events found".
+    //
+    // `success` stays true because the RPC itself did not fail; a dedicated
+    // `dataAvailable`/`upstreamUnavailable` proto field (as consumer-prices
+    // and natural-events have) would model this better than overloading
+    // `error`, but that needs a schema change beyond this fix.
     if (!result || result.events.length === 0) {
-      return { success: true, count: 0, conferenceCount: 0, mappableCount: 0, lastUpdated: new Date().toISOString(), events: [], error: '' };
+      return { success: true, count: 0, conferenceCount: 0, mappableCount: 0, lastUpdated: new Date().toISOString(), events: [], error: TECH_EVENTS_UNAVAILABLE_ERROR };
     }
 
     // Apply geocoding (seed stores events without coords) and filter by request params

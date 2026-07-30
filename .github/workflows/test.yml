@@ -33,6 +33,7 @@ jobs:
           FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
             --paginate --jq '.[].filename')
           CODE=$(echo "$FILES" | awk '
+            /^docs\/research\/seo-ai-visibility\// { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// { next }

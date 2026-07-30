@@ -31,7 +31,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { dedupeErrorResponses } from './openapi-dedup-responses.mjs';
+import { dedupeErrorResponses, dedupeSharedParameters } from './openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -48,6 +48,7 @@ if (!spec || typeof spec !== 'object' || typeof spec.openapi !== 'string') {
 
 const stats = dedupeErrorResponses(spec);
 const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
+const paramStats = dedupeSharedParameters(spec);
 
 // Minified: this artifact is machine-consumed (scanners/agents), and the
 // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -58,5 +59,6 @@ const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
 console.log(
   `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
     `${json.length} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
+    `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
     `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas)`,
 );

@@ -36,6 +36,16 @@ export function getJWKS() {
   return _jwks;
 }
 
+/**
+ * Drop the memoized resolver so a test can change CLERK_JWT_ISSUER_DOMAIN and
+ * have the next call rebuild against it. Without this the first test to touch a
+ * bearer pins the resolver for the whole module lifetime, and a later test that
+ * unsets the env still gets the old one — silently asserting the wrong branch.
+ */
+export function __resetJwksForTests(): void {
+  _jwks = null;
+}
+
 export interface SessionResult {
   valid: boolean;
   userId?: string;
@@ -43,6 +53,38 @@ export interface SessionResult {
   role?: 'free' | 'pro';
   email?: string;
   name?: string;
+  /**
+   * Why a `valid: false` result is invalid — present only on the deny arm.
+   *
+   * `invalid` is a confirmed answer ABOUT THE TOKEN: bad signature, expired,
+   * wrong issuer, no subject. Re-authenticating is the fix.
+   *
+   * `unverifiable` means verification never happened — the issuer domain is
+   * unset, or the JWKS fetch failed. That says nothing about the token, so a
+   * caller must not render it as "your credential is bad, signing in again is
+   * the fix" (#5619 follow-up: the same "our defect is not a verdict" rule the
+   * entitlement path already follows).
+   *
+   * Optional and additive: `valid` keeps its exact meaning, so every existing
+   * consumer that only reads `valid` is unaffected. A caller opts in by
+   * branching on this to answer the retryable contract instead.
+   */
+  reason?: 'invalid' | 'unverifiable';
+}
+
+/**
+ * True when a jwtVerify rejection means we could not REACH the JWKS, rather
+ * than that the token failed verification against it.
+ *
+ * Deliberately narrow. `JWKSNoMatchingKey` is excluded: it fires both for a
+ * forged token and for a mid-rotation key, and misclassifying a forged token as
+ * "retry later" is the worse error. Only unambiguous transport failures — jose's
+ * own JWKS timeout, and the bare `TypeError` a failed `fetch` surfaces — count.
+ */
+function isJwksFetchFailure(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'ERR_JWKS_TIMEOUT';
 }
 
 function getAllowedAudiences(): string[] {
@@ -139,7 +181,8 @@ async function lookupPlanFromClerk(userId: string): Promise<'free' | 'pro'> {
  */
 export async function validateBearerToken(token: string): Promise<SessionResult> {
   const jwks = getJWKS();
-  if (!jwks) return { valid: false };
+  // No issuer domain configured: a deploy defect, not a bad token.
+  if (!jwks) return { valid: false, reason: 'unverifiable' };
 
   try {
     // Try with audience first (Clerk 'convex' template tokens include aud).
@@ -159,7 +202,8 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     }
 
     const userId = payload.sub as string | undefined;
-    if (!userId) return { valid: false };
+    // Verified, but carries no subject — a confirmed answer about the token.
+    if (!userId) return { valid: false, reason: 'invalid' };
 
     // `plan` claim is present only in 'convex' template tokens. For standard
     // session tokens we fall back to a cached Clerk API lookup.
@@ -178,8 +222,12 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     const orgId = extractOrgId(payload);
 
     return { valid: true, userId, orgId, role, email, name };
-  } catch {
-    // Signature verification failed, expired, wrong issuer, etc.
-    return { valid: false };
+  } catch (err) {
+    // Usually signature verification failed / expired / wrong issuer — a
+    // confirmed answer about the token. But this same catch also covers a JWKS
+    // FETCH failure, since createRemoteJWKSet resolves lazily inside jwtVerify,
+    // and that says nothing about the token at all. Split them so a Clerk
+    // outage stops rendering as "sign in again" (#5619 follow-up).
+    return { valid: false, reason: isJwksFetchFailure(err) ? 'unverifiable' : 'invalid' };
   }
 }

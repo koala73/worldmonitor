@@ -110,15 +110,18 @@ function makeWaitUntilCtx() {
   };
 }
 
-test('POST from trusted origin sets a valid HttpOnly wms_ session cookie without exposing token JSON', async () => {
+test('POST sets a valid HttpOnly cookie and returns the anonymous-only fallback token', async () => {
   const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 200);
   const body = await resp.json();
-  assert.equal(body.token, undefined);
+  assert.match(body.token, /^wms_/);
+  assert.equal(await validateSessionToken(body.token), true);
   assert.equal(typeof body.exp, 'number');
+  assert.equal(resp.headers.get('cache-control'), 'no-store');
   const cookies = setCookies(resp);
   const token = cookieValue(cookies, 'wm-session');
   assert.match(token, /^wms_/);
+  assert.equal(body.token, token, 'cookie and fallback header must carry the same anonymous token');
   assert.equal(await validateSessionToken(token), true);
   assert.match(cookies.join('\n'), /wm-session=.*HttpOnly/);
   assert.match(cookies.join('\n'), /wm-session=.*Domain=\.worldmonitor\.app/);
@@ -289,8 +292,10 @@ test('No origin (curl) is allowed (rate limit + token TTL are the throttles)', a
   const resp = await handler(makeReq('POST', {}));
   assert.equal(resp.status, 200);
   const body = await resp.json();
-  assert.equal(body.token, undefined);
-  assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
+  const cookieToken = cookieValue(setCookies(resp), 'wm-session');
+  assert.match(body.token, /^wms_/);
+  assert.equal(body.token, cookieToken);
+  assert.equal(await validateSessionToken(body.token), true);
 });
 
 test('POST returns degraded 503 without issuing a token when Redis limiter config is missing', async () => {

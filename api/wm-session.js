@@ -23,6 +23,7 @@ const SESSION_RATE_LIMIT_WINDOW = '60 s';
 function jsonResponse(body, status, headers) {
   const out = headers instanceof Headers ? headers : new Headers(headers);
   out.set('Content-Type', 'application/json');
+  out.set('Cache-Control', 'no-store');
   return new Response(JSON.stringify(body), {
     status,
     headers: out,
@@ -229,5 +230,15 @@ export default async function handler(req, ctx) {
     headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, PRO_KEY_COOKIE, proKey));
   }
 
-  return respond({ ok: true, exp: issued.exp, hadSession }, 200, headers, 'ok');
+  // The HttpOnly cookie remains the primary transport. The anonymous token is
+  // also returned so browsers that demonstrably refuse the shared-domain
+  // cookie can use the existing X-WorldMonitor-Key validation path. This does
+  // not expose user or premium authority: wms_ tokens are freely mintable,
+  // anonymous-only, and forceKey routes reject them.
+  return respond({
+    ok: true,
+    exp: issued.exp,
+    hadSession,
+    token: issued.token,
+  }, 200, headers, 'ok');
 }

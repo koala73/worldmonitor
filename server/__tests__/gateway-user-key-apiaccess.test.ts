@@ -94,9 +94,13 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId. ---------
 const validateUserApiKey = vi.fn(async () => ({ userId: "acct_lapsed", keyId: "k1", name: "t" }));
-vi.mock("../_shared/user-api-key", () => ({
-  validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
-}));
+vi.mock("../_shared/user-api-key", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../_shared/user-api-key")>();
+  return {
+    ...actual,
+    validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+  };
+});
 
 // --- Stub Clerk session resolution for mixed bearer + wm_ requests. ----------
 type MockClerkSession = { userId: string; orgId: string | null } | null;
@@ -221,6 +225,24 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     expect(checkFailClosedScopedIpRateLimit.mock.invocationCallOrder[0]).toBeLessThan(
       validateUserApiKey.mock.invocationCallOrder[0],
     );
+  });
+
+  test("Convex validation outage on a wm_ key returns retryable 503, not 401", async () => {
+    const { UserApiKeyUnavailableError } = await import("../_shared/user-api-key");
+    validateUserApiKey.mockRejectedValue(
+      new UserApiKeyUnavailableError("Convex user API key validation unavailable: http-503"),
+    );
+
+    const res = await makeGateway()(keyReq(REGULAR_PATH, "GET", "wm_lapsed_customer_key"), ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Retry-After")).toBe("5");
+    expect(res.headers.get("X-Validation-Mode")).toBe("degraded");
+    expect(body).toEqual({ error: "Service temporarily unavailable" });
+    // Must not look like an invalid key.
+    expect(JSON.stringify(body)).not.toMatch(/Invalid API key/i);
   });
 
   // --- apiAccess:false (downgraded) → 403 everywhere ------------------------
@@ -393,16 +415,26 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     expect(await res.json()).toMatchObject({ code: "renewal_verification_pending" });
   });
 
-  test("null entitlement with UNCONFIGURED backend → fail-open 200 (deploy defect, not billing state)", async () => {
+  test("null entitlement with UNCONFIGURED backend → fail-open stays on shared limiter", async () => {
     entitlement = null;
     entitlementBackendConfigured = false;
+    checkRateLimit.mockResolvedValue(
+      new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 }),
+    );
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
       // Missing CONVEX_SITE_URL / shared secret means NO lookup could ever
       // succeed: 503ing here would turn a config regression into a fleet-wide
-      // outage for every wm_ key. Serve (pre-#4770 posture) and log loudly.
-      expect(res.status).toBe(200);
+      // outage for every wm_ key. Fail open to the shared/global limiter
+      // (pre-#4770 posture), without granting the unverified key its own bucket.
+      expect(res.status).toBe(429);
+      expect(routeHandler).not.toHaveBeenCalled();
+      expect(checkRateLimit).toHaveBeenCalledTimes(1);
+      expect(checkRateLimit).toHaveBeenCalledWith(
+        expect.any(Request),
+        expect.any(Object),
+      );
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("entitlement backend unconfigured"),
       );

@@ -3,11 +3,16 @@ import { t } from '../i18n';
 import { SectionHeading } from './SectionHeading';
 
 export const FAQ = () => {
-  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => ({
-    q: t(`welcome.faq.q${n}`),
-    a: t(`welcome.faq.a${n}`),
-    open: n === 1,
-  }));
+  const termsLabel = 'worldmonitor.app/docs/terms';
+  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => {
+    const answer = t(`welcome.faq.a${n}`);
+    return {
+      q: t(`welcome.faq.q${n}`),
+      a: n === 11 ? answer.replace(`${termsLabel}.`, '') : answer,
+      termsHref: n === 11 ? '/docs/terms' : undefined,
+      open: n === 1,
+    };
+  });
 
   return (
     <section id="faq" className="py-24 px-6 max-w-3xl mx-auto border-t border-wm-border">
@@ -21,6 +26,11 @@ export const FAQ = () => {
             </summary>
             <div className="px-6 pb-6 text-wm-muted text-sm border-t border-wm-border pt-4 mt-2">
               {faq.a}
+              {faq.termsHref && (
+                <a className="text-wm-green hover:text-green-300 transition-colors" href={faq.termsHref}>
+                  {termsLabel}
+                </a>
+              )}
             </div>
           </details>
         ))}

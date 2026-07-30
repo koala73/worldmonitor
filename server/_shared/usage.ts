@@ -66,12 +66,18 @@ export type RequestReason =
   | 'ok'
   | 'origin_403'
   | 'rate_limit_429'
+  | 'rate_limit_429_endpoint'
+  | 'rate_limit_429_global'
+  | 'rate_limit_429_direct_llm'
   | 'rate_limit_degraded'
   | 'preflight'
   | 'auth_401'
   | 'auth_403'
   | 'tier_403'
   | 'billing_verification_503'
+  // Transient Convex user-API-key validation outage (wm_ key path). Distinct
+  // from auth_401 so a backend blip is not counted as invalid credentials.
+  | 'validation_unavailable'
   // F8/F14 (U7+U8 review pass): body-buffer / payload-size rejections.
   // Distinct from auth_401 so telemetry separates malformed requests
   // from auth failures.
