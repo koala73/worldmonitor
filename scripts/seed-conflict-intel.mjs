@@ -29,7 +29,7 @@ import {
 } from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
-import { fetchGdeltBulkConflictEvents, GDELT_BULK_WORST_NETWORK_MS, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { fetchGdeltBulkConflictEvents, GDELT_BULK_WORST_NETWORK_MS, GDELT_ROLLING_WINDOW_MS, gdeltTimestampToMs, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
 import {
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
@@ -159,10 +159,17 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
 // Cold-start floor for the bulk-primary path (#5849 review): only consulted
-// when the rolling merge retained nothing from a prior bulk window. Kept
+// on a TRUE cold start (no previous snapshot of any kind — #5855 review). Kept
 // deliberately low — a quiet-but-healthy 2h export window still clears it,
 // while a partially-degraded mirror serving a single-country handful does not.
 const GDELT_BULK_COLD_START_MIN_COUNTRIES = 3;
+// Freshness gate for the bulk-primary path (#5855 review): a mirror that stops
+// updating keeps serving the same aging exports, and without an age check every
+// tick publishes a "fresh" seed-meta write while a possibly-healthy DOC route
+// is never consulted. 3h = 12 export cycles of lag — beyond any routine GDELT
+// publication gap, far under the 24h rolling window. An unparseable newest
+// export timestamp fails closed (treated as stale).
+export const GDELT_BULK_MAX_EXPORT_AGE_MS = 3 * 60 * 60 * 1000;
 // The shared GDELT transport enforces one selected-route attempt. These explicit
 // values pin that contract at this high-fanout caller. timeoutMs is pinned too:
 // _gdelt-fetch.mjs's default rose from 15s to 30s for seed-gdelt-intel's slow
@@ -420,13 +427,23 @@ export async function fetchGdeltConflictEvents({
   deadlineAt,
   loadPreviousSnapshot = () => readSeedSnapshot(ACLED_CACHE_KEY, { strict: true }),
 } = {}) {
-  // Bulk export first (#5849). On any bulk failure — mirror outage, empty
-  // exports, empty rolling window — fall through to the DOC sweep below.
+  // Bulk export first (#5849). On any bulk failure — mirror outage, stale
+  // mirror, empty rolling window — fall through to the DOC sweep below. An
+  // empty CURRENT tick is not by itself a failure: the retained rolling window
+  // still publishes, and only empty-current + nothing-retained falls through
+  // (#5855 review).
   const bulkStartedAt = now();
   let bulkFailure;
   try {
     const bulk = await fetchBulkEvents();
-    if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
+    const newestExportAgeMs = now() - gdeltTimestampToMs(bulk?.exportTimestamp);
+    if (!Number.isFinite(newestExportAgeMs) || newestExportAgeMs > GDELT_BULK_MAX_EXPORT_AGE_MS) {
+      throw new Error(
+        `bulk export stale or unparseable: newest export ${bulk?.exportTimestamp}`
+        + ` is ${Number.isFinite(newestExportAgeMs) ? Math.round(newestExportAgeMs / 60000) : '?'}min old`
+        + ` (max ${GDELT_BULK_MAX_EXPORT_AGE_MS / 60000}min)`,
+      );
+    }
     let previousSnapshot = null;
     let previousSnapshotReadFailed = false;
     try {
@@ -452,17 +469,20 @@ export async function fetchGdeltConflictEvents({
       console.warn(`  GDELT bulk exports partially degraded: ${bulk.exportsSucceeded}/${bulk.exportsRequested} export files fetched`);
     }
     // Cold-start coverage floor (#5849 review, flagged independently by two
-    // reviewers): with no retained rolling window, an implausibly thin bulk
-    // result — a partially-degraded mirror serving one usable export — must not
-    // overwrite last-good as the primary feed. Fall through to the sweep (and,
-    // both-fail, to runSeed's sourceUnavailable last-good preservation) instead.
-    // Steady-state ticks always retain prior-window events, so this never fires
-    // there; a genuine 2h window of material violence spans many countries.
-    // A transient snapshot-read failure must NOT arm the floor (#5855 review):
-    // retained=0 then means "could not read", not "first-ever run", and
-    // publishing the fresh bulk window beats routing to the load-shed sweep.
+    // reviewers): on a true first-ever run, an implausibly thin bulk result —
+    // a partially-degraded mirror serving one usable export — must not become
+    // the primary feed. Fall through to the sweep (and, both-fail, to
+    // runSeed's sourceUnavailable last-good preservation) instead.
+    // The floor arms ONLY on a true cold start (#5855 review):
+    // - a transient snapshot-read failure means "could not read", not
+    //   "first-ever run" (previousSnapshotReadFailed guard), and
+    // - a previous snapshot that exists but is DOC-sourced also zeroes
+    //   retainedPreviousEvents; flooring that state ping-pongs recovery back
+    //   onto the load-shed DOC route every time DOC briefly succeeds (#5852's
+    //   floor half). Publishing thin-but-real bulk re-primes the window.
     if (
       !previousSnapshotReadFailed
+      && previousSnapshot == null
       && rolling.retainedPreviousEvents === 0
       && countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES
     ) {

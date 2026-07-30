@@ -676,3 +676,100 @@ test('a programming defect in the bulk block crashes loud instead of impersonati
   );
   assert.equal(docCalls, 0, 'a code defect must not be reclassified as a bulk outage and routed to the sweep');
 });
+
+test('an empty current tick publishes the retained rolling window instead of discarding it (#5855 review)', async () => {
+  // One quiet/glitchy 15-min tick must not abandon a healthy multi-hour window
+  // for the load-shed DOC sweep: "empty exports" is a bulk failure only when
+  // nothing is retained either.
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  let docCalls = 0;
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => now,
+    fetchCountryEvents: async (cc) => {
+      docCalls += 1;
+      return { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] };
+    },
+    fetchBulkEvents: async () => ({
+      events: [],
+      exportTimestamp: '20260713174500',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => ({
+      source: 'gdelt-bulk',
+      events: [
+        { id: 'retained-1', country: 'Sudan', event_date: '2026-07-13', occurredAt: now - 2 * 60 * 60 * 1000, gdeltAddedAt: now - 2 * 60 * 60 * 1000 },
+        { id: 'retained-2', country: 'Yemen', event_date: '2026-07-13', occurredAt: now - 3 * 60 * 60 * 1000, gdeltAddedAt: now - 3 * 60 * 60 * 1000 },
+      ],
+      pagination: { exportTimestamp: '20260713173000', rollingWindowStartedAt: now - 14 * 60 * 60 * 1000 },
+    }),
+  });
+
+  assert.equal(docCalls, 0, 'an empty tick with a healthy retained window must not run the DOC sweep');
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.deepEqual(result.events.map(event => event.id).sort(), ['retained-1', 'retained-2']);
+  assert.equal(result.pagination.retainedPreviousEvents, 2);
+});
+
+test('a stale bulk export (frozen mirror) is treated as a bulk failure and falls through to the DOC sweep (#5855 review)', async () => {
+  // A mirror that stops updating keeps serving the same aging exports: without
+  // an age gate every tick would publish "fresh" writes while a possibly
+  // healthy DOC route is never consulted.
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  let docCalls = 0;
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => now,
+    fetchCountryEvents: async (cc) => {
+      docCalls += 1;
+      return { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] };
+    },
+    fetchBulkEvents: async () => ({
+      // newest export 4h old — beyond the 3h freshness gate
+      events: [
+        { id: 'frozen-1', country: 'Sudan', event_date: '2026-07-13', occurredAt: now - 4 * 60 * 60 * 1000, gdeltAddedAt: now - 4 * 60 * 60 * 1000 },
+        { id: 'frozen-2', country: 'Yemen', event_date: '2026-07-13', occurredAt: now - 4 * 60 * 60 * 1000, gdeltAddedAt: now - 4 * 60 * 60 * 1000 },
+        { id: 'frozen-3', country: 'Ukraine', event_date: '2026-07-13', occurredAt: now - 4 * 60 * 60 * 1000, gdeltAddedAt: now - 4 * 60 * 60 * 1000 },
+      ],
+      exportTimestamp: '20260713140000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => null,
+  });
+
+  assert.equal(result.source, 'gdelt', 'a frozen mirror must fall through to the DOC sweep');
+  assert.equal(docCalls, Object.keys(GDELT_COUNTRY_NAMES).length);
+});
+
+test('a thin bulk window after a DOC-published tick is NOT floored — the floor arms only on a true cold start (#5855 review)', async () => {
+  // After GDELT DOC briefly recovers, one sweep-published tick (source 'gdelt')
+  // zeroes retainedPreviousEvents on the next bulk tick. That must not re-arm
+  // the cold-start floor, or recovery ping-pongs on the DOC route (#5852's
+  // floor half): a previous snapshot EXISTS, so this is not a cold start.
+  let docCalls = 0;
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
+    fetchCountryEvents: async (cc) => {
+      docCalls += 1;
+      return { country: cc, ok: true, events: [{ id: `doc-${cc}`, country: GDELT_COUNTRY_NAMES[cc], event_date: '2026-07-13' }] };
+    },
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'thin-recovery', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => ({
+      source: 'gdelt',
+      events: [{ id: 'doc-published', country: 'Sudan', event_date: '2026-07-13' }],
+      pagination: { countriesSucceeded: 16 },
+    }),
+  });
+
+  assert.equal(docCalls, 0, 'a DOC-sourced previous snapshot must not re-arm the cold-start floor');
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.deepEqual(result.events.map(event => event.id), ['thin-recovery']);
+});
