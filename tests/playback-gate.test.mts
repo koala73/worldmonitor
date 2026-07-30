@@ -1,7 +1,7 @@
 /**
  * #5632 — the playback-gate decision chain.
  *
- * `src/services/playback-gate.ts` is a zero-import leaf, so this suite needs no
+ * `src/services/gates/playback-resolver.ts` is a zero-import leaf, so this suite needs no
  * DOM, no Convex and no Vite globals. The wiring that feeds it live state is
  * covered separately by `tests/dom/playback-gate-wiring.test.mts`.
  *
@@ -14,7 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolvePlaybackGate, type PlaybackGateInputs } from '@/services/playback-gate';
+import { resolvePlaybackGate, type PlaybackGateInputs } from '@/services/gates/playback-resolver';
 
 /** Signed-in free user with a loaded snapshot — the one state that must deny. */
 function inputs(overrides: Partial<PlaybackGateInputs> = {}): PlaybackGateInputs {

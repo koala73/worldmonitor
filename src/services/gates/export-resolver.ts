@@ -19,12 +19,12 @@
  * services and the app layer import it.
  */
 
-import { getBillingGateOverride, type BillingUxState } from './billing-state';
+import { getBillingGateOverride, type BillingUxState } from '../billing-state';
 
 /**
  * Locked-state reasons. Values mirror the `PanelGateReason` string enum in
  * panel-gating.ts (kept as plain strings here so this module stays a leaf —
- * same arrangement as `BillingGateOverride`). panel-gating.ts owns the
+ * same arrangement as `BillingGateOverride`). `gates/export.ts` owns the
  * exhaustive mapping back to the enum.
  */
 export type ExportGateLockReason =

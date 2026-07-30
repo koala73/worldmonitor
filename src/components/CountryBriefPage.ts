@@ -18,8 +18,9 @@ import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { getAuthState } from '@/services/auth-state';
-import { evaluateExportGate, exportLockToGateReason, hasPremiumAccess } from '@/services/panel-gating';
-import { primeExportGateActivation } from '@/services/export-gate';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { evaluateExportGate, exportLockToGateReason } from '@/services/gates/export';
+import { primeExportGateActivation } from '@/services/gates/export-resolver';
 import { exportGateCopy } from '@/components/ExportGateControl';
 import { trackGateHit } from '@/services/analytics';
 

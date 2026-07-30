@@ -2,8 +2,8 @@
  * U6 (plan 2026-07-25-001, KTD8) — dashboard tab cap.
  *
  * `resolveTabCap` is a pure function over injected state, so this suite needs
- * no DOM, no Convex and no Vite globals — it shares the `src/services/
- * export-gate.ts` leaf with U5 (which imports only the zero-import
+ * no DOM, no Convex and no Vite globals — it shares the `src/services/gates/
+ * export-resolver.ts` leaf with U5 (which imports only the zero-import
  * `billing-state` module).
  *
  * The cap follows KTD2's AFFIRMATIVE DENIAL chain verbatim: only a state we
@@ -24,7 +24,7 @@ import {
   FREE_TAB_CAP,
   resolveTabCap,
   type ExportGateInputs,
-} from '@/services/export-gate';
+} from '@/services/gates/export-resolver';
 
 /** Signed-in free user with a loaded snapshot — the baseline capped state. */
 function inputs(overrides: Partial<ExportGateInputs> = {}): ExportGateInputs {
@@ -226,7 +226,6 @@ describe('FREE_TAB_CAP — catalog drift guard', () => {
  */
 describe('tab-cap wiring', () => {
   const panelLayout = readFileSync(resolve(process.cwd(), 'src/app/panel-layout.ts'), 'utf8');
-  const panelGating = readFileSync(resolve(process.cwd(), 'src/services/panel-gating.ts'), 'utf8');
   const tabBar = readFileSync(resolve(process.cwd(), 'src/components/PanelTabBar.ts'), 'utf8');
 
   const addTabBody = panelLayout.slice(
@@ -277,10 +276,11 @@ describe('tab-cap wiring', () => {
     );
   });
 
-  it('panel-gating forwards the dashboard allowance into the shared inputs', () => {
-    assert.match(panelGating, /maxDashboards: entitlement\.features\.maxDashboards/);
-    assert.match(panelGating, /export function evaluateTabCap\(/);
-  });
+  // The allowance-forwarding guard that used to live here was two greps over
+  // panel-gating.ts's source text. #5813 moved the reader into
+  // `src/services/gates/export.ts` and made it module-private; the guarantee is
+  // now proven behaviourally, by calling the real `evaluateTabCap` against a
+  // stubbed entitlement snapshot — see tests/dom/gate-reader-forwarding.test.mts.
 
   it('the add button carries the locked reason and announces unlocks politely', () => {
     assert.match(tabBar, /components\.tabCap\.lockedAriaLabel/);

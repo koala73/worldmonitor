@@ -2,7 +2,7 @@
  * U5 (plan 2026-07-25-001) — data-export gate chain.
  *
  * The resolver is a pure function over injected state so this suite needs no
- * DOM, no Convex and no Vite globals (`src/services/export-gate.ts` is a leaf
+ * DOM, no Convex and no Vite globals (`src/services/gates/export-resolver.ts` is a leaf
  * that imports only the zero-import `billing-state` module).
  *
  * The shape under test is KTD2's AFFIRMATIVE DENIAL chain: the gate locks only
@@ -24,7 +24,7 @@ import {
   resolveExportLock,
   __resetExportGateActivationForTests,
   type ExportGateInputs,
-} from '@/services/export-gate';
+} from '@/services/gates/export-resolver';
 
 /** Signed-in free user with a loaded snapshot — the one state that must lock. */
 function inputs(overrides: Partial<ExportGateInputs> = {}): ExportGateInputs {

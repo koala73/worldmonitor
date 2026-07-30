@@ -13,7 +13,7 @@
  *
  * Zero-import leaf on purpose: it is unit-tested under `tsx --test` (no jsdom,
  * no Vite globals), and both the services and app layers consume it. Keep it
- * that way — see the same constraint on `export-gate.ts`.
+ * that way — see the same constraint on `export-resolver.ts`.
  */
 
 export interface PlaybackGateInputs {

@@ -36,8 +36,8 @@ const trackGateHit = vi.fn<(feature: string) => void>();
 /** Auth/entitlement listeners registered by setupExportPanel. */
 const emitters: Array<() => void> = [];
 
-vi.mock('@/services/panel-gating', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/panel-gating')>()),
+vi.mock('@/services/gates/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/gates/export')>()),
   evaluateExportGate: () => verdict(),
 }));
 
@@ -61,8 +61,8 @@ vi.mock('@/services/entitlements', async (importOriginal) => ({
   },
 }));
 
-vi.mock('@/services/export-gate', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/export-gate')>()),
+vi.mock('@/services/gates/export-resolver', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/gates/export-resolver')>()),
   primeExportGateActivation: async () => false,
 }));
 
