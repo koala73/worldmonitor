@@ -77,6 +77,9 @@ const SIGNED_IN: AuthSession = {
   user: { id: 'user_1' },
 } as unknown as AuthSession;
 
+const SIGNED_OUT: AuthSession = { isPending: false, user: null } as unknown as AuthSession;
+const AUTH_PENDING: AuthSession = { isPending: true, user: null } as unknown as AuthSession;
+
 /** A loaded snapshot whose catalog fields the reader must forward verbatim. */
 function snapshot(features: Partial<EntitlementState['features']> = {}): EntitlementState {
   return {
@@ -143,6 +146,29 @@ describe('evaluateTabCap — the reader forwards the dashboard allowance', () =>
       allowed: true,
       cap: null,
       pendingActivation: false,
+    });
+  });
+
+  it('forwards authPending — a still-resolving session is an unknown, never capped', () => {
+    // A reader that hardcoded authPending:false would fall through to the
+    // signed-out branch and cap a subscriber mid-hydration at the free 3.
+    expect(evaluateTabCap(AUTH_PENDING, 99)).toEqual({
+      allowed: true,
+      cap: null,
+      pendingActivation: false,
+    });
+  });
+
+  it('forwards signedIn — an anonymous session gets the free cap, not the snapshot one', () => {
+    // Deliberately paired with a loaded 25-dashboard snapshot: a reader that
+    // hardcoded signedIn:true would read that allowance for a signed-out
+    // visitor instead of denying at FREE_TAB_CAP.
+    entitlement = snapshot({ tier: 2, maxDashboards: 25 });
+
+    expect(evaluateTabCap(SIGNED_OUT, 3)).toEqual({
+      allowed: false,
+      cap: 3,
+      reason: 'anonymous',
     });
   });
 });
