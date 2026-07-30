@@ -129,8 +129,8 @@
       "currencies": "货币",
       "area": "面积"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "正在加载韧性评分…",
+    "resilienceScoreUnavailable": "韧性评分不可用。",
     "china": {
       "title": "中国国家概览",
       "description": "基于现有公共数据契约的宏观、市场、贸易、能源与运行可用性现状。",
@@ -138,11 +138,11 @@
       "energy": "能源",
       "availability": "灾害与航空",
       "observed": "数据日期：",
-      "published": "发布日期：",
-      "effective": "生效日期：",
-      "sectors": "涉及行业：",
-      "entities": "涉及实体：",
-      "translation": "翻译状态：",
+      "published": "发布：",
+      "effective": "生效：",
+      "sectors": "行业：",
+      "entities": "实体：",
+      "translation": "翻译：",
       "source": "来源：",
       "imfGrowth": "IMF 增长预测",
       "creditGdp": "信贷占 GDP 比重",
@@ -171,12 +171,12 @@
         "stale": "过期",
         "unavailable": "不可用"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "宏观信号",
+      "crossStraitActivity": "两岸活动",
+      "corporateDisclosures": "企业披露",
+      "corridorConditions": "通道状况",
+      "activityNowcast": "活动即时预测",
+      "decisionSignalsUnavailable": "中国决策信号快照当前不可用。"
     }
   },
   "header": {
@@ -257,7 +257,7 @@
     "panelCatCommodityEcon": "经济与贸易",
     "panelCatHappyNews": "好消息",
     "panelCatHappyPlanet": "地球与慈善",
-    "embed": "Embed"
+    "embed": "嵌入"
   },
   "panels": {
     "liveNews": "实时新闻",
@@ -1272,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "已降级",
+        "stale": "已过期"
       }
     },
     "insights": {
@@ -1430,10 +1430,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>方法论</strong>综合评分（0-100）混合：<ul><li>50% 国家不稳定性（前5名加权）</li><li>30% 地理趋同区域</li><li>20% 基础设施事故</li></ul>每5分钟自动刷新。",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "缓存 CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "已降级",
+        "stale": "已过期"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1561,25 +1561,25 @@
       "candidGrants": "Candid拨款",
       "dataLag": "数据延迟",
       "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "全球捐赠基准",
+      "benchmarkInfoTooltip": "<strong>全球捐赠基准</strong> 已发布的平台和机构声明，包含来源期间和验证状态。年化数字为估算值，非实时活动。",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "已发布基准，来源覆盖已验证。",
+        "partial": "已发布基准，来源覆盖部分验证。",
+        "legacy": "历史快照；来源详情不可用。",
+        "cached": "显示缓存快照；刷新不可用。"
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "已追踪平台捐赠 — 年化估算",
+      "annualizedDaily": "日度年化估算",
+      "atLeast": "至少",
+      "about": "约",
+      "sourceNotVerified": "来源未验证",
+      "reportedCumulative": "已报告累计总额",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "已发布基准",
+      "sourcesMethodology": "来源与方法论",
+      "methodologyIntro": "仅经过验证的年度或可辩护年化平台声明才进入标题。累计和机构数字保持独立背景。",
+      "partialEstimate": "部分验证估算"
     },
     "displacement": {
       "refugees": "难民",
@@ -2133,8 +2133,8 @@
     "markets": {
       "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "{{symbol}} 价格图表",
+        "close": "关闭图表"
       }
     },
     "heatmap": {
@@ -2466,59 +2466,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "面板类别"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "最新",
+        "stale": "过期",
+        "veryStale": "严重过期",
+        "noData": "无数据",
+        "disabled": "已禁用",
+        "error": "错误"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "数据新鲜度：{{status}}。{{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "最后更新 {{time}}",
+      "neverUpdated": "从未更新",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "部分覆盖",
+        "contentStale": "内容过期",
+        "seedStale": "种子过期",
+        "noSourceData": "无来源数据",
+        "sourceErrorReported": "已报告来源错误",
+        "freshnessStoreUnavailable": "新鲜度存储不可用",
+        "freshnessStoreDegraded": "新鲜度存储已降级"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "从不",
+        "justNow": "刚刚",
+        "minutesAgo": "{{count}}分钟前",
+        "hoursAgo": "{{count}}小时前",
+        "daysAgo": "{{count}}天前",
+        "compactNow": "现在",
+        "compactMinutes": "{{count}}分",
+        "compactHours": "{{count}}时",
+        "compactDays": "{{count}}天"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "登录以将仪表板数据导出为 CSV、JSON 或 PDF。",
+      "upgradeDesc": "数据导出（CSV、JSON、PDF）包含在 Pro Business 中。",
+      "upgradeCta": "升级到 Pro Business",
+      "lockedAriaLabel": "导出数据 — 已锁定。{{reason}}",
+      "unlockedAnnouncement": "数据导出已解锁。",
+      "preparingPdf": "正在准备 PDF…",
+      "pdfFailed": "无法生成 PDF 报告。请重试，或使用 JSON 导出。"
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "未登录的工作区限制为 {{cap}} 个仪表板标签页。登录以添加更多。",
+      "upgradeDesc": "您已达到 {{cap}} 个仪表板标签页的上限。",
+      "upgradeCta": "升级获取更多",
+      "lockedAriaLabel": "添加标签页 — 已锁定。{{reason}}",
+      "unlockedAnnouncement": "仪表板标签页限制已解除。"
     }
   },
   "popups": {
@@ -3322,16 +3322,16 @@
     "visualizationFailed": "可视化失败"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "仪表板标签页",
+    "defaultName": "主页",
+    "newTabName": "新标签页",
+    "newTabCreated": "新标签页已创建",
+    "tabDeleted": "标签页\"{{name}}\"已删除",
+    "addTab": "添加标签页",
+    "addTabTitle": "新标签页（从默认面板开始）",
+    "renameHint": "{{name}} — 双击重命名",
+    "deleteTab": "删除标签页",
+    "deleteTabAria": "删除标签页 {{name}}",
+    "tabNameAria": "标签页名称"
   }
 }

@@ -129,20 +129,20 @@
       "currencies": "Tiền tệ",
       "area": "Diện tích"
     },
-    "loadingResilienceScore": "Đang tải điểm phục hồi…",
-    "resilienceScoreUnavailable": "Không có điểm phục hồi.",
+    "loadingResilienceScore": "Đang tải điểm khả năng phục hồi…",
+    "resilienceScoreUnavailable": "Điểm khả năng phục hồi không có sẵn.",
     "china": {
       "title": "Tổng quan quốc gia: Trung Quốc",
       "description": "Tình hình hiện tại về vĩ mô, thị trường, thương mại, năng lượng và mức sẵn sàng vận hành từ các hợp đồng dữ liệu công khai hiện có.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Chính sách & Thực thi",
       "energy": "Năng lượng",
       "availability": "Hiểm họa & Hàng không",
       "observed": "Tính đến:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Đã xuất bản:",
+      "effective": "Có hiệu lực:",
+      "sectors": "Lĩnh vực:",
+      "entities": "Thực thể:",
+      "translation": "Dịch thuật:",
       "source": "Nguồn:",
       "imfGrowth": "Dự báo tăng trưởng của IMF",
       "creditGdp": "Tín dụng trên GDP",
@@ -171,12 +171,12 @@
         "stale": "Cũ",
         "unavailable": "Không khả dụng"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Tín hiệu vĩ mô",
+      "crossStraitActivity": "Hoạt động qua eo biển",
+      "corporateDisclosures": "Công bố doanh nghiệp",
+      "corridorConditions": "Điều kiện hành lang",
+      "activityNowcast": "Dự báo hoạt động hiện tại",
+      "decisionSignalsUnavailable": "Ảnh chụp nhanh tín hiệu quyết định của Trung Quốc hiện không có sẵn."
     }
   },
   "header": {
@@ -1272,8 +1272,8 @@
       "sectionFollowing": "Đang theo dõi",
       "sectionAll": "Tất cả",
       "sourceStates": {
-        "degraded": "giảm cấp",
-        "stale": "cũ"
+        "degraded": "xuống cấp",
+        "stale": "lỗi thời"
       }
     },
     "insights": {
@@ -1430,10 +1430,10 @@
         "hoursAgo": "{{count}}g trước"
       },
       "infoTooltip": "<strong>Phương pháp luận</strong> Điểm tổng hợp (0-100) kết hợp:<ul><li>50% Bất ổn Quốc gia (5 nước cao nhất có trọng số)</li><li>30% Vùng hội tụ địa lý</li><li>20% Sự cố hạ tầng</li></ul>Tự động làm mới mỗi 5 phút.",
-      "cachedCiiStatus": "CII đã lưu {{states}}",
+      "cachedCiiStatus": "CII đã lưu vào bộ nhớ đệm {{states}}",
       "sourceStates": {
-        "degraded": "giảm cấp",
-        "stale": "cũ"
+        "degraded": "xuống cấp",
+        "stale": "lỗi thời"
       },
       "dataFreshness": "Độ mới Dữ liệu",
       "sourcesDetail": "{{active}}/{{total}} nguồn"
@@ -1561,25 +1561,25 @@
       "candidGrants": "Tài trợ Candid",
       "dataLag": "Độ trễ Dữ liệu",
       "infoTooltip": "<strong>Chỉ số Hoạt động Từ thiện Toàn cầu</strong> Chỉ số tổng hợp theo dõi quyên góp cá nhân qua nền tảng gây quỹ cộng đồng và ví tiền mã hóa.<ul><li><strong>Nền tảng</strong>: GoFundMe, GlobalGiving, JustGiving lấy mẫu chiến dịch</li><li><strong>Crypto</strong>: Dòng tiền vào ví từ thiện on-chain (Endaoment, Giving Block)</li><li><strong>Tổ chức</strong>: OECD ODA, CAF World Giving Index, tài trợ Candid</li></ul>Chỉ số mang tính định hướng (không phải số tiền chính xác). Kết hợp lấy mẫu trực tiếp với báo cáo thường niên đã công bố.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Điểm chuẩn từ thiện toàn cầu",
+      "benchmarkInfoTooltip": "<strong>Điểm chuẩn từ thiện toàn cầu</strong> Tuyên bố đã xuất bản của nền tảng và tổ chức với giai đoạn nguồn và trạng thái xác minh. Các con số hàng năm là ước tính, không phải hoạt động trực tiếp.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Điểm chuẩn đã xuất bản với phạm vi nguồn đã xác minh.",
+        "partial": "Điểm chuẩn đã xuất bản với phạm vi nguồn một phần.",
+        "legacy": "Ảnh chụp nhanh cũ; chi tiết nguồn không có sẵn.",
+        "cached": "Đang hiển thị ảnh chụp nhanh được lưu vào bộ nhớ đệm; không thể làm mới."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Từ thiện nền tảng được theo dõi — ước tính hàng năm",
+      "annualizedDaily": "Ước tính hàng ngày hàng năm",
+      "atLeast": "Ít nhất",
+      "about": "Khoảng",
+      "sourceNotVerified": "Nguồn chưa được xác minh",
+      "reportedCumulative": "Tổng cộng dồn được báo cáo",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Điểm chuẩn đã xuất bản",
+      "sourcesMethodology": "Nguồn và phương pháp",
+      "methodologyIntro": "Chỉ các tuyên bố nền tảng hàng năm được xác minh hoặc hàng năm có thể bảo vệ được mới vào tiêu đề. Các con số tích lũy và tổ chức vẫn là bối cảnh riêng biệt.",
+      "partialEstimate": "Ước tính được xác minh một phần"
     },
     "displacement": {
       "refugees": "Người tị nạn",
@@ -2133,8 +2133,8 @@
     "markets": {
       "infoTooltip": "<strong>Thị trường</strong> Chỉ số chứng khoán, cổ phiếu và giá tiền điện tử thời gian thực. Tùy chỉnh danh sách theo dõi của bạn bằng nút Danh sách theo dõi. Đường sparkline hiển thị xu hướng giá gần đây.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Biểu đồ giá {{symbol}}",
+        "close": "Đóng biểu đồ"
       }
     },
     "heatmap": {
@@ -2466,59 +2466,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Danh mục Bảng"
+      "panelCategories": "Danh mục bảng điều khiển"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Mới",
-        "stale": "Cũ",
-        "veryStale": "Rất cũ",
+        "fresh": "Mới nhất",
+        "stale": "Lỗi thời",
+        "veryStale": "Rất lỗi thời",
         "noData": "Không có dữ liệu",
-        "disabled": "Tắt",
+        "disabled": "Đã tắt",
         "error": "Lỗi"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Độ mới dữ liệu: {{status}}. {{sources}}",
+      "title": "Độ mới của dữ liệu: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
       "lastUpdated": "cập nhật lần cuối {{time}}",
-      "neverUpdated": "chưa cập nhật",
+      "neverUpdated": "chưa bao giờ cập nhật",
       "health": {
-        "partialCoverage": "phạm vi hạn chế",
-        "contentStale": "nội dung cũ",
-        "seedStale": "dữ liệu gốc cũ",
+        "partialCoverage": "phạm vi một phần",
+        "contentStale": "nội dung lỗi thời",
+        "seedStale": "seed lỗi thời",
         "noSourceData": "không có dữ liệu nguồn",
-        "sourceErrorReported": "báo lỗi nguồn",
-        "freshnessStoreUnavailable": "kho dữ liệu không khả dụng",
-        "freshnessStoreDegraded": "kho dữ liệu giảm cấp"
+        "sourceErrorReported": "đã báo cáo lỗi nguồn",
+        "freshnessStoreUnavailable": "kho dữ liệu mới không có sẵn",
+        "freshnessStoreDegraded": "kho dữ liệu mới xuống cấp"
       },
       "time": {
-        "never": "chưa bao giờ",
+        "never": "không bao giờ",
         "justNow": "vừa xong",
-        "minutesAgo": "{{count}} phút trước",
-        "hoursAgo": "{{count}} giờ trước",
-        "daysAgo": "{{count}} ngày trước",
-        "compactNow": "nay",
-        "compactMinutes": "{{count}}p",
+        "minutesAgo": "{{count}}ph trước",
+        "hoursAgo": "{{count}}g trước",
+        "daysAgo": "{{count}}ng trước",
+        "compactNow": "bây giờ",
+        "compactMinutes": "{{count}}ph",
         "compactHours": "{{count}}g",
-        "compactDays": "{{count}}n"
+        "compactDays": "{{count}}ng"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Đăng nhập để xuất dữ liệu bảng điều khiển dưới dạng CSV, JSON hoặc PDF.",
+      "upgradeDesc": "Xuất dữ liệu (CSV, JSON, PDF) được bao gồm trong Pro Business.",
+      "upgradeCta": "Nâng cấp lên Pro Business",
+      "lockedAriaLabel": "Xuất dữ liệu — đã khóa. {{reason}}",
+      "unlockedAnnouncement": "Xuất dữ liệu đã được mở khóa.",
+      "preparingPdf": "Đang chuẩn bị PDF…",
+      "pdfFailed": "Không thể tạo báo cáo PDF. Thử lại hoặc sử dụng xuất JSON."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Không gian làm việc chưa đăng nhập bị giới hạn ở {{cap}} tab. Đăng nhập để thêm.",
+      "upgradeDesc": "Bạn đã đạt giới hạn {{cap}} tab bảng điều khiển.",
+      "upgradeCta": "Nâng cấp để có thêm",
+      "lockedAriaLabel": "Thêm tab — đã khóa. {{reason}}",
+      "unlockedAnnouncement": "Giới hạn tab bảng điều khiển đã được dỡ bỏ."
     }
   },
   "popups": {
@@ -3325,10 +3325,10 @@
     "ariaLabel": "Tab bảng điều khiển",
     "defaultName": "Chính",
     "newTabName": "Tab mới",
-    "newTabCreated": "Đã tạo tab mới",
-    "tabDeleted": "Đã xóa tab \"{{name}}\"",
+    "newTabCreated": "Tab mới đã được tạo",
+    "tabDeleted": "Tab \"{{name}}\" đã bị xóa",
     "addTab": "Thêm tab",
-    "addTabTitle": "Tab mới (bắt đầu với bảng mặc định)",
+    "addTabTitle": "Tab mới (bắt đầu với các bảng điều khiển mặc định)",
     "renameHint": "{{name}} — nhấp đúp để đổi tên",
     "deleteTab": "Xóa tab",
     "deleteTabAria": "Xóa tab {{name}}",

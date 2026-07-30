@@ -129,20 +129,20 @@
       "currencies": "Valute",
       "area": "Superficie"
     },
-    "loadingResilienceScore": "Caricamento punteggio di resilienza…",
+    "loadingResilienceScore": "Caricamento del punteggio di resilienza…",
     "resilienceScoreUnavailable": "Punteggio di resilienza non disponibile.",
     "china": {
       "title": "Panoramica paese: Cina",
       "description": "Quadro attuale di macroeconomia, mercato, commercio, energia e disponibilità operativa dai contratti dati pubblici esistenti.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Politica e applicazione",
       "energy": "Energia",
       "availability": "Rischi e aviazione",
       "observed": "Al:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Pubblicato:",
+      "effective": "In vigore:",
+      "sectors": "Settori:",
+      "entities": "Entità:",
+      "translation": "Traduzione:",
       "source": "Fonte:",
       "imfGrowth": "Previsione di crescita FMI",
       "creditGdp": "Credito su PIL",
@@ -173,12 +173,12 @@
         "stale": "Obsoleto",
         "unavailable": "Non disponibile"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Segnali macro",
+      "crossStraitActivity": "Attività attraverso lo stretto",
+      "corporateDisclosures": "Comunicazioni aziendali",
+      "corridorConditions": "Condizioni del corridoio",
+      "activityNowcast": "Nowcast dell'attività",
+      "decisionSignalsUnavailable": "Lo snapshot dei segnali decisionali della Cina non è attualmente disponibile."
     }
   },
   "header": {
@@ -259,7 +259,7 @@
     "panelCatCommodityEcon": "Economia e Commercio",
     "panelCatHappyNews": "Buone Notizie",
     "panelCatHappyPlanet": "Pianeta e Beneficenza",
-    "embed": "Embed"
+    "embed": "Incorpora"
   },
   "panels": {
     "liveNews": "Notizie in diretta",
@@ -877,7 +877,7 @@
       "fytdLabel": "AF{{year}} DA",
       "vsPriorFy": "vs AF{{year}}",
       "sourceWto": "OMC",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "Dipartimento del Tesoro degli Stati Uniti",
       "colDate": "Data",
       "colMonthly": "Mensile",
       "colFytd": "AF DA",
@@ -1424,25 +1424,25 @@
       "candidGrants": "Sovvenzioni Candid",
       "dataLag": "Ritardo dati",
       "infoTooltip": "<strong>Indice di attività donazioni globali</strong> Indice composito che traccia le donazioni personali attraverso piattaforme di crowdfunding e wallet crypto.<ul><li><strong>Piattaforme</strong>: GoFundMe, GlobalGiving, JustGiving campionamento campagne</li><li><strong>Crypto</strong>: Afflussi on-chain a wallet beneficenza (Endaoment, Giving Block)</li><li><strong>Istituzionale</strong>: OCSE APS, CAF World Giving Index, sovvenzioni Candid</li></ul>L'indice è direzionale (non importi esatti in dollari). Combina campionamento in tempo reale con rapporti annuali pubblicati.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Benchmark globali per donazioni",
+      "benchmarkInfoTooltip": "<strong>Benchmark globali per donazioni</strong> Dichiarazioni pubblicate di piattaforme e istituzioni con periodi di fonte e stato di verifica. I dati annualizzati sono stime, non attività in tempo reale.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Benchmark pubblicati con copertura delle fonti verificata.",
+        "partial": "Benchmark pubblicati con copertura delle fonti parziale.",
+        "legacy": "Snapshot legacy; dettagli della fonte non disponibili.",
+        "cached": "Visualizzazione di uno snapshot nella cache; aggiornamento non disponibile."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Donazioni di piattaforma tracciate — stima annualizzata",
+      "annualizedDaily": "Stima giornaliera annualizzata",
+      "atLeast": "Almeno",
+      "about": "Circa",
+      "sourceNotVerified": "Fonte non verificata",
+      "reportedCumulative": "Totale cumulativo dichiarato",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Benchmark pubblicato",
+      "sourcesMethodology": "Fonti e metodologia",
+      "methodologyIntro": "Solo le dichiarazioni annuali verificate o annualizzate in modo difendibile entrano nel titolo. I dati cumulativi e istituzionali rimangono un contesto separato.",
+      "partialEstimate": "Stima parzialmente verificata"
     },
     "displacement": {
       "refugees": "Rifugiati",
@@ -1589,7 +1589,7 @@
         "minutesAgo": "{{count}}m fa",
         "hoursAgo": "{{count}}h fa"
       },
-      "cachedCiiStatus": "CII memorizzato {{states}}",
+      "cachedCiiStatus": "CII nella cache {{states}}",
       "sourceStates": {
         "degraded": "degradato",
         "stale": "obsoleto"
@@ -2142,8 +2142,8 @@
     "markets": {
       "infoTooltip": "<strong>Markets</strong> Indici azionari in tempo reale, azioni e prezzi crypto. Personalizza la tua watchlist con il pulsante Watchlist. Le sparkline mostrano il trend di prezzo recente.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Grafico del prezzo {{symbol}}",
+        "close": "Chiudi grafico"
       }
     },
     "heatmap": {
@@ -2484,7 +2484,7 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Categorie pannelli"
+      "panelCategories": "Categorie di pannelli"
     },
     "panelFreshness": {
       "status": {
@@ -2492,11 +2492,11 @@
         "stale": "Obsoleto",
         "veryStale": "Molto obsoleto",
         "noData": "Nessun dato",
-        "disabled": "Disattivato",
+        "disabled": "Disabilitato",
         "error": "Errore"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Freschezza dati: {{status}}. {{sources}}",
+      "title": "Aggiornamento dati: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
       "lastUpdated": "ultimo aggiornamento {{time}}",
@@ -2505,14 +2505,14 @@
         "partialCoverage": "copertura parziale",
         "contentStale": "contenuto obsoleto",
         "seedStale": "seed obsoleto",
-        "noSourceData": "nessun dato dalla fonte",
-        "sourceErrorReported": "errore fonte segnalato",
-        "freshnessStoreUnavailable": "archivio freschezza non disponibile",
-        "freshnessStoreDegraded": "archivio freschezza degradato"
+        "noSourceData": "nessun dato sorgente",
+        "sourceErrorReported": "errore sorgente segnalato",
+        "freshnessStoreUnavailable": "archivio di freschezza non disponibile",
+        "freshnessStoreDegraded": "archivio di freschezza degradato"
       },
       "time": {
         "never": "mai",
-        "justNow": "adesso",
+        "justNow": "proprio ora",
         "minutesAgo": "{{count}}m fa",
         "hoursAgo": "{{count}}h fa",
         "daysAgo": "{{count}}g fa",
@@ -2523,20 +2523,20 @@
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Accedi per esportare i dati del dashboard come CSV, JSON o PDF.",
+      "upgradeDesc": "L'esportazione dei dati (CSV, JSON, PDF) è inclusa in Pro Business.",
+      "upgradeCta": "Passa a Pro Business",
+      "lockedAriaLabel": "Esporta dati — bloccato. {{reason}}",
+      "unlockedAnnouncement": "Esportazione dati sbloccata.",
+      "preparingPdf": "Preparazione del PDF…",
+      "pdfFailed": "Il report PDF non è stato generato. Riprova o usa l'esportazione JSON."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Gli spazi di lavoro non connessi sono limitati a {{cap}} schede. Accedi per aggiungerne altre.",
+      "upgradeDesc": "Hai raggiunto il limite di {{cap}} schede del dashboard.",
+      "upgradeCta": "Esegui l'upgrade per di più",
+      "lockedAriaLabel": "Aggiungi scheda — bloccato. {{reason}}",
+      "unlockedAnnouncement": "Limite schede del dashboard rimosso."
     }
   },
   "popups": {
@@ -3340,7 +3340,7 @@
     "visualizationFailed": "Visualizzazione non riuscita"
   },
   "dashboardTabs": {
-    "ariaLabel": "Schede dashboard",
+    "ariaLabel": "Schede del dashboard",
     "defaultName": "Principale",
     "newTabName": "Nuova scheda",
     "newTabCreated": "Nuova scheda creata",

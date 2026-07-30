@@ -129,20 +129,20 @@
       "currencies": "Валути",
       "area": "Площ"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Зареждане на оценката за устойчивост…",
+    "resilienceScoreUnavailable": "Оценката за устойчивост не е налична.",
     "china": {
       "title": "Преглед на държава: Китай",
       "description": "Текущо състояние на макроикономика, пазар, търговия, енергетика и оперативна наличност от съществуващите публични договори за данни.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Политика и прилагане",
       "energy": "Енергетика",
       "availability": "Опасности и авиация",
       "observed": "Към:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Публикувано:",
+      "effective": "В сила:",
+      "sectors": "Сектори:",
+      "entities": "Субекти:",
+      "translation": "Превод:",
       "source": "Източник:",
       "imfGrowth": "Прогноза за растеж на МВФ",
       "creditGdp": "Кредит към БВП",
@@ -171,12 +171,12 @@
         "stale": "Остаряло",
         "unavailable": "Неналично"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Макро сигнали",
+      "crossStraitActivity": "Активност през протока",
+      "corporateDisclosures": "Корпоративни оповестявания",
+      "corridorConditions": "Условия в коридора",
+      "activityNowcast": "Нокаст на активността",
+      "decisionSignalsUnavailable": "Снимката на сигналите за решения на Китай в момента не е налична."
     }
   },
   "header": {
@@ -257,7 +257,7 @@
     "panelCatCommodityEcon": "Економија & Трговија",
     "panelCatHappyNews": "Добри Вести",
     "panelCatHappyPlanet": "Планета & Давање",
-    "embed": "Embed"
+    "embed": "Вграждане"
   },
   "panels": {
     "liveNews": "Живи новини",
@@ -1272,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградирал",
+        "stale": "остарял"
       }
     },
     "insights": {
@@ -1430,10 +1430,10 @@
         "hoursAgo": "{{count}}h преди"
       },
       "infoTooltip": "<strong>Методология</strong> Композитен резултат (0-100), смесване:<ul><li>50% нестабилност на държави (топ 5 претегляни)</li><li>30% географска конвергенция зони</li><li>20% инцидентите на инфраструктура</li></ul>Авто-обновлява всеки 5 минути.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Кеширан CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградирал",
+        "stale": "остарял"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1561,25 +1561,25 @@
       "candidGrants": "Candid дарения",
       "dataLag": "Лаг на данни",
       "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Глобални показатели за дарения",
+      "benchmarkInfoTooltip": "<strong>Глобални показатели за дарения</strong> Публикувани твърдения на платформи и институции с периоди на източници и статус на верификация. Годишните данни са оценки, а не активност в реално време.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Публикувани показатели с верифицирано покритие на източници.",
+        "partial": "Публикувани показатели с частично покритие на източници.",
+        "legacy": "Стара снимка; детайли за източника не са налични.",
+        "cached": "Показва се кеширана снимка; обновяването не е налично."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Проследявани дарения на платформа — годишна оценка",
+      "annualizedDaily": "Дневна годишна оценка",
+      "atLeast": "Поне",
+      "about": "Около",
+      "sourceNotVerified": "Източникът не е верифициран",
+      "reportedCumulative": "Отчетен кумулативен общ сбор",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Публикуван показател",
+      "sourcesMethodology": "Източници и методология",
+      "methodologyIntro": "В заглавието влизат само верифицирани годишни или защитимо анюализирани твърдения на платформи. Кумулативните и институционалните данни остават отделен контекст.",
+      "partialEstimate": "Частично верифицирана оценка"
     },
     "displacement": {
       "refugees": "Бежанци",
@@ -2133,8 +2133,8 @@
     "markets": {
       "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Ценова диаграма {{symbol}}",
+        "close": "Затвори диаграмата"
       }
     },
     "heatmap": {
@@ -2466,59 +2466,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Категории панели"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Актуално",
+        "stale": "Остаряло",
+        "veryStale": "Много остаряло",
+        "noData": "Няма данни",
+        "disabled": "Деактивирано",
+        "error": "Грешка"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Актуалност на данните: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "последна актуализация {{time}}",
+      "neverUpdated": "никога не е актуализирано",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "частично покритие",
+        "contentStale": "съдържанието е остаряло",
+        "seedStale": "seed е остарял",
+        "noSourceData": "няма данни от извор",
+        "sourceErrorReported": "докладвана грешка в извора",
+        "freshnessStoreUnavailable": "хранилището за актуалност не е налично",
+        "freshnessStoreDegraded": "хранилището за актуалност е деградирало"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "никога",
+        "justNow": "преди малко",
+        "minutesAgo": "преди {{count}}м",
+        "hoursAgo": "преди {{count}}ч",
+        "daysAgo": "преди {{count}}д",
+        "compactNow": "сега",
+        "compactMinutes": "{{count}}м",
+        "compactHours": "{{count}}ч",
+        "compactDays": "{{count}}д"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Влезте, за да експортирате данните от таблото като CSV, JSON или PDF.",
+      "upgradeDesc": "Експортирането на данни (CSV, JSON, PDF) е включено в Pro Business.",
+      "upgradeCta": "Надградете до Pro Business",
+      "lockedAriaLabel": "Експортирай данни — заключено. {{reason}}",
+      "unlockedAnnouncement": "Експортирането на данни е отключено.",
+      "preparingPdf": "Подготовка на PDF…",
+      "pdfFailed": "PDF докладът не можа да бъде генериран. Опитайте отново или използвайте JSON експорт."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Работните пространства без вход са ограничени до {{cap}} раздела. Влезте, за да добавите още.",
+      "upgradeDesc": "Достигнахте лимита от {{cap}} раздела на таблото.",
+      "upgradeCta": "Надградете за повече",
+      "lockedAriaLabel": "Добави раздел — заключено. {{reason}}",
+      "unlockedAnnouncement": "Лимитът на разделите на таблото е премахнат."
     }
   },
   "popups": {
@@ -3322,16 +3322,16 @@
     "visualizationFailed": "Визуализацията не успя"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Раздели на таблото",
+    "defaultName": "Основен",
+    "newTabName": "Нов раздел",
+    "newTabCreated": "Нов раздел е създаден",
+    "tabDeleted": "Разделът \"{{name}}\" е изтрит",
+    "addTab": "Добави раздел",
+    "addTabTitle": "Нов раздел (започва с панелите по подразбиране)",
+    "renameHint": "{{name}} — щракнете двукратно за преименуване",
+    "deleteTab": "Изтрий раздела",
+    "deleteTabAria": "Изтрий раздел {{name}}",
+    "tabNameAria": "Име на раздела"
   }
 }
