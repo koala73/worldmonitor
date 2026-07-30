@@ -749,6 +749,30 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
+  it('conflict-events widget distinguishes byte-truncated responses from complete results', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events.html')));
+    const html = (await res.json()).result.contents[0].text;
+    const payload = {
+      data: {
+        'ucdp-events': { events: [{ sideA: 'Side A', sideB: 'Side B' }] },
+        partial: true,
+        truncation: {
+          reason: 'output_budget',
+          original_event_count: 1000,
+          returned_event_count: 375,
+        },
+      },
+    };
+
+    const partialView = mountWidgetHtml(html);
+    partialView.sendToolResult(payload);
+    assert.match(partialView.text('foot'), /Source response includes 375 of 1,000 events \(output limit\)\./);
+
+    const completeView = mountWidgetHtml(html);
+    completeView.sendToolResult({ data: { 'ucdp-events': { events: [] } } });
+    assert.doesNotMatch(completeView.text('foot'), /output limit/i, 'complete responses must not show truncation copy');
+  });
+
   it('EXPANSION WIDGETS: hostile tool text stays literal textContent in all five renderers', async () => {
     const hostile = '<img src=x onerror="globalThis.pwned=true">';
     const cases = [

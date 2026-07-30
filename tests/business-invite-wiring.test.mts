@@ -21,11 +21,29 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
 
   it('waits for Convex auth before calling acceptBusinessInvite, and bails without side effects if it times out', async () => {
     const src = await read('src/App.ts');
-    assert.match(src, /const ready = await waitForConvexAuth\(10_000\);/);
+    assert.match(src, /const ready = await waitForConvexAuthForUser\(userId, 10_000\);/);
     assert.match(
       src,
       /if \(!ready\) \{\s*\n\s*console\.warn\('\[business-seats\] acceptBusinessInvite skipped — Convex auth not ready'\);\s*\n\s*return;\s*\n\s*\}/,
       'a timed-out auth wait must return before calling the mutation, not attempt it anonymously',
+    );
+  });
+
+  it('binds the mutation settlement and success toast to the initiating account', async () => {
+    const src = await read('src/App.ts');
+    assert.match(
+      src,
+      /await settleAccountOperation\(\s*userId,\s*'accepting the Business Pro seat invite',\s*\(\) => client\.mutation\(/,
+    );
+    assert.match(
+      src,
+      /assertAccountStillCurrent\(userId, 'accepting the Business Pro seat invite'\);\s*\n\s*showToast\('Pro seat activated'\)/,
+      'a late A mutation must not show its success toast after Clerk selects B',
+    );
+    assert.match(
+      src,
+      /\} catch \(err\) \{\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
+      'errors from a departed account must stay silent in the new account UI',
     );
   });
 

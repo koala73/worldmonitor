@@ -1,8 +1,10 @@
-import type {
-  CrossStraitActivitySnapshot,
-  CrossStraitBaselineWindow,
-  CrossStraitSourceId,
-  TaiwanMndActivityCategories,
+import {
+  CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
+  type CrossStraitActivitySourceHealth,
+  type CrossStraitActivitySnapshot,
+  type CrossStraitBaselineWindow,
+  type CrossStraitBlockedReason,
+  type TaiwanMndActivityCategories,
 } from '@/types/cross-strait-activity';
 
 export interface CrossStraitComparisonModel {
@@ -35,16 +37,28 @@ export interface CrossStraitActivityPanelModel {
     sourceUrl: string;
   }>;
   sourceHealth: {
-    state: 'degraded' | 'unavailable';
+    state: 'blocked' | 'degraded' | 'unavailable';
     summary: string;
-    sources: Array<{
-      id: CrossStraitSourceId;
-      publisher: string;
-      transportStatus: 'fresh' | 'error';
-      errorCodes: string[];
-      lastSuccessAt: string | null;
-    }>;
+    sources: Array<Pick<
+      CrossStraitActivitySourceHealth,
+      'id' | 'publisher' | 'transportStatus' | 'blockedReason' | 'errorCodes' | 'lastSuccessAt'
+    >>;
   } | null;
+}
+
+type CrossStraitSourceHealthState =
+  NonNullable<CrossStraitActivityPanelModel['sourceHealth']>['state'];
+
+const SOURCE_HEALTH_HEADINGS = {
+  blocked: 'Official activity source blocked',
+  degraded: 'Official activity degraded',
+  unavailable: 'Official activity unavailable',
+} satisfies Record<CrossStraitSourceHealthState, string>;
+
+export function crossStraitSourceHealthHeading(
+  state: CrossStraitSourceHealthState,
+): string {
+  return SOURCE_HEALTH_HEADINGS[state];
 }
 
 const CATEGORY_LABELS: ReadonlyArray<[
@@ -86,6 +100,27 @@ function isDateString(value: unknown): value is string {
 
 function isNullableDateString(value: unknown): boolean {
   return value === null || isDateString(value);
+}
+
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+function isProxyFailureDetail(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (!['connect', 'request', 'response', 'parse'].includes(String(value.stage))) return false;
+  if (
+    value.httpStatus !== null
+    && (
+      !Number.isInteger(value.httpStatus)
+      || Number(value.httpStatus) < 100
+      || Number(value.httpStatus) > 599
+    )
+  ) return false;
+  return isNullableString(value.contentType)
+    && isNullableString(value.bodyPrefix)
+    && isNullableString(value.errorCode)
+    && isNullableString(value.errorMessage);
 }
 
 function isStringRecord(value: unknown): boolean {
@@ -178,12 +213,26 @@ function isSourceHealth(value: unknown): boolean {
     && typeof value.publisher === 'string'
     && typeof value.publisherType === 'string'
     && typeof value.claimSemantics === 'string'
-    && (value.transportStatus === 'fresh' || value.transportStatus === 'error')
+    && (
+      value.transportStatus === 'fresh'
+      || value.transportStatus === 'error'
+    )
     && isNonNegativeInteger(value.requestCount)
     && (
       value.transportPath === undefined
       || value.transportPath === 'direct'
       || value.transportPath === 'proxy'
+    )
+    && (
+      value.blockedReason === undefined
+      || CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(
+        value.blockedReason as CrossStraitBlockedReason,
+      )
+    )
+    && (
+      value.proxyControlProbe === undefined
+      || value.proxyControlProbe === 'reachable'
+      || value.proxyControlProbe === 'unreachable'
     )
     && (
       value.fallbackReason === undefined
@@ -192,6 +241,10 @@ function isSourceHealth(value: unknown): boolean {
     && (
       value.proxyFailureReason === undefined
       || typeof value.proxyFailureReason === 'string'
+    )
+    && (
+      value.proxyFailureDetail === undefined
+      || isProxyFailureDetail(value.proxyFailureDetail)
     )
     && Array.isArray(value.errorCodes)
     && value.errorCodes.every((code) => typeof code === 'string')
@@ -317,16 +370,27 @@ export function buildCrossStraitActivityPanelModel(
     });
 
   const progress = `${snapshot.coverage.usableMndReportingDays} usable reporting days`;
-  const sourceHealth = snapshot.status === 'degraded' || snapshot.status === 'unavailable'
+  const hasBlockedSource = snapshot.sources.some(
+    (source) => source.blockedReason !== undefined
+      && CROSS_STRAIT_BLOCKED_SOURCE_REASONS.includes(source.blockedReason),
+  );
+  const sourceHealth = snapshot.status === 'degraded'
+    || snapshot.status === 'unavailable'
+    || hasBlockedSource
     ? {
-        state: snapshot.status,
+        state: snapshot.status === 'degraded' || snapshot.status === 'unavailable'
+          ? snapshot.status
+          : 'blocked' as const,
         summary: snapshot.status === 'unavailable'
           ? 'Official activity snapshot unavailable; no current source transport is confirmed.'
-          : 'Official source transport is degraded; last-good counts may be retained.',
+          : snapshot.status === 'degraded'
+            ? 'Official source transport is degraded; last-good counts may be retained.'
+            : 'An official source is externally blocked; reviewed last-good counts remain identified.',
         sources: snapshot.sources.map((source) => ({
           id: source.id,
           publisher: source.publisher,
           transportStatus: source.transportStatus,
+          blockedReason: source.blockedReason,
           errorCodes: source.errorCodes,
           lastSuccessAt: source.lastSuccessAt,
         })),

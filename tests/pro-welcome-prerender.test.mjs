@@ -5,7 +5,7 @@ import test from 'node:test';
 const welcomeHtml = () => readFileSync(new URL('../public/pro/welcome.html', import.meta.url), 'utf8');
 const enLocale = () =>
   JSON.parse(readFileSync(new URL('../pro-test/src/locales/en.json', import.meta.url), 'utf8'));
-const WELCOME_FAQ_COUNT = 10;
+const WELCOME_FAQ_COUNT = 11;
 
 test('welcome FAQPage JSON-LD matches every visible FAQ entry', () => {
   const html = welcomeHtml();
@@ -40,6 +40,9 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   assert.match(rootContent, /Open source · AGPL-3\.0/);
   assert.match(rootContent, /href="\/blog\/posts\/worldmonitor-is-not-palantir\/"/);
   assert.match(rootContent, /WorldMonitor is not an open-source Palantir/);
+  assert.match(rootContent, /Which World Monitor license do I need\?/);
+  assert.match(rootContent, /API Business lets that organization embed World Monitor data/);
+  assert.match(rootContent, /href="\/docs\/terms"[^>]*>worldmonitor\.app\/docs\/terms<\/a>/);
   assert.match(rootContent, /Map layers/);
   const navContent = rootContent.slice(
     rootContent.indexOf('<nav'),

@@ -32,7 +32,6 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
-// @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';

@@ -1,10 +1,13 @@
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -15,6 +18,7 @@ import {
   assertNoForbiddenEnvDumps,
   decideHooksPathAction,
   linkEnvFiles,
+  normalizeWorktreeHooksPath,
   parseArgs,
   shouldInstallDependencies,
 } from '../scripts/bootstrap-worktree.mjs';
@@ -78,7 +82,7 @@ describe('worktree bootstrap helper', () => {
     assert.equal(existsSync(join(root, '.env')), false);
   });
 
-  it('rejects forbidden local Vercel env dumps even when they are symlinks', (t) => {
+  it('rejects forbidden local env dumps even when they are symlinks', (t) => {
     const root = makeTempDir();
 
     try {
@@ -93,7 +97,7 @@ describe('worktree bootstrap helper', () => {
 
     assert.throws(
       () => assertNoForbiddenEnvDumps(root),
-      /local Vercel env dump files are present/,
+      /local environment dump files are present/,
     );
   });
 
@@ -165,13 +169,242 @@ describe('worktree bootstrap helper', () => {
       assert.equal(result.action, 'unset-worktree');
     });
 
-    it('warns (never mutates) when the foreign absolute value is in the shared config', () => {
+    it('repairs the shared config when it pins hooks to another checkout', () => {
       const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: '/repos/wm/.husky',
+        hooksPathOwnedByRepository: true,
+        originFile: '/repos/wm/.git/config',
+      });
+      assert.equal(result.action, 'repair-shared');
+    });
+
+    // Absolute-into-THIS-worktree is only harmless as a worktree-local
+    // override. In the shared config it welds every OTHER worktree's push to
+    // this checkout's hook file — the same bug seen from the other side.
+    it('repairs a shared absolute value even when it points into this worktree', () => {
+      const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: `${root}/.husky`,
+        hooksPathOwnedByRepository: true,
+        originFile: '/repos/wm/.git/config',
+      });
+      assert.equal(result.action, 'repair-shared');
+    });
+
+    it('warns instead of repairing when the shared value is not a .husky dir', () => {
+      const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: '/opt/central-hooks',
+        originFile: '/repos/wm/.git/config',
+      });
+      assert.equal(result.action, 'warn-shared');
+    });
+
+    it('warns instead of repairing when foreign hooks are explicitly allowed', () => {
+      const result = decideHooksPathAction({
+        allowForeignHooks: true,
         rootDir: root,
         hooksPathValue: '/repos/wm/.husky',
         originFile: '/repos/wm/.git/config',
       });
       assert.equal(result.action, 'warn-shared');
     });
+
+    it('warns instead of repairing an unverified external .husky dir', () => {
+      const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: '/opt/company/.husky',
+        originFile: '/repos/wm/.git/config',
+      });
+      assert.equal(result.action, 'warn-shared');
+    });
+  });
+
+  // Real linked worktrees, because the whole bug is about WHICH config layer
+  // git reads. `--show-origin` reports only the winning value, so a
+  // per-worktree override masks a broken shared config until it is gone, and
+  // `git config` (no --worktree) writing to the shared file from inside a
+  // worktree is the exact behaviour the repair depends on. A stubbed git
+  // proves none of that.
+  describe('normalizeWorktreeHooksPath', () => {
+    const gitEnvVars = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+      encoding: 'utf8',
+    })
+      .trim()
+      .split('\n');
+
+    const fixtures = [];
+    after(() => {
+      for (const dir of fixtures) rmSync(dir, { recursive: true, force: true });
+    });
+
+    const git = (args, cwd) =>
+      execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+
+    /**
+     * git exports GIT_DIR/GIT_WORK_TREE/... to every child of a hook, and those
+     * override cwd. test:data runs from the pre-push hook, so a fixture built
+     * without stripping them would rewrite core.hooksPath in the REAL repo.
+     */
+    function withCleanGitEnv(run) {
+      const saved = new Map();
+      const set = (name, value) => {
+        saved.set(name, process.env[name]);
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      };
+
+      for (const name of gitEnvVars) set(name, undefined);
+      set('WM_ALLOW_FOREIGN_HOOKS', undefined);
+      set('GIT_CONFIG_GLOBAL', '/dev/null');
+      set('GIT_CONFIG_SYSTEM', '/dev/null');
+
+      try {
+        return run();
+      } finally {
+        for (const [name, value] of saved) {
+          if (value === undefined) delete process.env[name];
+          else process.env[name] = value;
+        }
+      }
+    }
+
+    function makeWorktreeFixture() {
+      const base = makeTempDir('wm-worktree-hookspath-');
+      fixtures.push(base);
+      const main = join(base, 'main');
+      const worktree = join(base, 'feature');
+
+      git(['init', '--quiet', '--initial-branch=main', main], base);
+      git(['config', 'user.email', 'fixture@example.test'], main);
+      git(['config', 'user.name', 'Fixture'], main);
+      writeFileSync(join(main, 'README.md'), 'fixture\n');
+      git(['add', 'README.md'], main);
+      git(['commit', '--quiet', '-m', 'init'], main);
+      git(['worktree', 'add', '--quiet', '-b', 'feature', worktree], main);
+
+      return { main, sharedConfig: join(main, '.git', 'config'), worktree };
+    }
+
+    it('rewrites an absolute shared hooksPath to a relative one', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        git(['config', 'core.hooksPath', join(fixture.main, '.husky')], fixture.main);
+
+        const result = normalizeWorktreeHooksPath({ log: quiet, rootDir: fixture.worktree });
+
+        assert.equal(result.action, 'repair-shared');
+        assert.equal(git(['config', '--get', 'core.hooksPath'], fixture.worktree), '.husky');
+        assert.match(readFileSync(fixture.sharedConfig, 'utf8'), /hooksPath = \.husky/);
+      }));
+
+    // Fixing one layer looked complete and silently wasn't (2026-07-24): the
+    // override hid the shared value, so the shared value was never seen.
+    it('repairs the shared value that a per-worktree override was masking', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        git(['config', 'extensions.worktreeConfig', 'true'], fixture.main);
+        git(['config', 'core.hooksPath', join(fixture.main, '.husky')], fixture.main);
+        git(['config', '--worktree', 'core.hooksPath', '/elsewhere/.husky'], fixture.worktree);
+
+        const result = normalizeWorktreeHooksPath({ log: quiet, rootDir: fixture.worktree });
+
+        assert.deepEqual(
+          result.decisions.map((decision) => decision.action),
+          ['unset-worktree', 'repair-shared'],
+        );
+        assert.equal(git(['config', '--get', 'core.hooksPath'], fixture.worktree), '.husky');
+        assert.match(readFileSync(fixture.sharedConfig, 'utf8'), /hooksPath = \.husky/);
+      }));
+
+    it('reports the repair without writing it under --dry-run', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        const absolute = join(fixture.main, '.husky');
+        git(['config', 'core.hooksPath', absolute], fixture.main);
+
+        const result = normalizeWorktreeHooksPath({
+          dryRun: true,
+          log: quiet,
+          rootDir: fixture.worktree,
+        });
+
+        assert.equal(result.action, 'repair-shared');
+        assert.equal(git(['config', '--get', 'core.hooksPath'], fixture.worktree), absolute);
+      }));
+
+    it('leaves an external .husky directory alone', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        const external = join(fixture.main, '..', 'company-hooks', '.husky');
+        mkdirSync(external, { recursive: true });
+        git(['config', 'core.hooksPath', external], fixture.main);
+
+        const result = normalizeWorktreeHooksPath({ log: quiet, rootDir: fixture.worktree });
+
+        assert.equal(result.action, 'warn-shared');
+        assert.equal(git(['config', '--get', 'core.hooksPath'], fixture.worktree), external);
+      }));
+
+    it('fails bootstrap when a worktree override cannot be removed', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        git(['config', 'extensions.worktreeConfig', 'true'], fixture.main);
+        git(['config', '--worktree', 'core.hooksPath', '/elsewhere/.husky'], fixture.worktree);
+        const runGit = (command, args, options) =>
+          args.includes('--unset') ? { status: 128 } : spawnSync(command, args, options);
+
+        assert.throws(
+          () => normalizeWorktreeHooksPath({
+            log: quiet,
+            rootDir: fixture.worktree,
+            runGit,
+          }),
+          /failed to remove stale worktree hooksPath override/,
+        );
+      }));
+
+    it('fails bootstrap when the shared repair cannot be written', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        git(['config', 'core.hooksPath', join(fixture.main, '.husky')], fixture.main);
+        const runGit = (command, args, options) =>
+          args[0] === 'config' && args[1] === 'core.hooksPath'
+            ? { status: 128 }
+            : spawnSync(command, args, options);
+
+        assert.throws(
+          () => normalizeWorktreeHooksPath({
+            log: quiet,
+            rootDir: fixture.worktree,
+            runGit,
+          }),
+          /failed to repair shared hooksPath/,
+        );
+      }));
+
+    it('leaves an already-relative shared hooksPath untouched', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        git(['config', 'core.hooksPath', '.husky'], fixture.main);
+        const before = readFileSync(fixture.sharedConfig, 'utf8');
+
+        const result = normalizeWorktreeHooksPath({ log: quiet, rootDir: fixture.worktree });
+
+        assert.equal(result.action, 'none');
+        assert.equal(readFileSync(fixture.sharedConfig, 'utf8'), before);
+      }));
+
+    it('leaves the config alone when core.hooksPath is unset', () =>
+      withCleanGitEnv(() => {
+        const fixture = makeWorktreeFixture();
+        const before = readFileSync(fixture.sharedConfig, 'utf8');
+
+        const result = normalizeWorktreeHooksPath({ log: quiet, rootDir: fixture.worktree });
+
+        assert.equal(result.action, 'none');
+        assert.equal(readFileSync(fixture.sharedConfig, 'utf8'), before);
+      }));
   });
 });

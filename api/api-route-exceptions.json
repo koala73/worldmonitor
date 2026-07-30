@@ -73,6 +73,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/source-unavailable.ts",
+      "category": "internal-helper",
+      "reason": "Typed analysis-source outage propagation for MCP composite tools: preserves bounded cache-key diagnostics in JSON-RPC error.data without exposing source payloads. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/usage.ts",
       "category": "external-protocol",
       "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",
@@ -87,9 +94,30 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/analysis-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/rpc-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY RPC-tool entries (with _execute, incl. describe_tool). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/company-intel-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY corporate-intelligence tool entry and its nested output schema. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/nlp-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -570,6 +598,13 @@
       "path": "api/internal/brief-why-matters.ts",
       "category": "internal-helper",
       "reason": "LLM-enrichment helper for the brief pipeline. Cron-triggered from Railway under RELAY_SHARED_SECRET bearer auth — never reached by dashboards, desktop, or partners. Request/response shape is an implementation detail of the brief renderer; modeling it as a generated service would publish internal cron plumbing as user-facing API surface. Same shape constraint as api/notify.ts (also cron-only).",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/china-exchange-egress.js",
+      "category": "internal-helper",
+      "reason": "Fixed-target SZSE metadata egress for the Railway corporate-disclosure seed (#5771). RELAY_SHARED_SECRET-authenticated, POST-only, and constrained to the reviewed issuer, channel, page, and 92-day window; it is deployment plumbing for one source adapter rather than a user-facing data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

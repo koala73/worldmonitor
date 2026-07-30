@@ -78,6 +78,14 @@ WorldMonitor 在 Railway 上为每个用户生成情报简报，将每一期存�
 - 流式：`text/event-stream`
 - 后端：`intelligence/v1/chat-analyst-*` 处理器组合上下文+提示
 
+拒绝响应与上文简报端点采用同一套三分法，便于客户端区分"套餐判定"、"会话失效"与"服务故障"：
+
+| 状态 | 响应 |
+|--------|------|
+| 401 | `UNAUTHENTICATED` —— 未提供凭据，或凭据校验失败。请登录，重试无效 |
+| 403 | `Pro subscription required`（已确认非 Pro 套餐）/ `Subscription lapsed`（已向支付方确认订阅失效，设置 `X-Billing-Verification`） |
+| 503 | 权限校验无法完成：`entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`，携带 `Retry-After` 与 `X-Billing-Verification`。参见[错误处理](/usage-errors) |
+
 ### `POST /api/widget-agent`
 
 嵌入式 widget iframe 使用的单次完成端点。通过 `X-WorldMonitor-Key`（合作伙伴密钥）认证。按密钥限流。

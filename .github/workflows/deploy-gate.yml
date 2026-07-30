@@ -33,7 +33,23 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          required='["changes","docs-stats","unit","consumer-prices","sidecar","convex-tests","dom-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","security-audit"]'
+          set -o pipefail
+          # Every job of every workflow named in the workflow_run trigger above.
+          # A job missing here is never inspected, so it reports red on the PR
+          # while this gate still posts success — CI theatre, not a gate (#5402).
+          # tests/ci-workflow-coverage.test.mts fails when this list and those
+          # workflows drift apart in either direction. `audit-lockfile` is
+          # deliberately absent: it is a matrix job whose check runs are named
+          # `audit-lockfile (root)`, `audit-lockfile (scripts)`, … so a bare
+          # entry would wait on a check run that is never published; the
+          # always()-running `security-audit` aggregate blocks for it instead.
+          #
+          # Entries are check-run NAMES, and the lookup below keeps only the
+          # last-completed run per name. Test, Typecheck and Lint Code each
+          # define a job with the id `changes`; the latter two publish under
+          # `typecheck-changes` / `lint-changes` so all three are evaluated
+          # instead of two being masked by the third (#5822).
+          required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","sidecar","convex-tests","dom-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit"]'
 
           if [ -n "$SHA" ]; then
             # workflow_run event — evaluate exactly the triggering SHA.
@@ -42,8 +58,13 @@ jobs:
             # schedule / workflow_dispatch — sweep open PRs whose gate status
             # is still pending. Public-repo reads need no extra permission.
             shas=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha' | sort -u | while read -r s; do
-              state=$(gh api "repos/$REPO/commits/$s/status" \
-                --jq '[.statuses[] | select(.context == "gate")] | sort_by(.updated_at) | last | .state // "missing"')
+              # The API guarantees newest-first status history. Preserve that
+              # order because updated_at ties within the same second.
+              state=$(
+                gh api --paginate --slurp \
+                  "repos/$REPO/commits/$s/statuses?per_page=100" |
+                  jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
+              )
               if [ "$state" = "pending" ]; then echo "$s"; fi
             done)
             if [ -z "$shas" ]; then

@@ -54,8 +54,8 @@
   {
     "name": "Pro Business",
     "localeKey": "proBusiness",
-    "monthlyPrice": 69.99,
-    "annualPrice": 699.99,
+    "monthlyPrice": 49.99,
+    "annualPrice": 499,
     "description": "The Pro dashboard, licensed for work",
     "features": [
       "Everything in Pro",

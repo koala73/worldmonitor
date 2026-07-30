@@ -30,8 +30,10 @@ import {
   pickMapKeysLike,
   pickNestedMap,
   selectDatasets,
+  summarizeData,
 } from '../filters';
 import type { ToolDef } from '../types';
+import { utf8ByteLength } from '../utils';
 import {
   CHOKEPOINT_MONITOR_UI_URI,
   CONFLICT_EVENTS_UI_URI,
@@ -48,6 +50,101 @@ import {
 // The output schema still documents an iran-events field (harmless when absent).
 // Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+// Leave headroom for the cache envelope (`cached_at`, `stale`, and `data`) so
+// the dispatcher never replaces a useful conflict response with the generic
+// `_budget_exceeded` envelope.
+const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
+const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
+const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
+
+function fitConflictEventsToBudget(data: Record<string, unknown>): void {
+  const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
+    const parent = data[label];
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [];
+    const events = (parent as Record<string, unknown>).events;
+    return Array.isArray(events) ? [{ label, events }] : [];
+  });
+  const originalEventCount = lists.reduce((sum, { events }) => sum + events.length, 0);
+  if (originalEventCount === 0) return;
+
+  const byteLength = () => utf8ByteLength(JSON.stringify(data));
+  if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) return;
+
+  data.partial = true;
+  const truncation = {
+    reason: 'output_budget',
+    original_event_count: originalEventCount,
+    returned_event_count: 0,
+  };
+  data.truncation = truncation;
+
+  const caps = new Map(lists.map(({ label }) => [label, 0]));
+  const applyCaps = () => {
+    let returnedEventCount = 0;
+    for (const { label, events } of lists) {
+      const parent = data[label] as Record<string, unknown>;
+      const bounded = events.slice(0, caps.get(label) ?? 0);
+      parent.events = bounded;
+      returnedEventCount += bounded.length;
+    }
+    truncation.returned_event_count = returnedEventCount;
+  };
+
+  let low = 0;
+  let high = Math.max(...lists.map(({ events }) => events.length));
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    for (const { label } of lists) caps.set(label, mid);
+    applyCaps();
+    if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) low = mid;
+    else high = mid - 1;
+  }
+  for (const { label } of lists) caps.set(label, low);
+  applyCaps();
+
+  // Spend any remaining budget per feed. This preserves the fair common
+  // prefix above while ensuring one oversized feed cannot force every other
+  // source to return zero usable events.
+  for (const { label, events } of lists) {
+    let feedLow = caps.get(label) ?? 0;
+    let feedHigh = events.length;
+    while (feedLow < feedHigh) {
+      const mid = Math.ceil((feedLow + feedHigh) / 2);
+      caps.set(label, mid);
+      applyCaps();
+      if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) feedLow = mid;
+      else feedHigh = mid - 1;
+    }
+    caps.set(label, feedLow);
+    applyCaps();
+  }
+}
+
+function summarizeConflictEvents(data: Record<string, unknown>): Record<string, unknown> {
+  const summary = summarizeData(data);
+  if (utf8ByteLength(JSON.stringify(summary)) <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) return summary;
+
+  const samples = CONFLICT_EVENT_LISTS.flatMap((label) => {
+    const parent = summary[label];
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [];
+    const events = (parent as Record<string, unknown>).events;
+    if (!events || typeof events !== 'object' || Array.isArray(events)) return [];
+    const sample = (events as Record<string, unknown>).sample;
+    return Array.isArray(sample) ? [{ sample, original: [...sample] }] : [];
+  });
+
+  for (const { sample } of samples) sample.length = 0;
+  const maxSampleLength = Math.max(0, ...samples.map(({ original }) => original.length));
+  for (let index = 0; index < maxSampleLength; index++) {
+    for (const { sample, original } of samples) {
+      if (index >= original.length) continue;
+      sample.push(original[index]);
+      if (utf8ByteLength(JSON.stringify(summary)) > CONFLICT_EVENTS_DATA_BUDGET_BYTES) sample.pop();
+    }
+  }
+
+  return summary;
+}
 
 function addNewsSourceProvenance(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
@@ -262,7 +359,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_conflict_events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
-    _outputBudgetBytes: 131072,
+    _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
     description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
     inputSchema: {
       type: 'object',
@@ -292,6 +389,11 @@ export const CACHE_TOOLS: ToolDef[] = [
           } } },
           fetchedAt: { type: ['number', 'string'] },
           version: { type: ['string', 'number'] },
+          // Newest merged GED Candidate release, or null when the annual base is
+          // serving alone. A `+partial` suffix means the candidate was fetched
+          // incompletely.
+          candidateVersion: { type: ['string', 'null'] },
+          candidateComplete: { type: 'boolean' },
           totalRaw: { type: 'number' },
           filteredCount: { type: 'number' },
         },
@@ -323,8 +425,18 @@ export const CACHE_TOOLS: ToolDef[] = [
           strategicRisks: { type: ['array', 'object', 'null'] },
         },
       },
+      partial: { type: 'boolean', description: 'True when event lists were shortened to fit the MCP output budget.' },
+      truncation: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+          original_event_count: { type: 'number' },
+          returned_event_count: { type: 'number' },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _summarize: summarizeConflictEvents,
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const minFatal = argNum(params.min_fatalities);
@@ -338,7 +450,8 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'ucdp-events', 'events', (e) => (argNum(e.deathsBest) ?? 0) >= minFatal);
         narrowNested(data, 'events', 'events', (e) => (argNum(e.fatalities) ?? 0) >= minFatal);
       }
-      for (const label of ['ucdp-events', 'iran-events', 'events']) capNested(data, label, 'events', limit);
+      for (const label of CONFLICT_EVENT_LISTS) capNested(data, label, 'events', limit);
+      if (!argBool(params.summary) && !argStr(params.jmespath)) fitConflictEventsToBudget(data);
       return data;
     },
     _cacheKeys: [
@@ -2045,6 +2158,179 @@ export const CACHE_TOOLS: ToolDef[] = [
     _apiPaths: [
       "GET /api/intelligence/v1/get-social-velocity",
     ],
+  },
+
+  {
+    name: 'get_temporal_anomalies',
+    _outputBudgetBytes: 65536,
+    description:
+      'Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. ' +
+      'Surfaces where activity is statistically abnormal right now — news velocity, satellite fire detections, and other tracked ' +
+      'streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared ' +
+      'to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a ' +
+      'severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty ' +
+      'anomaly list with fresh data means activity is within normal bounds — that is itself signal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: 'Filter to one tracked stream type (e.g. "news", "satellite_fires"); see trackedTypes in the response for what is currently baselined.',
+        },
+        region: { type: 'string', description: 'Filter to one region label (case-insensitive exact match).' },
+        min_severity: {
+          type: 'string',
+          enum: ['medium', 'high', 'critical'],
+          description: 'Drop anomalies below this severity band.',
+        },
+        limit: { type: 'number', description: 'Cap the anomaly list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      snapshot: {
+        type: ['object', 'null'],
+        properties: {
+          anomalies: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string' }, region: { type: 'string' },
+                currentCount: { type: 'number' }, expectedCount: { type: 'number' },
+                zScore: { type: 'number' }, severity: { type: 'string' },
+                multiplier: { type: 'number' }, message: { type: 'string' },
+              },
+            },
+          },
+          trackedTypes: { type: 'array', items: { type: 'string' } },
+          computedAt: { type: 'string' },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const type = argStr(params.type);
+      const region = argStr(params.region);
+      const minSeverity = argStr(params.min_severity);
+      const severityRank: Record<string, number> = { medium: 1, high: 2, critical: 3 };
+      const floor = minSeverity ? (severityRank[minSeverity] ?? 0) : 0;
+      narrowNested(data, 'snapshot', 'anomalies', (a) => {
+        if (type && String(a.type ?? '').toLowerCase() !== type) return false;
+        if (region && String(a.region ?? '').toLowerCase() !== region) return false;
+        if (floor && (severityRank[String(a.severity ?? '')] ?? 0) < floor) return false;
+        return true;
+      });
+      capNested(data, 'snapshot', 'anomalies', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      return data;
+    },
+    _cacheKeys: ['temporal:anomalies:v1'],
+    _cacheLabels: { 'temporal:anomalies:v1': 'snapshot' },
+    _seedMetaKey: 'seed-meta:temporal:anomalies',
+    _maxStaleMin: 45,
+    _apiPaths: [],
+  },
+
+  {
+    name: 'get_test_site_seismicity',
+    _outputBudgetBytes: 65536,
+    description:
+      'Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. ' +
+      'Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the ' +
+      'Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0-100 from magnitude, ' +
+      'proximity, and depth — shallow events close to a site score highest, since underground tests are shallow by nature. ' +
+      'Concern bands: low, moderate, elevated, critical. Includes a per-site rollup (event count, max concern, max magnitude). ' +
+      'An empty list with fresh data means no seismicity near any monitored site in the current feed window.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        site: { type: 'string', description: 'Filter to one test site by name substring (e.g. "Punggye", "Lop Nur", case-insensitive).' },
+        min_concern: {
+          type: 'string',
+          enum: ['low', 'moderate', 'elevated', 'critical'],
+          description: 'Drop events below this concern band.',
+        },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      earthquakes: {
+        type: ['object', 'null'],
+        properties: {
+          earthquakes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, place: { type: 'string' },
+                magnitude: { type: 'number' }, depthKm: { type: 'number' },
+                location: {
+                  type: 'object',
+                  properties: { latitude: { type: 'number' }, longitude: { type: 'number' } },
+                },
+                occurredAt: { type: 'number' },
+                nearTestSite: { type: 'boolean' }, testSiteName: { type: 'string' },
+                concernScore: { type: 'number' }, concernLevel: { type: 'string' },
+              },
+            },
+          },
+          siteSummary: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                site: { type: 'string' }, eventCount: { type: 'number' },
+                maxConcernScore: { type: 'number' }, maxConcernLevel: { type: 'string' },
+                maxMagnitude: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const site = argStr(params.site);
+      const minConcern = argStr(params.min_concern);
+      const concernRank: Record<string, number> = { low: 1, moderate: 2, elevated: 3, critical: 4 };
+      const floor = minConcern ? (concernRank[minConcern] ?? 0) : 0;
+      narrowNested(data, 'earthquakes', 'earthquakes', (q) => {
+        const siteName = typeof q.testSiteName === 'string' ? q.testSiteName : '';
+        if (!q.nearTestSite && !siteName && typeof q.concernScore !== 'number') return false;
+        if (site && !siteName.toLowerCase().includes(site)) return false;
+        if (floor && (concernRank[String(q.concernLevel ?? '')] ?? 0) < floor) return false;
+        return true;
+      });
+      const payload = data.earthquakes as {
+        earthquakes?: Array<Record<string, unknown>>;
+        siteSummary?: Array<Record<string, unknown>>;
+      } | null;
+      if (payload && Array.isArray(payload.earthquakes)) {
+        const bySite = new Map<string, { site: string; eventCount: number; maxConcernScore: number; maxConcernLevel: string; maxMagnitude: number }>();
+        for (const q of payload.earthquakes) {
+          const name = (typeof q.testSiteName === 'string' && q.testSiteName) || 'Unattributed';
+          const entry = bySite.get(name) ?? { site: name, eventCount: 0, maxConcernScore: 0, maxConcernLevel: '', maxMagnitude: 0 };
+          entry.eventCount += 1;
+          const score = typeof q.concernScore === 'number' ? q.concernScore : 0;
+          if (score >= entry.maxConcernScore) {
+            entry.maxConcernScore = score;
+            entry.maxConcernLevel = typeof q.concernLevel === 'string' ? q.concernLevel : entry.maxConcernLevel;
+          }
+          const mag = typeof q.magnitude === 'number' ? q.magnitude : 0;
+          if (mag > entry.maxMagnitude) entry.maxMagnitude = mag;
+          bySite.set(name, entry);
+        }
+        payload.siteSummary = [...bySite.values()].sort((a, b) => b.maxConcernScore - a.maxConcernScore);
+      }
+      capNested(data, 'earthquakes', 'earthquakes', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      return data;
+    },
+    _cacheKeys: ['seismology:earthquakes:v1'],
+    _cacheLabels: { 'seismology:earthquakes:v1': 'earthquakes' },
+    _seedMetaKey: 'seed-meta:seismology:earthquakes',
+    _maxStaleMin: 30,
+    _apiPaths: [],
   },
 
 ];

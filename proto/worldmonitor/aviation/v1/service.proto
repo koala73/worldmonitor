@@ -28,7 +28,7 @@ service AviationService {
     };
   }
 
-  // GetAirportOpsSummary returns operational health metrics for watched airports.
+  // GetAirportOpsSummary returns watched-airport operational health, including delay percentages, average delay minutes, cancellation rates and closure status.
   rpc GetAirportOpsSummary(GetAirportOpsSummaryRequest) returns (GetAirportOpsSummaryResponse) {
     option (sebuf.http.config) = {
       path: "/get-airport-ops-summary"

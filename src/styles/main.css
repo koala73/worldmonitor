@@ -13099,6 +13099,25 @@ a.prediction-link:hover {
   vertical-align: middle;
 }
 
+/*
+ * "shown/total" for layers the globe's marker budget is trimming (#5368).
+ * Muted and right-aligned: it reports a limit, it is not a call to action.
+ */
+.layer-truncation-count {
+  margin-left: auto;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  /* Theme token, not a hardcoded white: the layer panel is theme-aware and the
+     light theme's --bg is near-white, which would hide a white badge. */
+  color: var(--text-dim);
+  white-space: nowrap;
+  /* Hoverable on purpose: the full disclosure lives in the element's `title`,
+     and `pointer-events: none` would suppress the tooltip. Safe to hover and
+     click because the badge is a SIBLING of the <label>, not inside it. */
+  cursor: help;
+  flex-shrink: 0;
+}
+
 /* -- Locked panel: hide count badge + extra chrome -- */
 .panel-is-locked .panel-count,
 .panel-is-locked .panel-data-badge,
@@ -26525,6 +26544,16 @@ body.map-width-resizing {
   white-space: nowrap;
 }
 
+.us-notif-ch-sub-wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.us-notif-ch-sub-warn {
+  color: var(--settings-red);
+}
+
 .us-notif-ch-actions {
   display: flex;
   align-items: center;
@@ -26541,6 +26570,11 @@ body.map-width-resizing {
   background: rgba(52, 211, 153, 0.12);
   padding: 2px 7px;
   border-radius: 4px;
+}
+
+.us-notif-ch-badge-blocked {
+  color: var(--settings-red);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .us-notif-ch-btn {

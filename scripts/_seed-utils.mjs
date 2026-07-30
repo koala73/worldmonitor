@@ -208,15 +208,112 @@ export function loadSharedConfig(filename) {
   throw new Error(`Cannot find shared/${filename} — checked ../shared/ and ./shared/`);
 }
 
-export function loadEnvFile(metaUrl) {
-  const __dirname = metaUrl ? dirname(fileURLToPath(metaUrl)) : process.cwd();
-  const candidates = [
-    join(__dirname, '..', '.env.local'),
-    join(__dirname, '..', '..', '.env.local'),
-  ];
-  if (process.env.HOME) {
-    candidates.push(join(process.env.HOME, 'Documents/GitHub/worldmonitor', '.env.local'));
+// Env vars set by the runners that import seeder modules without running them.
+// 149 seeders call loadEnvFile() at module scope, so under one of these the
+// import alone would hand production credentials to the test process (#5767).
+// Known gap: `node --test --experimental-test-isolation=none` runs tests in the
+// main process and sets NO marker at all. The repo uses that flag nowhere, but
+// adding it would disable this guard for the whole suite in one edit.
+const TEST_RUNTIME_MARKERS = [
+  'NODE_TEST_CONTEXT', // node --test and tsx --test
+  'VITEST',
+  'VITEST_WORKER_ID',
+  'JEST_WORKER_ID',
+  'PLAYWRIGHT_TEST_BASE_URL', // playwright sets neither NODE_ENV nor a generic marker
+  'PW_TEST_SOURCE_LOCATION',
+];
+
+export function isTestRuntime(env = process.env) {
+  if (env.NODE_ENV === 'test') return true;
+  return TEST_RUNTIME_MARKERS.some((key) => typeof env[key] === 'string' && env[key] !== '');
+}
+
+// Walk up to the checkout this file lives in. `.git` is a directory in a normal
+// clone and a file in a worktree, so `existsSync` covers both. Bounded so a
+// detached path cannot spin.
+function findCheckoutRoot(startDir) {
+  let dir = startDir;
+  for (let depth = 0; depth < 24; depth += 1) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
+  return null;
+}
+
+/**
+ * Load the checkout's `.env.local` into process.env.
+ *
+ * `only` restricts the import to the named keys, for callers that want their
+ * two credentials rather than every variable in the file. It exists so those
+ * callers do not need a private loader — a private loader silently opts out of
+ * the test-runtime guard and the checkout scoping, which is exactly how #5767
+ * survived in two files.
+ */
+/**
+ * Resolve the Convex HTTP-actions origin from an env bag.
+ *
+ * `CONVEX_URL` is the client/websocket origin (`*.convex.cloud`); HTTP actions
+ * — every `/relay/*` route — are served from the sibling `*.convex.site`. The
+ * mapping is a one-line string swap, but it is a one-line string swap that
+ * three callers were each carrying their own copy of, and a caller that gets
+ * it wrong silently POSTs to a host that does not route the request.
+ * Returns '' when neither variable is set, so callers can report what is
+ * missing rather than building a URL against `undefined`.
+ *
+ * @param {Record<string, string | undefined>} env
+ */
+export function resolveConvexSiteUrl(env) {
+  const raw = env.CONVEX_SITE_URL || (env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+  return raw ? raw.replace(/\/+$/, '') : '';
+}
+
+export function loadEnvFile(metaUrl, { only } = {}) {
+  // Loading credentials is part of *running* a seeder, never part of importing
+  // one. CI already runs the whole suite with no .env.local present, so staying
+  // inert here just makes local runs match CI instead of hitting production.
+  if (isTestRuntime() && process.env.WM_ALLOW_ENV_LOAD_IN_TESTS !== '1') {
+    // Under a real test runner this is the expected path and would be pure
+    // noise across 150+ seeder imports. NODE_ENV=test with no runner marker is
+    // a person running a seeder in a shell that exports it, where silently
+    // ignoring a .env.local that IS present reads as "my credentials vanished".
+    if (process.env.NODE_ENV === 'test' && !TEST_RUNTIME_MARKERS.some((k) => process.env[k])) {
+      console.error(
+        '[seed] loadEnvFile skipped: NODE_ENV=test looks like a test runtime. ' +
+          'Set WM_ALLOW_ENV_LOAD_IN_TESTS=1 to load credentials anyway.',
+      );
+    }
+    return;
+  }
+
+  const __dirname = metaUrl ? dirname(fileURLToPath(metaUrl)) : process.cwd();
+  const candidates = [];
+  // Explicit opt-in for checkouts that deliberately borrow another env file.
+  // Replaces the old hardcoded $HOME/Documents/GitHub/worldmonitor candidate,
+  // which reached out of whichever worktree the seeder lived in and so made
+  // worktree isolation ineffective by design.
+  if (process.env.WM_SEED_ENV_FILE) {
+    // Falling through to the checkout file on a typo would silently seed with
+    // the wrong credentials — the failure mode this whole change is about.
+    if (!existsSync(process.env.WM_SEED_ENV_FILE)) {
+      console.error(
+        `[seed] WM_SEED_ENV_FILE does not exist: ${process.env.WM_SEED_ENV_FILE} — ` +
+          'falling back to the checkout .env.local.',
+      );
+    }
+    candidates.push(process.env.WM_SEED_ENV_FILE);
+  }
+  // Anchored to the checkout root rather than guessed with `..` and `../..`.
+  // The old pair had to guess because a nested `scripts/<dir>/x.mjs` needs two
+  // levels while a top-level seeder needs one — but `../..` from a top-level
+  // seeder lands OUTSIDE the checkout, and it really did load a `.env.local`
+  // sitting next to the repo. Resolving the root makes both depths correct and
+  // neither of them able to escape.
+  const checkoutRoot = findCheckoutRoot(__dirname);
+  // No VCS metadata means a container image, where env comes from the platform
+  // and the only sane guess is the directory above the script.
+  candidates.push(join(checkoutRoot ?? join(__dirname, '..'), '.env.local'));
   for (const envPath of candidates) {
     if (!existsSync(envPath)) continue;
     const lines = readFileSync(envPath, 'utf8').split('\n');
@@ -226,6 +323,7 @@ export function loadEnvFile(metaUrl) {
       const eqIdx = trimmed.indexOf('=');
       if (eqIdx === -1) continue;
       const key = trimmed.slice(0, eqIdx).trim();
+      if (only && !only.includes(key)) continue;
       let val = trimmed.slice(eqIdx + 1).trim();
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
@@ -447,7 +545,16 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   );
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride, contentAge) {
+export async function writeFreshnessMetadata(
+  domain,
+  resource,
+  count,
+  source,
+  ttlSeconds,
+  fetchedAtOverride,
+  contentAge,
+  metaPatch,
+) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
@@ -467,6 +574,21 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
     meta.newestItemAt = contentAge.newestItemAt ?? null;
     meta.oldestItemAt = contentAge.oldestItemAt ?? null;
     meta.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
+  if (metaPatch && typeof metaPatch === 'object') {
+    // Hooks may add bounded diagnostics, but the shared writer owns freshness
+    // and record-count truth. Never let a hook silently re-anchor those fields.
+    const reservedFields = new Set([
+      'fetchedAt',
+      'recordCount',
+      'sourceVersion',
+      'newestItemAt',
+      'oldestItemAt',
+      'maxContentAgeMin',
+    ]);
+    for (const [key, value] of Object.entries(metaPatch)) {
+      if (!reservedFields.has(key)) meta[key] = value;
+    }
   }
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
@@ -807,24 +929,35 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
   return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
-// Returns true only when EVERY requested key was actually extended (EXPIRE
-// returned 1 for all). Returns false on missing creds, network/HTTP failure,
-// or any key that was missing/expired (EXPIRE no-op). Existing fire-and-forget
-// callers ignore the return; a caller that treats a successful extension as
-// proof the data is still alive (e.g. a market-closed skip that then reports
-// fresh) MUST gate on this boolean and fall back to a real fetch on false —
-// otherwise a silent extension failure looks green while the key expires.
-export async function extendExistingTtl(keys, ttlSeconds = 600) {
+// Detailed counterpart to extendExistingTtl. Results stay aligned to the input
+// keys so callers that publish per-key health can distinguish a confirmed
+// EXPIRE no-op from a successful extension and from a pipeline result that
+// could not be confirmed at all.
+export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
+  const requestedKeys = Array.isArray(keys) ? keys : [];
+  if (requestedKeys.length === 0) {
+    return {
+      allExtended: true,
+      extendedKeys: [],
+      missingKeys: [],
+      unconfirmedKeys: [],
+    };
+  }
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
     console.error('  Cannot extend TTL: missing Redis credentials');
-    return false;
+    return {
+      allExtended: false,
+      extendedKeys: [],
+      missingKeys: [],
+      unconfirmedKeys: [...requestedKeys],
+    };
   }
   try {
     // EXPIRE only refreshes TTL when key already exists (returns 0 on missing keys — no-op).
     // Check each result: keys that returned 0 are missing/expired and cannot be extended.
-    const pipeline = keys.map(k => ['EXPIRE', k, ttlSeconds]);
+    const pipeline = requestedKeys.map(k => ['EXPIRE', k, ttlSeconds]);
     // Retry the pipeline call on transient Redis failures. A successful response
     // with some EXPIRE no-ops is a real missing-key condition, NOT a transient
     // error, so we only retry HTTP/network failures and return false for no-ops.
@@ -848,15 +981,48 @@ export async function extendExistingTtl(keys, ttlSeconds = 600) {
       return r;
     }, 2, 1000);
     const results = await resp.json();
-    const extended = results.filter(r => r?.result === 1).length;
-    const missing = results.filter(r => r?.result === 0).length;
-    if (extended > 0) console.log(`  Extended TTL on ${extended} key(s) (${ttlSeconds}s)`);
-    if (missing > 0) console.warn(`  WARNING: ${missing} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
-    return missing === 0 && extended === keys.length;
+    const extendedKeys = [];
+    const missingKeys = [];
+    const unconfirmedKeys = [];
+    for (let i = 0; i < requestedKeys.length; i++) {
+      if (results?.[i]?.result === 1) {
+        extendedKeys.push(requestedKeys[i]);
+      } else if (results?.[i]?.result === 0) {
+        missingKeys.push(requestedKeys[i]);
+      } else {
+        unconfirmedKeys.push(requestedKeys[i]);
+      }
+    }
+    if (extendedKeys.length > 0) console.log(`  Extended TTL on ${extendedKeys.length} key(s) (${ttlSeconds}s)`);
+    if (missingKeys.length > 0) console.warn(`  WARNING: ${missingKeys.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    if (unconfirmedKeys.length > 0) console.warn(`  WARNING: TTL extension result was unconfirmed for ${unconfirmedKeys.length} key(s)`);
+    return {
+      allExtended: extendedKeys.length === requestedKeys.length,
+      extendedKeys,
+      missingKeys,
+      unconfirmedKeys,
+    };
   } catch (e) {
     console.error(`  TTL extension failed: ${e.message}`);
-    return false;
+    return {
+      allExtended: false,
+      extendedKeys: [],
+      missingKeys: [],
+      unconfirmedKeys: [...requestedKeys],
+    };
   }
+}
+
+// Returns true only when EVERY requested key was actually extended (EXPIRE
+// returned 1 for all). Returns false on missing creds, network/HTTP failure,
+// or any key that was missing/expired (EXPIRE no-op). Existing fire-and-forget
+// callers ignore the return; a caller that treats a successful extension as
+// proof the data is still alive (e.g. a market-closed skip that then reports
+// fresh) MUST gate on this boolean and fall back to a real fetch on false —
+// otherwise a silent extension failure looks green while the key expires.
+export async function extendExistingTtl(keys, ttlSeconds = 600) {
+  const result = await extendExistingTtlDetailed(keys, ttlSeconds);
+  return result.allExtended;
 }
 
 export function sleep(ms) {
@@ -866,8 +1032,8 @@ export function sleep(ms) {
 // ─── Proxy helpers for sources that block Railway container IPs ───
 const { resolveProxyString, resolveProxyStringConnect } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
-export function resolveProxy() {
-  return resolveProxyString();
+export function resolveProxy(raw = process.env.PROXY_URL || '') {
+  return resolveProxyString(raw);
 }
 
 // For HTTP CONNECT tunneling (httpsProxyFetchJson); keeps gate.decodo.com, not us.decodo.com.
@@ -889,8 +1055,14 @@ export function redactProxyCredentials(text) {
 //
 // `exec` is an injection seam for tests ONLY — the credential scrubbing below lives in a
 // catch around execFileSync, and there is no other way to drive that branch deterministically.
-export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } = {}) {
-  const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
+export function curlFetch(
+  url,
+  proxyAuth,
+  headers = {},
+  { exec = execFileSync, timeoutMs = 15_000 } = {},
+) {
+  const curlTimeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const args = ['-sS', '--compressed', '--max-time', String(curlTimeoutSeconds), '-L'];
   if (proxyAuth) {
     const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
     args.push('-x', proxyUrl);
@@ -900,7 +1072,11 @@ export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } 
   args.push(url);
   let raw;
   try {
-    raw = exec('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+    raw = exec('curl', args, {
+      encoding: 'utf8',
+      timeout: timeoutMs + 5_000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
   } catch (err) {
     // SECURITY: when curl itself exits non-zero (SSL_ERROR_SYSCALL, "CONNECT tunnel
     // failed", DNS), execFileSync builds an Error whose message is the ENTIRE argv —
@@ -910,12 +1086,10 @@ export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } 
     // with curl's own stderr, which names the failure without echoing the command.
     //
     // Dropping `.status` is load-bearing, not incidental: execFileSync sets it to curl's
-    // EXIT CODE (35, 56, 7…). _gdelt-fetch.mjs discriminates "upstream returned non-2xx"
-    // from "network/curl failure" purely on `typeof status === 'number'`, so leaking the
-    // exit code through made it read curl exit 35 as an HTTP status, find it absent from
-    // RETRYABLE_STATUSES, and refuse to retry the proxy — defeating the Decodo per-attempt
-    // IP rotation on exactly the TLS tears it exists to survive. Only a genuine HTTP
-    // status may carry `.status`.
+    // EXIT CODE (35, 56, 7…). _gdelt-fetch.mjs uses `.status` to distinguish upstream
+    // HTTP responses from transport failures, so leaking the exit code would classify
+    // curl exit 35 as an HTTP response and publish the wrong route diagnostic. Only a
+    // genuine HTTP status may carry `.status`.
     const stderr = redactProxyCredentials(err?.stderr || '').trim().split('\n').filter(Boolean).pop();
     throw Object.assign(
       new Error(`curl failed: ${stderr || redactProxyCredentials(err?.message) || 'unknown error'}`),
@@ -1563,6 +1737,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     preserveKeys = [],
     beforePublish,
     afterPublish,
+    afterValidationSkip,
     afterPreservedValidationSkip,
     afterFreshness,
     publishTransform,
@@ -1846,6 +2021,20 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       const durationMs = Date.now() - startMs;
       const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
       const strictFailure = Boolean(opts.emptyDataIsFailure);
+      const validationSkipContext = {
+        canonicalKey,
+        ttlSeconds,
+        recordCount: contractRecordCount,
+        runId,
+        preservationSucceeded: preserved,
+      };
+      // Some rejected snapshots carry failure evidence that must survive even
+      // when there is no complete last-good cohort to preserve. Keep this hook
+      // in the publish phase so its persistence cannot make withRetry(fetchFn)
+      // repeat upstream source requests.
+      if (!strictFailure && afterValidationSkip) {
+        await afterValidationSkip(data, validationSkipContext);
+      }
       if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
         // empty data as a real upstream failure. Do NOT refresh seed-meta —
@@ -1901,12 +2090,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         }
       }
       if (!strictFailure && preserved && afterPreservedValidationSkip) {
-        await afterPreservedValidationSkip(data, {
-          canonicalKey,
-          ttlSeconds,
-          recordCount: contractRecordCount,
-          runId,
-        });
+        await afterPreservedValidationSkip(data, validationSkipContext);
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
@@ -2009,9 +2193,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       }
     }
 
-    if (afterPublish) {
-      await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
-    }
+    const afterPublishResult = afterPublish
+      ? await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId })
+      : null;
 
     // Mirror content-age fields into seed-meta when the seeder opted in.
     //
@@ -2036,6 +2220,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,
+      afterPublishResult?.freshnessMetaPatch,
     );
     if (afterFreshness) {
       if (meta == null) {
@@ -2051,7 +2236,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     }
 
     const durationMs = Date.now() - startMs;
-    logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });
+    const completionState =
+      typeof afterPublishResult?.completionState === 'string'
+      && afterPublishResult.completionState.trim().length > 0
+        ? afterPublishResult.completionState
+        : (contractState || 'LEGACY');
+    logSeedResult(domain, recordCount, durationMs, {
+      payloadBytes,
+      contractMode,
+      state: completionState,
+    });
 
     // Verify (best-effort: write already succeeded, don't fail the job on transient read issues)
     let verified = false;

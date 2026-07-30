@@ -1576,6 +1576,16 @@ const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KE
 const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const UCDP_MAX_PAGES = 6;
+// GED Candidate discovery/fetch/merge is shared with scripts/seed-ucdp-events.mjs
+// so the two UCDP writers cannot drift (they already had, on discovery
+// concurrency and probe timeout).
+const {
+  CANDIDATE_MAX_PAGES: UCDP_CANDIDATE_MAX_PAGES,
+  discoverCandidateVersion: ucdpDiscoverCandidateVersion,
+  fetchCandidatePages: ucdpFetchCandidatePages,
+  capWithAnnualFloor: ucdpCapWithAnnualFloor,
+  candidateContentMeta: ucdpCandidateContentMeta,
+} = require('./shared/ucdp-candidate.cjs');
 const UCDP_MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
 // Retained Redis input window. CII v8's classifier accepts a 2-year window, but
 // this Redis writer fetches the newest pages only and keeps at most UCDP_MAX_EVENTS
@@ -1660,6 +1670,13 @@ async function ucdpDiscoverVersion() {
   return valid[0];
 }
 
+// UCDP also publishes GED Candidate releases monthly ('${year}.0.N'), with "not
+// more than a month's lag globally" per UCDP's docs — unlike the ANNUAL release
+// above, which is finalized once a year and lags ~7 months behind by the time
+// the next one lands. Discovery, paging and merge semantics live in
+// scripts/shared/ucdp-candidate.cjs (required above) so this relay and the
+// backup cron stay byte-identical in behaviour; only the transport differs.
+
 async function seedUcdpEvents() {
   try {
     const { version, page0 } = await ucdpDiscoverVersion();
@@ -1700,7 +1717,50 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const filtered = allEvents.filter((e) => {
+    // Merge the newest GED Candidate release on top of the annual base (ADD,
+    // never replace — a candidate alone is ~1.8k events vs the annual's ~418k).
+    // The annual base is already in allEvents; append candidate events and dedupe
+    // by id so a candidate's revision of an event also present in the annual
+    // release wins (it's the fresher record).
+    let candidateVersion = null;
+    let candidateComplete = false;
+    const candidateIds = new Set();
+    try {
+      const candidate = await ucdpDiscoverCandidateVersion(ucdpFetchPage);
+      if (candidate) {
+        const merged = await ucdpFetchCandidatePages(ucdpFetchPage, candidate);
+        // Only claim the candidate version once the release was fetched whole.
+        // A partial fetch published as `26.0.6` is indistinguishable from a
+        // complete one downstream, which is how a silently degraded merge would
+        // look healthy.
+        candidateComplete = merged.complete && !merged.truncated;
+        candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
+        if (merged.failedPages > 0) {
+          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+        }
+        if (merged.truncated) {
+          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.totalPages} pages exceeds cap ${UCDP_CANDIDATE_MAX_PAGES} — ${merged.totalPages - UCDP_CANDIDATE_MAX_PAGES} page(s) dropped`);
+        }
+        for (const e of merged.events) {
+          if (e?.id != null) candidateIds.add(String(e.id));
+          const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+          if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+        }
+        allEvents.push(...merged.events);
+        console.log(`[UCDP] Merged candidate ${candidateVersion}: +${merged.events.length} events`);
+      }
+    } catch (err) {
+      console.warn(`[UCDP] Candidate merge skipped: ${err.message || err}`);
+    }
+
+    const byId = new Map();
+    for (const e of allEvents) {
+      const id = e?.id != null ? String(e.id) : '';
+      byId.set(id || Symbol(id), e);
+    }
+    const dedupedEvents = [...byId.values()];
+
+    const filtered = dedupedEvents.filter((e) => {
       if (!Number.isFinite(latestMs)) return true;
       const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
       return Number.isFinite(ms) && ms >= (latestMs - UCDP_TRAILING_WINDOW_MS);
@@ -1719,20 +1779,38 @@ async function seedUcdpEvents() {
       deathsHigh: Number(e.high) || 0,
       violenceType: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'UCDP_VIOLENCE_TYPE_UNSPECIFIED',
       sourceOriginal: (e.source_original || '').substring(0, 300),
-    })).sort((a, b) => b.dateStart - a.dateStart).slice(0, UCDP_MAX_EVENTS);
+    })).sort((a, b) => b.dateStart - a.dateStart);
+
+    // Cap newest-first, but reserve slots for the annual base. Every candidate
+    // event is newer than every annual one, so a plain slice hands the whole
+    // payload to the candidate as soon as it outgrows the cap — evicting the
+    // history get-risk-scores.ts needs for per-country conflict floors.
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
-    if (mapped.length === 0) {
+    if (capped.length === 0) {
       console.warn(`[UCDP] 0 events after filtering (failed pages: ${failedPages}), extending existing key TTL`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       return;
     }
 
-    const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
-    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: mapped.length, sourceVersion: 'ucdp' });
-    await upstashSet('seed-meta:conflict:ucdp-events', { fetchedAt: Date.now(), recordCount: mapped.length }, 604800);
-    console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
-    const newConflicts = mapped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
+    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length };
+    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });
+    // Content-age trio: api/health.js treats the presence of maxContentAgeMin as
+    // the opt-in signal and reports STALE_CONTENT once the newest event outruns
+    // the budget. Without it a silently dead candidate merge is invisible —
+    // fetchedAt stays fresh and recordCount stays full while the data itself
+    // falls back to the annual release's ~7-month lag.
+    await upstashSet('seed-meta:conflict:ucdp-events', {
+      fetchedAt: Date.now(),
+      recordCount: capped.length,
+      candidateVersion,
+      candidateComplete,
+      annualFailedPages: failedPages,
+      ...ucdpCandidateContentMeta(capped),
+    }, 604800);
+    console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
       const parties = e.sideA && e.sideB ? `${e.sideA.slice(0, 40)} vs ${e.sideB.slice(0, 40)}` : e.sideA || e.sideB || 'Unknown parties';
@@ -5930,10 +6008,12 @@ function _redditEpochSeconds(v) {
 // The Reddit hosts pass raw_json=1, which un-escapes &amp; &lt; &gt; in text
 // fields. A vendor response may still be HTML-escaped, so decode the few entities
 // Reddit emits to keep panel titles identical across paths.
+// &amp; must be replaced LAST: this set has no numeric refs whose output could
+// re-form an entity, so amp-last decodes exactly one level (&amp;lt; stays &lt;).
 function _decodeRedditEntities(s) {
   if (typeof s !== 'string') return s;
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 }
 
 // Normalize a ScrapeCreators post so its shape matches the OAuth/public paths

@@ -132,7 +132,7 @@ describe('China official policy adapters (#5576)', () => {
     assert.match(result.documents[0].originalText, /依法保护个人信息/);
   });
 
-  it('substitutes invalid numeric HTML entities instead of failing an agency parse', () => {
+  it('preserves invalid numeric HTML entities instead of failing or welding text', () => {
     const parsed = parsePolicyDocumentHtml([
       '<html><head>',
       '<meta name="ArticleTitle" content="市场监管公告&#1114112;">',
@@ -140,8 +140,8 @@ describe('China official policy adapters (#5576)', () => {
       '</head><body><div class="article-content">正文&#x110000;内容</div></body></html>',
     ].join(''));
 
-    assert.equal(parsed.titleOriginal, '市场监管公告�');
-    assert.equal(parsed.originalText, '正文�内容');
+    assert.equal(parsed.titleOriginal, '市场监管公告&#1114112;');
+    assert.equal(parsed.originalText, '正文&#x110000;内容');
   });
 
   it('keeps nested article containers intact when extracting policy text', () => {

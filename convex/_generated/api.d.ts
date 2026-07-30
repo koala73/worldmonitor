@@ -32,6 +32,7 @@ import type * as emailSuppressions from "../emailSuppressions.js";
 import type * as entitlements from "../entitlements.js";
 import type * as followedCountries from "../followedCountries.js";
 import type * as http from "../http.js";
+import type * as intelHistory from "../intelHistory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_dodo from "../lib/dodo.js";
 import type * as lib_emailDomain from "../lib/emailDomain.js";
@@ -89,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   entitlements: typeof entitlements;
   followedCountries: typeof followedCountries;
   http: typeof http;
+  intelHistory: typeof intelHistory;
   "lib/auth": typeof lib_auth;
   "lib/dodo": typeof lib_dodo;
   "lib/emailDomain": typeof lib_emailDomain;

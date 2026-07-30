@@ -41,6 +41,16 @@ import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
 import { showLayerWarning } from '@/utils/layer-warning';
+import { isMobileDevice } from '@/utils';
+import { setGlobeMarkerLoad } from '@/bootstrap/globe-marker-probe';
+import {
+  GLOBE_MARKER_BUDGET_DESKTOP,
+  GLOBE_MARKER_BUDGET_MOBILE,
+  proximityRank,
+  selectGlobeMarkers,
+  type GlobeLayerTruncation,
+  type GlobeMarkerGroup,
+} from '@/utils/globe-marker-budget';
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVesselCluster, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
@@ -553,6 +563,11 @@ export class GlobeMap {
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
+  /** Layers the marker budget is currently withholding markers from (#5368). */
+  private markerTruncation: Record<string, GlobeLayerTruncation> = {};
+  /** HTML markers handed to globe.gl on the last flush — the per-frame cost driver. */
+  private renderedMarkerCount = 0;
+  private markerBudgetProfile: 'mobile' | 'desktop' = 'desktop';
   private webcamMarkerMode: string = (() => {
     try {
       return localStorage.getItem('wm-webcam-marker-mode') || 'icon';
@@ -699,6 +714,11 @@ export class GlobeMap {
     controls.enableDamping = !desktop;
 
     this.controlsEndHandler = () => {
+      // Truncated layers are ranked by nearness to the camera, so the visible
+      // subset is only correct for the POV it was computed at. Re-select when
+      // the camera settles — that is what makes "rotate or zoom to bring others
+      // in" true rather than a promise the badge cannot keep (#5368).
+      this.reselectMarkersForViewport();
       if (!this.layers.satellites) return;
       if (this.imageryFetchTimer) clearTimeout(this.imageryFetchTimer);
       this.imageryFetchTimer = setTimeout(() => this.fetchImageryForViewport(), 800);
@@ -2042,6 +2062,8 @@ export class GlobeMap {
     }, { passive: false });
 
     this.layerTogglesEl = el;
+    // The panel usually mounts after the first flush, so replay what that flush withheld.
+    this.updateLayerTruncationLabels();
   }
 
   private showLayerExplanation(layer: keyof MapLayers): void {
@@ -2099,63 +2121,115 @@ export class GlobeMap {
     if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
     this.wakeGlobe();
 
-    const markers: GlobeMarker[] = [];
-    if (this.layers.hotspots) markers.push(...this.hotspots);
-    if (this.layers.conflicts) markers.push(...this.conflictZoneMarkers);
-    if (this.layers.bases) markers.push(...this.milBaseMarkers);
-    if (this.layers.nuclear) markers.push(...this.nuclearSiteMarkers);
-    if (this.layers.irradiators) markers.push(...this.irradiatorSiteMarkers);
-    if (this.layers.spaceports) markers.push(...this.spaceportSiteMarkers);
-    if (this.layers.military) {
-      markers.push(...this.flights);
-      markers.push(...this.vessels);
-      markers.push(...this.clusterMarkers);
-    }
-    if (this.layers.weather) markers.push(...this.weatherMarkers);
-    if (this.layers.natural) {
-      markers.push(...this.naturalMarkers);
-      markers.push(...this.earthquakeMarkers);
-    }
-    if (this.layers.radiationWatch) markers.push(...this.radiationMarkers);
-    if (this.layers.economic) markers.push(...this.economicMarkers);
-    if (this.layers.datacenters) markers.push(...this.datacenterMarkers);
-    if (this.layers.waterways) markers.push(...this.waterwayMarkers);
-    if (this.layers.minerals) markers.push(...this.mineralMarkers);
-    if (this.layers.flights) {
-      markers.push(...this.flightDelayMarkers);
-      markers.push(...this.notamRingMarkers);
-    }
-    if (this.layers.ais) markers.push(...this.aisMarkers);
-    if (this.layers.iranAttacks) markers.push(...this.iranMarkers);
-    if (this.layers.outages) {
-      markers.push(...this.outageMarkers);
-      markers.push(...this.trafficAnomalyMarkers);
-      markers.push(...this.ddosMarkers);
-    }
-    if (this.layers.cyberThreats) markers.push(...this.cyberMarkers);
-    if (this.layers.fires) markers.push(...this.fireMarkers);
-    if (this.layers.protests) markers.push(...this.protestMarkers);
-    if (this.layers.ucdpEvents) markers.push(...this.ucdpMarkers);
-    if (this.layers.displacement) markers.push(...this.displacementMarkers);
-    if (this.layers.climate) markers.push(...this.climateMarkers);
-    if (this.layers.gpsJamming) markers.push(...this.gpsJamMarkers);
-    if (this.layers.satellites) {
-      markers.push(...this.satelliteMarkers);
-      markers.push(...this.satelliteFootprintMarkers);
-      markers.push(...this.imagerySceneMarkers);
-    }
-    if (this.layers.techEvents) markers.push(...this.techMarkers);
-    if (this.layers.cables) {
-      markers.push(...this.cableAdvisoryMarkers);
-      markers.push(...this.repairShipMarkers);
-    }
-    if (this.layers.webcams) markers.push(...this.webcamMarkers);
-    markers.push(...this.newsLocationMarkers);
-    markers.push(...this.flashMarkers);
+    // Grouped rather than concatenated so the budget can trim the feeds that are
+    // actually oversized (#5368). Every marker here becomes a DOM node that
+    // CSS2DRenderer repositions on every frame, so the total has to be bounded.
+    const groups: GlobeMarkerGroup<GlobeMarker>[] = [];
+    const add = (
+      layer: string,
+      markers: readonly GlobeMarker[],
+      // Only the tuning knobs — spreading a full Partial would let a caller
+      // silently overwrite the `layer`/`markers` this function just set.
+      extra: Pick<Partial<GlobeMarkerGroup<GlobeMarker>>, 'rank' | 'exempt'> = {},
+    ): void => { if (markers.length) groups.push({ layer, markers, ...extra }); };
 
+    if (this.layers.hotspots) add('hotspots', this.hotspots, { rank: m => (m._kind === 'hotspot' ? m.escalationScore : 0) });
+    if (this.layers.conflicts) add('conflicts', this.conflictZoneMarkers);
+    if (this.layers.bases) add('bases', this.milBaseMarkers);
+    if (this.layers.nuclear) add('nuclear', this.nuclearSiteMarkers);
+    if (this.layers.irradiators) add('irradiators', this.irradiatorSiteMarkers);
+    if (this.layers.spaceports) add('spaceports', this.spaceportSiteMarkers);
+    if (this.layers.military) {
+      add('military', this.flights);
+      // Carriers first: the AIS feed is the largest on the globe (1,526 markers
+      // measured on production) and is the one most likely to be trimmed.
+      add('military', this.vessels, { rank: m => (m._kind === 'vessel' && m.type === 'carrier' ? 1 : 0) });
+      add('military', this.clusterMarkers);
+    }
+    if (this.layers.weather) add('weather', this.weatherMarkers);
+    if (this.layers.natural) {
+      add('natural', this.naturalMarkers);
+      add('natural', this.earthquakeMarkers, { rank: m => (m._kind === 'earthquake' ? m.magnitude : 0) });
+    }
+    if (this.layers.radiationWatch) add('radiationWatch', this.radiationMarkers);
+    if (this.layers.economic) add('economic', this.economicMarkers);
+    if (this.layers.datacenters) add('datacenters', this.datacenterMarkers);
+    if (this.layers.waterways) add('waterways', this.waterwayMarkers);
+    if (this.layers.minerals) add('minerals', this.mineralMarkers);
+    if (this.layers.flights) {
+      add('flights', this.flightDelayMarkers);
+      add('flights', this.notamRingMarkers);
+    }
+    if (this.layers.ais) add('ais', this.aisMarkers);
+    if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
+    if (this.layers.outages) {
+      add('outages', this.outageMarkers);
+      add('outages', this.trafficAnomalyMarkers);
+      add('outages', this.ddosMarkers);
+    }
+    if (this.layers.cyberThreats) add('cyberThreats', this.cyberMarkers);
+    if (this.layers.fires) add('fires', this.fireMarkers, { rank: m => (m._kind === 'fire' ? m.brightness : 0) });
+    if (this.layers.protests) add('protests', this.protestMarkers);
+    if (this.layers.ucdpEvents) add('ucdpEvents', this.ucdpMarkers, { rank: m => (m._kind === 'ucdp' ? m.deaths : 0) });
+    if (this.layers.displacement) add('displacement', this.displacementMarkers);
+    if (this.layers.climate) add('climate', this.climateMarkers);
+    if (this.layers.gpsJamming) add('gpsJamming', this.gpsJamMarkers);
+    if (this.layers.satellites) {
+      add('satellites', this.satelliteMarkers);
+      add('satellites', this.satelliteFootprintMarkers);
+      add('satellites', this.imagerySceneMarkers);
+    }
+    if (this.layers.techEvents) add('techEvents', this.techMarkers);
+    if (this.layers.cables) {
+      add('cables', this.cableAdvisoryMarkers);
+      add('cables', this.repairShipMarkers);
+    }
+    if (this.layers.webcams) add('webcams', this.webcamMarkers);
+    // Exempt like flash: `news` has no layer-toggle row, so a truncation here
+    // would have nowhere to be disclosed. It was ungated before this change too.
+    add('news', this.newsLocationMarkers, { exempt: true });
+    // Flash markers are the "jump to this location" affordance — dropping one
+    // would break navigation, and there are only ever a handful.
+    add('flash', this.flashMarkers, { exempt: true });
+
+    // Layers with no severity signal fall back to "nearest what the camera is
+    // looking at" rather than raw feed order — see proximityRank. Without this a
+    // capped nuclear layer would drop whichever sites sort last alphabetically.
+    const pov = this.globe.pointOfView();
+    const nearestFirst = proximityRank<GlobeMarker>(
+      { lat: pov?.lat ?? 0, lng: pov?.lng ?? 0 },
+      m => ({ lat: m._lat, lng: m._lng }),
+    );
+    for (const group of groups) {
+      if (group.exempt) continue;
+      // Unranked layers rank by nearness outright; ranked ones use it to break
+      // ties, because a coarse severity rank (carrier-or-not leaves ~1,500
+      // vessels on one score) would otherwise fall back to raw feed order.
+      if (group.rank) group.tieBreak = nearestFirst;
+      else group.rank = nearestFirst;
+    }
+
+    const budget = isMobileDevice() ? GLOBE_MARKER_BUDGET_MOBILE : GLOBE_MARKER_BUDGET_DESKTOP;
+    const { markers, truncated } = selectGlobeMarkers(groups, budget);
     try {
       this.globe.htmlElementsData(markers);
-    } catch (err) { if (import.meta.env.DEV) console.warn('[GlobeMap] flush error', err); }
+    } catch (err) {
+      // The globe kept its previous markers, so leave the badges and the probe
+      // describing what is actually on screen rather than what we intended.
+      if (import.meta.env.DEV) console.warn('[GlobeMap] flush error', err);
+      return;
+    }
+
+    this.markerTruncation = truncated;
+    this.renderedMarkerCount = markers.length;
+    this.markerBudgetProfile = budget === GLOBE_MARKER_BUDGET_MOBILE ? 'mobile' : 'desktop';
+    this.updateLayerTruncationLabels();
+    setGlobeMarkerLoad({
+      rendered: markers.length,
+      truncated,
+      activeLayerCount: Object.values(this.layers).filter(Boolean).length,
+      budgetProfile: this.markerBudgetProfile,
+    });
   }
 
   private flushArcs(): void {
@@ -2743,6 +2817,55 @@ export class GlobeMap {
   private layerWarningShown = false;
   private lastActiveLayerCount = 0;
 
+  /**
+   * Shows "shown/total" beside any layer the marker budget is trimming (#5368).
+   * This is a monitoring product: quietly dropping 2,000 conflict events off the
+   * globe would misrepresent the data, so the withholding is stated in the panel
+   * that controls it.
+   */
+  private updateLayerTruncationLabels(): void {
+    const root = this.layerTogglesEl;
+    if (!root) return;
+    for (const row of Array.from(root.querySelectorAll<HTMLElement>('.layer-toggle-row'))) {
+      const layer = row.getAttribute('data-layer');
+      const counts = layer ? this.markerTruncation[layer] : undefined;
+      const existing = row.querySelector<HTMLElement>('.layer-truncation-count');
+      if (!counts) { existing?.remove(); continue; }
+      const badge = existing ?? document.createElement('span');
+      if (!existing) {
+        badge.className = 'layer-truncation-count';
+        // Sibling of the <label>, not a child: inside it, every click on the
+        // badge would toggle the layer off. `.layer-explain-btn` sits outside
+        // the label for the same reason.
+        row.appendChild(badge);
+      }
+      badge.textContent = `${counts.shown}/${counts.total}`;
+      // Untranslated literal: a new i18n key is a ~29-file change across locales,
+      // and the badge itself is numeric. Real key tracked as follow-up.
+      // Says "nearest this view" rather than "highest priority" because that is
+      // what the ranking actually does for layers with no severity of their own.
+      badge.title = `Showing ${counts.shown} of ${counts.total} markers — the most significant, and those nearest the current view. The globe caps markers per layer to keep interaction responsive; rotate or zoom to bring others in.`;
+    }
+  }
+
+  /**
+   * Re-run marker selection after the camera settles, so proximity-ranked
+   * layers follow the view (#5368).
+   *
+   * Only when something is actually being withheld: with nothing truncated the
+   * selection is view-independent and a re-flush would churn DOM for no visible
+   * change, on the very path this feature exists to make cheaper.
+   */
+  private reselectMarkersForViewport(): void {
+    if (!Object.keys(this.markerTruncation).length) return;
+    this.flushMarkers();
+  }
+
+  /** Markers currently handed to globe.gl, and what the budget withheld (#5368). */
+  public getMarkerBudgetState(): { rendered: number; truncated: Record<string, GlobeLayerTruncation> } {
+    return { rendered: this.renderedMarkerCount, truncated: this.markerTruncation };
+  }
+
   private enforceLayerLimit(): void {
     if (!this.layerTogglesEl) return;
     const WARN_THRESHOLD = 13;
@@ -2786,6 +2909,9 @@ export class GlobeMap {
       else                altitude = 1.5;
     }
     this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, SET_CENTER_ROTATION_MS);
+    // Programmatic moves emit no controls 'end' event, so re-select once the
+    // transition has landed on the new POV.
+    setTimeout(() => this.reselectMarkersForViewport(), SET_CENTER_ROTATION_MS + 50);
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
@@ -2804,6 +2930,7 @@ export class GlobeMap {
       else                altitude = 1.5;
     }
     this.globe.pointOfView({ lat, lng: lon, altitude }, SET_CENTER_ROTATION_MS);
+    setTimeout(() => this.reselectMarkersForViewport(), SET_CENTER_ROTATION_MS + 50);
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -3736,6 +3863,8 @@ export class GlobeMap {
     this.unsubscribeGlobeTexture = null;
     this.unsubscribeVisualPreset?.();
     this.unsubscribeVisualPreset = null;
+    // Stop attributing INP events to a globe that is no longer mounted (#5368).
+    setGlobeMarkerLoad(null);
     if (this.visibilityHandler) {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
       this.visibilityHandler = null;

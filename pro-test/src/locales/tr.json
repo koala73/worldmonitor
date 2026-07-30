@@ -282,7 +282,7 @@
     "q3": "Enterprise kim için?",
     "a3": "Enterprise, paylaşımlı kullanıma, API'lara, entegrasyonlara, deployment seçeneklerine ve doğrudan desteğe ihtiyacı olan ekipler içindir.",
     "q4": "Pro ile başlayıp daha sonra yükseltebilir miyim?",
-    "a4": "Evet. Pro kişisel kullanım içindir. Pro Business (69,99 $/ay) ticari lisans, veri dışa aktarımı, 25 pano ve günde 250 MCP çağrısı ekler. API planları programlı erişim kapsamına alır ve Enterprise özel dağıtımları kapsamına alır. Yükseltmeler faturalandırma portalı üzerinden yapılır — uygulama adımları size kılavuzluk eder.",
+    "a4": "Evet. Pro kişisel kullanım içindir. Pro Business (49,99 $/ay) ticari lisans, veri dışa aktarımı, 25 pano ve günde 250 MCP çağrısı ekler. API planları programlı erişim kapsamına alır ve Enterprise özel dağıtımları kapsamına alır. Yükseltmeler faturalandırma portalı üzerinden yapılır — uygulama adımları size kılavuzluk eder.",
     "q5": "Bu sadece çatışma izleme için mi?",
     "a5": "Hayır. World Monitor öncelikle hisse piyasaları, makroekonomi, jeopolitik analiz, enerji, altyapı ve daha fazlasını kapsayan küresel bir istihbarat platformudur. Çatışma takibi birçok yetenekten biridir — odak noktası değil.",
     "q6": "Neden temel platform ücretsiz?",
@@ -583,7 +583,7 @@
       "s10l": "Puanlanan sıcak noktalar",
       "s11v": "92",
       "s11l": "Borsalar & varlıklar",
-      "s12v": "42",
+      "s12v": "59",
       "s12l": "MCP araçları",
       "s13v": "154",
       "s13l": "⌘K komutları",
@@ -611,7 +611,7 @@
       "eyebrow": "İnşaatçılar & AI ajanları için",
       "title": "Canlı dünya istihbaratı üzerine inşa edin — herhangi bir yığında.",
       "sub": "Haritadaki her şey aynı zamanda bir API'dir. Claude üzerinde MCP ile entegre edin, REST uç noktalarını nereden de çağırın veya Python, Ruby, Go veya JavaScript için yerel istemci kurun — kodunuz eğitim verileri anılarından ziyade canlı veri ile araştırma yapar.",
-      "b1": "42 MCP aracı — risk skorları, darboğazlar, çatışmalar, pazarlar, özetler",
+      "b1": "59 MCP aracı — risk skorları, darboğazlar, çatışmalar, pazarlar, özetler",
       "b2": "Belgelenmiş REST API — 193 işlem, bir OpenAPI 3.1 spec, bir anahtar",
       "b3": "npm, PyPI, RubyGems ve Go'da resmi SDK'lar — sıfır bağımlılık, MCP-first",
       "b4": "Her çağrıda JMESPath projeksiyonu — ihtiyacınız olan alanları getirin",
@@ -620,7 +620,7 @@
       "termQuery": "Kızıl Deniz maruziyetimiz bu hafta kötüleşiyor mu?",
       "termAnswer": "Geçiş sayıları haftalık olarak azaldı; savaş riski katmanı yükseltildi; son 48 saatte iki yoğunluk anomalisi.",
       "termDocs": "Tam araç referansını görmek için →",
-      "promise": "Bir anahtar. 42 MCP aracı. Tam REST API'si. Dil-yerel istemciler."
+      "promise": "Bir anahtar. 59 MCP aracı. Tam REST API'si. Dil-yerel istemciler."
     },
     "pricing": {
       "eyebrow": "Erişim",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — 30+ canlı hizmette sohbet edin, alıntılarla birlikte",
       "proF2": "Senaryo motoru & Rota Gezgini — aksamaları başlamadan önce simüle edin",
       "proF3": "Kişisel AI özeti — günlük, günde iki kez veya haftalık olarak Slack, Telegram veya e-posta'ya",
-      "proF4": "MCP, REST API ve resmi SDK'lar — 42 araç tek bir anahtarın altında",
+      "proF4": "MCP, REST API ve resmi SDK'lar — 59 araç tek bir anahtarın altında",
       "proF5": "Kendi panelleriniz için özel widget oluşturucu",
       "cta": "Planları & fiyatlandırmayı görmek",
       "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 2 ay ücretsiz"
@@ -659,13 +659,15 @@
       "q6": "Uyarıya neden güvenmeliyim?",
       "a6": "Bölünmüş bir afiş yalnızca bağımsız kaynak türleri doğrulandığında harekete geçer — haber sınıflandırması, anahtar kelime hızı, sıcak nokta yoğunlaşması, askeri artışlar, resmi sirenler — deduplicated ve hız sınırlı. Daha az uyarı, gerçek olanlar.",
       "q7": "Claude veya GPT gibi AI ajanlar bunu kullanabilir mi?",
-      "a7": "Evet. World Monitor, 42 araçlı bir MCP sunucusu ile gelir, böylece Claude, GPT veya herhangi bir MCP uyumlu ajan canlı risk skorlarını, darboğaz durumunu, çatışmaları, pazarları ve özetleri sorgulayabilir — JMESPath projeksiyonu sayesinde ajanlar tam olarak ihtiyaç duydukları verileri alır.",
+      "a7": "Evet. World Monitor, 59 araçlı bir MCP sunucusu ile gelir, böylece Claude, GPT veya herhangi bir MCP uyumlu ajan canlı risk skorlarını, darboğaz durumunu, çatışmaları, pazarları ve özetleri sorgulayabilir — JMESPath projeksiyonu sayesinde ajanlar tam olarak ihtiyaç duydukları verileri alır.",
       "q8": "Hesaba ihtiyacım var mı?",
       "a8": "Hayır. Pano kaydolmadan anında çalışır. Bir hesap yalnızca Pro'ya yükselttikten sonra veya cihazlar arasında ayarları senkronize etmek istediğinizde önemlidir.",
       "q9": "Açık kaynaklı mı?",
       "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynaklı: kodu okuyun, kendi sunucunuzda barındırın veya üzerine kurun. Windows, macOS ve Linux için yerel masaüstü uygulamaları ve duvar ekranları için Android TV uygulaması da mevcuttur.",
       "q10": "World Monitor neden Palantir değil?",
-      "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün."
+      "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün.",
+      "q11": "Which World Monitor license do I need?",
+      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
       "title": "Dünya haritası sizi beklemez.",

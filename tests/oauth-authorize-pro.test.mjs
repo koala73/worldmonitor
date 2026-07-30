@@ -372,12 +372,50 @@ describe('authorizeProHandler — entitlement re-check', () => {
     assert.equal(issueCalls.length, 0);
   });
 
-  it('getEntitlements returns null (Convex blip) → HTML error; row NOT issued', async () => {
+  it('getEntitlements returns null (Convex CONFIRMED no row) → HTML error; row NOT issued', async () => {
+    // Was named "Convex blip", but a blip has not produced a null since the
+    // lookup-failure marker landed — it returns a verificationUnavailable row
+    // and takes the retryable path asserted in the #5622 block below. A null
+    // here now means one of two things, and only one of them is an upsell, so
+    // pin the backend as CONFIGURED to select the confirmed-no-row verdict.
+    // The unconfigured half has its own test.
     const grant = await makeGrantToken();
-    const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => null });
-    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-    assert.equal(res.status, 403);
-    assert.equal(issueCalls.length, 0);
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    process.env.CONVEX_SITE_URL = 'https://fake.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'fake-secret';
+    try {
+      const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => null });
+      const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+      assert.equal(res.status, 403);
+      assert.equal(issueCalls.length, 0);
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+
+  it('an UNCONFIGURED entitlement backend → retryable 503, row NOT issued', async () => {
+    // The consent page has no client-side entitlement snapshot to contradict a
+    // wrong verdict, so a missing env var must not render as "buy Pro" here.
+    const grant = await makeGrantToken();
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    delete process.env.CONVEX_SITE_URL;
+    delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    try {
+      const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => null });
+      const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+      assert.equal(res.status, 503);
+      assert.equal(issueCalls.length, 0, 'nothing may be issued to a caller we cannot verify');
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
   });
 
   it('reviewer round-2 P2: tier-1 with mcpAccess: false → HTML error; row NOT issued', async () => {

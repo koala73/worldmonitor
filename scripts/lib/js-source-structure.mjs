@@ -32,7 +32,7 @@ const REGEX_PRECEDING = new Set([
 // template mode — which has no newline guard — and swallows the rest of the
 // file, so a later container reads as missing.
 const REGEX_PRECEDING_KEYWORDS = new Set([
-  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'return', 'typeof', 'instanceof', 'in', 'new', 'delete', 'void',
   'throw', 'case', 'do', 'else', 'yield', 'await',
 ]);
 
@@ -54,7 +54,12 @@ function precedingWord(text, index) {
 function opensRegex(text, index, prevSignificant) {
   if (REGEX_PRECEDING.has(prevSignificant)) return true;
   if (!IDENTIFIER_CHAR.test(prevSignificant)) return false;
-  return REGEX_PRECEDING_KEYWORDS.has(precedingWord(text, index));
+  const word = precedingWord(text, index);
+  let wordStart = index;
+  while (wordStart > 0 && /\s/.test(text[wordStart - 1])) wordStart -= 1;
+  wordStart -= word.length;
+  if (text[wordStart - 1] === '.') return false;
+  return REGEX_PRECEDING_KEYWORDS.has(word);
 }
 
 /**

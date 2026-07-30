@@ -139,7 +139,7 @@ test('a missing completion marker keeps an explicit-freshness section due', asyn
   assert.equal(freshness, null);
 });
 
-function runBundleWith(sections, opts = {}) {
+function runBundleWith(sections, opts = {}, env = {}) {
   const runPath = join(SCRIPTS_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
   writeFileSync(
     runPath,
@@ -148,7 +148,10 @@ function runBundleWith(sections, opts = {}) {
     )}, ${JSON.stringify(opts)});\n`,
   );
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [runPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c) => { stdout += c; });
@@ -304,6 +307,45 @@ test('missing required environment configuration hard-fails only the affected se
       stderr,
       /section=REQUIRES_SECRET status=CONFIG_ERROR reason=missing required environment configuration: WM_BUNDLE_TEST_REQUIRED_SECRET/,
     );
+  } finally {
+    cleanup();
+  }
+});
+
+test('an any-of requiredEnv group is satisfied by either alternative', async () => {
+  // A section whose seeder resolves `SOURCE_SPECIFIC || SHARED` must be able to
+  // say so. Gating on the source-specific name alone made the runner stricter
+  // than the code it guards: it hard-failed Cross-Strait-Activity in an
+  // environment carrying only PROXY_URL, even though the adapter would have run
+  // undegraded (#5756 review).
+  const cleanup = writeFixture('_bundle-fixture-anyof.mjs', `console.log('anyof-ran');\n`);
+  try {
+    const section = {
+      label: 'ANY_OF',
+      script: '_bundle-fixture-anyof.mjs',
+      intervalMs: 1,
+      timeoutMs: 5000,
+      requiredEnv: [['WM_BUNDLE_TEST_SPECIFIC', 'WM_BUNDLE_TEST_SHARED']],
+    };
+
+    const viaFallback = await runBundleWith([section], {}, {
+      WM_BUNDLE_TEST_SHARED: 'http://shared:1',
+    });
+    assert.equal(viaFallback.code, 0, 'the shared alternative alone must satisfy the group');
+    assert.match(viaFallback.stdout, /\[ANY_OF\] anyof-ran/);
+
+    const viaSpecific = await runBundleWith([section], {}, {
+      WM_BUNDLE_TEST_SPECIFIC: 'http://specific:2',
+    });
+    assert.equal(viaSpecific.code, 0, 'the source-specific alternative alone must satisfy the group');
+
+    const neither = await runBundleWith([section]);
+    assert.equal(neither.code, 1, 'neither alternative set must still fail the section');
+    assert.match(
+      neither.stderr,
+      /section=ANY_OF status=CONFIG_ERROR reason=missing required environment configuration: WM_BUNDLE_TEST_SPECIFIC or WM_BUNDLE_TEST_SHARED/,
+    );
+    assert.doesNotMatch(neither.stdout, /anyof-ran/);
   } finally {
     cleanup();
   }

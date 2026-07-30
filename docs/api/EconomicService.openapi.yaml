@@ -555,7 +555,7 @@ paths:
                                 "generatedAt": "2026-01-15T12:00:00Z"
                                 "methodVersion": "example"
                                 "payloadJson": "example"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetChinaActivityNowcastResponse'
                 "400":
@@ -1339,7 +1339,7 @@ paths:
                                       "debtUsd": 1.5
                                       "gdpUsd": 1.5
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetNationalDebtResponse'
                 "400":
@@ -1636,7 +1636,7 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicCalendarResponse'
                 "400":
@@ -1884,7 +1884,7 @@ paths:
                                       "pair": "example"
                                       "rate": 75.25
                                 "seededAt": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                                 "updatedAt": "2026-01-15"
                             schema:
                                 $ref: '#/components/schemas/GetEcbFxRatesResponse'
@@ -1984,7 +1984,7 @@ paths:
                                             "unit": "example"
                                             "value": 1.5
                                 "seededAt": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEurostatCountryDataResponse'
                 "400":
@@ -2153,7 +2153,7 @@ paths:
                                         "exampleKey": 1.5
                                     "source": "example"
                                     "updatedAt": "2026-01-15"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEuYieldCurveResponse'
                 "400":
@@ -2324,7 +2324,7 @@ paths:
                                 "compositeScore": 42.5
                                 "label": "example"
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicStressResponse'
                 "400":
@@ -2510,7 +2510,7 @@ paths:
                                     "northAmerica":
                                         "avgDays": 7
                                         "netExporters": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetOilStocksAnalysisResponse'
                 "400":
@@ -2725,7 +2725,7 @@ paths:
                                       "measure": "example"
                                 "source": "example"
                                 "sourceUrl": "https://example.com/worldmonitor"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEnergyCrisisPoliciesResponse'
                 "400":

@@ -8,13 +8,14 @@ import { timingSafeIncludes } from '../_crypto.js';
 import { getClientIp } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-// @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
 import { resolvePlanDrivenMcpAllowance } from './quota';
 import {
   getBillingVerificationDenial,
   getEntitlements,
+  isEntitlementBackendConfigured,
 } from '../../server/_shared/entitlement-check';
+import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import type { BillingVerificationCode } from './billing-denial';
 import {
   buildInternalMcpHeaders,
@@ -342,8 +343,8 @@ export async function resolveAuthContext(
       }
       userKey = await deps.validateUserApiKey(candidateKey);
     } catch {
-      // Production validateUserApiKey fail-softs to null; a throw means the
-      // auth backend itself is unreachable — 503 mirrors the bearer path.
+      // validateUserApiKey throws UserApiKeyUnavailableError when Convex is
+      // unreachable/misconfigured — 503 mirrors the bearer path (not 401).
       return {
         ok: false,
         response: new Response(
@@ -455,24 +456,21 @@ async function checkMcpEntitlementGate(
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
     return rejected();
   }
-  const tier = ent?.features?.tier ?? 0;
-  const mcpAccess = ent?.features?.mcpAccess === true;
-  const validUntil = ent?.validUntil ?? 0;
   const passed = (): McpPreCheckResult => ({
     ok: true,
     mcpDailyLimit: resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay),
   });
-  // Renewal uncertainty on a stronger subscription must not revoke MCP when
-  // a separate, current fallback subscription still authorizes MCP access.
-  if (ent && tier >= 1 && mcpAccess && validUntil >= Date.now()) {
+  // Single-source Pro MCP decision. A current fallback entitlement still wins
+  // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
+  const gate = checkProMcpAccess(ent, Date.now(), {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
+  if (!gate) {
     return passed();
   }
   const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders);
   if (billingDenial) return { ok: false, response: billingDenial };
-  if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
-    return rejected();
-  }
-  return passed();
+  return rejected();
 }
 
 /**

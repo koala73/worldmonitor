@@ -159,6 +159,7 @@ describe('deferred Umami loader', () => {
       const analytics = await import('../src/services/analytics.ts');
       analytics.track('search-open', { source: 'desktop' });
       analytics.identifyUser('user_1', 'free', null, null);
+      analytics.identifyUser('user_1', 'pro', null, null);
       await analytics.initAnalytics();
 
       assert.equal(appendedScripts.length, 1);
@@ -186,7 +187,7 @@ describe('deferred Umami loader', () => {
 
       assert.deepEqual(calls, [
         { kind: 'track', name: 'search-open', data: { source: 'desktop' } },
-        { kind: 'identify', data: { userId: 'user_1', plan: 'free' } },
+        { kind: 'identify', data: { userId: 'user_1', plan: 'pro' } },
       ]);
     } finally {
       delete (globalThis as { window?: unknown }).window;

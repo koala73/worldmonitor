@@ -199,14 +199,16 @@ describe('resolvePremiumCallerIdentity marks an unverifiable entitlement (#5622)
     );
   });
 
-  it('a 4xx from Convex is a deploy defect, not a transient — no classification', async () => {
-    // getEntitlements returns a fail-closed null for a 4xx (bad shared secret,
-    // contract rejection). Retrying cannot fix a misconfiguration.
+  it('a 4xx from Convex is a lookup that did not happen — classified, never an upsell (#5619)', async () => {
+    // A 4xx (bad shared secret, contract rejection) is a deploy defect rather
+    // than a blip, and retrying cannot fix it. It is still not a statement
+    // about this account's plan, so it must not reach the wire as one.
     installFetchStub(async () => new Response('forbidden', { status: 403 }));
 
     const identity = await resolvePremiumCallerIdentity(markerRequest('user_convex_4xx'));
     assert.equal(identity.isPremium, false);
-    assert.equal(identity.billingDenial, undefined);
+    assert.equal(identity.billingDenial?.code, 'entitlement_verification_unavailable');
+    assert.equal(identity.unauthenticated, undefined, 'the caller was identified — only the lookup failed');
   });
 
   it('a genuine Pro row is still premium — the marker path did not disturb the allow case', async () => {
@@ -248,7 +250,12 @@ describe('resolvePremiumCallerIdentity marks an unverifiable entitlement (#5622)
 
     const identity = await resolvePremiumCallerIdentity(req);
     assert.equal(identity.isPremium, false);
-    assert.equal(identity.verificationUnavailable, undefined);
+    // `verificationUnavailable` was the field name an earlier draft of #5622
+    // used; asserting it here could never fail. The identity carries
+    // `billingDenial`, and a denial with no lookup behind it carries none —
+    // it is a credential denial (#5619).
+    assert.equal(identity.billingDenial, undefined);
+    assert.equal(identity.unauthenticated, true);
   });
 });
 

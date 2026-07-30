@@ -73,10 +73,16 @@ function installBrowserGlobals(): void {
     value: async (_input: string, init?: RequestInit) => {
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body;
       globalThis.__checkoutOverlayHarness.fetchBodies.push(body);
+      // Both json() and text() are modelled: a real Response exposes both,
+      // and the success path reads text() so a non-JSON 200 cannot throw an
+      // engine-specific DOMException (WORLDMONITOR-XV).
+      const successBody = { checkout_url: 'https://checkout.dodopayments.com/session/cks_redirecttest000000000' };
       return {
         ok: true,
         status: 200,
-        json: async () => ({ checkout_url: 'https://checkout.dodopayments.com/session/cks_redirecttest000000000' }),
+        json: async () => successBody,
+        text: async () => JSON.stringify(successBody),
+        headers: { get: () => null },
       };
     },
   });
@@ -173,18 +179,22 @@ const stubSources: Record<string, string> = {
     export const loadCheckoutAttempt = () => null;
     export const clearCheckoutAttempt = () => {};
   `,
-  './checkout-errors': `
-    export const classifyHttpCheckoutError = () => ({ code: 'service_unavailable', userMessage: 'unavailable', retryable: true });
-    export const classifySyntheticCheckoutError = (code) => ({ code, userMessage: code, retryable: false });
-    export const classifyThrownCheckoutError = () => ({ code: 'service_unavailable', userMessage: 'unavailable', retryable: true });
-    export const parseCheckoutErrorBody = () => ({});
-    export const snapshotUpstreamResponse = () => ({});
-  `,
+  // checkout-errors is deliberately NOT stubbed: it is dependency-free, so
+  // the real taxonomy bundles cleanly, and a stub would have to restate its
+  // parsing rules — a second source of truth that can drift from production
+  // while these tests stay green.
   './checkout-error-toast': `
     export const showCheckoutErrorToast = () => {};
   `,
   './checkout-no-user-policy': `
-    export const decideNoUserPathOutcome = () => ({ kind: 'inline-signin', persist: true });
+    // Mirrors the real module's inline-signin sequencing (persist BEFORE
+    // sign-in); the ordering itself is owned by
+    // tests/checkout-no-user-policy.test.mts against the real function.
+    export const runNoUserPath = (_fallbackToPricingPage, handlers) => {
+      handlers.persistIntent();
+      handlers.persistAttempt();
+      handlers.openSignIn();
+    };
   `,
   './checkout-sentry-policy': `
     export const shouldSkipSentryForAction = () => false;

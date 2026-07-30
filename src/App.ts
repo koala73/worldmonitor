@@ -105,9 +105,10 @@ import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
+import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
-import { initAuthState, subscribeAuthState } from '@/services/auth-state';
+import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   install as installCloudPrefsSync,
@@ -115,7 +116,18 @@ import {
   onSignOut as cloudPrefsSignOut,
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
-import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
+import {
+  getConvexClient,
+  getConvexApi,
+  invalidateConvexAuthForSignOut,
+  rebindConvexAuthForWatchHandoff,
+  waitForConvexAuthForUser,
+} from '@/services/convex-client';
+import {
+  assertAccountStillCurrent,
+  isAccountStillCurrent,
+  settleAccountOperation,
+} from '@/services/account-operation';
 import type { Id } from '../convex/_generated/dataModel';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
@@ -1403,6 +1415,7 @@ export class App {
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
+    let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
     // ONCE on a false→true transition (user signs in / purchase lands mid-session).
     // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
@@ -1453,10 +1466,9 @@ export class App {
 
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
-        void cloudPrefsSignIn(userId, SITE_VARIANT);
+        const handoffGeneration = ++_convexWatchHandoffGeneration;
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
-        destroyEntitlementSubscription();
         // destroyEntitlementSubscription deliberately PRESERVES the last
         // snapshot so a WebSocket reconnect doesn't flash paying users back to
         // locked. That preservation is wrong across an account change: until
@@ -1466,10 +1478,22 @@ export class App {
         // legitimate 403 as A's entitlement desync and retry instead of
         // showing the upgrade CTA. Sign-out already resets for this reason;
         // an account switch carries the same hazard.
-        resetEntitlementState();
-        destroySubscriptionWatch();
-        void initEntitlementSubscription(userId);
-        void initSubscriptionWatch(userId);
+        void startAccountAuthHandoff({
+          userId,
+          isCurrent: () => (
+            handoffGeneration === _convexWatchHandoffGeneration &&
+            getAuthState().user?.id === userId
+          ),
+          effects: {
+            destroyEntitlementSubscription,
+            resetEntitlementState,
+            destroySubscriptionWatch,
+            rebindConvexAuthForWatchHandoff,
+            initEntitlementSubscription,
+            initSubscriptionWatch,
+            cloudPrefsSignIn: (nextUserId) => cloudPrefsSignIn(nextUserId, SITE_VARIANT),
+          },
+        });
 
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = getStoredAnonId();
@@ -1480,16 +1504,21 @@ export class App {
             // Wait for ConvexClient WebSocket auth handshake to complete.
             // Without this, mutations arrive at Convex before the server
             // has the JWT → "Authentication required" errors.
-            const ready = await waitForConvexAuth(10_000);
+            const ready = await waitForConvexAuthForUser(userId, 10_000);
             if (!ready) {
               console.warn('[billing] claimSubscription skipped — Convex auth not ready');
               return;
             }
             const claimToken = getFreshStoredAnonClaimToken() ?? undefined;
-            const result = await client.mutation(api.payments.billing.claimSubscription, {
-              anonId,
-              ...(claimToken ? { claimToken } : {}),
-            });
+            const result = await settleAccountOperation(
+              userId,
+              'claiming the anonymous subscription',
+              () => client.mutation(api.payments.billing.claimSubscription, {
+                anonId,
+                ...(claimToken ? { claimToken } : {}),
+              }),
+            );
+            assertAccountStillCurrent(userId, 'claiming the anonymous subscription');
             const claimed = result.claimed;
             const totalClaimed = claimed.subscriptions + claimed.entitlements +
                                  claimed.customers + claimed.payments;
@@ -1500,6 +1529,7 @@ export class App {
             // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
             clearStoredAnonIdentity();
           })().catch((err: unknown) => {
+            if (!isAccountStillCurrent(userId)) return;
             console.warn('[billing] claimSubscription failed:', err);
             // Non-fatal — anon ID preserved for retry on next page load
           });
@@ -1514,18 +1544,24 @@ export class App {
           void (async () => {
             const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
             if (!client || !api) return;
-            const ready = await waitForConvexAuth(10_000);
+            const ready = await waitForConvexAuthForUser(userId, 10_000);
             if (!ready) {
               console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
               return;
             }
             try {
-              await client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
-                grantId: businessInviteGrantId as Id<'businessProGrants'>,
-                token: businessInviteToken,
-              });
+              await settleAccountOperation(
+                userId,
+                'accepting the Business Pro seat invite',
+                () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                  grantId: businessInviteGrantId as Id<'businessProGrants'>,
+                  token: businessInviteToken,
+                }),
+              );
+              assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
               showToast('Pro seat activated');
             } catch (err) {
+              if (!isAccountStillCurrent(userId)) return;
               const msg = err instanceof Error ? err.message : 'Failed to accept invite';
               if (msg.includes('INVITE_EMAIL_MISMATCH')) {
                 showToast('This invite is for a different email address');
@@ -1552,6 +1588,13 @@ export class App {
           openAuth: () => this.state.authModal?.open(),
         });
       } else if (userId === null && _prevUserId !== null) {
+        // Clerk's mounted UserButton signs out through the SDK directly, so
+        // this observed transition is the authoritative place to invalidate
+        // cached/in-flight HTTP tokens and the authenticated Convex socket.
+        invalidateConvexAuthForSignOut();
+        // Supersede any server-auth wait that was started for the account
+        // being signed out before it gets a chance to attach user watches.
+        _convexWatchHandoffGeneration++;
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
         cloudPrefsSignOut();

@@ -282,7 +282,7 @@
     "q3": "Für wen ist Enterprise?",
     "a3": "Enterprise ist für Teams, die geteilte Nutzung, APIs, Integrationen, Deployment-Optionen und direkten Support brauchen.",
     "q4": "Kann ich mit Pro starten und später upgraden?",
-    "a4": "Ja. Pro ist für persönliche Nutzung. Pro Business (69,99 €/Monat) fügt die kommerzielle Lizenz, Datenexport, 25 Dashboards und 250 MCP-Aufrufe/Tag hinzu. API-Pläne decken programmgesteuerten Zugriff ab, und Enterprise deckt benutzerdefinierte Deployments ab. Upgrades laufen über das Abrechnungsportal – die App führt Sie durch die Schritte.",
+    "a4": "Ja. Pro ist für persönliche Nutzung. Pro Business (49,99 €/Monat) fügt die kommerzielle Lizenz, Datenexport, 25 Dashboards und 250 MCP-Aufrufe/Tag hinzu. API-Pläne decken programmgesteuerten Zugriff ab, und Enterprise deckt benutzerdefinierte Deployments ab. Upgrades laufen über das Abrechnungsportal – die App führt Sie durch die Schritte.",
     "q5": "Ist das nur für Konflikt-Monitoring?",
     "a5": "Nein. World Monitor ist vor allem eine globale Intelligence-Plattform für Aktienmärkte, Makroökonomie, geopolitische Analyse, Energie, Infrastruktur und mehr. Konflikt-Tracking ist eine von vielen Fähigkeiten — nicht der Fokus.",
     "q6": "Warum bleibt die Kernplattform kostenlos?",
@@ -583,7 +583,7 @@
       "s10l": "Bewertete Hotspots",
       "s11v": "92",
       "s11l": "Börsen & Vermögenswerte",
-      "s12v": "42",
+      "s12v": "59",
       "s12l": "MCP-Tools",
       "s13v": "154",
       "s13l": "⌘K-Befehle",
@@ -611,7 +611,7 @@
       "eyebrow": "Für Builder & KI-Agenten",
       "title": "Bauen Sie auf Live-Weltkommunikation auf — aus jedem Stack.",
       "sub": "Alles auf der Karte ist auch eine API. Integrieren Sie es in Claude über MCP, rufen Sie die REST-Endpunkte von überall auf, oder installieren Sie einen nativen Client für Python, Ruby, Go oder JavaScript — Ihr Code recherchiert mit Live-Daten statt Trainings-Speicher.",
-      "b1": "42 MCP-Tools — Risikobewertungen, Engpässe, Konflikte, Märkte, Briefings",
+      "b1": "59 MCP-Tools — Risikobewertungen, Engpässe, Konflikte, Märkte, Briefings",
       "b2": "Dokumentierte REST-API — 193 Operationen, eine OpenAPI-3.1-Spezifikation, ein Schlüssel",
       "b3": "Offizielle SDKs auf npm, PyPI, RubyGems und Go — nullabhängig, MCP-First",
       "b4": "JMESPath-Projektion bei jedem Aufruf — rufen Sie genau die Felder ab, die Sie benötigen",
@@ -620,7 +620,7 @@
       "termQuery": "Verschärft sich unsere Rotes-Meer-Exposition diese Woche?",
       "termAnswer": "Transitzählungen sinken Woche für Woche; Kriegsrisikostufe erhöht; zwei Dichteanomalien in den letzten 48 h.",
       "termDocs": "Vollständige Tool-Referenz anzeigen →",
-      "promise": "Ein Schlüssel. 42 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients."
+      "promise": "Ein Schlüssel. 59 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients."
     },
     "pricing": {
       "eyebrow": "Zugriff",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chatten Sie über 30+ Live-Services mit Zitaten",
       "proF2": "Szenario-Engine & Route Explorer — Störungen vor ihrer Auswirkung analysieren",
       "proF3": "Persönliche KI-Zusammenfassung — täglich, zweimal täglich oder wöchentlich an Slack, Telegram oder E-Mail",
-      "proF4": "MCP, REST-API & offizielle SDKs — 42 Tools unter einem Schlüssel",
+      "proF4": "MCP, REST-API & offizielle SDKs — 59 Tools unter einem Schlüssel",
       "proF5": "Custom-Widget-Builder für Ihre eigenen Panels",
       "cta": "Pläne & Preise ansehen",
       "note": "Ab 39,99 €/Monat · 2 Monate kostenlos bei jährlicher Abrechnung"
@@ -659,13 +659,15 @@
       "q6": "Warum sollte ich einem Alert vertrauen?",
       "a6": "Ein Breaking-Banner wird nur angezeigt, wenn unabhängige Ursprungstypen bestätigt werden — Nachrichtenklassifizierung, Keyword-Geschwindigkeit, Hotspot-Eskalation, Militärsurgen, offizielle Sirenen — dedupliziert und drosselungsbegrenzt. Weniger Alerts, echte Alerts.",
       "q7": "Können KI-Agenten wie Claude oder GPT es verwenden?",
-      "a7": "Ja. World Monitor bietet einen 42-Tool-MCP-Server, sodass Claude, GPT oder jeder MCP-kompatible Agent Live-Risikobewertungen, Engpassstatus, Konflikte, Märkte und Briefings abfragen kann – mit JMESPath-Projektion, damit Agenten genau das abrufen, was sie benötigen.",
+      "a7": "Ja. World Monitor bietet einen 59-Tool-MCP-Server, sodass Claude, GPT oder jeder MCP-kompatible Agent Live-Risikobewertungen, Engpassstatus, Konflikte, Märkte und Briefings abfragen kann – mit JMESPath-Projektion, damit Agenten genau das abrufen, was sie benötigen.",
       "q8": "Benötige ich ein Konto?",
       "a8": "Nein. Das Dashboard funktioniert sofort ohne Anmeldung. Ein Konto ist nur wichtig, wenn Sie auf Pro upgraden oder Einstellungen geräteübergreifend synchronisieren möchten.",
       "q9": "Ist es Open Source?",
       "a9": "Ja — Open Source unter AGPL-3.0 auf GitHub: Code lesen, selbst hosten oder erweitern. Native Desktop-Apps für Windows, macOS und Linux sind ebenfalls verfügbar, plus eine Android-TV-App für Wanddisplays.",
       "q10": "Warum ist World Monitor nicht Palantir?",
-      "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt."
+      "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt.",
+      "q11": "Which World Monitor license do I need?",
+      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
       "title": "Die Weltkarte wartet nicht auf Sie.",

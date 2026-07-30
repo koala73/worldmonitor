@@ -7,6 +7,7 @@
  */
 
 import { isDebugBearRumScriptFrame } from './debugbear-rum';
+import { getSentryBuildMetadata } from './sentry-build-metadata';
 
 type SentryNs = typeof import('@sentry/browser');
 
@@ -58,7 +59,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
   return {
     dsn: sentryDsn || undefined,
-    release: `worldmonitor@${__APP_VERSION__}`,
+    ...getSentryBuildMetadata(__APP_VERSION__, __BUILD_HASH__),
     environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',

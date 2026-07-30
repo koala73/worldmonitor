@@ -678,13 +678,13 @@ export function buildCriticalAlertsPayload(
 /**
  * What actually happened to a step during the flow.
  *
- * `blocked` is deliberately distinct from `skipped` (#5617). Both mean the step
- * was not set up, and both read as `pending` to the user, but only `blocked`
- * says the BROWSER refused — the subscriber never got a choice. Collapsing the
- * two makes the push-permission-denial cohort unsizeable after the fact, and
- * makes "is re-prompting this account worth anything?" unanswerable (it never
- * is, once permission is `denied`). It is equally not `failed`: we never
- * attempted a write, so "we couldn't set this up" would be a false claim.
+ * `blocked` is deliberately distinct from `skipped` (#5617). Both keep the
+ * aggregate `pending` status, but `blocked` says the BROWSER refused and lets
+ * the UI render browser-specific recovery guidance (#5727). Collapsing the two
+ * makes the push-permission-denial cohort unsizeable after the fact, and makes
+ * "is re-prompting this account worth anything?" unanswerable (it never is,
+ * once permission is `denied`). It is equally not `failed`: we never attempted
+ * a write, so "we couldn't set this up" would be a false claim.
  */
 export type ActivationStepOutcome = 'confirmed' | 'skipped' | 'blocked' | 'done' | 'failed';
 
@@ -708,9 +708,10 @@ function outcomeStatus(outcome: ActivationStepOutcome): ActivationSummaryStatus 
     case 'done':
       return 'verified';
     case 'skipped':
-    // A browser refusal is durably distinct (#5617) but reads as `pending` to
-    // the user, NOT `failed`: the summary renders `failed` as "we couldn't set
-    // this up", which claims an attempt we were never allowed to make.
+      // A browser refusal is durably distinct (#5617) but keeps the `pending`
+      // status, NOT `failed`: the summary renders `failed` as "we couldn't set
+      // this up", which claims an attempt we were never allowed to make. Its
+      // detail copy can still explain the browser block (#5727).
     case 'blocked':
       return 'pending';
     case 'failed':

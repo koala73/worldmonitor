@@ -906,9 +906,9 @@ describe('buildExitSummary — R15 pending/verified/failed', () => {
     ]);
   });
 
-  // #5617: a browser refusal is durably distinct from a voluntary skip, but the
-  // USER-facing line must stay identical — 'failed' renders "We couldn't set
-  // this up", which is wrong for a permission we were never allowed to attempt.
+  // #5617/#5727: a browser refusal is durably distinct from a voluntary skip.
+  // Its status stays pending, while the rendering layer is free to give the
+  // denied cohort truthful browser-settings guidance.
   it('blocked reads as pending, never failed (#5617)', () => {
     assert.deepEqual(buildExitSummary([{ id: 'alerts', outcome: 'blocked' }]), [
       { id: 'alerts', outcome: 'blocked', status: 'pending' },
