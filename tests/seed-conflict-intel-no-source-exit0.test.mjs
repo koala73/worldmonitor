@@ -433,10 +433,14 @@ test('bulk-first: a healthy bulk export short-circuits the DOC route entirely (#
     fetchBulkEvents: async () => {
       bulkCalls += 1;
       return {
-        events: [{ id: 'bulk-primary', country: 'Sudan' }],
+        events: [
+          { id: 'bulk-primary', country: 'Sudan' },
+          { id: 'bulk-primary-2', country: 'Yemen' },
+          { id: 'bulk-primary-3', country: 'Ukraine' },
+        ],
         exportTimestamp: '20260729110000',
-        exportsRequested: 1,
-        exportsSucceeded: 1,
+        exportsRequested: 8,
+        exportsSucceeded: 8,
       };
     },
     pace: async () => {},
@@ -448,7 +452,7 @@ test('bulk-first: a healthy bulk export short-circuits the DOC route entirely (#
   assert.equal(attempted.length, 0, 'zero DOC requests when the bulk path is healthy');
   assert.equal(bulkCalls, 1);
   assert.equal(result.source, 'gdelt-bulk');
-  assert.deepEqual(result.events.map(event => event.id), ['bulk-primary']);
+  assert.equal(result.events.length, 3);
 });
 
 test('GDELT route circuit stays closed for a request-specific HTTP failure', async () => {

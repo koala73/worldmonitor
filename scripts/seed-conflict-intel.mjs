@@ -29,7 +29,7 @@ import {
 } from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
-import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { fetchGdeltBulkConflictEvents, GDELT_BULK_WORST_NETWORK_MS, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
 import {
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
@@ -158,6 +158,11 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
 // below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
+// Cold-start floor for the bulk-primary path (#5849 review): only consulted
+// when the rolling merge retained nothing from a prior bulk window. Kept
+// deliberately low — a quiet-but-healthy 2h export window still clears it,
+// while a partially-degraded mirror serving a single-country handful does not.
+const GDELT_BULK_COLD_START_MIN_COUNTRIES = 3;
 // The shared GDELT transport enforces one selected-route attempt. These explicit
 // values pin that contract at this high-fanout caller. timeoutMs is pinned too:
 // _gdelt-fetch.mjs's default rose from 15s to 30s for seed-gdelt-intel's slow
@@ -407,6 +412,7 @@ export async function fetchGdeltConflictEvents({
 } = {}) {
   // Bulk export first (#5849). On any bulk failure — mirror outage, empty
   // exports, empty rolling window — fall through to the DOC sweep below.
+  const bulkStartedAt = now();
   let bulkFailure;
   try {
     const bulk = await fetchBulkEvents();
@@ -422,6 +428,27 @@ export async function fetchGdeltConflictEvents({
     }
     const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
     if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
+    const countriesWithEvents = new Set(rolling.events.map(event => event.country)).size;
+    // Cold-start coverage floor (#5849 review, flagged independently by two
+    // reviewers): with no retained rolling window, an implausibly thin bulk
+    // result — a partially-degraded mirror serving one usable export — must not
+    // overwrite last-good as the primary feed. Fall through to the sweep (and,
+    // both-fail, to runSeed's sourceUnavailable last-good preservation) instead.
+    // Steady-state ticks always retain prior-window events, so this never fires
+    // there; a genuine 2h window of material violence spans many countries.
+    if (rolling.retainedPreviousEvents === 0 && countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES) {
+      throw new Error(
+        `cold-start bulk window too thin: ${countriesWithEvents} countries with events`
+        + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
+      );
+    }
+    if (bulk.exportsSucceeded < bulk.exportsRequested) {
+      // Partial mirror degradation still publishes (each 15-min slice gets
+      // ~RECENT_EXPORT_COUNT retries before aging out of the manifest tail, and
+      // the rolling merge retains prior events), but say so — a silent thin
+      // tick is how a persistent asymmetric outage hides (#5849 review).
+      console.warn(`  GDELT bulk exports partially degraded: ${bulk.exportsSucceeded}/${bulk.exportsRequested} export files fetched`);
+    }
     console.log(
       `  GDELT bulk conflict-events: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
       + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
@@ -432,7 +459,7 @@ export async function fetchGdeltConflictEvents({
         exportTimestamp: bulk.exportTimestamp,
         exportsRequested: bulk.exportsRequested,
         exportsSucceeded: bulk.exportsSucceeded,
-        countriesWithEvents: new Set(rolling.events.map(event => event.country)).size,
+        countriesWithEvents,
         rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
         rollingWindowStartedAt: rolling.rollingWindowStartedAt,
         rollingWindowComplete: rolling.rollingWindowComplete,
@@ -446,12 +473,22 @@ export async function fetchGdeltConflictEvents({
   }
 
   // DOC sweep fallback — canary, batch, budget, floor, and circuit semantics
-  // unchanged from when it was primary (#5140).
+  // unchanged from when it was primary (#5140). The bulk attempt's elapsed time
+  // is credited back to the cutoff: the deadline invariant already budgets
+  // GDELT_BULK_WORST_NETWORK_MS ON TOP of the sweep window (seed-fetch-deadline-
+  // budget-invariants.test.mjs), and without the credit a slow-failing mirror
+  // (up to ~60s of timeouts) would hand the healthy DOC fallback an already-
+  // expired budget every tick. Aux-stage time still comes out of the window,
+  // and the credit is clamped to the same GDELT_BULK_WORST_NETWORK_MS constant
+  // the invariant test models, so the modelled and actual worst-case envelopes
+  // stay the same number (#5140 arithmetic unchanged).
   const events = [];
   const failedCountries = [];
   let successfulCountries = 0;
   const CONCURRENCY = 4;
-  const launchCutoffAt = deadlineAt ?? now() + GDELT_SWEEP_BUDGET_MS;
+  const launchCutoffAt = deadlineAt != null
+    ? deadlineAt + Math.min(now() - bulkStartedAt, GDELT_BULK_WORST_NETWORK_MS)
+    : now() + GDELT_SWEEP_BUDGET_MS;
   for (let i = 0; i < CONFLICT_COUNTRIES.length;) {
     // #5140: stop LAUNCHING batches once the phase cutoff passes or the floor can
     // no longer be reached — either way the caller degrades to aux-only and exits 0,
@@ -467,8 +504,9 @@ export async function fetchGdeltConflictEvents({
       break;
     }
     // Probe one country before widening. A selected-route failure on the canary
-    // falls straight through to the official bulk export instead of repeating
-    // the same blocked path across a four-country batch.
+    // aborts the sweep after a single request (bulk has already failed by this
+    // point — see top of function) instead of repeating the same blocked path
+    // across a four-country batch.
     const batchSize = successfulCountries === 0 ? 1 : CONCURRENCY;
     const batch = remaining.slice(0, batchSize);
     const results = await Promise.all(batch.map(cc => fetchCountryEvents(cc)));
