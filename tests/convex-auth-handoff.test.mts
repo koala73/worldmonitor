@@ -91,10 +91,27 @@ class FakeConvexClient {
 
 const flushMicrotasks = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-async function waitForCalls(calls: unknown[][], expected: number): Promise<void> {
-  for (let attempt = 0; attempt < 20 && calls.length < expected; attempt += 1) {
-    await flushMicrotasks();
+async function waitForCondition(
+  condition: () => boolean,
+  message: string,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() >= deadline) {
+      assert.fail(message);
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 1);
+    });
   }
+}
+
+async function waitForCalls(calls: unknown[][], expected: number): Promise<void> {
+  await waitForCondition(
+    () => calls.length >= expected,
+    `expected ${expected} call(s), received ${calls.length}`,
+  );
   assert.equal(calls.length, expected);
 }
 
@@ -228,23 +245,30 @@ describe('generation-scoped Convex auth handoff', () => {
   it('retries a transient terminal token failure for the current identity', async () => {
     const fake = installFakeClient();
     const attached: string[] = [];
+    let current = true;
     const handoff = rebindConvexAuthForWatchHandoff(
-      () => true,
+      () => current,
       () => attached.push('B'),
       1_000,
       [1],
     );
-    await flushMicrotasks();
+    try {
+      await flushMicrotasks();
 
-    fake.authConfigs[1].onChange(false);
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 5);
-    });
-    assert.equal(fake.authConfigs.length, 3, 'current B should install one bounded retry config');
+      fake.authConfigs[1].onChange(false);
+      await waitForCondition(
+        () => fake.authConfigs.length === 3,
+        'current B should install one bounded retry config',
+      );
 
-    fake.authConfigs[2].onChange(true);
-    assert.equal(await handoff, true);
-    assert.deepEqual(attached, ['B']);
+      fake.authConfigs[2].onChange(true);
+      assert.equal(await handoff, true);
+      assert.deepEqual(attached, ['B']);
+    } finally {
+      current = false;
+      __setConvexClientForTests(null);
+      await handoff;
+    }
   });
 
   it('recovers current-user watches after a bounded wait times out', async () => {
