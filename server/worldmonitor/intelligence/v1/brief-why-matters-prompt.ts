@@ -13,7 +13,7 @@
  */
 
 import { WHY_MATTERS_ANALYST_SYSTEM_V2, briefDateLine } from '../../../../shared/brief-llm-core.js';
-import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
+import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import type { BriefStoryContext } from './brief-story-context';
 
 export interface StoryForPrompt {
@@ -30,19 +30,28 @@ export interface StoryForPrompt {
 /**
  * Sanitize all untrusted string fields before interpolating into the
  * LLM prompt. Defense-in-depth: the endpoint is already
- * RELAY_SHARED_SECRET-gated, but repo convention applies
- * `sanitizeForPrompt` at every LLM boundary regardless of auth tier.
+ * RELAY_SHARED_SECRET-gated, but repo convention applies prompt
+ * sanitization at every LLM boundary regardless of auth tier.
  * Strips role markers, instruction overrides, control chars, etc.
+ *
+ * Every one of these fields is rendered as a single `Label: value` row in a
+ * newline-joined block -- here in `buildAnalystWhyMattersPrompt`, and identically
+ * in `buildWhyMattersUserPrompt` (shared/brief-llm-core.js:75), which the
+ * legacy relay path feeds from this same function. So the newline is the
+ * delimiter, and plain `sanitizeForPrompt` (which preserves a lone newline for
+ * prose) lets one feed value forge an extra `Key: value` line the model reads
+ * as a real field. `description` is the likeliest carrier: it is free-form
+ * article body. #5857 / #5881.
  */
 export function sanitizeStoryFields(story: StoryForPrompt): StoryForPrompt {
   return {
-    headline: sanitizeForPrompt(story.headline),
-    source: sanitizeForPrompt(story.source),
-    threatLevel: sanitizeForPrompt(story.threatLevel),
-    category: sanitizeForPrompt(story.category),
-    country: sanitizeForPrompt(story.country),
+    headline: sanitizeForPromptLine(story.headline),
+    source: sanitizeForPromptLine(story.source),
+    threatLevel: sanitizeForPromptLine(story.threatLevel),
+    category: sanitizeForPromptLine(story.category),
+    country: sanitizeForPromptLine(story.country),
     ...(typeof story.description === 'string' && story.description.length > 0
-      ? { description: sanitizeForPrompt(story.description) }
+      ? { description: sanitizeForPromptLine(story.description) }
       : {}),
   };
 }
