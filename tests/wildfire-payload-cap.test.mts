@@ -15,8 +15,8 @@ import {
   WILDFIRE_CANONICAL_DETECTION_LIMIT,
   compactWildfireDashboardPayload,
 } from '../scripts/_wildfire-dashboard.mjs';
-import { MAX_PAYLOAD_BYTES } from '../scripts/_seed-utils.mjs';
-import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { MAX_PAYLOAD_BYTES, runSeed } from '../scripts/_seed-utils.mjs';
+import { buildEnvelope, unwrapEnvelope } from '../scripts/_seed-envelope-source.mjs';
 import type { FireDetection } from '../src/generated/server/worldmonitor/wildfire/v1/service_server';
 
 const REGIONS = ['Ukraine', 'Russia', 'Iran', 'Israel/Gaza', 'Syria', 'Taiwan', 'North Korea', 'Saudi Arabia', 'Turkey'];
@@ -424,5 +424,103 @@ describe('canonical wildfire payload cap (#5866)', () => {
     // transforms the RAW fetcher output, so capping there keeps the bootstrap top-500 intact.
     assert.match(seeder, /publishTransform\s*:/);
     assert.match(seeder, /WILDFIRE_CANONICAL_DETECTION_LIMIT/);
+  });
+
+  it('executes the runSeed publish seam with capped canonical and raw bootstrap inputs', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalExit = process.exit;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const values = new Map<string, string>();
+    const canonicalKey = 'test:wildfire:fires:v1';
+    const bootstrapKey = 'test:wildfire:fires-bootstrap:v1';
+
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      const body = init?.body == null ? null : JSON.parse(String(init.body));
+      calls.push({ url, body });
+
+      if (url.endsWith('/pipeline')) {
+        return Response.json(Array.isArray(body) ? body.map(() => ({ result: 1 })) : []);
+      }
+      if (url.includes('/get/')) {
+        const key = decodeURIComponent(url.slice(url.indexOf('/get/') + 5));
+        return Response.json({ result: values.get(key) ?? null });
+      }
+      if (Array.isArray(body)) {
+        if (body[0] === 'SET' && typeof body[1] === 'string') values.set(body[1], body[2]);
+        if (body[0] === 'DEL' && typeof body[1] === 'string') values.delete(body[1]);
+      }
+      return Response.json({ result: 'OK' });
+    };
+    process.exit = ((code = 0) => {
+      const error = new Error(`__test_exit__:${code}`) as Error & { exitCode: number };
+      error.exitCode = code;
+      throw error;
+    }) as typeof process.exit;
+
+    try {
+      let exitCode: number | null = null;
+      try {
+        await runSeed(
+          'test',
+          'wildfire-publish-seam',
+          canonicalKey,
+          async () => ({ fireDetections: peakDetections, pagination: undefined, dataAvailable: true }),
+          {
+            validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
+            ttlSeconds: 3600,
+            publishTransform: (data) => compactWildfireDashboardPayload(data, WILDFIRE_CANONICAL_DETECTION_LIMIT),
+            extraKeys: [{ key: bootstrapKey, transform: compactWildfireDashboardPayload }],
+            declareRecords: (data) => data.fireDetections.length,
+            sourceVersion: 'wildfire-test',
+            schemaVersion: 1,
+            maxStaleMin: 1440,
+          },
+        );
+      } catch (error) {
+        if (String((error as Error).message).startsWith('__test_exit__:')) {
+          exitCode = (error as Error & { exitCode: number }).exitCode;
+        } else {
+          throw error;
+        }
+      }
+
+      assert.equal(exitCode, 0, 'runSeed should publish successfully');
+
+      const lastSet = (key: string) => {
+        const matching = calls.filter((call) => {
+          const body = call.body;
+          return Array.isArray(body) && body[0] === 'SET' && body[1] === key;
+        });
+        assert.ok(matching.length > 0, `expected a SET for ${key}`);
+        return JSON.parse(String((matching.at(-1)!.body as unknown[])[2]));
+      };
+      const canonicalEnvelope = lastSet(canonicalKey);
+      const bootstrapEnvelope = lastSet(bootstrapKey);
+      const canonical = unwrapEnvelope(canonicalEnvelope).data;
+      const bootstrap = unwrapEnvelope(bootstrapEnvelope).data;
+
+      assert.equal(canonical.fireDetections.length, WILDFIRE_CANONICAL_DETECTION_LIMIT);
+      assert.deepEqual(canonical.pagination, { nextCursor: '', totalCount: FIRMS_PEAK_DETECTIONS });
+      assert.equal(bootstrap.fireDetections.length, WILDFIRE_DASHBOARD_DETECTION_LIMIT);
+      assert.deepEqual(bootstrap.pagination, { nextCursor: '', totalCount: FIRMS_PEAK_DETECTIONS });
+      assert.equal(canonicalEnvelope._seed.recordCount, WILDFIRE_CANONICAL_DETECTION_LIMIT);
+      assert.equal(bootstrapEnvelope._seed.recordCount, WILDFIRE_DASHBOARD_DETECTION_LIMIT);
+      assert.ok(
+        Buffer.byteLength(JSON.stringify(canonicalEnvelope), 'utf8') <= CANONICAL_PAYLOAD_BYTE_BUDGET,
+        'the real canonical publish must stay under the byte budget',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.exit = originalExit;
+      if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+    }
   });
 });
