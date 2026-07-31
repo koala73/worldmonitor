@@ -32,6 +32,9 @@ export async function verifyPkceS256(codeVerifier, codeChallenge) {
   return diff === 0; // true = match, false = wrong verifier; null = invalid_request
 }
 
+const MIN_TIMING_KEYS = 16;
+const DUMMY_KEY_PREFIX = '__wm_timing_safe_dummy_key_constant_pad_';
+
 export async function timingSafeIncludes(candidate, validKeys) {
   if (typeof candidate !== 'string' ||
       !candidate ||
@@ -43,16 +46,31 @@ export async function timingSafeIncludes(candidate, validKeys) {
   const enc = new TextEncoder();
   const candidateHash = await crypto.subtle.digest('SHA-256', enc.encode(candidate));
   const candidateBytes = new Uint8Array(candidateHash);
-  let found = false;
-  for (const k of validKeys) {
+
+  // Pad the keys array to a constant block size (e.g. 16 or multiple of 16)
+  // so that the total SHA-256 computation count and loop duration do not leak
+  // the number of keys in the allowlist.
+  const targetLength = Math.max(MIN_TIMING_KEYS, Math.ceil(validKeys.length / MIN_TIMING_KEYS) * MIN_TIMING_KEYS);
+  const paddedKeys = validKeys.slice();
+  while (paddedKeys.length < targetLength) {
+    paddedKeys.push(`${DUMMY_KEY_PREFIX}${paddedKeys.length}`);
+  }
+
+  let matchBits = 0;
+  for (const k of paddedKeys) {
     const kHash = await crypto.subtle.digest('SHA-256', enc.encode(k));
     const kBytes = new Uint8Array(kHash);
     let diff = 0;
     for (let i = 0; i < kBytes.length; i++) diff |= candidateBytes[i] ^ kBytes[i];
-    if (diff === 0) found = true;
+    // Constant-time bitwise conversion: diff === 0 -> 1, diff !== 0 -> 0.
+    // Avoids data-dependent branching (if (diff === 0) found = true) which leaks
+    // position/timing information via branch prediction and JIT deoptimization.
+    const isMatch = ((diff - 1) >>> 31) & 1;
+    matchBits |= isMatch;
   }
-  return found;
+  return matchBits === 1;
 }
+
 
 export async function timingSafeEqualSecret(candidate, expected) {
   if (!candidate || !expected) return false;
