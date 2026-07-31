@@ -1,6 +1,11 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from './_api-key.js';
+import {
+  hasPoolCoverageShortfall,
+  parsePoolCounts,
+  PREDICTION_MARKET_MIN_POOL_COUNTS,
+} from './_pool-coverage.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
 // legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
@@ -390,7 +395,14 @@ const SEED_META = {
   hkoWarnings:      { key: 'seed-meta:weather:hko-warnings',    maxStaleMin: 540 }, // successful HKO responses publish a snapshot even when no tropical-cyclone warning is active.
   flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 90 }, // CACHE_TTL=7200s; matches notamClosures from same cron
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
-  predictionMarkets: { key: 'seed-meta:prediction:markets',     maxStaleMin: 90, minRecordCount: 20 }, // #5733: declareRecords now counts DISTINCT markets (it triple-counted across the pre-partition near-duplicate pools, reporting ~75 for 46 real markets), so a volume collapse is finally measurable. Floor is deliberately well under the ~46 steady state and well over a broken run — the publish gate only catches mislabeling, so without this a run that shrinks every pool while each stays non-empty stays GREEN.
+  predictionMarkets: {
+    key: 'seed-meta:prediction:markets',
+    maxStaleMin: 90,
+    minRecordCount: 20,
+    // #5875: one is the narrowest floor that detects a dead category signal
+    // without treating ordinary pool-volume variation as an incident.
+    minPoolCounts: PREDICTION_MARKET_MIN_POOL_COUNTS,
+  },
   newsInsights:     { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
   newsFeedHealth:   { key: 'seed-meta:news:feed-health',        maxStaleMin: 2880 },
@@ -919,6 +931,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
   const metaCount = meta?.count ?? meta?.recordCount ?? null;
+  const poolCounts = parsePoolCounts(meta?.poolCounts, seedCfg.minPoolCounts);
   const errorCode = typeof meta?.errorCode === 'string'
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
@@ -933,6 +946,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       sourceBlocked: false,
       metaReadFailed: false,
       metaCount,
+      poolCounts,
       contentAge: null,
       errorCode,
     };
@@ -997,6 +1011,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     sourceBlocked,
     metaReadFailed: false,
     metaCount,
+    poolCounts,
     contentAge,
     errorCode,
   };
@@ -1042,6 +1057,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     sourceUnavailable,
     sourceBlocked,
     metaCount,
+    poolCounts,
     contentAge,
     errorCode,
   } = meta;
@@ -1084,6 +1100,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   // to COVERAGE_PARTIAL (warn) instead of reporting OK. Producer must write
   // seed-meta.recordCount using the *covered* count, not the shape size.
   else if (seedCfg?.minRecordCount != null && records < seedCfg.minRecordCount) status = 'COVERAGE_PARTIAL';
+  // Per-pool coverage is independent of aggregate volume. Missing/malformed
+  // diagnostics fail closed: without all configured counts health cannot prove
+  // that every category consumer has data.
+  else if (hasPoolCoverageShortfall(poolCounts, seedCfg?.minPoolCounts)) status = 'COVERAGE_PARTIAL';
   // Content-age check (opt-in via runSeed contentMeta + maxContentAgeMin).
   // Fires AFTER all earlier failure paths so STALE_SEED, COVERAGE_PARTIAL,
   // EMPTY_*, etc. take precedence — STALE_CONTENT is "the seeder is healthy
@@ -1111,6 +1131,8 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
+  if (seedCfg?.minPoolCounts) entry.minPoolCounts = seedCfg.minPoolCounts;
+  if (poolCounts) entry.poolCounts = poolCounts;
   if (status === 'SEED_ERROR' && errorCode) entry.errorCode = errorCode;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from

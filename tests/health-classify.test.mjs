@@ -119,6 +119,55 @@ test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIA
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 38);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: predictionMarkets requires valid per-pool metadata', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({ recordCount: 38 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+});
+
+test('classifyKey: predictionMarkets is OK when every pool meets its floor', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 20,
+          poolCounts: { geopolitical: 1, tech: 1, finance: 18 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 1, tech: 1, finance: 18 });
+});
+
 test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
   const entry = classifyKey('socialVelocity', BOOTSTRAP_KEYS.socialVelocity, { allowOnDemand: false },
     makeCtx({

@@ -30,6 +30,7 @@ import {
   hasCategoryTag,
   marketIdentity,
   partitionMarkets,
+  predictionPoolCounts,
   poolIntegrityViolations,
   validateBootstrapPayload,
 } from '../scripts/_prediction-classify.mjs';
@@ -480,6 +481,25 @@ describe('per-pool ranking: relaxation and truncation', () => {
   });
 });
 
+describe('predictionPoolCounts (seed-meta coverage signal)', () => {
+  it('reports the published count for every canonical pool', () => {
+    const pools = buildPools(RAW);
+    assert.deepEqual(predictionPoolCounts(pools), {
+      geopolitical: pools.geopolitical.length,
+      tech: pools.tech.length,
+      finance: pools.finance.length,
+    });
+  });
+
+  it('reports absent or malformed pools as zero so health fails closed', () => {
+    assert.deepEqual(predictionPoolCounts({ geopolitical: [{}], tech: null, finance: 'nope' }), {
+      geopolitical: 1,
+      tech: 0,
+      finance: 0,
+    });
+  });
+});
+
 describe('validateBootstrapPayload (the seeder\'s validateFn)', () => {
   const silent = { log: () => {} };
 
@@ -556,6 +576,13 @@ describe('the seeder is wired to the tested pool-building path', () => {
 
   it('uses the shared validateFn instead of an inline population check', () => {
     assert.match(source, /validateFn:\s*validateBootstrapPayload/);
+  });
+
+  it('publishes the tested per-pool counts through seed freshness metadata', () => {
+    assert.match(
+      source,
+      /afterPublish:[\s\S]{0,300}freshnessMetaPatch:[\s\S]{0,200}poolCounts:\s*predictionPoolCounts\(data\)/,
+    );
   });
 });
 

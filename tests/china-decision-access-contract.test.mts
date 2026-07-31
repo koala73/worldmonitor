@@ -12,6 +12,7 @@ import {
 const PATH = '/api/intelligence/v1/get-china-decision-signals';
 const CHINA_DATA_KEY = 'intelligence:china-decision-signals:v1';
 const CHINA_META_KEY = 'seed-meta:intelligence:china-decision-signals';
+const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const OPERATOR_KEY = 'china-decision-test-operator-key';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
@@ -66,6 +67,15 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
         };
       }
       if (key === CHINA_META_KEY) return { result: JSON.stringify(chinaMeta) };
+      if (key === PREDICTION_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt: chinaMeta.fetchedAt,
+            recordCount: 38,
+            poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
+          }),
+        };
+      }
       return {
         result: JSON.stringify({
           fetchedAt: chinaMeta.fetchedAt,

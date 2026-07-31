@@ -18,7 +18,6 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 
 const { default: handler } = await import('../api/seed-health.js');
 
-const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
@@ -39,28 +38,19 @@ after(() => {
   }
 });
 
-function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchMeta = false } = {}) {
+function installSeedHealthPipelineMock(poolCounts) {
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     const results = commands.map((command) => {
       const [op, key] = command;
-      // #4927: activation-gated entries add EXISTS probes on their
-      // seed-activated:* markers; absent in this harness.
-      if (op === 'EXISTS') {
-        assert.match(String(key), /^seed-activated:/, 'EXISTS is only used for activation markers');
-        return { result: 0 };
-      }
+      if (op === 'EXISTS') return { result: 0 };
       assert.equal(op, 'GET');
-      if (key === PORTWATCH_META_KEY) {
-        if (missingPortwatchMeta) return { result: null };
-        return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: portwatchRecordCount }) };
-      }
       if (key === PREDICTION_META_KEY) {
         return {
           result: JSON.stringify({
             fetchedAt: Date.now(),
             recordCount: 38,
-            poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
+            ...(poolCounts === undefined ? {} : { poolCounts }),
           }),
         };
       }
@@ -75,9 +65,6 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
           }),
         };
       }
-      // This fixture isolates the PortWatch entry. Keep every unrelated
-      // coverage-gated feed above its floor so a new minRecordCount contract
-      // cannot turn the aggregate warning for an unrelated reason.
       return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
     });
     return new Response(JSON.stringify(results), {
@@ -96,58 +83,52 @@ async function readSeedHealth() {
   return { res, body };
 }
 
-test('seed-health flags fresh PortWatch port activity below 174 countries as coverage_partial', async () => {
-  installSeedHealthPipelineMock(139);
+test('seed-health flags a fresh prediction snapshot with an empty pool as coverage_partial', async () => {
+  installSeedHealthPipelineMock({ geopolitical: 18, tech: 0, finance: 20 });
 
   const { res, body } = await readSeedHealth();
-  const entry = body.seeds['supply_chain:portwatch-ports'];
+  const entry = body.seeds['prediction:markets'];
 
   assert.equal(res.status, 200);
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'coverage_partial');
-  assert.equal(entry.stale, true);
-  assert.equal(entry.recordCount, 139);
-  assert.equal(entry.minRecordCount, 174);
+  assert.equal(entry.stale, false);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
 });
 
-test('seed-health treats missing PortWatch recordCount as coverage_partial', async () => {
+test('seed-health fails closed when prediction pool metadata is missing', async () => {
   installSeedHealthPipelineMock(undefined);
 
-  const { res, body } = await readSeedHealth();
-  const entry = body.seeds['supply_chain:portwatch-ports'];
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['prediction:markets'];
 
-  assert.equal(res.status, 200);
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'coverage_partial');
-  assert.equal(entry.stale, true);
-  assert.equal(entry.recordCount, null);
-  assert.equal(entry.minRecordCount, 174);
+  assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
 });
 
-test('seed-health includes PortWatch minRecordCount when seed-meta is missing', async () => {
-  installSeedHealthPipelineMock(undefined, { missingPortwatchMeta: true });
+test('seed-health fails closed when prediction pool metadata is malformed', async () => {
+  installSeedHealthPipelineMock({ geopolitical: 18, tech: '0', finance: 20 });
 
-  const { res, body } = await readSeedHealth();
-  const entry = body.seeds['supply_chain:portwatch-ports'];
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['prediction:markets'];
 
-  assert.equal(res.status, 503);
-  assert.equal(body.overall, 'degraded');
-  assert.equal(entry.status, 'missing');
-  assert.equal(entry.stale, true);
-  assert.equal(entry.recordCount, null);
-  assert.equal(entry.minRecordCount, 174);
+  assert.equal(body.overall, 'warning');
+  assert.equal(entry.status, 'coverage_partial');
+  assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
 });
 
-test('seed-health keeps PortWatch port activity OK at the 174-country recovery floor', async () => {
-  installSeedHealthPipelineMock(174);
+test('seed-health keeps prediction markets healthy when every pool is populated', async () => {
+  installSeedHealthPipelineMock({ geopolitical: 1, tech: 1, finance: 36 });
 
   const { res, body } = await readSeedHealth();
-  const entry = body.seeds['supply_chain:portwatch-ports'];
+  const entry = body.seeds['prediction:markets'];
 
   assert.equal(res.status, 200);
   assert.equal(body.overall, 'healthy');
   assert.equal(entry.status, 'ok');
   assert.equal(entry.stale, false);
-  assert.equal(entry.recordCount, 174);
-  assert.equal(entry.minRecordCount, 174);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 1, tech: 1, finance: 36 });
 });
