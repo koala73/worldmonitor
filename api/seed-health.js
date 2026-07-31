@@ -506,7 +506,8 @@ export default async function handler(req) {
     // Keep the new pool-coverage verdict distinct from freshness. The legacy
     // scalar minRecordCount path still contributes to `stale` for wire
     // compatibility, but an empty pool is fresh data with partial coverage.
-    const stale = ageMs > maxStalenessMs
+    const freshnessStale = ageMs > maxStalenessMs;
+    const stale = freshnessStale
       || recordCoveragePartial
       || isError
       || sourceMismatch
@@ -522,13 +523,13 @@ export default async function handler(req) {
           ? 'source_version_mismatch'
           : probe?.ok === false
             ? probe.status
-            : coveragePartial
-              ? 'coverage_partial'
-              : stale
+            : freshnessStale
               ? 'stale'
-              : sourceBlocked
-                ? 'source_blocked'
-              : 'ok',
+              : coveragePartial
+                ? 'coverage_partial'
+                : sourceBlocked
+                  ? 'source_blocked'
+                  : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: recordCount ?? meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,

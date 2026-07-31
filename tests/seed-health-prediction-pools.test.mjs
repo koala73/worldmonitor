@@ -38,7 +38,7 @@ after(() => {
   }
 });
 
-function installSeedHealthPipelineMock(poolCounts) {
+function installSeedHealthPipelineMock(poolCounts, { fetchedAt = Date.now() } = {}) {
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     const results = commands.map((command) => {
@@ -48,7 +48,7 @@ function installSeedHealthPipelineMock(poolCounts) {
       if (key === PREDICTION_META_KEY) {
         return {
           result: JSON.stringify({
-            fetchedAt: Date.now(),
+            fetchedAt,
             recordCount: 38,
             ...(poolCounts === undefined ? {} : { poolCounts }),
           }),
@@ -95,6 +95,21 @@ test('seed-health flags a fresh prediction snapshot with an empty pool as covera
   assert.equal(entry.stale, false);
   assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
   assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+});
+
+test('seed-health reports stale before per-pool coverage when both apply', async () => {
+  installSeedHealthPipelineMock(
+    { geopolitical: 18, tech: 0, finance: 20 },
+    { fetchedAt: Date.now() - 100 * 60_000 },
+  );
+
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['prediction:markets'];
+
+  assert.equal(body.overall, 'warning');
+  assert.equal(entry.status, 'stale');
+  assert.equal(entry.stale, true);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
 });
 
 test('seed-health fails closed when prediction pool metadata is missing', async () => {

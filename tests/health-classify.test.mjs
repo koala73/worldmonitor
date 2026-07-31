@@ -138,6 +138,23 @@ test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', 
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: stale prediction snapshot outranks per-pool coverage', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          fetchedAt: NOW - 100 * ONE_MIN_MS,
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+});
+
 test('classifyKey: predictionMarkets requires valid per-pool metadata', () => {
   const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
     makeCtx({
