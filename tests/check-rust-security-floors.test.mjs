@@ -94,6 +94,28 @@ describe('check-rust-security-floors', () => {
     assert.throws(() => resolveRootDir(['--root', '--verbose'], '/cwd'), /no directory/);
   });
 
+  it('keeps the manifest constraint at or above every recorded floor', () => {
+    // The lockfile gate is the real backstop, but if the manifest lower bound
+    // drifted below the floor a fresh resolution could legitimately land on a
+    // vulnerable version. Pin the two together so they cannot diverge.
+    for (const floor of RUST_SECURITY_FLOORS.filter((f) => f.manifestFile)) {
+      const manifest = readFileSync(resolve(root, floor.manifestFile), 'utf8');
+      const line = manifest
+        .split('\n')
+        .find((l) => new RegExp(`^${floor.crate}\\s*=`).test(l.trim()));
+      assert.ok(line, `${floor.manifestFile} must declare ${floor.crate}`);
+      const lowerBound = line.match(/>=\s*(\d+\.\d+\.\d+)/)?.[1];
+      assert.ok(
+        lowerBound,
+        `${floor.crate} in ${floor.manifestFile} must carry an explicit >= lower bound so it cannot resolve below the security floor; found: ${line.trim()}`,
+      );
+      assert.ok(
+        compareVersions(lowerBound, floor.minVersion) >= 0,
+        `${floor.manifestFile} allows ${floor.crate} >= ${lowerBound}, below the recorded security floor ${floor.minVersion} (${floor.advisory})`,
+      );
+    }
+  });
+
   it('holds against the real committed Cargo.lock', () => {
     assert.deepEqual(checkRustSecurityFloors(realLock), []);
   });

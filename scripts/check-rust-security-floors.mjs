@@ -25,11 +25,24 @@ import { isMainModule } from './lib/main-module.mjs';
 export const RUST_SECURITY_FLOORS = [
   {
     crate: 'tauri',
+    // DO NOT LOWER to 2.10.3. The advisory sources disagree: the NVD record
+    // for CVE-2026-42184 says "resolved in version 2.10.3", while
+    // GHSA-7gmj-67g7-phm9 lists `>= 2.0.0, <= 2.11.0` as affected and 2.11.1
+    // as the first patched release. 2.11.1 is the stricter of the two and is
+    // deliberately the floor; "correcting" it down on the strength of the NVD
+    // text alone would permit a version GitHub still considers vulnerable.
     minVersion: '2.11.1',
-    advisory: 'GHSA-7gmj-67g7-phm9 / CVE-2026-42184 (CVSS 8.8)',
+    // 8.8 HIGH is the NVD CVSS v3.1 base score
+    // (AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H). The GitHub advisory scores the
+    // same CVE 6.1 MEDIUM under CVSS v4.0 — both are correct for their
+    // version of the spec, so neither surface is wrong.
+    advisory: 'GHSA-7gmj-67g7-phm9 / CVE-2026-42184 (CVSS v3.1 8.8 HIGH; v4.0 6.1 MEDIUM)',
     reason:
       'is_local_url() matched only the first subdomain label, so a hostname like tauri.evil.com could pass as a trusted local origin and invoke IPC commands (Windows/Android webviews). Partially mitigated here by require_trusted_window() label gating, but the bump is the real fix.',
     issue: '#5518',
+    // Lower bound the manifest constraint must also honour, so the two floors
+    // cannot silently diverge (asserted in tests/check-rust-security-floors.test.mjs).
+    manifestFile: 'src-tauri/Cargo.toml',
   },
 ];
 
