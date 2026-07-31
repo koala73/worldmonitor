@@ -85,7 +85,7 @@ jobs:
           targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || (matrix.label == 'Linux-ARM64' && 'aarch64-unknown-linux-gnu' || '') }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -202,7 +202,7 @@ jobs:
       # ── Build: Full variant (signed) ──
       - name: Build Tauri app (full, signed)
         if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
@@ -227,7 +227,7 @@ jobs:
       # ── Build: Full variant (unsigned — no Apple certs) ──
       - name: Build Tauri app (full, unsigned)
         if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
@@ -246,7 +246,7 @@ jobs:
       # ── Build: Tech variant (signed) ──
       - name: Build Tauri app (tech, signed)
         if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
@@ -272,7 +272,7 @@ jobs:
       # ── Build: Tech variant (unsigned — no Apple certs) ──
       - name: Build Tauri app (tech, unsigned)
         if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
