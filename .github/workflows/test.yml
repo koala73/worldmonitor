@@ -18,6 +18,8 @@ jobs:
       digest: ${{ steps.diff.outputs.digest }}
       validation: ${{ steps.diff.outputs.validation }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
+      desktop_config: ${{ steps.diff.outputs.desktop_config }}
+      desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
     steps:
       - id: diff
         env:
@@ -28,6 +30,8 @@ jobs:
             echo "digest=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_config=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
@@ -78,6 +82,31 @@ jobs:
             END { print count + 0 }
           ')
           echo "consumer_prices=$( [ "$CONSUMER_PRICES" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Desktop drift gates (#5902). The `code` filter above deliberately
+          # skips src-tauri/ (non-sidecar), so before these outputs existed a
+          # Rust/Tauri-config change ran zero PR CI and desktop breakage
+          # surfaced only at the next release build — months later.
+          # The sidecar handler bundle build lives in the `unit` job (gated on
+          # `code`), NOT here: the bundled api/{domain}/v1/[rpc].ts handlers
+          # import from src/ and server/ via the @/ alias, so the bundle's
+          # real input graph is the whole code surface, and `code` is the
+          # filter that already tracks it.
+          DESKTOP_CONFIG=$(echo "$FILES" | awk '
+            /^src-tauri\// { count++; next }
+            /^package\.json$/ { count++; next }
+            /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
+            /^\.github\/workflows\/(build-desktop|test-linux-app|test)\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          DESKTOP_RUST=$(echo "$FILES" | awk '
+            /^src-tauri\/sidecar\// { next }
+            /^src-tauri\// { count++; next }
+            /^\.github\/workflows\/test\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   docs-stats:
     # Always-on: guards the capability counts quoted in README / ARCHITECTURE /
@@ -140,6 +169,34 @@ jobs:
               exit 1
             }
           done
+      - name: Sidecar handler bundles build (#5902)
+        # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
+        # handlers whose import graph spans src/ and server/ (via the @/
+        # alias) — before this step, that build ran only inside release
+        # builds, so a bundle-breaking change surfaced months later. The
+        # count assertion guards the vacuous-pass case: the build script
+        # exits 0 when its glob finds zero entry points, so "green" must
+        # also mean "every discovered domain actually produced a bundle".
+        run: |
+          node scripts/build-sidecar-sebuf.mjs
+          node scripts/build-sidecar-handlers.mjs
+          node -e '
+            const { readdirSync, existsSync } = require("node:fs");
+            const domains = readdirSync("api", { withFileTypes: true })
+              .filter((d) => d.isDirectory() && !["[domain]", "[[...path]]"].includes(d.name))
+              .filter((d) => existsSync(`api/${d.name}/v1/[rpc].ts`))
+              .map((d) => d.name);
+            const missing = domains.filter((d) => !existsSync(`api/${d}/v1/[rpc].js`));
+            if (domains.length === 0) {
+              console.error("::error::sidecar handler build found ZERO api/{domain}/v1/[rpc].ts entry points — the discovery glob is broken (vacuous pass)");
+              process.exit(1);
+            }
+            if (missing.length > 0) {
+              console.error(`::error::sidecar handler build produced no bundle for: ${missing.join(", ")}`);
+              process.exit(1);
+            }
+            console.log(`sidecar handler bundles ok: ${domains.length} domains`);
+          '
 
   consumer-prices:
     needs: changes
@@ -169,6 +226,92 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run test:sidecar
+
+  # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
+  # (deploy-gate counts "skipped" as passing). desktop-config is the cheap
+  # install-free surface — version consistency, release packaging script
+  # syntax, and Tauri config/capability parse (the sidecar bundle build lives
+  # in `unit`, whose `code` filter tracks the bundle's real src/server/api
+  # import graph).
+  # desktop-rust compiles and unit-tests the Tauri crate, which was
+  # previously untested until a release build.
+  desktop-config:
+    needs: changes
+    if: needs.changes.outputs.desktop_config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Desktop version consistency
+        run: |
+          node scripts/sync-desktop-version.mjs --check || {
+            echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
+            exit 1
+          }
+      - name: Linux AppImage post-processing script parses
+        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Tauri config and capability files parse
+        run: |
+          node -e '
+            const { readFileSync, readdirSync } = require("node:fs");
+            const files = [
+              ...readdirSync("src-tauri").filter((f) => /^tauri.*\.conf\.json$/.test(f)).map((f) => `src-tauri/${f}`),
+              ...readdirSync("src-tauri/capabilities").map((f) => `src-tauri/capabilities/${f}`),
+            ];
+            if (files.length < 4) {
+              console.error(`expected at least 3 tauri conf files + capabilities, found ${files.length}: ${files.join(", ")}`);
+              process.exit(1);
+            }
+            let failed = false;
+            for (const f of files) {
+              try {
+                JSON.parse(readFileSync(f, "utf8"));
+                console.log(`ok ${f}`);
+              } catch (e) {
+                console.error(`::error file=${f}::invalid JSON in ${f}: ${e.message}`);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+          '
+
+  desktop-rust:
+    needs: changes
+    if: needs.changes.outputs.desktop_rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+        with:
+          toolchain: stable
+      - name: Rust cache
+        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        with:
+          workspaces: './src-tauri -> target'
+          cache-on-failure: true
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - name: cargo test
+        working-directory: src-tauri
+        # tauri-build's generate_context! requires frontendDist (../dist) to
+        # exist at compile time; an empty dir is sufficient for unit tests.
+        run: |
+          mkdir -p ../dist
+          cargo test --locked || {
+            echo '::error::desktop Rust tests failed — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked (the mkdir is required: tauri-build embeds ../dist at compile time).'
+            exit 1
+          }
 
   convex-tests:
     needs: changes

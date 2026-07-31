@@ -383,7 +383,7 @@ Runs before every `git push`:
 | `publish-python.yml` | `py-v*` tag, manual | Tests and publishes the `worldmonitor-sdk` PyPI package (`sdk/python/`) via OIDC trusted publishing (no token) with attestations |
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
-| `test-linux-app.yml` | Manual | Linux AppImage build + headless smoke test with screenshot verification |
+| `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
 
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 

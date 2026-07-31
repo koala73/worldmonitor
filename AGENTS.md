@@ -196,8 +196,9 @@ Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/
 | `typecheck.yml` | PR + push to main | `tsc --noEmit` for src and API |
 | `lint.yml` | PR (markdown changes) | markdownlint-cli2 |
 | `proto-check.yml` | PR (proto changes) | Generated code freshness |
-| `build-desktop.yml` | Manual | Tauri desktop build |
-| `test-linux-app.yml` | Manual | Linux AppImage smoke test |
+| `build-desktop.yml` | `v*` tag, manual | Tauri desktop build |
+| `test-linux-app.yml` | Twice-weekly schedule, manual | Desktop Canary (Linux): release-processed AppImage smoke — crash, sidecar readiness/liveness, rendered content |
+| `test.yml` (`desktop-config`, `desktop-rust` jobs) | PR touching desktop-coupled paths | Desktop version consistency, AppImage post-processing syntax, Tauri config/capability parse, `cargo test --locked` (#5902) |
 
 ## Pre-Push Hook
 

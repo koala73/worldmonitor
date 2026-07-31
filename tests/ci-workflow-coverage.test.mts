@@ -17,6 +17,8 @@ const deployGateWorkflow = read(resolve(workflowsDir, 'deploy-gate.yml'));
 const securityAuditWorkflow = read(resolve(workflowsDir, 'security-audit.yml'));
 const securityAuditScript = read(resolve(root, '.github/scripts/audit-production-dependencies.mjs'));
 const testWorkflow = read(resolve(workflowsDir, 'test.yml'));
+const desktopBuildWorkflow = read(resolve(workflowsDir, 'build-desktop.yml'));
+const desktopCanaryWorkflow = read(resolve(workflowsDir, 'test-linux-app.yml'));
 const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
@@ -38,6 +40,8 @@ const REQUIRED_TEST_JOBS = [
   'convex-tests',
   'variant-smoke-full',
   'resilience-validation-smoke',
+  'desktop-config',
+  'desktop-rust',
 ] as const;
 
 const TIMEOUT_CAPPED_TEST_JOBS = [
@@ -46,6 +50,8 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'convex-tests',
   'variant-smoke-full',
   'resilience-validation-smoke',
+  'desktop-config',
+  'desktop-rust',
 ] as const;
 
 const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit'] as const;
@@ -83,12 +89,39 @@ const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
   'scripts/_bundle-runner.mjs',
 ] as const;
 
+// Desktop drift gates (#5902): the literal awk patterns each change filter
+// must keep, so a filter refactor cannot silently un-gate a desktop-breaking
+// path class (the exact drift class #5902 exists to close).
+const REQUIRED_DESKTOP_CONFIG_INPUTS = [
+  'src-tauri/',
+  'package.json',
+  'scripts/repack-linux-appimage.sh',
+  'scripts/sync-desktop-version.mjs',
+  '.github/workflows/(build-desktop|test-linux-app|test).yml',
+] as const;
+
+const REQUIRED_DESKTOP_RUST_INPUTS = [
+  'src-tauri/sidecar/',
+  'src-tauri/',
+  '.github/workflows/test.yml',
+] as const;
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function workflowRegexNeedle(path: string): string {
   return path.replaceAll('/', '\\/').replaceAll('.', '\\.');
+}
+
+function shellAwkAssignmentBlock(variable: string): string {
+  const start = `${variable}=$(echo "$FILES" | awk '`;
+  const startIndex = testWorkflow.indexOf(start);
+  assert.notEqual(startIndex, -1, `test.yml must define ${variable}`);
+  const end = "\n          ')";
+  const endIndex = testWorkflow.indexOf(end, startIndex);
+  assert.notEqual(endIndex, -1, `test.yml must terminate ${variable}`);
+  return testWorkflow.slice(startIndex, endIndex + end.length);
 }
 
 function testJobBlock(job: string): string {
@@ -101,6 +134,14 @@ function workflowJobBlock(workflow: string, job: string): string {
   const match = workflow.match(new RegExp(`\\n  ${escapeRegExp(job)}:\\n[\\s\\S]*?(?=\\n  [\\w-]+:\\n|\\n$)`));
   assert.ok(match, `workflow must define ${job}`);
   return match[0];
+}
+
+function workflowStepBlock(workflow: string, stepName: string): string {
+  const marker = `\n      - name: ${stepName}\n`;
+  const startIndex = workflow.indexOf(marker);
+  assert.notEqual(startIndex, -1, `workflow must define step ${stepName}`);
+  const nextStepIndex = workflow.indexOf('\n      - ', startIndex + marker.length);
+  return workflow.slice(startIndex, nextStepIndex === -1 ? workflow.length : nextStepIndex);
 }
 
 function workflowJobNames(workflow: string, label: string): string[] {
@@ -430,6 +471,91 @@ describe('CI workflow coverage', () => {
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
       assert.ok(testWorkflow.includes(workflowRegexNeedle(input)), `test.yml must cover ${input}`);
     }
+  });
+
+  it('keeps desktop drift-gate inputs in the CI change filter (#5902)', () => {
+    assert.ok(
+      testWorkflow.includes('desktop_config: ${{ steps.diff.outputs.desktop_config }}'),
+      'test.yml must expose a desktop_config change output',
+    );
+    assert.ok(
+      testWorkflow.includes('desktop_rust: ${{ steps.diff.outputs.desktop_rust }}'),
+      'test.yml must expose a desktop_rust change output',
+    );
+    const desktopConfigFilter = shellAwkAssignmentBlock('DESKTOP_CONFIG');
+    const desktopRustFilter = shellAwkAssignmentBlock('DESKTOP_RUST');
+    for (const input of REQUIRED_DESKTOP_CONFIG_INPUTS) {
+      assert.ok(
+        desktopConfigFilter.includes(workflowRegexNeedle(input)),
+        `test.yml desktop_config filter must cover ${input}`,
+      );
+    }
+    for (const input of REQUIRED_DESKTOP_RUST_INPUTS) {
+      assert.ok(
+        desktopRustFilter.includes(workflowRegexNeedle(input)),
+        `test.yml desktop_rust filter must cover ${input}`,
+      );
+    }
+    assert.match(
+      testJobBlock('desktop-config'),
+      /if: needs\.changes\.outputs\.desktop_config == 'true'/,
+      'desktop-config job must use the desktop_config change output',
+    );
+    assert.match(
+      testJobBlock('desktop-rust'),
+      /if: needs\.changes\.outputs\.desktop_rust == 'true'/,
+      'desktop-rust job must use the desktop_rust change output',
+    );
+    // The sidecar handler bundle build must live in the `unit` job: its
+    // esbuild input graph spans src/ and server/ via the @/ alias, and only
+    // the `code` filter tracks that whole surface (#5902). A refactor moving
+    // it back to a narrower path-gated job would silently re-open the
+    // "bundle-breaking change with green PR CI" gap.
+    assert.match(
+      testJobBlock('unit'),
+      /^\s+node scripts\/build-sidecar-handlers\.mjs\s*$/m,
+      'unit job must run the sidecar handler bundle build',
+    );
+    const releasePostProcess = workflowStepBlock(desktopBuildWorkflow, 'Strip GPU libraries from AppImage');
+    assert.match(
+      releasePostProcess,
+      /^\s+bash scripts\/repack-linux-appimage\.sh "\$APPIMAGE" "\$TOOL_ARCH"\s*$/m,
+      'release workflow must apply the shared AppImage post-processing',
+    );
+    assert.match(releasePostProcess, /^\s+if: contains\(matrix\.platform, 'ubuntu'\)\s*$/m);
+    assert.doesNotMatch(releasePostProcess, /^\s+continue-on-error:/m);
+    const canaryPostProcess = workflowStepBlock(
+      desktopCanaryWorkflow,
+      'Apply release AppImage post-processing',
+    );
+    assert.match(
+      canaryPostProcess,
+      /^\s+bash scripts\/repack-linux-appimage\.sh "\$\{IMAGES\[0]}" x86_64\s*$/m,
+      'desktop canary must smoke-test the release-processed AppImage',
+    );
+    assert.doesNotMatch(canaryPostProcess, /^\s+(?:if|continue-on-error):/m);
+    const desktopCanarySmoke = workflowStepBlock(desktopCanaryWorkflow, 'Smoke-test AppImage');
+    assert.doesNotMatch(desktopCanarySmoke, /^\s+continue-on-error:/m);
+    assert.match(
+      desktopCanarySmoke,
+      /if CODE=\$\(curl[\s\S]{0,200}\[\[ "\$CODE" =~ \^\[1-5]\[0-9]\[0-9]\$ \]\]; then/,
+      'desktop canary readiness must require curl success and a real HTTP status',
+    );
+    assert.match(
+      desktopCanarySmoke,
+      /if FINAL_CODE=\$\(curl[\s\S]{0,200}\[\[ "\$FINAL_CODE" =~ \^\[1-5]\[0-9]\[0-9]\$ \]\]; then/,
+      'desktop canary must re-probe sidecar liveness after the observation window',
+    );
+    assert.ok(
+      desktopCanarySmoke.indexOf('if kill -0 "$APP_PID"') >
+        desktopCanarySmoke.indexOf('if FINAL_CODE=$(curl'),
+      'desktop canary must check app liveness after the final sidecar probe',
+    );
+    assert.match(
+      desktopCanarySmoke,
+      /^\s+if grep -q "SIDECAR_FINAL_STATUS=alive" \/tmp\/display-server\.log 2>\/dev\/null; then\s*$/m,
+      'desktop canary must gate success on final sidecar liveness',
+    );
   });
 
   it('runs scheduled and per-PR production dependency audits for every package lockfile', () => {
