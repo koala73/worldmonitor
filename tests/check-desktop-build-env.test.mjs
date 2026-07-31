@@ -64,6 +64,69 @@ describe('check-desktop-build-env', () => {
     assert.deepEqual(steps[0].envKeys, [...REQUIRED_DESKTOP_BUILD_ENV]);
   });
 
+  it('catches a tauri step declared uses-first with no name (parser-evasion guard)', () => {
+    const usesFirst = [
+      'jobs:',
+      '  build:',
+      '    steps:',
+      '      - uses: tauri-apps/tauri-action@abc',
+      '        env:',
+      `          ${REQUIRED_DESKTOP_BUILD_ENV[0]}: x`,
+      '',
+    ].join('\n');
+    const steps = extractTauriBuildSteps(usesFirst);
+    assert.equal(steps.length, 1);
+    assert.match(steps[0].name, /unnamed tauri step/);
+    assert.deepEqual(steps[0].envKeys, [REQUIRED_DESKTOP_BUILD_ENV[0]]);
+  });
+
+  it('separates a named non-tauri step, an unnamed tauri step, and a named tauri step', () => {
+    const mixed = [
+      'jobs:',
+      '  build:',
+      '    steps:',
+      '      - name: Checkout',
+      '        uses: actions/checkout@abc',
+      '      - uses: tauri-apps/tauri-action@abc',
+      '        env:',
+      '          A_KEY: 1',
+      '      - name: Build Tauri app (named)',
+      '        uses: tauri-apps/tauri-action@abc',
+      '        env:',
+      '          B_KEY: 2',
+      '',
+    ].join('\n');
+    const steps = extractTauriBuildSteps(mixed);
+    assert.equal(steps.length, 2);
+    assert.deepEqual(steps[0].envKeys, ['A_KEY']);
+    assert.equal(steps[1].name, 'Build Tauri app (named)');
+    assert.deepEqual(steps[1].envKeys, ['B_KEY']);
+  });
+
+  it('collects bracket and type-cast env access shapes (fail-closed collector)', () => {
+    const errors = checkDesktopBuildEnv(
+      fixtureRoot({
+        spaSource: [
+          "const a = import.meta.env['VITE_BRACKET_READ'];",
+          'const b = (import.meta.env as Record<string, string>).VITE_CAST_READ;',
+          '',
+        ].join('\n'),
+      }),
+    );
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /VITE_BRACKET_READ/);
+    assert.match(errors[0], /VITE_CAST_READ/);
+  });
+
+  it('scans shared/ when present', () => {
+    const root = fixtureRoot({ spaSource: 'export {};\n' });
+    mkdirSync(path.join(root, 'shared'), { recursive: true });
+    writeFileSync(path.join(root, 'shared/util.ts'), 'export const x = import.meta.env.VITE_SHARED_ONLY;\n');
+    const errors = checkDesktopBuildEnv(root);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /VITE_SHARED_ONLY/);
+  });
+
   it('keeps parsing env keys across comment lines inside the env block', () => {
     const withComment = buildWorkflow(
       `          ${REQUIRED_DESKTOP_BUILD_ENV[0]}: x\n          # comment (#5905)\n          ${REQUIRED_DESKTOP_BUILD_ENV[1]}: y`,

@@ -19,9 +19,10 @@
  * Run: node scripts/check-desktop-build-env.mjs [--root <repo-root>]
  */
 
-import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { isMainModule } from './lib/main-module.mjs';
 
 // Env keys every Tauri build step must declare. Secret-sourced keys render
 // empty until the repo secret exists — behavior is then unchanged from
@@ -70,8 +71,10 @@ export const DESKTOP_BUILD_WORKFLOWS = [
 
 /**
  * Extract every step block using tauri-apps/tauri-action from a workflow
- * source, returning [{ name, envKeys }]. Line-based: a step starts at
- * `      - name: ...` (6-space indent) and ends at the next step or EOF.
+ * source, returning [{ name, envKeys }]. Line-based: a step starts at ANY
+ * 6-space `- ` sequence entry (not just `- name:` — a step declared
+ * `- uses:` first, or with no name at all, must not silently escape the
+ * gate) and ends at the next step or EOF.
  */
 export function extractTauriBuildSteps(workflowSource) {
   const lines = workflowSource.replace(/\r\n/g, '\n').split('\n');
@@ -79,10 +82,12 @@ export function extractTauriBuildSteps(workflowSource) {
   let current = null;
 
   for (const line of lines) {
-    const stepStart = line.match(/^ {6}- name: (.*)$/);
+    const stepStart = line.match(/^ {6}- (.*)$/);
     if (stepStart) {
       if (current) steps.push(current);
-      current = { name: stepStart[1].trim(), lines: [] };
+      // Keep the first line's own `key: value` (e.g. `- uses: ...`) as a
+      // block line, re-indented to match the 8-space continuation lines.
+      current = { lines: [`        ${stepStart[1]}`] };
       continue;
     }
     if (current) current.lines.push(line);
@@ -91,7 +96,9 @@ export function extractTauriBuildSteps(workflowSource) {
 
   return steps
     .filter((s) => s.lines.some((l) => /^\s+uses: tauri-apps\/tauri-action@/.test(l)))
-    .map((s) => {
+    .map((s, index) => {
+      const nameLine = s.lines.find((l) => /^ {8}name:/.test(l));
+      const name = nameLine ? nameLine.replace(/^ {8}name:/, '').trim() : `<unnamed tauri step #${index + 1}>`;
       const envKeys = [];
       let inEnv = false;
       for (const l of s.lines) {
@@ -108,7 +115,7 @@ export function extractTauriBuildSteps(workflowSource) {
           if (!/^\s*#/.test(l) && l.trim() !== '') inEnv = false;
         }
       }
-      return { name: s.name, envKeys };
+      return { name, envKeys };
     });
 }
 
@@ -125,9 +132,13 @@ export function collectSpaViteVars(rootDir) {
       const st = statSync(full);
       if (st.isDirectory()) {
         walk(full);
-      } else if (/\.(ts|tsx|mts|js|mjs)$/.test(entry)) {
+      } else if (/\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/.test(entry)) {
         const source = readFileSync(full, 'utf8');
-        for (const m of source.matchAll(/import\.meta\.env\.(VITE_[A-Z0-9_]+)/g)) {
+        // Windowed match: catches direct access plus casts, optional chains,
+        // and bracket access near the env object (`(import.meta.env as X)
+        // .VITE_FOO`, `import.meta.env['VITE_FOO']`) — an access shape must
+        // not be a way to dodge classification (fail closed).
+        for (const m of source.matchAll(/import\.meta\.env[\s\S]{0,40}?(VITE_[A-Z0-9_]+)/g)) {
           vars.add(m[1]);
         }
       }
@@ -136,8 +147,11 @@ export function collectSpaViteVars(rootDir) {
   walk(path.join(rootDir, 'src'));
   try {
     walk(path.join(rootDir, 'shared'));
-  } catch {
-    // shared/ absent (fixture roots, future restructure) — src/ scan stands.
+  } catch (err) {
+    // Only a genuinely absent shared/ is tolerable (fixture roots, future
+    // restructure). Any other error must not silently shrink the scan —
+    // a fail-open here is the vacuous-guard class this script exists to kill.
+    if (err.code !== 'ENOENT') throw err;
   }
   return [...vars].sort();
 }
@@ -172,16 +186,7 @@ export function checkDesktopBuildEnv(rootDir) {
   return errors;
 }
 
-// Realpath BOTH sides: with only argv[1] raw, a symlinked invocation path
-// (macOS /tmp -> /private/tmp) makes the comparison silently false and the
-// gate a no-op that exits 0 — the fail-open documented in
-// docs/solutions/ for main-module guards on ESM CLI gates.
-const isMain =
-  process.argv[1] &&
-  pathToFileURL(realpathSync(process.argv[1])).href ===
-    pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
-
-if (isMain) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const rootFlagIndex = process.argv.indexOf('--root');
   const rootDir = rootFlagIndex !== -1 ? path.resolve(process.argv[rootFlagIndex + 1]) : process.cwd();
 
