@@ -599,11 +599,21 @@ export async function getClerkToken(): Promise<string | null> {
       // Fall back to the standard session token if the template isn't configured in Clerk.
       let token = await fetchClerkToken(session);
       const firstFetchedAt = Date.now();
+      let refreshUnavailable = false;
       if (token && !shouldReuseCachedClerkToken({ token, cachedAt: firstFetchedAt, now: firstFetchedAt })) {
         // Clerk may return a near-expiry cached token while refreshing it in the
         // background. The initiating caller must not receive that stale token:
         // force one server refresh, then accept only a token outside the margin.
-        token = await fetchClerkToken(session, true);
+        const refreshed = await fetchClerkToken(session, true);
+        // A refresh that fails outright (Clerk unreachable, blocked, 5xx) is a
+        // different event from one that succeeds and still returns a near-expiry
+        // token. Only the latter justifies null: there, a better credential
+        // exists and the caller should retry for it. Here the token in hand is
+        // the only one there is, and its remaining seconds can still sign the
+        // request being made right now — so keep it rather than manufacturing a
+        // signed-out state for a live session (Sentry WORLDMONITOR-Q9).
+        if (refreshed) token = refreshed;
+        else refreshUnavailable = true;
       }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
@@ -615,7 +625,10 @@ export async function getClerkToken(): Promise<string | null> {
         _cachedTokenAt = fetchedAt;
         return token;
       }
-      return null;
+      // Deliberately uncached: serving a near-expiry token for the full TTL is
+      // the stacked-cache defect this function was rewritten to fix, so the next
+      // caller must go back to Clerk once it is reachable again.
+      return refreshUnavailable ? token : null;
     } catch {
       return null;
     } finally {
