@@ -97,6 +97,7 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'package.json',
   'scripts/repack-linux-appimage.sh',
   'scripts/sync-desktop-version.mjs',
+  'scripts/check-rust-security-floors.mjs',
   '.github/workflows/(build-desktop|test-linux-app|test).yml',
 ] as const;
 
@@ -500,6 +501,15 @@ describe('CI workflow coverage', () => {
       testJobBlock('desktop-config'),
       /if: needs\.changes\.outputs\.desktop_config == 'true'/,
       'desktop-config job must use the desktop_config change output',
+    );
+    // Cargo.lock is the only thing that decides which crate versions ship, and
+    // no other job inspects it (security-audit covers npm lockfiles only), so
+    // dropping this step would let a cargo update silently reintroduce a known
+    // advisory — CVE-2026-42184 / #5518 is the case that motivated it.
+    assert.match(
+      testJobBlock('desktop-config'),
+      /^\s+run: node scripts\/check-rust-security-floors\.mjs\s*$/m,
+      'desktop-config job must run the Rust dependency security-floor check',
     );
     assert.match(
       testJobBlock('desktop-rust'),

@@ -24,6 +24,7 @@
     "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**' '!docs/archive/**' '!todos/**' '!docs/plans/**' '!docs/brainstorms/**' '!docs/ideation/**'",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
+    "desktop:check-rust-floors": "node scripts/check-rust-security-floors.mjs",
     "sync:locales": "node scripts/sync-locale-keys.mjs",
     "sync:locales:check": "node scripts/sync-locale-keys.mjs --check",
     "sync:bootstrap-tier-keys": "node scripts/sync-bootstrap-tier-keys.mjs",

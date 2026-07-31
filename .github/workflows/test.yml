@@ -96,6 +96,7 @@ jobs:
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
+            /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
             /^\.github\/workflows\/(build-desktop|test-linux-app|test)\.yml$/ { count++ }
             END { print count + 0 }
           ')
@@ -277,6 +278,13 @@ jobs:
             }
             if (failed) process.exit(1);
           '
+      - name: Rust dependency security floors (#5518)
+        # Cargo.lock decides what actually ships; the manifest constraint only
+        # bounds resolution. Nothing else in CI inspects it (security-audit
+        # covers npm lockfiles only), so without this a cargo update could
+        # silently drop the desktop app back onto a crate version with a known
+        # advisory.
+        run: node scripts/check-rust-security-floors.mjs
 
   desktop-rust:
     needs: changes
