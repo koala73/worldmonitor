@@ -36,7 +36,7 @@ service AviationService {
     };
   }
 
-  // ListAirportFlights retrieves recent flights at a specific airport.
+  // ListAirportFlights returns recent arrivals and departures with direction and limit filters, source attribution, flight status, carrier details, and update time.
   rpc ListAirportFlights(ListAirportFlightsRequest) returns (ListAirportFlightsResponse) {
     option (sebuf.http.config) = {
       path: "/list-airport-flights"
