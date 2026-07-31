@@ -1523,8 +1523,14 @@ describe('quantified cross-Strait activity (#5575)', () => {
     }
   });
 
-  it('classifies direct and proxied Japan MOD HTTP 403 responses as explicitly blocked', async () => {
-    const responseBody = `Denied via https://proxy-user:proxy-secret@proxy.test ${'x'.repeat(500)}`;
+  it('retains reviewed Japan MOD rows when direct and proxy paths receive the Cloudflare challenge', async () => {
+    const responseBody = [
+      '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title>',
+      '<meta name="robots" content="noindex,nofollow">',
+      'Proxy-Authorization: Basic cHJveHktdXNlcjpwcm94eS1zZWNyZXQ=',
+      'via https://proxy-user:proxy-secret@proxy.test',
+      '</head></html>',
+    ].join('');
     const snapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
         () => new Response('Forbidden', { status: 403 }),
@@ -1545,16 +1551,30 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(japan?.blockedReason, 'HTTP_403');
     assert.equal(japan?.fallbackReason, 'HTTP_403');
     assert.equal(japan?.proxyFailureReason, 'HTTP_403');
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.lastSuccessAt, null);
     assert.deepEqual(japan?.errorCodes, ['HTTP_403']);
     assert.deepEqual(japan?.proxyFailureDetail, {
       stage: 'response',
       httpStatus: 403,
       contentType: 'text/html; charset=UTF-8',
-      bodyPrefix: `Denied via https://[redacted]@proxy.test ${'x'.repeat(500)}`.slice(0, 256),
+      bodyPrefix: [
+        '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title>',
+        '<meta name="robots" content="noindex,nofollow">',
+        'Proxy-Authorization: [redacted]',
+      ].join(''),
       errorCode: null,
       errorMessage: 'HTTP_403',
     });
+    const retainedJapanRows = snapshot.observations
+      .filter((row: { sourceId: string }) => row.sourceId === 'japan-mod');
+    assert.equal(retainedJapanRows.length, REVIEWED_JAPAN_MOD_OBSERVATIONS.length);
+    assert.ok(
+      retainedJapanRows.every((row: { indexPresence?: string }) => row.indexPresence === 'unknown'),
+      'a blocked transport must not present retained rows as evidence of a successful index fetch',
+    );
     assert.doesNotMatch(JSON.stringify(japan), /proxy-user|proxy-secret/);
+    assert.doesNotMatch(JSON.stringify(japan), /cHJveHktdXNlcjpwcm94eS1zZWNyZXQ=/);
   });
 
   it('does not classify mixed direct failures and proxy 403 as a two-path block', async () => {
