@@ -69,6 +69,11 @@ export const DEFAULT_CATEGORY = 'finance';
 // Health metadata deliberately uses published counts, not pre-ranking
 // classification counts: these are the records each category consumer can
 // actually retrieve from the canonical snapshot.
+//
+// Absent/malformed pools report 0 (producer-side fail closed) so a partial
+// payload cannot look healthy. Health consumers parse with parsePoolCounts,
+// which treats a missing/malformed whole object as null (unproven coverage) —
+// different from an explicit zero for a single pool.
 export function predictionPoolCounts(data) {
   return Object.fromEntries(
     CATEGORIES.map((category) => [

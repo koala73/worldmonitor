@@ -498,6 +498,16 @@ describe('predictionPoolCounts (seed-meta coverage signal)', () => {
       finance: 0,
     });
   });
+
+  it('keys stay aligned with api/_pool-coverage health floors', async () => {
+    // Edge helpers cannot import seeder modules; both lists must name the same
+    // pools or a new category would publish counts health never floors.
+    const { PREDICTION_MARKET_MIN_POOL_COUNTS } = await import('../api/_pool-coverage.js');
+    assert.deepEqual(
+      Object.keys(PREDICTION_MARKET_MIN_POOL_COUNTS).sort(),
+      [...CATEGORIES].sort(),
+    );
+  });
 });
 
 describe('validateBootstrapPayload (the seeder\'s validateFn)', () => {

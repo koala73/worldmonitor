@@ -93,6 +93,7 @@ test('seed-health flags a fresh prediction snapshot with an empty pool as covera
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'coverage_partial');
   assert.equal(entry.stale, false);
+  assert.equal(entry.coveragePartial, true);
   assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
   assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
 });
@@ -109,6 +110,7 @@ test('seed-health reports stale before per-pool coverage when both apply', async
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'stale');
   assert.equal(entry.stale, true);
+  assert.equal(entry.coveragePartial, true);
   assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
 });
 
@@ -120,6 +122,7 @@ test('seed-health fails closed when prediction pool metadata is missing', async 
 
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'coverage_partial');
+  assert.equal(entry.coveragePartial, true);
   assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
   assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
 });
@@ -132,6 +135,7 @@ test('seed-health fails closed when prediction pool metadata is malformed', asyn
 
   assert.equal(body.overall, 'warning');
   assert.equal(entry.status, 'coverage_partial');
+  assert.equal(entry.coveragePartial, true);
   assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
 });
 
@@ -145,5 +149,6 @@ test('seed-health keeps prediction markets healthy when every pool is populated'
   assert.equal(body.overall, 'healthy');
   assert.equal(entry.status, 'ok');
   assert.equal(entry.stale, false);
+  assert.equal(Object.hasOwn(entry, 'coveragePartial'), false);
   assert.deepEqual(entry.poolCounts, { geopolitical: 1, tech: 1, finance: 36 });
 });

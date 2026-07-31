@@ -539,6 +539,9 @@ export default async function handler(req) {
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;
+    // Explicit coverage flag so consumers that only inspect `stale` still see
+    // pool/aggregate shortfalls (pool shortfall keeps stale:false by design).
+    if (coveragePartial) seeds[domain].coveragePartial = true;
     if (probe) seeds[domain].dataProbe = probe;
     // #5736: without this, `status: "error"` names no cause and an operator has
     // to read raw Redis to learn WHY — which is the log-diving the issue exists
