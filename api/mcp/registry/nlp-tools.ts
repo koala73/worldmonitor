@@ -52,6 +52,20 @@ const KEYWORD_SPIKE_MAX_STORIES = 800;
 const KEYWORD_SPIKE_MAX_STORED = 25;
 const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 
+// Full-variant digest category keys (VARIANT_FEEDS.full). Kept as a local
+// enum so Edge MCP tools never import server/ — parity with _feeds.ts is
+// asserted by tests/agent-commodities-news-parity.test.mts adjacent coverage
+// and the tools/list enum check in mcp-nlp-tools.test.mjs.
+const FULL_DIGEST_CATEGORIES = [
+  'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance',
+  'commodities', 'gov', 'africa', 'latam', 'asia', 'energy', 'thinktanks',
+  'crisis', 'layoffs',
+] as const;
+const FULL_DIGEST_CATEGORY_DESC =
+  'Restrict to one full-digest category: ' +
+  FULL_DIGEST_CATEGORIES.join(', ') +
+  '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
+
 function nlpClampInt(value: unknown, min: number, max: number, fallback: number): number {
   return Number.isInteger(value)
     ? Math.min(max, Math.max(min, value as number))
@@ -65,7 +79,22 @@ function patternEntityKind(value: string): 'cve' | 'apt' | 'fin' | 'leader' {
   return 'leader';
 }
 
-type NlpDigestFetch = { items: NewsItemCore[]; generatedAt: string };
+type NlpDigestCategoryGroup = {
+  items?: Array<{
+    source?: string; title?: string; link?: string; publishedAt?: number;
+    isAlert?: boolean;
+    threat?: { level?: string; category?: string; confidence?: number; source?: string };
+  }>;
+};
+
+type NlpDigestFetch = {
+  items: NewsItemCore[];
+  generatedAt: string;
+  /** Applied category filter, or null when aggregating every full-digest bucket. */
+  category: string | null;
+  /** Present when a non-empty category filter did not match any digest key. */
+  note?: string;
+};
 
 // Caching asymmetry among these four tools is deliberate. get_keyword_spikes
 // caches its result because it fans out across many Redis round trips over a
@@ -80,6 +109,11 @@ type NlpDigestFetch = { items: NewsItemCore[]; generatedAt: string };
  * get_news_clusters: the canonical full/en feed digest (~150-200 titles).
  * Digest items carry no per-source tier, so every item gets a neutral tier
  * and the shared algorithm's primary selection falls back to recency.
+ *
+ * When `category` is set, only that digest bucket is scanned. A miss
+ * (typo or pre-deploy cache) returns zero items plus a `note` that lists
+ * the keys present in the current snapshot so agents can self-correct —
+ * empty-but-valid buckets stay silent (headlineCount 0, no note).
  */
 async function fetchNlpDigestItems(
   base: string,
@@ -94,20 +128,31 @@ async function fetchNlpDigestItems(
   });
   assertToolFetchOk(res, 'list-feed-digest');
   const body = await res.json() as {
-    categories?: Record<string, { items?: Array<{
-      source?: string; title?: string; link?: string; publishedAt?: number;
-      isAlert?: boolean;
-      threat?: { level?: string; category?: string; confidence?: number; source?: string };
-    }> }>;
+    categories?: Record<string, NlpDigestCategoryGroup>;
     generatedAt?: string;
   };
 
   const seen = new Set<string>();
   const items: NewsItemCore[] = [];
   const categories = body.categories ?? {};
-  const groups = category
-    ? (categories[category] ? [categories[category]] : [])
-    : Object.values(categories);
+  const availableCategories = Object.keys(categories).sort();
+  let groups: NlpDigestCategoryGroup[];
+  let note: string | undefined;
+
+  if (!category) {
+    groups = Object.values(categories);
+  } else if (Object.prototype.hasOwnProperty.call(categories, category)) {
+    groups = [categories[category]!];
+  } else {
+    groups = [];
+    // Prefer the live snapshot keys so agents see what this cycle actually
+    // carries; fall back to the static enum when the digest is empty.
+    const listed = availableCategories.length > 0
+      ? availableCategories.join(', ')
+      : FULL_DIGEST_CATEGORIES.join(', ');
+    note = `Unknown digest category "${category}". Available: ${listed}.`;
+  }
+
   for (const group of groups) {
     for (const raw of group.items ?? []) {
       if (!raw?.title || !raw.source) continue;
@@ -130,7 +175,12 @@ async function fetchNlpDigestItems(
       });
     }
   }
-  return { items, generatedAt: body.generatedAt ?? '' };
+  return {
+    items,
+    generatedAt: body.generatedAt ?? '',
+    category: category || null,
+    ...(note ? { note } : {}),
+  };
 }
 
 function nlpRegistryEntities(titles: string[], limit: number) {
@@ -250,12 +300,16 @@ export const NLP_TOOLS: ToolDef[] = [
   {
     name: 'extract_entities',
     _outputBudgetBytes: 16384,
-    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB) to extract from it, or omit text to aggregate entities across the current headline digest. No LLM involved.',
+    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB) to extract from it, or omit text to aggregate entities across the current headline digest (optionally restricted with category, e.g. "commodities"). No LLM involved.',
     inputSchema: {
       type: 'object',
       properties: {
         text: { type: 'string', maxLength: EXTRACT_TEXT_MAX_CHARS, description: 'Optional text to extract from (max 2048 characters; longer input is rejected). When omitted, the tool aggregates entities across recent headlines.' },
-        category: { type: 'string', description: 'When text is omitted, restrict headline aggregation to one full-digest category (for example "commodities", "politics", or "finance").' },
+        category: {
+          type: 'string',
+          enum: [...FULL_DIGEST_CATEGORIES],
+          description: 'When text is omitted, ' + FULL_DIGEST_CATEGORY_DESC,
+        },
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum entities per list. Defaults to 20.' },
       },
       required: [],
@@ -282,6 +336,8 @@ export const NLP_TOOLS: ToolDef[] = [
         },
         headlineCount: { type: 'number', description: 'Headlines scanned (headlines mode only).' },
         generatedAt: { type: 'string', description: 'Digest snapshot time (headlines mode only).' },
+        category: { type: ['string', 'null'], description: 'Applied full-digest category filter in headlines mode; null when scanning every category. Omitted in text mode.' },
+        note: { type: 'string', description: 'Present in headlines mode when category did not match any digest key (typo or missing bucket).' },
         error: { type: 'string', description: 'Present instead of a result when input validation fails.' },
       },
     },
@@ -317,13 +373,17 @@ export const NLP_TOOLS: ToolDef[] = [
         };
       }
 
+      // Accept enum values plus non-enum strings so non-validating clients still
+      // get a corrective note instead of a hard schema failure at the edge.
       const category = argStr(params.category);
-      const { items, generatedAt } = await fetchNlpDigestItems(base, context, category);
-      const aggregated = nlpRegistryEntities(items.map(item => item.title), limit);
+      const digest = await fetchNlpDigestItems(base, context, category);
+      const aggregated = nlpRegistryEntities(digest.items.map(item => item.title), limit);
       return {
         mode: 'headlines',
-        headlineCount: items.length,
-        generatedAt,
+        headlineCount: digest.items.length,
+        generatedAt: digest.generatedAt,
+        category: digest.category,
+        ...(digest.note ? { note: digest.note } : {}),
         ...aggregated,
       };
     },
@@ -334,19 +394,23 @@ export const NLP_TOOLS: ToolDef[] = [
   {
     name: 'get_news_clusters',
     _outputBudgetBytes: 32768,
-    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM.',
+    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. "commodities"). Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum clusters returned. Defaults to 10.' },
         min_sources: { type: 'integer', minimum: 1, maximum: 10, description: 'Only return clusters carrying at least this many DISTINCT sources (outlets), not merely this many member headlines. Defaults to 1.' },
-        category: { type: 'string', description: 'Restrict clustering to one full-digest category (for example "commodities", "politics", or "finance").' },
+        category: {
+          type: 'string',
+          enum: [...FULL_DIGEST_CATEGORIES],
+          description: FULL_DIGEST_CATEGORY_DESC,
+        },
       },
       required: [],
     },
     outputSchema: {
       type: 'object',
-      required: ['clusters', 'totalClusters', 'headlineCount', 'generatedAt'],
+      required: ['clusters', 'totalClusters', 'headlineCount', 'generatedAt', 'category'],
       properties: {
         clusters: {
           type: 'array',
@@ -366,6 +430,8 @@ export const NLP_TOOLS: ToolDef[] = [
         totalClusters: { type: 'number', description: 'Cluster count before limit/min_sources filtering.' },
         headlineCount: { type: 'number' },
         generatedAt: { type: 'string' },
+        category: { type: ['string', 'null'], description: 'Applied full-digest category filter; null when clustering every category.' },
+        note: { type: 'string', description: 'Present when category did not match any digest key (typo or missing bucket).' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -373,8 +439,8 @@ export const NLP_TOOLS: ToolDef[] = [
       const limit = nlpClampInt(params.limit, 1, 25, 10);
       const minSources = nlpClampInt(params.min_sources, 1, 10, 1);
       const category = argStr(params.category);
-      const { items, generatedAt } = await fetchNlpDigestItems(base, context, category);
-      const clusters = clusterNewsCore(items, () => 3);
+      const digest = await fetchNlpDigestItems(base, context, category);
+      const clusters = clusterNewsCore(digest.items, () => 3);
       const projected = clusters.map(cluster => {
         const sources = [...new Set(cluster.allItems.map(item => item.source))];
         return {
@@ -400,8 +466,10 @@ export const NLP_TOOLS: ToolDef[] = [
           .filter(cluster => cluster.distinctSourceCount >= minSources)
           .slice(0, limit),
         totalClusters: clusters.length,
-        headlineCount: items.length,
-        generatedAt,
+        headlineCount: digest.items.length,
+        generatedAt: digest.generatedAt,
+        category: digest.category,
+        ...(digest.note ? { note: digest.note } : {}),
       };
     },
     _apiPaths: [

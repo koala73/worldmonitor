@@ -201,8 +201,16 @@ describe('#5697 NLP MCP tools', () => {
     assert.deepEqual(byName.get('classify_event')?.inputSchema.required, ['text']);
     assert.equal(byName.get('extract_entities')?.inputSchema.properties.text.maxLength, 2048);
     assert.equal(byName.get('extract_entities')?.inputSchema.properties.category.type, 'string');
+    assert.ok(
+      byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('commodities'),
+      'extract_entities category enum must include commodities',
+    );
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.limit.maximum, 25);
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.category.type, 'string');
+    assert.ok(
+      byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('commodities'),
+      'get_news_clusters category enum must include commodities',
+    );
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
     assert.deepEqual(classifyOutput.properties.classification.required,
@@ -376,6 +384,8 @@ describe('#5697 NLP MCP tools', () => {
       }, async () => {
         const { result } = await callTool('extract_entities', { category: 'commodities' });
         assert.equal(result.headlineCount, 1);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined, 'known category must not emit a corrective note');
         assert.ok(result.entities.some((entity) => entity.entityId === 'GC=F'));
         assert.ok(result.entities.some((entity) => entity.entityId === 'HG=F'));
         assert.equal(
@@ -383,6 +393,30 @@ describe('#5697 NLP MCP tools', () => {
           false,
           'entities from sibling digest categories must not leak through the filter',
         );
+      });
+    });
+
+    it('returns a corrective note when category is unknown', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'Summit talks resume in Geneva', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        commodities: {
+          items: [
+            { source: 'Oil & Gas', title: 'Crude oil futures rise on supply concerns', link: 'https://n/commodities', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodity' });
+        assert.equal(result.mode, 'headlines');
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.category, 'commodity');
+        assert.match(result.note, /Unknown digest category "commodity"/);
+        assert.match(result.note, /commodities/);
+        assert.match(result.note, /politics/);
+        assert.deepEqual(result.entities, []);
       });
     });
   });
@@ -425,7 +459,27 @@ describe('#5697 NLP MCP tools', () => {
         const { result } = await callTool('get_news_clusters', { category: 'commodities' });
         assert.equal(result.headlineCount, 1);
         assert.equal(result.totalClusters, 1);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined);
         assert.match(result.clusters[0].title, /Crude oil/);
+      });
+    });
+
+    it('returns a corrective note when category is unknown', async () => {
+      await withDigestCategories({
+        finance: {
+          items: [
+            { source: 'CNBC', title: 'Markets open higher on rate-cut bets', link: 'https://n/finance', publishedAt: 1785405600000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'markets' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.totalClusters, 0);
+        assert.equal(result.category, 'markets');
+        assert.deepEqual(result.clusters, []);
+        assert.match(result.note, /Unknown digest category "markets"/);
+        assert.match(result.note, /finance/);
       });
     });
 

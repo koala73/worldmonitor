@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('commodities news agent parity (#5889)', () => {
   it('exposes the finance dashboard commodities bucket in the full digest used by agents', () => {
@@ -14,6 +19,21 @@ describe('commodities news agent parity (#5889)', () => {
       agentCommodities,
       financeCommodities,
       'agents and the finance dashboard must read the same commodities headline sources',
+    );
+  });
+
+  it('keeps the MCP full-digest category enum aligned with VARIANT_FEEDS.full keys', () => {
+    const nlpSrc = readFileSync(join(ROOT, 'api/mcp/registry/nlp-tools.ts'), 'utf8');
+    const match = nlpSrc.match(
+      /const FULL_DIGEST_CATEGORIES = \[([\s\S]*?)\] as const;/,
+    );
+    assert.ok(match, 'FULL_DIGEST_CATEGORIES must be declared in nlp-tools.ts');
+    const enumKeys = [...match[1].matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]).sort();
+    const feedKeys = Object.keys(VARIANT_FEEDS.full ?? {}).sort();
+    assert.deepEqual(
+      enumKeys,
+      feedKeys,
+      'FULL_DIGEST_CATEGORIES must list every VARIANT_FEEDS.full key (and no extras)',
     );
   });
 });
