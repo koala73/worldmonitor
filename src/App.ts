@@ -106,6 +106,11 @@ import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
+import {
+  FreeTierGate,
+  panelGateStateChanged,
+  sweepLegacyDisabledCustomWidgets,
+} from '@/app/free-tier-gate';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
@@ -246,13 +251,13 @@ export class App {
         STORAGE_KEYS.panels,
         this.state.panelSettings,
       );
-      // A pre-fix cloud snapshot can still contain custom widgets that the
-      // old boot-time free-tier gate persisted as disabled without a
-      // `proGated` marker. Re-arm the legacy sweep for this freshly applied
-      // snapshot before reconciling the current entitlement. If Clerk has
-      // settled as free while a paid Convex entitlement is still loading,
-      // the flag remains armed until the later entitlement callback.
-      this.legacyWidgetRecoveryAfterCloudPrefs = true;
+      // Reconcile the freshly applied snapshot against the current
+      // entitlement: a cloud blob written while the tier was unknown can carry
+      // a stale free-tier clamp, and `proGated` markers travel with it, so the
+      // targeted restore inside enforceFreeTierLimits puts those panels back.
+      // Returns false while the tier is still unresolved — the fallback below
+      // then just re-renders the snapshot, which is all this handler did
+      // before reconciliation moved here.
       const reconciledPanelSettings = this.enforceFreeTierLimits();
       if (!reconciledPanelSettings) {
         this.panelLayout.applyPanelSettings();
@@ -1420,6 +1425,11 @@ export class App {
     // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
     const firePremiumLoaders = (): void => {
       this.enforceFreeTierLimits();
+      // Stored dashboard-tab snapshots are clamped by their own pass at layout
+      // init, which runs inside the same unresolved-tier window. Re-heal them
+      // here so a tab the user hasn't visited yet is reconciled against the
+      // real entitlement instead of waiting for them to switch to it.
+      this.panelLayout.healStoredTabSnapshots();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
       if (nowPremium && !hadPremium) {
@@ -1691,31 +1701,13 @@ export class App {
   }
 
   /**
-   * Last-resort deadline for the auth session to settle before the free-tier
-   * caps are applied anyway. Comfortably past Clerk's own 4 s
-   * requestIdleCallback timeout so it only fires when the SDK never loads.
+   * Grace-timer state for the free-tier gate. Lives in a collaborator so the
+   * backstop can be driven by tests; App itself is not importable from the
+   * node:test suites.
    */
-  private static readonly AUTH_SETTLE_GRACE_MS = 8000;
-
-  /** Set once AUTH_SETTLE_GRACE_MS elapses with the session still pending. */
-  private authSettleDeadlineExceeded = false;
-  private freeTierLimitFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-  /** Re-run the pre-marker custom-widget recovery after a cloud panel pull. */
-  private legacyWidgetRecoveryAfterCloudPrefs = false;
-
-  /**
-   * Arm the one-shot fallback that enforces the free-tier caps even if the
-   * auth session never settles (Clerk script blocked / no publishable key).
-   */
-  private scheduleFreeTierLimitFallback(): void {
-    if (this.freeTierLimitFallbackTimer !== null || this.authSettleDeadlineExceeded) return;
-    this.freeTierLimitFallbackTimer = setTimeout(() => {
-      this.freeTierLimitFallbackTimer = null;
-      this.authSettleDeadlineExceeded = true;
-      this.enforceFreeTierLimits();
-    }, App.AUTH_SETTLE_GRACE_MS);
-  }
+  private readonly freeTierGate = new FreeTierGate(() => {
+    this.enforceFreeTierLimits();
+  });
 
   /**
    * Put back the custom widgets the free-tier gate hid, now that we know the
@@ -1728,35 +1720,36 @@ export class App {
     let restored = restoreProGatedPanels(panelSettings);
 
     // ── One-time recovery for pre-`proGated` damage ───────────────────
-    // Builds before this fix disabled cw-* panels on boot for every Pro user
-    // (the session was still pending) and left no marker behind, so the
-    // targeted restore above can't find them. Sweep every custom widget that
-    // still has a spec in wm-custom-widgets back on, exactly once. Deleting a
-    // widget removes its panelSettings entry outright (see the wm:panel-close
-    // handler), so this can only resurrect widgets the user still owns — and
-    // being one-shot, a Pro user who then re-hides one keeps it hidden.
+    // Strictly once per browser. The sweep cannot tell legacy gate damage from
+    // a widget the user hid on purpose (both are `enabled: false` with no
+    // marker), so re-running it would silently un-hide deliberate hides. It was
+    // previously re-armed on every cloud panels snapshot, which fires on
+    // effectively every sign-in for a multi-device user — that re-arm is gone.
+    //
+    // Each device still heals itself on its first post-fix Pro reconcile, and
+    // from then on `proGated` travels with the synced blob, so the targeted
+    // restore above covers the cross-device case. The migration gap this leaves
+    // is a browser that already burned its one-shot receiving pre-fix damage
+    // from a device that never loaded this build — which keeps re-damaging
+    // itself anyway until it does.
+    //
+    // The marker is burned on the first look, not the first repair: widget
+    // specs are device-local (`wm-custom-widgets` is not a cloud-sync key), so
+    // `loadWidgets()` is fully hydrated here and "found nothing" is a real
+    // answer, not a not-yet-loaded one.
     try {
-      const recoveryAlreadyApplied = !!localStorage.getItem(CW_PRO_GATE_RECOVERY_KEY);
-      if (!recoveryAlreadyApplied || this.legacyWidgetRecoveryAfterCloudPrefs) {
-        const owned = new Set(loadWidgets().map((w) => w.id));
-        for (const [key, config] of Object.entries(restored)) {
-          if (key.startsWith('cw-') && !config.enabled && owned.has(key)) {
-            restored = { ...restored, [key]: { ...config, enabled: true } };
-          }
-        }
-        if (!recoveryAlreadyApplied) {
-          localStorage.setItem(CW_PRO_GATE_RECOVERY_KEY, 'done');
-        }
-        this.legacyWidgetRecoveryAfterCloudPrefs = false;
+      if (!localStorage.getItem(CW_PRO_GATE_RECOVERY_KEY)) {
+        restored = sweepLegacyDisabledCustomWidgets(
+          restored,
+          new Set(loadWidgets().map((w) => w.id)),
+        );
+        localStorage.setItem(CW_PRO_GATE_RECOVERY_KEY, 'done');
       }
     } catch {
       // Persistence-only migration; blocked storage already uses defaults.
     }
 
-    const changed = Object.keys(restored).some(
-      (key) => panelSettings[key]?.enabled !== restored[key]?.enabled,
-    );
-    if (!changed) return false;
+    if (!panelGateStateChanged(panelSettings, restored)) return false;
 
     saveToStorage(STORAGE_KEYS.panels, restored);
     this.state.panelSettings = restored;
@@ -1841,12 +1834,15 @@ export class App {
         session.isPending,
         session.user !== null,
         getEntitlementState() !== null,
-        this.authSettleDeadlineExceeded,
+        this.freeTierGate.authSettleDeadlineExceeded,
       )
     ) {
-      this.scheduleFreeTierLimitFallback();
+      this.freeTierGate.scheduleFallback();
       return false;
     }
+    // Tier is known — drop the backstop instead of letting it fire a redundant
+    // enforcement pass 8 s into every session.
+    this.freeTierGate.cancelFallback();
 
     // --- Panel limit ---
     // Delegate to the shared enforceFreePanelLimit helper so this boot path and
@@ -1962,10 +1958,7 @@ export class App {
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
     this.unsubEntitlementPremiumLoaders?.();
-    if (this.freeTierLimitFallbackTimer !== null) {
-      clearTimeout(this.freeTierLimitFallbackTimer);
-      this.freeTierLimitFallbackTimer = null;
-    }
+    this.freeTierGate.cancelFallback();
     mlWorker.terminate();
     this.state.findingsBadge?.destroy();
     this.state.findingsBadge = null;

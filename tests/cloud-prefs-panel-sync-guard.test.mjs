@@ -78,13 +78,22 @@ describe('cloud prefs panel sync guardrails', () => {
     const cloudApplyBlock = appSrc.slice(cloudApplyStart, cloudApplyEnd);
     assert.match(
       cloudApplyBlock,
-      /this\.legacyWidgetRecoveryAfterCloudPrefs\s*=\s*true;[\s\S]*?const reconciledPanelSettings = this\.enforceFreeTierLimits\(\);/,
-      'cloud panel snapshots must re-run entitlement reconciliation and legacy widget recovery',
+      /const reconciledPanelSettings = this\.enforceFreeTierLimits\(\);/,
+      'cloud panel snapshots must re-run entitlement reconciliation',
     );
     assert.match(
       cloudApplyBlock,
       /if \(!reconciledPanelSettings\) \{/,
       'a cloud snapshot that skipped reconciliation must still be applied to the mounted dashboard',
+    );
+    // The legacy sweep must stay one-shot per browser: it cannot tell pre-marker
+    // gate damage from a deliberate hide, so re-arming it on cloud snapshots
+    // (which land on effectively every multi-device sign-in) silently re-enables
+    // widgets the user turned off. See free-tier-gate.ts.
+    assert.doesNotMatch(
+      appSrc,
+      /legacyWidgetRecoveryAfterCloudPrefs/,
+      'the cloud-prefs re-arm of the one-shot legacy widget sweep must not come back',
     );
     assert.match(
       appSrc,
@@ -124,6 +133,37 @@ describe('cloud prefs panel sync guardrails', () => {
       clampBlock,
       /this\.state\.unifiedSettings\?\.refreshPanelToggles\(\);/,
       'a delayed clamp must refresh the visible panel controls',
+    );
+  });
+
+  it('never persists a free-tier clamp to dashboard tabs while the tier is unresolved', () => {
+    const panelLayoutSrc = readSrc('src/app/panel-layout.ts');
+    const appSrc = readSrc('src/App.ts');
+
+    // Every tab path that WRITES a clamped snapshot must gate on the tier
+    // being known — otherwise a Pro user's saved workspaces get their custom
+    // widgets stripped during the same pending-auth window App.ts defers for.
+    const healBody = panelLayoutSrc.slice(
+      panelLayoutSrc.indexOf('public healStoredTabSnapshots(): void'),
+      panelLayoutSrc.indexOf('private panelSettingsEnabledStateChanged('),
+    );
+    assert.match(
+      healBody,
+      /if \(!state \|\| !isProTierResolved\(\)\) return;/,
+      'the stored-tab heal must bail out until the entitlement is known',
+    );
+    assert.match(
+      panelLayoutSrc,
+      /const capped = isProTierResolved\(\)\s*\?\s*enforceFreePanelLimit\(next, isProUser\(\)\)\s*:\s*next;/,
+      'applyTabPanelState must not clamp before the entitlement is known',
+    );
+
+    // ...and the heal must be re-run once it resolves, or an unopened tab keeps
+    // the snapshot it was given while the answer was still unknown.
+    assert.match(
+      appSrc,
+      /this\.panelLayout\.healStoredTabSnapshots\(\);/,
+      'App must re-heal stored tab snapshots when auth or entitlement resolves',
     );
   });
 

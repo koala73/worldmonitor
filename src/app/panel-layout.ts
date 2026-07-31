@@ -42,7 +42,7 @@ import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
-import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
+import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
@@ -1009,23 +1009,14 @@ export class PanelLayoutManager implements AppModule {
       };
       state = { activeTabId: initial.id, tabs: [initial] };
       saveTabsState(state);
-    } else {
-      // Clamp stored snapshots to the current free-tier cap so a workspace
-      // saved while Pro (or persisted before the cap existed) can't re-enable
-      // an over-cap layout when the user later switches to it. applyTabPanelState
-      // re-clamps on apply too; this keeps the persisted store self-healing.
-      const pro = isProUser();
-      let healedSnapshots = false;
-      for (const tab of state.tabs) {
-        const clamped = enforceFreePanelLimit(tab.panelSettings, pro);
-        if (this.panelSettingsEnabledStateChanged(tab.panelSettings, clamped)) {
-          healedSnapshots = true;
-        }
-        tab.panelSettings = clamped;
-      }
-      if (healedSnapshots) saveTabsState(state);
     }
     this.tabsState = state;
+    // Clamp stored snapshots to the current free-tier cap so a workspace saved
+    // while Pro (or persisted before the cap existed) can't re-enable an
+    // over-cap layout when the user later switches to it. Skips itself while
+    // the tier is unresolved; App re-runs it from the auth/entitlement
+    // callbacks so a tab the user hasn't opened yet still gets reconciled.
+    this.healStoredTabSnapshots();
 
     this.panelTabBar = new PanelTabBar(() => this.tabsState!, {
       onSelect: (id) => this.switchToTab(id),
@@ -1034,6 +1025,31 @@ export class PanelLayoutManager implements AppModule {
       onDelete: (id) => this.deleteTab(id),
     });
     mount.appendChild(this.panelTabBar.getElement());
+  }
+
+  /**
+   * Reconcile every stored tab snapshot against the current entitlement.
+   *
+   * Persisting a free-tier clamp while the tier is still unknown is the same
+   * bug App.enforceFreeTierLimits defers around: a Pro user's custom widgets
+   * would be written out of their saved workspaces on every load. Bail out
+   * until the answer is real; App calls this again from the auth and
+   * entitlement callbacks, and applyTabPanelState re-clamps on switch.
+   */
+  public healStoredTabSnapshots(): void {
+    const state = this.tabsState;
+    if (!state || !isProTierResolved()) return;
+
+    const pro = isProUser();
+    let healedSnapshots = false;
+    for (const tab of state.tabs) {
+      const clamped = enforceFreePanelLimit(tab.panelSettings, pro);
+      if (this.panelSettingsEnabledStateChanged(tab.panelSettings, clamped)) {
+        healedSnapshots = true;
+      }
+      tab.panelSettings = clamped;
+    }
+    if (healedSnapshots) saveTabsState(state);
   }
 
   private panelSettingsEnabledStateChanged(
@@ -1090,7 +1106,12 @@ export class PanelLayoutManager implements AppModule {
     const tab: PanelTab = {
       id: generateTabId(),
       name: t('dashboardTabs.newTabName'),
-      panelSettings: enforceFreePanelLimit(defaults.panelSettings, isProUser()),
+      // Same unresolved-tier caveat as applyTabPanelState: clamping a new tab
+      // before the entitlement is known bakes a free-tier layout into a Pro
+      // user's workspace, and the count clamp carries no marker to undo.
+      panelSettings: isProTierResolved()
+        ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
+        : defaults.panelSettings,
       panelOrder: defaults.panelOrder,
       bottomSet: [],
     };
@@ -1167,7 +1188,13 @@ export class PanelLayoutManager implements AppModule {
     // panel selection into STORAGE_KEYS.panels, so clamping here means no tab
     // operation (add / switch / delete-fallback) can ever persist an over-cap
     // workspace, regardless of how the snapshot was produced.
-    const capped = enforceFreePanelLimit(next, isProUser());
+    //
+    // Unless the tier isn't known yet — a tab click lands inside the same
+    // unresolved-session window the boot clamp defers around, and this path
+    // persists. Skipping the clamp leaves an over-cap workspace live for at
+    // most that window; App re-runs enforcement (and healStoredTabSnapshots)
+    // the moment the entitlement resolves.
+    const capped = isProTierResolved() ? enforceFreePanelLimit(next, isProUser()) : next;
 
     this.ctx.panelSettings = capped;
     saveToStorage(STORAGE_KEYS.panels, capped);
