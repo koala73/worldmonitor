@@ -223,7 +223,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -268,6 +268,17 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, changePercent: { type: 'number' } } } },
           valuations: { type: ['object', 'array', 'null'] },
+          valuationCoverage: {
+            type: ['object', 'null'],
+            properties: {
+              valuationCount: { type: 'number' },
+              expectedValuationCount: { type: 'number' },
+              sourceStatus: { type: 'string', enum: ['ok', 'partial', 'degraded'] },
+              source: { type: 'string' },
+              fetchedAt: { type: 'number' },
+              stale: { type: 'boolean' },
+            },
+          },
         },
       },
       'etf-flows': {

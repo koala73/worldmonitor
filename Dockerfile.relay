@@ -27,6 +27,8 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+# Authenticated Yahoo sector valuation client required at relay startup.
+COPY scripts/_yahoo-sector-valuations.cjs ./scripts/_yahoo-sector-valuations.cjs
 COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 # llm-telemetry.cjs is transitively imported by _seed-utils.mjs (SIGTERM
 # telemetry flush, #4954) — missing it = silent startup crash in the image.
