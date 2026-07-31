@@ -25,6 +25,7 @@ import { clusterNewsCore, protoThreatLevelToLabel, topClusterKeywords } from '..
 import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk } from '../billing-denial';
+import { argStr } from '../filters';
 import type { ToolDef } from '../types';
 
 // ── #5697 on-demand NLP intelligence utilities ──────────────────────────────
@@ -83,6 +84,7 @@ type NlpDigestFetch = { items: NewsItemCore[]; generatedAt: string };
 async function fetchNlpDigestItems(
   base: string,
   context: Parameters<typeof buildAuthHeaders>[0],
+  category = '',
 ): Promise<NlpDigestFetch> {
   const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
   const auth = await buildAuthHeaders(context, 'GET', digestUrl, null);
@@ -102,7 +104,11 @@ async function fetchNlpDigestItems(
 
   const seen = new Set<string>();
   const items: NewsItemCore[] = [];
-  for (const group of Object.values(body.categories ?? {})) {
+  const categories = body.categories ?? {};
+  const groups = category
+    ? (categories[category] ? [categories[category]] : [])
+    : Object.values(categories);
+  for (const group of groups) {
     for (const raw of group.items ?? []) {
       if (!raw?.title || !raw.source) continue;
       const key = raw.link || `${raw.source}|${raw.title}`;
@@ -249,6 +255,7 @@ export const NLP_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         text: { type: 'string', maxLength: EXTRACT_TEXT_MAX_CHARS, description: 'Optional text to extract from (max 2048 characters; longer input is rejected). When omitted, the tool aggregates entities across recent headlines.' },
+        category: { type: 'string', description: 'When text is omitted, restrict headline aggregation to one full-digest category (for example "commodities", "politics", or "finance").' },
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum entities per list. Defaults to 20.' },
       },
       required: [],
@@ -310,7 +317,8 @@ export const NLP_TOOLS: ToolDef[] = [
         };
       }
 
-      const { items, generatedAt } = await fetchNlpDigestItems(base, context);
+      const category = argStr(params.category);
+      const { items, generatedAt } = await fetchNlpDigestItems(base, context, category);
       const aggregated = nlpRegistryEntities(items.map(item => item.title), limit);
       return {
         mode: 'headlines',
@@ -332,6 +340,7 @@ export const NLP_TOOLS: ToolDef[] = [
       properties: {
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum clusters returned. Defaults to 10.' },
         min_sources: { type: 'integer', minimum: 1, maximum: 10, description: 'Only return clusters carrying at least this many DISTINCT sources (outlets), not merely this many member headlines. Defaults to 1.' },
+        category: { type: 'string', description: 'Restrict clustering to one full-digest category (for example "commodities", "politics", or "finance").' },
       },
       required: [],
     },
@@ -363,7 +372,8 @@ export const NLP_TOOLS: ToolDef[] = [
     _execute: async (params, base, context) => {
       const limit = nlpClampInt(params.limit, 1, 25, 10);
       const minSources = nlpClampInt(params.min_sources, 1, 10, 1);
-      const { items, generatedAt } = await fetchNlpDigestItems(base, context);
+      const category = argStr(params.category);
+      const { items, generatedAt } = await fetchNlpDigestItems(base, context, category);
       const clusters = clusterNewsCore(items, () => 3);
       const projected = clusters.map(cluster => {
         const sources = [...new Set(cluster.allItems.map(item => item.source))];

@@ -170,6 +170,26 @@ describe('#5697 NLP MCP tools', () => {
     return { response, body, result, pipe };
   }
 
+  async function withDigestCategories(categories, run) {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/api/news/v1/list-feed-digest')) {
+        requests.push({ url, init });
+        return Response.json({
+          generatedAt: '2026-07-28T12:00:00.000Z',
+          categories,
+        });
+      }
+      return previousFetch(input, init);
+    };
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  }
+
   it('lists all four tools with their caps in tools/list', async () => {
     const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -180,7 +200,9 @@ describe('#5697 NLP MCP tools', () => {
     assert.equal(byName.get('classify_event')?.inputSchema.properties.text.maxLength, 500);
     assert.deepEqual(byName.get('classify_event')?.inputSchema.required, ['text']);
     assert.equal(byName.get('extract_entities')?.inputSchema.properties.text.maxLength, 2048);
+    assert.equal(byName.get('extract_entities')?.inputSchema.properties.category.type, 'string');
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.limit.maximum, 25);
+    assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.category.type, 'string');
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
     assert.deepEqual(classifyOutput.properties.classification.required,
@@ -338,6 +360,31 @@ describe('#5697 NLP MCP tools', () => {
       const cve = result.patternEntities.find((p) => p.kind === 'cve');
       assert.equal(cve?.value, 'CVE-2026-12345');
     });
+
+    it('can restrict digest aggregation to the commodities category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'CVE-2026-9999 prompts emergency cyber summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        commodities: {
+          items: [
+            { source: 'Gold & Metals', title: 'Gold and copper futures rise on supply concerns', link: 'https://n/commodities', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodities' });
+        assert.equal(result.headlineCount, 1);
+        assert.ok(result.entities.some((entity) => entity.entityId === 'GC=F'));
+        assert.ok(result.entities.some((entity) => entity.entityId === 'HG=F'));
+        assert.equal(
+          result.patternEntities.some((entity) => entity.value === 'CVE-2026-9999'),
+          false,
+          'entities from sibling digest categories must not leak through the filter',
+        );
+      });
+    });
   });
 
   describe('get_news_clusters', () => {
@@ -360,6 +407,26 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(result.clusters[0].memberCount, 2);
       assert.equal(result.clusters[0].distinctSourceCount, 2);
       assert.equal(result.totalClusters, 2, 'totalClusters reports the pre-filter count');
+    });
+
+    it('can restrict clustering to the commodities category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'Diplomatic talks resume after regional summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        commodities: {
+          items: [
+            { source: 'Oil & Gas', title: 'Crude oil futures rise as OPEC supply tightens', link: 'https://n/commodities', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'commodities' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.totalClusters, 1);
+        assert.match(result.clusters[0].title, /Crude oil/);
+      });
     });
 
     it('filters min_sources on distinct outlets, not repeat headlines from one outlet', async () => {
