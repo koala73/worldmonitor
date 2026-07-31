@@ -50,4 +50,13 @@ describe('crypto helper input validation (#5529)', () => {
       assert.equal(await timingSafeIncludes('secret', validKeys), false);
     }
   });
+
+  it('matches valid keys regardless of position in allowlist without early termination (#5529)', async () => {
+    const keys = ['key-1', 'key-2', 'key-3', 'key-4', 'key-5'];
+    assert.equal(await timingSafeIncludes('key-1', keys), true); // first
+    assert.equal(await timingSafeIncludes('key-3', keys), true); // middle
+    assert.equal(await timingSafeIncludes('key-5', keys), true); // last
+    assert.equal(await timingSafeIncludes('key-none', keys), false); // none
+  });
 });
+

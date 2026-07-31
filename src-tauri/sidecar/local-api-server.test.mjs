@@ -2476,3 +2476,62 @@ test('abort-signal path: an already-aborted signal rejects immediately without d
     });
   }
 });
+
+test('pickPinnedAddress returns records for both IPv4 and IPv6 addresses to prevent TOCTOU DNS rebinding (#5529)', () => {
+  const { pickPinnedAddress } = __testing__;
+  const dual = pickPinnedAddress(['1.2.3.4', '2001:db8::1']);
+  assert.equal(dual.address, '1.2.3.4');
+  assert.equal(dual.family, 4);
+  assert.deepEqual(dual.records, [
+    { address: '1.2.3.4', family: 4 },
+    { address: '2001:db8::1', family: 6 },
+  ]);
+
+  const v6only = pickPinnedAddress(['2001:db8::1']);
+  assert.equal(v6only.address, '2001:db8::1');
+  assert.equal(v6only.family, 6);
+  assert.deepEqual(v6only.records, [
+    { address: '2001:db8::1', family: 6 },
+  ]);
+});
+
+test('makePinnedLookup supports multi-family pinned records and prevents unpinned fallback (#5529)', async () => {
+  const { makePinnedLookup, pickPinnedAddress } = __testing__;
+  const pinned = pickPinnedAddress(['1.2.3.4', '2001:db8::1']);
+  const lookup = makePinnedLookup(pinned);
+
+  const res4 = await new Promise((resolve, reject) => {
+    lookup('example.com', { family: 4 }, (err, address, family) => {
+      if (err) reject(err);
+      else resolve({ address, family });
+    });
+  });
+  assert.equal(res4.address, '1.2.3.4');
+  assert.equal(res4.family, 4);
+
+  const res6 = await new Promise((resolve, reject) => {
+    lookup('example.com', { family: 6 }, (err, address, family) => {
+      if (err) reject(err);
+      else resolve({ address, family });
+    });
+  });
+  assert.equal(res6.address, '2001:db8::1');
+  assert.equal(res6.family, 6);
+
+  const resAll = await new Promise((resolve, reject) => {
+    lookup('example.com', { all: true }, (err, records) => {
+      if (err) reject(err);
+      else resolve(records);
+    });
+  });
+  assert.deepEqual(resAll, [
+    { address: '1.2.3.4', family: 4 },
+    { address: '2001:db8::1', family: 6 },
+  ]);
+
+  const v4OnlyLookup = makePinnedLookup('1.2.3.4', 4);
+  const err6 = await new Promise((resolve) => {
+    v4OnlyLookup('example.com', { family: 6 }, (err) => resolve(err));
+  });
+  assert.equal(err6.code, 'ENOTFOUND');
+});
