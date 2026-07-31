@@ -208,6 +208,16 @@ jobs:
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -233,6 +243,16 @@ jobs:
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           tagName: v__VERSION__
@@ -252,6 +272,16 @@ jobs:
           VITE_VARIANT: tech
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -278,6 +308,16 @@ jobs:
           VITE_VARIANT: tech
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           tagName: v__VERSION__-tech

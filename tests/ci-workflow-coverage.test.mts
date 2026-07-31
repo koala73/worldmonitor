@@ -97,6 +97,7 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'package.json',
   'scripts/repack-linux-appimage.sh',
   'scripts/sync-desktop-version.mjs',
+  'scripts/check-desktop-build-env.mjs',
   '.github/workflows/(build-desktop|test-linux-app|test).yml',
 ] as const;
 
@@ -515,6 +516,20 @@ describe('CI workflow coverage', () => {
       testJobBlock('unit'),
       /^\s+node scripts\/build-sidecar-handlers\.mjs\s*$/m,
       'unit job must run the sidecar handler bundle build',
+    );
+    // Desktop build env parity (#5905) runs in BOTH legs deliberately:
+    // desktop-config fires on workflow edits (build-desktop.yml is excluded
+    // from the `code` filter), while unit fires when src/ gains a new
+    // import.meta.env.VITE_ read. Dropping either leg reopens half the gap.
+    assert.match(
+      testJobBlock('desktop-config'),
+      /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
+      'desktop-config job must run the desktop build env parity check',
+    );
+    assert.match(
+      testJobBlock('unit'),
+      /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
+      'unit job must run the desktop build env parity check',
     );
     const releasePostProcess = workflowStepBlock(desktopBuildWorkflow, 'Strip GPU libraries from AppImage');
     assert.match(

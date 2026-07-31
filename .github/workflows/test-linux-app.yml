@@ -83,8 +83,15 @@ jobs:
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           # Match the release build env (build-desktop.yml) so the canary
-          # exercises the shipped configuration, not a drifted one.
+          # exercises the shipped configuration, not a drifted one — parity
+          # checked by scripts/check-desktop-build-env.mjs (#5905).
           VITE_WS_API_URL: https://worldmonitor.app
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           args: ''
