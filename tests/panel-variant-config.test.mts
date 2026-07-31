@@ -12,6 +12,7 @@ import {
   getEffectivePanelConfig,
   isFreePanelCapCounted,
   restoreFreeMapPanelAccess,
+  restoreProGatedPanels,
 } from '../src/config/panels.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,33 @@ describe('variant panel config resolution', () => {
     const restored = restoreFreeMapPanelAccess(underCap);
 
     assert.equal(restored.map?.enabled, false);
+  });
+
+  it('marks free-tier custom widgets and restores only gate-disabled panels for Pro', () => {
+    const original = {
+      'cw-gated': { name: 'Gated widget', enabled: true, priority: 3 },
+      'cw-hidden': { name: 'Hidden widget', enabled: false, priority: 3 },
+      news: { name: 'News', enabled: true, priority: 1 },
+    };
+
+    const clamped = enforceFreePanelLimit(original, false);
+    assert.deepEqual(clamped['cw-gated'], {
+      name: 'Gated widget',
+      enabled: false,
+      priority: 3,
+      proGated: true,
+    });
+    assert.deepEqual(clamped['cw-hidden'], original['cw-hidden']);
+
+    const restored = restoreProGatedPanels(clamped);
+    assert.deepEqual(restored['cw-gated'], original['cw-gated']);
+    assert.deepEqual(restored['cw-hidden'], original['cw-hidden']);
+    assert.deepEqual(restored.news, original.news);
+    assert.deepEqual(original['cw-gated'], {
+      name: 'Gated widget',
+      enabled: true,
+      priority: 3,
+    });
   });
 
   it('does not use the canonical registry directly for entitlement or pro badge metadata', () => {

@@ -67,6 +67,11 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       appSrc,
+      /this\.legacyWidgetRecoveryAfterCloudPrefs\s*=\s*true;[\s\S]*?this\.enforceFreeTierLimits\(\);/,
+      'cloud panel snapshots must re-run entitlement reconciliation and legacy widget recovery',
+    );
+    assert.match(
+      appSrc,
       /monitorPanel\?\.setMonitors\(this\.state\.monitors\)/,
       'App must update an already-mounted My Monitors panel when cloud prefs change monitors',
     );
@@ -84,6 +89,25 @@ describe('cloud prefs panel sync guardrails', () => {
       appSrc,
       /keySet\.has\('panel-order'\)/,
       'App must not hard-code the panel-order key in the cloud apply path',
+    );
+  });
+
+  it('reapplies delayed free-tier panel clamps to the mounted dashboard', () => {
+    const appSrc = readSrc('src/App.ts');
+    const clampStart = appSrc.indexOf('if (panelsChanged) {');
+    const clampEnd = appSrc.indexOf('// --- Source limit ---', clampStart);
+    assert.ok(clampStart >= 0 && clampEnd > clampStart, 'free-tier panel clamp block must exist');
+    const clampBlock = appSrc.slice(clampStart, clampEnd);
+
+    assert.match(
+      clampBlock,
+      /this\.state\.panelSettings\s*=\s*clampedPanels;[\s\S]*?this\.panelLayout\.applyPanelSettings\(\);/,
+      'a clamp reached after layout init must update already-mounted panels',
+    );
+    assert.match(
+      clampBlock,
+      /this\.state\.unifiedSettings\?\.refreshPanelToggles\(\);/,
+      'a delayed clamp must refresh the visible panel controls',
     );
   });
 

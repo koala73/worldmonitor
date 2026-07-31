@@ -13,6 +13,7 @@ import {
   getEffectivePanelConfig,
   enforceFreePanelLimit,
   restoreFreeMapPanelAccess,
+  restoreProGatedPanels,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
@@ -30,7 +31,7 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser } from '@/services/widget-store';
+import { isProUser, loadWidgets } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -107,7 +108,7 @@ import { EventHandlerManager } from '@/app/event-handlers';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
-import { initAuthState, subscribeAuthState } from '@/services/auth-state';
+import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   install as installCloudPrefsSync,
@@ -141,6 +142,7 @@ import type { CorrelationPanel } from '@/components/CorrelationPanel';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
+const CW_PRO_GATE_RECOVERY_KEY = 'worldmonitor-cw-pro-gate-recovery-v1';
 type SignalModalInstance = import('@/components/SignalModal').SignalModal;
 
 export type { CountryBriefSignals } from '@/app/app-context';
@@ -243,8 +245,18 @@ export class App {
         STORAGE_KEYS.panels,
         this.state.panelSettings,
       );
-      this.panelLayout.applyPanelSettings();
-      this.state.unifiedSettings?.refreshPanelToggles();
+      // A pre-fix cloud snapshot can still contain custom widgets that the
+      // old boot-time free-tier gate persisted as disabled without a
+      // `proGated` marker. Re-arm the legacy sweep for this freshly applied
+      // snapshot before reconciling the current entitlement. If Clerk has
+      // settled as free while a paid Convex entitlement is still loading,
+      // the flag remains armed until the later entitlement callback.
+      this.legacyWidgetRecoveryAfterCloudPrefs = true;
+      const reconciledPanelSettings = this.enforceFreeTierLimits();
+      if (!reconciledPanelSettings) {
+        this.panelLayout.applyPanelSettings();
+        this.state.unifiedSettings?.refreshPanelToggles();
+      }
     }
 
     const panelOrderKey = this.state.PANEL_ORDER_KEY;
@@ -1678,11 +1690,87 @@ export class App {
   }
 
   /**
+   * Last-resort deadline for the auth session to settle before the free-tier
+   * caps are applied anyway. Comfortably past Clerk's own 4 s
+   * requestIdleCallback timeout so it only fires when the SDK never loads.
+   */
+  private static readonly AUTH_SETTLE_GRACE_MS = 8000;
+
+  /** Set once AUTH_SETTLE_GRACE_MS elapses with the session still pending. */
+  private authSettleDeadlineExceeded = false;
+  private freeTierLimitFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Re-run the pre-marker custom-widget recovery after a cloud panel pull. */
+  private legacyWidgetRecoveryAfterCloudPrefs = false;
+
+  /**
+   * Arm the one-shot fallback that enforces the free-tier caps even if the
+   * auth session never settles (Clerk script blocked / no publishable key).
+   */
+  private scheduleFreeTierLimitFallback(): void {
+    if (this.freeTierLimitFallbackTimer !== null || this.authSettleDeadlineExceeded) return;
+    this.freeTierLimitFallbackTimer = setTimeout(() => {
+      this.freeTierLimitFallbackTimer = null;
+      this.authSettleDeadlineExceeded = true;
+      this.enforceFreeTierLimits();
+    }, App.AUTH_SETTLE_GRACE_MS);
+  }
+
+  /**
+   * Put back the custom widgets the free-tier gate hid, now that we know the
+   * user is Pro. Covers the free→pro upgrade, and heals users whose widgets
+   * were disabled by a pre-fix build (see the one-time recovery below —
+   * those entries pre-date the `proGated` marker, so they need the sweep).
+   */
+  private restoreProGatedCustomWidgets(): boolean {
+    const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
+    let restored = restoreProGatedPanels(panelSettings);
+
+    // ── One-time recovery for pre-`proGated` damage ───────────────────
+    // Builds before this fix disabled cw-* panels on boot for every Pro user
+    // (the session was still pending) and left no marker behind, so the
+    // targeted restore above can't find them. Sweep every custom widget that
+    // still has a spec in wm-custom-widgets back on, exactly once. Deleting a
+    // widget removes its panelSettings entry outright (see the wm:panel-close
+    // handler), so this can only resurrect widgets the user still owns — and
+    // being one-shot, a Pro user who then re-hides one keeps it hidden.
+    try {
+      const recoveryAlreadyApplied = !!localStorage.getItem(CW_PRO_GATE_RECOVERY_KEY);
+      if (!recoveryAlreadyApplied || this.legacyWidgetRecoveryAfterCloudPrefs) {
+        const owned = new Set(loadWidgets().map((w) => w.id));
+        for (const [key, config] of Object.entries(restored)) {
+          if (key.startsWith('cw-') && !config.enabled && owned.has(key)) {
+            restored = { ...restored, [key]: { ...config, enabled: true } };
+          }
+        }
+        if (!recoveryAlreadyApplied) {
+          localStorage.setItem(CW_PRO_GATE_RECOVERY_KEY, 'done');
+        }
+        this.legacyWidgetRecoveryAfterCloudPrefs = false;
+      }
+    } catch {
+      // Persistence-only migration; blocked storage already uses defaults.
+    }
+
+    const changed = Object.keys(restored).some(
+      (key) => panelSettings[key]?.enabled !== restored[key]?.enabled,
+    );
+    if (!changed) return false;
+
+    saveToStorage(STORAGE_KEYS.panels, restored);
+    this.state.panelSettings = restored;
+    this.panelLayout.applyPanelSettings();
+    this.state.unifiedSettings?.refreshPanelToggles();
+    console.log('[App] Pro: restored custom widget panels hidden by the free-tier gate');
+    return true;
+  }
+
+  /**
    * Enforce free-tier panel and source limits.
    * Reads current values from storage, trims if necessary, and saves back.
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
-  private enforceFreeTierLimits(): void {
+  private enforceFreeTierLimits(): boolean {
     // ── One-time v1 cap-bug recovery ──────────────────────────────────
     // Pre-2026-05-01 the source cap was enforced by Array.sort().slice(),
     // which silently auto-disabled every source past alphabetical position
@@ -1713,7 +1801,35 @@ export class App {
       saveToStorage(STORAGE_KEYS.disabledFeedsSchema, 1);
     }
 
-    if (isProUser()) return;
+    if (isProUser()) {
+      return this.restoreProGatedCustomWidgets();
+    }
+
+    // Pro/free is NOT knowable yet on a normal page load. initAuthState()
+    // deliberately does not await Clerk (2.98 MB, loaded on requestIdleCallback
+    // with a 4 s timeout) and the Convex entitlement snapshot lands later
+    // still, so getAuthState() is `{ user: null, isPending: true }` here on
+    // every boot — a signed-in Pro user is indistinguishable from an anonymous
+    // one at this point.
+    //
+    // That matters because the clamp below is a PERSISTED write and
+    // enforceFreePanelLimit disables every cw-* custom widget on the free
+    // tier. Running it against an unresolved session wrote `enabled: false`
+    // into STORAGE_KEYS.panels for Pro users' widgets on every single refresh:
+    // the specs survived in wm-custom-widgets but the panels never mounted
+    // again, so custom widgets appeared to vanish the moment the page
+    // reloaded. (The widget e2e suite missed it because it seeds the legacy
+    // wm-widget-key, which makes isProUser() true synchronously at boot.)
+    //
+    // Deferring is free: firePremiumLoaders() re-runs this on the Clerk auth
+    // event and on every Convex entitlement snapshot. The fallback timer
+    // covers the one case where neither ever arrives — Clerk's script fails
+    // to load or VITE_CLERK_PUBLISHABLE_KEY is unset, where isPending stays
+    // true forever and the free-tier caps would otherwise never be enforced.
+    if (getAuthState().isPending && !this.authSettleDeadlineExceeded) {
+      this.scheduleFreeTierLimitFallback();
+      return false;
+    }
 
     // --- Panel limit ---
     // Delegate to the shared enforceFreePanelLimit helper so this boot path and
@@ -1744,6 +1860,11 @@ export class App {
     if (panelsChanged) {
       saveToStorage(STORAGE_KEYS.panels, clampedPanels);
       this.state.panelSettings = clampedPanels;
+      // Auth and entitlement callbacks can reach this path after the layout
+      // has mounted. Persisting the clamp is not enough in that case: remove
+      // now-ineligible panels from the live dashboard immediately as well.
+      this.panelLayout.applyPanelSettings();
+      this.state.unifiedSettings?.refreshPanelToggles();
       console.log(`[App] Free tier: enforced ${FREE_MAX_PANELS}-panel limit (disabled over-cap / cw-* panels)`);
     }
 
@@ -1793,6 +1914,7 @@ export class App {
       saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
       console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
     }
+    return panelsChanged;
   }
 
   public destroy(): void {
@@ -1823,6 +1945,10 @@ export class App {
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
     this.unsubEntitlementPremiumLoaders?.();
+    if (this.freeTierLimitFallbackTimer !== null) {
+      clearTimeout(this.freeTierLimitFallbackTimer);
+      this.freeTierLimitFallbackTimer = null;
+    }
     mlWorker.terminate();
     this.state.findingsBadge?.destroy();
     this.state.findingsBadge = null;
