@@ -56,13 +56,19 @@ export function __setCreateCheckoutDepsForTests(overrides: Partial<CreateCheckou
     : createDefaultCreateCheckoutDeps();
 }
 
-function json(body: unknown, status: number, cors: Record<string, string>): Response {
+function json(
+  body: unknown,
+  status: number,
+  cors: Record<string, string>,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
       ...cors,
+      ...extraHeaders,
     },
   });
 }
@@ -179,6 +185,23 @@ export default async function handler(
 
     const data = await resp.json();
     if (!resp.ok) {
+      if (resp.status === 429) {
+        const retryAfter = resp.headers.get('retry-after');
+        return completeStandaloneIdempotency(
+          idempotency,
+          json(
+            {
+              error: typeof data?.error === 'string' ? data.error : 'CHECKOUT_RATE_LIMITED',
+              message: typeof data?.message === 'string'
+                ? data.message
+                : 'Checkout is temporarily rate limited. Retry shortly.',
+            },
+            429,
+            cors,
+            { 'Retry-After': retryAfter && /^\d{1,4}$/.test(retryAfter) ? retryAfter : '10' },
+          ),
+        );
+      }
       if (resp.status === 409) {
         // Two distinct blocks share 409; the client discriminates on `error`
         // (ACTIVE_SUBSCRIPTION_EXISTS vs PAYMENT_IN_PROGRESS, #4438). Forward

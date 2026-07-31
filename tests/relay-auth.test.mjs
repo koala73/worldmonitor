@@ -79,11 +79,9 @@ function spawnRelay(envOverrides = {}) {
   const child = spawn(process.execPath, [RELAY_SCRIPT], {
     env: {
       // Inherit PATH, HOME, etc. but start from a clean slate for any env var
-      // we care about. We DO need a few unrelated vars to be present so the
-      // relay only fails on the auth guard, not the AIS upstream key check.
+      // we care about. Keep AIS configured by default; degraded-mode tests can
+      // explicitly blank it when they need to exercise the optional upstream.
       ...process.env,
-      // The AIS upstream key is checked BEFORE the auth guard. Tests that want
-      // to reach the auth guard must provide it.
       AISSTREAM_API_KEY: 'test-aisstream-key',
       // Strip every env var the auth guard cares about so tests start from a
       // known state. Each test then sets only what it needs.
@@ -194,6 +192,34 @@ describe('relay startup auth guard (#3801)', () => {
     try {
       await r.waitForLog('WebSocket relay on port', 15_000);
       assert.doesNotMatch(r.stderr(), /\[SECURITY\] relay is running WITHOUT auth/, 'should NOT warn when auth is on');
+    } finally {
+      await killRelay(r.child);
+    }
+  });
+
+  it('boots with auth enabled when AISSTREAM_API_KEY is absent', async () => {
+    const port = await pickFreePort();
+    const r = spawnRelay({
+      AISSTREAM_API_KEY: '',
+      VITE_AISSTREAM_API_KEY: '',
+      RELAY_SHARED_SECRET: 'good-secret',
+      PORT: String(port),
+    });
+    try {
+      await r.waitForLog('WebSocket relay on port', 15_000);
+      assert.match(r.stderr(), /AIS disabled: AISSTREAM_API_KEY is not set/);
+      assert.equal(r.child.exitCode, null, 'relay should remain available without the optional AIS upstream');
+      const res = await httpGet(port, '/health');
+      assert.equal(res.status, 200);
+      assert.equal(JSON.parse(res.body).connected, false);
+
+      const snapshot = await httpGet(port, '/ais/snapshot', { 'x-relay-key': 'good-secret' });
+      assert.equal(snapshot.status, 200);
+      assert.doesNotMatch(
+        r.stdout(),
+        /\[Relay\] Connecting to aisstream\.io/,
+        'missing AIS credentials must suppress upstream connection attempts',
+      );
     } finally {
       await killRelay(r.child);
     }

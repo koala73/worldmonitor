@@ -57,9 +57,7 @@ const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_
 const PORT = process.env.PORT || 3004;
 
 if (!API_KEY) {
-  console.error('[Relay] Error: AISSTREAM_API_KEY environment variable not set');
-  console.error('[Relay] Get a free key at https://aisstream.io');
-  process.exit(1);
+  console.warn('[Relay] AIS disabled: AISSTREAM_API_KEY is not set (other relay and seed services remain available)');
 }
 
 const MAX_WS_CLIENTS = 10; // Cap WS clients — app uses HTTP snapshots, not WS
@@ -1576,6 +1574,16 @@ const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KE
 const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const UCDP_MAX_PAGES = 6;
+// GED Candidate discovery/fetch/merge is shared with scripts/seed-ucdp-events.mjs
+// so the two UCDP writers cannot drift (they already had, on discovery
+// concurrency and probe timeout).
+const {
+  CANDIDATE_MAX_PAGES: UCDP_CANDIDATE_MAX_PAGES,
+  discoverCandidateVersion: ucdpDiscoverCandidateVersion,
+  fetchCandidatePages: ucdpFetchCandidatePages,
+  capWithAnnualFloor: ucdpCapWithAnnualFloor,
+  candidateContentMeta: ucdpCandidateContentMeta,
+} = require('./shared/ucdp-candidate.cjs');
 const UCDP_MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
 // Retained Redis input window. CII v8's classifier accepts a 2-year window, but
 // this Redis writer fetches the newest pages only and keeps at most UCDP_MAX_EVENTS
@@ -1660,6 +1668,13 @@ async function ucdpDiscoverVersion() {
   return valid[0];
 }
 
+// UCDP also publishes GED Candidate releases monthly ('${year}.0.N'), with "not
+// more than a month's lag globally" per UCDP's docs — unlike the ANNUAL release
+// above, which is finalized once a year and lags ~7 months behind by the time
+// the next one lands. Discovery, paging and merge semantics live in
+// scripts/shared/ucdp-candidate.cjs (required above) so this relay and the
+// backup cron stay byte-identical in behaviour; only the transport differs.
+
 async function seedUcdpEvents() {
   try {
     const { version, page0 } = await ucdpDiscoverVersion();
@@ -1700,7 +1715,50 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const filtered = allEvents.filter((e) => {
+    // Merge the newest GED Candidate release on top of the annual base (ADD,
+    // never replace — a candidate alone is ~1.8k events vs the annual's ~418k).
+    // The annual base is already in allEvents; append candidate events and dedupe
+    // by id so a candidate's revision of an event also present in the annual
+    // release wins (it's the fresher record).
+    let candidateVersion = null;
+    let candidateComplete = false;
+    const candidateIds = new Set();
+    try {
+      const candidate = await ucdpDiscoverCandidateVersion(ucdpFetchPage);
+      if (candidate) {
+        const merged = await ucdpFetchCandidatePages(ucdpFetchPage, candidate);
+        // Only claim the candidate version once the release was fetched whole.
+        // A partial fetch published as `26.0.6` is indistinguishable from a
+        // complete one downstream, which is how a silently degraded merge would
+        // look healthy.
+        candidateComplete = merged.complete && !merged.truncated;
+        candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
+        if (merged.failedPages > 0) {
+          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+        }
+        if (merged.truncated) {
+          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.totalPages} pages exceeds cap ${UCDP_CANDIDATE_MAX_PAGES} — ${merged.totalPages - UCDP_CANDIDATE_MAX_PAGES} page(s) dropped`);
+        }
+        for (const e of merged.events) {
+          if (e?.id != null) candidateIds.add(String(e.id));
+          const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+          if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+        }
+        allEvents.push(...merged.events);
+        console.log(`[UCDP] Merged candidate ${candidateVersion}: +${merged.events.length} events`);
+      }
+    } catch (err) {
+      console.warn(`[UCDP] Candidate merge skipped: ${err.message || err}`);
+    }
+
+    const byId = new Map();
+    for (const e of allEvents) {
+      const id = e?.id != null ? String(e.id) : '';
+      byId.set(id || Symbol(id), e);
+    }
+    const dedupedEvents = [...byId.values()];
+
+    const filtered = dedupedEvents.filter((e) => {
       if (!Number.isFinite(latestMs)) return true;
       const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
       return Number.isFinite(ms) && ms >= (latestMs - UCDP_TRAILING_WINDOW_MS);
@@ -1719,20 +1777,38 @@ async function seedUcdpEvents() {
       deathsHigh: Number(e.high) || 0,
       violenceType: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'UCDP_VIOLENCE_TYPE_UNSPECIFIED',
       sourceOriginal: (e.source_original || '').substring(0, 300),
-    })).sort((a, b) => b.dateStart - a.dateStart).slice(0, UCDP_MAX_EVENTS);
+    })).sort((a, b) => b.dateStart - a.dateStart);
+
+    // Cap newest-first, but reserve slots for the annual base. Every candidate
+    // event is newer than every annual one, so a plain slice hands the whole
+    // payload to the candidate as soon as it outgrows the cap — evicting the
+    // history get-risk-scores.ts needs for per-country conflict floors.
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
-    if (mapped.length === 0) {
+    if (capped.length === 0) {
       console.warn(`[UCDP] 0 events after filtering (failed pages: ${failedPages}), extending existing key TTL`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       return;
     }
 
-    const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
-    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: mapped.length, sourceVersion: 'ucdp' });
-    await upstashSet('seed-meta:conflict:ucdp-events', { fetchedAt: Date.now(), recordCount: mapped.length }, 604800);
-    console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
-    const newConflicts = mapped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
+    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length };
+    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });
+    // Content-age trio: api/health.js treats the presence of maxContentAgeMin as
+    // the opt-in signal and reports STALE_CONTENT once the newest event outruns
+    // the budget. Without it a silently dead candidate merge is invisible —
+    // fetchedAt stays fresh and recordCount stays full while the data itself
+    // falls back to the annual release's ~7-month lag.
+    await upstashSet('seed-meta:conflict:ucdp-events', {
+      fetchedAt: Date.now(),
+      recordCount: capped.length,
+      candidateVersion,
+      candidateComplete,
+      annualFailedPages: failedPages,
+      ...ucdpCandidateContentMeta(capped),
+    }, 604800);
+    console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
       const parties = e.sideA && e.sideB ? `${e.sideA.slice(0, 40)} vs ${e.sideB.slice(0, 40)}` : e.sideA || e.sideB || 'Unknown parties';
@@ -3247,185 +3323,6 @@ async function startCyberThreatsSeedLoop() {
   }
   console.log(`[Cyber] Seed loop starting (interval ${CYBER_SEED_INTERVAL_MS / 1000 / 60 / 60}h, urlhaus:${URLHAUS_AUTH_KEY ? 'yes' : 'no'} otx:${OTX_API_KEY ? 'yes' : 'no'} abuseipdb:${ABUSEIPDB_API_KEY ? 'yes' : 'no'})`);
   startBootSeedLoop('Cyber', 'seed-meta:cyber:threats', CYBER_SEED_INTERVAL_MS, seedCyberThreats, (e) => console.warn('[Cyber] Initial seed error:', e?.message || e), (e) => console.warn('[Cyber] Seed error:', e?.message || e));
-}
-
-// ─────────────────────────────────────────────────────────────
-// Positive Events Seed — Railway fetches GDELT GEO API → writes to Redis
-// so Vercel handler serves from cache (avoids 25s edge timeout on slow GDELT)
-// ─────────────────────────────────────────────────────────────
-const POSITIVE_EVENTS_INTERVAL_MS = 900_000; // 15 min
-const POSITIVE_EVENTS_TTL = 2700; // 3× interval
-const POSITIVE_EVENTS_RETRY_MS = 5 * 60 * 1000; // retry 5min after failure (short interval seeder)
-const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
-const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive_events:geo-bootstrap:v1';
-const POSITIVE_EVENTS_MAX = 500;
-
-// Single-theme queries — v1 GKG accepts one theme tag per call.
-// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
-const POSITIVE_QUERIES = [
-  'SOC_INNOVATION',
-  'EDUCATION',
-  'MEDICAL',
-  'TOURISM',
-  'WB_1765_CULTURE_HERITAGE_AND_SUSTAINABLE_TOURISM',
-  'PEACEKEEPING',
-];
-
-// urltone threshold — keep only articles with urltone strictly above this value.
-const POSITIVE_TONE_THRESHOLD = 2;
-
-// Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
-const POSITIVE_CATEGORY_KEYWORDS = [
-  ['clinical trial', 'science-health'], ['study finds', 'science-health'],
-  ['researchers', 'science-health'], ['scientists', 'science-health'],
-  ['breakthrough', 'science-health'], ['discovery', 'science-health'],
-  ['cure', 'science-health'], ['vaccine', 'science-health'],
-  ['treatment', 'science-health'], ['medical', 'science-health'],
-  ['endangered species', 'nature-wildlife'], ['conservation', 'nature-wildlife'],
-  ['wildlife', 'nature-wildlife'], ['species', 'nature-wildlife'],
-  ['marine', 'nature-wildlife'], ['forest', 'nature-wildlife'],
-  ['renewable', 'climate-wins'], ['solar', 'climate-wins'],
-  ['wind energy', 'climate-wins'], ['electric vehicle', 'climate-wins'],
-  ['emissions', 'climate-wins'], ['carbon', 'climate-wins'],
-  ['clean energy', 'climate-wins'], ['climate', 'climate-wins'],
-  ['robot', 'innovation-tech'], ['technology', 'innovation-tech'],
-  ['startup', 'innovation-tech'], ['innovation', 'innovation-tech'],
-  ['artificial intelligence', 'innovation-tech'],
-  ['volunteer', 'humanity-kindness'], ['donated', 'humanity-kindness'],
-  ['charity', 'humanity-kindness'], ['rescued', 'humanity-kindness'],
-  ['hero', 'humanity-kindness'], ['kindness', 'humanity-kindness'],
-  [' art ', 'culture-community'], ['music', 'culture-community'],
-  ['festival', 'culture-community'], ['education', 'culture-community'],
-];
-
-function classifyPositiveName(name) {
-  const lower = ` ${name.toLowerCase()} `;
-  for (const [kw, cat] of POSITIVE_CATEGORY_KEYWORDS) {
-    if (lower.includes(kw)) return cat;
-  }
-  return 'humanity-kindness';
-}
-
-function gkgFeatureUrl(p) {
-  return p?.url || p?.source_url || p?.sourceUrl
-      || p?.document_url || p?.documentUrl
-      || p?.article_url || p?.articleUrl || null;
-}
-
-function fetchGdeltGeoPositive(query, seenUrlLocs) {
-  return new Promise((resolve) => {
-    const params = new URLSearchParams({ QUERY: query, MAXROWS: '500' });
-    const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      timeout: 15000,
-    }, (resp) => {
-      if (resp.statusCode !== 200) { resp.resume(); return resolve({ ok: false, events: [] }); }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          const features = Array.isArray(data?.features) ? data.features : [];
-          const locationMap = new Map();
-          for (const f of features) {
-            // Tone gate — keep only positive-tone articles.
-            const tone = f.properties?.urltone;
-            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_THRESHOLD) continue;
-            const name = String(f.properties?.name || '').substring(0, 200);
-            if (!name) continue;
-            if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
-            const coords = f.geometry?.coordinates;
-            if (!Array.isArray(coords) || coords.length < 2) continue;
-            const [lon, lat] = coords;
-            if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-            const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
-            // GKG v1 emits one feature per (article, location) pair, so an
-            // article mentioning N places contributes N features. Dedup key
-            // is (url, lat/lon bucket) so each (article × location) is counted
-            // once across all theme calls.
-            const url = gkgFeatureUrl(f.properties);
-            const dedupKey = url ? `${url}|${key}` : null;
-            if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
-            if (dedupKey) seenUrlLocs.add(dedupKey);
-            const existing = locationMap.get(key);
-            if (existing) { existing.count++; }
-            else { locationMap.set(key, { latitude: lat, longitude: lon, name, count: 1 }); }
-          }
-          const events = [];
-          for (const [, loc] of locationMap) {
-            if (loc.count < 3) continue;
-            events.push({ latitude: loc.latitude, longitude: loc.longitude, name: loc.name, category: classifyPositiveName(loc.name), count: loc.count, timestamp: Date.now() });
-          }
-          resolve({ ok: true, events });
-        } catch { resolve({ ok: false, events: [] }); }
-      });
-    });
-    req.on('error', () => resolve({ ok: false, events: [] }));
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, events: [] }); });
-  });
-}
-
-let positiveEventsInFlight = false;
-let positiveEventsRetryTimer = null;
-
-async function seedPositiveEvents() {
-  if (positiveEventsInFlight) return;
-  positiveEventsInFlight = true;
-  if (positiveEventsRetryTimer) { clearTimeout(positiveEventsRetryTimer); positiveEventsRetryTimer = null; }
-  const t0 = Date.now();
-  try {
-    const allEvents = [];
-    const seenNames = new Set();
-    // Cross-call (article × location) dedup — same article tagged with
-    // multiple themes would otherwise double-count its location buckets.
-    const seenUrlLocs = new Set();
-    let anyQuerySucceeded = false;
-
-    for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
-      try {
-        const result = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
-        if (!result?.ok) continue;
-        anyQuerySucceeded = true;
-        const events = Array.isArray(result.events) ? result.events : [];
-        for (const e of events) {
-          if (!seenNames.has(e.name)) {
-            seenNames.add(e.name);
-            allEvents.push(e);
-          }
-        }
-      } catch { /* individual query failure is non-fatal */ }
-    }
-
-    if (!anyQuerySucceeded) {
-      console.warn('[PositiveEvents] All queries failed — extending TTL, retrying in 5min');
-      try { await upstashExpire(POSITIVE_EVENTS_RPC_KEY, POSITIVE_EVENTS_TTL); await upstashExpire(POSITIVE_EVENTS_BOOTSTRAP_KEY, POSITIVE_EVENTS_TTL); } catch {}
-      positiveEventsRetryTimer = setTimeout(() => { seedPositiveEvents().catch(() => {}); }, POSITIVE_EVENTS_RETRY_MS);
-      return;
-    }
-
-    const capped = allEvents.slice(0, POSITIVE_EVENTS_MAX);
-    const payload = { events: capped, fetchedAt: Date.now() };
-    const ok1 = await envelopeWrite(POSITIVE_EVENTS_RPC_KEY, payload, POSITIVE_EVENTS_TTL, { recordCount: capped.length, sourceVersion: 'positive-events' });
-    const ok2 = await envelopeWrite(POSITIVE_EVENTS_BOOTSTRAP_KEY, payload, POSITIVE_EVENTS_TTL, { recordCount: capped.length, sourceVersion: 'positive-events' });
-    const ok3 = await upstashSet('seed-meta:positive-events:geo', { fetchedAt: Date.now(), recordCount: capped.length }, 604800);
-    console.log(`[PositiveEvents] Seeded ${capped.length} events (redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  } catch (e) {
-    console.warn('[PositiveEvents] Seed error:', e?.message || e, '— extending TTL, retrying in 5min');
-    try { await upstashExpire(POSITIVE_EVENTS_RPC_KEY, POSITIVE_EVENTS_TTL); await upstashExpire(POSITIVE_EVENTS_BOOTSTRAP_KEY, POSITIVE_EVENTS_TTL); } catch {}
-    positiveEventsRetryTimer = setTimeout(() => { seedPositiveEvents().catch(() => {}); }, POSITIVE_EVENTS_RETRY_MS);
-  } finally {
-    positiveEventsInFlight = false;
-  }
-}
-
-async function startPositiveEventsSeedLoop() {
-  if (!UPSTASH_ENABLED) {
-    console.log('[PositiveEvents] Disabled (no Upstash Redis)');
-    return;
-  }
-  console.log(`[PositiveEvents] Seed loop starting (interval ${POSITIVE_EVENTS_INTERVAL_MS / 1000 / 60}min)`);
-  startBootSeedLoop('PositiveEvents', 'seed-meta:positive-events:geo', POSITIVE_EVENTS_INTERVAL_MS, seedPositiveEvents, (e) => console.warn('[PositiveEvents] Initial seed error:', e?.message || e), (e) => console.warn('[PositiveEvents] Seed error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -5930,10 +5827,12 @@ function _redditEpochSeconds(v) {
 // The Reddit hosts pass raw_json=1, which un-escapes &amp; &lt; &gt; in text
 // fields. A vendor response may still be HTML-escaped, so decode the few entities
 // Reddit emits to keep panel titles identical across paths.
+// &amp; must be replaced LAST: this set has no numeric refs whose output could
+// re-form an entity, so amp-last decodes exactly one level (&amp;lt; stays &lt;).
 function _decodeRedditEntities(s) {
   if (typeof s !== 'string') return s;
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 }
 
 // Normalize a ScrapeCreators post so its shape matches the OAuth/public paths
@@ -6636,48 +6535,22 @@ function startPizzintSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 const DODO_PRICE_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const DODO_PRICE_SEED_TTL = 43200; // 12h (2× interval)
-const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
+const DODO_PRICE_REDIS_KEY = 'product-catalog:v3';
 const DODO_LIVE_URL = 'https://live.dodopayments.com';
 const DODO_TEST_URL = 'https://test.dodopayments.com';
 const DODO_PRICE_API_KEY = process.env.DODO_API_KEY || '';
 const DODO_PRICE_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT || 'test_mode';
 
-const DODO_PRODUCT_IDS = [
-  'pdt_0Nbtt71uObulf7fGXhQup', // Pro Monthly
-  'pdt_0NbttMIfjLWC10jHQWYgJ', // Pro Annual
-  'pdt_0NbttVmG1SERrxhygbbUq', // API Starter Monthly
-  'pdt_0Nbu2lawHYE3dv2THgSEV', // API Starter Annual
-  'pdt_0Nbttg7NuOJrhbyBGCius', // API Business Monthly (#4945)
-];
-
-// ⚠ MANUAL MIRROR of TIER_CONFIG in api/product-catalog.js (and ultimately
-// convex/config/productCatalog.ts marketingFeatures). This seeder's Redis
-// payload is the PRIMARY live catalog — it wins over the edge fallback on
-// cache hits — so drift here silently changes the /pro pricing page (#4946
-// P0, #4974). Parity enforced by tests/product-catalog-freshness.test.mjs.
-const DODO_TIER_CONFIG = {
-  free: { name: 'Free', localeKey: 'free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app/dashboard', highlighted: false },
-  pro: { name: 'Pro', localeKey: 'pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'], highlighted: true },
-  api_starter: { name: 'API', localeKey: 'api', description: 'Programmatic access to intelligence data', features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'License / API key included', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'], highlighted: false },
-  api_business: { name: 'API Business', localeKey: 'apiBusiness', description: 'High-volume API for teams', features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', 'Priority support'], highlighted: false },
-  enterprise: { name: 'Enterprise', localeKey: 'enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
-};
-
-const DODO_PRODUCT_META = {
-  'pdt_0Nbtt71uObulf7fGXhQup': { tierGroup: 'pro', billingPeriod: 'monthly' },
-  'pdt_0NbttMIfjLWC10jHQWYgJ': { tierGroup: 'pro', billingPeriod: 'annual' },
-  'pdt_0NbttVmG1SERrxhygbbUq': { tierGroup: 'api_starter', billingPeriod: 'monthly' },
-  'pdt_0Nbu2lawHYE3dv2THgSEV': { tierGroup: 'api_starter', billingPeriod: 'annual' },
-  'pdt_0Nbttg7NuOJrhbyBGCius': { tierGroup: 'api_business', billingPeriod: 'monthly' },
-};
-
-const DODO_FALLBACK_PRICES = {
-  'pdt_0Nbtt71uObulf7fGXhQup': 3999,
-  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,
-  'pdt_0NbttVmG1SERrxhygbbUq': 9999,
-  'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,
-  'pdt_0Nbttg7NuOJrhbyBGCius': 24999,
-};
+// Generated from convex/config/productCatalog.ts. The Railway Redis writer and
+// the Edge fallback consume the same artifact so cache hits cannot silently
+// revert plan copy, lifecycle metadata, or fallback prices.
+const GENERATED_PRODUCT_CATALOG = requireShared('product-catalog.generated.json');
+const DODO_PRODUCT_META = GENERATED_PRODUCT_CATALOG.products;
+const DODO_PRODUCT_IDS = Object.keys(GENERATED_PRODUCT_CATALOG.fallbackPrices);
+const DODO_TIER_CONFIG = GENERATED_PRODUCT_CATALOG.tierConfig;
+const DODO_PUBLIC_TIER_GROUPS = GENERATED_PRODUCT_CATALOG.publicTierGroups;
+const DODO_FALLBACK_PRICES = GENERATED_PRODUCT_CATALOG.fallbackPrices;
+const DODO_PUBLIC_PRODUCT_FACTS = GENERATED_PRODUCT_CATALOG.facts;
 
 let dodoPriceSeedInFlight = false;
 
@@ -6744,8 +6617,7 @@ async function seedDodoPrices() {
 
     // Build tier view model
     const tiers = [];
-    const publicGroups = ['free', 'pro', 'api_starter', 'api_business', 'enterprise'];
-    for (const group of publicGroups) {
+    for (const group of DODO_PUBLIC_TIER_GROUPS) {
       const config = DODO_TIER_CONFIG[group];
       if (!config) continue;
       if (group === 'free') { tiers.push({ ...config, price: 0, period: 'forever' }); continue; }
@@ -6761,7 +6633,13 @@ async function seedDodoPrices() {
 
     const priceSource = fallbackCount === 0 ? 'dodo' : fetchedCount > 0 ? 'partial' : 'fallback';
     const now = Date.now();
-    const payload = { tiers, fetchedAt: now, cachedUntil: now + DODO_PRICE_SEED_TTL * 1000, priceSource };
+    const payload = {
+      ...DODO_PUBLIC_PRODUCT_FACTS,
+      tiers,
+      fetchedAt: now,
+      cachedUntil: now + DODO_PRICE_SEED_TTL * 1000,
+      priceSource,
+    };
 
     // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
     // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
@@ -11499,6 +11377,8 @@ function switchTab(btn, key) {
 // ─── End Widget Agent ────────────────────────────────────────────────────────
 
 function connectUpstream() {
+  if (!API_KEY) return;
+
   // Skip if already connected or connecting
   if (upstreamSocket?.readyState === WebSocket.OPEN ||
       upstreamSocket?.readyState === WebSocket.CONNECTING) return;
@@ -11622,7 +11502,6 @@ server.listen(PORT, () => {
   startCiiWarmPingLoop();
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
-  startPositiveEventsSeedLoop();
   startClassifySeedLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();

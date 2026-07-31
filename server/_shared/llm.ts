@@ -1,5 +1,5 @@
 import { CHROME_UA } from './constants';
-import { isProviderAvailable } from './llm-health';
+import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
 import {
@@ -404,6 +404,13 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         });
         if (!creds) continue;
 
+        // Model gate first: it is synchronous, so a quarantined model costs
+        // neither a completion request nor an origin probe.
+        if (!isModelUsable(creds.apiUrl, creds.model)) {
+          console.warn(`[llm-stream:${providerName}] Model ${creds.model} quarantined, skipping`);
+          continue;
+        }
+
         if (!(await isProviderAvailable(creds.apiUrl))) {
           console.warn(`[llm-stream:${providerName}] Offline, skipping`);
           continue;
@@ -449,10 +456,19 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           });
           // Timeout stays active — it must bound the streaming body read, not just the connection
 
+          if (resp.ok) {
+            // HTTP success proves the provider accepted this model even if the
+            // application later rejects, strips, or cannot read the payload.
+            recordModelSuccess(creds.apiUrl, creds.model);
+          }
+
           if (!resp.ok || !resp.body) {
             clearTimeout(timeoutId);
             const errBody = resp.body ? await resp.text().catch(() => '') : '';
             console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
+            // The body already told us whether the MODEL was rejected; feeding
+            // it back is what stops the next request re-sending the prompt.
+            recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);
             record(false, `http_${resp.status}`);
             continue;
           }
@@ -566,6 +582,14 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         continue;
       }
 
+      // Model gate: skip a model the provider has already rejected. Runs before
+      // the reachability probe because it is synchronous and network-free.
+      if (!isModelUsable(creds.apiUrl, creds.model)) {
+        console.warn(`[llm:${providerName}] Model ${creds.model} quarantined, skipping`);
+        if (forcedProvider) return null;
+        continue;
+      }
+
       // Health gate: skip provider if endpoint is unreachable
       if (!(await isProviderAvailable(creds.apiUrl))) {
         console.warn(`[llm:${providerName}] Offline, skipping`);
@@ -616,10 +640,17 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           // log: never consume a huge/slow error body before falling back.
           const errBody = await readBoundedErrorBody(resp, 300).catch(() => '');
           console.warn(`[llm:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody}`);
+          // The body already told us whether the MODEL was rejected; feeding it
+          // back is what stops the next request re-sending the prompt.
+          recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);
           record(false, { reason: `http_${resp.status}` });
           if (forcedProvider) return null;
           continue;
         }
+
+        // Provider acceptance is the model-health signal. Output validation,
+        // token limits, and content policy are separate application concerns.
+        recordModelSuccess(creds.apiUrl, creds.model);
 
         const data = (await resp.json()) as {
           choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;

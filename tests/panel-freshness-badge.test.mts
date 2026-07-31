@@ -74,6 +74,7 @@ describe('dataFreshness panel summaries', () => {
 
   it('does not expose badges for panels with unmapped or mixed-unmapped source sets', () => {
     dataFreshness.recordUpdate('giving', 4);
+    dataFreshness.recordError('giving', 'Giving refresh unavailable');
     dataFreshness.recordUpdate('worldpop', 4);
     dataFreshness.recordUpdate('economic', 4);
     dataFreshness.recordUpdate('oil', 4);

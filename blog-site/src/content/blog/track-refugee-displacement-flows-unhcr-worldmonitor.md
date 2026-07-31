@@ -6,6 +6,7 @@ keywords: "refugee flow data, displacement tracking dashboard, UNHCR data visual
 audience: "Humanitarian and NGO teams, researchers, journalists, policy analysts, students"
 heroImage: "/blog/images/blog/track-refugee-displacement-flows-unhcr-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Displacement is the human ledger of every crisis. Conflict, drought, floods, economic collapse — whatever the driver, people moving in numbers is both the consequence that matters most and one of the most reliable indicators that a situation has crossed from tension into emergency.
@@ -37,6 +38,10 @@ The `get_displacement_data` MCP tool returns refugee and IDP counts by country i
 ## Limits
 
 UNHCR statistics are authoritative but not real-time: they update on reporting cycles, not hourly. Displacement flows drawn on a map represent stock and corridor structure, not live movement of individuals — nothing here tracks people, only aggregate populations as officially reported. Fast-moving situations will show up in news, conflict events, and advisories before they appear in the official counts; use the layers together and mind the lag.
+
+## Primary Displacement Source
+
+The authoritative reference is the UNHCR [Refugee Data Finder API](https://www.unhcr.org/refugee-statistics/insights/explainers/forcibly-displaced-api.html). Figures are estimates with reporting lags and revisions, so cite the observation date and avoid treating a missing value as zero displacement.
 
 ## Frequently Asked Questions
 

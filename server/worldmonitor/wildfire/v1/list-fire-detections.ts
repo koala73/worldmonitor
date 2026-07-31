@@ -11,6 +11,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/wildfire/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
 import { limitFireDetectionsForDashboard } from '../../../../api/_wildfire-dashboard.js';
 export { WILDFIRE_DASHBOARD_DETECTION_LIMIT, limitFireDetectionsForDashboard } from '../../../../api/_wildfire-dashboard.js';
 
@@ -46,10 +47,14 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
     const rawDetections = result.fireDetections ?? [];
     const fireDetections = limitFireDetectionsForDashboard(rawDetections);
     const capped = fireDetections.length < rawDetections.length;
+    // The canonical key is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866) and
+    // carries the pre-cap FIRMS total in `pagination`. Re-deriving the count from the array we
+    // received would silently report the seeder's cap as the number of fires burning.
+    const totalCount = resolveFireDetectionTotalCount({ fireDetections: rawDetections, pagination: result.pagination });
 
     return {
       fireDetections,
-      pagination: capped ? { nextCursor: '', totalCount: rawDetections.length } : result.pagination,
+      pagination: capped ? { nextCursor: '', totalCount } : result.pagination,
       fetchedAt: Number(result.fetchedAt || meta?.fetchedAt || 0),
       dataAvailable: true,
     };

@@ -1,11 +1,12 @@
 ---
 title: "The Good News Dashboard: Positive News with an Intelligence Engine"
-description: "happy.worldmonitor.app runs 27 curated positive feeds through WorldMonitor's real intelligence pipeline: conservation wins, breakthroughs, clean energy, and live progress counters."
+description: "Explore Happy Monitor's 27 positive-news feeds covering conservation wins, scientific breakthroughs, clean energy, and live human-progress indicators."
 metaTitle: "Positive News Dashboard | World Monitor Happy"
 keywords: "positive news website, good news dashboard, uplifting news aggregator, human progress tracker, conservation wins, science breakthrough news"
 audience: "General readers, educators, parents, mental-health-conscious news consumers, optimists who want evidence"
 heroImage: "/blog/images/blog/positive-news-dashboard-happy-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 The news industry has a structural bias, not a conspiracy: bad news is sudden and good news is gradual. A pipeline explosion is an event; a species recovering is a decade. Feeds optimized for events will always overweight catastrophe — which is how you end up with an audience that knows every disaster and none of the progress.
@@ -36,11 +37,15 @@ Two reasons. The honest one: sustained doom consumption degrades judgment. Analy
 
 The structural one: positive events are intelligence. Peace agreements, humanitarian aid flows, and diplomatic breakthroughs are state actions with consequences, and the `get_positive_events` MCP tool exposes them — diplomatic agreements, aid commitments, peace initiatives — to the same agents that consume conflict data. A model of the world built only from negatives is simply wrong.
 
-The Happy variant is one of [six dashboards on the platform](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/), and like the others it's free, no login, and switchable in one click — same account, same infrastructure, same [21-language support](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+The Happy variant is one of [six dashboards on the platform](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/), and like the others it's free, no login, and switchable in one click — same account, same infrastructure, same [25-language support](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 
 ## Limits
 
 Curation is editorial: 27 feeds chosen for credibility and signal, which means judgment calls about what counts as "positive." Progress data is slower-moving than event data by nature — the counters and progress panels update on the cadence of their underlying sources. And no, reading good news doesn't change the world state; it changes whether your model of the world state is complete.
+
+## Source transparency
+
+The curated feed catalog is public in WorldMonitor's [source configuration](https://github.com/koala73/worldmonitor/blob/main/src/config/feeds.ts). Individual cards still link to their original publisher so readers can inspect the evidence behind each progress claim.
 
 ## Frequently Asked Questions
 

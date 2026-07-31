@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, sleep, runSeed } from './_seed-utils.mjs';
+import { buildBootstrapPools, validateBootstrapPayload } from './_prediction-classify.mjs';
 import {
   isExcluded, isMemeCandidate, tagRegions, parseYesPrice, selectPricedKalshiMarket,
-  shouldInclude, scoreMarket, filterAndScore, isExpired,
+  shouldInclude, scoreMarket, isExpired,
 } from './_prediction-scoring.mjs';
 import predictionTags from './data/prediction-tags.json' with { type: 'json' };
 
@@ -171,16 +172,26 @@ async function fetchAllPredictions() {
 
   console.log(`  total raw markets: ${markets.length}`);
 
-  const geopolitical = filterAndScore(markets, null);
-  const tech = filterAndScore(markets, m => m.tags?.some(t => TECH_TAGS.includes(t)));
-  const finance = filterAndScore(markets, m => m.source === 'kalshi' || m.tags?.some(t => FINANCE_TAGS.includes(t)));
+  // #5733: assign each market ONE primary category, then rank WITHIN that pool.
+  // The pools used to be three independent filters over `markets` — with
+  // `geopolitical` taking no filter at all, so it was a copy of everything, and
+  // tech/finance overlapping on the economy/crypto/business tags. Partitioning
+  // first is what makes the published labels mean something and stops the same
+  // record being published three times. The whole pool-building path lives in
+  // _prediction-classify.mjs so the tests exercise THIS wiring, not a replica of
+  // it (this module can never be imported by a test — runSeed runs at import).
+  const { pools, classified, duplicatesDropped } = buildBootstrapPools(markets);
 
-  console.log(`  geopolitical: ${geopolitical.length}, tech: ${tech.length}, finance: ${finance.length}`);
+  if (duplicatesDropped > 0) {
+    console.log(`  deduped ${duplicatesDropped} same-identity record(s) before classification`);
+  }
+  console.log(
+    `  classified: geopolitical ${classified.geopolitical}, tech ${classified.tech}, finance ${classified.finance}`
+    + ` → published: ${pools.geopolitical.length}/${pools.tech.length}/${pools.finance.length}`,
+  );
 
   return {
-    geopolitical,
-    tech,
-    finance,
+    ...pools,
     fetchedAt: Date.now(),
   };
 }
@@ -192,7 +203,10 @@ export function declareRecords(data) {
 await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   ttlSeconds: CACHE_TTL,
   lockTtlMs: 60_000,
-  validateFn: (data) => (data?.geopolitical?.length > 0 || data?.tech?.length > 0) && data?.finance?.length > 0,
+  // Population requirement + #5733 category-integrity gate. Lives in
+  // _prediction-classify.mjs so the gate is unit-testable (this module runs
+  // runSeed at import time, so a test can never import it).
+  validateFn: validateBootstrapPayload,
 
   declareRecords,
   schemaVersion: 1,

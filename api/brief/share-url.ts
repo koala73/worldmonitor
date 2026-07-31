@@ -32,12 +32,11 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
-// @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { validateBearerToken } from '../../server/auth-session';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import { checkProEntitlement } from '../../server/_shared/pro-entitlement';
 import {
   BriefShareUrlError,
   BRIEF_PUBLIC_POINTER_PREFIX,
@@ -92,8 +91,16 @@ export default async function handler(
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
 
-  const ent = await getEntitlements(session.userId);
-  if (!ent || ent.features.tier < 1) {
+  const proAccess = await checkProEntitlement(session.userId, session.role, cors);
+  if (!proAccess.allowed) {
+    // #5600: an entitlement the backend could not VERIFY is not a confirmed
+    // free user. Answer the shared retryable contract (503 + Retry-After) for
+    // those states before falling back to the terminal upsell. Note this covers
+    // lookup failure and renewal verification only — the day-0 poisoned-marker
+    // cohort arrives as a plain tier-0 answer and still gets the 403; that
+    // window is bounded by NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead.
+    const { billingDenial } = proAccess;
+    if (billingDenial) return billingDenial;
     return jsonResponse(
       { error: 'pro_required', message: 'Sharing is available on the Pro plan.' },
       403,

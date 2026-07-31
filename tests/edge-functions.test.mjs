@@ -77,8 +77,20 @@ describe('Edge Function shared helpers resolve', () => {
     const mod = await import(pathToFileURL(join(apiDir, '_rss-allowed-domains.js')).href);
     const domains = mod.default;
     assert.ok(Array.isArray(domains), 'Expected default export to be an array');
-    assert.ok(domains.length > 200, `Expected 200+ domains, got ${domains.length}`);
-    assert.ok(domains.includes('feeds.bbci.co.uk'), 'Expected BBC feed domain in list');
+    // Content parity, not just a smoke check. api/_rss-allowed-domains.js is a
+    // hand-maintained literal mirror of the shared JSON (Vercel edge esbuild
+    // cannot import JSON via import attributes, and api/*.js cannot import from
+    // ../shared), so this assertion is the only thing stopping it drifting from
+    // the source of truth. A domain added to shared/ but missed here 403s in the
+    // edge proxy while every other consumer works — the same silent-drift class
+    // the scripts/shared/ check above already guards against.
+    const shared = JSON.parse(readFileSync(join(sharedDir, 'rss-allowed-domains.json'), 'utf8'));
+    assert.deepStrictEqual(
+      domains,
+      shared,
+      'api/_rss-allowed-domains.js is out of sync with shared/rss-allowed-domains.json — ' +
+        'update the literal array in api/_rss-allowed-domains.js to match',
+    );
   });
 });
 

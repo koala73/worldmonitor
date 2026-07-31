@@ -6,7 +6,7 @@ keywords: "geopolitical risk alerts, OSINT alert pipeline, Slack risk alerts, in
 audience: "Developers, security operations teams, risk analysts, platform engineers"
 heroImage: "/blog/images/blog/geopolitical-risk-alerts-slack-teams-worldmonitor-api.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Most alert systems fail because they forward too much. A headline is not an alert. A price tick is not an alert. A single noisy event is not an alert.
@@ -215,6 +215,10 @@ WorldMonitor exposes freshness through cache fields and health endpoints. Use th
 7. Review false positives every Friday.
 
 That last step is the work. Alerting gets better through calibration, not clever copy.
+
+## Destination references
+
+Before production rollout, verify payload and lifecycle behavior against the official [Slack incoming-webhook documentation](https://api.slack.com/messaging/webhooks) and Microsoft's [Teams webhooks and connectors documentation](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors).
 
 ## Frequently Asked Questions
 

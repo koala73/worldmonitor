@@ -110,7 +110,7 @@ export const DEFAULT_PROBES: ProbeSpec[] = [
   { key: 'market:other-tokens:v1',     shape: 'envelope', dataHas: ['tokens'], minRecords: 1 },
 
   // Direct writers (ais-relay.cjs) — regression guard for envelope wrap.
-  { key: 'product-catalog:v2',         shape: 'envelope', dataHas: ['tiers'] },
+  { key: 'product-catalog:v3',         shape: 'envelope', dataHas: ['tiers'] },
 
   // Invariant: seed-meta:* keys must NEVER envelope (shouldEnvelopeKey guard).
   { key: 'seed-meta:energy:oil-stocks-analysis', shape: 'bare', dataHas: ['fetchedAt'] },

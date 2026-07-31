@@ -25,6 +25,7 @@ import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 type ClerkInstance = Clerk;
+type ClerkSession = NonNullable<ClerkInstance['session']>;
 
 function readPublishableKey(): string | undefined {
   try {
@@ -35,6 +36,16 @@ function readPublishableKey(): string | undefined {
 }
 
 const PUBLISHABLE_KEY = readPublishableKey();
+
+/**
+ * True when a Clerk publishable key is configured. Used by surfaces that must
+ * distinguish "auth still hydrating" from "Clerk will never load" (e.g. the
+ * Pro banner deferral in #5728 — without this, `isPending` stays sticky when
+ * the key is absent and free users would never see the upsell).
+ */
+export function isClerkAuthEnabled(): boolean {
+  return Boolean(PUBLISHABLE_KEY);
+}
 
 let clerkInstance: ClerkInstance | null = null;
 let loadPromise: Promise<void> | null = null;
@@ -234,12 +245,24 @@ export async function initClerk(): Promise<void> {
       await clerk.load({
         clerkUICtor: getClerkUICtor(),
         appearance: getAppearance(),
+        localization: {
+          userButton: {
+            action__manageAccount: 'Profile & security',
+          },
+        },
         afterSignOutUrl: getAfterSignOutUrl(),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
+      // Flip auth isPending → false for queued subscribers even though
+      // clerkInstance stays null. Without this, surfaces that defer while
+      // auth is pending (Pro banner #5728, AuthHeaderWidget skeletons)
+      // hang forever on permanent load failures (blocked CDN, CN in-app
+      // browsers). Leave the queue intact so a later successful retry can
+      // still attachListener + re-fire with a real session.
+      notifyPendingSubscribersOfHydrationFailure();
       throw e;
     }
   })();
@@ -297,6 +320,23 @@ function attachPendingSubscribers(): void {
     // Fire once so subscribers learn about a cookie-backed signed-in
     // session that was already present before Clerk finished loading.
     cb();
+  }
+}
+
+/**
+ * Fire queued pre-load subscribers without consuming the queue.
+ * Used when initClerk fails so `subscribeAuthState` can snapshot
+ * `{ user: null, isPending: false }` instead of leaving the whole app
+ * stuck on the boot-default pending session.
+ */
+function notifyPendingSubscribersOfHydrationFailure(): void {
+  for (const cb of pendingSubscribers) {
+    if (pendingSubscriberDetachers.get(cb)?.detached) continue;
+    try {
+      cb();
+    } catch {
+      // One subscriber must not block the rest of the settle fan-out.
+    }
   }
 }
 
@@ -459,8 +499,9 @@ export function clearClerkTokenCache(): void {
  * Uses the 'convex' JWT template which includes the `plan` claim.
  * Returns null if no active session.
  *
- * Tokens are cached for 50s (Clerk tokens expire at 60s) with in-flight
- * deduplication to prevent concurrent panels from racing against Clerk.
+ * Tokens are cached with in-flight deduplication to prevent concurrent panels
+ * from racing against Clerk, bounded by BOTH the flat TTL below and the token's
+ * own `exp` (see shouldReuseCachedClerkToken — the TTL alone is not enough).
  * A monotonic _tokenGen counter lets clearClerkTokenCache() invalidate
  * any mid-flight fetch whose result would otherwise paint the previous
  * user's JWT into the new session.
@@ -471,8 +512,72 @@ let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
 
+/**
+ * How long before a token's own `exp` we stop reusing it.
+ *
+ * `server/auth-session.ts` applies only a small, bounded `clockTolerance`.
+ * This larger client-side margin keeps cache reuse and request flight time from
+ * consuming that entire server-side allowance.
+ */
+const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
+
+/**
+ * The `exp` claim of a Clerk JWT as epoch ms, or null when it cannot be read.
+ *
+ * Null (rather than throwing, or assuming expiry) keeps an unreadable token on
+ * the flat-TTL path — the behaviour that predates this function — so a Clerk
+ * token-format change degrades to the old caching instead of signing everyone
+ * out. Reading `exp` needs no signature check: the server is the authority, and
+ * a forged `exp` can only make this client refresh sooner.
+ */
+export function clerkTokenExpiresAtMs(token: string | null): number | null {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const exp = (
+      JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { exp?: unknown }
+    ).exp;
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1_000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the cached token can still sign a request. Both bounds must hold.
+ *
+ * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ): Clerk's `getToken()`
+ * is stale-while-revalidate — within 15s of expiry it returns the CACHED token
+ * immediately and refreshes in the background — so the premise this cache was
+ * built on ("Clerk tokens expire at 60s", i.e. every token arrives fresh) does
+ * not hold. Stamping a token that had 12s left with a flat 50s TTL left ~38s in
+ * which every request it signed came back 401, healing only when the TTL lapsed.
+ *
+ * The TTL is still enforced on top: it is what bounds how long a session that
+ * was revoked but not yet expired keeps working.
+ */
+export function shouldReuseCachedClerkToken(input: {
+  token: string | null;
+  cachedAt: number;
+  now: number;
+}): boolean {
+  const { token, cachedAt, now } = input;
+  if (!token) return false;
+  if (now - cachedAt >= TOKEN_CACHE_TTL_MS) return false;
+  const expiresAt = clerkTokenExpiresAtMs(token);
+  if (expiresAt === null) return true;
+  return now < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
+}
+
+async function fetchClerkToken(session: ClerkSession, skipCache = false): Promise<string | null> {
+  const cacheOptions = skipCache ? { skipCache: true } : {};
+  return (await session.getToken({ template: 'convex', ...cacheOptions }).catch(() => null))
+    ?? await session.getToken(cacheOptions).catch(() => null);
+}
+
 export async function getClerkToken(): Promise<string | null> {
-  if (_cachedToken && Date.now() - _cachedTokenAt < TOKEN_CACHE_TTL_MS) {
+  if (shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -492,17 +597,25 @@ export async function getClerkToken(): Promise<string | null> {
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.
-      const token = (await session.getToken({ template: 'convex' }).catch(() => null))
-        ?? await session.getToken().catch(() => null);
+      let token = await fetchClerkToken(session);
+      const firstFetchedAt = Date.now();
+      if (token && !shouldReuseCachedClerkToken({ token, cachedAt: firstFetchedAt, now: firstFetchedAt })) {
+        // Clerk may return a near-expiry cached token while refreshing it in the
+        // background. The initiating caller must not receive that stale token:
+        // force one server refresh, then accept only a token outside the margin.
+        token = await fetchClerkToken(session, true);
+      }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen) return null;
-      if (token) {
+      const fetchedAt = Date.now();
+      if (shouldReuseCachedClerkToken({ token, cachedAt: fetchedAt, now: fetchedAt })) {
         _cachedToken = token;
-        _cachedTokenAt = Date.now();
+        _cachedTokenAt = fetchedAt;
+        return token;
       }
-      return token;
+      return null;
     } catch {
       return null;
     } finally {
@@ -515,6 +628,11 @@ export async function getClerkToken(): Promise<string | null> {
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
+  clerkInstance = instance;
+  clearClerkTokenCache();
 }
 
 
@@ -562,7 +680,77 @@ export function subscribeClerk(callback: () => void): () => void {
  * Mount Clerk's UserButton component into a DOM element.
  * Returns an unmount function.
  */
-export function mountUserButton(el: HTMLDivElement): () => void {
+export interface UserButtonMenuActions {
+  onBillingClick?: () => void;
+  onSettingsClick?: () => void;
+}
+
+type UserButtonProps = NonNullable<Parameters<ClerkInstance['mountUserButton']>[1]>;
+type CustomMenuItem = NonNullable<UserButtonProps['customMenuItems']>[number];
+type MenuIconKind = 'billing' | 'settings';
+
+function mountMenuIcon(el: HTMLDivElement, kind: MenuIconKind): void {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const paths = kind === 'billing'
+    ? [
+        'M3 6h18v12H3z',
+        'M3 10h18',
+        'M7 15h3',
+      ]
+    : [
+        'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+        'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z',
+      ];
+  for (const d of paths) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  }
+  el.replaceChildren(svg);
+}
+
+export function createAccountMenuItems(actions: UserButtonMenuActions): CustomMenuItem[] {
+  const items: CustomMenuItem[] = [];
+  if (actions.onBillingClick) {
+    items.push({
+      label: 'Plan & billing',
+      onClick: actions.onBillingClick,
+      mountIcon: (el) => mountMenuIcon(el, 'billing'),
+      unmountIcon: (el) => el?.replaceChildren(),
+    });
+  }
+  if (actions.onSettingsClick) {
+    items.push({
+      label: 'Settings',
+      onClick: actions.onSettingsClick,
+      mountIcon: (el) => mountMenuIcon(el, 'settings'),
+      unmountIcon: (el) => el?.replaceChildren(),
+    });
+  }
+  return items;
+}
+
+function getUserButtonProps(actions: UserButtonMenuActions): UserButtonProps {
+  return {
+    appearance: getAppearance(),
+    customMenuItems: createAccountMenuItems(actions),
+  };
+}
+
+export function mountUserButton(
+  el: HTMLDivElement,
+  actions: UserButtonMenuActions = {},
+): () => void {
   if (!clerkInstance) {
     // Deferred-load path: the avatar widget asked to mount before Clerk
     // finished its idle-callback load. Trigger an immediate load and
@@ -572,9 +760,7 @@ export function mountUserButton(el: HTMLDivElement): () => void {
     let realUnmount: (() => void) | null = null;
     void initClerk().then(() => {
       if (cancelled || !clerkInstance) return;
-      clerkInstance.mountUserButton(el, {
-        appearance: getAppearance(),
-      });
+      clerkInstance.mountUserButton(el, getUserButtonProps(actions));
       realUnmount = () => clerkInstance?.unmountUserButton(el);
     });
     return () => {
@@ -582,8 +768,6 @@ export function mountUserButton(el: HTMLDivElement): () => void {
       realUnmount?.();
     };
   }
-  clerkInstance.mountUserButton(el, {
-    appearance: getAppearance(),
-  });
+  clerkInstance.mountUserButton(el, getUserButtonProps(actions));
   return () => clerkInstance?.unmountUserButton(el);
 }

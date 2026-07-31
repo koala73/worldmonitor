@@ -12,9 +12,16 @@ import {
   getCacheKey,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { isProviderAvailable } from '../../../_shared/llm-health';
+import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from '../../../_shared/llm-health';
 import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
-import { isCallerPremium } from '../../../_shared/premium-check';
+import {
+  getPremiumRpcBillingErrorType,
+  resolvePremiumCallerIdentity,
+} from '../../../_shared/premium-check';
+import {
+  markRetryableResponse,
+  setResponseHeader,
+} from '../../../_shared/response-headers';
 import { stripThinkingTags } from '../../../_shared/llm';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
 
@@ -64,7 +71,8 @@ export async function summarizeArticle(
   ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const isPremium = await isCallerPremium(ctx.request);
+  const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
+  const isPremium = premiumIdentity.isPremium;
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
@@ -100,6 +108,25 @@ export async function summarizeArticle(
   });
 
   if (requiresPremium && !isPremium) {
+    const billingDenial = premiumIdentity.billingDenial;
+    if (billingDenial) {
+      if (billingDenial.retryable) {
+        markRetryableResponse(ctx.request);
+        setResponseHeader(ctx.request, 'Retry-After', String(billingDenial.retryAfterSeconds));
+        setResponseHeader(ctx.request, 'X-Billing-Verification', billingDenial.code);
+      }
+      return {
+        summary: '',
+        model: '',
+        provider,
+        tokens: 0,
+        fallback: true,
+        error: billingDenial.message,
+        errorType: getPremiumRpcBillingErrorType(billingDenial),
+        status: 'SUMMARIZE_STATUS_ERROR',
+        statusDetail: billingDenial.code,
+      };
+    }
     return {
       summary: '',
       model: '',
@@ -161,7 +188,6 @@ export async function summarizeArticle(
       cacheKey,
       CACHE_TTL_SECONDS,
       async () => {
-        // Health gate inside fetcher — only runs on cache miss
         if (!(await isProviderAvailable(apiUrl))) return null;
         // Full injection sanitization applied at prompt-build time only.
         // Headlines are re-sanitized here (not at cache-key time) so that
@@ -226,9 +252,15 @@ export async function summarizeArticle(
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);
+          recordModelFailure(apiUrl, model, response.status, errorText);
           await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, reason: `http_${response.status}` });
           throw new Error(response.status === 429 ? 'Rate limited' : `${provider} API error`);
         }
+
+        // HTTP success proves provider/model compatibility. Summary validation
+        // below is an application-level concern and must not preserve a stale
+        // model-rejection streak.
+        recordModelSuccess(apiUrl, model);
 
         const data = await response.json() as any;
         const tokens = (data.usage?.total_tokens as number) || 0;
@@ -251,6 +283,15 @@ export async function summarizeArticle(
 
         await emitSummarizeLlmEvent({ provider, model, ok: Boolean(rawContent), durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: rawContent ? '' : 'empty' });
         return rawContent ? { summary: rawContent, model, tokens } : null;
+      },
+      undefined,
+      {
+        // This cache key is intentionally provider-independent so a successful
+        // summary can be reused across the client fallback chain. Provider-
+        // local failures and in-flight work must not suppress another provider.
+        shouldFetch: () => isModelUsable(apiUrl, model),
+        cacheFailures: false,
+        inflightKey: `${cacheKey}:${provider}:${model}`,
       },
     );
 

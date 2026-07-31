@@ -6,7 +6,7 @@ keywords: "supply chain risk API, chokepoint monitoring API, shipping disruption
 audience: "Supply chain engineers, logistics developers, procurement analysts, platform teams, risk managers"
 heroImage: "/blog/images/blog/build-supply-chain-early-warning-system-api.jpg"
 pubDate: "2026-06-08"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 When the Strait of Hormuz shut down this spring, companies found out in one of two ways. Some read about it in the news and started calling freight forwarders. Others had already received a webhook hours earlier, when the disruption score crossed their alert threshold, and were quoting Cape of Good Hope routings before their competitors knew there was a problem.
@@ -163,6 +163,10 @@ A simple weekly job that flags any origin country whose resilience dropped more 
 - A Slack channel that occasionally says something genuinely important
 
 Total code: one webhook receiver and two cron jobs. If you want to stress-test the design, the [scenario engine](https://www.worldmonitor.app/docs/scenario-engine) simulates events like a Taiwan Strait closure or a Panama drought against live trade data. AI agents can run the same checks conversationally through the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+
+## Primary Trade Sources
+
+Validate trade signals against primary datasets such as the [WTO API portal](https://apiportal.wto.org/) and [UN Comtrade](https://comtradeplus.un.org/). World Monitor adds normalization and cross-domain context; the originating institution remains the authority for its underlying series.
 
 ## Frequently Asked Questions
 

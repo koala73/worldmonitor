@@ -25,7 +25,6 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
-// @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
 import {

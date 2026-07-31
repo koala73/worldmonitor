@@ -1,11 +1,11 @@
-// Resilient GDELT conflict-event fallback using the official 15-minute bulk
-// event export. The DOC API is aggressively per-IP throttled; the bulk stream
-// is a single global stream and therefore remains usable when country-by-country
-// DOC queries all return 429.
+// Primary GDELT conflict-event source using the official 15-minute bulk
+// event export (#5849). The DOC API is aggressively per-IP throttled; the bulk
+// stream is a single global stream and therefore remains usable when
+// country-by-country DOC queries all return 429.
 
 import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
-import { GDELT_COUNTRY_NAMES, gdeltSeenDateToIso } from './_conflict-gdelt.mjs';
+import { GDELT_COUNTRY_NAMES, gdeltSeenDateToIso, gdeltSeenDateToMs } from './_conflict-gdelt.mjs';
 import { allSettledWithConcurrency } from './_seed-utils.mjs';
 
 const GDELT_STORAGE_ORIGIN = 'https://storage.googleapis.com/data.gdeltproject.org';
@@ -85,7 +85,7 @@ export function parseGdeltRecentExports(manifest, limit = RECENT_EXPORT_COUNT) {
     .slice(-Math.max(1, limit));
 }
 
-export function extractGdeltExportCsv(zipBytes) {
+export function extractGdeltExportCsv(zipBytes, expectedTimestamp = '') {
   const zip = Buffer.isBuffer(zipBytes) ? zipBytes : Buffer.from(zipBytes || []);
   if (zip.length < 30 || zip.readUInt32LE(0) !== 0x04034b50) {
     throw new Error('invalid GDELT event export ZIP header');
@@ -115,6 +115,15 @@ export function extractGdeltExportCsv(zipBytes) {
   if (!/^\d{14}\.export\.CSV$/.test(filename)) {
     throw new Error(`unexpected GDELT event export filename: ${filename}`);
   }
+  // Exact-match the descriptor when the caller has one (#5864): the pattern
+  // above accepts ANY well-formed timestamp, so a substituted-but-valid entry
+  // would pass. The bulk materializer's copy of this transport already pins the
+  // exact name; both copies now agree.
+  if (expectedTimestamp && filename !== `${expectedTimestamp}.export.CSV`) {
+    throw new Error(
+      `GDELT event export filename ${filename} does not match descriptor ${expectedTimestamp}`,
+    );
+  }
 
   const compressed = zip.subarray(dataStart, dataEnd);
   const csv = method === 8
@@ -135,13 +144,10 @@ function sourceDomain(sourceUrl) {
   }
 }
 
+// Kept as a re-export for this module's existing consumers; the parser's
+// single home is _conflict-gdelt.mjs (#5856 review).
 export function gdeltTimestampToMs(value) {
-  const digits = String(value || '').replace(/[^0-9]/g, '');
-  if (digits.length < 14) return Number.NaN;
-  return Date.parse(
-    `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
-      + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}Z`,
-  );
+  return gdeltSeenDateToMs(value);
 }
 
 export function mapGdeltExportToConflictEvents(csv) {
@@ -281,7 +287,9 @@ export async function fetchGdeltBulkConflictEvents({ fetchImpl = globalThis.fetc
       const actualMd5 = createHash('md5').update(zipBytes).digest('hex');
       if (actualMd5 !== descriptor.md5) throw new Error('checksum mismatch');
       return {
-        events: mapGdeltExportToConflictEvents(extractGdeltExportCsv(zipBytes)),
+        events: mapGdeltExportToConflictEvents(
+          extractGdeltExportCsv(zipBytes, descriptor.exportTimestamp),
+        ),
         exportTimestamp: descriptor.exportTimestamp,
       };
     },

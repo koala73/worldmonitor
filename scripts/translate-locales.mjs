@@ -3,33 +3,34 @@
  * Backfill missing locale strings using Claude Haiku as the translator.
  *
  * - Source of truth: src/locales/en.json (or pro-test/src/locales/en.json with --pro-test)
- * - Diffs each non-English locale against EN, sends only the missing keys
- *   in batches to Claude, deep-merges the response back into the locale file.
+ * - Diffs each non-English locale against EN, sends the missing AND the stale
+ *   keys in batches to Claude, deep-merges the response back into the locale file.
+ * - Staleness is tracked by an EN baseline snapshot (scripts/locale-baselines/).
+ *   A key that is present in a locale but whose English source has changed since
+ *   the last completed run is retranslated. Without this, changing English copy
+ *   silently rots every translation of it — and inserting one array element
+ *   shifts every later index onto the wrong string (issue #5633).
  * - Preserves i18next interpolation tokens (`{{name}}`, `<strong>`, emoji,
  *   numerals, URLs) verbatim — the model is instructed not to translate them.
- * - Idempotent: re-running on a fully-translated locale is a no-op.
+ * - Idempotent: re-running on a fully-translated, fully-fresh locale is a no-op.
  *
  * Usage:
  *   ANTHROPIC_API_KEY=sk-ant-... node scripts/translate-locales.mjs
  *   ANTHROPIC_API_KEY=sk-ant-... node scripts/translate-locales.mjs --only=fr,de
  *   ANTHROPIC_API_KEY=sk-ant-... node scripts/translate-locales.mjs --pro-test
  *   node scripts/translate-locales.mjs --dry-run    # just report the gap
+ *   ... --adopt-baseline   # FIRST adoption of a root only; records the current
+ *                          # translations as correct without checking them
  *
  * Cost: ~8.3K strings × 20 locales backfill ≈ ~$3 on claude-haiku-4-5.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 
-const args = new Set(process.argv.slice(2));
-const dryRun = args.has('--dry-run');
-const proTest = args.has('--pro-test');
-const onlyArg = [...args].find(a => a.startsWith('--only='));
-const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
-
-const ROOT = proTest ? 'pro-test/src/locales' : 'src/locales';
-const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
+export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
   es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
@@ -40,7 +41,19 @@ const LANG_NAMES = {
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
 
-function flatten(obj, prefix = '', out = {}) {
+export function localesRootFor(proTest) {
+  return proTest ? 'pro-test/src/locales' : 'src/locales';
+}
+
+// The baseline records the English string each committed translation was
+// produced from. It cannot live beside the locale files: pro-test's i18n
+// lazy-loads `./locales/*.json` via import.meta.glob, and the pro locale
+// registry test asserts that directory holds exactly one file per language.
+export function baselinePathFor(proTest) {
+  return `scripts/locale-baselines/${proTest ? 'pro-test' : 'app'}.json`;
+}
+
+export function flatten(obj, prefix = '', out = {}) {
   if (Array.isArray(obj)) {
     // Array elements get encoded with a `[N]` suffix so setNested can rebuild
     // the array shape on the receiving end. Required for things like pricing
@@ -120,6 +133,15 @@ Output (key<TAB>${langName}):`;
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
   });
+  // A batch of 50 long strings (the welcome FAQ answers run 300+ chars each) can
+  // exceed max_tokens, and the reply is then cut mid-stream: the tail keys are
+  // simply absent from the tab-separated output and look indistinguishable from
+  // "the model chose to skip them". Say so, because it is a common reason a run
+  // reports a shortfall. The re-run fills them — it only resends what is still
+  // outstanding, so the retry batch is small enough not to truncate again.
+  if (res.stop_reason === 'max_tokens') {
+    console.warn('  ! reply hit max_tokens and was truncated — the tail of this batch was dropped');
+  }
   const text = res.content.filter(c => c.type === 'text').map(c => c.text).join('');
 
   const out = {};
@@ -142,7 +164,7 @@ Output (key<TAB>${langName}):`;
 //   cs/pl/ru        → ['one','few','many','other']
 //   ar              → ['zero','one','two','few','many','other']
 //   ja/ko/zh/vi/th  → ['other']
-function getPluralCategories(loc) {
+export function getPluralCategories(loc) {
   try {
     // `?? ['one','other']` covers the case where pluralCategories itself is
     // absent (older Node where the property predates the spec) — the catch
@@ -160,7 +182,7 @@ function getPluralCategories(loc) {
 // `<base>_other` exist. EN only ever defines those two (English plural
 // rules collapse everything else into _other), but the script will fan
 // these out per-locale in expectedKeysForLocale().
-function findPluralBases(enFlat) {
+export function findPluralBases(enFlat) {
   const bases = new Map();
   for (const k of Object.keys(enFlat)) {
     const m = k.match(/^(.+)_(one|other)$/);
@@ -191,7 +213,7 @@ function isPrivateKey(k) {
   return k.split('.').some(seg => seg.startsWith('_'));
 }
 
-function expectedKeysForLocale(enFlat, pluralBases, categories) {
+export function expectedKeysForLocale(enFlat, pluralBases, categories) {
   const expected = {};
   const pluralEnKeys = new Set();
   for (const base of pluralBases.keys()) {
@@ -211,7 +233,220 @@ function expectedKeysForLocale(enFlat, pluralBases, categories) {
   return expected;
 }
 
-function validateTranslation(en, translated) {
+// Split a locale's expected keys into what has to be sent to the translator and
+// what can be left alone.
+//
+//   missing   — no value in the locale at all
+//   stale     — a value exists, but the English it was translated from has since
+//               changed; the translation is silently wrong until it is redone
+//   untracked — a value exists and the baseline has no record of its English
+//               source. ONLY a valid class while the baseline is being created:
+//               adopting it on an already translated locale must not force a
+//               full retranslation. Once a baseline exists, a key missing from
+//               it is unprovenanced, not fresh, and is treated as stale — see
+//               below.
+//   orphan    — the locale has a value the current English does not, i.e. the
+//               locale is not a subset of EN. Removing the LAST element of an
+//               English array leaves exactly this: every later index still
+//               matches, so nothing is stale, and 24 languages keep advertising
+//               a bullet the tier no longer offers. It is #5633 arriving from
+//               the opposite direction, and retranslation cannot fix it — the
+//               value has to be pruned.
+//   fresh     — a value exists and its English source is unchanged
+//
+// `baselineExists` is what separates adoption from rot. With no baseline, an
+// unprovenanced key is simply untracked history and must be left alone. With a
+// baseline, the same key means the recorded English was lost — by a partial run
+// that wrote locale files but never advanced the baseline, by a merge conflict
+// resolved in the generated file, or by someone deleting it — and calling that
+// "fresh" is precisely how rot becomes permanent: the run exits 0, the baseline
+// advances, and the wrong translation is certified against English it was never
+// shown.
+export function classifyKeys(localeFlat, expected, baselineExpected, baselineExists = false) {
+  const missing = [];
+  const stale = [];
+  const untracked = [];
+  const fresh = [];
+  for (const [key, en] of Object.entries(expected)) {
+    if (!(key in localeFlat)) missing.push(key);
+    else if (!(key in baselineExpected)) (baselineExists ? stale : untracked).push(key);
+    else if (baselineExpected[key] !== en) stale.push(key);
+    else fresh.push(key);
+  }
+  const orphan = Object.keys(localeFlat).filter(key => !(key in expected) && !isPrivateKey(key));
+  return { missing, stale, untracked, orphan, fresh };
+}
+
+// What is still wrong after a run. Staleness is a property of (baseline, en.json)
+// alone — it says nothing about the locale's current value — so a key stays
+// "stale" for the rest of the run even after it has just been retranslated. The
+// baseline is what retires it, and the baseline only advances once nothing is
+// outstanding. Without discounting the keys this run actually refreshed, that is
+// a deadlock: the scan can never reach zero, so the baseline can never advance,
+// so the next run re-translates exactly the same keys forever.
+export function unresolvedAfterRun({ missing, stale, orphan = [] }, refreshedKeys) {
+  // Orphans are never "refreshed" — no amount of translating fixes a value the
+  // English no longer has — so they pass through untouched.
+  return { missing, stale: stale.filter(key => !refreshedKeys.has(key)), orphan };
+}
+
+// May this run overwrite the baseline? Advancing it is the single irreversible
+// act in the script: it declares "every committed translation was produced from
+// this English", and once a wrong translation is recorded that way, nothing ever
+// looks at it again. So the predicate is deliberately paranoid, and it is a pure
+// function rather than an inline condition so the truth table can be tested.
+export function mayAdvanceBaseline({
+  unresolved,
+  rejected,
+  untracked,
+  baselineExisted,
+  adoptBaseline = false,
+  dryRun,
+}) {
+  if (dryRun) return { advance: false, reason: 'dry run' };
+  if (unresolved > 0) return { advance: false, reason: `${unresolved} key(s) still missing, stale or orphaned` };
+  if (rejected > 0) return { advance: false, reason: `${rejected} translation(s) rejected` };
+  // Untracked keys mean the run is about to declare translations correct against
+  // English it never checked them against. That is legitimate exactly once per
+  // root — the initial adoption — and is a disaster every other time, so it has
+  // to be asked for rather than inferred.
+  //
+  // Both shapes matter, and they are NOT the same check. A baseline that exists
+  // but lost entries (a merge conflict resolved inside the generated file) is
+  // caught by baselineExisted. A DELETED baseline looks identical to a first
+  // run, so it needs the explicit flag: without it, `rm` on the baseline plus a
+  // re-run silently re-adopts every current translation — including rotted ones
+  // — as correct, with no API call and exit 0.
+  if (untracked > 0 && !adoptBaseline) {
+    return {
+      advance: false,
+      reason: baselineExisted
+        ? `${untracked} key(s) have no recorded English despite an existing baseline — it lost entries; restore it from git rather than letting this run re-adopt the current translations`
+        : `no baseline found, so ${untracked} existing translation(s) would be adopted as correct without ever being checked — restore the baseline from git, or pass --adopt-baseline if this root is genuinely adopting one for the first time`,
+    };
+  }
+  return { advance: true, reason: 'every locale complete and fresh' };
+}
+
+// Delete the values the current English has no key for.
+//
+// This is the one class retranslation cannot fix — no translation of a source
+// string that no longer exists can be correct — so without pruning, detection
+// alone leaves the pass permanently blocked behind manual JSON editing, and
+// removing a single English array element orphans every locale at once.
+//
+// Deletion is safe by construction: i18next resolves against the English key
+// set, so a key absent from it is already unreachable at runtime.
+export function pruneOrphans(raw, orphanKeys) {
+  // Arrays are truncated rather than spliced element-by-element. Orphaned
+  // indices are always a tail — every index the English defines is, by
+  // definition, not an orphan — so cutting at the lowest orphaned index removes
+  // exactly the surplus, and cannot shift a surviving element the way repeated
+  // deletion would.
+  const truncateAt = new Map();
+  const plainKeys = [];
+  for (const key of orphanKeys) {
+    const match = key.match(/^(.*)\[(\d+)\]$/);
+    if (!match) {
+      plainKeys.push(key);
+      continue;
+    }
+    const [, arrayPath, index] = match;
+    const at = Number(index);
+    truncateAt.set(arrayPath, Math.min(truncateAt.get(arrayPath) ?? at, at));
+  }
+
+  for (const [arrayPath, index] of truncateAt) {
+    const target = resolveNested(raw, arrayPath);
+    if (Array.isArray(target) && target.length > index) target.length = index;
+  }
+  for (const key of plainKeys) {
+    const lastDot = key.lastIndexOf('.');
+    const parent = lastDot === -1 ? raw : resolveNested(raw, key.slice(0, lastDot));
+    const leaf = lastDot === -1 ? key : key.slice(lastDot + 1);
+    if (parent && typeof parent === 'object') delete parent[leaf];
+  }
+}
+
+// Walk a flattened key path to the value it names, or undefined if any step is
+// absent — a locale may not have the shape the key implies.
+function resolveNested(obj, dotted) {
+  let cur = obj;
+  for (const part of dotted.split('.')) {
+    const match = part.match(/^([^[]*)((?:\[\d+\])+)?$/);
+    if (!match) return undefined;
+    if (match[1]) {
+      if (cur === null || typeof cur !== 'object') return undefined;
+      cur = cur[match[1]];
+    }
+    if (match[2]) {
+      for (const idx of match[2].matchAll(/\[(\d+)\]/g)) {
+        if (!Array.isArray(cur)) return undefined;
+        cur = cur[Number(idx[1])];
+      }
+    }
+  }
+  return cur;
+}
+
+export function readBaseline(baselinePath) {
+  if (!existsSync(baselinePath)) return null;
+  return JSON.parse(readFileSync(baselinePath, 'utf8'));
+}
+
+function writeBaseline(baselinePath, enFlat) {
+  mkdirSync(path.dirname(baselinePath), { recursive: true });
+  // Sorted so the committed diff shows only the strings that actually moved.
+  const sorted = Object.fromEntries(Object.keys(enFlat).sort().map(k => [k, enFlat[k]]));
+  writeFileSync(baselinePath, JSON.stringify(sorted, null, 2) + '\n');
+}
+
+// The three shapes a translation must preserve verbatim, as a sorted multiset.
+//
+// The middle arm is deliberately loose in the regex and strict in the filter.
+// Expressing "dotted host with a real TLD" directly as `[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`
+// nests a quantifier over an overlapping class, so when the TLD never matches
+// the engine re-partitions every dot boundary — 8k dots took 6.3 seconds, and
+// this runs on unbounded model output. Matching up to the slash with a class
+// that excludes `/` is deterministic, and the host test is then a plain string
+// check that cannot backtrack at all.
+export function extractUrlTokens(text) {
+  // Every arm needs a slash, so text without one cannot contain a match and the
+  // scan is skipped entirely.
+  if (!text.includes('/')) return [];
+
+  // Two devices keep this linear on unbounded model output:
+  //
+  //   `(?=(X))\N` is the JS spelling of an atomic group — the lookahead matches
+  //   X greedily once and the backreference consumes exactly that, so the engine
+  //   cannot re-try shorter prefixes. Host and first-path-segment are each
+  //   followed by a required `/` their own class can never match, making every
+  //   such retry guaranteed to fail.
+  //
+  //   The upper bounds stop each start position scanning the whole string. They
+  //   are the real limits, not arbitrary caps: RFC 1035 caps a hostname at 253
+  //   characters, and a 128-character first path segment is far past anything
+  //   this catalog links to. Unbounded, both are O(n^2) by position even when
+  //   atomic — 16k characters took ~11s.
+  const pattern =
+    /(?:https?:\/\/[^\s<>"']+|[A-Za-z0-9](?=([A-Za-z0-9.-]{0,253}))\1\/[A-Za-z0-9_\-./]*[A-Za-z0-9_\-/]|(?<![A-Za-z0-9])\/[A-Za-z](?=([A-Za-z0-9_\-.]{0,128}))\2\/[A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
+  return (text.match(pattern) || [])
+    .filter((token) => {
+      if (/^https?:\/\//.test(token)) return true;
+      // A bare absolute path — already constrained to two segments by the arm
+      // that produced it.
+      if (token.startsWith('/')) return true;
+      // Host-qualified: keep it only if what precedes the first slash really
+      // looks like a hostname. This is what separates `worldmonitor.app/docs`
+      // from `calls/day` (no dot) and `1.5/kg` (last label is not a TLD).
+      const host = token.slice(0, token.indexOf('/'));
+      const labels = host.split('.');
+      return labels.length > 1 && /^[A-Za-z]{2,}$/.test(labels[labels.length - 1]);
+    })
+    .sort();
+}
+
+export function validateTranslation(en, translated) {
   // Reject if interpolation tokens were dropped or invented
   const enTokens = (en.match(/\{\{[^}]+\}\}/g) || []).sort();
   const tTokens = (translated.match(/\{\{[^}]+\}\}/g) || []).sort();
@@ -234,15 +469,101 @@ function validateTranslation(en, translated) {
   // fractions like `50/100` or interpolation tokens like `{{count}}/{{total}}`
   // which would otherwise look like paths. Compared as a sorted multiset so
   // word-order changes around the URL still pass.
-  const urlPattern = /(?:https?:\/\/[^\s<>"']+|\/[A-Za-z][A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
-  const enUrls = (en.match(urlPattern) || []).slice().sort();
-  const tUrls = (translated.match(urlPattern) || []).slice().sort();
+  //
+  // Two constraints separate a real path from a slash used as punctuation, and
+  // both are needed — the failure shows up from each side:
+  //
+  //   `(?<![A-Za-z0-9])`  the slash must not follow a letter or digit, so
+  //                       `calls/day` and `requests/minute` are not paths. Without
+  //                       it every translation rendering the rate naturally
+  //                       ("250 Aufrufe pro Tag") was rejected for DROPPING a URL.
+  //   a second segment    the path must contain a further `/`, so `/Monat` and
+  //                       `/mois` are not paths. Without it German and French
+  //                       prices ("69,99 $/Monat" — slash after a space) were
+  //                       rejected for INVENTING one.
+  //
+  // Both rejections are deterministic, so the affected keys could never converge
+  // however often the pass was repeated; they stayed as array holes serialising
+  // to `null`. The two-segment rule is safe here because every genuine bare path
+  // in both EN catalogs is multi-segment (`/docs/methodology/...`); the only
+  // single-segment matches are the price suffixes `/mo` and `/yr`, which must be
+  // translated, not preserved.
+  //
+  const enUrls = extractUrlTokens(en);
+  const tUrls = extractUrlTokens(translated);
   if (enUrls.join('|') !== tUrls.join('|')) return false;
 
   return true;
 }
 
+// Send one locale's outstanding keys through the translator and write the
+// accepted results back.
+//
+// `translate` and `persist` are injected so this is testable without a network
+// client or a filesystem: it is the half of the fix that classification does not
+// cover, and a reversed concat or a dropped `refreshed.add` here would recreate
+// #5633 while every classification test stayed green.
+//
+// Returns the keys actually written — not the ones attempted. That distinction
+// is what the baseline-advance gate depends on: a key the model omitted or the
+// validator rejected must stay outstanding.
+export async function translateLocale({ loc, raw, expected, toTranslate, translate, persist, batchSize = BATCH_SIZE }) {
+  const refreshed = new Set();
+  let added = 0;
+  let rejected = 0;
+
+  for (let i = 0; i < toTranslate.length; i += batchSize) {
+    const batch = toTranslate.slice(i, i + batchSize).map(k => [k, expected[k]]);
+    try {
+      const translations = await translate(batch);
+      for (const [k, en] of batch) {
+        const tr = translations[k];
+        if (!tr) continue;
+        if (!validateTranslation(en, tr)) {
+          rejected++;
+          continue;
+        }
+        setNested(raw, k, tr);
+        refreshed.add(k);
+        added++;
+      }
+    } catch (err) {
+      // A failed batch leaves its keys unrefreshed, so the post-run scan still
+      // sees them and the run exits non-zero. Failing the whole locale here
+      // would throw away the batches that did succeed.
+      console.error(`[${loc}] batch ${i}-${i + batch.length} failed:`, err.message);
+    }
+    // Persist after every batch so an interrupted run keeps its progress.
+    persist();
+    console.log(`[${loc}] progress ${Math.min(i + batchSize, toTranslate.length)}/${toTranslate.length}`);
+  }
+
+  return { refreshed, added, rejected };
+}
+
 async function main() {
+  // argv is parsed here rather than at module scope so importing this file for
+  // its pure helpers (tests, the locale freshness gate) has no side effects and
+  // does not inherit the test runner's arguments.
+  const args = new Set(process.argv.slice(2));
+  const dryRun = args.has('--dry-run');
+  const proTest = args.has('--pro-test');
+  const adoptBaseline = args.has('--adopt-baseline');
+  const onlyArg = [...args].find(a => a.startsWith('--only='));
+  const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
+  const ROOT = localesRootFor(proTest);
+
+  // An unknown locale in --only would otherwise be skipped with a note and the
+  // run would still report success, so `--only=de,ff` silently does half the
+  // work it was asked for.
+  if (onlyLocales) {
+    const unknown = onlyLocales.filter(loc => !LOCALES.includes(loc));
+    if (unknown.length > 0) {
+      console.error(`--only names ${unknown.length} unknown locale(s): ${unknown.join(', ')}. Known: ${LOCALES.join(', ')}`);
+      process.exit(1);
+    }
+  }
+
   if (!dryRun && !process.env.ANTHROPIC_API_KEY) {
     console.error('ANTHROPIC_API_KEY not set. Use --dry-run to see the gap without translating.');
     process.exit(1);
@@ -254,8 +575,24 @@ async function main() {
   const pluralBases = findPluralBases(enFlat);
   console.log(`[translate] EN source: ${enPath} (${Object.keys(enFlat).length} keys, ${pluralBases.size} pluralized bases)`);
 
+  const baselinePath = baselinePathFor(proTest);
+  const baselineFlat = readBaseline(baselinePath);
+  const baselinePlurals = baselineFlat ? findPluralBases(baselineFlat) : new Map();
+  if (baselineFlat) {
+    console.log(`[translate] EN baseline: ${baselinePath} (${Object.keys(baselineFlat).length} keys)`);
+  } else {
+    console.log(`[translate] EN baseline: none at ${baselinePath} — every existing translation is treated as untracked (nothing is retranslated); the baseline is written once every locale is complete.`);
+  }
+  const baselineFor = (categories) =>
+    baselineFlat ? expectedKeysForLocale(baselineFlat, baselinePlurals, categories) : {};
+
   const targets = onlyLocales || LOCALES;
+  // locale → keys this run successfully wrote. Consumed by unresolvedAfterRun.
+  const refreshedByLocale = new Map();
   let totalMissing = 0;
+  let totalStale = 0;
+  let totalUntracked = 0;
+  let totalOrphan = 0;
   let totalTranslated = 0;
   let totalRejected = 0;
 
@@ -276,64 +613,126 @@ async function main() {
     const flat = flatten(raw);
     const categories = getPluralCategories(loc);
     const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
-    const missing = Object.keys(expected).filter(k => !(k in flat));
-    if (missing.length === 0) {
-      console.log(`[${loc}] ✓ already complete (CLDR categories: ${categories.join('/')})`);
+    const { missing, stale, untracked, orphan } = classifyKeys(
+      flat,
+      expected,
+      baselineFor(categories),
+      baselineFlat !== null,
+    );
+    totalUntracked += untracked.length;
+    totalOrphan += orphan.length;
+    if (orphan.length > 0) {
+      const sample = orphan.slice(0, 3).join(', ');
+      if (dryRun) {
+        console.warn(`[${loc}]   ${orphan.length} orphaned key(s) the English no longer has (e.g. ${sample})`);
+      } else {
+        pruneOrphans(raw, orphan);
+        writeFileSync(locPath, `${JSON.stringify(raw, null, 2)}\n`);
+        console.log(`[${loc}]   pruned ${orphan.length} orphaned key(s) the English no longer has (e.g. ${sample})`);
+      }
+    }
+    // Stale keys are sent alongside missing ones; setNested overwrites the
+    // rotted value in place.
+    const toTranslate = [...missing, ...stale];
+    if (toTranslate.length === 0) {
+      console.log(`[${loc}] ✓ complete and fresh (CLDR categories: ${categories.join('/')})`);
       continue;
     }
-    console.log(`[${loc}] missing ${missing.length} keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
+    console.log(`[${loc}] ${missing.length} missing + ${stale.length} stale keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
+    if (stale.length > 0) {
+      console.log(`[${loc}]   stale e.g. ${stale.slice(0, 3).join(', ')}`);
+    }
     totalMissing += missing.length;
+    totalStale += stale.length;
     if (dryRun) continue;
 
-    let added = 0;
-    for (let i = 0; i < missing.length; i += BATCH_SIZE) {
-      const batch = missing.slice(i, i + BATCH_SIZE).map(k => [k, expected[k]]);
-      try {
-        const translations = await translateBatch(client, LANG_NAMES[loc], batch);
-        for (const [k, en] of batch) {
-          const tr = translations[k];
-          if (!tr) continue;
-          if (!validateTranslation(en, tr)) {
-            totalRejected++;
-            continue;
-          }
-          setNested(raw, k, tr);
-          added++;
-        }
-      } catch (err) {
-        console.error(`[${loc}] batch ${i}-${i + batch.length} failed:`, err.message);
-      }
-      writeFileSync(locPath, JSON.stringify(raw, null, 2) + '\n');
-      console.log(`[${loc}] progress ${Math.min(i + BATCH_SIZE, missing.length)}/${missing.length}`);
-    }
+    const { refreshed, added, rejected } = await translateLocale({
+      loc,
+      raw,
+      expected,
+      toTranslate,
+      translate: batch => translateBatch(client, LANG_NAMES[loc], batch),
+      persist: () => writeFileSync(locPath, `${JSON.stringify(raw, null, 2)}\n`),
+    });
+    refreshedByLocale.set(loc, refreshed);
     totalTranslated += added;
-    console.log(`[${loc}] ✓ added ${added} translations`);
+    totalRejected += rejected;
+    // A shortfall means the model omitted keys from its reply or validateTranslation
+    // rejected them. Say so here rather than leaving it to the post-run scan —
+    // the fix is simply to run again, and the run is idempotent.
+    const shortfall = toTranslate.length - added;
+    console.log(
+      shortfall > 0
+        ? `[${loc}] ✓ wrote ${added} translations (${shortfall} not returned or rejected — re-run to fill)`
+        : `[${loc}] ✓ wrote ${added} translations`,
+    );
   }
 
   // Re-scan post-write to confirm full coverage. A partial run (rejections,
   // batch failures, model omissions) must surface as a non-zero exit so CI
   // and operators don't trust a half-finished locale set.
-  let stillMissing = 0;
+  //
+  // The scan covers EVERY locale, not just this run's targets, because the
+  // baseline is a claim about the whole root ("every committed translation was
+  // produced from this English snapshot"). Advancing it after an --only run
+  // would mark the locales that were skipped as fresh and hide their rot
+  // permanently.
+  let unresolved = 0;
   if (!dryRun) {
-    for (const loc of targets) {
-      const flat = flatten(JSON.parse(readFileSync(path.join(ROOT, `${loc}.json`), 'utf8')));
-      const expected = expectedKeysForLocale(enFlat, pluralBases, getPluralCategories(loc));
-      const left = Object.keys(expected).filter(k => !(k in flat));
-      if (left.length > 0) {
-        console.error(`[${loc}] ✗ still missing ${left.length} keys after run (e.g. ${left.slice(0, 3).join(', ')})`);
-        stillMissing += left.length;
+    for (const loc of LOCALES) {
+      const locPath = path.join(ROOT, `${loc}.json`);
+      if (!existsSync(locPath)) continue;
+      const flat = flatten(JSON.parse(readFileSync(locPath, 'utf8')));
+      const categories = getPluralCategories(loc);
+      const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
+      const left = unresolvedAfterRun(
+        classifyKeys(flat, expected, baselineFor(categories), baselineFlat !== null),
+        refreshedByLocale.get(loc) ?? new Set(),
+      );
+      const outstanding = left.missing.length + left.stale.length + left.orphan.length;
+      if (outstanding > 0) {
+        const sample = [...left.missing, ...left.stale, ...left.orphan].slice(0, 3).join(', ');
+        console.error(`[${loc}] ✗ still ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned after run (e.g. ${sample})`);
+        unresolved += outstanding;
       }
     }
   }
 
-  console.log(`\n[done] missing ${totalMissing}, translated ${totalTranslated}, rejected ${totalRejected}, still-missing-after-run ${stillMissing}`);
-  if (totalRejected > 0 || stillMissing > 0) {
-    console.error('\n[FAIL] Partial backfill — re-run translate-locales.mjs to fill remaining keys.');
+  // The post-run scan is the only thing that sets `unresolved`, and it does not
+  // run in dry-run — printing 0 there reads as an all-clear next to a non-zero
+  // orphan or stale count.
+  const unresolvedReport = dryRun ? 'n/a (dry run)' : unresolved;
+  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}`);
+
+  const verdict = mayAdvanceBaseline({
+    unresolved,
+    rejected: totalRejected,
+    untracked: totalUntracked,
+    baselineExisted: baselineFlat !== null,
+    adoptBaseline,
+    dryRun,
+  });
+  if (!dryRun && !verdict.advance) {
+    console.error(`\n[FAIL] baseline not advanced — ${verdict.reason}.`);
     process.exit(1);
+  }
+  if (verdict.advance) {
+    writeBaseline(baselinePath, enFlat);
+    console.log(`[translate] baseline advanced: ${baselinePath} now records the English every locale was translated from.`);
   }
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// realpath BOTH sides: through a symlinked checkout Node sets import.meta.url
+// to the realpath while argv[1] keeps the symlink, and the naive comparison
+// silently skips main().
+const isMain =
+  process.argv[1] &&
+  pathToFileURL(realpathSync(process.argv[1])).href ===
+    pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+
+if (isMain) {
+  main().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}

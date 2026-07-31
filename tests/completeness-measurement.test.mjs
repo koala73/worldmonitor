@@ -210,7 +210,14 @@ describe('coverage-ledger and provenance wiring (source-textual)', () => {
 
 // ── #4927 review-round additions ───────────────────────────────────────────
 
-import { unwrapEnvelope, gdeltUrl } from '../scripts/seed-recall-benchmark.mjs';
+import {
+  GDELT_BULK_MAX_FUTURE_SKEW_MS,
+  GDELT_BULK_REFERENCE_MAX_AGE_MS,
+  materializedReferenceItems,
+  runRecallBenchmark,
+  unwrapEnvelope,
+} from '../scripts/seed-recall-benchmark.mjs';
+import { GDELT_BULK_ARTICLES_KEY } from '../scripts/_gdelt-bulk-contract.mjs';
 import { publishFeedHealth } from '../scripts/validate-rss-feeds.mjs';
 import { getOptionalUpstashCreds } from '../scripts/_upstash-rest.mjs';
 
@@ -266,12 +273,108 @@ describe('publisher orchestration seams (#4927 review)', () => {
     }
   });
 
-  it('gdeltUrl builds a bounded, English, 24h ArtList query', () => {
-    const url = gdeltUrl('(economy OR markets)');
-    assert.match(url, /^https:\/\/api\.gdeltproject\.org\/api\/v2\/doc\/doc\?/);
-    assert.match(url, /sourcelang%3Aeng/);
-    assert.match(url, /maxrecords=25/);
-    assert.match(url, /timespan=24h/);
+  it('materializedReferenceItems validates and deduplicates the bulk index', () => {
+    assert.deepEqual(materializedReferenceItems({
+      articles: [
+        { title: 'A sufficiently long headline', url: 'https://example.com/a' },
+        { title: 'A duplicate URL with another title', url: 'https://example.com/a' },
+        { title: 'short', url: 'https://example.com/short' },
+        { title: 'Unsafe URL is omitted but title remains', url: 'javascript:alert(1)' },
+      ],
+    }), [
+      {
+        title: 'A sufficiently long headline',
+        url: 'https://example.com/a',
+        vertical: 'gdelt-bulk',
+      },
+      {
+        title: 'Unsafe URL is omitted but title remains',
+        url: undefined,
+        vertical: 'gdelt-bulk',
+      },
+    ]);
+  });
+
+  it('recall accepts the exact reference-age boundary and preserves fetchedAt in the publication', async () => {
+    const nowMs = Date.parse('2026-07-30T15:00:00.000Z');
+    const referenceFetchedAt = nowMs - GDELT_BULK_REFERENCE_MAX_AGE_MS;
+    const writes = [];
+    const articles = Array.from({ length: 20 }, (_, index) => ({
+      title: `Reference headline number ${index} with enough words`,
+      url: `https://example.com/reference-${index}`,
+    }));
+    const digest = {
+      categories: {
+        world: {
+          items: [{ title: articles[0].title }],
+        },
+      },
+    };
+
+    await runRecallBenchmark({
+      _getCreds: () => ({ url: 'https://redis.invalid', token: 'test' }),
+      _now: () => nowMs,
+      _redisCommand: async (_creds, command) => {
+        if (command[0] === 'GET' && command[1] === 'news:digest:v1:full:en') {
+          return { result: JSON.stringify(digest) };
+        }
+        if (command[0] === 'GET' && command[1] === GDELT_BULK_ARTICLES_KEY) {
+          return {
+            result: JSON.stringify({ articles, fetchedAt: referenceFetchedAt }),
+          };
+        }
+        writes.push(command);
+        return { result: 'OK' };
+      },
+      _logger: { log() {}, warn() {} },
+    });
+
+    const publication = JSON.parse(
+      writes.find((command) => command[0] === 'SET' && command[1] === 'news:recall-benchmark:v1')[2],
+    );
+    assert.equal(publication.checkedAt, nowMs);
+    assert.equal(publication.referenceFetchedAt, referenceFetchedAt);
+  });
+
+  it('recall rejects stale and future-skewed references before any publication', async () => {
+    const nowMs = Date.parse('2026-07-30T15:00:00.000Z');
+    const articles = Array.from({ length: 20 }, (_, index) => ({
+      title: `Reference headline number ${index} with enough words`,
+      url: `https://example.com/reference-${index}`,
+    }));
+    const digest = {
+      categories: {
+        world: {
+          items: [{ title: articles[0].title }],
+        },
+      },
+    };
+
+    for (const fetchedAt of [
+      nowMs - GDELT_BULK_REFERENCE_MAX_AGE_MS - 1,
+      nowMs + GDELT_BULK_MAX_FUTURE_SKEW_MS + 1,
+    ]) {
+      const writes = [];
+      await assert.rejects(
+        runRecallBenchmark({
+          _getCreds: () => ({ url: 'https://redis.invalid', token: 'test' }),
+          _now: () => nowMs,
+          _redisCommand: async (_creds, command) => {
+            if (command[0] === 'GET' && command[1] === 'news:digest:v1:full:en') {
+              return { result: JSON.stringify(digest) };
+            }
+            if (command[0] === 'GET' && command[1] === GDELT_BULK_ARTICLES_KEY) {
+              return { result: JSON.stringify({ articles, fetchedAt }) };
+            }
+            writes.push(command);
+            return { result: 'OK' };
+          },
+          _logger: { log() {}, warn() {} },
+        }),
+        fetchedAt < nowMs ? /stale/ : /future/,
+      );
+      assert.deepEqual(writes, [], 'a rejected reference must not publish checkedAt or activation');
+    }
   });
 
   it('unwrapEnvelope tolerates enveloped and bare payloads', () => {

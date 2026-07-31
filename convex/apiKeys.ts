@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { requireUserId } from "./lib/auth";
+import { requireUserId, resolveUserId } from "./lib/auth";
 
 /** Maximum number of active (non-revoked) API keys per user. */
 const MAX_KEYS_PER_USER = 5;
@@ -103,7 +103,15 @@ export const createApiKey = mutation({
 export const listApiKeys = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+    // This query is called from the settings UI after a best-effort auth
+    // readiness wait, but the Convex WebSocket can still observe a brief
+    // unauthenticated window during sign-out, initial auth, or token rotation.
+    // Throwing AUTH_REQUIRED from that race pages through Convex auto-Sentry
+    // (WORLDMONITOR-XM). The UI already gates this query behind a signed-in
+    // shell, so [] is the honest transient result and cannot expose another
+    // user's keys.
+    const userId = await resolveUserId(ctx);
+    if (!userId) return [];
     const keys = await ctx.db
       .query("userApiKeys")
       .withIndex("by_userId", (q) => q.eq("userId", userId))

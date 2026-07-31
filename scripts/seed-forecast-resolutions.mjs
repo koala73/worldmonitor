@@ -17,10 +17,12 @@
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
-import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation } from './_forecast-resolution-eval.mjs';
+import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
+import { finiteObservations } from './_bet-templates-macro.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
+import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
 import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
 
@@ -78,6 +80,14 @@ export function declareScorecardRecords(scorecard) {
   return Number.isInteger(scorecard?.totals?.entries) ? scorecard.totals.entries : 0;
 }
 
+// Gate-2 promotion flag (#5525 U14): default OFF — setting
+// FORECAST_PROMOTE_BET_ENGINE=1 on the resolutions service is the deliberate
+// promotion act that lifts bet_engine into the scorecard's skill headline.
+// Read at call time (not module load) so both sides are testable.
+function promoteBetEngineEnabled() {
+  return process.env.FORECAST_PROMOTE_BET_ENGINE === '1';
+}
+
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
@@ -87,7 +97,7 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
   // resolveDueEntries so entries resolved this cycle (resolvedAt === nowMs, not
   // yet archived) are always retained and still emit a receipt above.
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
-  const scorecard = computeScorecard(ledger, nowMs);
+  const scorecard = computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() });
   return { ledger, receipts, scorecard };
 }
 
@@ -97,7 +107,7 @@ export async function processResolutionCycleWithJudges(existingLedger, historySn
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
-  const scorecard = computeScorecard(ledger, nowMs);
+  const scorecard = computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() });
   return { ledger, receipts, scorecard };
 }
 
@@ -972,6 +982,18 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     probability: Number(forecast.probability),
     firstSeenProbability: Number(forecast.probability),
     calibration: forecast.calibration ? cloneJson(forecast.calibration) : undefined,
+    // Phase-2 bet-engine fields (#5525). This is an explicit whitelist, so the
+    // three-baseline contract (KTD5) and the settlement path both need their
+    // fields passed through here or they silently never reach the ledger:
+    // baselineProbability = the base-rate the ensemble is compared against;
+    // probabilitySource   = 'ensemble' | 'base_rate' (guards updateOpenWindow);
+    // passes              = per-pass ensemble probabilities (KTD1 post-hoc);
+    // marketSlug/Source   = what the settlement loader tracks through close.
+    baselineProbability: Number.isFinite(Number(forecast.baselineProbability)) ? Number(forecast.baselineProbability) : undefined,
+    probabilitySource: typeof forecast.probabilitySource === 'string' ? forecast.probabilitySource : undefined,
+    passes: Array.isArray(forecast.passes) ? cloneJson(forecast.passes) : undefined,
+    marketSlug: typeof forecast.marketSlug === 'string' ? forecast.marketSlug : undefined,
+    marketSource: typeof forecast.marketSource === 'string' ? forecast.marketSource : undefined,
     generatedAt,
     deadline,
     firstSeenAt: snapshotAt,
@@ -985,8 +1007,48 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
   if (entry.status !== 'pending' && entry.status !== 'pending-judge') return;
   if (generatedAt >= entry.deadline) return;
   const probability = Number(forecast.probability);
-  if (Number.isFinite(probability)) entry.probability = probability;
+  if (Number.isFinite(probability)) {
+    // Probability provenance is RANKED: full 3-pass ensemble (2) over a 1-2
+    // pass partial (1) over the base-rate placeholder (0). An update may keep
+    // or raise the rank, never lower it (#5525): a bet falling out of top-K
+    // (or hitting the LLM budget) on a later run re-ingests as 'base_rate',
+    // and letting it clobber EITHER derived aggregate would silently grade the
+    // placeholder prior. Same-rank refreshes and partial→full upgrades pass.
+    if (sourceRank(forecast.probabilitySource) >= sourceRank(entry.probabilitySource)) {
+      entry.probability = probability;
+      if (typeof forecast.probabilitySource === 'string') entry.probabilitySource = forecast.probabilitySource;
+      if (Number.isFinite(Number(forecast.baselineProbability))) entry.baselineProbability = Number(forecast.baselineProbability);
+      // Copy passes for full AND partial ensemble runs ('ensemble_partial'
+      // carries the failed passes too — KTD1 post-hoc calibration needs them).
+      const forecastRanEnsemble = typeof forecast.probabilitySource === 'string' && forecast.probabilitySource.startsWith('ensemble');
+      if (forecastRanEnsemble && Array.isArray(forecast.passes)) entry.passes = cloneJson(forecast.passes);
+      // Refresh the market snapshot alongside the probability: vsMarketSkill /
+      // deviationSkill compare entry.probability against calibration.marketPrice,
+      // so a re-graded probability must not be measured against the first-seen
+      // crowd price.
+      if (forecast.calibration && typeof forecast.calibration === 'object') entry.calibration = cloneJson(forecast.calibration);
+    }
+  }
+  // Market-settlement bets track the venue's CURRENT endDate: venues move
+  // close dates, and freezing the first-seen deadline would run the settlement
+  // clock (and its 14d VOID grace) against a date the venue no longer honors.
+  // Scoped to the settlement feed — other domains derive deadlines from
+  // wall-clock horizons, so advancing them would keep windows open forever.
+  const incomingDeadline = Number(forecast.resolution?.deadline);
+  if (entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY
+    && Number.isFinite(incomingDeadline)
+    && incomingDeadline !== Number(entry.deadline)) {
+    entry.deadline = incomingDeadline;
+    entry.spec.deadline = incomingDeadline;
+  }
   entry.lastSeenAt = Math.max(Number(entry.lastSeenAt || 0), snapshotAt);
+}
+
+// Provenance rank for updateOpenWindow's no-downgrade guard.
+function sourceRank(source) {
+  if (source === 'ensemble') return 2;
+  if (source === 'ensemble_partial') return 1;
+  return 0; // base_rate, legacy/undefined
 }
 
 function findOpenWindowKey(ledger, id, generatedAt) {
@@ -1105,6 +1167,27 @@ export function shapeResolutionFeed(key, data) {
       return d.quotes.map((q) => (q && typeof q === 'object' && Number.isFinite(fetchedAt) ? { ...q, asOf: fetchedAt } : q));
     }
     return d;
+  }
+  if (key.startsWith('economic:fred:v1:')) {
+    // FRED (#5525): stored as {series:{observations:[{date,value},...]}} per
+    // #5098; FRED marks missing values with '.'. Expose one record carrying the
+    // latest finite observation — `value(metric==<SERIES>)` reads it, and the
+    // observation date is the settlement `asOf` the calendar-derived grace
+    // gates on (KTD4). SERIES is the 4th key segment (exact `:0`-suffixed keys).
+    const series = key.split(':')[3];
+    const d = data?.data ?? data;
+    // Shared filter with the bet generator (finiteObservations in
+    // _bet-templates-macro.mjs) — the '.'-sentinel handling must not drift
+    // between generation and resolution.
+    const finite = finiteObservations(d);
+    const latest = finite[finite.length - 1];
+    return latest ? [{ metric: series, value: latest.value, asOf: latest.date }] : [];
+  }
+  if (key === MARKET_SETTLEMENT_FEED_KEY) {
+    // Settlement feed (#5525 KTD2): records already carry {market, slug,
+    // yesPrice, asOf} — expose the array directly.
+    const d = data?.data ?? data;
+    return Array.isArray(d?.records) ? d.records : (Array.isArray(d) ? d : []);
   }
   return data;
 }
@@ -1309,6 +1392,12 @@ async function buildLedgerForRun() {
     }),
   ]);
   const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
+  // Populate the market settlement feed for due bets BEFORE the feed read so
+  // this run can resolve freshly adjudicated markets (#5525 KTD2). Best-effort:
+  // a failure leaves the bets pending within the settlement grace.
+  await updateMarketSettlements(preLedger, nowMs, { readJson: readRedisJson }).catch((err) => {
+    console.warn(`  [forecast-resolutions] settlement update failed: ${err?.message || err}`);
+  });
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = buildLiveJudgedOptions(nowMs);
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
@@ -1400,7 +1489,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => computeScorecard(ledger, Date.now()),
+      transform: (ledger) => computeScorecard(ledger, Date.now(), { promoteBetEngine: promoteBetEngineEnabled() }),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,

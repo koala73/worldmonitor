@@ -6,11 +6,19 @@ import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { computeNewSinceVisit } from '@/utils/new-since-visit';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
-import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  renderCorroboratingSourceRisk,
+  renderPrimarySourceProvenance,
+} from './news/source-provenance';
+import {
+  coverageBadgeString,
+  type CoverageStringKey,
+  type SourceCoverage,
+} from './news/source-coverage';
 
 
 type SortMode = 'relevance' | 'newest';
@@ -52,6 +60,21 @@ export class NewsPanel extends Panel {
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
   private relatedAssetTableRefreshPending = false;
+
+  /**
+   * How much of this category's enabled source list the panel is actually
+   * showing, or `null` when it shows all of it (#5873).
+   *
+   * Only a CUSTOM category sets this. It is never in the per-variant server
+   * digest, so it rotates through its sources a capped window at a time and
+   * accumulates — which means that for the first few refresh cycles the panel
+   * is genuinely incomplete while the Sources manager lists every source as
+   * enabled. Saying so on the badge is the difference between a panel that is
+   * partial and a panel that lies about being complete.
+   */
+  private sourceCoverage: SourceCoverage | null = null;
+  private refreshDegraded = false;
+  private renderedBadgeState: 'none' | 'live' | 'cached' | 'unavailable' = 'none';
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
@@ -401,18 +424,56 @@ export class NewsPanel extends Panel {
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
     this.lastRawClusters = null;
     this.lastRawItems = null;
+    this.renderedBadgeState = 'unavailable';
     super.showError(message, onRetry, autoRetrySeconds);
+  }
+
+  /**
+   * Declare how many of the category's enabled sources this panel is showing.
+   *
+   * Pass `null` for the normal case (digest-backed, or every source fetched) —
+   * the badge then reads plain `LIVE` as before. The value is stored rather
+   * than painted directly so it survives the re-renders that don't reload data
+   * (time-range filter changes, sort toggles).
+   */
+  public setSourceCoverage(coverage: SourceCoverage | null): void {
+    this.sourceCoverage = coverage;
+    if (this.renderedBadgeState === 'live' || this.renderedBadgeState === 'cached') {
+      this.renderCurrentDataBadge();
+    }
+  }
+
+  /**
+   * Retained headlines remain useful when a refresh window fails, but they
+   * must not be relabelled LIVE by time-range or sort re-renders.
+   */
+  public setRefreshDegraded(degraded: boolean): void {
+    this.refreshDegraded = degraded;
+    if (this.renderedBadgeState === 'live' || this.renderedBadgeState === 'cached') {
+      this.renderCurrentDataBadge();
+    }
+  }
+
+  private coverageString(key: CoverageStringKey): string | undefined {
+    return coverageBadgeString(this.sourceCoverage, key, (path, vars) => t(path, vars));
+  }
+
+  private renderCurrentDataBadge(): void {
+    const state = this.refreshDegraded ? 'cached' : 'live';
+    this.renderedBadgeState = state;
+    this.setDataBadge(state, this.coverageString('sourceCoverage'), this.coverageString('sourceCoverageHint'));
   }
 
   public renderNews(items: NewsItem[]): void {
     if (items.length === 0) {
       this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+      this.renderedBadgeState = 'unavailable';
       this.setDataBadge('unavailable');
       this.showError(t('common.noNewsAvailable'));
       return;
     }
 
-    this.setDataBadge('live');
+    this.renderCurrentDataBadge();
 
     // Always show flat items immediately for instant visual feedback,
     // then upgrade to clustered view in the background when ready.
@@ -427,7 +488,7 @@ export class NewsPanel extends Panel {
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
     this.lastRawClusters = null;
     this.lastRawItems = null;
-    this.setDataBadge('live');
+    this.renderCurrentDataBadge();
     this.setCount(0);
     this.relatedAssetContext.clear();
     this.currentHeadlines = [];
@@ -654,29 +715,18 @@ export class NewsPanel extends Panel {
       ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
       : '';
 
-    // Propaganda risk indicator for primary source
-    const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
-    const primaryPropBadge = primaryPropRisk.risk !== 'low'
-      ? `<span class="propaganda-badge ${primaryPropRisk.risk}" title="${escapeHtml(primaryPropRisk.note || `State-affiliated: ${primaryPropRisk.stateAffiliated || 'Unknown'}`)}">${primaryPropRisk.risk === 'high' ? '⚠ State Media' : '! Caution'}</span>`
-      : '';
-
-    // Source credibility badge for primary source (T1=Wire, T2=Verified outlet)
-    const primaryTier = getSourceTier(cluster.primarySource);
-    const primaryType = getSourceType(cluster.primarySource);
-    const tierLabel = primaryTier === 1 ? 'Wire' : ''; // Don't show "Major" - confusing with story importance
-    const tierBadge = primaryTier <= 2
-      ? `<span class="tier-badge tier-${primaryTier}" title="${primaryType === 'wire' ? 'Wire Service - Highest reliability' : primaryType === 'gov' ? 'Official Government Source' : 'Verified News Outlet'}">${primaryTier === 1 ? '★' : '●'}${tierLabel ? ` ${tierLabel}` : ''}</span>`
-      : '';
+    // Unknown provenance is always visible; "Wire" is reserved for reviewed wire types.
+    const {
+      riskBadge: primaryPropBadge,
+      tierBadge,
+    } = renderPrimarySourceProvenance(cluster.primarySource);
 
     // Build "Also reported by" section for multi-source confirmation
     const otherSources = cluster.topSources.filter(s => s.name !== cluster.primarySource);
     const topSourcesHtml = otherSources.length > 0
       ? `<span class="also-reported">Also:</span>` + otherSources
         .map(s => {
-          const propRisk = getSourcePropagandaRisk(s.name);
-          const propBadge = propRisk.risk !== 'low'
-            ? `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`
-            : '';
+          const propBadge = renderCorroboratingSourceRisk(s.name);
           return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
         })
         .join('')

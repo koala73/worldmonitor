@@ -774,6 +774,23 @@ function decodeXmlEntities(s: string): string {
     .replace(/&amp;/g, '&');
 }
 
+/**
+ * Validates a raw `getCachedJsonBatch` hit at the trust boundary before any
+ * field reaches a typed `ParsedItem`. `level`/`category` on `ParsedItem` are
+ * declared `string`/`ThreatLevel`-derived, but the cache is Redis-backed JSON
+ * — an unrelated payload shape (stale schema, another feature's cache
+ * collision, hand-edited Redis value) parses fine as JSON while carrying a
+ * non-string, missing, or object/array `level`/`category`. Returns null
+ * unless BOTH fields are actually strings, so callers never need a
+ * downstream `typeof` guard before assigning onto `item.category`.
+ */
+function parseClassifyCacheHit(raw: unknown): { level: string; category: string } | null {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const { level, category } = raw as Record<string, unknown>;
+  if (typeof level !== 'string' || typeof category !== 'string') return null;
+  return { level, category };
+}
+
 async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   // Apply the LLM cache to BOTH 'keyword' and 'keyword-historical-downgrade'
   // sources. The historical-downgrade path forced an info level based on a
@@ -800,7 +817,15 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   const cached = await getCachedJsonBatch(keys);
 
   for (const [key, relatedItems] of keyMap) {
-    const hit = cached.get(key) as { level?: string; category?: string } | undefined;
+    const hit = parseClassifyCacheHit(cached.get(key));
+    // `hit.level === '_skip'` is currently unreachable and kept only as
+    // defence-in-depth: both relay skip-writes emit `{ level: '_skip',
+    // timestamp }` with no `category` (scripts/ais-relay.cjs:3892, :3968),
+    // so the shape check above already rejects them and `!hit` catches them
+    // here. It stays because it is the correct guard the moment any writer
+    // starts pairing the sentinel with a category — do not read it as the
+    // operative skip check today. Locked by the `_skip` cases in
+    // tests/news-classify-cache-hit-validation.test.mts.
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
 
     for (const item of relatedItems) {
@@ -1575,6 +1600,7 @@ export const __testing__ = {
   readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
+  parseClassifyCacheHit,
   VERCEL_INITIAL_RESPONSE_LIMIT_MS,
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,

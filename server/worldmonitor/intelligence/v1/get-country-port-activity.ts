@@ -27,6 +27,7 @@ interface SeederPayload {
   iso2?: string | null;
   ports?: SeederPort[] | null;
   fetchedAt?: string | null;
+  cacheWrittenAt?: number | null;
 }
 
 const EMPTY: CountryPortActivityResponse = {
@@ -34,6 +35,24 @@ const EMPTY: CountryPortActivityResponse = {
   ports: [],
   fetchedAt: '',
 };
+
+// Keep the consumer's hard-expiry boundary aligned with the PortWatch seeder.
+// The scheduler can retain an expired payload under its Redis key solely to
+// preserve the durable refresh cursor while the last-good canonical pointer is
+// held. That state must never become consumer-visible again.
+export const PORTWATCH_PORT_ACTIVITY_MAX_CACHE_AGE_MS = 7 * 86_400_000;
+
+export function isCurrentPortActivityPayload(
+  payload: unknown,
+  now = Date.now(),
+  maxCacheAgeMs = PORTWATCH_PORT_ACTIVITY_MAX_CACHE_AGE_MS,
+): payload is SeederPayload {
+  if (!payload || typeof payload !== 'object') return false;
+  const cacheWrittenAt = (payload as SeederPayload).cacheWrittenAt;
+  return typeof cacheWrittenAt === 'number'
+    && Number.isFinite(cacheWrittenAt)
+    && (now - cacheWrittenAt) < maxCacheAgeMs;
+}
 
 export async function getCountryPortActivity(
   _ctx: ServerContext,
@@ -50,6 +69,7 @@ export async function getCountryPortActivity(
   if (!data) return EMPTY;
 
   const payload = data as SeederPayload;
+  if (!isCurrentPortActivityPayload(payload)) return EMPTY;
   const rawPorts = Array.isArray(payload.ports) ? payload.ports : [];
   const topPorts = rawPorts.slice(0, 25);
 

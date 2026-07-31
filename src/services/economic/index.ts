@@ -761,6 +761,8 @@ const emptyChinaMacroFallback: GetChinaMacroSnapshotResponse = {
   sourceDecisions: [],
   releaseEvents: [],
   unavailable: true,
+  schemaVersion: 2,
+  pillars: [],
 };
 
 export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshotResponse> {

@@ -11,7 +11,7 @@
 //     id:            string                       // stable slug, e.g. 'energy:crude-inventory'
 //     feedKey:       string                       // the feed this template reads
 //     domain:        string                       // forecast domain bucket
-//     extractMetric: (feedData) => metric | null  // null = feed absent/unusable → skip
+//     extractMetric: (feedData, {nowMs}) => metric | null  // null = feed absent/unusable → skip
 //     horizonPolicy: (ctx) => deadlineMs          // when the bet resolves
 //     buildResolutionSpec: (ctx) => spec          // #4976 hard/judged spec
 //     buildQuestion: (ctx) => string              // crisp YES criterion
@@ -28,7 +28,7 @@ export function generateBets(templates, feedsByKey, nowMs) {
     const feed = feedsByKey?.[template.feedKey];
     let metric = null;
     try {
-      metric = template.extractMetric(feed);
+      metric = template.extractMetric(feed, { nowMs });
     } catch {
       metric = null;
     }
@@ -56,7 +56,16 @@ export function generateBets(templates, feedsByKey, nowMs) {
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
+    // Optional per-template extras (e.g. calibration.marketPrice, marketSlug for
+    // the prediction-market settlement path). Spread FIRST so extras can never
+    // clobber the core bet contract fields below.
+    let extras = {};
+    if (template.decorate) {
+      try { extras = template.decorate(ctx) || {}; } catch { extras = {}; }
+    }
+
     bets.push({
+      ...extras,
       id,
       domain: template.domain,
       title: template.buildTitle ? String(template.buildTitle(ctx)) : question,

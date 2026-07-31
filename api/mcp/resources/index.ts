@@ -48,7 +48,6 @@ import type {
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
-// @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
 
@@ -287,6 +286,10 @@ export async function buildResourceResponse(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
+  // Forwarded verbatim to the dispatcher so a template read is capped at the
+  // caller's PLAN allowance, exactly like the equivalent tools/call. Dropping
+  // it here would reopen the quota asymmetry this path exists to close.
+  mcpDailyLimit?: number | null,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -331,7 +334,7 @@ export async function buildResourceResponse(
   // budget gate, and telemetry emission. Returns a Response with
   // the standard JSON-RPC envelope. We parse, repackage, and re-emit
   // under the OUTER id.
-  const dispatched = await dispatchToolsCall(req, context, deps, innerBody, corsHeaders, ctx);
+  const dispatched = await dispatchToolsCall(req, context, deps, innerBody, corsHeaders, ctx, mcpDailyLimit);
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher
   // always emits JSON-RPC, never streams or returns null bodies for these

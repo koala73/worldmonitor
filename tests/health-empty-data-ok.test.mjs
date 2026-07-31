@@ -10,6 +10,7 @@ const {
   SEED_META,
   STANDALONE_KEYS,
   STATUS_COUNTS,
+  ZERO_RECORD_DATA_OK_KEYS,
   classifyKey,
 } = healthTesting;
 const NOW = 1_700_000_000_000;
@@ -27,6 +28,11 @@ const QUIET_META_ONLY_KEYS = [
   'newsThreatSummary',
 ];
 
+const AUDITED_PRESENT_PAYLOAD_KEYS = [
+  'cableHealth',
+  'notamClosures',
+];
+
 function classifyMissing(name, meta) {
   const redisKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
   const seedCfg = SEED_META[name];
@@ -34,6 +40,18 @@ function classifyMissing(name, meta) {
     keyStrens: new Map([[redisKey, 0]]),
     keyErrors: new Map(),
     keyMetaValues: meta == null ? new Map() : new Map([[seedCfg.key, JSON.stringify(meta)]]),
+    keyMetaErrors: new Map(),
+    now: NOW,
+  });
+}
+
+function classifyPresent(name, meta) {
+  const redisKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const seedCfg = SEED_META[name];
+  return classifyKey(name, redisKey, { allowOnDemand: false }, {
+    keyStrens: new Map([[redisKey, 128]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[seedCfg.key, JSON.stringify(meta)]]),
     keyMetaErrors: new Map(),
     now: NOW,
   });
@@ -84,5 +102,33 @@ test('quiet metadata-only sources remain healthy while their payload is absent',
     });
     assert.equal(entry.status, 'OK', `${name}: a quiet successful cycle may publish metadata without a payload`);
     assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  }
+});
+
+test('audited sparse sources require a payload even when zero records is valid', () => {
+  for (const name of AUDITED_PRESENT_PAYLOAD_KEYS) {
+    const seedCfg = SEED_META[name];
+    const freshZeroMeta = {
+      fetchedAt: NOW - Math.floor(seedCfg.maxStaleMin / 2) * 60_000,
+      recordCount: 0,
+    };
+    assert.ok(
+      MISSING_DATA_IS_FAILURE_KEYS.has(name),
+      `${name}: a fresh marker cannot hide a vanished canonical payload`,
+    );
+    assert.ok(
+      ZERO_RECORD_DATA_OK_KEYS.has(name),
+      `${name}: a present quiet payload may still report zero records`,
+    );
+    assert.equal(
+      classifyMissing(name, freshZeroMeta).status,
+      'EMPTY',
+      `${name}: fresh metadata does not excuse a missing payload`,
+    );
+    assert.equal(
+      classifyPresent(name, freshZeroMeta).status,
+      'OK',
+      `${name}: a present quiet payload remains healthy`,
+    );
   }
 });

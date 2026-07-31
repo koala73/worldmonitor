@@ -65,7 +65,10 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
           }),
         };
       }
-      return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
+      // This fixture isolates the PortWatch entry. Keep every unrelated
+      // coverage-gated feed above its floor so a new minRecordCount contract
+      // cannot turn the aggregate warning for an unrelated reason.
+      return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
     });
     return new Response(JSON.stringify(results), {
       status: 200,

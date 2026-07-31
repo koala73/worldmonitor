@@ -1,0 +1,63 @@
+---
+title: "API 版本控制与弃用"
+description: "WorldMonitor REST API 的兼容性保证、弃用通知和停用信号，供智能体和长期集成使用。"
+---
+
+WorldMonitor 在 URL 路径中标明公共 REST API 的版本：
+
+```
+https://api.worldmonitor.app/api/<domain>/v<major>/<operation>
+```
+
+例如，`/api/market/v1/list-market-quotes` 是版本 1 的操作。各领域可能独立升级，
+因此客户端应使用每条路径中标明的版本，而不应假定所有 API 共用同一个版本。
+
+## 主版本内的兼容性
+
+在已发布的主版本内，WorldMonitor 可能会新增可选的请求字段、响应字段、操作和枚举值。
+现有字段的含义和类型保持不变。除非发布新的主版本路径，否则我们不会删除或重命名
+操作或字段、将可选字段改为必填字段，或有意引入其他破坏性变更。
+
+客户端应忽略无法识别的响应字段和枚举值。已打包的
+[OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)是当前已发布契约的权威来源。
+
+## 弃用时间表
+
+当 WorldMonitor 替换或停用公共 REST 版本或操作时：
+
+1. 我们会在 API 文档和[更新日志](/zh/changelog)中发布替代方案和迁移指南。
+2. 自公开宣布弃用之日起，被弃用的接口将继续可用至少 **六个月**。
+3. 我们会在关闭日期前至少 **90 天**公布具体关闭日期。
+4. 在关闭之前，对被弃用接口的请求会携带下述 HTTP 信号。
+
+安全、隐私、法律或上游提供商方面的紧急情况可能需要更快地进行变更。遇到这种情况时，
+我们会尽快发布通知和迁移指南。
+
+## 机器可读信号
+
+被弃用操作或版本的响应包含：
+
+```http
+Deprecation: @1782864000
+Sunset: Thu, 31 Dec 2026 23:59:59 GMT
+Link: <https://www.worldmonitor.app/docs/api-versioning>; rel="deprecation"; type="text/html"
+```
+
+- [`Deprecation`](https://www.rfc-editor.org/rfc/rfc9745.html) 表示接口开始弃用的日期，
+  使用 HTTP 结构化字段日期格式。
+- [`Sunset`](https://www.rfc-editor.org/rfc/rfc8594.html) 表示最终可用日期，
+  使用 HTTP 日期格式。
+- 带有 `rel="deprecation"` 的 `Link` 指向迁移指南或本政策。
+
+相应的 OpenAPI 操作也会标记为 `deprecated: true`。智能体应将 `Deprecation`
+视为迁移警告，并停止安排在 `Sunset` 日期之后的调用。
+
+当前支持的端点不会仅因为路径中包含 `v1` 就发送这些响应头。版本号用于标识兼容性边界，
+其本身并不表示该版本已被弃用。
+
+## 客户端指南
+
+- 使用 OpenAPI 文档中的完整版本化路径。
+- 发布替代主版本后，重新生成或更新客户端。
+- 在成功和错误响应中监控 `Deprecation`、`Sunset` 和 `Link`。
+- 订阅[更新日志](/zh/changelog)，获取便于阅读的发布通知。
