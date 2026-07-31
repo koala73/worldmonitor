@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 
 import {
   YahooQuoteSummaryClient,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   parseCurlResponse,
+  requestHttpsText,
 } from '../scripts/_yahoo-sector-valuations.cjs';
 
 const cookieResponse = () => ({
@@ -59,6 +61,45 @@ function requestKind(url) {
   if (url.includes('/v10/finance/quoteSummary/')) return 'summary';
   throw new Error(`Unexpected Yahoo URL: ${url}`);
 }
+
+describe('requestHttpsText', () => {
+  it('rejects and destroys direct responses larger than 2 MiB', async () => {
+    let requestDestroyed = false;
+    let responseDestroyed = false;
+    const httpsGet = (_url, _options, onResponse) => {
+      const request = new EventEmitter();
+      request.destroy = () => {
+        requestDestroyed = true;
+      };
+
+      queueMicrotask(() => {
+        const response = new EventEmitter();
+        response.statusCode = 200;
+        response.headers = {};
+        response.setEncoding = () => {};
+        response.destroy = () => {
+          responseDestroyed = true;
+        };
+        onResponse(response);
+        response.emit('data', 'a'.repeat(2 * 1024 * 1024));
+        response.emit('data', 'b');
+        response.emit('end');
+      });
+      return request;
+    };
+
+    await assert.rejects(
+      requestHttpsText('https://query1.finance.yahoo.com/test', { httpsGet }),
+      (error) => {
+        assert.equal(error.code, 'RESPONSE_TOO_LARGE');
+        assert.doesNotMatch(error.message, /a{100}/);
+        return true;
+      },
+    );
+    assert.equal(requestDestroyed, true);
+    assert.equal(responseDestroyed, true);
+  });
+});
 
 describe('YahooQuoteSummaryClient', () => {
   it('bounds direct and proxy Invalid Crumb retries, cools down, then recovers', async () => {

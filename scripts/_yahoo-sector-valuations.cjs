@@ -13,26 +13,64 @@ const YAHOO_SUMMARY_MODULES = 'summaryDetail,defaultKeyStatistics';
 const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_SPACING_MS = 150;
+const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function requestHttpsText(url, { headers = {}, timeoutMs = 12_000 } = {}) {
+function requestHttpsText(
+  url,
+  {
+    headers = {},
+    timeoutMs = 12_000,
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+    httpsGet = https.get,
+  } = {},
+) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers, timeout: timeoutMs }, (response) => {
+    let settled = false;
+    let req;
+    req = httpsGet(url, { headers, timeout: timeoutMs }, (response) => {
       let body = '';
+      let bodyBytes = 0;
       response.setEncoding('utf8');
-      response.on('data', (chunk) => { body += chunk; });
+      response.on('data', (chunk) => {
+        if (settled) return;
+        bodyBytes += Buffer.byteLength(chunk, 'utf8');
+        if (bodyBytes > maxResponseBytes) {
+          settled = true;
+          const error = new Error(
+            `Yahoo response exceeded ${maxResponseBytes} byte limit`,
+          );
+          error.code = 'RESPONSE_TOO_LARGE';
+          response.destroy();
+          req?.destroy(error);
+          reject(error);
+          return;
+        }
+        body += chunk;
+      });
       response.on('end', () => {
+        if (settled) return;
+        settled = true;
         resolve({
           status: response.statusCode || 0,
           headers: response.headers,
           body,
         });
       });
+      response.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
     });
-    req.on('error', reject);
+    req.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
     req.on('timeout', () => {
       req.destroy(new Error(`Yahoo request timed out after ${timeoutMs}ms`));
     });
