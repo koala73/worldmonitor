@@ -65,10 +65,26 @@ describe('cloud prefs panel sync guardrails', () => {
       /this\.panelLayout\.applySavedPanelOrder\(\)/,
       'App must reapply synced panel order without waiting for a reload',
     );
+    // Scope to the cloud-prefs handler body: `this.enforceFreeTierLimits();`
+    // also occurs at unrelated later call sites (boot, premium loaders, the
+    // fallback timer), so an unanchored [\s\S]*? bridge over the whole file
+    // would stay green with the reconciliation call deleted from the handler.
+    const cloudApplyStart = appSrc.indexOf('private applyCloudSyncedPrefsToRuntime');
+    const cloudApplyEnd = appSrc.indexOf('const panelOrderKey', cloudApplyStart);
+    assert.ok(
+      cloudApplyStart >= 0 && cloudApplyEnd > cloudApplyStart,
+      'cloud prefs apply handler panels block must exist',
+    );
+    const cloudApplyBlock = appSrc.slice(cloudApplyStart, cloudApplyEnd);
     assert.match(
-      appSrc,
-      /this\.legacyWidgetRecoveryAfterCloudPrefs\s*=\s*true;[\s\S]*?this\.enforceFreeTierLimits\(\);/,
+      cloudApplyBlock,
+      /this\.legacyWidgetRecoveryAfterCloudPrefs\s*=\s*true;[\s\S]*?const reconciledPanelSettings = this\.enforceFreeTierLimits\(\);/,
       'cloud panel snapshots must re-run entitlement reconciliation and legacy widget recovery',
+    );
+    assert.match(
+      cloudApplyBlock,
+      /if \(!reconciledPanelSettings\) \{/,
+      'a cloud snapshot that skipped reconciliation must still be applied to the mounted dashboard',
     );
     assert.match(
       appSrc,

@@ -102,6 +102,8 @@ describe('App.destroy lifecycle cleanup contract', () => {
       'disconnectAisStream()',
       'this.webMcpController?.abort()',
       'mlWorker.terminate()',
+      'clearTimeout(this.freeTierLimitFallbackTimer)',
+      'this.freeTierLimitFallbackTimer = null',
     ]) {
       assert.ok(body.includes(expected), `App.destroy() must keep ${expected}`);
     }

@@ -1317,6 +1317,34 @@ export function restoreProGatedPanels(
   return next;
 }
 
+/**
+ * True while the session's tier is still unknowable, so the persisted
+ * free-tier clamp must not run yet. Two windows qualify:
+ *
+ * - Clerk hasn't settled (`authPending`) — a signed-in Pro user is
+ *   indistinguishable from an anonymous one.
+ * - Clerk settled on a signed-in user but the Convex entitlement snapshot
+ *   hasn't arrived (`hasUser && !entitlementLoaded`) — isEntitled() is
+ *   deterministically false until the snapshot lands, so a Convex-only Pro
+ *   subscriber would be clamped as free.
+ *
+ * `deadlineExceeded` is the AUTH_SETTLE_GRACE_MS backstop: once the grace
+ * timer fires, enforcement proceeds with whatever tier signals exist, so a
+ * snapshot that never arrives cannot defer the caps forever.
+ *
+ * Pure on plain booleans (no service imports) to keep this a config helper,
+ * matching isPanelEntitled above.
+ */
+export function shouldDeferFreeTierEnforcement(
+  authPending: boolean,
+  hasUser: boolean,
+  entitlementLoaded: boolean,
+  deadlineExceeded: boolean,
+): boolean {
+  if (deadlineExceeded) return false;
+  return authPending || (hasUser && !entitlementLoaded);
+}
+
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================

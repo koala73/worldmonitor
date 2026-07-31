@@ -13,6 +13,7 @@ import {
   isFreePanelCapCounted,
   restoreFreeMapPanelAccess,
   restoreProGatedPanels,
+  shouldDeferFreeTierEnforcement,
 } from '../src/config/panels.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -151,6 +152,23 @@ describe('variant panel config resolution', () => {
       enabled: true,
       priority: 3,
     });
+  });
+
+  it('defers free-tier enforcement until both Clerk and the entitlement snapshot settle', () => {
+    // Clerk still pending: always defer — a signed-in Pro user is
+    // indistinguishable from an anonymous one.
+    assert.equal(shouldDeferFreeTierEnforcement(true, false, false, false), true);
+    // Clerk settled on a signed-in user, entitlement snapshot not yet
+    // loaded: defer — isEntitled() is deterministically false until the
+    // snapshot lands, so a Convex-only Pro subscriber would be clamped.
+    assert.equal(shouldDeferFreeTierEnforcement(false, true, false, false), true);
+    // Clerk settled, signed-in, entitlement loaded: enforce.
+    assert.equal(shouldDeferFreeTierEnforcement(false, true, true, false), false);
+    // Clerk settled, anonymous: enforce immediately.
+    assert.equal(shouldDeferFreeTierEnforcement(false, false, false, false), false);
+    // Grace deadline exceeded: never defer, whatever else is pending —
+    // otherwise a snapshot that never arrives suspends the caps forever.
+    assert.equal(shouldDeferFreeTierEnforcement(true, true, false, true), false);
   });
 
   it('does not use the canonical registry directly for entitlement or pro badge metadata', () => {

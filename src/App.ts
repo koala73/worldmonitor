@@ -14,6 +14,7 @@ import {
   enforceFreePanelLimit,
   restoreFreeMapPanelAccess,
   restoreProGatedPanels,
+  shouldDeferFreeTierEnforcement,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
@@ -117,7 +118,7 @@ import {
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   FREE_TIER_FOLLOW_LIMIT,
@@ -1826,7 +1827,23 @@ export class App {
     // covers the one case where neither ever arrives — Clerk's script fails
     // to load or VITE_CLERK_PUBLISHABLE_KEY is unset, where isPending stays
     // true forever and the free-tier caps would otherwise never be enforced.
-    if (getAuthState().isPending && !this.authSettleDeadlineExceeded) {
+    //
+    // The same blindness recurs after Clerk settles: the auth callback runs
+    // firePremiumLoaders() before initEntitlementSubscription() rebinds, so
+    // for a signed-in user getEntitlementState() is still null and
+    // isEntitled() is deterministically false at that instant — a Convex-only
+    // Pro subscriber would be clamped as free on every load. Defer for that
+    // window too; the entitlement snapshot re-runs this and the same fallback
+    // timer bounds a snapshot that never arrives.
+    const session = getAuthState();
+    if (
+      shouldDeferFreeTierEnforcement(
+        session.isPending,
+        session.user !== null,
+        getEntitlementState() !== null,
+        this.authSettleDeadlineExceeded,
+      )
+    ) {
       this.scheduleFreeTierLimitFallback();
       return false;
     }
