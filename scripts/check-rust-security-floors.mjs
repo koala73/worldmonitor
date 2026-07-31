@@ -105,9 +105,36 @@ export function checkRustSecurityFloors(lockSource, floors = RUST_SECURITY_FLOOR
   return errors;
 }
 
+/**
+ * Resolve `--root <dir>` / `--root=<dir>`. Both spellings are handled because
+ * silently ignoring one would make this gate audit the wrong tree and report
+ * green — the failure mode a security check must never have. An unusable
+ * `--root` is a hard error, never a fallback to cwd.
+ */
+export function resolveRootDir(argv, cwd) {
+  const inline = argv.find((a) => a.startsWith('--root='));
+  if (inline) {
+    const value = inline.slice('--root='.length);
+    if (!value) throw new Error('--root= was passed with no directory');
+    return path.resolve(value);
+  }
+  const flagIndex = argv.indexOf('--root');
+  if (flagIndex !== -1) {
+    const value = argv[flagIndex + 1];
+    if (!value || value.startsWith('-')) throw new Error('--root was passed with no directory');
+    return path.resolve(value);
+  }
+  return cwd;
+}
+
 if (isMainModule(import.meta.url, process.argv[1])) {
-  const rootFlagIndex = process.argv.indexOf('--root');
-  const rootDir = rootFlagIndex !== -1 ? path.resolve(process.argv[rootFlagIndex + 1]) : process.cwd();
+  let rootDir;
+  try {
+    rootDir = resolveRootDir(process.argv.slice(2), process.cwd());
+  } catch (err) {
+    console.error(`::error::rust security floor: ${err.message}`);
+    process.exit(1);
+  }
   const lockPath = path.join(rootDir, 'src-tauri', 'Cargo.lock');
 
   const errors = checkRustSecurityFloors(readFileSync(lockPath, 'utf8'));

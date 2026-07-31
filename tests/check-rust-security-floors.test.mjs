@@ -9,6 +9,7 @@ import {
   checkRustSecurityFloors,
   compareVersions,
   parseCargoLockVersions,
+  resolveRootDir,
 } from '../scripts/check-rust-security-floors.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,6 +81,17 @@ describe('check-rust-security-floors', () => {
       assert.ok(floor.advisory?.length > 5, `${floor.crate} must cite its advisory`);
       assert.ok(floor.reason?.length > 20, `${floor.crate} must record why the floor exists`);
     }
+  });
+
+  it('accepts both --root spellings and refuses an empty one', () => {
+    // Silently ignoring `--root=<dir>` would audit the wrong tree and report
+    // green — the one failure mode a security gate must not have.
+    assert.equal(resolveRootDir(['--root', '/tmp/x'], '/cwd'), '/tmp/x');
+    assert.equal(resolveRootDir(['--root=/tmp/x'], '/cwd'), '/tmp/x');
+    assert.equal(resolveRootDir([], '/cwd'), '/cwd');
+    assert.throws(() => resolveRootDir(['--root'], '/cwd'), /no directory/);
+    assert.throws(() => resolveRootDir(['--root='], '/cwd'), /no directory/);
+    assert.throws(() => resolveRootDir(['--root', '--verbose'], '/cwd'), /no directory/);
   });
 
   it('holds against the real committed Cargo.lock', () => {

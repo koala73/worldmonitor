@@ -112,6 +112,14 @@ jobs:
       - name: Check version consistency
         run: npm run version:check
 
+      - name: Rust dependency security floors (#5518)
+        # The release build is the artifact users install, so verify the
+        # lockfile it is about to compile still clears every recorded advisory
+        # floor. The desktop-config PR gate runs the same check, but a release
+        # can be cut from any ref — this makes the shipped binary the thing
+        # that gets audited, not just the PR that touched src-tauri.
+        run: node scripts/check-rust-security-floors.mjs
+
       - name: Bundle Node.js runtime
         shell: bash
         env:

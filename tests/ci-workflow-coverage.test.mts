@@ -506,11 +506,22 @@ describe('CI workflow coverage', () => {
     // no other job inspects it (security-audit covers npm lockfiles only), so
     // dropping this step would let a cargo update silently reintroduce a known
     // advisory — CVE-2026-42184 / #5518 is the case that motivated it.
+    const floorStep = workflowStepBlock(testWorkflow, 'Rust dependency security floors (#5518)');
     assert.match(
-      testJobBlock('desktop-config'),
+      floorStep,
       /^\s+run: node scripts\/check-rust-security-floors\.mjs\s*$/m,
       'desktop-config job must run the Rust dependency security-floor check',
     );
+    // A presence-only assertion would stay green with the step neutered, so
+    // pin that it still fails the job (same guard the AppImage step carries).
+    assert.doesNotMatch(floorStep, /^\s+continue-on-error:/m);
+    const releaseFloorStep = workflowStepBlock(desktopBuildWorkflow, 'Rust dependency security floors (#5518)');
+    assert.match(
+      releaseFloorStep,
+      /^\s+run: node scripts\/check-rust-security-floors\.mjs\s*$/m,
+      'release workflow must verify the security floors of the lockfile it ships',
+    );
+    assert.doesNotMatch(releaseFloorStep, /^\s+continue-on-error:/m);
     assert.match(
       testJobBlock('desktop-rust'),
       /if: needs\.changes\.outputs\.desktop_rust == 'true'/,
