@@ -748,6 +748,11 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
 }
 
 let _checkoutInFlight = false;
+let _checkoutRateLimitedUntilMs = 0;
+
+function checkoutRateLimitRemainingSeconds(): number {
+  return Math.max(0, Math.ceil((_checkoutRateLimitedUntilMs - Date.now()) / 1000));
+}
 
 /**
  * True when the checkout being blocked was for a Pro Business product — the
@@ -824,6 +829,20 @@ export async function startCheckout(
     return false;
   }
 
+  const cooldownSeconds = checkoutRateLimitRemainingSeconds();
+  if (cooldownSeconds > 0) {
+    // A prior 429 already told this browser when it may try again. Keep
+    // repeated CTA clicks local during that window instead of recreating the
+    // provider request amplification this rate-limit path is meant to stop.
+    const error = classifyHttpCheckoutError(
+      429,
+      { error: 'CHECKOUT_RATE_LIMITED' },
+      String(cooldownSeconds),
+    );
+    showCheckoutErrorToast(error.userMessage);
+    return false;
+  }
+
   _checkoutInFlight = true;
   _resetOverlaySession?.();
   // Fall back to the stored referral when the caller doesn't pass one.
@@ -887,7 +906,14 @@ export async function startCheckout(
       // runtime — defensive against future consumers that don't add their
       // own optional chaining. Greptile P2 review of PR #3894.
       const body = parseCheckoutErrorBody(rawText);
-      const error = classifyHttpCheckoutError(resp.status, body);
+      const error = classifyHttpCheckoutError(
+        resp.status,
+        body,
+        resp.headers.get('Retry-After'),
+      );
+      if (error.code === 'rate_limited' && error.retryAfterSeconds !== undefined) {
+        _checkoutRateLimitedUntilMs = Date.now() + error.retryAfterSeconds * 1000;
+      }
       reportCheckoutError(error, { productId, action: 'http-error' }, undefined, upstream);
       // 409 duplicate-subscription — confirm with the user BEFORE
       // navigating to the billing portal. Previously the portal opened
@@ -1080,6 +1106,7 @@ const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
   'unauthorized',
   'session_expired',
   'duplicate_subscription',
+  'rate_limited',
 ]);
 
 export function checkoutErrorTelemetryLevel(error: Pick<CheckoutError, 'code'>): SentryLevel {
@@ -1109,6 +1136,7 @@ function reportCheckoutError(
       productId: context.productId,
       httpStatus: error.httpStatus,
       serverMessage: error.serverMessage,
+      retryAfterSeconds: error.retryAfterSeconds,
       ...(upstream ? { upstream } : {}),
     },
   };
@@ -1143,6 +1171,13 @@ function renderCheckoutErrorSurface(
   error: CheckoutError,
   fallbackToPricingPage: boolean,
 ): void {
+  // A 429 already carries a safe local recovery path. Keep the user on the
+  // current surface so the message and in-memory cooldown remain active
+  // instead of redirecting them to /pro and discarding the wait contract.
+  if (error.code === 'rate_limited') {
+    showCheckoutErrorToast(error.userMessage);
+    return;
+  }
   if (fallbackToPricingPage) {
     window.location.assign('https://worldmonitor.app/pro');
     return;

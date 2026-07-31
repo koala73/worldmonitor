@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "$39,99 / mês",
-    "priceAnnual": "$399,99 / ano",
-    "annualSavingsNote": "2 meses grátis"
+    "priceAnnual": "$359,99 / ano",
+    "annualSavingsNote": "3 meses grátis"
   },
   "proShowcase": {
     "proTier": "NÍVEL PRO",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Do monitoramento em tempo real à infraestrutura de inteligência completa. Escolha o nível que se adequa à sua missão.",
     "billingMonthly": "Mensal",
     "billingAnnual": "Anual",
-    "saveAnnual": "Economize 17%",
+    "saveAnnual": "Economize 25%",
     "mostPopular": "Mais Popular",
     "promoCodeNote": "Tem um código promocional? Digite-o durante o checkout.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, API REST & SDKs oficiais — 59 ferramentas sob uma única chave",
       "proF5": "Construtor de widgets personalizados para seus próprios painéis",
       "cta": "Ver planos e preços",
-      "note": "A partir de $39,99/mês · 2 meses grátis quando faturado anualmente"
+      "note": "A partir de $39,99/mês · 3 meses grátis quando faturado anualmente"
     },
     "faq": {
       "eyebrow": "Sem pegadinhas",

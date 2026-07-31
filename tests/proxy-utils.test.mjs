@@ -7,6 +7,7 @@ const {
   _readBoundedResponseStream,
   parseProxyConfig,
   parseProxyConfigForAttempt,
+  resolveProxyString,
 } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 
 describe('proxy utilities', () => {
@@ -21,6 +22,48 @@ describe('proxy utilities', () => {
       },
     );
     assert.equal(parseProxyConfig('ftp://proxy.test/resource'), null);
+  });
+
+  it('rewrites the Decodo CONNECT host to the curl endpoint regardless of case', () => {
+    // The curl endpoint differs from the CONNECT endpoint, so this rewrite is
+    // what routes a curl-based caller correctly. parseProxyConfig's
+    // host:port:user:pass branch returns the host verbatim, so an operator's
+    // casing reaches the compare un-normalized -- a case-sensitive prefix
+    // match silently leaves the caller pointed at the CONNECT endpoint.
+    for (const equivalentHost of [
+      'gate.decodo.com',
+      'GATE.DECODO.COM',
+      'Gate.Decodo.Com',
+      'gate.decodo.com.',
+    ]) {
+      assert.equal(
+        resolveProxyString(`${equivalentHost}:10001:proxy-user:proxy-secret`),
+        'proxy-user:proxy-secret@us.decodo.com:10001',
+        equivalentHost,
+      );
+    }
+
+    // Only the Decodo gateway is rewritten. A prefix match would send these to a
+    // Decodo endpoint with their credentials attached, so each must pass through
+    // untouched: a same-prefix foreign host, its uppercase spelling, and a host
+    // that merely contains `gate.` away from the start.
+    for (const foreignHost of [
+      'gate.proxy.test',
+      'GATE.PROXY.TEST',
+      'proxy.gate.example.com',
+    ]) {
+      assert.equal(
+        resolveProxyString(`${foreignHost}:10001:proxy-user:proxy-secret`),
+        `proxy-user:proxy-secret@${foreignHost}:10001`,
+        foreignHost,
+      );
+    }
+
+    assert.equal(
+      resolveProxyString('https://proxy-user:proxy-secret@proxy.test:443'),
+      'proxy-user:proxy-secret@proxy.test:443',
+    );
+    assert.equal(resolveProxyString(''), '');
   });
 
   it('uses a distinct Decodo sticky port per attempt and preserves other routes', () => {

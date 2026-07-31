@@ -730,6 +730,8 @@
       "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}",
       "summaryError": "Samenvatting kon niet worden gemaakt",
       "summaryFailed": "Samenvatting mislukt",
+      "sourceCoverage": "{{covered}}/{{total}} bronnen",
+      "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
       "sortRelevance": "Relevantie"
@@ -1019,7 +1021,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "Amerikaans ministerie van Financiën",
       "colDate": "Datum",
       "colMonthly": "Maandelijks",
       "colFytd": "FY YTD",
@@ -1083,8 +1085,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "gedegradeerd",
+        "stale": "verouderd"
       }
     },
     "gdeltIntel": {
@@ -1193,10 +1195,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Gecachede CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "gedegradeerd",
+        "stale": "verouderd"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1516,25 +1518,25 @@
       "trending": "TREND",
       "velocity": "Snelheid",
       "wallets": "Wallets",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Wereldwijde schenkingsbenchmarks",
+      "benchmarkInfoTooltip": "<strong>Wereldwijde schenkingsbenchmarks</strong> Gepubliceerde platform- en institutionele claims met bronperioden en verificatiestatus. Geannualiseerde cijfers zijn schattingen, geen live-activiteit.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Gepubliceerde benchmarks met geverifieerde brondekking.",
+        "partial": "Gepubliceerde benchmarks met gedeeltelijke brondekking.",
+        "legacy": "Oude momentopname; brondetails niet beschikbaar.",
+        "cached": "Gecachede momentopname tonen; vernieuwen niet beschikbaar."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Bijgehouden platformschenkingen — geannualiseerde schatting",
+      "annualizedDaily": "Dagelijkse geannualiseerde schatting",
+      "atLeast": "Minstens",
+      "about": "Ongeveer",
+      "sourceNotVerified": "Bron niet geverifieerd",
+      "reportedCumulative": "Gerapporteerd cumulatief totaal",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Gepubliceerde benchmark",
+      "sourcesMethodology": "Bronnen en methodologie",
+      "methodologyIntro": "Alleen geverifieerde jaarlijkse of verdedigbaar geannualiseerde platformclaims komen in de kop. Cumulatieve en institutionele cijfers blijven afzonderlijke context.",
+      "partialEstimate": "Gedeeltelijk geverifieerde schatting"
     },
     "supplyChain": {
       "chokepoints": "Knelpunten",
@@ -1873,8 +1875,8 @@
     "markets": {
       "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "{{symbol}} prijsgrafiek",
+        "close": "Grafiek sluiten"
       }
     },
     "heatmap": {
@@ -2206,59 +2208,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panelcategorieën"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Actueel",
+        "stale": "Verouderd",
+        "veryStale": "Zeer verouderd",
+        "noData": "Geen gegevens",
+        "disabled": "Uitgeschakeld",
+        "error": "Fout"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Gegevensversheid: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "laatst bijgewerkt {{time}}",
+      "neverUpdated": "nooit bijgewerkt",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "gedeeltelijke dekking",
+        "contentStale": "inhoud verouderd",
+        "seedStale": "seed verouderd",
+        "noSourceData": "geen brongegevens",
+        "sourceErrorReported": "bronfout gemeld",
+        "freshnessStoreUnavailable": "versheidsopslag niet beschikbaar",
+        "freshnessStoreDegraded": "versheidsopslag gedegradeerd"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nooit",
+        "justNow": "zojuist",
+        "minutesAgo": "{{count}}m geleden",
+        "hoursAgo": "{{count}}u geleden",
+        "daysAgo": "{{count}}d geleden",
+        "compactNow": "nu",
         "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactHours": "{{count}}u",
         "compactDays": "{{count}}d"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Meld u aan om dashboardgegevens te exporteren als CSV, JSON of PDF.",
+      "upgradeDesc": "Gegevensexport (CSV, JSON, PDF) is inbegrepen bij Pro Business.",
+      "upgradeCta": "Upgraden naar Pro Business",
+      "lockedAriaLabel": "Gegevens exporteren — vergrendeld. {{reason}}",
+      "unlockedAnnouncement": "Gegevensexport ontgrendeld.",
+      "preparingPdf": "PDF voorbereiden…",
+      "pdfFailed": "Het PDF-rapport kon niet worden gegenereerd. Probeer het opnieuw of gebruik de JSON-export."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Werkruimten zonder aanmelding zijn beperkt tot {{cap}} dashboardtabbladen. Meld u aan om meer toe te voegen.",
+      "upgradeDesc": "U heeft uw limiet van {{cap}} dashboardtabbladen bereikt.",
+      "upgradeCta": "Upgraden voor meer",
+      "lockedAriaLabel": "Tabblad toevoegen — vergrendeld. {{reason}}",
+      "unlockedAnnouncement": "Limiet voor dashboardtabbladen opgeheven."
     }
   },
   "popups": {
@@ -2990,7 +2992,7 @@
     "panelCatCommodityEcon": "Economie & Handel",
     "panelCatHappyNews": "Goed Nieuws",
     "panelCatHappyPlanet": "Planeet & Geven",
-    "embed": "Embed"
+    "embed": "Insluiten"
   },
   "countryBrief": {
     "identifying": "Land identificeren...",
@@ -3122,20 +3124,20 @@
     "geocodeFailed": "Kon geen land op deze locatie identificeren",
     "retryBtn": "Opnieuw proberen",
     "closeBtn": "Sluiten",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Veerkrachtscore laden…",
+    "resilienceScoreUnavailable": "Veerkrachtscore niet beschikbaar.",
     "china": {
       "title": "Landenoverzicht China",
       "description": "Actuele macro-, markt-, handels-, energie- en operationele beschikbaarheid uit bestaande publieke datacontracten.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Beleid en handhaving",
       "energy": "Energie",
       "availability": "Gevaren & luchtvaart",
       "observed": "Per:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Gepubliceerd:",
+      "effective": "Van kracht:",
+      "sectors": "Sectoren:",
+      "entities": "Entiteiten:",
+      "translation": "Vertaling:",
       "source": "Bron:",
       "imfGrowth": "IMF-groeiprognose",
       "creditGdp": "Krediet t.o.v. bbp",
@@ -3164,12 +3166,12 @@
         "stale": "Verouderd",
         "unavailable": "Niet beschikbaar"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Macrosignalen",
+      "crossStraitActivity": "Activiteit over de straat",
+      "corporateDisclosures": "Bedrijfsbekendmakingen",
+      "corridorConditions": "Corridoromstandigheden",
+      "activityNowcast": "Activiteit nowcast",
+      "decisionSignalsUnavailable": "De momentopname van beslissingssignalen van China is momenteel niet beschikbaar."
     }
   },
   "preferences": {
@@ -3322,16 +3324,16 @@
     "visualizationFailed": "Visualisatie mislukt"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Dashboardtabbladen",
+    "defaultName": "Hoofd",
+    "newTabName": "Nieuw tabblad",
+    "newTabCreated": "Nieuw tabblad aangemaakt",
+    "tabDeleted": "Tabblad \"{{name}}\" verwijderd",
+    "addTab": "Tabblad toevoegen",
+    "addTabTitle": "Nieuw tabblad (begint met de standaardpanelen)",
+    "renameHint": "{{name}} — dubbelklik om te hernoemen",
+    "deleteTab": "Tabblad verwijderen",
+    "deleteTabAria": "Tabblad {{name}} verwijderen",
+    "tabNameAria": "Tabbladnaam"
   }
 }

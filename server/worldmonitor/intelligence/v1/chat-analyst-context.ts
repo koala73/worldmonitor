@@ -1,4 +1,4 @@
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson } from '../../../_shared/redis';
 // Issue #3724: all LLM-bound headline content goes through sanitizeForPrompt
 // (semantic + structural). The lighter sanitizeHeadline only strips structural
 // delimiters and was designed to preserve security-news semantics for display
@@ -7,8 +7,21 @@ import { getCachedJson } from '../../../_shared/redis';
 // phrases verbatim. We accept that legitimate "Anthropic warns: ignore previous
 // instructions…" headlines will be partly mangled in the analyst context — the
 // asymmetric cost favours hard sanitization at the prompt boundary.
-import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
-import { CHROME_UA } from '../../../_shared/constants';
+// Second policy, orthogonal to the one above (#5850, #5857): EVERY block this
+// file builds is newline-delimited, and sanitizeForPrompt deliberately
+// preserves a lone newline (it collapses only runs of 2+ whitespace). So every
+// feed-derived string here goes through sanitizeForPromptLine — sanitizing the
+// content is not enough when the delimiter is part of the content's alphabet.
+// The rule is uniform on purpose: this file has no free-prose sink (even the
+// worldBrief and countryBrief bodies render under structural headers), so a
+// plain sanitizeForPrompt call site would be the bug, not an exception.
+import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
+// Pure, import-safe helper module (no Redis, no network, no top-level exec) —
+// shared with the seeder side so the GDELT seendate parser has one home
+// (#5856 review). esbuild inlines it for the edge bundle.
+import { gdeltSeenDateToMs } from '../../../../scripts/_conflict-gdelt.mjs';
 import { tokenizeForMatch, findMatchingKeywords } from '../../../../src/utils/keyword-match';
 import {
   GAS_STORAGE_COUNTRIES_KEY,
@@ -25,14 +38,6 @@ import {
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
 // and merge results before scoring.
-
-const GDELT_TOPICS: Record<string, string> = {
-  geo: 'geopolitical conflict crisis diplomacy',
-  market: 'financial markets economy trade stocks',
-  military: 'military conflict war airstrike',
-  economic: 'economy sanctions trade monetary policy',
-  all: 'geopolitical conflict markets economy',
-};
 
 export interface AnalystContext {
   timestamp: string;
@@ -91,7 +96,11 @@ export function buildWorldBrief(data: unknown): string {
   // payload variations. sanitizeForPrompt protects against feed-side prompt
   // injection — both the brief and the headlines are untrusted upstream text
   // that flows into the analyst's system prompt.
-  const briefText = sanitizeForPrompt(safeStr(d.worldBrief || d.brief || d.summary || d.content || d.text));
+  // Line-collapsed, not just sanitized: production `worldBrief` is a single
+  // lead paragraph (composeSynthesizedBrief caps it at 2-3 sentences / 80
+  // words) or a single headline, so it has no newlines to lose — while an
+  // injected one would let the feed open its own `Top Events:` block below.
+  const briefText = sanitizeForPromptLine(safeStr(d.worldBrief || d.brief || d.summary || d.content || d.text));
   if (briefText) lines.push(briefText.slice(0, 600));
 
   const stories = Array.isArray(d.topStories) ? d.topStories : Array.isArray(d.stories) ? d.stories : [];
@@ -99,7 +108,7 @@ export function buildWorldBrief(data: unknown): string {
     lines.push('Top Events:');
     for (const s of stories.slice(0, 12)) {
       const story = s as Record<string, unknown>;
-      const title = sanitizeForPrompt(safeStr(story.primaryTitle || story.headline || story.title || s));
+      const title = sanitizeForPromptLine(safeStr(story.primaryTitle || story.headline || story.title || s));
       if (title) lines.push(`- ${title}`);
     }
   }
@@ -123,7 +132,7 @@ export function buildRiskScores(data: unknown): string {
 
   const lines = top15.map((s: unknown) => {
     const sc = s as Record<string, unknown>;
-    const country = safeStr(sc.countryName || sc.name || sc.country);
+    const country = sanitizeForPromptLine(safeStr(sc.countryName || sc.name || sc.country));
     const score = safeNum(sc.score ?? sc.cii ?? sc.value);
     if (!country) return null;
     return `- ${country}: ${score.toFixed(1)}`;
@@ -132,7 +141,7 @@ export function buildRiskScores(data: unknown): string {
   return lines.length ? `Top Risk Countries:\n${lines.join('\n')}` : '';
 }
 
-function buildMarketImplications(data: unknown): string {
+export function buildMarketImplications(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const cards = Array.isArray(d.cards) ? d.cards : [];
@@ -140,10 +149,10 @@ function buildMarketImplications(data: unknown): string {
 
   const lines = cards.slice(0, 8).map((c: unknown) => {
     const card = c as Record<string, unknown>;
-    const ticker = safeStr(card.ticker);
-    const title = safeStr(card.title);
-    const direction = safeStr(card.direction);
-    const confidence = safeStr(card.confidence);
+    const ticker = sanitizeForPromptLine(safeStr(card.ticker));
+    const title = sanitizeForPromptLine(safeStr(card.title));
+    const direction = sanitizeForPromptLine(safeStr(card.direction));
+    const confidence = sanitizeForPromptLine(safeStr(card.confidence));
     if (!ticker || !title) return null;
     return `- ${ticker} ${direction} (${confidence}): ${title}`;
   }).filter((l): l is string => l !== null);
@@ -159,8 +168,8 @@ export function buildForecasts(data: unknown): string {
 
   const lines = predictions.slice(0, 8).map((p: unknown) => {
     const pred = p as Record<string, unknown>;
-    const title = safeStr(pred.title || pred.event);
-    const domain = safeStr(pred.domain || pred.category);
+    const title = sanitizeForPromptLine(safeStr(pred.title || pred.event));
+    const domain = sanitizeForPromptLine(safeStr(pred.domain || pred.category));
     const prob = safeNum(pred.probability ?? pred.prob);
     if (!title) return null;
     const probStr = prob > 0 ? ` — ${formatPct(prob > 1 ? prob : prob * 100)}` : '';
@@ -178,7 +187,7 @@ export function buildMarketData(stocks: unknown, commodities: unknown): string {
     const quotes = Array.isArray(d.quotes) ? d.quotes : [];
     const stockLines = quotes.slice(0, 6).map((q: unknown) => {
       const quote = q as Record<string, unknown>;
-      const sym = safeStr(quote.symbol || quote.ticker);
+      const sym = sanitizeForPromptLine(safeStr(quote.symbol || quote.ticker));
       const price = safeNum(quote.price ?? quote.regularMarketPrice);
       const chg = safeNum(quote.changePercent ?? quote.regularMarketChangePercent);
       if (!sym || !price) return null;
@@ -192,7 +201,7 @@ export function buildMarketData(stocks: unknown, commodities: unknown): string {
     const quotes = Array.isArray(d.quotes) ? d.quotes : [];
     const commLines = quotes.slice(0, 4).map((q: unknown) => {
       const quote = q as Record<string, unknown>;
-      const sym = safeStr(quote.symbol || quote.ticker || quote.name);
+      const sym = sanitizeForPromptLine(safeStr(quote.symbol || quote.ticker || quote.name));
       const price = safeNum(quote.price ?? quote.regularMarketPrice);
       const chg = safeNum(quote.changePercent ?? quote.regularMarketChangePercent);
       if (!sym || !price) return null;
@@ -207,19 +216,19 @@ export function buildMarketData(stocks: unknown, commodities: unknown): string {
 export function buildMacroSignals(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
-  const verdict = safeStr(d.verdict || d.regime || d.signal);
+  const verdict = sanitizeForPromptLine(safeStr(d.verdict || d.regime || d.signal));
   const active = Array.isArray(d.activeSignals) ? d.activeSignals : Array.isArray(d.signals) ? d.signals : [];
   const lines: string[] = [];
   if (verdict) lines.push(`Regime: ${verdict}`);
   for (const s of active.slice(0, 4)) {
     const sig = s as Record<string, unknown>;
-    const name = safeStr(sig.name || sig.label);
+    const name = sanitizeForPromptLine(safeStr(sig.name || sig.label));
     if (name) lines.push(`- ${name}`);
   }
   return lines.length ? `Macro Signals:\n${lines.join('\n')}` : '';
 }
 
-function buildPredictionMarkets(data: unknown): string {
+export function buildPredictionMarkets(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const all = [
@@ -232,7 +241,7 @@ function buildPredictionMarkets(data: unknown): string {
 
   const lines = all.map((m: unknown) => {
     const market = m as Record<string, unknown>;
-    const title = sanitizeForPrompt(safeStr(market.title));
+    const title = sanitizeForPromptLine(safeStr(market.title));
     const yes = safeNum(market.yesPrice);
     if (!title) return null;
     return `- "${title}" Yes: ${formatPct(yes > 1 ? yes : yes * 100)}`;
@@ -241,7 +250,7 @@ function buildPredictionMarkets(data: unknown): string {
   return lines.length ? `Prediction Markets:\n${lines.join('\n')}` : '';
 }
 
-function buildEnergyExposure(data: unknown): string {
+export function buildEnergyExposure(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
   const year = typeof d.year === 'number' ? d.year : '';
@@ -261,7 +270,7 @@ function buildEnergyExposure(data: unknown): string {
       : [];
     if (!entries.length) continue;
     const formatted = entries
-      .map((e) => `${safeStr(e.name)} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%`)
+      .map((e) => `${sanitizeForPromptLine(safeStr(e.name))} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%`)
       .join(', ');
     lines.push(`${label}: ${formatted}`);
   }
@@ -302,7 +311,14 @@ async function buildGasStorage(): Promise<string | undefined> {
           if (data && typeof data === 'object') {
             const d = data as Record<string, unknown>;
             if (typeof d.fillPct === 'number') {
-              entries.push({ iso2: safeStr(d.iso2) || iso2, fillPct: d.fillPct, trend: safeStr(d.trend) || undefined });
+              entries.push({
+                // Both sides of the fallback are Redis-derived — the loop's
+                // iso2 comes from the seeded countries list, so it needs the
+                // same guard as the payload's own field.
+                iso2: sanitizeForPromptLine(safeStr(d.iso2)) || sanitizeForPromptLine(iso2),
+                fillPct: d.fillPct,
+                trend: sanitizeForPromptLine(safeStr(d.trend)) || undefined,
+              });
             }
           }
         } catch {
@@ -329,10 +345,10 @@ async function buildElectricityPrices(): Promise<string | undefined> {
       .slice(0, 5);
     if (entries.length === 0) return undefined;
     const parts = entries.map((e) => {
-      const region = safeStr(e.region);
+      const region = sanitizeForPromptLine(safeStr(e.region));
       const price = (e.price as number).toFixed(1);
       const currency = safeStr(e.currency);
-      const unit = safeStr(e.unit) || 'MWh';
+      const unit = sanitizeForPromptLine(safeStr(e.unit)) || 'MWh';
       const sym = currency === 'GBP' ? '£' : currency === 'USD' ? '$' : '€';
       return `${region}: ${sym}${price}/${unit}`;
     });
@@ -354,8 +370,8 @@ async function buildEnergyIntelligence(): Promise<string | undefined> {
       .slice(0, 3);
     if (recent.length === 0) return undefined;
     return recent.map((item) => {
-      const source = safeStr(item.source);
-      const title = sanitizeForPrompt(safeStr(item.title));
+      const source = sanitizeForPromptLine(safeStr(item.source));
+      const title = sanitizeForPromptLine(safeStr(item.title));
       return source ? `${source}: ${title}` : title;
     }).join(' · ');
   } catch {
@@ -400,7 +416,7 @@ async function buildProductSupply(iso2: string): Promise<string | undefined> {
     if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiOil) {
       const oil = spine.oil as Record<string, unknown> | undefined;
       const src = spine.sources as Record<string, unknown> | undefined;
-      const month = safeStr(src?.jodiOilMonth);
+      const month = sanitizeForPromptLine(safeStr(src?.jodiOilMonth));
       if (!oil) return undefined;
       const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
       const parts: string[] = [];
@@ -417,7 +433,7 @@ async function buildProductSupply(iso2: string): Promise<string | undefined> {
     const data = await getCachedJson(`energy:jodi-oil:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
-    const month = safeStr(d.dataMonth);
+    const month = sanitizeForPromptLine(safeStr(d.dataMonth));
     const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
     const parts: string[] = [];
     for (const [key, label] of [['diesel', 'diesel'], ['jet', 'jet fuel'], ['gasoline', 'gasoline']] as [string, string][]) {
@@ -530,11 +546,12 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
         : sprPolicy.regime === 'spare_capacity' ? 'spare production capacity (no stockpile)'
         : sprPolicy.regime === 'commercial_only' ? 'commercial stocks only (no government reserve)'
         : sprPolicy.regime === 'none' ? 'no strategic reserve program'
-        : sprPolicy.regime as string;
+        // Unknown regimes fall through verbatim from the registry payload.
+        : sanitizeForPromptLine(safeStr(sprPolicy.regime));
       const capacity = typeof sprPolicy.capacityMb === 'number' && sprPolicy.capacityMb > 0
         ? ` (${sprPolicy.capacityMb}Mb capacity)` : '';
-      const operator = typeof sprPolicy.operator === 'string' && sprPolicy.operator
-        ? `, ${sprPolicy.operator}` : '';
+      const operatorName = sanitizeForPromptLine(safeStr(sprPolicy.operator));
+      const operator = operatorName ? `, ${operatorName}` : '';
       parts.push(`Reserve policy: ${regime}${operator}${capacity}`);
     }
 
@@ -591,8 +608,13 @@ async function buildElectricityMix(iso2: string): Promise<string | undefined> {
 export function buildCountryBrief(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
-  const brief = safeStr(d.brief || d.analysis || d.content || d.summary);
-  const country = safeStr(d.countryName || d.country || d.name);
+  // Line-collapsed like buildWorldBrief's paragraph, not left as free prose:
+  // this body renders under a `## Country Focus` header, so an embedded
+  // newline lets the payload open its own `## section` / `- bullet` in the
+  // system prompt. Nothing writes intelligence:country-brief:v1:* today, so
+  // there is no multi-paragraph producer whose formatting this would lose.
+  const brief = sanitizeForPromptLine(safeStr(d.brief || d.analysis || d.content || d.summary));
+  const country = sanitizeForPromptLine(safeStr(d.countryName || d.country || d.name));
   if (!brief) return '';
   return `Country Focus${country ? ` — ${country}` : ''}:\n${brief.slice(0, 500)}`;
 }
@@ -639,42 +661,192 @@ export function extractKeywords(query: string): string[] {
   return result.slice(0, MAX_KEYWORDS);
 }
 
-// ── GDELT live headlines ──────────────────────────────────────────────────────
+// ── GDELT headlines (materialized, never fetched at request time) ─────────────
+//
+// Issue #5850 (#5843 M3). This used to build a DOC-API ArtList query and fetch
+// it live from Vercel on every chat-analyst request, with a 2.5s hot-path
+// timeout and a bare `catch { return '' }`. Three things were wrong with that:
+// GDELT's DOC API is supply-side load-shed, so the fetch had been silently
+// returning '' for weeks; the per-user fan-out from Vercel egress IPs is the
+// uncoordinated-consumer pattern #5843 exists to remove; and even a healthy
+// GDELT taxed every request 2.5s for marginal context. Headlines now come from
+// the canonical key scripts/seed-gdelt-bulk-materializer.mjs materializes —
+// Railway writes, Vercel reads, same as every other source in this assembler.
+
+const GDELT_INTEL_KEY = 'intelligence:gdelt-intel:v1';
+const MAX_LIVE_HEADLINES = 5;
+
+// The bulk materializer's topic ids (GDELT_BULK_TOPICS in
+// scripts/_gdelt-bulk-materializer.mjs) are the vocabulary for topic scoping
+// below. Exported so tests pin it against the active producer (#5856 review) —
+// do not import the materializer here: its Node-only graph is not
+// edge-runtime-safe.
+export const ALL_TOPIC_IDS = ['military', 'cyber', 'nuclear', 'sanctions', 'intelligence', 'maritime'] as const;
+
+// Which materialized topics are in scope per analyst domain focus, mapped from
+// the free-text DOC queries this replaced. `cyber` stays out of the
+// market/economic scopes deliberately: the old 'financial markets economy trade
+// stocks' query would not have surfaced a ransomware story either.
+const DOMAIN_TOPIC_IDS: Record<string, readonly string[]> = {
+  geo: ['military', 'nuclear', 'sanctions', 'intelligence', 'maritime'],
+  market: ['sanctions', 'maritime'],
+  military: ['military', 'nuclear', 'maritime'],
+  economic: ['sanctions', 'maritime'],
+  all: ALL_TOPIC_IDS,
+};
+
+interface SeededGdeltArticle {
+  title?: unknown;
+  source?: unknown;
+  date?: unknown;
+}
+
+interface SeededGdeltTopic {
+  id?: unknown;
+  articles?: unknown;
+  fetchedAt?: unknown;
+}
+
+/**
+ * Coarse age label so the analyst can discount a 3-day-old headline instead of
+ * treating every line in the block as breaking news.
+ */
+function formatHeadlineAge(timestampMs: number, nowMs: number): string {
+  if (!Number.isFinite(timestampMs)) return '';
+  const minutes = Math.floor((nowMs - timestampMs) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * Pure selection + formatting over a materialized `intelligence:gdelt-intel:v1`
+ * payload. Kept separate from the Redis read so the selection rules are
+ * testable without a cache stub.
+ */
+export function buildHeadlinesFromGdeltIntel(
+  payload: unknown,
+  domainFocus: string,
+  keywords: string[],
+  nowMs: number,
+): string {
+  if (!payload || typeof payload !== 'object') return '';
+  const rawTopics = (payload as { topics?: unknown }).topics;
+  if (!Array.isArray(rawTopics)) return '';
+
+  const snapshotFetchedAt = Date.parse(safeStr((payload as { fetchedAt?: unknown }).fetchedAt));
+  const inScope = new Set<string>(DOMAIN_TOPIC_IDS[domainFocus] ?? ALL_TOPIC_IDS);
+
+  const candidates: Array<{ title: string; source: string; topic: string; at: number; score: number }> = [];
+  for (const rawTopic of rawTopics as SeededGdeltTopic[]) {
+    if (!rawTopic || typeof rawTopic !== 'object') continue;
+    const topicId = safeStr(rawTopic.id);
+    if (!inScope.has(topicId)) continue;
+    if (!Array.isArray(rawTopic.articles)) continue;
+
+    // Per-topic fetchedAt is the seeder's own staleness marker: it coasts to
+    // the previous snapshot's value when a topic's fetch came back empty, so
+    // it is the honest fallback when an article carries no usable seendate.
+    const topicFetchedAt = Date.parse(safeStr(rawTopic.fetchedAt));
+
+    for (const rawArticle of rawTopic.articles as SeededGdeltArticle[]) {
+      if (!rawArticle || typeof rawArticle !== 'object') continue;
+      const title = sanitizeForPromptLine(safeStr(rawArticle.title));
+      if (!title) continue;
+      const seenAt = gdeltSeenDateToMs(safeStr(rawArticle.date));
+      const at = Number.isFinite(seenAt)
+        ? seenAt
+        : Number.isFinite(topicFetchedAt) ? topicFetchedAt : snapshotFetchedAt;
+      candidates.push({
+        title,
+        // Sanitized like the title: the #3724 policy at the top of this file is
+        // that ALL feed-derived text reaching the system prompt is sanitized,
+        // and the source domain is feed-derived. (`topic` is not — it can only
+        // be one of the ids in the allowlist above.)
+        source: sanitizeForPromptLine(safeStr(rawArticle.source)).slice(0, 40),
+        topic: topicId,
+        at,
+        score: keywords.length > 0 ? scoreArticle(title, keywords) : 0,
+      });
+    }
+  }
+
+  if (candidates.length === 0) return '';
+
+  // Syndicated wire stories appear as N identical titles across source domains
+  // (live payload at review time: 4-6 copies per topic); dedup on normalized
+  // title, keeping the best-scored then newest copy, so one story cannot fill
+  // the 5-slot cap and read as multiple corroborating reports (#5856 review).
+  const byTitle = new Map<string, (typeof candidates)[number]>();
+  for (const candidate of candidates) {
+    const titleKey = candidate.title.toLowerCase();
+    const prev = byTitle.get(titleKey);
+    if (
+      !prev
+      || candidate.score > prev.score
+      || (candidate.score === prev.score && candidate.at > prev.at)
+    ) {
+      byTitle.set(titleKey, candidate);
+    }
+  }
+  const deduped = [...byTitle.values()];
+
+  // Keyword matches lead. When nothing matches, fall back to the most recent
+  // articles in scope rather than emptying the block: this section is ambient
+  // context, not a search result — `relevantArticles` is the keyword-search
+  // surface — and the old DOC query returned topic articles too.
+  const matched = deduped.filter((c) => c.score > 0);
+  const pool = matched.length > 0 ? matched : deduped;
+
+  const selected = pool
+    .sort((a, b) => (b.score - a.score) || (b.at - a.at))
+    .slice(0, MAX_LIVE_HEADLINES);
+
+  const lines = selected.map((c) => {
+    const meta = [c.source, c.topic, formatHeadlineAge(c.at, nowMs)].filter(Boolean).join(', ');
+    return `- ${c.title}${meta ? ` (${meta})` : ''}`;
+  });
+
+  return lines.length ? `Latest Headlines:\n${lines.join('\n')}` : '';
+}
 
 async function buildLiveHeadlines(domainFocus: string, keywords: string[]): Promise<string> {
-  const baseTopic = GDELT_TOPICS[domainFocus] ?? 'geopolitical conflict markets economy';
-  // Append up to 3 user keywords to surface topic-relevant live articles.
-  const extraTerms = keywords.slice(0, 3).join(' ');
-  const topic = extraTerms ? `${baseTopic} ${extraTerms}` : baseTopic;
-  try {
-    const url = new URL('https://api.gdeltproject.org/api/v2/doc/doc');
-    url.searchParams.set('mode', 'ArtList');
-    url.searchParams.set('maxrecords', '5');
-    url.searchParams.set('query', topic);
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('timespan', '2h');
-    url.searchParams.set('sort', 'DateDesc');
-
-    const res = await fetch(url.toString(), {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(2_500),
+  // readCachedJson, not getCachedJson: a Redis failure must not be
+  // indistinguishable from an absent key here. Silently swallowing the failure
+  // is precisely what kept the dead GDELT fetch invisible for weeks.
+  const read = await readCachedJson(GDELT_INTEL_KEY, true);
+  if (read.status === 'error') {
+    // Log AND report: a Vercel-log-only warning is still effectively invisible
+    // (nobody greps logs for a degraded prompt section), and invisibility is
+    // the failure mode this issue exists to remove.
+    const msg = read.error instanceof Error ? read.error.message : String(read.error);
+    // Keep the fleet-standard structured timeout tag: every other Redis-read
+    // path classifies TimeoutError/AbortError as [REDIS-TIMEOUT], and this
+    // consumer must not be the one hole in that operational signal (#5856
+    // review; the classifier in _shared/redis.ts is module-private).
+    if (read.error instanceof Error && (read.error.name === 'TimeoutError' || read.error.name === 'AbortError')) {
+      console.error(`[REDIS-TIMEOUT] readCachedJson key=${GDELT_INTEL_KEY}`);
+    }
+    console.warn(`[chat-analyst] ${GDELT_INTEL_KEY} read failed, dropping live headlines: ${msg}`);
+    void captureSilentError(read.error, {
+      tags: { route: 'intelligence/chat-analyst-context', step: 'gdelt-intel-seed-read' },
     });
+    return '';
+  }
+  if (read.status === 'miss') return '';
 
-    if (!res.ok) return '';
-
-    const data = await res.json() as { articles?: Array<{ title?: string; domain?: string; seendate?: string }> };
-    const articles = (data.articles ?? []).slice(0, 5);
-    if (articles.length === 0) return '';
-
-    const lines = articles.map((a) => {
-      const title = sanitizeForPrompt(safeStr(a.title)) ?? '';
-      const source = safeStr(a.domain).slice(0, 40);
-      if (!title) return null;
-      return `- ${title}${source ? ` (${source})` : ''}`;
-    }).filter((l): l is string => l !== null);
-
-    return lines.length ? `Latest Headlines:\n${lines.join('\n')}` : '';
-  } catch {
+  try {
+    return buildHeadlinesFromGdeltIntel(read.value, domainFocus, keywords, Date.now());
+  } catch (err) {
+    console.warn(
+      `[chat-analyst] ${GDELT_INTEL_KEY} payload unusable, dropping live headlines: `,
+      err instanceof Error ? err.message : err,
+    );
+    void captureSilentError(err, {
+      tags: { route: 'intelligence/chat-analyst-context', step: 'gdelt-intel-format' },
+    });
     return '';
   }
 }
@@ -755,8 +927,8 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
   if (scored.length === 0) return '';
 
   const lines = scored.map(({ item }) => {
-    const title = sanitizeForPrompt(safeStr(item.title));
-    const source = safeStr(item.source).slice(0, 40);
+    const title = sanitizeForPromptLine(safeStr(item.title));
+    const source = sanitizeForPromptLine(safeStr(item.source)).slice(0, 40);
     const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     const meta = [source, ts].filter(Boolean).join(', ');
     return `- ${title}${meta ? ` (${meta})` : ''}`;

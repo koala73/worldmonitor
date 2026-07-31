@@ -16,9 +16,9 @@
  * with a flat 50s TTL, on the premise recorded in its own comment — "Tokens are
  * cached for 50s (Clerk tokens expire at 60s)" — which assumes every token
  * arrives freshly minted. A token handed over with 12s of life left was
- * therefore served for 50s, and the ~38s remainder is dead: `server/auth-session.ts`
- * verifies with `jose` `jwtVerify` and sets no `clockTolerance`, so an expired
- * `exp` is a hard 401.
+ * therefore served for 50s, and the ~38s remainder is dead: the small, bounded
+ * `clockTolerance` in `server/auth-session.ts` is not a substitute for refreshing
+ * an expired token.
  *
  * The truth table below is the bound; `honours a near-expiry token from Clerk's
  * stale-while-revalidate path` is the case that was live in production.
@@ -90,8 +90,8 @@ describe('shouldReuseCachedClerkToken', () => {
   });
 
   it('stops reusing a token before it expires, to absorb clock skew and flight time', () => {
-    // 8s of life left is inside the safety margin: the server verifies at zero
-    // clock tolerance, so a client clock running fast would 401 on this.
+    // 8s of life left is inside the safety margin: the server's bounded clock
+    // tolerance is not a substitute for refreshing a near-expiry cached token.
     assert.equal(
       shouldReuseCachedClerkToken({
         token: tokenExpiringAt(NOW + 8_000),

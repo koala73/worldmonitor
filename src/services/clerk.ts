@@ -245,6 +245,11 @@ export async function initClerk(): Promise<void> {
       await clerk.load({
         clerkUICtor: getClerkUICtor(),
         appearance: getAppearance(),
+        localization: {
+          userButton: {
+            action__manageAccount: 'Profile & security',
+          },
+        },
         afterSignOutUrl: getAfterSignOutUrl(),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
@@ -510,9 +515,9 @@ const TOKEN_CACHE_TTL_MS = 50_000;
 /**
  * How long before a token's own `exp` we stop reusing it.
  *
- * `server/auth-session.ts` verifies with `jose`'s `jwtVerify` and sets no
- * `clockTolerance`, so an `exp` in the past is a hard 401. This margin is the
- * only thing absorbing client/server clock skew plus the request's flight time.
+ * `server/auth-session.ts` applies only a small, bounded `clockTolerance`.
+ * This larger client-side margin keeps cache reuse and request flight time from
+ * consuming that entire server-side allowance.
  */
 const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
 
@@ -675,7 +680,77 @@ export function subscribeClerk(callback: () => void): () => void {
  * Mount Clerk's UserButton component into a DOM element.
  * Returns an unmount function.
  */
-export function mountUserButton(el: HTMLDivElement): () => void {
+export interface UserButtonMenuActions {
+  onBillingClick?: () => void;
+  onSettingsClick?: () => void;
+}
+
+type UserButtonProps = NonNullable<Parameters<ClerkInstance['mountUserButton']>[1]>;
+type CustomMenuItem = NonNullable<UserButtonProps['customMenuItems']>[number];
+type MenuIconKind = 'billing' | 'settings';
+
+function mountMenuIcon(el: HTMLDivElement, kind: MenuIconKind): void {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const paths = kind === 'billing'
+    ? [
+        'M3 6h18v12H3z',
+        'M3 10h18',
+        'M7 15h3',
+      ]
+    : [
+        'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+        'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z',
+      ];
+  for (const d of paths) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  }
+  el.replaceChildren(svg);
+}
+
+export function createAccountMenuItems(actions: UserButtonMenuActions): CustomMenuItem[] {
+  const items: CustomMenuItem[] = [];
+  if (actions.onBillingClick) {
+    items.push({
+      label: 'Plan & billing',
+      onClick: actions.onBillingClick,
+      mountIcon: (el) => mountMenuIcon(el, 'billing'),
+      unmountIcon: (el) => el?.replaceChildren(),
+    });
+  }
+  if (actions.onSettingsClick) {
+    items.push({
+      label: 'Settings',
+      onClick: actions.onSettingsClick,
+      mountIcon: (el) => mountMenuIcon(el, 'settings'),
+      unmountIcon: (el) => el?.replaceChildren(),
+    });
+  }
+  return items;
+}
+
+function getUserButtonProps(actions: UserButtonMenuActions): UserButtonProps {
+  return {
+    appearance: getAppearance(),
+    customMenuItems: createAccountMenuItems(actions),
+  };
+}
+
+export function mountUserButton(
+  el: HTMLDivElement,
+  actions: UserButtonMenuActions = {},
+): () => void {
   if (!clerkInstance) {
     // Deferred-load path: the avatar widget asked to mount before Clerk
     // finished its idle-callback load. Trigger an immediate load and
@@ -685,9 +760,7 @@ export function mountUserButton(el: HTMLDivElement): () => void {
     let realUnmount: (() => void) | null = null;
     void initClerk().then(() => {
       if (cancelled || !clerkInstance) return;
-      clerkInstance.mountUserButton(el, {
-        appearance: getAppearance(),
-      });
+      clerkInstance.mountUserButton(el, getUserButtonProps(actions));
       realUnmount = () => clerkInstance?.unmountUserButton(el);
     });
     return () => {
@@ -695,8 +768,6 @@ export function mountUserButton(el: HTMLDivElement): () => void {
       realUnmount?.();
     };
   }
-  clerkInstance.mountUserButton(el, {
-    appearance: getAppearance(),
-  });
+  clerkInstance.mountUserButton(el, getUserButtonProps(actions));
   return () => clerkInstance?.unmountUserButton(el);
 }

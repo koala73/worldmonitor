@@ -105,6 +105,7 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
 
   it('keeps duplicate-subscription checkout attempts at info level', () => {
     assert.equal(checkoutErrorTelemetryLevel({ code: 'duplicate_subscription' }), 'info');
+    assert.equal(checkoutErrorTelemetryLevel({ code: 'rate_limited' }), 'info');
     assert.equal(checkoutErrorTelemetryLevel({ code: 'payment_in_progress' }), 'error');
     assert.equal(checkoutErrorTelemetryLevel({ code: 'service_unavailable' }), 'error');
   });

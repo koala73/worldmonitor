@@ -39,9 +39,10 @@ export interface EntitlementState {
      */
     mcpAccess?: boolean;
     /**
-     * Data-export entitlement (plan 2026-07-25-001). The enforcement field for
-     * CSV/JSON/PDF export — `exportFormats` is display metadata only, and
-     * `tier` cannot discriminate (Pro Business shares tier 1 with Pro).
+     * Data-export entitlement (plan 2026-07-25-001). This controls the locked
+     * state while `exportFormats` controls which CSV/JSON/PDF actions the
+     * unlocked menu exposes; `tier` cannot discriminate because Pro Business
+     * shares tier 1 with Pro.
      * Undefined on legacy snapshots: the export gate treats undefined on a
      * `tier >= 2` snapshot as entitled (permanent fail-open) so a stale row
      * never locks a paying customer out of their own data.

@@ -66,13 +66,11 @@ export type PlanFeatures = {
   planLimits?: PlanLimits;
   prioritySupport: boolean;
   /**
-   * Display metadata ONLY — the formats a tier ADVERTISES. As of #4974 NO
-   * code consumes this array to gate any behavior, and formats listed here
-   * are not guaranteed to have exporters ("xlsx" was advertised for months
-   * with zero implementation). The enforcement field for data export is
-   * `dataExport` below: gate on that, never on this array's contents or
-   * length. Keep the two in agreement — a tier with `dataExport: false`
-   * advertises nothing.
+   * Format allowlist for an entitled export surface. `dataExport` below is
+   * the first-stage lock: when it is false the entire surface is unavailable.
+   * Once that gate is open, consumers expose only supported CSV/JSON/PDF
+   * values declared here and ignore unknown values. Keep the two fields in
+   * agreement — a tier with `dataExport: false` advertises no formats.
    */
   exportFormats: string[];
   /**
@@ -102,10 +100,11 @@ export type PlanFeatures = {
    */
   apiDailyAllowance?: number;
   /**
-   * Data-export entitlement — the ENFORCEMENT field for CSV/JSON/PDF export
-   * (plan 2026-07-25-001). Distinct from `exportFormats`, which only says
-   * what a tier advertises. `tier` cannot stand in for it: Pro Business
-   * shares `tier: 1` with Pro but exports, and Pro does not.
+   * First-stage data-export entitlement for CSV/JSON/PDF export (plan
+   * 2026-07-25-001). Once this gate is open, `exportFormats` narrows the
+   * actions exposed by each export surface. `tier` cannot stand in for this
+   * field: Pro Business shares `tier: 1` with Pro but exports, and Pro does
+   * not.
    *
    * Optional for the same reason as `apiDailyAllowance`: rows written before
    * the field existed omit it. Consumers treat `undefined` on a `tier >= 2`
@@ -324,7 +323,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
     planKey: "pro_annual",
     displayName: "Pro Annual",
-    priceCents: 39999,
+    priceCents: 35999,
     billingPeriod: "annual",
     tierGroup: "pro",
     features: PRO_FEATURES,
@@ -371,7 +370,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
-    priceCents: 49900,
+    priceCents: 44999,
     billingPeriod: "annual",
     tierGroup: "pro_business",
     features: PRO_BUSINESS_FEATURES,
@@ -410,7 +409,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nbu2lawHYE3dv2THgSEV",
     planKey: "api_starter_annual",
     displayName: "API Starter Annual",
-    priceCents: 99900,
+    priceCents: 89999,
     billingPeriod: "annual",
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
@@ -457,6 +456,21 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // customer portal surfaces the prorated Starter→Business upgrade. Flipping
     // this promotes the plan-limit-notice CTA from contact_support → billing_portal.
     canChangePlanSelfServe: true,
+    publicVisible: true,
+  },
+
+  api_business_annual: {
+    dodoProductId: "pdt_0NkHjzMhGp3m45sZLQ7BQ",
+    planKey: "api_business_annual",
+    displayName: "API Business Annual",
+    priceCents: 269999,
+    billingPeriod: "annual",
+    tierGroup: "api_business",
+    features: API_BUSINESS_FEATURES,
+    marketingFeatures: [],
+    selfServe: true,
+    highlighted: false,
+    currentForCheckout: true,
     publicVisible: true,
   },
 
@@ -534,6 +548,7 @@ export const PLAN_PRECEDENCE: Record<string, number> = {
   api_starter: 20,
   api_starter_annual: 21,
   api_business: 30, // higher capability than api_starter at same tier 2
+  api_business_annual: 31,
   enterprise: 40,
 };
 

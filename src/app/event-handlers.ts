@@ -91,8 +91,11 @@ import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
-import { primeExportGateActivation } from '@/services/export-gate';
-import { evaluateExportGate, evaluatePlaybackGate, exportLockToGateReason, resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
+import { evaluateAvailableExportFormats, evaluateExportGate, exportLockToGateReason } from '@/services/gates/export';
+import { primeExportGateActivation } from '@/services/gates/export-resolver';
+import type { DataExportFormat } from '@/services/gates/export-resolver';
+import { evaluatePlaybackGate } from '@/services/gates/playback';
+import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
@@ -193,6 +196,12 @@ export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
+  /**
+   * Tell the data loader that the rendered news no longer reflects the last
+   * load, so the next loadAllData() refetches it even though the category set
+   * is unchanged. See DataLoader.invalidateNewsHydration.
+   */
+  invalidateNewsHydration: () => void;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
   loadDataForLayer: (layer: string) => void;
@@ -1702,8 +1711,11 @@ export class EventHandlerManager implements AppModule {
       }
     };
 
+    let currentExportFormats: readonly DataExportFormat[] = [];
+
     const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
       if (this.ctx.exportPanel) {
+        this.ctx.exportPanel.setAvailableFormats(currentExportFormats);
         attachExportPanel(this.ctx.exportPanel);
         return Promise.resolve(this.ctx.exportPanel);
       }
@@ -1714,7 +1726,7 @@ export class EventHandlerManager implements AppModule {
           if (this.ctx.isDestroyed) {
             throw new Error('EventHandlerManager destroyed before export panel loaded');
           }
-          const panel = new ExportPanel(getExportData);
+          const panel = new ExportPanel(getExportData, currentExportFormats);
           this.ctx.exportPanel = panel;
           attachExportPanel(panel);
           return panel;
@@ -1771,13 +1783,17 @@ export class EventHandlerManager implements AppModule {
       headerRight?.insertBefore(lockedControl.getElement(), headerRight.firstChild);
     };
 
-    const unlock = (): void => {
+    const unlock = (formats: readonly DataExportFormat[]): void => {
+      currentExportFormats = formats;
       const wasLocked = lockedControl !== null;
       // Change-detection guard: gating re-fires on every auth AND entitlement
       // emission, most with an unchanged verdict — skip the re-import/DOM
       // write when already unlocked (same pattern as Panel.showGatedCta's
       // repeat-verdict skip).
-      if (!wasLocked && isUnlocked) return;
+      if (!wasLocked && isUnlocked) {
+        this.ctx.exportPanel?.setAvailableFormats(currentExportFormats);
+        return;
+      }
       isUnlocked = true;
       removeLockedControl();
       void ensureExportPanel()
@@ -1789,6 +1805,7 @@ export class EventHandlerManager implements AppModule {
             panel.getElement().style.display = 'none';
             return;
           }
+          panel.setAvailableFormats(currentExportFormats);
           panel.getElement().style.display = '';
           if (wasLocked) liveRegion.textContent = t('components.exportGate.unlockedAnnouncement');
         })
@@ -1802,7 +1819,8 @@ export class EventHandlerManager implements AppModule {
 
     const applyGate = (): void => {
       if (this.ctx.isDestroyed) return;
-      const verdict = evaluateExportGate(getAuthState());
+      const authState = getAuthState();
+      const verdict = evaluateExportGate(authState);
       if (verdict.locked) {
         showLocked(exportLockToGateReason(verdict.reason));
         return;
@@ -1815,7 +1833,7 @@ export class EventHandlerManager implements AppModule {
           if (active) applyGate();
         });
       }
-      unlock();
+      unlock(evaluateAvailableExportFormats(authState));
     };
 
     applyGate();
@@ -1935,12 +1953,14 @@ export class EventHandlerManager implements AppModule {
     const modal = new AuthLauncher();
     this.ctx.authModal = modal;
 
-    // The settings gear is rendered once by the standalone unifiedSettings
-    // button (#unifiedSettingsMount), which is mounted regardless of auth state
-    // (so signed-out users keep it too). Passing onSettingsClick here makes
-    // AuthHeaderWidget render a second gear next to the avatar for signed-in
-    // users — a duplicate. Leave it unset.
-    const widget = new AuthHeaderWidget(() => modal.open());
+    // The standalone gear remains available to every user. Signed-in users
+    // also get explicit Settings and Plan & billing destinations inside the
+    // avatar menu, keeping account and subscription actions in one place.
+    const widget = new AuthHeaderWidget(
+      () => modal.open(),
+      () => this.ctx.unifiedSettings?.open('settings'),
+      () => this.ctx.unifiedSettings?.open('billing'),
+    );
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');
     if (mount) {
@@ -2024,6 +2044,11 @@ export class EventHandlerManager implements AppModule {
   }
 
   restoreSnapshot(snapshot: DashboardSnapshot): void {
+    // Replay parks every news panel on a loading state and never refills it —
+    // leaving playback calls loadAllData() to do that. Its news task is skipped
+    // when the category set is unchanged (#5376), which replay does not touch,
+    // so drop the record here and the exit reload happens.
+    this.callbacks.invalidateNewsHydration();
     for (const panel of Object.values(this.ctx.newsPanels)) {
       panel.showLoading();
     }
@@ -2353,7 +2378,7 @@ export class EventHandlerManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));

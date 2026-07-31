@@ -186,12 +186,30 @@ The Security Advisories panel displays advisories with colored level badges and 
 
 ### China Coverage, Attribution, and Freshness
 
-The China country deep-dive composes existing global product contracts rather
-than operating a China-only fetch path. Its attributable signals come from
-BIS, IMF, JODI, UN Comtrade, CCFI, AviationStack, NBS/PBoC, JMA, and HKO.
-Every displayed signal carries its source and observation or release date; a
-missing, stale, or partial source is shown as unavailable or degraded rather
-than as a zero value.
+The China country deep-dive composes source-specific contracts rather than
+operating one opaque China fetch path. The complete contract inventory,
+cadences, surfaces, and access boundaries are maintained on
+[China Data Coverage](/china-data-coverage).
+
+Its China-specific official lanes currently include:
+
+- revision-aware macro observations from NBS and SAFE, with reviewed PBoC and
+  GACC candidates kept explicitly unavailable when their source preflight does
+  not pass;
+- official policy and enforcement documents from CAC, SAMR, MIIT, MOFCOM,
+  NDRC, and PBoC;
+- metadata-only corporate disclosures from SSE and SZSE, with HKEX explicitly
+  blocked by its automated-access terms;
+- Taiwan Ministry of National Defense claims with separately attributed Japan
+  Joint Staff context; and
+- HKO warnings and Western Pacific hazard observations.
+
+The composition also uses attributable global contracts for BIS, IMF, UN
+Comtrade reporter 156 and bilateral HS4 data, CCFI, IMF PortWatch,
+AviationStack, the China energy spine, the China market index, and reviewed
+China news sources. Every displayed signal carries its publisher and
+observation or release date. A missing, stale, blocked, or partial source is
+shown as unavailable or degraded rather than as zero.
 
 JODI remains enabled for its existing global energy product, but the China
 contract stays explicitly blocked until a reviewed update verifies that JODI
@@ -212,6 +230,14 @@ presentation-only airport rows—so an upstream omission remains observable.
 The audit records aggregate status and reason codes only: it never logs
 credentials or raw upstream payloads. Detailed bilateral trade data remains
 Pro-only and is not included in the public China summary.
+
+Source-specific collection and missingness details:
+
+- [Official macro and policy](/china-official-macro-policy)
+- [Corporate disclosures](/china-corporate-disclosures)
+- [Logistics corridors](/china-logistics-corridors)
+- [China decision signals](/china-decision-signals)
+- [Activity nowcast methodology](/methodology/china-activity-nowcast)
 
 #### Cross-Strait Official Activity Claims
 
@@ -558,8 +584,18 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | USA Spending | US federal spending and contracts | [api.usaspending.gov](https://api.usaspending.gov) |
 | Global procurement opportunities | US SAM.gov, EU TED, UK Contracts Finder, CanadaBuys, New Zealand GETS, and World Bank procurement notices | [Coverage and freshness](/global-procurement-intelligence) |
 | UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
-| National Bureau of Statistics of China | China release-calendar context | [stats.gov.cn](https://www.stats.gov.cn/english/) |
-| People's Bank of China | Loan-prime-rate calendar context | [pbc.gov.cn](http://www.pbc.gov.cn/en/3688110/index.html) |
+| National Bureau of Statistics of China | Official activity/investment observations and release calendar | [stats.gov.cn](https://www.stats.gov.cn/english/) |
+| State Administration of Foreign Exchange | Official reserves and bank FX settlement observations | [safe.gov.cn](https://www.safe.gov.cn/safe/sjjd/index.html) |
+| ChinaMoney / CFETS | Realized Loan Prime Rate publication-date verification | [chinamoney.com.cn](https://www.chinamoney.com.cn/) |
+| Cyberspace Administration of China | Official policy documents | [cac.gov.cn](https://www.cac.gov.cn/wxzw/zcfg/) |
+| State Administration for Market Regulation | Official regulation and enforcement documents | [samr.gov.cn](https://www.samr.gov.cn/zw/zfxxgk/) |
+| Ministry of Industry and Information Technology | Official industrial and technology policy documents | [miit.gov.cn](https://www.miit.gov.cn/zwgk/zcwj/) |
+| Ministry of Commerce | Official trade policy and enforcement documents | [mofcom.gov.cn](https://www.mofcom.gov.cn/zcfb/) |
+| National Development and Reform Commission | Official economic policy documents | [ndrc.gov.cn](https://zfxxgk.ndrc.gov.cn/web/zclist.jsp?dirid=41&pid=39) |
+| People's Bank of China | Official policy documents and LPR calendar rule | [pbc.gov.cn](https://www.pbc.gov.cn/) |
+| Shanghai Stock Exchange | Reviewed issuer public disclosure metadata | [sse.com.cn](https://www.sse.com.cn/) |
+| Shenzhen Stock Exchange | Reviewed issuer public disclosure metadata | [szse.cn](https://www.szse.cn/) |
+| Shanghai Shipping Exchange | China Containerized Freight Index | [sse.net.cn](https://en.sse.net.cn/indices/ccfinew.jsp) |
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
 
 ### Geopolitics & Conflict
@@ -570,6 +606,8 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | UCDP | Uppsala Conflict Data Program — conflict events | [ucdp.uu.se](https://ucdp.uu.se) |
 | GDELT | Global event, language, and tone database | [gdeltproject.org](https://www.gdeltproject.org) |
 | IMF PortWatch | Chokepoint transit intelligence | [portwatch.imf.org](https://portwatch.imf.org) |
+| Taiwan Ministry of National Defense | Official daily Cross-Strait activity claims | [mnd.gov.tw](https://www.mnd.gov.tw/english/) |
+| Japan Joint Staff | Separately attributed regional activity context | [mod.go.jp/js](https://www.mod.go.jp/js/) |
 
 ### Environment & Disasters
 

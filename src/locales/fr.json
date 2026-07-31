@@ -129,20 +129,20 @@
       "currencies": "Devises",
       "area": "Superficie"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Chargement du score de résilience…",
+    "resilienceScoreUnavailable": "Score de résilience indisponible.",
     "china": {
       "title": "Aperçu pays : Chine",
       "description": "Situation actuelle macro, marchés, commerce, énergie et disponibilité opérationnelle à partir des contrats de données publics existants.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Politique et application",
       "energy": "Énergie",
       "availability": "Risques & aviation",
       "observed": "Au :",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Publié :",
+      "effective": "En vigueur :",
+      "sectors": "Secteurs :",
+      "entities": "Entités :",
+      "translation": "Traduction :",
       "source": "Source :",
       "imfGrowth": "Prévision de croissance du FMI",
       "creditGdp": "Crédit rapporté au PIB",
@@ -173,12 +173,12 @@
         "stale": "Obsolète",
         "unavailable": "Indisponible"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Signaux macro",
+      "crossStraitActivity": "Activité trans-détroit",
+      "corporateDisclosures": "Divulgations d'entreprises",
+      "corridorConditions": "Conditions des corridors",
+      "activityNowcast": "Prévision d'activité",
+      "decisionSignalsUnavailable": "L'instantané des signaux de décision de la Chine est actuellement indisponible."
     }
   },
   "header": {
@@ -259,7 +259,7 @@
     "panelCatCommodityEcon": "Économie & Commerce",
     "panelCatHappyNews": "Bonnes Nouvelles",
     "panelCatHappyPlanet": "Planète & Solidarité",
-    "embed": "Embed"
+    "embed": "Intégrer"
   },
   "panels": {
     "liveNews": "Actualités en direct",
@@ -1231,8 +1231,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "dégradé",
+        "stale": "périmé"
       }
     },
     "insights": {
@@ -1390,10 +1390,10 @@
         "minutesAgo": "il y a {{count}}m",
         "hoursAgo": "il y a {{count}}h"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII en cache {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "dégradé",
+        "stale": "périmé"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1500,6 +1500,8 @@
       "relatedAssetsNear": "Actifs associés à proximité de {{location}}",
       "summaryError": "Impossible de générer le résumé",
       "summaryFailed": "Échec du résumé",
+      "sourceCoverage": "{{covered}}/{{total}} sources",
+      "sourceCoverageHint": "Affiche {{covered}} des {{total}} sources activées — ce panneau alterne entre ses sources à chaque actualisation",
       "sortBy": "Trier par",
       "sortNewest": "Plus récent",
       "sortRelevance": "Pertinence"
@@ -1788,25 +1790,25 @@
       "trending": "TENDANCE",
       "velocity": "Vélocité",
       "wallets": "Portefeuilles",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Références mondiales de dons",
+      "benchmarkInfoTooltip": "<strong>Références mondiales de dons</strong> Déclarations publiées de plateformes et d'institutions avec périodes sources et statut de vérification. Les chiffres annualisés sont des estimations, pas une activité en direct.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Références publiées avec couverture source vérifiée.",
+        "partial": "Références publiées avec couverture source partielle.",
+        "legacy": "Instantané hérité ; détails de la source indisponibles.",
+        "cached": "Affichage d'un instantané en cache ; actualisation indisponible."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Dons de plateforme suivis — estimation annualisée",
+      "annualizedDaily": "Estimation journalière annualisée",
+      "atLeast": "Au moins",
+      "about": "Environ",
+      "sourceNotVerified": "Source non vérifiée",
+      "reportedCumulative": "Total cumulatif déclaré",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Référence publiée",
+      "sourcesMethodology": "Sources et méthodologie",
+      "methodologyIntro": "Seules les déclarations annuelles vérifiées ou annualisées de manière défendable entrent dans le titre. Les chiffres cumulatifs et institutionnels restent un contexte séparé.",
+      "partialEstimate": "Estimation partiellement vérifiée"
     },
     "supplyChain": {
       "chokepoints": "Points d'étranglement",
@@ -2142,8 +2144,8 @@
     "markets": {
       "infoTooltip": "<strong>Marchés</strong> Indices boursiers, titres et prix crypto en temps réel. Personnalisez votre liste de suivi avec le bouton Liste de suivi. Les sparklines affichent la tendance des prix récente.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Graphique de prix {{symbol}}",
+        "close": "Fermer le graphique"
       }
     },
     "heatmap": {
@@ -2484,59 +2486,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Catégories de panneaux"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Récent",
+        "stale": "Périmé",
+        "veryStale": "Très périmé",
+        "noData": "Aucune donnée",
+        "disabled": "Désactivé",
+        "error": "Erreur"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Fraîcheur des données : {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "dernière mise à jour {{time}}",
+      "neverUpdated": "jamais mis à jour",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "couverture partielle",
+        "contentStale": "contenu périmé",
+        "seedStale": "seed périmé",
+        "noSourceData": "aucune donnée source",
+        "sourceErrorReported": "erreur source signalée",
+        "freshnessStoreUnavailable": "store de fraîcheur indisponible",
+        "freshnessStoreDegraded": "store de fraîcheur dégradé"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "jamais",
+        "justNow": "à l'instant",
+        "minutesAgo": "il y a {{count}}m",
+        "hoursAgo": "il y a {{count}}h",
+        "daysAgo": "il y a {{count}}j",
+        "compactNow": "maintenant",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "compactDays": "{{count}}j"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Connectez-vous pour exporter les données du tableau de bord en CSV, JSON ou PDF.",
+      "upgradeDesc": "L'exportation de données (CSV, JSON, PDF) est incluse avec Pro Business.",
+      "upgradeCta": "Passer à Pro Business",
+      "lockedAriaLabel": "Exporter les données — verrouillé. {{reason}}",
+      "unlockedAnnouncement": "Exportation de données déverrouillée.",
+      "preparingPdf": "Préparation du PDF…",
+      "pdfFailed": "Le rapport PDF n'a pas pu être généré. Réessayez ou utilisez l'export JSON."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Les espaces de travail déconnectés sont limités à {{cap}} onglets. Connectez-vous pour en ajouter.",
+      "upgradeDesc": "Vous avez atteint votre limite de {{cap}} onglets du tableau de bord.",
+      "upgradeCta": "Passer à la version supérieure",
+      "lockedAriaLabel": "Ajouter un onglet — verrouillé. {{reason}}",
+      "unlockedAnnouncement": "Limite d'onglets du tableau de bord levée."
     }
   },
   "popups": {
@@ -3340,16 +3342,16 @@
     "visualizationFailed": "Échec de la visualisation"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Onglets du tableau de bord",
+    "defaultName": "Principal",
+    "newTabName": "Nouvel onglet",
+    "newTabCreated": "Nouvel onglet créé",
+    "tabDeleted": "Onglet \"{{name}}\" supprimé",
+    "addTab": "Ajouter un onglet",
+    "addTabTitle": "Nouvel onglet (commence avec les panneaux par défaut)",
+    "renameHint": "{{name}} — double-cliquer pour renommer",
+    "deleteTab": "Supprimer l'onglet",
+    "deleteTabAria": "Supprimer l'onglet {{name}}",
+    "tabNameAria": "Nom de l'onglet"
   }
 }

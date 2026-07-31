@@ -29,7 +29,8 @@ import {
 } from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
-import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { fetchGdeltBulkConflictEvents, GDELT_BULK_WORST_NETWORK_MS, GDELT_ROLLING_WINDOW_MS, gdeltTimestampToMs, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
+import { GDELT_BULK_CONFLICT_KEY } from './_gdelt-bulk-contract.mjs';
 import {
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
@@ -158,6 +159,22 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
 // below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
+// Cold-start floor for the bulk-primary path (#5849 review): only consulted
+// on a TRUE cold start (no previous snapshot of any kind — #5855 review). Kept
+// deliberately low — a quiet-but-healthy 2h export window still clears it,
+// while a partially-degraded mirror serving a single-country handful does not.
+const GDELT_BULK_COLD_START_MIN_COUNTRIES = 3;
+// Freshness gate for the bulk-primary path (#5855 review): a mirror that stops
+// updating keeps serving the same aging exports, and without an age check every
+// tick publishes a "fresh" seed-meta write while a possibly-healthy DOC route
+// is never consulted. 3h = 12 export cycles of lag — beyond any routine GDELT
+// publication gap, far under the 24h rolling window. An unparseable newest
+// export timestamp fails closed (treated as stale).
+export const GDELT_BULK_MAX_EXPORT_AGE_MS = 3 * 60 * 60 * 1000;
+// Materialized exports come from the same 15-minute Railway cadence, so they
+// should never lead this consumer's clock materially. Allow a small deployment
+// clock skew, then fail closed instead of pinning a future export as fresh.
+export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // The shared GDELT transport enforces one selected-route attempt. These explicit
 // values pin that contract at this high-fanout caller. timeoutMs is pinned too:
 // _gdelt-fetch.mjs's default rose from 15s to 30s for seed-gdelt-intel's slow
@@ -375,11 +392,13 @@ async function fetchAcledEvents({
 
 // ─── GDELT conflict-events fallback (used when ACLED has no credentials) ───
 // ACLED requires a registered account. When its credentials are absent, keep a
-// near-real-time conflict signal from GDELT. The DOC 2.0 path counts recent
-// conflict-tagged articles per priority country and emits synthetic events in the
-// SAME {country, event_date} shape the EMA engine reads (_ema-threat-engine.mjs).
-// When DOC coverage is throttled or yields no events, the official 15-minute bulk
-// event export supplies material-conflict records instead.
+// near-real-time conflict signal from GDELT. The official 15-minute bulk event
+// export is PRIMARY (#5849): it serves real material-conflict records from the
+// unthrottled GCS mirror with no proxy involvement. The DOC 2.0 per-country
+// sweep — which counts recent conflict-tagged articles and emits synthetic
+// events in the SAME {country, event_date} shape the EMA engine reads
+// (_ema-threat-engine.mjs) — is supply-side load-shed (#5843: 0/20 countries
+// for weeks) and runs only when the bulk path itself fails.
 export async function fetchGdeltCountryEvents(cc) {
   if (!GDELT_COUNTRY_NAMES[cc]) {
     return { country: cc, ok: false, events: [], error: 'unknown country code' };
@@ -395,6 +414,16 @@ export async function fetchGdeltCountryEvents(cc) {
   return { country: cc, ok: true, events: mapGdeltArticlesToEvents(data?.articles, cc) };
 }
 
+// #5855 review: a programming defect in our own code must crash loud and
+// attributable to the deploy — never be reclassified as an upstream outage and
+// quietly degraded to sourceUnavailable/exit 0 under the mirror-outage runbook.
+function isProgrammingDefect(error) {
+  return error instanceof TypeError
+    || error instanceof ReferenceError
+    || error instanceof RangeError
+    || error instanceof SyntaxError;
+}
+
 export async function fetchGdeltConflictEvents({
   fetchCountryEvents = fetchGdeltCountryEvents,
   fetchBulkEvents = fetchGdeltBulkConflictEvents,
@@ -403,11 +432,114 @@ export async function fetchGdeltConflictEvents({
   deadlineAt,
   loadPreviousSnapshot = () => readSeedSnapshot(ACLED_CACHE_KEY, { strict: true }),
 } = {}) {
+  // Bulk export first (#5849). On any bulk failure — mirror outage, stale
+  // mirror, empty rolling window — fall through to the DOC sweep below. An
+  // empty CURRENT tick is not by itself a failure: the retained rolling window
+  // still publishes, and only empty-current + nothing-retained falls through
+  // (#5855 review).
+  const bulkStartedAt = now();
+  let bulkFailure;
+  try {
+    const bulk = await fetchBulkEvents();
+    const newestExportAgeMs = now() - gdeltTimestampToMs(bulk?.exportTimestamp);
+    if (!Number.isFinite(newestExportAgeMs) || newestExportAgeMs > GDELT_BULK_MAX_EXPORT_AGE_MS) {
+      throw new Error(
+        `bulk export stale or unparseable: newest export ${bulk?.exportTimestamp}`
+        + ` is ${Number.isFinite(newestExportAgeMs) ? Math.round(newestExportAgeMs / 60000) : '?'}min old`
+        + ` (max ${GDELT_BULK_MAX_EXPORT_AGE_MS / 60000}min)`,
+      );
+    }
+    let previousSnapshot = null;
+    let previousSnapshotReadFailed = false;
+    try {
+      previousSnapshot = await loadPreviousSnapshot();
+    } catch (snapshotError) {
+      previousSnapshotReadFailed = true;
+      console.warn(
+        '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
+        + ` ${snapshotError?.message || snapshotError}`,
+      );
+    }
+    const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
+    if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
+    const countriesWithEvents = new Set(rolling.events.map(event => event.country)).size;
+    if (bulk.exportsSucceeded < bulk.exportsRequested) {
+      // Partial mirror degradation normally still publishes (each 15-min slice
+      // gets ~RECENT_EXPORT_COUNT retries before aging out of the manifest
+      // tail, and the rolling merge retains prior events), but say so — a
+      // silent thin tick is how a persistent asymmetric outage hides (#5849
+      // review). Logged ahead of the cold-start floor so a thin cold-start
+      // tick — exactly the degraded-mirror shape — still reports the ratio
+      // (#5855 review).
+      console.warn(`  GDELT bulk exports partially degraded: ${bulk.exportsSucceeded}/${bulk.exportsRequested} export files fetched`);
+    }
+    // Cold-start coverage floor (#5849 review, flagged independently by two
+    // reviewers): on a true first-ever run, an implausibly thin bulk result —
+    // a partially-degraded mirror serving one usable export — must not become
+    // the primary feed. Fall through to the sweep (and, both-fail, to
+    // runSeed's sourceUnavailable last-good preservation) instead.
+    // The floor arms ONLY on a true cold start (#5855 review):
+    // - a transient snapshot-read failure means "could not read", not
+    //   "first-ever run" (previousSnapshotReadFailed guard), and
+    // - a previous snapshot that exists but is DOC-sourced also zeroes
+    //   retainedPreviousEvents; flooring that state ping-pongs recovery back
+    //   onto the load-shed DOC route every time DOC briefly succeeds (#5852's
+    //   floor half). Publishing thin-but-real bulk re-primes the window.
+    if (
+      !previousSnapshotReadFailed
+      && previousSnapshot == null
+      && rolling.retainedPreviousEvents === 0
+      && countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES
+    ) {
+      throw new Error(
+        `cold-start bulk window too thin: ${countriesWithEvents} countries with events`
+        + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
+      );
+    }
+    console.log(
+      `  GDELT bulk conflict-events: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
+      + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
+    );
+    return {
+      events: rolling.events,
+      pagination: {
+        exportTimestamp: bulk.exportTimestamp,
+        exportsRequested: bulk.exportsRequested,
+        exportsSucceeded: bulk.exportsSucceeded,
+        countriesWithEvents,
+        rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
+        rollingWindowStartedAt: rolling.rollingWindowStartedAt,
+        rollingWindowComplete: rolling.rollingWindowComplete,
+        retainedPreviousEvents: rolling.retainedPreviousEvents,
+      },
+      source: 'gdelt-bulk',
+    };
+  } catch (bulkError) {
+    // Reclassified as a "bulk failure", a code defect would route to the
+    // load-shed DOC sweep and end in a quiet sourceUnavailable exit 0,
+    // sending operators down the mirror-outage runbook (#5855 review).
+    if (isProgrammingDefect(bulkError)) throw bulkError;
+    bulkFailure = `GDELT bulk event export failed: ${bulkError?.message || bulkError}`;
+    console.warn(`  ${bulkFailure}; falling back to the DOC country sweep`);
+  }
+
+  // DOC sweep fallback — canary, batch, budget, floor, and circuit semantics
+  // unchanged from when it was primary (#5140). The bulk attempt's elapsed time
+  // is credited back to the cutoff: the deadline invariant already budgets
+  // GDELT_BULK_WORST_NETWORK_MS ON TOP of the sweep window (seed-fetch-deadline-
+  // budget-invariants.test.mjs), and without the credit a slow-failing mirror
+  // (up to ~60s of timeouts) would hand the healthy DOC fallback an already-
+  // expired budget every tick. Aux-stage time still comes out of the window,
+  // and the credit is clamped to the same GDELT_BULK_WORST_NETWORK_MS constant
+  // the invariant test models, so the modelled and actual worst-case envelopes
+  // stay the same number (#5140 arithmetic unchanged).
   const events = [];
   const failedCountries = [];
   let successfulCountries = 0;
   const CONCURRENCY = 4;
-  const launchCutoffAt = deadlineAt ?? now() + GDELT_SWEEP_BUDGET_MS;
+  const launchCutoffAt = deadlineAt != null
+    ? deadlineAt + Math.min(now() - bulkStartedAt, GDELT_BULK_WORST_NETWORK_MS)
+    : now() + GDELT_SWEEP_BUDGET_MS;
   for (let i = 0; i < CONFLICT_COUNTRIES.length;) {
     // #5140: stop LAUNCHING batches once the phase cutoff passes or the floor can
     // no longer be reached — either way the caller degrades to aux-only and exits 0,
@@ -423,8 +555,9 @@ export async function fetchGdeltConflictEvents({
       break;
     }
     // Probe one country before widening. A selected-route failure on the canary
-    // falls straight through to the official bulk export instead of repeating
-    // the same blocked path across a four-country batch.
+    // aborts the sweep after a single request (bulk has already failed by this
+    // point — see top of function) instead of repeating the same blocked path
+    // across a four-country batch.
     const batchSize = successfulCountries === 0 ? 1 : CONCURRENCY;
     const batch = remaining.slice(0, batchSize);
     const results = await Promise.all(batch.map(cc => fetchCountryEvents(cc)));
@@ -457,48 +590,9 @@ export async function fetchGdeltConflictEvents({
       ? `GDELT conflict-events coverage below floor: ${successfulCountries}/${CONFLICT_COUNTRIES.length} countries succeeded ` +
         `(min ${GDELT_MIN_SUCCESSFUL_COUNTRIES})${sample ? `; failures: ${sample}` : ''}`
       : `GDELT conflict-events returned zero events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful countries`;
-    console.warn(`  ${docFailure}; trying official bulk event export`);
-    try {
-      const bulk = await fetchBulkEvents();
-      if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
-      let previousSnapshot = null;
-      try {
-        previousSnapshot = await loadPreviousSnapshot();
-      } catch (snapshotError) {
-        console.warn(
-          '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
-          + ` ${snapshotError?.message || snapshotError}`,
-        );
-      }
-      const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
-      if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
-      console.log(
-        `  GDELT bulk conflict-events fallback: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
-        + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
-      );
-      return {
-        events: rolling.events,
-        pagination: {
-          countriesTotal: CONFLICT_COUNTRIES.length,
-          countriesSucceeded: successfulCountries,
-          countriesFailed: failedCountries.length,
-          minSuccessfulCountries: GDELT_MIN_SUCCESSFUL_COUNTRIES,
-          exportTimestamp: bulk.exportTimestamp,
-          exportsRequested: bulk.exportsRequested,
-          exportsSucceeded: bulk.exportsSucceeded,
-          countriesWithEvents: new Set(rolling.events.map(event => event.country)).size,
-          rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
-          rollingWindowStartedAt: rolling.rollingWindowStartedAt,
-          rollingWindowComplete: rolling.rollingWindowComplete,
-          retainedPreviousEvents: rolling.retainedPreviousEvents,
-        },
-        source: 'gdelt-bulk',
-      };
-    } catch (bulkError) {
-      throw new Error(`${docFailure}; bulk fallback failed: ${bulkError?.message || bulkError}`);
-    }
+    throw new Error(`${bulkFailure}; DOC sweep fallback failed: ${docFailure}`);
   }
-  console.log(`  GDELT conflict-events (ACLED fallback): ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
+  console.log(`  GDELT conflict-events DOC sweep fallback: ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
   return {
     events,
     pagination: {
@@ -509,6 +603,62 @@ export async function fetchGdeltConflictEvents({
     },
     source: 'gdelt',
   };
+}
+
+// The bulk materializer owns GDELT downloads and the 24h rolling window.
+// Conflict remains the publisher of the established ACLED-compatible key, but
+// its no-credentials fallback is now a single Redis read instead of a second
+// bulk download followed by a 20-country DOC sweep.
+export async function readMaterializedGdeltConflictEvents({
+  readSnapshot = () => readSeedSnapshot(GDELT_BULK_CONFLICT_KEY, { strict: true }),
+  now = Date.now,
+} = {}) {
+  const snapshot = await readSnapshot();
+  if (
+    snapshot?.source !== 'gdelt-bulk'
+    || !Array.isArray(snapshot?.events)
+    || snapshot.events.length === 0
+  ) {
+    throw new Error(`${GDELT_BULK_CONFLICT_KEY} missing or empty`);
+  }
+  const exportTimestamp = snapshot?.pagination?.exportTimestamp;
+  const exportMs = gdeltTimestampToMs(exportTimestamp);
+  const nowMs = now();
+  if (!Number.isFinite(exportMs)) {
+    throw new Error(`${GDELT_BULK_CONFLICT_KEY} export timestamp is unparseable: ${exportTimestamp}`);
+  }
+  const ageMs = nowMs - exportMs;
+  if (ageMs > GDELT_BULK_MAX_EXPORT_AGE_MS) {
+    throw new Error(
+      `${GDELT_BULK_CONFLICT_KEY} stale export ${exportTimestamp}`
+      + ` (${Math.round(ageMs / 60000)}min old; max ${GDELT_BULK_MAX_EXPORT_AGE_MS / 60000}min)`,
+    );
+  }
+  if (ageMs < -GDELT_BULK_MAX_FUTURE_SKEW_MS) {
+    throw new Error(
+      `${GDELT_BULK_CONFLICT_KEY} future export ${exportTimestamp}`
+      + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
+    );
+  }
+  // Cold-start coverage floor, carried onto the materialized path (#5864).
+  // #5855 added this so an implausibly thin window could not become the whole
+  // conflict feed; after the #5863 cutover it survived only in the unwired DOC
+  // seam. It arms ONLY before the rolling window is complete — steady-state
+  // ticks always carry a full 24h window and are never floored. Throwing here
+  // routes to fetchAll's sourceUnavailable path, which preserves last-good.
+  if (snapshot?.pagination?.rollingWindowComplete === false) {
+    const countriesWithEvents = new Set(
+      snapshot.events.map((event) => event?.country).filter(Boolean),
+    ).size;
+    if (countriesWithEvents < GDELT_BULK_COLD_START_MIN_COUNTRIES) {
+      throw new Error(
+        `${GDELT_BULK_CONFLICT_KEY} cold-start window too thin:`
+        + ` ${countriesWithEvents} countries with events`
+        + ` (min ${GDELT_BULK_COLD_START_MIN_COUNTRIES})`,
+      );
+    }
+  }
+  return snapshot;
 }
 
 // ─── Humanitarian Summary (HAPI) ───
@@ -876,7 +1026,9 @@ async function fetchGdeltTensions() {
 // runSeed invokes this as `fetchFn()` with no arguments, so the injected dep is for tests
 // only — the GDELT fallback reaches its proxy through a `curl` child process, which no
 // global-fetch stub can intercept, so it must be injectable to keep tests hermetic.
-export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents } = {}) {
+export async function fetchAll({
+  fetchGdeltFallback = readMaterializedGdeltConflictEvents,
+} = {}) {
   // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
   // not at sweep entry — the aux feeds below and the sweep share runSeed's
   // single fetch deadline, so time the aux stage burns must come out of the
@@ -959,12 +1111,16 @@ export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents }
     // when ACLED credentials ARE present but the display fetch failed (#5106).
     const missingCredentials = acled.status === 'fulfilled';
     if (missingCredentials) {
-      // No ACLED credentials → fall back to the GDELT article-volume proxy so the
-      // conflict escalation EMA keeps a near-real-time signal (#5099). This runs only
+      // No ACLED credentials → fall back to GDELT (bulk event export primary, DOC
+      // article-volume sweep as emergency fallback — #5849) so the conflict
+      // escalation EMA keeps a near-real-time signal (#5099). This runs only
       // on the no-creds path: a credentialed-but-failed fetch still throws below, and a
       // credentialed-but-empty ACLED result is trusted (returns `ac`) rather than
       // overwritten by GDELT volume.
       const gdeltEvents = await fetchGdeltFallback({ deadlineAt: sweepDeadlineAt }).catch((e) => {
+        // Outages degrade to sourceUnavailable below; our own defects must
+        // escape to runSeed and fail attributably (#5855 review).
+        if (isProgrammingDefect(e)) throw e;
         console.warn(`  GDELT conflict-events fallback failed: ${e.message}`);
         return null;
       });

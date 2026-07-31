@@ -45,16 +45,15 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-conflict-intel",
     "requiredEnv": [
-      [
-        "GDELT_PROXY_URL",
-        "PROXY_URL"
-      ]
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
     ],
     "watchPatterns": [
       "scripts/_conflict-gdelt-bulk.mjs",
       "scripts/_conflict-gdelt.mjs",
       "scripts/_conflict-hapi.mjs",
       "scripts/_country-resolver.mjs",
+      "scripts/_gdelt-bulk-contract.mjs",
       "scripts/_gdelt-fetch.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -79,28 +78,30 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   },
   {
-    "entry": "scripts/seed-gdelt-intel.mjs",
+    "entry": "scripts/seed-gdelt-bulk-materializer.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-gdelt-intel",
     "requiredEnv": [
-      [
-        "GDELT_PROXY_URL",
-        "PROXY_URL"
-      ]
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
     ],
     "watchPatterns": [
-      "scripts/_gdelt-fetch.mjs",
+      "scripts/_conflict-gdelt-bulk.mjs",
+      "scripts/_conflict-gdelt.mjs",
+      "scripts/_gdelt-bulk-contract.mjs",
+      "scripts/_gdelt-bulk-materializer.mjs",
+      "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/lib/llm-telemetry.cjs",
-      "scripts/seed-gdelt-intel.mjs",
+      "scripts/seed-gdelt-bulk-materializer.mjs",
       "scripts/package.json",
       "scripts/package-lock.json",
       "scripts/nixpacks.toml"
     ],
-    "cronSchedule": "0 */4 * * *",
+    "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   },
   {

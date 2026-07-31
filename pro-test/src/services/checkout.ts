@@ -30,6 +30,11 @@ import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
+import {
+  checkoutRetryAtMs,
+  checkoutRetryRemainingSeconds,
+  parseCheckoutRetryAfterSeconds,
+} from './checkout-rate-limit';
 import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
 import fallbackTiers from '../generated/tiers.json';
 
@@ -152,8 +157,9 @@ function bucketProductIdForAnalytics(productId: string): string {
 }
 
 /**
- * Phase machine for the checkout flow. Only `creating_checkout` drives
- * UI lock state. `awaiting_auth` is intentionally not exposed — while
+ * Phase machine for the checkout flow. `creating_checkout` drives the clicked
+ * CTA spinner; `rate_limited` disables every paid CTA until Retry-After
+ * expires. `awaiting_auth` is intentionally not exposed — while
  * the Clerk modal is open the pricing section is covered by the modal
  * backdrop, so a service-level UI signal for that window adds no user-
  * visible value and creates lifecycle-recovery problems (watchdogs,
@@ -165,13 +171,17 @@ function bucketProductIdForAnalytics(productId: string): string {
  *   creating_checkout:  post-auth, inside doCheckout's try/finally;
  *                       the clicked tier's CTA shows spinner, siblings
  *                       stay clickable (any click simply updates intent)
+ *   rate_limited:       provider cooldown; every paid CTA stays disabled
+ *                       until retryAtMs and no checkout request is sent
  */
 export type CheckoutPhase =
   | { kind: 'idle' }
-  | { kind: 'creating_checkout'; productId: string };
+  | { kind: 'creating_checkout'; productId: string }
+  | { kind: 'rate_limited'; retryAtMs: number };
 
 let _phase: CheckoutPhase = { kind: 'idle' };
 const phaseSubscribers = new Set<(phase: CheckoutPhase) => void>();
+let checkoutRateLimitTimer: number | null = null;
 
 function setPhase(phase: CheckoutPhase): void {
   _phase = phase;
@@ -184,6 +194,26 @@ export function subscribeCheckoutPhase(cb: (phase: CheckoutPhase) => void): () =
   phaseSubscribers.add(cb);
   cb(_phase);
   return () => { phaseSubscribers.delete(cb); };
+}
+
+function currentCheckoutRateLimitSeconds(): number {
+  if (_phase.kind !== 'rate_limited') return 0;
+  return checkoutRetryRemainingSeconds(Date.now(), _phase.retryAtMs);
+}
+
+function activateCheckoutRateLimit(retryAfterHeader: string | null): number {
+  const retryAfterSeconds = parseCheckoutRetryAfterSeconds(retryAfterHeader);
+  const retryAtMs = checkoutRetryAtMs(Date.now(), retryAfterSeconds);
+  if (checkoutRateLimitTimer) window.clearTimeout(checkoutRateLimitTimer);
+  setPhase({ kind: 'rate_limited', retryAtMs });
+  checkoutRateLimitTimer = window.setTimeout(() => {
+    checkoutRateLimitTimer = null;
+    if (_phase.kind === 'rate_limited' && currentCheckoutRateLimitSeconds() === 0) {
+      setPhase({ kind: 'idle' });
+    }
+  }, retryAfterSeconds * 1_000);
+  showCheckoutRateLimitToast(retryAfterSeconds);
+  return retryAfterSeconds;
 }
 
 /**
@@ -474,6 +504,12 @@ async function doCheckout(
   productId: string,
   options: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
+  const cooldownSeconds = currentCheckoutRateLimitSeconds();
+  if (cooldownSeconds > 0) {
+    showCheckoutRateLimitToast(cooldownSeconds);
+    return false;
+  }
+  if (_phase.kind === 'rate_limited') setPhase({ kind: 'idle' });
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
   // Phase transitions to creating_checkout ONLY here, not in
@@ -533,7 +569,16 @@ async function doCheckout(
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       console.error('[checkout] Edge error:', resp.status, err);
-      if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
+      if (resp.status === 429) {
+        const retryAfterSeconds = activateCheckoutRateLimit(
+          resp.headers.get('Retry-After'),
+        );
+        Sentry.captureMessage('Checkout temporarily rate limited', {
+          level: 'info',
+          tags: { surface: 'pro-marketing', code: 'rate_limited' },
+          extra: { retryAfterSeconds },
+        });
+      } else if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
         // Confirm with the user before taking them to the portal.
         // Uses the whitelisted plan name ONLY — raw server message is
         // logged to Sentry above but never rendered. Dialog is inline
@@ -628,7 +673,7 @@ async function doCheckout(
   } finally {
     checkoutInFlight = false;
     unmountCheckoutInterstitial();
-    setPhase({ kind: 'idle' });
+    if (_phase.kind === 'creating_checkout') setPhase({ kind: 'idle' });
   }
 }
 
@@ -738,6 +783,37 @@ function showCheckoutLoadingToast(): void {
   toast.textContent = 'Still loading, please wait…';
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 5_000);
+}
+
+function showCheckoutRateLimitToast(retryAfterSeconds: number): void {
+  const id = 'wm-checkout-rate-limit-toast';
+  document.getElementById(id)?.remove();
+  const toast = document.createElement('div');
+  toast.id = id;
+  toast.setAttribute('role', 'alert');
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '99995',
+    background: 'rgba(127, 29, 29, 0.97)',
+    color: '#fff',
+    padding: '10px 18px',
+    borderRadius: '6px',
+    border: '1px solid rgba(248, 113, 113, 0.55)',
+    fontSize: '13px',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+  });
+  toast.textContent = `Checkout is temporarily rate limited. Try again in ${retryAfterSeconds} ${
+    retryAfterSeconds === 1 ? 'second' : 'seconds'
+  }.`;
+  document.body.appendChild(toast);
+  window.setTimeout(
+    () => toast.remove(),
+    Math.min(retryAfterSeconds * 1_000, 10_000),
+  );
 }
 
 async function getAuthToken(): Promise<string | null> {

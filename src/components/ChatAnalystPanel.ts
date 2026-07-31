@@ -12,7 +12,8 @@ import {
   isBillingVerificationDenial,
   PRO_VERIFICATION_RETRY_MESSAGE,
 } from '@/services/analyst-denial';
-import { classifyDenialResponse } from '@/services/premium-denial';
+import { classifyDenialResponse, type ClientEntitlementBelief } from '@/services/premium-denial';
+import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackAnalystControlAction } from '@/services/analytics';
 import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import {
@@ -73,7 +74,13 @@ type DashboardControlStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
  * Consumes the response body, so it is only called on the !ok path where the
  * stream is never read.
  */
-async function describeDenial(res: Response): Promise<string> {
+async function describeDenial(
+  res: Response,
+  requestBelief: ClientEntitlementBelief,
+  requestUserId: string | null,
+): Promise<string> {
+  const requestIdentityChanged = () => (getAuthState().user?.id ?? null) !== requestUserId;
+  if (requestIdentityChanged()) throw new DOMException('account changed during analyst request', 'AbortError');
   // #5622: the route now answers an entitlement it could not VERIFY with a
   // retryable 503 + `X-Billing-Verification` instead of flattening it into the
   // 403 upsell. Both this check and the verdict-to-copy mapping live in
@@ -82,7 +89,9 @@ async function describeDenial(res: Response): Promise<string> {
   if (isBillingVerificationDenial(res.status, res.headers.get('X-Billing-Verification'))) {
     return PRO_VERIFICATION_RETRY_MESSAGE;
   }
-  const verdict = await classifyDenialResponse(res, readClientEntitlementBelief(getAuthState()));
+  const verdict = await classifyDenialResponse(res, requestBelief);
+  if (requestIdentityChanged()) throw new DOMException('account changed while reading analyst denial', 'AbortError');
+  if (verdict === 'entitlement_desync') reportEntitlementDesync('chat-analyst');
   return analystDenialMessage(res.status, verdict);
 }
 
@@ -522,6 +531,9 @@ export class ChatAnalystPanel extends Panel {
 
     const controller = new AbortController();
     this.streamAbort = controller;
+    const requestAuthState = getAuthState();
+    const requestUserId = requestAuthState.user?.id ?? null;
+    const requestBelief = readClientEntitlementBelief(requestAuthState);
 
     try {
       const res = await premiumFetch(API_URL, {
@@ -538,7 +550,11 @@ export class ChatAnalystPanel extends Panel {
       });
 
       if (!res.ok) {
-        this.finalizeStreamingBubble(streamingBody, `⚠ ${await describeDenial(res)}`, false);
+        this.finalizeStreamingBubble(
+          streamingBody,
+          `⚠ ${await describeDenial(res, requestBelief, requestUserId)}`,
+          false,
+        );
         return;
       }
 

@@ -618,6 +618,7 @@ export class UnifiedSettings {
     const showMcpClientsTab = hasFeature('mcpAccess');
     const availableTabs: TabId[] = [
       'settings',
+      ...(isSignedIn ? ['billing' as const] : []),
       'panels',
       'sources',
       ...(showNotificationsTab ? ['notifications' as const] : []),
@@ -635,6 +636,7 @@ export class UnifiedSettings {
         </div>
         <div class="unified-settings-tabs" role="tablist" aria-label="Settings">
           <button class="${tabClass('settings')}" tabindex="${this.activeTab === 'settings' ? 0 : -1}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
+          ${isSignedIn ? `<button class="${tabClass('billing')}" tabindex="${this.activeTab === 'billing' ? 0 : -1}" data-tab="billing" role="tab" aria-selected="${this.activeTab === 'billing'}" id="us-tab-billing" aria-controls="us-tab-panel-billing">Plan &amp; billing</button>` : ''}
           <button class="${tabClass('panels')}" tabindex="${this.activeTab === 'panels' ? 0 : -1}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" tabindex="${this.activeTab === 'sources' ? 0 : -1}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           ${showNotificationsTab ? `<button class="${tabClass('notifications')}" tabindex="${this.activeTab === 'notifications' ? 0 : -1}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
@@ -643,8 +645,16 @@ export class UnifiedSettings {
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
+        </div>
+        ${isSignedIn ? `
+        <div class="unified-settings-tab-panel${this.activeTab === 'billing' ? ' active' : ''}" data-panel-id="billing" id="us-tab-panel-billing" role="tabpanel" aria-labelledby="us-tab-billing">
+          <div class="billing-settings-intro">
+            <h2>Plan &amp; billing</h2>
+            <p>See your current plan and manage payment details, invoices, or cancellation.</p>
+          </div>
           ${this.renderUpgradeSection()}
         </div>
+        ` : ''}
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
@@ -769,11 +779,15 @@ export class UnifiedSettings {
   private renderUpgradeSection(): string {
     // Non-Dodo premium (API key / tester key / Clerk pro role without a
     // Convex subscription): neither "Upgrade" nor "Manage Billing" is
-    // actionable. Checked FIRST so these users don't get stuck on the
-    // loading placeholder below — their Convex entitlement snapshot may
-    // never arrive at all.
+    // actionable. Still explain the account state here; a hidden billing
+    // section would recreate the discoverability problem this tab fixes.
     if (!isEntitled() && hasPremiumAccess()) {
-      return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
+      return `
+        <div class="upgrade-pro-section upgrade-pro-external" data-billing-state="external">
+          <div class="upgrade-pro-title">Premium access</div>
+          <div class="upgrade-pro-desc">This access is not billed through your WorldMonitor account. No payment method or invoices are available here.</div>
+        </div>
+      `;
     }
     const sub = getSubscription();
     const billingState = deriveBillingUxState(sub, getEntitlementState(), Date.now());
@@ -798,14 +812,12 @@ export class UnifiedSettings {
     // where currentState would otherwise stay null forever and strand a
     // signed-in free user on an empty placeholder).
     if (!this.entitlementReady && getAuthState().user && getEntitlementState() === null) {
-      // `hidden` so the browser's default `[hidden] { display: none }`
-      // suppresses the empty card — without it, the base `.upgrade-pro-
-      // section` styles (margin + padding + border + surface background
-      // in main.css:22833) paint a visibly empty bordered box during the
-      // Convex cold-load window, which is exactly the state we're trying
-      // to clean up. Element stays queryable for the replaceWith swap in
-      // open().
-      return '<div class="upgrade-pro-section upgrade-pro-loading" hidden aria-hidden="true"></div>';
+      return `
+        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
+          <div class="upgrade-pro-title">Checking your plan…</div>
+          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
+        </div>
+      `;
     }
     if (isEntitled()) {
       const sub = getSubscription();
@@ -839,6 +851,9 @@ export class UnifiedSettings {
       // billing surface remains owner-only. Show their plan status without
       // the Manage Billing CTA that would 404 against Dodo.
       const hasOwnSubscription = sub !== null;
+      if (!hasOwnSubscription) {
+        statusLine = 'Billing is managed by your plan owner.';
+      }
 
       return `
         <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
@@ -868,17 +883,17 @@ export class UnifiedSettings {
     if (getAuthState().user && getEntitlementState() === null) {
       return `
         <div class="upgrade-pro-section upgrade-pro-fallback">
-          <div class="upgrade-pro-title">Upgrade to Pro</div>
-          <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
+          <div class="upgrade-pro-title">Plan status unavailable</div>
+          <div class="upgrade-pro-desc">We could not verify your current plan. View plans in a new tab or try again later.</div>
           <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
         </div>
       `;
     }
 
     return `
-      <div class="upgrade-pro-section">
-        <div class="upgrade-pro-title">Upgrade to Pro</div>
-        <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
+      <div class="upgrade-pro-section" data-billing-state="free">
+        <div class="upgrade-pro-title">WorldMonitor Free</div>
+        <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;

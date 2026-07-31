@@ -121,6 +121,9 @@ const EVENTS = {
   'checkout-start': true,
   'checkout-success': true,
   'checkout-failed': true,
+  // Premium entitlement health — a client that believes it is Pro received a
+  // server-side denial. This is trend telemetry, never an authorization signal.
+  'entitlement-desync': true,
   // Brief — open-rate lift measurement for U10's followed-country bias
   // (followed-countries plan U11). Fired from the dashboard cover card
   // and from the hosted magazine source-link clicks. `followed` flags

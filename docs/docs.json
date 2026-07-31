@@ -94,6 +94,10 @@
                 "pages": [
                   "signal-intelligence",
                   "ai-intelligence",
+                  "china-data-coverage",
+                  "china-official-macro-policy",
+                  "china-corporate-disclosures",
+                  "china-logistics-corridors",
                   "methodology/china-activity-nowcast",
                   "methodology/news-digest-and-briefing",
                   "country-instability-index",
@@ -554,6 +558,10 @@
                 "pages": [
                   "zh/signal-intelligence",
                   "zh/ai-intelligence",
+                  "zh/china-data-coverage",
+                  "zh/china-official-macro-policy",
+                  "zh/china-corporate-disclosures",
+                  "zh/china-logistics-corridors",
                   "zh/methodology/china-activity-nowcast",
                   "zh/methodology/news-digest-and-briefing",
                   "zh/country-instability-index",
@@ -693,6 +701,7 @@
                   "zh/health-endpoints",
                   "zh/relay-parameters",
                   "zh/decision-signal-provenance",
+                  "zh/china-decision-signals",
                   "zh/data-sources"
                 ]
               },

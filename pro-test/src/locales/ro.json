@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 USD / lună",
-    "priceAnnual": "399,99 USD / an",
-    "annualSavingsNote": "2 luni gratuit"
+    "priceAnnual": "359,99 USD / an",
+    "annualSavingsNote": "3 luni gratuit"
   },
   "proShowcase": {
     "proTier": "NIVEL PRO",
@@ -330,7 +330,7 @@
     "headerSubtitle": "De la monitorizarea în timp real la infrastructura completă de intelligence. Alegeți nivelul potrivit pentru misiunea dumneavoastră.",
     "billingMonthly": "Lunar",
     "billingAnnual": "Anual",
-    "saveAnnual": "Economisiți 17%",
+    "saveAnnual": "Economisiți 25%",
     "mostPopular": "Cel Mai Popular",
     "promoCodeNote": "Aveți un cod promo? Introduceți-l la finalizarea comenzii.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, API REST & SDK-uri oficiale — 59 instrumente sub o singură cheie",
       "proF5": "Constructor de widget-uri personalizat pentru panourile tale",
       "cta": "Vezi planuri și prețuri",
-      "note": "De la $39,99/lună · 2 luni gratuite la plată anuală"
+      "note": "De la $39,99/lună · 3 luni gratuite la plată anuală"
     },
     "faq": {
       "eyebrow": "Fără surprize",

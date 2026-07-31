@@ -512,15 +512,15 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.
+Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `category` | string: geopolitical / tech / finance | Restrict to one market category bucket. Omit for all three. |
+| `category` | string: geopolitical / tech / finance | Restrict to one market category bucket. Omit for all three. Finance also owns untagged non-geopolitical records. |
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
-| `source` | string: kalshi / polymarket | Filter to one prediction-market source. |
+| `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`

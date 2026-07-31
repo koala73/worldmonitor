@@ -105,6 +105,9 @@ JODI 数据可用，并不能证明需求方向；同样，只有当前 CCFI 水
 均不存在时，包装对象的 `upstream_unavailable` 才为 true；其他健康但
 缺少方向的信息属于方法证据不足，而不是上游故障。
 
+详细 nowcast 证据只通过 REST/UI 提供。MCP 没有专用活动 nowcast 工具；
+Pro MCP 只通过 `get_china_decision_signals` 接收其受限贡献。
+
 端点组合以下数据：
 
 - 官方中国宏观快照；

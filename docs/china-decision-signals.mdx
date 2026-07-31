@@ -19,6 +19,27 @@ outage or invalid provenance envelope fails closed inside that group without
 hiding unrelated healthy groups. Public responses include at most four items
 per group and state how many additional valid items were omitted.
 
+Those group states are not source-health verdicts. Three separate questions
+must stay distinct:
+
+- **Source coverage** asks whether the launched upstream lanes are reachable,
+  fresh, and producing contract-valid snapshots.
+- **Decision-group population** asks whether a reviewed source snapshot
+  contains at least one qualifying, provenance-valid decision item. A healthy
+  corporate-disclosure query can therefore be an unpopulated
+  `healthy_quiet_window` without being an incident.
+- **Contract parity** asks whether the RPC and bootstrap projections both
+  satisfy the same ordered six-group schema. Parity can be healthy while one
+  or more groups are quiet, insufficient, stale, or unavailable.
+
+Unavailable groups carry a bounded `metadata.unavailableCause`. Known causes
+include `healthy_quiet_window`, `insufficient_data`,
+`provenance_rejected`, and `upstream_unavailable`; the generic reason is used
+only when composition cannot determine a more specific truthful cause.
+Insufficient activity-nowcast groups retain their exact bounded
+`missingInputs` and `missingInputFamilies` diagnostics rather than discarding
+them with the absent derived item.
+
 ## One contract across surfaces
 
 The same `china-decision-signals/v1` JSON contract backs:
@@ -127,6 +148,22 @@ rejected, because the probe reports reachability and latency for whatever it is
 pointed at. The live probe validates both the composition RPC and the public
 `chinaDecisionSignals`
 bootstrap projection, including a one-hour maximum canonical age. It prints only
-route status, latency, generation time, and group states. It never prints
+route status, latency, generation time, group states, and the prominent
+`populated`, `partial`, `stale`, and `unavailable` group counts. It never prints
 environment variables, API keys, Redis values, source documents, or detailed
 trade records.
+
+Ordinary parity remains schema-only and accepts legitimately unpopulated
+groups. A release or operator audit that requires specific populated groups can
+opt into an explicit assertion:
+
+```bash
+node scripts/audit-china-decision-parity.mjs \
+  --require-live \
+  --url https://api-staging.example \
+  --require-populated macro,corporate-disclosures
+```
+
+The operator-only `/api/seed-health` entry and seed log expose the same bounded
+per-group states and counts. Anonymous compact `/api/health?compact=1` continues
+to omit `chinaDecisionSignals` entirely.

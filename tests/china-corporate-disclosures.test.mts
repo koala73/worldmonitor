@@ -62,7 +62,7 @@ describe('official China corporate disclosures (#5577)', () => {
       assert.equal(contract.launchStatus, 'launched');
       assert.equal(contract.preflight.environment, 'railway-production');
       assert.equal(contract.preflight.reachable, true);
-      assert.ok(contract.maxRequestsPerRun > 0 && contract.maxRequestsPerRun <= 4);
+      assert.ok(contract.maxRequestsPerRun > 0 && contract.maxRequestsPerRun <= 8);
       assert.ok(contract.maxResponseBytes >= 32_000 && contract.maxResponseBytes <= 262_144);
       assert.equal(contract.redirectPolicy, 'error');
       assert.equal(contract.documentRetrieval, 'lazy-link-only');
@@ -80,6 +80,14 @@ describe('official China corporate disclosures (#5577)', () => {
 
     const hkex = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.hkex;
     assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.transportRecoverySuccessRuns, 2);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxRequestsPerRun, 8);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxDirectRequestsPerRun, 4);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxProxyRequestsPerRun, 4);
+    assert.equal(
+      OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.fallbackPolicy,
+      'direct_then_proxy_on_transport_failure',
+    );
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.proxyEnvironmentVariable, 'SSE_PROXY_URL');
     assert.equal(hkex.preflight.reachable, true);
     assert.equal(hkex.admissionDecision, 'rejected');
     assert.equal(hkex.blockedReason, 'TERMS_PROHIBIT_AUTOMATED_ACCESS');
@@ -96,7 +104,7 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.ok(timeoutMatch, 'China disclosure bundle section must declare timeoutMs');
     const sectionTimeoutMs = Number(timeoutMatch[1].replaceAll('_', ''));
 
-    assert.equal(CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS, 115_250);
+    assert.equal(CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS, 119_250);
     assert.ok(
       sectionTimeoutMs - CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS >= 20_000,
       'network attempts must leave at least 20s for startup, parsing, publication, and shutdown',
@@ -1123,6 +1131,8 @@ describe('official China corporate disclosures (#5577)', () => {
       emptyResultCount: 0,
       transportPath: 'proxy',
       fallbackReason: 'UND_ERR_CONNECT_TIMEOUT',
+      proxyExitPorts: [443],
+      proxyExitRotated: false,
       reliabilityStatus: 'stable',
       requiredRecoverySuccesses: 2,
       consecutiveTransportSuccesses: 1,
@@ -1130,6 +1140,85 @@ describe('official China corporate disclosures (#5577)', () => {
       checkedAt: retrievedAt,
     });
     assert.doesNotMatch(JSON.stringify(decisions), /proxy-user|proxy-secret/);
+  });
+
+  it('falls back to the bounded China proxy route for each failed SSE issuer request', async () => {
+    const proxyCalls: Array<{
+      url: string;
+      port: number;
+      options: Record<string, unknown>;
+    }> = [];
+    const decisions: Array<Record<string, unknown>> = [];
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'cn.decodo.com:30001:proxy-user:proxy-secret',
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          throw Object.assign(new TypeError('fetch failed'), {
+            cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+          });
+        }
+        return new Response(JSON.stringify(fixture('szse.json')), { status: 200 });
+      },
+      proxyRequestFn: async (input, proxyConfig, options) => {
+        const url = String(input);
+        proxyCalls.push({ url, port: proxyConfig.port, options });
+        const productId = new URL(url).searchParams.get('productId');
+        const payload = productId === '600519'
+          ? fixture('sse.json')
+          : { pageHelp: { pageNo: 1, pageSize: 100, total: 0 }, result: [] };
+        return {
+          buffer: Buffer.from(JSON.stringify(payload)),
+          status: 200,
+          contentType: 'application/json',
+        };
+      },
+    });
+
+    assert.equal(snapshot.status, 'healthy');
+    assert.equal(proxyCalls.length, 4);
+    assert.deepEqual(proxyCalls.map((call) => call.port), [30001, 30001, 30001, 30001]);
+    assert.equal(
+      proxyCalls.every((call) => call.url.startsWith('https://query.sse.com.cn/')),
+      true,
+    );
+    assert.equal(
+      proxyCalls.every(
+        (call) => call.options.maxResponseBytes
+          === OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxResponseBytes,
+      ),
+      true,
+    );
+    assert.equal(proxyCalls.every((call) => call.options.timeoutMs === 12_000), true);
+
+    const sse = snapshot.sources.find((source) => source.id === 'sse');
+    assert.equal(sse?.transportStatus, 'fresh');
+    assert.equal(sse?.contentStatus, 'current');
+    assert.equal(sse?.requestCount, 8);
+    assert.equal(sse?.transportPath, 'proxy');
+    assert.equal(sse?.fallbackReason, 'ETIMEDOUT');
+    assert.deepEqual(
+      decisions.find((decision) => decision.sourceId === 'sse'),
+      {
+        sourceId: 'sse',
+        status: 'accepted',
+        requestCount: 8,
+        emptyResultCount: 0,
+        transportPath: 'proxy',
+        fallbackReason: 'ETIMEDOUT',
+        proxyExitPorts: [30001, 30001, 30001, 30001],
+        proxyExitRotated: false,
+        reliabilityStatus: 'stable',
+        requiredRecoverySuccesses: 1,
+        consecutiveTransportSuccesses: 1,
+        consecutiveTransportFailures: 0,
+        checkedAt: retrievedAt,
+      },
+    );
+    assert.doesNotMatch(JSON.stringify({ snapshot, decisions }), /proxy-user|proxy-secret/);
   });
 
   it('retries one transient proxy transport failure before degrading SZSE coverage', async () => {
@@ -1204,6 +1293,8 @@ describe('official China corporate disclosures (#5577)', () => {
           emptyResultCount: 0,
           transportPath: 'proxy',
           fallbackReason: 'ETIMEDOUT',
+          proxyExitPorts: [443, 443],
+          proxyExitRotated: false,
           reliabilityStatus: 'stable',
           requiredRecoverySuccesses: 2,
           consecutiveTransportSuccesses: 1,
@@ -1342,6 +1433,8 @@ describe('official China corporate disclosures (#5577)', () => {
         transportPath: 'edge',
         fallbackReason: 'ETIMEDOUT',
         proxyFailureReason: 'HTTP_522',
+        proxyExitPorts: [443, 443],
+        proxyExitRotated: false,
         reliabilityStatus: 'stable',
         requiredRecoverySuccesses: 2,
         consecutiveTransportSuccesses: 1,
@@ -1489,6 +1582,146 @@ describe('official China corporate disclosures (#5577)', () => {
     );
   });
 
+  it('rotates to a fresh sticky exit when the origin blocks the first one', async () => {
+    const proxyPorts: number[] = [];
+    const decisions: Array<Record<string, unknown>> = [];
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'gate.decodo.com:10001:proxy-user:proxy-secret',
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+        });
+      },
+      // SZSE answers THROUGH the tunnel with 403 -- the exit IP is blocked, which
+      // is the one failure a different sticky session can fix.
+      proxyRequestFn: async (_input, proxyConfig) => {
+        proxyPorts.push(proxyConfig.port);
+        if (proxyPorts.length === 1) {
+          return { buffer: Buffer.from('blocked'), status: 403, contentType: 'text/html' };
+        }
+        return {
+          buffer: Buffer.from(JSON.stringify(fixture('szse.json'))),
+          status: 200,
+          contentType: 'application/json',
+        };
+      },
+    });
+
+    assert.deepEqual(proxyPorts, [10001, 10002]);
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal(szse?.transportStatus, 'fresh');
+    assert.equal(szse?.transportPath, 'proxy');
+    const decision = decisions.find((entry) => entry.sourceId === 'szse');
+    assert.deepEqual(decision?.proxyExitPorts, [10001, 10002]);
+    assert.equal(decision?.proxyExitRotated, true);
+    assert.doesNotMatch(JSON.stringify({ snapshot, decisions }), /proxy-user|proxy-secret/);
+  });
+
+  it('does not rotate exits when the gateway itself rejects the tunnel', async () => {
+    const proxyPorts: number[] = [];
+    const decisions: Array<Record<string, unknown>> = [];
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: 'gate.decodo.com:10001:proxy-user:proxy-secret',
+      edgeEgress: null,
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+        });
+      },
+      // A CONNECT-layer 403: the gateway itself refuses the tunnel (provider
+      // policy block), not the origin refusing the exit IP. Both collapse to
+      // HTTP_403, but only the origin case is fixable by a fresh sticky
+      // session -- so this must NOT consume the second bounded request.
+      proxyRequestFn: async (_input, proxyConfig) => {
+        proxyPorts.push(proxyConfig.port);
+        throw Object.assign(new Error('Proxy CONNECT: HTTP/1.1 403 Forbidden'), {
+          status: 403,
+          proxyConnect: true,
+        });
+      },
+    });
+
+    assert.deepEqual(proxyPorts, [10001]);
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal(szse?.proxyFailureReason, 'HTTP_403');
+    const decision = decisions.find((entry) => entry.sourceId === 'szse');
+    assert.deepEqual(decision?.proxyExitPorts, [10001]);
+    assert.equal(decision?.proxyExitRotated, false);
+  });
+
+  it('reports edge routing diagnostics for an interstitial that returns a 2xx status', async () => {
+    const decisions: Array<Record<string, unknown>> = [];
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      proxyUrl: '',
+      edgeEgress: {
+        url: 'https://api.example.test/api/internal/china-exchange-egress',
+        secret: 'edge-relay-secret',
+      },
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 100, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        throw Object.assign(new TypeError('fetch failed'), {
+          cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+        });
+      },
+      // A 200 HTML challenge page: it passes the status check and only fails
+      // later in the JSON parser, so the diagnostic cannot ride on that error.
+      edgeRequestFn: async () => new Response(
+        '<html>intermediary-response-secret</html>',
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'CF-Ray': 'abc123def456-CDG',
+            'Server': 'cloudflare',
+          },
+        },
+      ),
+    });
+
+    const decision = decisions.find((entry) => entry.sourceId === 'szse');
+    assert.equal(decision?.edgeFailureReason, 'MALFORMED_RESPONSE');
+    assert.deepEqual(decision?.edgeFailureDiagnostic, {
+      contentType: 'text/html',
+      server: 'cloudflare',
+      cfRay: 'abc123def456-CDG',
+    });
+    const szse = snapshot.sources.find((source) => source.id === 'szse');
+    assert.equal('edgeFailureDiagnostic' in (szse ?? {}), false);
+    assert.doesNotMatch(
+      JSON.stringify({ snapshot, decisions }),
+      /edge-relay-secret|intermediary-response-secret/,
+    );
+  });
+
   it('drops intermediary routing identifiers that fail the allowlist', async () => {
     const runWithEdgeHeaders = async (headers: Record<string, string>) => {
       const decisions: Array<Record<string, unknown>> = [];
@@ -1545,13 +1778,15 @@ describe('official China corporate disclosures (#5577)', () => {
     });
     assert.doesNotMatch(partial.serialized, /not-a-valid-ray|xxxxxxxx/);
 
-    // Nothing allowlisted: the diagnostic is withheld entirely.
+    // Nothing allowlisted: every identifier is dropped, but the bounded
+    // contentType still reports -- an unrecognised intermediary is exactly the
+    // case where "did this come from our handler?" needs an answer.
     const none = await runWithEdgeHeaders({
       Server: 'nginx',
       'CF-Ray': rejectedCfRay,
       'X-Vercel-Id': rejectedVercelId,
     });
-    assert.equal('edgeFailureDiagnostic' in (none.decision ?? {}), false);
+    assert.deepEqual(none.decision?.edgeFailureDiagnostic, { contentType: 'text/html' });
     assert.doesNotMatch(none.serialized, /nginx|not-a-valid-ray|xxxxxxxx/);
   });
 
@@ -1647,6 +1882,9 @@ describe('official China corporate disclosures (#5577)', () => {
         fallbackReason: 'ECONNRESET',
         proxyFailureReason: 'EAI_AGAIN',
         edgeFailureReason: 'upstream_fetch_failed',
+        edgeFailureDiagnostic: { contentType: 'application/json' },
+        proxyExitPorts: [443, 443],
+        proxyExitRotated: false,
         reliabilityStatus: 'degraded',
         requiredRecoverySuccesses: 2,
         consecutiveTransportSuccesses: 0,

@@ -2,8 +2,8 @@
  * U6 (plan 2026-07-25-001, KTD8) — dashboard tab cap.
  *
  * `resolveTabCap` is a pure function over injected state, so this suite needs
- * no DOM, no Convex and no Vite globals — it shares the `src/services/
- * export-gate.ts` leaf with U5 (which imports only the zero-import
+ * no DOM, no Convex and no Vite globals — it shares the `src/services/gates/
+ * export-resolver.ts` leaf with U5 (which imports only the zero-import
  * `billing-state` module).
  *
  * The cap follows KTD2's AFFIRMATIVE DENIAL chain verbatim: only a state we
@@ -24,7 +24,7 @@ import {
   FREE_TAB_CAP,
   resolveTabCap,
   type ExportGateInputs,
-} from '@/services/export-gate';
+} from '@/services/gates/export-resolver';
 
 /** Signed-in free user with a loaded snapshot — the baseline capped state. */
 function inputs(overrides: Partial<ExportGateInputs> = {}): ExportGateInputs {
@@ -223,11 +223,22 @@ describe('FREE_TAB_CAP — catalog drift guard', () => {
  * Source-grep wiring guards (the project's regression pattern): a correct
  * resolver only bites if the tab bar actually consults it, re-evaluates on
  * BOTH reactive sources, and never removes an existing tab.
+ *
+ * KNOWN WEAKNESS — these are source greps, and a source grep goes green on a
+ * name existing in a file; it never drives the decision (see docs/solutions/
+ * logic-errors/playback-control-gated-on-a-clerk-role-field-with-no-writer.md).
+ * The `addTab` and re-evaluation guards below survive only because replacing
+ * them needs a live `PanelLayoutManager`, and nothing can mount one today: its
+ * constructor pulls 49 imports and runs checkout-return handling plus
+ * ProActivationController on the way up, so a DOM harness for it is its own
+ * piece of work rather than a line-item in a refactor. Tracked in #5892.
+ *
+ * Do NOT re-point these at a new path if the code moves — build the harness
+ * and delete them, the way #5813 replaced the allowance-forwarding greps with
+ * tests/dom/gate-reader-forwarding.test.mts.
  */
 describe('tab-cap wiring', () => {
   const panelLayout = readFileSync(resolve(process.cwd(), 'src/app/panel-layout.ts'), 'utf8');
-  const panelGating = readFileSync(resolve(process.cwd(), 'src/services/panel-gating.ts'), 'utf8');
-  const tabBar = readFileSync(resolve(process.cwd(), 'src/components/PanelTabBar.ts'), 'utf8');
 
   const addTabBody = panelLayout.slice(
     panelLayout.indexOf('private addTab(): void {'),
@@ -262,25 +273,35 @@ describe('tab-cap wiring', () => {
   it('the cap re-evaluates on BOTH auth and entitlement emissions', () => {
     // updatePanelGating is the single gating pass; it is driven by
     // subscribeAuthState AND onEntitlementChange (the auth-only-subscription
-    // bug is documented in this file at the proBlock wiring).
+    // bug is documented in this file at the proBlock wiring). Entitlement
+    // emissions now flow through the reload controller so a null auth-handoff
+    // snapshot is not collapsed to a false entitlement transition.
     assert.match(gatingBody, /this\.updateTabCapLock\(\)/);
     assert.match(panelLayout, /subscribeAuthState\(\(state\) => \{\s*this\.updatePanelGating\(state\);/);
-    assert.match(panelLayout, /onEntitlementChange\(\(\) => \{[\s\S]*?this\.updatePanelGating\(getAuthState\(\)\)/);
+    assert.match(
+      panelLayout,
+      /onSnapshot:\s*\(\) => this\.updatePanelGating\(getAuthState\(\)\)/,
+    );
+    assert.match(
+      panelLayout,
+      /onEntitlementChange\(\(state\) => \{[\s\S]*?entitlementReloadController\.handleSnapshot\(/,
+    );
   });
 
-  it('panel-gating forwards the dashboard allowance into the shared inputs', () => {
-    assert.match(panelGating, /maxDashboards: entitlement\.features\.maxDashboards/);
-    assert.match(panelGating, /export function evaluateTabCap\(/);
-  });
+  // The allowance-forwarding guard that used to live here was two greps over
+  // panel-gating.ts's source text. #5813 moved the reader into
+  // `src/services/gates/export.ts` and made it module-private; the guarantee is
+  // now proven behaviourally, by calling the real `evaluateTabCap` against a
+  // stubbed entitlement snapshot — see tests/dom/gate-reader-forwarding.test.mts.
 
-  it('the add button carries the locked reason and announces unlocks politely', () => {
-    assert.match(tabBar, /components\.tabCap\.lockedAriaLabel/);
-    assert.match(tabBar, /components\.tabCap\.unlockedAnnouncement/);
-    assert.match(tabBar, /aria-live'?,\s*'polite'/);
-  });
-
-  it('the tab bar exposes the locked state and the anchored notice separately', () => {
-    assert.match(tabBar, /setAddLock\(/);
-    assert.match(tabBar, /showAddLockNotice\(/);
-  });
+  // The two PanelTabBar greps that used to close this block are gone (#5813).
+  // They asserted that `components.tabCap.lockedAriaLabel`,
+  // `components.tabCap.unlockedAnnouncement`, `aria-live'/'polite'`,
+  // `setAddLock(` and `showAddLockNotice(` appear somewhere in the component's
+  // source. tests/dom/panel-tab-bar-lock-notice.test.mts already proves all
+  // five behaviourally and strictly more strongly — it asserts the rendered
+  // aria-label VALUE, the live region's actual announcement text and
+  // role="status", selects the region by [aria-live="polite"], and calls both
+  // methods for real. A grep that a name exists adds nothing on top of a test
+  // that drives it.
 });

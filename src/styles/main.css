@@ -9643,6 +9643,10 @@ a.prediction-link:hover {
   cursor: pointer;
 }
 
+.export-option[hidden] {
+  display: none;
+}
+
 .export-option:hover {
   background: var(--border);
 }
@@ -19186,7 +19190,7 @@ a.prediction-link:hover {
 }
 
 .unified-settings-modal {
-  max-width: 600px;
+  max-width: 640px;
   width: 95%;
   max-height: 80vh;
 }
@@ -19195,10 +19199,18 @@ a.prediction-link:hover {
   display: flex;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.unified-settings-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .unified-settings-tab {
-  flex: 1;
+  flex: 1 0 auto;
+  min-height: 44px;
   padding: 10px 12px;
   background: none;
   border: none;
@@ -19211,6 +19223,7 @@ a.prediction-link:hover {
   text-transform: uppercase;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
 }
 
 .unified-settings-tab:hover {
@@ -19229,6 +19242,27 @@ a.prediction-link:hover {
 
 .unified-settings-tab-panel.active {
   display: block;
+}
+
+.billing-settings-intro {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 8px;
+}
+
+.billing-settings-intro h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.billing-settings-intro p {
+  max-width: 58ch;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* Source region pills */
@@ -21961,6 +21995,10 @@ body.has-breaking-alert .panels-grid {
   text-align: left;
   border-radius: 6px;
   cursor: pointer;
+}
+
+.cb-export-option[hidden] {
+  display: none;
 }
 
 .cb-export-option:hover {

@@ -897,6 +897,39 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
   });
 
+  // WORLDMONITOR-RA: SnapTube (Android video-downloader in-app WebView) JS bridge
+  // parses its own `undefined` payload. `/SnapTube/` already sits in ignoreErrors,
+  // but that layer matches the MESSAGE only — here the attribution lives purely in a
+  // frame function, so it needs the stack-aware layer.
+  it('suppresses SyntaxError "is not valid JSON" from the SnapTube WebView bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '/assets/sentry-DMxp_zBn.js', lineno: 488, function: 'r' },
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'Object.jsReceiveMessages' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress SnapTube-shaped JSON errors when a first-party frame is present', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      firstPartyFrame('src/services/panel-storage.ts', 'readCached'),
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party JSON.parse regression must surface');
+  });
+
+  it('does NOT suppress "is not valid JSON" from an unnamed anonymous bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '<anonymous>', lineno: 1, function: 'e.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.ok(
+      beforeSend(event) !== null,
+      'suppression must key off the named SnapTube bridge, not bare !hasFirstParty',
+    );
+  });
+
   // WORLDMONITOR-NR: deck.gl/maplibre internal null-access on Layer.isHidden
   // during render (Safari 26.4 beta, empty stacks preceded by DeckGLMap map-error
   // breadcrumbs). `\w{1,3}\.isHidden` is gated on !hasFirstParty so a genuine

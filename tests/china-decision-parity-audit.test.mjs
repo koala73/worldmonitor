@@ -19,6 +19,7 @@ import {
   parseChinaParityAuditArgs,
   probeChinaDecisionParity,
   resolveChinaParityExitCode,
+  summarizeChinaDecisionGroups,
 } from '../scripts/audit-china-decision-parity.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
@@ -44,6 +45,7 @@ describe('China decision-signal static and staging audit (#5580)', () => {
       CHINA_DECISION_SIGNAL_GROUP_MANIFEST,
     );
     assert.deepEqual(result.structuralCheckIds, [
+      'edge-seed-health-group-ids',
       'gateway-cache-tier',
       'gateway-public-no-auth',
       'access-tier-composition',
@@ -124,8 +126,137 @@ describe('China decision-signal static and staging audit (#5580)', () => {
         'corridor-conditions': 'unavailable',
         'activity-nowcast': 'unavailable',
       },
+      groupCounts: {
+        populated: 0,
+        partial: 0,
+        stale: 0,
+        unavailable: 6,
+      },
+      bootstrapGroupCounts: {
+        populated: 0,
+        partial: 0,
+        stale: 0,
+        unavailable: 6,
+      },
     });
     assert.doesNotMatch(JSON.stringify(result), /apiKey|private-document|must-not-leak/);
+  });
+
+  it('reports population counts and can require named groups without changing ordinary parity', async () => {
+    assert.deepEqual(summarizeChinaDecisionGroups([
+      { state: 'available', items: [{}] },
+      { state: 'partial', items: [{}] },
+      { state: 'stale', items: [{}] },
+      { state: 'unavailable', items: [] },
+    ]), {
+      populated: 3,
+      partial: 1,
+      stale: 1,
+      unavailable: 1,
+    });
+
+    const groups = CHINA_DECISION_PARITY_MANIFEST.map(({ groupId }) => ({
+      id: groupId,
+      state: 'unavailable',
+      reason: 'No reviewed source observation is available.',
+      items: [],
+      metadata: {},
+    }));
+    const canonical = {
+      schemaVersion: 1,
+      generatedAt: '2026-07-26T12:00:00Z',
+      groups,
+      access: {
+        anonymous: 'bounded_public_summary',
+        pro: 'same_provenance_via_mcp',
+        operator: 'source_health_only',
+      },
+    };
+    const result = await probeChinaDecisionParity('https://staging.example', {
+      requiredPopulatedGroups: ['macro', 'corporate-disclosures'],
+      now: () => Date.parse('2026-07-26T12:00:00Z'),
+      fetchImpl: async (url) => ({
+        ok: true,
+        status: 200,
+        json: async () => String(url).includes('/api/bootstrap?')
+          ? { data: { chinaDecisionSignals: canonical } }
+          : { payloadJson: JSON.stringify(canonical) },
+      }),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'required_groups_unpopulated');
+    assert.deepEqual(result.requiredPopulatedGroups, ['macro', 'corporate-disclosures']);
+    assert.deepEqual(result.unpopulatedRequiredGroups, ['macro', 'corporate-disclosures']);
+    assert.deepEqual(result.groupCounts, {
+      populated: 0,
+      partial: 0,
+      stale: 0,
+      unavailable: 6,
+    });
+  });
+
+  it('requires requested groups to be populated on both RPC and bootstrap surfaces', async () => {
+    const canonical = canonicalAccessSnapshot();
+    canonical.generatedAt = '2026-07-26T12:00:00Z';
+    const populated = structuredClone(canonical);
+    const item = {
+      id: 'macro-signal',
+      lineageId: 'macro-signal',
+      publisherType: 'government_official',
+      stale: false,
+      provenance: {
+        contractVersion: 'decision-signal-provenance/v1',
+        signalId: 'macro-signal',
+      },
+    };
+    populated.groups[0] = { ...populated.groups[0], state: 'available', items: [item] };
+    const probe = async (rpcSnapshot, bootstrapSnapshot) => probeChinaDecisionParity('https://staging.example', {
+      requiredPopulatedGroups: ['macro'],
+      now: () => Date.parse('2026-07-26T12:00:00Z'),
+      fetchImpl: async (url) => ({
+        ok: true,
+        status: 200,
+        json: async () => String(url).includes('/api/bootstrap?')
+          ? { data: { chinaDecisionSignals: bootstrapSnapshot } }
+          : { payloadJson: JSON.stringify(rpcSnapshot) },
+      }),
+    });
+
+    assert.equal((await probe(populated, populated)).ok, true);
+    const onlyRpc = await probe(populated, canonical);
+    assert.equal(onlyRpc.error, 'required_groups_unpopulated');
+    assert.deepEqual(onlyRpc.unpopulatedRequiredGroups, ['macro']);
+  });
+
+  it('rejects contradictory unavailable groups from either public surface', async () => {
+    const canonical = canonicalAccessSnapshot();
+    const contradictory = structuredClone(canonical);
+    contradictory.groups[0] = {
+      ...contradictory.groups[0],
+      items: [{
+        id: 'macro-contradiction',
+        lineageId: 'macro-contradiction',
+        publisherType: 'government_official',
+        stale: false,
+        provenance: {
+          contractVersion: 'decision-signal-provenance/v1',
+          signalId: 'macro-contradiction',
+        },
+      }],
+    };
+    const probe = async (rpcSnapshot, bootstrapSnapshot) => probeChinaDecisionParity('https://staging.example', {
+      fetchImpl: async (url) => ({
+        ok: true,
+        status: 200,
+        json: async () => String(url).includes('/api/bootstrap?')
+          ? { data: { chinaDecisionSignals: bootstrapSnapshot } }
+          : { payloadJson: JSON.stringify(rpcSnapshot) },
+      }),
+    });
+
+    assert.equal((await probe(contradictory, canonical)).error, 'invalid_contract');
+    assert.equal((await probe(canonical, contradictory)).error, 'invalid_bootstrap_contract');
   });
 
   it('fails closed when staging returns malformed group states', async () => {
@@ -182,6 +313,15 @@ describe('China decision-signal static and staging audit (#5580)', () => {
 // ordinary regression tests; with it they are the standing proof that presence
 // of a token is not evidence of wiring (#5643).
 const STRUCTURAL_MUTATIONS = [
+  {
+    checkId: 'edge-seed-health-group-ids',
+    name: 'the Edge-local group mirror has the right tokens in the wrong order',
+    substringStillPresent: "'macro'",
+    mutate: (source) => source.replace(
+      "  'macro',\n  'policy-enforcement',",
+      "  'policy-enforcement',\n  'macro',",
+    ),
+  },
   {
     checkId: 'gateway-cache-tier',
     name: 'the cache-tier entry is commented out',
@@ -352,14 +492,35 @@ describe('China decision-signal audit CLI (#5643)', () => {
     assert.deepEqual(parseChinaParityAuditArgs(['--url', 'https://staging.example']), {
       url: 'https://staging.example',
       requireLive: false,
+      requiredPopulatedGroups: [],
       error: null,
     });
     assert.deepEqual(parseChinaParityAuditArgs(['--require-live', '--url', 'https://staging.example']), {
       url: 'https://staging.example',
       requireLive: true,
+      requiredPopulatedGroups: [],
       error: null,
     });
-    assert.deepEqual(parseChinaParityAuditArgs([]), { url: null, requireLive: false, error: null });
+    assert.deepEqual(
+      parseChinaParityAuditArgs([
+        '--url',
+        'https://staging.example',
+        '--require-populated',
+        'macro,corporate-disclosures',
+      ]),
+      {
+        url: 'https://staging.example',
+        requireLive: false,
+        requiredPopulatedGroups: ['macro', 'corporate-disclosures'],
+        error: null,
+      },
+    );
+    assert.deepEqual(parseChinaParityAuditArgs([]), {
+      url: null,
+      requireLive: false,
+      requiredPopulatedGroups: [],
+      error: null,
+    });
   });
 
   it('refuses probe targets that are not public https endpoints', () => {
@@ -392,11 +553,20 @@ describe('China decision-signal audit CLI (#5643)', () => {
   it('refuses argument shapes that would silently skip the live probe', () => {
     // Each of these would have run the static half only and exited 0 before
     // --require-live existed, reporting a staging audit that never happened.
-    for (const args of [['--url'], ['--url', '--require-live'], ['--require-live'], ['--require_live', '--url', 'https://x']]) {
+    for (const args of [
+      ['--url'],
+      ['--url', '--require-live'],
+      ['--require-live'],
+      ['--require-populated', 'macro'],
+      ['--url', 'https://x', '--require-populated'],
+      ['--url', 'https://x', '--require-populated', 'not-a-group'],
+      ['--require_live', '--url', 'https://x'],
+    ]) {
       const parsed = parseChinaParityAuditArgs(args);
       assert.ok(parsed.error, `expected an error for ${JSON.stringify(args)}`);
       assert.equal(parsed.url, null);
       assert.equal(parsed.requireLive, false);
+      assert.deepEqual(parsed.requiredPopulatedGroups, []);
     }
   });
 

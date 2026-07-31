@@ -18,8 +18,13 @@ import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { getAuthState } from '@/services/auth-state';
-import { evaluateExportGate, exportLockToGateReason, hasPremiumAccess } from '@/services/panel-gating';
-import { primeExportGateActivation } from '@/services/export-gate';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import {
+  evaluateAvailableExportFormats,
+  evaluateExportGate,
+  exportLockToGateReason,
+} from '@/services/gates/export';
+import { primeExportGateActivation } from '@/services/gates/export-resolver';
 import { exportGateCopy } from '@/components/ExportGateControl';
 import { trackGateHit } from '@/services/analytics';
 
@@ -127,6 +132,7 @@ export class CountryBriefPage implements CountryBriefPanel {
       if (target.closest('.cb-export-btn')) {
         e.stopPropagation();
         const exportMenu = this.overlay.querySelector('.cb-export-menu');
+        this.syncStructuredExportOptions();
         exportMenu?.classList.toggle('hidden');
         return;
       }
@@ -142,7 +148,7 @@ export class CountryBriefPage implements CountryBriefPanel {
         } else if (format === 'pdf') {
           this.exportPdf();
         } else if (format === 'json' || format === 'csv') {
-          if (this.canExportStructuredData()) this.exportBrief(format);
+          if (this.canExportStructuredData(format)) this.exportBrief(format);
         } else if (format === 'evidence-md') {
           this.exportBrief(format);
         }
@@ -753,11 +759,32 @@ export class CountryBriefPage implements CountryBriefPanel {
    * free — they carry no machine-readable payload — and the evidence bundle
    * keeps its own Pro gate below.
    */
-  private canExportStructuredData(): boolean {
-    const verdict = evaluateExportGate(getAuthState());
+  private syncStructuredExportOptions(): void {
+    const authState = getAuthState();
+    const verdict = evaluateExportGate(authState);
+    // Keep the locked rows visible so they remain an entry point to the
+    // billing-aware gate. Once unlocked, the catalog is the format allowlist.
+    const availableFormats = verdict.locked
+      ? null
+      : new Set(evaluateAvailableExportFormats(authState));
+
+    this.overlay
+      .querySelectorAll<HTMLButtonElement>('.cb-export-option')
+      .forEach((button) => {
+        const format = button.dataset.format;
+        if (format !== 'json' && format !== 'csv') return;
+        button.hidden = availableFormats !== null && !availableFormats.has(format);
+      });
+  }
+
+  private canExportStructuredData(format: 'json' | 'csv'): boolean {
+    const authState = getAuthState();
+    const verdict = evaluateExportGate(authState);
     if (!verdict.locked) {
       if (verdict.pendingActivation) void primeExportGateActivation();
-      return true;
+      // Re-evaluate at click time so a stale/open menu cannot bypass a live
+      // entitlement change.
+      return evaluateAvailableExportFormats(authState).includes(format);
     }
     trackGateHit('export');
     showToast(exportGateCopy(exportLockToGateReason(verdict.reason)).desc);

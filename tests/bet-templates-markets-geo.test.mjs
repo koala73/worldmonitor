@@ -254,3 +254,50 @@ describe('geopolitical bets reach the seeder snapshot end-to-end', () => {
     assert.ok(Number.isFinite(geoBet.probability), 'carries a base-rate probability (Stage A)');
   });
 });
+
+// #5733: the PRODUCER's geo pool and this family's geo partition are deliberately
+// NOT the same predicate. The producer treats a market as geopolitical when the
+// title matches isGeopoliticalMarket OR the venue tags say so; this family uses
+// the title signal only, because a false geo tag would steal a flagship
+// long-horizon ensemble slot. So a market that is geopolitical purely by TAG
+// lands in the published `geopolitical` pool but in the GENERAL bet family.
+//
+// That asymmetry is an accepted exception, documented in
+// _bet-templates-markets-classify.mjs. It is pinned here so a future
+// half-alignment — importing the producer's tag rescue into one family but not
+// the other, or "fixing" this to match the pool label — cannot pass silently.
+describe('producer geo POOL vs geo bet family (accepted #5733 asymmetry)', () => {
+  const tagOnlyGeo = market({
+    title: 'Will AfD win the most seats in the 2026 Berlin state elections?',
+    url: 'https://polymarket.com/event/berlin-state-election-winner',
+    tags: ['world-elections', 'world', 'main-election', 'global-elections', 'elections'],
+    volume: 3_139_438,
+    yesPrice: 17.8,
+  });
+
+  it('the title matcher does not claim a tag-only geopolitical market', () => {
+    assert.ok(!isGeopoliticalMarket(tagOnlyGeo.title));
+  });
+
+  it('so the geo family declines it even when the producer published it as geopolitical', () => {
+    assert.equal(eligibleGeoMarkets(feedFixture([tagOnlyGeo]), NOW).length, 0);
+  });
+
+  it('and the general family owns it whenever it fits the general 45d horizon', () => {
+    const nearDated = { ...tagOnlyGeo, endDate: '2026-08-25T00:00:00Z' }; // ~28d out
+    const eligible = eligibleMarkets(feedFixture([nearDated]), NOW);
+    assert.equal(eligible.length, 1);
+    assert.equal(eligible[0].slug, 'berlin-state-election-winner');
+  });
+
+  it('a LONG-dated tag-only geo market is claimed by neither family — the #5525 horizon gate, not a classification bug', () => {
+    // The real Berlin market closes 2026-09-20, ~54d out: past the general
+    // family's 45d cap, and the geo family (which would take a 210d horizon)
+    // declines it on the title predicate. Both refusals are deliberate. This is
+    // pinned so the gap is a KNOWN consequence of the precision-first title
+    // matcher plus the general family's fast-resolution cap, not a surprise
+    // rediscovered later as "the producer says geo but no bet was generated".
+    assert.equal(eligibleGeoMarkets(feedFixture([tagOnlyGeo]), NOW).length, 0);
+    assert.equal(eligibleMarkets(feedFixture([tagOnlyGeo]), NOW).length, 0);
+  });
+});

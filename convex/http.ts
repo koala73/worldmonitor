@@ -1,6 +1,10 @@
 import { anyApi, httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
+import {
+  CHECKOUT_RATE_LIMITED,
+  isCheckoutRateLimitedOutcome,
+} from "./payments/checkoutRateLimit";
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
@@ -1475,6 +1479,21 @@ http.route({
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
+      if (isCheckoutRateLimitedOutcome(result)) {
+        return new Response(
+          JSON.stringify({
+            error: CHECKOUT_RATE_LIMITED,
+            message: "Checkout is temporarily rate limited. Retry shortly.",
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": String(result.retryAfterSeconds),
+            },
+          },
+        );
+      }
       if (
         result &&
         typeof result === "object" &&

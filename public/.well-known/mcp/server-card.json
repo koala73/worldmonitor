@@ -82,7 +82,7 @@
     },
     {
       "name": "get_prediction_markets",
-      "description": "Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets."
+      "description": "Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance."
     },
     {
       "name": "get_sanctions_data",

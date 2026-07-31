@@ -287,6 +287,22 @@ describe('scheduled seed freshness monitor', () => {
         false,
         'shippingRates recovered across the canonical cadence; do not suppress it again',
       );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'gdeltIntel'),
+        false,
+        'gdeltIntel recovered after the bulk-materializer cutover; do not suppress it again',
+      );
+      const gdeltFailure = applyAcceptanceBaseline(
+        [{ name: 'gdeltIntel', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-01'),
+      );
+      assert.deepEqual(
+        gdeltFailure.blocking.map((problem) => problem.name),
+        ['gdeltIntel'],
+        'a recovered gdeltIntel failure must block the committed acceptance gate',
+      );
+      assert.deepEqual(gdeltFailure.acknowledged, []);
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',

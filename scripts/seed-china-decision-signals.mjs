@@ -46,7 +46,11 @@ export function validateChinaDecisionSignalSnapshot(value) {
       candidate?.id === CHINA_DECISION_SIGNAL_GROUP_IDS[index]
       && ['available', 'partial', 'stale', 'unavailable'].includes(candidate?.state)
       && Array.isArray(candidate?.items)
-      && candidate.items.length <= 4
+      // An unavailable source cannot expose an item. Every other state asserts
+      // that at least one bounded public item is available.
+      && (candidate.state === 'unavailable'
+        ? candidate.items.length === 0
+        : candidate.items.length >= 1 && candidate.items.length <= 4)
       && candidate.items.every((item) => (
         typeof item?.id === 'string'
         && typeof item?.lineageId === 'string'
@@ -88,6 +92,29 @@ export function declareChinaDecisionSignalRecords(snapshot) {
   return Array.isArray(snapshot?.groups)
     ? snapshot.groups.filter((group) => group?.state !== 'unavailable').length
     : 0;
+}
+
+export function summarizeChinaDecisionGroups(groups) {
+  const candidates = Array.isArray(groups) ? groups : [];
+  return {
+    populated: candidates.filter((group) => Array.isArray(group?.items) && group.items.length > 0).length,
+    partial: candidates.filter((group) => group?.state === 'partial').length,
+    stale: candidates.filter((group) => group?.state === 'stale').length,
+    unavailable: candidates.filter((group) => group?.state === 'unavailable').length,
+  };
+}
+
+export function chinaDecisionSignalGroupDiagnostics(snapshot) {
+  const groups = Array.isArray(snapshot?.groups) ? snapshot.groups : [];
+  return {
+    groupStates: Object.fromEntries(
+      CHINA_DECISION_SIGNAL_GROUP_IDS.map((groupId) => [
+        groupId,
+        groups.find((group) => group?.id === groupId)?.state ?? 'unavailable',
+      ]),
+    ),
+    groupCounts: summarizeChinaDecisionGroups(groups),
+  };
 }
 
 export async function publishChinaDecisionSignalAlerts(
@@ -152,8 +179,33 @@ export async function deliverChinaDecisionSignalAlertOutbox(
   return result;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+/**
+ * Diagnostics are returned from afterPublish so runSeed can write them with
+ * seed-meta before alert delivery. Delivery remains durable and visible: an
+ * outbox error rejects afterFreshness rather than silently swallowing it.
+ */
+export function createChinaDecisionSignalSeedHooks({
+  prepareAlerts = prepareChinaDecisionSignalAlertEvents,
+  deliverAlerts = deliverChinaDecisionSignalAlertOutbox,
+  diagnosticsFor = chinaDecisionSignalGroupDiagnostics,
+  log = console.log,
+} = {}) {
   let preparedAlertEvents = [];
+  return {
+    beforePublish: async (snapshot) => {
+      preparedAlertEvents = await prepareAlerts(snapshot);
+    },
+    afterPublish: async (snapshot) => {
+      const diagnostics = diagnosticsFor(snapshot);
+      log(`[china-decision-signals] group diagnostics ${JSON.stringify(diagnostics)}`);
+      return { freshnessMetaPatch: diagnostics };
+    },
+    afterFreshness: async () => deliverAlerts(preparedAlertEvents),
+  };
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const hooks = createChinaDecisionSignalSeedHooks();
   runSeed(
     'intelligence',
     'china-decision-signals',
@@ -172,15 +224,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       // Prepare against the previous canonical value without sending anything.
       // runSeed publishes the validated snapshot between this callback and
       // afterPublish, preventing phantom alerts for a state that never landed.
-      beforePublish: async (snapshot) => {
-        preparedAlertEvents = await prepareChinaDecisionSignalAlertEvents(snapshot);
-      },
-      // Delivery is post-commit and durable: failures remain in a bounded
-      // outbox and are retried on the next seed even though canonical state has
-      // advanced.
-      afterPublish: async () => {
-        await deliverChinaDecisionSignalAlertOutbox(preparedAlertEvents);
-      },
+      ...hooks,
     },
   ).catch((error) => {
     console.error(`FATAL: ${error instanceof Error ? error.message : String(error)}`);

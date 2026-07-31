@@ -314,13 +314,21 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
 /** Number of external feeds (Techmeme ICS + dev.events RSS) behind a fetch. */
 const EXTERNAL_SOURCE_COUNT = 2;
 
-async function fetchTechEvents(
-  req: ListTechEventsRequest,
-  pagingPresence: TechEventsPagingPresence,
-): Promise<ListTechEventsResponse> {
-  const { type, mappable } = req;
-  const { limit, days } = resolveTechEventsPaging(req, pagingPresence);
-
+/**
+ * Collect the FULL event set: both feeds, plus curated, deduped and sorted.
+ *
+ * Takes no request and applies no narrowing, by design. This is the writer for
+ * the shared, request-independent `research:tech-events:v1` key, so it must
+ * produce what the seeders produce (scripts/ais-relay.cjs `seedTechEvents`,
+ * scripts/seed-research.mjs) — they apply no type/mappable/days/limit filter
+ * either. #5427 happened because this function accepted a request and narrowed
+ * by it, so one caller's view became every caller's view for the 6h TTL. With
+ * no request parameter that bug cannot be expressed here at all.
+ *
+ * Per-request narrowing belongs exclusively to `filterEvents()` on the read
+ * path, which re-applies every filter and recomputes the counts.
+ */
+async function fetchAllTechEvents(): Promise<ListTechEventsResponse> {
   // Fetch both sources in parallel (direct → relay fallback)
   const [icsText, rssText] = await Promise.all([
     fetchTextWithRelay(ICS_URL),
@@ -373,27 +381,7 @@ async function fetchTechEvents(
   // Sort by date
   events.sort((a, b) => a.startDate.localeCompare(b.startDate));
 
-  // Filter by type if specified
-  if (type && type !== 'all') {
-    events = TECH_EVENT_TYPES.has(type) ? events.filter(e => e.type === type) : [];
-  }
-
-  // Filter to only mappable events if requested
-  if (mappable) {
-    events = events.filter(e => e.coords && !e.coords.virtual);
-  }
-
-  // Filter by time range if specified
-  if (days > 0) {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() + days);
-    events = events.filter(e => new Date(e.startDate) <= cutoff);
-  }
-
-  // Apply limit if specified
-  if (limit > 0) {
-    events = events.slice(0, limit);
-  }
+  // No narrowing here — see the docblock. filterEvents() owns it.
 
   // Add metadata
   const conferences = events.filter(e => e.type === 'conference');
@@ -466,38 +454,23 @@ function filterEvents(
 // ---------- Handler ----------
 
 /**
- * The cold-start fallback must cache the WIDEST payload under the shared,
- * request-independent `research:tech-events:v1` key: the Railway relay seeds
- * the full list there, and `filterEvents()` re-narrows per caller. Forwarding
- * the live request's `type`/`mappable`/`limit`/`days` into the fetcher pinned
- * one caller's narrowed view for every client for the full 6h TTL (#5427).
- * `limit`/`days` mirror `resolveTechEventsPaging`'s clamp maxima, so this
- * request cannot resolve narrower than the documented widest bounds.
- * Exported for the regression test.
- */
-export const WIDEST_TECH_EVENTS_REQUEST: Readonly<ListTechEventsRequest> = Object.freeze({
-  type: 'all',
-  mappable: false,
-  limit: 200,
-  days: 365,
-});
-
-/**
  * The cache-miss fetcher, exactly as handed to `cachedFetchJson`.
  *
- * It takes NO parameters on purpose. The bug this fixes was the handler
- * threading the live request into the fetcher, so the shared key ended up
- * holding one caller's narrowed view; with a zero-argument fetcher that
- * regression cannot be reintroduced silently — passing caller state back in
- * requires changing this signature, which is a type error at the call site
- * rather than a behaviour change no test would notice.
+ * Takes no parameters, and neither does `fetchAllTechEvents` beneath it, so
+ * there is no request in this path to narrow by — #5427 is unrepresentable
+ * here rather than merely tested against.
  *
- * Exported so the wiring itself is executable in tests, not just the constant
- * above (the constant being right proves nothing about what the handler does
- * with it).
+ * That is a property of the SHAPE, not a guarantee against every regression:
+ * reintroducing the bug does not require changing this signature, only
+ * ignoring this function and inlining a request-scoped closure at the
+ * `cachedFetchJson` call site. Nothing in the type system stops that, which is
+ * why tests/tech-events-cold-start-widest.test.mts drives `listTechEvents`
+ * end-to-end and asserts on the payload that actually reaches Redis.
+ *
+ * Exported so that behavioural seam stays available to the tests.
  */
 export async function fetchWidestTechEvents(): Promise<ListTechEventsResponse | null> {
-  const response = await fetchTechEvents(WIDEST_TECH_EVENTS_REQUEST, { hasLimit: true, hasDays: true });
+  const response = await fetchAllTechEvents();
 
   // Returning null makes cachedFetchJson write a 120s NEG_SENTINEL instead of
   // a REDIS_CACHE_TTL (6h) payload, so the shared key recovers on the next

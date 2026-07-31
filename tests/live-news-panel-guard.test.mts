@@ -19,6 +19,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { newsPanelKeyForCategory } from '../src/app/news-panel-keys.ts';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
@@ -151,6 +153,14 @@ describe('LiveNewsPanel instantiation guard', () => {
 //    rendered "LIVE NEWS … No items in the last 7 days" instead of the 24/7
 //    video streams. The loop must exclude 'live-news' so the dedicated video
 //    panel owns the key.
+//
+//    #5871 removed `COLLIDING_NEWS_PANEL_KEYS` — that hardcoded set was itself
+//    a bug source (it omitted `commodities`) and the collision is derived from
+//    the live registry now. `live-news` still needs naming because it is the one
+//    panel registered BELOW the loop, so the registry cannot answer for it; the
+//    exception moved to `LATE_REGISTERED_PANEL_KEYS`. Both spellings are still
+//    accepted below so the guard survives either shape, and the behavioural half
+//    of the check now runs the real resolver rather than only grepping.
 // ---------------------------------------------------------------------------
 
 describe("live-news must not be shadowed by a generic NewsPanel (regression #4382)", () => {
@@ -173,12 +183,53 @@ describe("live-news must not be shadowed by a generic NewsPanel (regression #438
 
     const skipsLiveNews = /key\s*===\s*['"]live-news['"]/.test(loopRegion);
     const collidesLiveNews = /COLLIDING_NEWS_PANEL_KEYS\s*=\s*new Set\(\[[^\]]*['"]live-news['"]/.test(layout);
+    const lateRegistersLiveNews = /LATE_REGISTERED_PANEL_KEYS\s*=\s*new Set\(\[[^\]]*['"]live-news['"]/.test(layout);
 
     assert.ok(
-      skipsLiveNews || collidesLiveNews,
+      skipsLiveNews || collidesLiveNews || lateRegistersLiveNews,
       "panel-layout.ts must exclude 'live-news' from the CANONICAL_FEEDS NewsPanel loop " +
         "(it is the dedicated LiveNewsPanel video key). Without this, the generic NewsPanel " +
         "shadows the video panel and lazyPanel's dedup guard blocks the real one (regression #4382).",
+    );
+  });
+
+  it("the real resolver refuses to create a NewsPanel for 'live-news'", () => {
+    // The grep above cannot tell whether the exclusion is actually consulted. This
+    // runs the production resolver with `live-news` declared claimed — the state
+    // `LATE_REGISTERED_PANEL_KEYS` puts it in — and asserts it yields no panel.
+    // The `live-news-news` remap must find no settings entry on any variant, so a
+    // catalog entry appearing under that name would resurrect #4382 by another route.
+    // The catalog, NOT panel-layout: `hasPanelSetting` reads `panelSettings`, which
+    // App.ts builds from ALL_PANELS in src/config/panels.ts. Grepping panel-layout
+    // for this would be an assertion that cannot fire for the case it describes.
+    assert.doesNotMatch(
+      src('src/config/panels.ts'),
+      /['"]live-news-news['"]/,
+      "nothing may define a 'live-news-news' panel — that is the key the remap parks live-news on",
+    );
+
+    assert.equal(
+      newsPanelKeyForCategory('live-news', {
+        isFeedCategory: () => true,
+        hasNewsPanel: () => false,
+        isPanelKeyClaimed: (panelKey) => panelKey === 'live-news',
+        // Deliberately generous: even if every key had a settings entry, the
+        // remapped key must still not be 'live-news'.
+        hasPanelSetting: () => true,
+      }),
+      'live-news-news',
+      "a claimed 'live-news' key must remap away from the video panel's key",
+    );
+
+    assert.equal(
+      newsPanelKeyForCategory('live-news', {
+        isFeedCategory: () => true,
+        hasNewsPanel: () => false,
+        isPanelKeyClaimed: (panelKey) => panelKey === 'live-news',
+        hasPanelSetting: (panelKey) => panelKey !== 'live-news-news',
+      }),
+      null,
+      "with no 'live-news-news' catalog entry — the real state — no panel may be created",
     );
   });
 });

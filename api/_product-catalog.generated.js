@@ -47,7 +47,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "tierGroup": "pro",
       "billingPeriod": "annual",
       "billingDuration": "P1Y",
-      "price": 399.99,
+      "price": 359.99,
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock",
       "url": "https://www.worldmonitor.app/pro#pricing",
@@ -75,7 +75,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "tierGroup": "pro_business",
       "billingPeriod": "annual",
       "billingDuration": "P1Y",
-      "price": 499,
+      "price": 449.99,
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock",
       "url": "https://www.worldmonitor.app/pro#pricing",
@@ -103,7 +103,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "tierGroup": "api_starter",
       "billingPeriod": "annual",
       "billingDuration": "P1Y",
-      "price": 999,
+      "price": 899.99,
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock",
       "url": "https://www.worldmonitor.app/pro#pricing",
@@ -124,6 +124,20 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Priority support, Commercial license — for your customers"
+    },
+    {
+      "planKey": "api_business_annual",
+      "name": "API Business Annual",
+      "tierGroup": "api_business",
+      "billingPeriod": "annual",
+      "billingDuration": "P1Y",
+      "price": 2699.99,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": true,
+      "selfServe": true,
+      "description": ""
     },
     {
       "planKey": "enterprise",
@@ -185,6 +199,11 @@ export const PRODUCT_CATALOG = {
     "planKey": "api_business",
     "tierGroup": "api_business",
     "billingPeriod": "monthly"
+  },
+  "pdt_0NkHjzMhGp3m45sZLQ7BQ": {
+    "planKey": "api_business_annual",
+    "tierGroup": "api_business",
+    "billingPeriod": "annual"
   },
   "pdt_0Nbttnqrfh51cRqhMdVLx": {
     "planKey": "enterprise",
@@ -344,10 +363,11 @@ export const PUBLIC_TIER_GROUPS = [
 
 export const FALLBACK_PRICES = {
   "pdt_0Nbtt71uObulf7fGXhQup": 3999,
-  "pdt_0NbttMIfjLWC10jHQWYgJ": 39999,
+  "pdt_0NbttMIfjLWC10jHQWYgJ": 35999,
   "pdt_0NjyFDbhURh2oROgPIU3G": 4999,
-  "pdt_0Nk072fxPUcHWivZRtlQW": 49900,
+  "pdt_0Nk072fxPUcHWivZRtlQW": 44999,
   "pdt_0NbttVmG1SERrxhygbbUq": 9999,
-  "pdt_0Nbu2lawHYE3dv2THgSEV": 99900,
-  "pdt_0Nbttg7NuOJrhbyBGCius": 29999
+  "pdt_0Nbu2lawHYE3dv2THgSEV": 89999,
+  "pdt_0Nbttg7NuOJrhbyBGCius": 29999,
+  "pdt_0NkHjzMhGp3m45sZLQ7BQ": 269999
 };

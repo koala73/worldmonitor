@@ -172,6 +172,55 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 
 **严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
 
+### 中国覆盖、归因与新鲜度
+
+中国国家下钻由多个来源专属契约组成，而不是一个不透明的“中国抓取路径”。完整
+契约清单、更新频率、界面和访问边界见[中国数据覆盖](/zh/china-data-coverage)。
+
+当前中国专属官方管线包括：
+
+- NBS 与 SAFE 的修订感知宏观观测；未通过来源预检的 PBoC 与 GACC 候选项保持显式不可用；
+- CAC、SAMR、MIIT、MOFCOM、NDRC 与 PBoC 的官方政策和执法文件；
+- SSE 与 SZSE 的仅元数据企业披露；HKEX 因自动访问条款明确被阻止；
+- 台湾国防部声明，以及单独归因的日本统合幕僚监部背景；
+- HKO 警告与西太平洋灾害观测。
+
+组合还使用 BIS、IMF、UN Comtrade reporter 156 与双边 HS4、CCFI、IMF PortWatch、
+AviationStack、中国能源脊柱、中国市场指数和审核中国新闻源等可归因全球契约。
+每个展示信号都保留发布者和观测或发布日期。缺失、过期、阻止或部分来源显示为
+不可用或降级，而不是零。
+
+JODI 继续用于现有全球能源产品，但在确认相关油气数据集发布实质性 `CN` 行之前，
+中国契约保持 `blocked`。全球排名 insights 也不作为中国来源健康证据：当前前八条
+完全可能没有中国故事，因此 seeder 会单独持久化 Xinhua、MIIT 和 MOFCOM 的
+中国来源投影。
+
+每小时 Railway 中国覆盖评估器分别检查传输 heartbeat 和内容新鲜度。航空覆盖使用
+规范八枢纽 `coverage` 记录，而不是 bootstrap 的展示用机场行。审计只记录聚合状态
+和原因码，不记录凭据或原始上游负载。详细双边贸易数据仅限 Pro，不进入公共中国摘要。
+
+来源专属细节：
+
+- [官方宏观与政策](/zh/china-official-macro-policy)
+- [企业披露](/zh/china-corporate-disclosures)
+- [物流走廊](/zh/china-logistics-corridors)
+- [中国决策信号](/zh/china-decision-signals)
+- [活动 nowcast 方法](/zh/methodology/china-activity-nowcast)
+
+#### 台海官方活动声明
+
+持久 Railway 归档为 `military:cross-strait-activity:v1`；Force Posture 面板从
+`military:cross-strait-activity-bootstrap:v1` 水合紧凑投影。台湾国防部每日发布
+按官方 Asia/Taipei 06:00 至次日 06:00 报告窗口存储。解放军军机、军舰、其他
+公务船、越过海峡中线和进入 ADIZ 保持独立可空类别；未报告类别为未知，不是零。
+
+每次运行最多累积 20 个新的台湾国防部详情页，并将更正保留为关联版本。30/90 天
+中位数只使用当前报告之前的有效台湾国防部报告日；样本不足时比较保持不可用。
+审核日本统合幕僚监部发布仅作为单独归因区域背景，不进入台湾国防部基线。
+
+这些官方声明不是 ADS-B 飞机轨迹、AIS 船舶轨迹、NOTAM、新闻或市场观测。
+面板明确标注区别，不把这些来源族合并成单一活动计数。
+
 ### 航空情报面板
 
 航空情报面板提供了一个 6 标签页的航空监测界面，覆盖运营、航班、航空公司、跟踪、新闻和价格：
@@ -490,6 +539,18 @@ WorldMonitor 感谢以下组织将其数据公开可访问。
 | U.S. BLS | 美国劳工统计 | [bls.gov/developers](https://www.bls.gov/developers) |
 | USA Spending | 美国联邦支出和合同 | [api.usaspending.gov](https://api.usaspending.gov) |
 | UN Comtrade | 全球商品贸易流向 | [comtradeapi.un.org](https://comtradeapi.un.org) |
+| 中国国家统计局 | 官方活动/投资观测与发布日历 | [stats.gov.cn](https://www.stats.gov.cn/english/) |
+| 国家外汇管理局 | 官方外汇储备与银行结售汇观测 | [safe.gov.cn](https://www.safe.gov.cn/safe/sjjd/index.html) |
+| ChinaMoney / CFETS | 贷款市场报价利率实际发布日期核验 | [chinamoney.com.cn](https://www.chinamoney.com.cn/) |
+| 国家互联网信息办公室 | 官方政策文件 | [cac.gov.cn](https://www.cac.gov.cn/wxzw/zcfg/) |
+| 国家市场监督管理总局 | 官方监管与执法文件 | [samr.gov.cn](https://www.samr.gov.cn/zw/zfxxgk/) |
+| 工业和信息化部 | 官方工业与技术政策文件 | [miit.gov.cn](https://www.miit.gov.cn/zwgk/zcwj/) |
+| 商务部 | 官方贸易政策与执法文件 | [mofcom.gov.cn](https://www.mofcom.gov.cn/zcfb/) |
+| 国家发展和改革委员会 | 官方经济政策文件 | [ndrc.gov.cn](https://zfxxgk.ndrc.gov.cn/web/zclist.jsp?dirid=41&pid=39) |
+| 中国人民银行 | 官方政策文件与 LPR 日历规则 | [pbc.gov.cn](https://www.pbc.gov.cn/) |
+| 上海证券交易所 | 审核发行人公共披露元数据 | [sse.com.cn](https://www.sse.com.cn/) |
+| 深圳证券交易所 | 审核发行人公共披露元数据 | [szse.cn](https://www.szse.cn/) |
+| 上海航运交易所 | 中国出口集装箱运价指数 | [sse.net.cn](https://en.sse.net.cn/indices/ccfinew.jsp) |
 | CoinGecko | 加密货币价格和市场数据 | [coingecko.com](https://www.coingecko.com) |
 
 ### 地缘政治与冲突
@@ -500,6 +561,8 @@ WorldMonitor 感谢以下组织将其数据公开可访问。
 | UCDP | 乌普萨拉冲突数据项目 — 冲突事件 | [ucdp.uu.se](https://ucdp.uu.se) |
 | GDELT | 全球事件、语言和语调数据库 | [gdeltproject.org](https://www.gdeltproject.org) |
 | IMF PortWatch | 咽喉要道过境情报 | [portwatch.imf.org](https://portwatch.imf.org) |
+| 台湾国防部 | 官方每日台海活动声明 | [mnd.gov.tw](https://www.mnd.gov.tw/english/) |
+| 日本统合幕僚监部 | 单独归因的区域活动背景 | [mod.go.jp/js](https://www.mod.go.jp/js/) |
 
 ### 环境与灾害
 

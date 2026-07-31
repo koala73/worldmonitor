@@ -1,4 +1,5 @@
 {
+  "_comment": "TWO DIFFERENT JOBS, do not conflate (#5733). Top-level geopolitical/tech/finance = Polymarket tag SLUGS TO FETCH; the seeder queries their union, so overlap between them is harmless and expected. `classify` = which pool a fetched market is PUBLISHED under; those three lists must stay mutually DISJOINT, because overlap there is exactly what made the published pools near-duplicates. Editing a fetch list changes coverage; editing a classify list moves markets between the pools every consumer reads by name. classify.tech/classify.finance must remain supersets of shared/openapi-filter-param-contracts.json's predictionMarketTechCategories/predictionMarketFinanceCategories (the RPC routes a requested category to a pool with those), and may add venue-only tags the RPC does not expose.",
   "geopolitical": [
     "politics", "geopolitics", "elections", "world",
     "ukraine", "china", "middle-east", "europe",
@@ -13,6 +14,21 @@
     "trade", "tariffs", "debt-ceiling",
     "crypto", "business", "markets"
   ],
+  "classify": {
+    "geopolitical": [
+      "geopolitics", "geopolitical", "world", "elections", "global-elections",
+      "world-elections", "international-election-props", "main-election",
+      "middle-east", "ukraine", "nato", "diplomacy-ceasefire",
+      "foreign-policy", "war", "military", "defense", "sanctions"
+    ],
+    "tech": [
+      "ai", "tech", "crypto", "science", "elon-musk"
+    ],
+    "finance": [
+      "economy", "fed", "inflation", "interest-rates", "recession",
+      "trade", "tariffs", "debt-ceiling", "markets", "business"
+    ]
+  },
   "excludeKeywords": [
     "nba", "nfl", "mlb", "nhl", "fifa", "world cup", "super bowl", "championship",
     "playoffs", "oscar", "grammy", "emmy", "box office", "movie", "album", "song",

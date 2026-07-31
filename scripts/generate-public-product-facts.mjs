@@ -396,10 +396,16 @@ function replacePreviousPrices(source) {
     const oldText = priceText(previous.price);
     const nextText = priceText(plan.price);
     result = result.replaceAll(`$${oldText}`, `$${nextText}`);
-    result = result.replaceAll(
-      `$${oldText.replace('.', ',')}`,
-      `$${nextText.replace('.', ',')}`,
-    );
+    // Comma-variant rewrite only when the old price actually HAD a decimal
+    // point: for integer prices the "comma form" is identical to the dot
+    // form, and running it after the line above re-matches the freshly
+    // written replacement's prefix ("$449.99" -> "$449,99.99").
+    if (oldText.includes('.')) {
+      result = result.replaceAll(
+        `$${oldText.replace('.', ',')}`,
+        `$${nextText.replace('.', ',')}`,
+      );
+    }
     result = result.replaceAll(`"${oldText}"`, `"${nextText}"`);
     result = result.replaceAll(`: ${oldText}`, `: ${nextText}`);
   }
@@ -457,6 +463,7 @@ function pricingSummary() {
       {
         name: 'API Business',
         price_usd_monthly: byKey.api_business.price,
+        price_usd_yearly: byKey.api_business_annual.price,
         features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day', '5 Pro licenses included', 'same company email required', 'commercial license — for your customers', 'priority support'],
       },
       {

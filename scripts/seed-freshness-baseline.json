@@ -26,12 +26,6 @@
       "reason": "Japan MOD route returns proxy CONNECT 403; candidate country-specific routes return 407. Second cause independent of the #5689 Decodo exhaustion. No verified replacement endpoint installed."
     },
     {
-      "name": "gdeltIntel",
-      "status": "SEED_ERROR",
-      "issue": 5768,
-      "reason": "GDELT DOC blocks Railway direct egress and the shared proxy has returned 429, timeout, and TLS failures. GDELT_PROXY_URL now provides an independent route, but production still needs a verified source-specific exit before this baseline can be removed."
-    },
-    {
       "name": "humanitarianSummary",
       "status": "SEED_ERROR",
       "issue": 5769,

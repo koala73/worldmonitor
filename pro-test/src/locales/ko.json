@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "월 $39.99",
-    "priceAnnual": "연 $399.99",
-    "annualSavingsNote": "2개월 무료"
+    "priceAnnual": "연 $359.99",
+    "annualSavingsNote": "3개월 무료"
   },
   "proShowcase": {
     "proTier": "PRO 티어",
@@ -330,7 +330,7 @@
     "headerSubtitle": "실시간 모니터링부터 완벽한 인텔리전스 인프라까지. 당신의 미션에 맞는 요금제를 선택하세요.",
     "billingMonthly": "월간",
     "billingAnnual": "연간",
-    "saveAnnual": "17% 절약",
+    "saveAnnual": "25% 절약",
     "mostPopular": "가장 인기있음",
     "promoCodeNote": "프로모 코드가 있으신가요? 결제 시 입력하세요.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API 및 공식 SDK — 하나의 키로 59개 도구 이용",
       "proF5": "자신만의 패널을 위한 커스텀 위젯 빌더",
       "cta": "요금제 및 가격 확인",
-      "note": "$39.99/월부터 · 연간 결제 시 2개월 무료"
+      "note": "$39.99/월부터 · 연간 결제 시 3개월 무료"
     },
     "faq": {
       "eyebrow": "숨은 비용 없음",

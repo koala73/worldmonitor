@@ -11,12 +11,36 @@
 
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-// Clerk JWT issuer domain -- set in Vercel env vars
-const CLERK_JWT_ISSUER_DOMAIN = process.env.CLERK_JWT_ISSUER_DOMAIN ?? '';
-
 // Clerk Backend API secret -- used to look up user metadata when the JWT
 // does not include a `plan` claim (i.e. standard session token, no template).
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
+
+// Absorb minor issuer/edge clock skew without turning expiration into a broad
+// grace period. jose's operators are asymmetric at the bound: `exp` is accepted
+// strictly less than five seconds late (rejected at exactly five — jose tests
+// `exp <= now - tolerance`), while `nbf` is accepted up to and including five
+// seconds early. Either way the replay window widens by at most this bound.
+const CLERK_JWT_CLOCK_TOLERANCE_SECONDS = 5;
+
+// Exported so tests can assert the fallback (no-audience) path's options
+// directly, mirroring the existing assertion on getClerkJwtVerifyOptions().
+export function getClerkJwtVerifyBaseOptions() {
+  return {
+    // Read lazily (not from the module-scope const) for the same reason as
+    // getJWKS(): both halves of issuer handling must read the env at the same
+    // time. A module evaluated before CLERK_JWT_ISSUER_DOMAIN is set would
+    // otherwise pin issuer '' here — and jose skips the issuer VALUE check
+    // entirely on a falsy issuer — while the lazily-built JWKS still resolves.
+    issuer: process.env.CLERK_JWT_ISSUER_DOMAIN ?? '',
+    algorithms: ['RS256'],
+    clockTolerance: CLERK_JWT_CLOCK_TOLERANCE_SECONDS,
+    // The bounded tolerance above is only a bound if expiry is evaluated at
+    // all: jose skips the whole `exp` check (tolerance included) when the
+    // claim is absent. Clerk always mints `exp`, so requiring it rejects
+    // nothing real — it makes the stated bound enforced rather than assumed.
+    requiredClaims: ['exp'],
+  };
+}
 
 // Module-scope JWKS resolver -- cached across warm invocations.
 // jose handles key rotation and caching internally.
@@ -70,6 +94,16 @@ export interface SessionResult {
    * branching on this to answer the retryable contract instead.
    */
   reason?: 'invalid' | 'unverifiable';
+  /**
+   * Present only when verification succeeded BECAUSE of the bounded
+   * `clockTolerance` — the token's `exp` was already in the past on this
+   * machine's clock. Optional and additive, like `reason`: `valid` keeps its
+   * exact meaning for every existing consumer. A caller that re-presents the
+   * same bearer to a second verifier with its own clock (Convex via
+   * `client.setAuth`) opts in by branching on this to classify that verifier's
+   * rejection as expected near-expiry traffic rather than auth-config drift.
+   */
+  acceptedWithinClockTolerance?: true;
 }
 
 /**
@@ -101,9 +135,8 @@ function getAllowedAudiences(): string[] {
 
 export function getClerkJwtVerifyOptions() {
   return {
-    issuer: CLERK_JWT_ISSUER_DOMAIN,
+    ...getClerkJwtVerifyBaseOptions(),
     audience: getAllowedAudiences(),
-    algorithms: ['RS256'],
   };
 }
 
@@ -192,10 +225,7 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
       ({ payload } = await jwtVerify(token, jwks, getClerkJwtVerifyOptions()));
     } catch (audErr) {
       if ((audErr as Error).message?.includes('missing required "aud"')) {
-        ({ payload } = await jwtVerify(token, jwks, {
-          issuer: CLERK_JWT_ISSUER_DOMAIN,
-          algorithms: ['RS256'],
-        }));
+        ({ payload } = await jwtVerify(token, jwks, getClerkJwtVerifyBaseOptions()));
       } else {
         throw audErr;
       }
@@ -221,7 +251,20 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     const name = [givenName, familyName].filter(Boolean).join(' ') || undefined;
     const orgId = extractOrgId(payload);
 
-    return { valid: true, userId, orgId, role, email, name };
+    // `exp` in the past on our clock means only the clockTolerance admitted
+    // this token (requiredClaims guarantees the claim is present on success).
+    const expMs = typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    const withinTolerance = expMs !== null && expMs <= Date.now();
+
+    return {
+      valid: true,
+      userId,
+      orgId,
+      role,
+      email,
+      name,
+      ...(withinTolerance ? { acceptedWithinClockTolerance: true as const } : {}),
+    };
   } catch (err) {
     // Usually signature verification failed / expired / wrong issuer — a
     // confirmed answer about the token. But this same catch also covers a JWKS

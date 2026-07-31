@@ -242,6 +242,246 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
+  it('skips a gated cache miss without hiding positive cache hits or writing a sentinel', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map([
+      ['meta:test:gated-hit', JSON.stringify({ value: 'cached-data' })],
+    ]);
+    let setCalls = 0;
+    let fetcherCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({ result: store.get(key) });
+      }
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    const fetcher = async () => {
+      fetcherCalls += 1;
+      return { value: 'fresh-data' };
+    };
+
+    try {
+      const hit = await redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-hit',
+        60,
+        fetcher,
+        120,
+        { shouldFetch: () => false },
+      );
+      assert.deepEqual(hit, {
+        data: { value: 'cached-data' },
+        source: 'cache',
+        leader: false,
+      });
+
+      const skipped = await redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-miss',
+        60,
+        fetcher,
+        120,
+        { shouldFetch: () => false },
+      );
+      assert.deepEqual(skipped, { data: null, source: 'skipped', leader: false });
+      assert.equal(fetcherCalls, 0, 'the provider-local fetcher must remain gated');
+      assert.equal(setCalls, 0, 'a gated miss must not become a shared negative sentinel');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('joins an existing fetch before applying a caller-local gate', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let resolveLeader;
+    const leaderResult = new Promise((resolve) => {
+      resolveLeader = resolve;
+    });
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const leader = redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-inflight',
+        60,
+        async () => leaderResult,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      let followerFetcherCalled = false;
+      const follower = redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-inflight',
+        60,
+        async () => {
+          followerFetcherCalled = true;
+          return { value: 'wrong' };
+        },
+        120,
+        { shouldFetch: () => false },
+      );
+
+      resolveLeader({ value: 'coalesced' });
+      assert.deepEqual(await leader, {
+        data: { value: 'coalesced' },
+        source: 'fresh',
+        leader: true,
+      });
+      assert.deepEqual(await follower, {
+        data: { value: 'coalesced' },
+        source: 'fresh',
+        leader: false,
+      });
+      assert.equal(followerFetcherCalled, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('isolates in-flight providers while sharing their positive cache key', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let resolvePrimary;
+    const primaryResult = new Promise((resolve) => {
+      resolvePrimary = resolve;
+    });
+    let setCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const primary = redis.cachedFetchJsonWithMeta(
+        'meta:test:provider-shared',
+        60,
+        async () => primaryResult,
+        120,
+        { cacheFailures: false, inflightKey: 'provider:primary' },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const fallback = await redis.cachedFetchJsonWithMeta(
+        'meta:test:provider-shared',
+        60,
+        async () => ({ value: 'fallback-success' }),
+        120,
+        { cacheFailures: false, inflightKey: 'provider:fallback' },
+      );
+      assert.deepEqual(fallback, {
+        data: { value: 'fallback-success' },
+        source: 'fresh',
+        leader: true,
+      });
+
+      resolvePrimary(null);
+      assert.deepEqual(await primary, { data: null, source: 'fresh', leader: true });
+
+      let recoveryCalls = 0;
+      const recovered = await redis.cachedFetchJsonWithMeta(
+        'meta:test:provider-shared',
+        60,
+        async () => {
+          recoveryCalls += 1;
+          return { value: 'primary-recovered' };
+        },
+        120,
+        { cacheFailures: false, inflightKey: 'provider:primary' },
+      );
+      assert.deepEqual(recovered.data, { value: 'primary-recovered' });
+      assert.equal(recoveryCalls, 1, 'a settled custom in-flight key must be reusable');
+      assert.equal(setCalls, 2, 'only the two positive results should be cached');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does not negative-cache a no-store payload when failure caching is disabled', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let setCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const unavailable = await redis.cachedFetchJsonWithMeta(
+        'meta:test:no-store-positive-only',
+        60,
+        async () => ({ upstreamUnavailable: true }),
+        120,
+        { cacheFailures: false },
+      );
+      assert.deepEqual(unavailable.data, { upstreamUnavailable: true });
+      assert.equal(setCalls, 0, 'the no-store payload must not write a sentinel');
+
+      const recovered = await redis.cachedFetchJsonWithMeta(
+        'meta:test:no-store-positive-only',
+        60,
+        async () => ({ value: 'recovered' }),
+        120,
+        { cacheFailures: false },
+      );
+      assert.deepEqual(recovered.data, { value: 'recovered' });
+      assert.equal(setCalls, 1, 'the later positive result remains cacheable');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('reports source=fresh on cache miss', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({

@@ -269,6 +269,7 @@ describe('China decision-signal final composition (#5580)', () => {
     const policy = snapshot.groups.find((candidate) => candidate.id === 'policy-enforcement');
     assert.equal(policy?.state, 'partial');
     assert.equal(policy?.items.length, 1);
+    assert.equal(policy?.metadata.rejectedItemCount, 1);
     assert.match(policy?.reason ?? '', /failed the launch\/provenance boundary/);
     assert.equal(
       snapshot.groups.filter((candidate) => candidate.id !== 'policy-enforcement')
@@ -276,6 +277,204 @@ describe('China decision-signal final composition (#5580)', () => {
       true,
       'an outage in one domain does not manufacture data in another',
     );
+  });
+
+  it('distinguishes quiet disclosures, rejected provenance, upstream loss, and insufficient nowcast inputs', () => {
+    const generatedAt = '2026-07-30T15:30:00Z';
+    const corporateGroup = (corporate: unknown) => composeChinaDecisionSignals({
+      generatedAt,
+      corporate,
+    }).groups.find((candidate) => candidate.id === 'corporate-disclosures');
+
+    const quiet = corporateGroup({
+      status: 'healthy',
+      coverageThrough: '2026-07-30',
+      sources: [
+        { id: 'sse', launchStatus: 'launched', transportStatus: 'fresh', contentStatus: 'current' },
+        { id: 'szse', launchStatus: 'launched', transportStatus: 'fresh', contentStatus: 'current' },
+      ],
+      events: [],
+    });
+    assert.equal(quiet?.state, 'unavailable');
+    assert.equal(quiet?.metadata.unavailableCause, 'healthy_quiet_window');
+    assert.match(quiet?.reason ?? '', /^healthy_quiet_window:/);
+
+    const rejected = corporateGroup({
+      status: 'healthy',
+      events: [{
+        announcementId: 'sse-invalid-provenance',
+        exchange: 'SSE',
+        status: 'current',
+        titleOriginal: 'Invalid provenance fixture',
+        provenance: { signalId: 'missing-contract' },
+      }],
+    });
+    assert.equal(rejected?.state, 'unavailable');
+    assert.equal(rejected?.metadata.unavailableCause, 'provenance_rejected');
+    assert.equal(rejected?.metadata.rejectedItemCount, 1);
+    assert.match(rejected?.reason ?? '', /^provenance_rejected:/);
+
+    const upstream = corporateGroup(null);
+    assert.equal(upstream?.state, 'unavailable');
+    assert.equal(upstream?.metadata.unavailableCause, 'upstream_unavailable');
+    assert.equal(Object.hasOwn(upstream?.metadata ?? {}, 'rejectedItemCount'), false);
+    assert.match(upstream?.reason ?? '', /^upstream_unavailable:/);
+
+    const nonCorporateUpstream = composeChinaDecisionSignals({
+      generatedAt,
+      macro: { unavailable: true, indicators: [] },
+    }).groups.find((candidate) => candidate.id === 'macro');
+    assert.equal(nonCorporateUpstream?.state, 'unavailable');
+    assert.equal(nonCorporateUpstream?.metadata.unavailableCause, 'upstream_unavailable');
+    assert.equal(Object.hasOwn(nonCorporateUpstream?.metadata ?? {}, 'rejectedItemCount'), false);
+    assert.match(nonCorporateUpstream?.reason ?? '', /^upstream_unavailable:/);
+
+    const explicitNull = composeChinaDecisionSignals({
+      generatedAt,
+      macro: null,
+      policy: null,
+      crossStrait: null,
+    });
+    for (const id of ['macro', 'policy-enforcement', 'cross-strait-activity']) {
+      const group = explicitNull.groups.find((candidate) => candidate.id === id);
+      assert.equal(group?.metadata.unavailableCause, 'upstream_unavailable');
+      assert.match(group?.reason ?? '', /^upstream_unavailable:/);
+    }
+
+    for (const malformed of [undefined, 'not-a-snapshot']) {
+      const indeterminate = composeChinaDecisionSignals({
+        generatedAt,
+        macro: malformed,
+        policy: malformed,
+        crossStrait: malformed,
+      });
+      for (const id of ['macro', 'policy-enforcement', 'cross-strait-activity']) {
+        const group = indeterminate.groups.find((candidate) => candidate.id === id);
+        assert.equal(group?.metadata.unavailableCause, 'unknown');
+      }
+    }
+
+    const nowcast = composeChinaDecisionSignals({
+      generatedAt,
+      nowcast: {
+        methodVersion: 'china-activity-nowcast/v1',
+        evaluatedAt: generatedAt,
+        comparisonWindow: { endsAt: generatedAt },
+        state: 'insufficient_data',
+        confidence: {
+          level: 'insufficient',
+          reason: 'Two eligible proxy families are required.',
+        },
+        missingInputs: [
+          {
+            family: 'maritime',
+            seriesId: 'portwatch_tanker_calls_trend',
+            reason: 'freshness_budget_exceeded',
+          },
+          {
+            family: 'aviation',
+            seriesId: 'aviation_hub_disruption_balance',
+            reason: 'marked_stale',
+          },
+        ],
+        contributions: [],
+        sensitivity: [],
+        limitations: [],
+        audit: { deterministic: true, llmNumericComputation: false },
+      },
+    }).groups.find((candidate) => candidate.id === 'activity-nowcast');
+
+    assert.equal(nowcast?.state, 'unavailable');
+    assert.equal(nowcast?.metadata.unavailableCause, 'insufficient_data');
+    assert.equal(Object.hasOwn(nowcast?.metadata ?? {}, 'rejectedItemCount'), false);
+    assert.deepEqual(nowcast?.metadata.missingInputFamilies, ['maritime', 'aviation']);
+    assert.deepEqual(nowcast?.metadata.missingInputs, [
+      {
+        family: 'maritime',
+        seriesId: 'portwatch_tanker_calls_trend',
+        reason: 'freshness_budget_exceeded',
+      },
+      {
+        family: 'aviation',
+        seriesId: 'aviation_hub_disruption_balance',
+        reason: 'marked_stale',
+      },
+    ]);
+    assert.match(nowcast?.reason ?? '', /^insufficient_data:/);
+    assert.match(nowcast?.reason ?? '', /maritime.*freshness_budget_exceeded/);
+    assert.match(nowcast?.reason ?? '', /aviation.*marked_stale/);
+  });
+
+  it('bounds nowcast missing inputs and preserves unavailable diagnostics through metadata compaction', () => {
+    const generatedAt = '2026-07-30T15:30:00Z';
+    const validMissingInputs = Array.from({ length: 18 }, (_, index) => ({
+      family: `family-${index}-${'f'.repeat(100)}`,
+      seriesId: `series-${index}-${'s'.repeat(140)}`,
+      reason: `reason-${index}-${'r'.repeat(140)}`,
+    }));
+    const bounded = composeChinaDecisionSignals({
+      generatedAt,
+      nowcast: {
+        state: 'insufficient_data',
+        confidence: { level: 'insufficient' },
+        missingInputs: [null, {}, { family: '' }, ...validMissingInputs],
+      },
+    }).groups.find((candidate) => candidate.id === 'activity-nowcast');
+    const boundedMissingInputs = bounded?.metadata.missingInputs as Array<Record<string, unknown>>;
+    assert.equal(boundedMissingInputs.length, 16);
+    assert.deepEqual(boundedMissingInputs[0], {
+      family: validMissingInputs[0].family.slice(0, 80),
+      seriesId: validMissingInputs[0].seriesId.slice(0, 120),
+      reason: validMissingInputs[0].reason.slice(0, 120),
+    });
+    assert.equal(boundedMissingInputs.at(-1)?.family, validMissingInputs[15].family.slice(0, 80));
+
+    const snapshot = composeChinaDecisionSignals({
+      generatedAt,
+      nowcast: {
+        methodVersion: 'china-activity-nowcast/v1',
+        evaluatedAt: generatedAt,
+        comparisonWindow: { endsAt: generatedAt },
+        state: 'insufficient_data',
+        confidence: {
+          level: 'insufficient',
+          coverage: 'coverage'.repeat(10_000),
+        },
+        missingInputs: [null, {}, { family: '' }, ...validMissingInputs],
+        contributions: [],
+        sensitivity: [],
+        limitations: [],
+        audit: { deterministic: true, llmNumericComputation: false },
+      },
+    });
+    const nowcast = snapshot.groups.find((candidate) => candidate.id === 'activity-nowcast');
+
+    assert.equal(nowcast?.state, 'unavailable');
+    assert.equal(nowcast?.metadata.metadataOmittedForSerialization, true);
+    assert.equal(nowcast?.metadata.unavailableCause, 'insufficient_data');
+    assert.deepEqual(
+      nowcast?.metadata.missingInputFamilies,
+      validMissingInputs.slice(0, 16).map((candidate) => candidate.family.slice(0, 80)),
+    );
+    assert.deepEqual(
+      nowcast?.metadata.missingInputs,
+      validMissingInputs.slice(0, 16).map((candidate) => ({
+        family: candidate.family.slice(0, 80),
+        seriesId: candidate.seriesId.slice(0, 120),
+        reason: candidate.reason.slice(0, 120),
+      })),
+    );
+    assert.equal(new TextEncoder().encode(JSON.stringify(snapshot)).byteLength <= CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES, true);
+
+    const fallback = composeChinaDecisionSignals({
+      generatedAt,
+      nowcast: {
+        state: 'insufficient_data',
+        confidence: { level: 'insufficient' },
+        missingInputs: [null, {}, { family: '' }],
+      },
+    }).groups.find((candidate) => candidate.id === 'activity-nowcast');
+    assert.match(fallback?.reason ?? '', /^insufficient_data: Deterministic input requirements/);
   });
 
   it('launches the existing deterministic comparison family only at the final composition boundary', () => {

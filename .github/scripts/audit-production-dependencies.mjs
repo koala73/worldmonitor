@@ -20,9 +20,7 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // buffers (brief carousel), and @xenova/transformers is consumed solely by
   // the browser ML worker (src/workers/ml.worker.ts) — its Node-only sharp
   // binary never executes server-side. The clean fix (sharp 0.35.x) is
-  // semver-major across both chains; baselined until the parents bump. The
-  // same reasoning covers blog-site below: sharp runs only at Astro build
-  // time over repo-owned images, and the fix requires astro@7 (semver-major).
+  // semver-major across both chains; baselined until the parents bump.
   // GHSA-mh99-v99m-4gvg (brace-expansion OOM from unbounded brace patterns)
   // reaches root only through Clerk's optional Solana wallet -> react-native ->
   // babel-jest/test-exclude tooling chain. It never executes in the Vite web
@@ -31,7 +29,7 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // keep the advisory baselined until the upstream parents move to minimatch 10.
   'package-lock.json': ['GHSA-f88m-g3jw-g9cj', 'GHSA-mh99-v99m-4gvg'],
   'consumer-prices-core/package-lock.json': [],
-  'blog-site/package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
+  'blog-site/package-lock.json': [],
   // GHSA-395f-4hp3-45gv (shell-quote quadratic-complexity DoS in parse()) reaches
   // pro-test only via react-native -> react-devtools-core, a mobile/dev-tooling
   // chain the Vite web build never bundles into public/pro/. The parse() DoS is

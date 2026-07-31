@@ -192,10 +192,11 @@ function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
  * band, so the checkout spinner/disabled semantics and the external-link rel
  * policy can never drift between the two surfaces.
  */
-function TierCta({ cta, highlighted, loadingProductId, onCheckout }: {
+function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }: {
   cta: CtaProps;
   highlighted: boolean;
   loadingProductId: string | null;
+  rateLimited: boolean;
   onCheckout: (productId: string) => void;
 }) {
   if (cta.type === 'link') {
@@ -216,6 +217,7 @@ function TierCta({ cta, highlighted, loadingProductId, onCheckout }: {
   }
 
   const isLoading = loadingProductId === cta.productId;
+  const isDisabled = isLoading || rateLimited;
   // Only the clicked tier disables during creating_checkout.
   // Sibling tiers stay clickable; if the user changes their
   // mind mid-flow, their next click simply updates the
@@ -223,10 +225,10 @@ function TierCta({ cta, highlighted, loadingProductId, onCheckout }: {
   return (
     <button
       onClick={() => onCheckout(cta.productId)}
-      disabled={isLoading}
+      disabled={isDisabled}
       aria-busy={isLoading || undefined}
       className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
-        isLoading ? 'cursor-wait opacity-70' : 'cursor-pointer'
+        isLoading ? 'cursor-wait opacity-70' : rateLimited ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
       } ${
         highlighted
           ? 'bg-wm-green text-wm-bg hover:bg-green-400'
@@ -260,6 +262,7 @@ export function PricingSection({ refCode }: { refCode?: string }) {
   // (watchdogs, DOM polling) that we don't need.
   const [phase, setPhase] = useState<CheckoutPhase>({ kind: 'idle' });
   const loadingProductId = phase.kind === 'creating_checkout' ? phase.productId : null;
+  const rateLimited = phase.kind === 'rate_limited';
   const TIERS = usePricingData();
   // Enterprise leaves the card grid and renders as a full-width band below
   // it: it is the only non-self-serve tier, and pulling it out keeps the grid
@@ -452,6 +455,7 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                   cta={cta}
                   highlighted={!!tier.highlighted}
                   loadingProductId={loadingProductId}
+                  rateLimited={rateLimited}
                   onCheckout={handleCheckout}
                 />
               </motion.div>
@@ -511,6 +515,7 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                   cta={cta}
                   highlighted={!!bandTier.highlighted}
                   loadingProductId={loadingProductId}
+                  rateLimited={rateLimited}
                   onCheckout={handleCheckout}
                 />
               </div>

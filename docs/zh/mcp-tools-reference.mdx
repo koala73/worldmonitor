@@ -512,15 +512,15 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-带有当前概率的活跃 Polymarket 事件合约。涵盖地缘政治、经济和选举预测市场。
+预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技，包括人工智能、加密货币和科学）、`finance`（金融/经济或未分类回退）。合约包含当前概率。Kalshi 目前不提供分类器标签，因此 `source=kalshi` 与 `category=tech` 组合不会返回记录；其他非地缘政治 Kalshi 记录会回退到 `finance`。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `category` | string: geopolitical / tech / finance | 限制为一个市场类别桶。省略则返回全部三类。 |
+| `category` | string: geopolitical / tech / finance | 限制为一个市场类别桶。省略则返回全部三类。`finance` 也接收未分类的非地缘政治记录。 |
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
-| `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。 |
+| `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
 | `limit` | number | 将每个类别桶限制为最多这么多市场（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`

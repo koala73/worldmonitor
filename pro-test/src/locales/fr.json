@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 $ / mois",
-    "priceAnnual": "399,99 $ / an",
-    "annualSavingsNote": "2 mois gratuits"
+    "priceAnnual": "359,99 $ / an",
+    "annualSavingsNote": "3 mois gratuits"
   },
   "proShowcase": {
     "proTier": "NIVEAU PRO",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Du suivi en temps réel à une infrastructure de renseignement complète. Sélectionnez le niveau adapté à votre mission.",
     "billingMonthly": "Mensuel",
     "billingAnnual": "Annuel",
-    "saveAnnual": "Économisez 17 %",
+    "saveAnnual": "Économisez 25 %",
     "mostPopular": "Plus Populaire",
     "promoCodeNote": "Vous avez un code promo ? Entrez-le lors du paiement.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, API REST et SDK officiels — 59 outils sous une seule clé",
       "proF5": "Constructeur de widgets personnalisés pour vos propres tableaux de bord",
       "cta": "Voir les forfaits et tarifs",
-      "note": "À partir de 39,99 $/mois · 2 mois gratuits lors de la facturation annuelle"
+      "note": "À partir de 39,99 $/mois · 3 mois gratuits lors de la facturation annuelle"
     },
     "faq": {
       "eyebrow": "Aucun piège",

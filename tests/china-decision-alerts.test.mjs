@@ -8,6 +8,8 @@ import {
 import {
   CHINA_DECISION_SIGNALS_KEY,
   CHINA_DECISION_SIGNALS_ROUTE,
+  chinaDecisionSignalGroupDiagnostics,
+  createChinaDecisionSignalSeedHooks,
   deliverChinaDecisionSignalAlertOutbox,
   declareChinaDecisionSignalRecords,
   fetchChinaDecisionSignals,
@@ -62,6 +64,18 @@ function snapshot(overrides = {}) {
 }
 
 describe('China decision-signal alert policy (#5580)', () => {
+  it('rejects contradictory state/item combinations in the published snapshot', () => {
+    const unavailableWithItem = snapshot({
+      macro: { items: [item('macro-contradiction')] },
+    });
+    const availableWithoutItem = snapshot({
+      macro: { state: 'available' },
+    });
+
+    assert.equal(validateChinaDecisionSignalSnapshot(unavailableWithItem), false);
+    assert.equal(validateChinaDecisionSignalSnapshot(availableWithoutItem), false);
+  });
+
   it('never fans out historical records on the first canonical snapshot', () => {
     const next = snapshot({
       'policy-enforcement': {
@@ -230,6 +244,55 @@ describe('China decision-signal alert policy (#5580)', () => {
       },
     });
     assert.deepEqual(failed, { events: [], enqueued: 0 });
+  });
+
+  it('builds bounded seed diagnostics without copying decision items', () => {
+    const value = snapshot({
+      macro: { state: 'available', items: [item('macro-item')] },
+      'policy-enforcement': { state: 'partial', items: [item('policy-item')] },
+      'cross-strait-activity': { state: 'stale', items: [item('cross-strait-item')] },
+    });
+    const diagnostics = chinaDecisionSignalGroupDiagnostics(value);
+
+    assert.deepEqual(diagnostics.groupCounts, {
+      populated: 3,
+      partial: 1,
+      stale: 1,
+      unavailable: 3,
+    });
+    assert.deepEqual(diagnostics.groupStates, {
+      macro: 'available',
+      'policy-enforcement': 'partial',
+      'cross-strait-activity': 'stale',
+      'corporate-disclosures': 'unavailable',
+      'corridor-conditions': 'unavailable',
+      'activity-nowcast': 'unavailable',
+    });
+    assert.doesNotMatch(JSON.stringify(diagnostics), /macro-item|policy-item|cross-strait-item/);
+  });
+
+  it('returns the diagnostics patch before a rejected durable alert delivery', async () => {
+    const writes = [];
+    const hooks = createChinaDecisionSignalSeedHooks({
+      prepareAlerts: async () => [{ eventType: 'china_policy_decision_signal' }],
+      diagnosticsFor: chinaDecisionSignalGroupDiagnostics,
+      log: () => {},
+      deliverAlerts: async () => {
+        throw new Error('outbox unavailable');
+      },
+    });
+    const value = snapshot({
+      macro: { state: 'available', items: [item('macro-published')] },
+    });
+
+    await hooks.beforePublish(value);
+    const afterPublishResult = await hooks.afterPublish(value);
+    // runSeed writes this patch before calling afterFreshness. Model that
+    // boundary explicitly so delivery rejection cannot regress seed-meta order.
+    writes.push(afterPublishResult.freshnessMetaPatch);
+    await assert.rejects(hooks.afterFreshness(value), /outbox unavailable/);
+
+    assert.deepEqual(writes, [chinaDecisionSignalGroupDiagnostics(value)]);
   });
 
   it('continues publishing after one alert publisher rejects', async () => {

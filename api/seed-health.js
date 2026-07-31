@@ -15,6 +15,53 @@ const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_IN
 const RESILIENCE_INTERVAL_PROBE_KEY = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
 const RESILIENCE_INTERVAL_SCORE_MIN = 0;
 const RESILIENCE_INTERVAL_SCORE_MAX = 100;
+const CHINA_DECISION_SIGNAL_GROUP_IDS = Object.freeze([
+  'macro',
+  'policy-enforcement',
+  'cross-strait-activity',
+  'corporate-disclosures',
+  'corridor-conditions',
+  'activity-nowcast',
+]);
+const CHINA_DECISION_SIGNAL_STATES = new Set([
+  'available',
+  'partial',
+  'stale',
+  'unavailable',
+]);
+
+function projectChinaDecisionGroupDiagnostics(meta) {
+  const states = meta?.groupStates;
+  const counts = meta?.groupCounts;
+  if (
+    !states
+    || typeof states !== 'object'
+    || Array.isArray(states)
+    || !counts
+    || typeof counts !== 'object'
+    || Array.isArray(counts)
+  ) return null;
+  const groupStates = Object.fromEntries(
+    CHINA_DECISION_SIGNAL_GROUP_IDS.map((groupId) => [groupId, states[groupId]]),
+  );
+  if (
+    Object.values(groupStates).some((state) => !CHINA_DECISION_SIGNAL_STATES.has(state))
+    || !['populated', 'partial', 'stale', 'unavailable'].every(
+      (key) => Number.isInteger(counts[key])
+        && counts[key] >= 0
+        && counts[key] <= CHINA_DECISION_SIGNAL_GROUP_IDS.length,
+    )
+  ) return null;
+  return {
+    groupStates,
+    groupCounts: {
+      populated: counts.populated,
+      partial: counts.partial,
+      stale: counts.stale,
+      unavailable: counts.unavailable,
+    },
+  };
+}
 
 const SEED_DOMAINS = {
   'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
@@ -89,7 +136,7 @@ const SEED_DOMAINS = {
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'infrastructure:submarine-cables': { key: 'seed-meta:infrastructure:submarine-cables', intervalMin: 12600 },
-  'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8 },
+  'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8, minRecordCount: 20 }, // minRecordCount mirrors api/health.js (#5733)
   'aviation:intl':            { key: 'seed-meta:aviation:intl',            intervalMin: 45 }, // intervalMin*2 = 90min staleness. seed-aviation's freshness gate (AVIATIONSTACK_MIN_REFRESH_MIN, default 55) lets fetchedAt age to ~55+cron between paid fetches; 90min matches the aviation:faa sibling + api/health.js intlDelays maxStaleMin:90. Was 15 (30min) and false-WARNed every cycle once the gate landed.
   'theater-posture':          { key: 'seed-meta:theater-posture',          intervalMin: 8 },
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
@@ -105,7 +152,7 @@ const SEED_DOMAINS = {
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
   'research:arxiv-hn-trending': { key: 'seed-meta:research:arxiv-hn-trending', intervalMin: 75 },
-  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // seed-health alerts at 420min; /api/health uses a wider 720min freshness budget.
+  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
   // Corporate intelligence (#5695): intervalMin = maxStaleMin / 2 (api/health.js: 2880 / 120).
@@ -475,6 +522,10 @@ export default async function handler(req) {
     // seed entry keeps its exact shape.
     if (typeof meta.lastErrorCode === 'string' && meta.lastErrorCode) {
       seeds[domain].lastErrorCode = meta.lastErrorCode;
+    }
+    if (domain === 'intelligence:china-decision-signals') {
+      const diagnostics = projectChinaDecisionGroupDiagnostics(meta);
+      if (diagnostics) Object.assign(seeds[domain], diagnostics);
     }
   }
 

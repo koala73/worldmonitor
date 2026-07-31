@@ -140,8 +140,8 @@
     "pro": "Pro",
     "enterprise": "Enterprise",
     "priceMonthly": "39,99 $ / mjesec",
-    "priceAnnual": "399,99 $ / godinu",
-    "annualSavingsNote": "2 mjeseca besplatno"
+    "priceAnnual": "359,99 $ / godinu",
+    "annualSavingsNote": "3 mjeseca besplatno"
   },
   "proShowcase": {
     "proTier": "PRO RAZINA",
@@ -330,7 +330,7 @@
     "headerSubtitle": "Od monitoringa u stvarnom vremenu do pune obavještajne infrastrukture. Odaberite razinu koja odgovara vašoj misiji.",
     "billingMonthly": "Mjesečno",
     "billingAnnual": "Godišnje",
-    "saveAnnual": "Uštedite 17%",
+    "saveAnnual": "Uštedite 25%",
     "mostPopular": "Najpopularnije",
     "promoCodeNote": "Imate promotivni kod? Unesite ga tijekom plaćanja.",
     "tiers": {
@@ -641,7 +641,7 @@
       "proF4": "MCP, REST API & zvanični SDK-ovi — 59 alata pod jednim ključem",
       "proF5": "Prilagođeni builder widgeta za vlastite panele",
       "cta": "Pogledaj planove i cijene",
-      "note": "Od 39,99 €/mj · 2 mjeseca besplatno pri godišnoj naplati"
+      "note": "Od 39,99 €/mj · 3 mjeseca besplatno pri godišnoj naplati"
     },
     "faq": {
       "eyebrow": "Bez skrivenih troškova",

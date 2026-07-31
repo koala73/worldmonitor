@@ -1760,6 +1760,8 @@
       "summaryFailed": "सारांश असफल",
       "sources": "{{count}} स्रोत",
       "relatedAssetsNear": "{{location}} के निकट संबंधित संसाधन",
+      "sourceCoverage": "{{covered}}/{{total}} स्रोत",
+      "sourceCoverageHint": "{{total}} सक्षम स्रोतों में से {{covered}} दिखाए जा रहे हैं — यह पैनल हर रिफ़्रेश पर अपने स्रोत बदलता रहता है",
       "sortBy": "क्रमित करें",
       "sortNewest": "नवीनतम",
       "sortRelevance": "प्रासंगिकता"

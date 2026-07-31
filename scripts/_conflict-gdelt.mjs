@@ -28,6 +28,20 @@ export function gdeltSeenDateToIso(seendate) {
   return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
 
+// Same stamp family, full precision: GDELT 14-digit timestamp → epoch ms, NaN
+// if unparseable. Single home for the parser (#5856 review): the bulk-export
+// module delegates here, and server/ (chat-analyst headline ages) imports this
+// pure module directly — Date.parse rejects the raw GDELT format, so every
+// consumer needs this ISO reconstruction.
+export function gdeltSeenDateToMs(value) {
+  const digits = String(value || '').replace(/[^0-9]/g, '');
+  if (digits.length < 14) return Number.NaN;
+  return Date.parse(
+    `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+      + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}Z`,
+  );
+}
+
 export function buildGdeltConflictUrl(cc, name = GDELT_COUNTRY_NAMES[cc], maxRecords = GDELT_MAX_ARTICLES_PER_COUNTRY) {
   const query = `"${name}" ${GDELT_CONFLICT_TERMS}`;
   return `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}`

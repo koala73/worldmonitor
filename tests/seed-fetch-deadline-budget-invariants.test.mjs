@@ -45,6 +45,16 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       (7 * requestDelay) + minRequest < soft,
       '8 paced DOC calls must leave response-time budget before the final request starts',
     );
+    // #5859 review: the fetch-order read is a SECOND consumer of the same soft
+    // budget, bounded to MIN_REQUEST_BUDGET_MS before the first DOC request.
+    // Model the two paths additively (see docs/solutions/design-patterns/
+    // primary-fallback-inversion-budget-transfer.md): even with the ordering
+    // read fully spent, the paced sweep must still fit ahead of the final
+    // request's response budget.
+    assert.ok(
+      minRequest + (7 * requestDelay) + minRequest < soft,
+      'the bounded ordering read plus 8 paced DOC calls must fit the soft budget additively',
+    );
   });
 
   it('grocery-basket: lock/deadline covers its ~600s degraded serial runtime (24 serial countries)', () => {

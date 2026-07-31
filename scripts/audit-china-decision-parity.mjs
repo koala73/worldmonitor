@@ -10,7 +10,11 @@ import {
 } from './lib/js-source-structure.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import { readChinaDecisionSignalWireContract } from './lib/openapi-codegen.mjs';
-import { validateChinaDecisionSignalSnapshot } from './seed-china-decision-signals.mjs';
+import {
+  chinaDecisionSignalGroupDiagnostics,
+  summarizeChinaDecisionGroups,
+  validateChinaDecisionSignalSnapshot,
+} from './seed-china-decision-signals.mjs';
 
 export { isMainModule } from './lib/main-module.mjs';
 
@@ -24,6 +28,9 @@ const BOOTSTRAP_ROUTE = '/api/bootstrap?keys=chinaDecisionSignals&public=1';
 const CANONICAL_KEY = 'intelligence:china-decision-signals:v1';
 const META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const ROUTE_CACHE_TIER = 'fast';
+const GROUP_IDS = Object.freeze(
+  CHINA_DECISION_PARITY_MANIFEST.map(({ groupId }) => groupId),
+);
 
 const ACCESS_TIERS = Object.freeze([
   Object.freeze(['anonymous', 'bounded_public_summary']),
@@ -63,6 +70,20 @@ const REQUIRED_REGISTRATIONS = Object.freeze([
 // finding instead of a pass. Each `verify` is a pure function of source text so
 // its truth table can be exercised against mutated sources in tests.
 export const CHINA_DECISION_STRUCTURAL_CHECKS = Object.freeze([
+  Object.freeze({
+    id: 'edge-seed-health-group-ids',
+    file: 'api/seed-health.js',
+    intent: 'seed-health keeps its Edge-local China decision group mirror in canonical order',
+    verify(source) {
+      const body = extractDelimitedBlock(source, 'const CHINA_DECISION_SIGNAL_GROUP_IDS', '[', ']');
+      if (body === null) return 'the CHINA_DECISION_SIGNAL_GROUP_IDS array literal is missing or was renamed';
+      const groupIds = [...body.matchAll(/'([^']+)'/g)].map(([, groupId]) => groupId);
+      if (groupIds.length !== GROUP_IDS.length || groupIds.some((groupId, index) => groupId !== GROUP_IDS[index])) {
+        return `CHINA_DECISION_SIGNAL_GROUP_IDS is ${JSON.stringify(groupIds)}, expected ${JSON.stringify(GROUP_IDS)}`;
+      }
+      return null;
+    },
+  }),
   Object.freeze({
     id: 'gateway-cache-tier',
     file: 'server/gateway.ts',
@@ -271,9 +292,12 @@ const PROBE_HEADERS = Object.freeze({
   'User-Agent': CHINA_DECISION_PARITY_USER_AGENT,
 });
 
+export { summarizeChinaDecisionGroups };
+
 export async function probeChinaDecisionParity(baseUrl, {
   fetchImpl = fetch,
   now = () => Date.now(),
+  requiredPopulatedGroups = [],
 } = {}) {
   const url = new URL(ROUTE, `${baseUrl.replace(/\/+$/, '')}/`);
   const startedAt = now();
@@ -317,9 +341,7 @@ export async function probeChinaDecisionParity(baseUrl, {
       error: 'invalid_contract',
     };
   }
-  const groupStates = Object.fromEntries(
-    snapshot.groups.map((candidate) => [candidate.id, candidate.state]),
-  );
+  const { groupStates, groupCounts } = chinaDecisionSignalGroupDiagnostics(snapshot);
 
   const bootstrapUrl = new URL(BOOTSTRAP_ROUTE, `${baseUrl.replace(/\/+$/, '')}/`);
   const bootstrapStartedAt = now();
@@ -372,7 +394,28 @@ export async function probeChinaDecisionParity(baseUrl, {
       error: 'stale_bootstrap_contract',
     };
   }
-  return {
+  const {
+    groupStates: bootstrapGroupStates,
+    groupCounts: bootstrapGroupCounts,
+  } = chinaDecisionSignalGroupDiagnostics(bootstrapSnapshot);
+  // The validator rejects state/item contradictions; retain that invariant here
+  // so a malformed payload can never satisfy --require-populated.
+  const populated = new Set(
+    snapshot.groups
+      .filter((candidate) => candidate.state !== 'unavailable'
+        && Array.isArray(candidate.items) && candidate.items.length > 0)
+      .map((candidate) => candidate.id),
+  );
+  const bootstrapPopulated = new Set(
+    bootstrapSnapshot.groups
+      .filter((candidate) => candidate.state !== 'unavailable'
+        && Array.isArray(candidate.items) && candidate.items.length > 0)
+      .map((candidate) => candidate.id),
+  );
+  const unpopulatedRequiredGroups = requiredPopulatedGroups.filter(
+    (groupId) => !populated.has(groupId) || !bootstrapPopulated.has(groupId),
+  );
+  const result = {
     ok: true,
     route: ROUTE,
     bootstrapRoute: BOOTSTRAP_ROUTE,
@@ -383,9 +426,17 @@ export async function probeChinaDecisionParity(baseUrl, {
     generatedAt: typeof snapshot?.generatedAt === 'string' ? snapshot.generatedAt : null,
     bootstrapGeneratedAt: bootstrapSnapshot.generatedAt,
     groupStates,
-    bootstrapGroupStates: Object.fromEntries(
-      bootstrapSnapshot.groups.map((candidate) => [candidate.id, candidate.state]),
-    ),
+    bootstrapGroupStates,
+    groupCounts,
+    bootstrapGroupCounts,
+  };
+  if (unpopulatedRequiredGroups.length === 0) return result;
+  return {
+    ...result,
+    ok: false,
+    error: 'required_groups_unpopulated',
+    requiredPopulatedGroups,
+    unpopulatedRequiredGroups,
   };
 }
 
@@ -399,7 +450,12 @@ export async function probeChinaDecisionParity(baseUrl, {
  * reason.
  *
  * @param {string[]} args argv without the node binary and script path
- * @returns {{ url: string | null, requireLive: boolean, error: string | null }}
+ * @returns {{
+ *   url: string | null,
+ *   requireLive: boolean,
+ *   requiredPopulatedGroups: string[],
+ *   error: string | null,
+ * }}
  */
 // Hosts that must never be probe targets. The probe reports HTTP status and
 // latency, so an operator-supplied URL is a (weak) oracle against whatever it
@@ -447,7 +503,13 @@ export function validateProbeBaseUrl(value) {
 export function parseChinaParityAuditArgs(args) {
   let url = null;
   let requireLive = false;
-  const fail = (error) => ({ url: null, requireLive: false, error });
+  const requiredPopulatedGroups = new Set();
+  const fail = (error) => ({
+    url: null,
+    requireLive: false,
+    requiredPopulatedGroups: [],
+    error,
+  });
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -464,11 +526,39 @@ export function parseChinaParityAuditArgs(args) {
       requireLive = true;
       continue;
     }
+    if (arg === '--require-populated') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        return fail('--require-populated requires a comma-separated group list');
+      }
+      const groupIds = value.split(',').map((candidate) => candidate.trim()).filter(Boolean);
+      const unknown = groupIds.filter((groupId) => !GROUP_IDS.includes(groupId));
+      if (groupIds.length === 0 || unknown.length > 0) {
+        return fail(
+          unknown.length > 0
+            ? `--require-populated contains unknown group(s): ${unknown.join(', ')}`
+            : '--require-populated requires at least one group',
+        );
+      }
+      for (const groupId of groupIds) {
+        requiredPopulatedGroups.add(groupId);
+      }
+      i += 1;
+      continue;
+    }
     return fail(`unknown argument ${arg}`);
   }
 
   if (requireLive && url === null) return fail('--require-live requires --url <base-url>');
-  return { url, requireLive, error: null };
+  if (requiredPopulatedGroups.size > 0 && url === null) {
+    return fail('--require-populated requires --url <base-url>');
+  }
+  return {
+    url,
+    requireLive,
+    requiredPopulatedGroups: [...requiredPopulatedGroups],
+    error: null,
+  };
 }
 
 /**
@@ -484,7 +574,12 @@ export function resolveChinaParityExitCode({ staticOk, live = null, requireLive 
 
 async function main() {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const { url, requireLive, error } = parseChinaParityAuditArgs(process.argv.slice(2));
+  const {
+    url,
+    requireLive,
+    requiredPopulatedGroups,
+    error,
+  } = parseChinaParityAuditArgs(process.argv.slice(2));
   if (error !== null) {
     console.error(`audit-china-decision-parity: ${error}`);
     process.exitCode = 2;
@@ -495,7 +590,7 @@ async function main() {
   let live = null;
   if (url !== null) {
     try {
-      live = await probeChinaDecisionParity(url);
+      live = await probeChinaDecisionParity(url, { requiredPopulatedGroups });
     } catch (probeError) {
       // A thrown fetch (DNS, TLS, timeout, non-JSON body) is a failed probe,
       // not a crash: report it in the same sanitized shape the probe uses so
