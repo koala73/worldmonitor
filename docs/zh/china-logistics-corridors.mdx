@@ -1,0 +1,94 @@
+---
+title: "中国物流走廊"
+description: "四条审核中国物流走廊、六个来源族、组合规则、溯源、新鲜度与 API 行为。"
+---
+
+中国物流控制塔是在审核地理走廊上进行的透明来源组合。它按来源族报告证据可用性和
+新鲜度，不生成不透明物流风险分数、不预测中断，也不从“来源存在”推断经济活动。
+
+## 审核走廊
+
+| 走廊 ID | 名称 | 审核范围 |
+| --- | --- | --- |
+| `china-yangtze-river-delta` | 长三角 | 上海、江苏、浙江港口、航空与先进制造节点 |
+| `china-greater-bay-area` | 粤港澳大湾区 | 广东、香港、面向澳门的港口、机场、灾害与工业门户 |
+| `china-bohai-rim` | 环渤海 | 京津、河北、山东、辽宁海运与工业门户 |
+| `china-western-land-sea-corridor` | 西部陆海新通道 | 内陆制造枢纽、新疆陆路口岸与广西海运门户 |
+
+每条走廊都有审核 polygon、节点注册表、节点所有者与来源 selector。来源记录只有在
+selector 或审核地理映射到该走廊时才贡献。全国输入会明确标记为全国范围，并可应用
+到四条走廊。
+
+## 六个信号族
+
+| Family ID | 来源契约 | 范围与观测 |
+| --- | --- | --- |
+| `port` | IMF PortWatch | 审核中国/香港港口 ID；发布时提供靠港次数、DWT、趋势差值和异常标志 |
+| `aviation` | AviationStack | PEK、PVG、CAN、SZX、CTU、KMG、URC、HKG 的审核提供商覆盖 |
+| `hazard` | 西太平洋气旋来源与 Hong Kong Observatory | 走廊边界内事件，以及大湾区明确的 HKO 警告覆盖 |
+| `power_energy` | WorldMonitor energy spine | 中国全国能源依赖覆盖与最新来源观测时间 |
+| `strategic_industry` | UN Comtrade | reporter 156 的年度战略产品观测 |
+| `trade` | UN Comtrade 与 Shanghai Shipping Exchange CCFI | reporter 156 年度贸易观测与当前中国出口集装箱运价指数 |
+
+IMF PortWatch 和 AviationStack 是节点范围；灾害观测为区域范围；WorldMonitor
+energy spine、UN Comtrade 和 Shanghai Shipping Exchange 输入为全国范围。输出
+保留这些范围，不会把全国证据表现成节点实测值。
+
+## 可用性组合
+
+每个来源信号携带：
+
+- 发布者身份与类别；
+- 适用时的来源 URL；
+- 节点、区域或全国范围；
+- 带精度的观测、发布与检索时间；
+- 可用时的修订元数据；
+- 传输与内容新鲜度；
+- 可检查摘要与来源指标。
+
+每个来源族状态为 `available`、`partial`、`stale` 或 `unavailable`。走廊状态为：
+
+- 只有六项都可用才是 `available`；
+- 所有条件均为可用或过期且至少一项过期时为 `stale`；
+- 六项都不可用时为 `unavailable`；
+- 其他混合状态或溯源无效状态均为 `partial`。
+
+配置港口或机场缺失会成为显式不可用信号。健康灾害 feed 中没有事件只能证明
+feed 覆盖，不能创建灾害事件。存在 energy-spine 负载不代表活动方向。没有前值的
+当前 CCFI 水平不能成为运价变化。
+
+## 新鲜度预算
+
+Composer 在请求时评估来源时间戳：
+
+| 输入 | 传输预算 | 内容处理 |
+| --- | --- | --- |
+| PortWatch | 36 小时 | 单项观测 72 小时后过期 |
+| AviationStack | 90 分钟 | 单项观测 180 分钟后过期 |
+| 西太平洋灾害 / HKO | 9 小时 | 观测 9 小时后过期 |
+| Energy spine | 48 小时 | 年/月/日精度使用对应周期预算 |
+| UN Comtrade | 48 小时 | 年度观测使用 550 天预算 |
+| CCFI | 7 小时 | 指数内容 28 天后过期 |
+
+传输新鲜度证明采集运行；内容新鲜度证明观测本身及时。二者不能相互替代。
+
+## API 与缓存
+
+`GET /api/supply-chain/v1/get-china-corridor-control-towers` 批量读取规范 Redis
+来源 seed，并隔离缺失依赖。它在返回 wire payload 前验证每个组合溯源信封。
+
+健康聚合使用五分钟服务端缓存。全部不可用结果不进行正向缓存，因此恢复可以立即
+出现。客户端断路器刻意不保留可能隐藏当前失败即关闭响应的最后良好聚合。面板刷新
+间隔为 15 分钟。
+
+只有每条走廊都不可用时，响应才设置 `upstreamUnavailable: true`。部分走廊证据
+保持可检查，不会被折叠为完全中断或虚假健康。
+
+详细控制塔响应只通过 REST/UI 提供。MCP 没有专用走廊控制塔工具；Pro MCP
+只通过 `get_china_decision_signals` 接收其受限贡献。
+
+## 与 nowcast 的关系
+
+[中国经济活动即时预测](/zh/methodology/china-activity-nowcast) 只有在存在可比较的
+历史走廊快照时才可使用走廊来源族广度变化。控制塔响应本身仍是来源组合，不发布
+方向性经济结论。

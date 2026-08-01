@@ -6,14 +6,15 @@
  * `/server/_shared/X.mjs` at runtime — a path that doesn't exist — and
  * crashes the worker on startup with `ERR_MODULE_NOT_FOUND`.
  *
- * Three Railway services are affected:
+ * The original #3811 regression covered three registered Railway services:
  *   - seed-forecasts        — node scripts/seed-forecasts.mjs
  *   - simulation-worker     — node scripts/process-simulation-tasks.mjs
  *   - deep-forecast-worker  — node scripts/process-deep-forecast-tasks.mjs
  *
- * (See docs/railway-seed-consolidation-runbook.md for the service list and
- * Dockerfile.digest-notifications header for the cherry-pick alternative
- * we explicitly do NOT use for these three.)
+ * This guard now also covers standalone `seed-*` cron entry points that use
+ * the same root-scripts packaging contract. (See
+ * docs/railway-seed-consolidation-runbook.md for the service list and
+ * Dockerfile.digest-notifications for the cherry-pick alternative.)
  *
  * Approach: BFS from each entry script, follow relative imports and
  * _bundle-runner section script references, assert no resolved path escapes
@@ -25,23 +26,28 @@
 
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import {
+  collectRelativeRuntimeImports,
+  extractEdges,
+  parseDockerfileCopy,
+  stripComments,
+} from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const scriptsDir = resolve(repoRoot, 'scripts');
 
-// Entry points derived from scripts/railway-services.json, the single
-// source of truth for every script that runs as a Railway service. New
-// services are added by editing the registry, NOT this array. The
-// companion test tests/railway-services-registry-coverage.test.mts fails
-// if any Dockerfile.* or runbook entry references a script that isn't
-// in the registry — that's how drift is caught.
+// Registry-derived entry points cover bundles and workers. Conservatively scan
+// unregistered seed-* scripts as scripts-root services too, but exclude entries
+// the registry explicitly classifies as repo-root or Dockerfile deployments,
+// plus exact child scripts COPY'd into a registered Dockerfile image.
 interface RailwayServiceEntry {
   entry: string;
-  deployMode: 'nixpacks-root-scripts' | 'dockerfile';
+  deployMode: 'nixpacks-root-scripts' | 'nixpacks-root-repo' | 'dockerfile';
   dockerfile?: string;
   service: string;
   documentedAt: string;
@@ -51,40 +57,37 @@ const registry = JSON.parse(
   readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
 ) as RailwayServiceEntry[];
 
-const ENTRY_POINTS = registry
+const REGISTERED_NIXPACKS_ENTRY_POINTS = registry
   .filter((r) => r.deployMode === 'nixpacks-root-scripts')
   .map((r) => r.entry);
-const BUNDLE_ENTRY_FILES = new Set(ENTRY_POINTS.map((entry) => resolve(repoRoot, entry)));
+const NON_SCRIPTS_ROOT_ENTRY_FILES = new Set(
+  registry
+    .filter((r) => r.deployMode !== 'nixpacks-root-scripts')
+    .map((r) => resolve(repoRoot, r.entry)),
+);
+const DOCKERFILE_COPIED_SCRIPT_FILES = new Set(
+  registry
+    .filter((r) => r.deployMode === 'dockerfile' && r.dockerfile)
+    .flatMap((r) => {
+      const dockerfile = readFileSync(resolve(repoRoot, r.dockerfile!), 'utf8');
+      return [...parseDockerfileCopy(dockerfile).files]
+        .filter((file) => file.startsWith('scripts/'))
+        .map((file) => resolve(repoRoot, file));
+    }),
+);
+const STANDALONE_SEED_ENTRY_POINTS = readdirSync(scriptsDir)
+  .filter((file) => /^seed-.*\.(?:mjs|cjs|js)$/.test(file))
+  .map((file) => `scripts/${file}`)
+  .filter((entry) => {
+    const absEntry = resolve(repoRoot, entry);
+    return !NON_SCRIPTS_ROOT_ENTRY_FILES.has(absEntry) && !DOCKERFILE_COPIED_SCRIPT_FILES.has(absEntry);
+  });
+const ENTRY_POINTS = [...new Set([...REGISTERED_NIXPACKS_ENTRY_POINTS, ...STANDALONE_SEED_ENTRY_POINTS])];
+const BUNDLE_ENTRY_FILES = new Set(
+  REGISTERED_NIXPACKS_ENTRY_POINTS.map((entry) => resolve(repoRoot, entry)),
+);
 
-const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
 const BUNDLE_SECTION_SCRIPT_RE = /\bscript\s*:\s*['"]([^'"]+\.(?:mjs|cjs|js))['"]/gm;
-
-function isRelative(spec: string): boolean {
-  return spec.startsWith('./') || spec.startsWith('../');
-}
-
-function collectRelativeImports(filePath: string): string[] {
-  const src = readFileSync(filePath, 'utf8');
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
-  IMPORT_RE.lastIndex = 0;
-  while ((m = IMPORT_RE.exec(src)) !== null) {
-    const spec = m[1]!;
-    if (isRelative(spec)) out.push(spec);
-  }
-  return out;
-}
-
-// Conservative JS comment stripper (same pattern as
-// tests/news-feed-key-parity.test.mts): drop block comments, then line
-// comments anchored at a line start or after whitespace so in-string `//`
-// (e.g. `https://`) survives. Keeps a `script:` literal in a block, trailing,
-// or full-line comment from registering as a real child seeder.
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
-}
 
 function collectBundleSectionScripts(filePath: string): string[] {
   // Strip comments first so the gate and the extraction agree on the same
@@ -113,6 +116,29 @@ function escapesScriptsDir(absResolved: string): boolean {
 }
 
 describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
+  it('classifies scripts-root, repo-root, and Dockerfile child seeders correctly', () => {
+    assert.ok(ENTRY_POINTS.includes('scripts/seed-fire-detections.mjs'));
+    assert.ok(!ENTRY_POINTS.includes('scripts/seed-market-quotes.mjs'));
+    assert.ok(!ENTRY_POINTS.includes('scripts/seed-chokepoint-flows.mjs'));
+  });
+
+  it('scanner recognizes every supported literal runtime import form', () => {
+    const edges = extractEdges([
+      "const ready = true; import value from './same-line.mjs';",
+      "import './side-effect.mjs';",
+      "export { value } from './exported.mjs';",
+      "await import('./dynamic.mjs');",
+      "const required = require('./required.cjs');",
+    ].join('\n'));
+
+    assert.deepEqual(
+      new Set(edges.staticSpecs),
+      new Set(['./same-line.mjs', './side-effect.mjs', './exported.mjs']),
+    );
+    assert.deepEqual(new Set(edges.dynamicSpecs), new Set(['./dynamic.mjs']));
+    assert.deepEqual(new Set(edges.requireSpecs), new Set(['./required.cjs']));
+  });
+
   for (const entry of ENTRY_POINTS) {
     it(`entry ${entry} and its transitive scripts/ deps never import outside scripts/`, () => {
       const visited = new Set<string>();
@@ -124,9 +150,9 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
         if (visited.has(file)) continue;
         visited.add(file);
 
-        let imports: string[];
+        let imports: Set<string>;
         try {
-          imports = collectRelativeImports(file);
+          imports = collectRelativeRuntimeImports(file);
         } catch (err) {
           assert.fail(`Could not read ${file}: ${(err as Error).message}`);
         }
@@ -166,7 +192,7 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
       if (violations.length > 0) {
         const lines = violations.map(
           (v) =>
-            `  ${v.from}\n    imports '${v.spec}'\n    → ${v.resolved} (escapes scripts/)`,
+            `  ${v.from}\n    imports '${v.spec}'\n    -> ${v.resolved} (escapes scripts/)`,
         );
         assert.fail(
           `Found ${violations.length} import(s) that escape scripts/ in the ` +

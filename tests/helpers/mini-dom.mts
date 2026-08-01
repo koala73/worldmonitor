@@ -40,6 +40,10 @@ export class MiniClassList {
 }
 
 export class MiniNode extends EventTarget {
+  static readonly ELEMENT_NODE = 1;
+  static readonly TEXT_NODE = 3;
+  static readonly DOCUMENT_FRAGMENT_NODE = 11;
+
   childNodes: Array<MiniElement | MiniText | MiniDocumentFragment> = [];
   parentNode: MiniNode | null = null;
   parentElement: MiniElement | null = null;
@@ -132,6 +136,7 @@ export class MiniNode extends EventTarget {
 }
 
 export class MiniText extends MiniNode {
+  readonly nodeType = MiniNode.TEXT_NODE;
   private value: string;
 
   constructor(value: string | number) {
@@ -153,6 +158,8 @@ export class MiniText extends MiniNode {
 }
 
 export class MiniDocumentFragment extends MiniNode {
+  readonly nodeType = MiniNode.DOCUMENT_FRAGMENT_NODE;
+
   get outerHTML(): string {
     return this.childNodes.map((child) => child.outerHTML ?? child.textContent ?? '').join('');
   }
@@ -163,11 +170,40 @@ interface MiniAttributeSelector {
   value: string | null;
 }
 
+type MiniStyleDeclaration = Record<string, string> & {
+  getPropertyValue(name: string): string;
+  removeProperty(name: string): string;
+  setProperty(name: string, value: string): void;
+};
+
+function createMiniStyleDeclaration(): MiniStyleDeclaration {
+  const style = {} as MiniStyleDeclaration;
+  Object.defineProperties(style, {
+    getPropertyValue: {
+      value: (name: string) => style[name] ?? '',
+    },
+    removeProperty: {
+      value: (name: string) => {
+        const previous = style[name] ?? '';
+        delete style[name];
+        return previous;
+      },
+    },
+    setProperty: {
+      value: (name: string, value: string) => {
+        style[name] = String(value);
+      },
+    },
+  });
+  return style;
+}
+
 export class MiniElement extends MiniNode {
+  readonly nodeType = MiniNode.ELEMENT_NODE;
   readonly attributes = new Map<string, string>();
   readonly classList = new MiniClassList();
   readonly dataset: Record<string, string> = {};
-  readonly style: Record<string, string> = {};
+  readonly style = createMiniStyleDeclaration();
   ownerDocument?: MiniDocument;
   private innerHtml = '';
   id = '';
@@ -352,6 +388,10 @@ export class MiniDocument extends EventTarget {
     const element = new MiniElement(tagName);
     element.ownerDocument = this;
     return element;
+  }
+
+  createElementNS(_namespace: string | null, qualifiedName: string): MiniElement {
+    return this.createElement(qualifiedName);
   }
 
   createTextNode(value: string): MiniText {

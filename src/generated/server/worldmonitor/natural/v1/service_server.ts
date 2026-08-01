@@ -37,6 +37,11 @@ export interface NaturalEvent {
   forecastTrack: ForecastPoint[];
   conePolygon: CoordRing[];
   pastTrack: PastTrackPoint[];
+  canonicalId?: string;
+  matchingConfidence?: string;
+  canonicalAliases: string[];
+  windAveragingPeriodMinutes?: number;
+  agencyObservations: CycloneAgencyObservation[];
 }
 
 export interface ForecastPoint {
@@ -61,6 +66,21 @@ export interface PastTrackPoint {
   lon: number;
   windKt: number;
   timestamp: number;
+}
+
+export interface CycloneAgencyObservation {
+  agency: string;
+  agencyId: string;
+  observedAt: number;
+  lat: number;
+  lon: number;
+  windKt?: number;
+  windAveragingPeriodMinutes?: number;
+  pressureMb?: number;
+  classification?: string;
+  status: string;
+  sourceName?: string;
+  sourceUrl?: string;
 }
 
 export interface FieldViolation {

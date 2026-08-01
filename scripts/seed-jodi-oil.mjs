@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
+
 import {
   loadEnvFile,
   CHROME_UA,
@@ -11,8 +13,14 @@ import {
   withRetry,
   readSeedSnapshot,
 } from './_seed-utils.mjs';
+import {
+  assessChinaJodiCoverage,
+  hasFiniteMeasurementAtPaths,
+} from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
+const require = createRequire(import.meta.url);
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 export const CANONICAL_KEY = 'energy:jodi-oil:v1:_countries';
 export const COUNTRY_KEY_PREFIX = 'energy:jodi-oil:v1:';
@@ -184,6 +192,14 @@ export function validateCoverage(countries) {
   return countries.length >= MIN_VALID_COUNTRIES;
 }
 
+function hasOilMeasurements(record) {
+  return hasFiniteMeasurementAtPaths(record, JODI_MEASUREMENT_FIELDS.oil);
+}
+
+export function assessChinaOilCoverage(countries, now = new Date()) {
+  return assessChinaJodiCoverage(countries, now, hasOilMeasurements);
+}
+
 async function fetchCsv(url) {
   const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
@@ -240,6 +256,17 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
+export function formatCoverageFailureReason({ hasGlobalCoverage, countryCount, chinaCoverage }) {
+  const reasons = [];
+  if (!hasGlobalCoverage) {
+    reasons.push(`only ${countryCount} countries, need >=${MIN_VALID_COUNTRIES}`);
+  }
+  if (!chinaCoverage.ok) {
+    reasons.push(`China JODI oil coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  }
+  return reasons.join('; ');
+}
+
 async function main() {
   const startedAt = Date.now();
   const runId = `jodi-oil:${startedAt}`;
@@ -268,8 +295,15 @@ async function main() {
     const countries = buildAllCountries(allRows);
     console.log(`  Built ${countries.length} country payloads`);
 
-    if (!validateCoverage(countries)) {
-      console.error(`  COVERAGE GATE FAILED: only ${countries.length} countries, need >=${MIN_VALID_COUNTRIES}`);
+    const chinaCoverage = assessChinaOilCoverage(countries);
+    const hasGlobalCoverage = validateCoverage(countries);
+    if (!hasGlobalCoverage || !chinaCoverage.ok) {
+      const reason = formatCoverageFailureReason({
+        hasGlobalCoverage,
+        countryCount: countries.length,
+        chinaCoverage,
+      });
+      console.error(`  COVERAGE GATE FAILED: ${reason}`);
       const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
       const prevCountryKeys = Array.isArray(prevIso2List)
         ? prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`)
@@ -279,7 +313,7 @@ async function main() {
     }
 
     const iso2List = countries.map(c => c.iso2);
-    const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length };
+    const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length, chinaDataMonth: chinaCoverage.dataMonth };
 
     const commands = [];
     for (const payload of countries) {

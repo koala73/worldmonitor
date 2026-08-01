@@ -12,13 +12,15 @@ export const RATE_LIMIT_DEGRADED_HEADERS = Object.freeze({
 // the request actually transited CF. Keep in sync with server/_shared/client-ip.ts.
 const CF_EDGE_PROOF_HEADER = 'x-wm-edge-proof';
 
-// Constant-time comparison for the edge-proof secret. Synchronous so getClientIp
-// stays sync (it's on the per-request rate-limit hot path with several callers
-// that invoke it without await).
+// Compare the edge-proof secret without an early exit on length mismatch.
+// Synchronous so getClientIp stays sync (it's on the per-request rate-limit hot
+// path with several callers that invoke it without await). Keep in sync with
+// server/_shared/client-ip.ts.
 function constantTimeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const len = b.length;
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i += 1) diff |= (a.charCodeAt(i) || 0) ^ b.charCodeAt(i);
   return diff === 0;
 }
 

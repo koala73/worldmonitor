@@ -1,16 +1,14 @@
 import { expect, test, type Request } from '@playwright/test';
 import { assertSignedOutAuthHydrationKeepsHeaderStable } from './header-reservation';
+import {
+  apiPath,
+  captureLocalApiResponse,
+  isLocalApiUrl,
+  type ApiDiagnostic,
+} from './variant-live-smoke-response-capture';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 
 type VariantName = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
-
-type ApiDiagnostic = {
-  method: string;
-  path: string;
-  resourceType: string;
-  status: number;
-  url: string;
-};
 
 type PanelDiagnostic = {
   id: string;
@@ -59,27 +57,6 @@ const normalizeVariant = (variant: string | undefined): VariantName => {
   return 'full';
 };
 
-const isLocalApiUrl = (rawUrl: string): boolean => {
-  try {
-    const url = new URL(rawUrl);
-    return (
-      url.pathname.startsWith('/api/') &&
-      ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-    );
-  } catch {
-    return false;
-  }
-};
-
-const apiPath = (rawUrl: string): string => {
-  try {
-    const url = new URL(rawUrl);
-    return url.pathname.replace(/\/$/, '') || '/';
-  } catch {
-    return rawUrl;
-  }
-};
-
 const isExpected401 = (path: string): boolean => {
   if (
     typeof (PREMIUM_RPC_PATHS as { has?: unknown }).has === 'function' &&
@@ -110,6 +87,7 @@ test.describe('variant live reliability smoke', () => {
     const expectedPanelIds = EXPECTED_BOOT_PANELS[variant];
     const apiResponses: ApiDiagnostic[] = [];
     const apiRequestMetadata = new WeakMap<Request, { method: string; resourceType: string }>();
+    const responseCaptureErrors: string[] = [];
     const failedApiRequests: Array<{ failure: string; method: string; path: string; url: string }> = [];
     const pageErrors: string[] = [];
     const consoleIssues: Array<{ text: string; type: string }> = [];
@@ -124,16 +102,7 @@ test.describe('variant live reliability smoke', () => {
     });
 
     page.on('response', (response) => {
-      const url = response.url();
-      if (!isLocalApiUrl(url)) return;
-      const requestMetadata = apiRequestMetadata.get(response.request());
-      apiResponses.push({
-        method: requestMetadata?.method ?? 'unknown',
-        path: apiPath(url),
-        resourceType: requestMetadata?.resourceType ?? 'unknown',
-        status: response.status(),
-        url,
-      });
+      captureLocalApiResponse(response, apiRequestMetadata, apiResponses, responseCaptureErrors);
     });
 
     page.on('requestfailed', (request) => {
@@ -288,6 +257,7 @@ test.describe('variant live reliability smoke', () => {
         activeVariant: panelDiagnostics.activeVariant,
         unexpected401,
         api401s: apiResponses.filter((response) => response.status === 401),
+        responseCaptureErrors: responseCaptureErrors.slice(0, 20),
         failedApiRequests: failedApiRequests.slice(0, 20),
         unexpectedPageErrors,
         consoleIssues: consoleIssues.slice(0, 40),

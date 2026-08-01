@@ -22,6 +22,13 @@ export interface BreakingAlert {
   origin: 'rss_alert' | 'keyword_spike' | 'hotspot_escalation' | 'military_surge' | 'oref_siren';
   importanceScore?: number;
   /**
+   * ISO-3166 alpha-2 country attribution, when the producer knows it (OREF
+   * sirens are always IL). Forwarded to the relay so country-scoped rules
+   * filter correctly — unattributed non-news events are dropped for scoped
+   * rules since #5359.
+   */
+  countryCode?: string;
+  /**
    * RSS article description (cleaned, ≤400 chars). Present on rss_alert
    * origins when the upstream NewsItem carried a snippet. Enables the relay
    * to render a context line under the push/Telegram title without a second
@@ -199,6 +206,7 @@ function dispatchAlert(alert: BreakingAlert): void {
           source: alert.source,
           link: alert.link,
           ...(alert.description ? { description: alert.description } : {}),
+          ...(alert.countryCode ? { countryCode: alert.countryCode } : {}),
         },
         severity: alert.threatLevel,
         variant: SITE_VARIANT,
@@ -319,6 +327,7 @@ export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {
     threatLevel: 'critical',
     timestamp: new Date(),
     origin: 'oref_siren',
+    countryCode: 'IL',
   });
 }
 

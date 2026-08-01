@@ -70,6 +70,14 @@ const SERVER_OR_PROVIDER_SECRET_ENV_NAMES = [
   'VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY',
   'CLOUDFLARE_R2_ACCESS_KEY_ID',
   'VITE_CLOUDFLARE_R2_ACCESS_KEY_ID',
+  'R2_BOOTSTRAP_ACCESS_KEY_ID',
+  'VITE_R2_BOOTSTRAP_ACCESS_KEY_ID',
+  'R2_BOOTSTRAP_SECRET_ACCESS_KEY',
+  'VITE_R2_BOOTSTRAP_SECRET_ACCESS_KEY',
+  'R2_BOOTSTRAP_READ_KEY_ID',
+  'VITE_R2_BOOTSTRAP_READ_KEY_ID',
+  'R2_BOOTSTRAP_READ_SECRET',
+  'VITE_R2_BOOTSTRAP_READ_SECRET',
   'RELAY_SHARED_SECRET',
   'VITE_RELAY_SHARED_SECRET',
   'UPSTASH_REDIS_REST_TOKEN',
@@ -172,12 +180,20 @@ function extractViteEnvNames(source: string): string[] {
 }
 
 describe('browser bundle secret guard (#3704)', () => {
-  it('tracks Cloudflare and AISStream provider secret classes, including unsafe VITE aliases', () => {
+  it('tracks provider secret classes, including unsafe VITE aliases', () => {
     for (const envName of [
       'CLOUDFLARE_API_TOKEN',
       'VITE_CLOUDFLARE_API_TOKEN',
       'AISSTREAM_API_KEY',
       'VITE_AISSTREAM_API_KEY',
+      'R2_BOOTSTRAP_ACCESS_KEY_ID',
+      'VITE_R2_BOOTSTRAP_ACCESS_KEY_ID',
+      'R2_BOOTSTRAP_SECRET_ACCESS_KEY',
+      'VITE_R2_BOOTSTRAP_SECRET_ACCESS_KEY',
+      'R2_BOOTSTRAP_READ_KEY_ID',
+      'VITE_R2_BOOTSTRAP_READ_KEY_ID',
+      'R2_BOOTSTRAP_READ_SECRET',
+      'VITE_R2_BOOTSTRAP_READ_SECRET',
     ]) {
       assert.ok(
         SERVER_OR_PROVIDER_SECRET_ENV_NAMES.includes(envName as (typeof SERVER_OR_PROVIDER_SECRET_ENV_NAMES)[number]),

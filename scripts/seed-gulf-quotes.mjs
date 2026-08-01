@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, roundSparkline, runSeed, sleep } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvPhysicalCommodity, fetchAvFxDaily } from './_shared-av.mjs';
 
@@ -24,7 +24,8 @@ function parseYahooChart(data, meta) {
   const change = ((price - prevClose) / prevClose) * 100;
 
   const closes = result.indicators?.quote?.[0]?.close;
-  const sparkline = (closes || []).filter((v) => v != null);
+  // Same float64 conversion noise as the shared parseYahooChart — 51% of this key (#5300).
+  const sparkline = roundSparkline((closes || []).filter((v) => v != null));
 
   return {
     symbol: meta.symbol,

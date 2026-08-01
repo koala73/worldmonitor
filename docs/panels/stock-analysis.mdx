@@ -10,13 +10,15 @@ The **Premium Stock Analysis** panel (internal id `stock-analysis`) is the dashb
 An analysis card per selected symbol. Each card renders:
 
 - **Symbol + price** — current price with currency formatting (`formatPrice()`), percent change today (`formatChange()`).
-- **Signal badge** — `Buy` / `Hold` / `Watch` / `Sell` classified via `stockSignalClass()` into bullish / neutral / bearish visual buckets.
-- **Thesis bullets** — rendered with `list()` into sanitised `<ul>`.
+- **Rating badge + score** — the fundamentals-blended `ratingSignal` / `compositeScore` pair when present, with a safe fallback to the technical-only `signal` / `signalScore` pair for older snapshots.
+- **Thesis, action, and “Why Now”** — the narrative that belongs to the displayed rating, with separate bullish and risk factors.
+- **News sentiment** — an optional bullish / neutral / bearish chip when an LLM analyzed actual retrieved headlines. It is omitted on rules-only fallback or when no headlines were available rather than inventing a neutral reading.
 - **Analyst consensus** — the `AnalystConsensus` shape from the generated Market service client.
 - **Price targets** — low / avg / high from `PriceTarget[]`.
 - **Recent upgrades / downgrades** — `UpgradeDowngrade[]` list.
 - **Insider transactions** — filings from `InsiderTransactionsResult`, attached separately via `setInsiderData(symbol, data)`.
 - **Sparkline** — price history rendered via `@/utils/sparkline`.
+- **Fundamentals** — the available profit margin, operating margin, return on equity, revenue growth, earnings growth, debt/equity, and free-cash-flow display cells; missing fields remain missing.
 - **History** — previous analyses for the same symbol are kept in `StockAnalysisHistory`.
 
 Panel id is `stock-analysis`; canonical component is `src/components/StockAnalysisPanel.ts`. Title "Premium Stock Analysis" per the panel's own `super({...})` call.
@@ -35,6 +37,29 @@ All fields come from generated `MarketServiceClient` routes. The panel is locked
 | `GET /api/market/v1/analyze-stock` | Per-symbol analysis card: current price, sparkline, technical signal, thesis, targets, ratings, headlines, and AI synthesis. |
 | `GET /api/market/v1/get-stock-analysis-history` | Cached/shared previous analyses so the panel can render stored snapshots before recomputing stale symbols. |
 | `GET /api/market/v1/get-insider-transactions` | Insider Activity section attached after the analysis card renders. |
+
+There is no dedicated MCP stock-analysis tool today. Programmatic clients use the Market REST routes with a supported premium credential; an MCP-only workflow cannot invoke this panel analysis as a tool.
+
+## Rating model and API-only analytics
+
+The response deliberately keeps two score/narrative pairs:
+
+- `signal` + `signalScore` remain the stable technical-only contract.
+- `ratingSignal` + `compositeScore`, plus the `rating*` narrative fields, are the current surfaced investment rating.
+
+When enough fundamentals exist across at least two of quality, growth, and leverage, the composite is **65% technical score + 35% fundamental score**. With sparse fundamentals, `fundamentalScore` is omitted and the composite falls back exactly to the technical score; missing data does not silently penalize the company.
+
+The API also returns several fully computed fields that the current panel card does not render yet:
+
+| Field | Meaning | Absence / zero semantics |
+|---|---|---|
+| `fundamentals.grossMargin`, `returnOnAssets`, `totalCash`, `totalDebt`, `ebitda` | Additional inputs retained for scoring and programmatic use beyond the seven display cells | Each field is independently omitted when Yahoo does not provide it |
+| `nextEarningsDate`, `consensusEps`, `consensusRevenue` | Next not-yet-reported event from the shared earnings-calendar seed's roughly two-week window | Omitted when no upcoming entry exists; EPS/revenue are independently optional |
+| `realizedVolatility` | Annualized sample standard deviation of daily log returns over the fetched six-month window (`× √252`) | `0` when history is insufficient |
+| `atr` | Wilder 14-period Average True Range in the response currency's price units | `0` when history is insufficient |
+| `maxDrawdown` | Largest peak-to-trough loss over the same window, represented as a non-positive ratio | `0` for a monotonic rise or insufficient history |
+
+These values reuse data already fetched for the analysis: the risk metrics use the six-month candles and fundamentals share Yahoo's `financialData` response. The panel's rendered `newsSentiment` field likewise comes from the existing overlay call rather than a second LLM request. None of these enrichments adds one upstream request per metric.
 
 ## Refresh cadence
 

@@ -54,6 +54,11 @@ function originKind(req) {
   }
 }
 
+export function deriveExecutionRegion(req) {
+  const requestId = req.headers.get('x-vercel-id') ?? '';
+  return requestId.includes('::') ? requestId.split('::', 1)[0] : null;
+}
+
 function deriveCountry(req) {
   // cf-ipcountry is client geography only on requests proved to have
   // transited Cloudflare; otherwise it is forgeable and Vercel's peer-country
@@ -96,10 +101,33 @@ function deliveryMode() {
   return 'probe';
 }
 
+function isBootstrapR2Event(event) {
+  return event?.event_type === 'bootstrap_r2_shadow' || event?.event_type === 'bootstrap_r2';
+}
+
+function logBootstrapR2DeliveryHealth(failureClass) {
+  console.warn(JSON.stringify({
+    event_type: 'bootstrap_r2_telemetry_delivery',
+    failure_class: failureClass,
+    breaker_state: breakerTripped ? 'open' : 'closed',
+  }));
+}
+
+function recordEventDelivery(event, ok, isProbe, failureClass = null) {
+  const wasTripped = breakerTripped;
+  recordDelivery(ok, isProbe);
+  if (!isBootstrapR2Event(event)) return;
+  if (failureClass) logBootstrapR2DeliveryHealth(failureClass);
+  if (wasTripped !== breakerTripped) logBootstrapR2DeliveryHealth('breaker_transition');
+}
+
 async function deliver(event) {
   if (process.env.USAGE_TELEMETRY !== '1') return;
   const token = process.env.AXIOM_API_TOKEN;
-  if (!token) return;
+  if (!token) {
+    if (isBootstrapR2Event(event)) logBootstrapR2DeliveryHealth('missing_token');
+    return;
+  }
   const mode = deliveryMode();
   if (!mode) return;
 
@@ -115,9 +143,19 @@ async function deliver(event) {
       body: JSON.stringify([event]),
       signal: controller.signal,
     });
-    recordDelivery(response.ok, mode === 'probe');
+    recordEventDelivery(
+      event,
+      response.ok,
+      mode === 'probe',
+      response.ok ? null : 'http_error',
+    );
   } catch {
-    recordDelivery(false, mode === 'probe');
+    recordEventDelivery(
+      event,
+      false,
+      mode === 'probe',
+      controller.signal.aborted ? 'timeout' : 'network_error',
+    );
     // Observability must never alter the session-mint response path.
   } finally {
     clearTimeout(timer);
@@ -132,6 +170,40 @@ export function __resetWmSessionTelemetryForTests() {
 }
 
 /**
+ * Queue one bootstrap-R2 shadow result. This emitter deliberately receives no
+ * Request object and constructs a fresh event from a closed allowlist so
+ * request, user, credential, and payload fields cannot leak into the dataset.
+ */
+function bootstrapR2ShadowDelivery(input) {
+  return deliver({
+    event_type: 'bootstrap_r2_shadow',
+    route: '/api/bootstrap',
+    r2_outcome: input.r2Outcome,
+    r2_reason: input.r2Reason,
+    bootstrap_tier: input.bootstrapTier,
+    r2_duration_ms: input.r2DurationMs,
+    redis_duration_ms: input.redisDurationMs,
+    execution_region: input.executionRegion,
+    execution_cold: input.executionCold,
+    status: input.status,
+  });
+}
+
+export function deliverBootstrapR2Shadow(input) {
+  if (process.env.USAGE_TELEMETRY !== '1') return Promise.resolve();
+  return bootstrapR2ShadowDelivery(input);
+}
+
+export function emitBootstrapR2Shadow(ctx, input) {
+  if (!ctx?.waitUntil || process.env.USAGE_TELEMETRY !== '1') return;
+  try {
+    ctx.waitUntil(deliverBootstrapR2Shadow(input));
+  } catch {
+    // Observability must never alter the bootstrap response path.
+  }
+}
+
+/**
  * Queue one terminal mint outcome. The event intentionally contains only
  * allowlisted request metadata; never add cookies or request/response bodies.
  */
@@ -139,7 +211,6 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
   if (!ctx?.waitUntil || process.env.USAGE_TELEMETRY !== '1') return;
   try {
     const requestId = req.headers.get('x-vercel-id') ?? '';
-    const executionRegion = requestId.includes('::') ? requestId.split('::', 1)[0] : null;
     ctx.waitUntil(deliver({
       _time: new Date().toISOString(),
       event_type: 'request',
@@ -159,7 +230,7 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       country: deriveCountry(req),
       ip_city: req.headers.get('x-vercel-ip-city') ?? null,
       ip_region: req.headers.get('x-vercel-ip-country-region') ?? null,
-      execution_region: executionRegion,
+      execution_region: deriveExecutionRegion(req),
       execution_plane: 'vercel-edge',
       origin_kind: originKind(req),
       cache_tier: 'no-store',

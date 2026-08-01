@@ -107,17 +107,17 @@ export function extractEdges(src) {
 
   // import ... from '...' (multi-line safe; skips `import type` and clauses
   // whose named bindings are all inline `type` modifiers — tsx erases both)
-  for (const m of src.matchAll(/^[ \t]*import\s+(?!type\s)([^'";]*?)\bfrom\s*['"]([^'"]+)['"]/gms)) {
+  for (const m of src.matchAll(/(?:^|;)[ \t]*import\s+(?!type\s)([^'";]*?)\bfrom\s*['"]([^'"]+)['"]/gms)) {
     if (isAllTypeNamedClause(m[1])) continue;
     staticSpecs.push(m[2]);
   }
   // side-effect: import '...'
-  for (const m of src.matchAll(/^[ \t]*import\s*['"]([^'"]+)['"]/gm)) {
+  for (const m of src.matchAll(/(?:^|;)[ \t]*import\s*['"]([^'"]+)['"]/gm)) {
     staticSpecs.push(m[1]);
   }
   // export { ... } from '...' / export * from '...' (skips `export type` and
   // all-inline-type clauses)
-  for (const m of src.matchAll(/^[ \t]*export\s+(?!type\b)(\*(?:\s+as\s+\w+)?|\{[^}]*\})\s*from\s*['"]([^'"]+)['"]/gms)) {
+  for (const m of src.matchAll(/(?:^|;)[ \t]*export\s+(?!type\b)(\*(?:\s+as\s+\w+)?|\{[^}]*\})\s*from\s*['"]([^'"]+)['"]/gms)) {
     if (m[1].startsWith('{') && isAllTypeNamedClause(m[1])) continue;
     staticSpecs.push(m[2]);
   }
@@ -167,6 +167,24 @@ export function parseDockerfileCopy(src) {
   return { files, directories };
 }
 
+// --- Bundle-member parsing ---------------------------------------------------
+
+// Extract the member scripts a bundle entry declares (`script: 'seed-x.mjs'`).
+// Each member is spawned as its OWN process by _bundle-runner.mjs, so every one
+// is an independent resolution root for the container guards.
+//
+// Comments are stripped FIRST (#5289 review). A commented-out member — the
+// natural way to temporarily disable a section — otherwise still matches the
+// regex, and the callers' `existsSync` assert then throws while the describe()
+// tree is being built, aborting the whole suite instead of failing one service.
+// A disabled member whose file still exists would be walked and could raise a
+// violation for code the container never loads. Quote-agnostic on purpose: a
+// member added with double quotes or a template literal must not silently
+// escape the walk.
+export function extractBundleMembers(src) {
+  return [...stripComments(src).matchAll(/script:\s*(["'`])([^"'`]+)\1/g)].map((m) => m[2]);
+}
+
 // --- Resolution ---------------------------------------------------------------
 
 // Source extensions plain node can load when written explicitly. The runtime-
@@ -210,6 +228,20 @@ export function collectRelativeImports(filePath) {
   const { staticSpecs, requireSpecs } = extractEdges(src);
   const imports = new Set();
   for (const spec of [...staticSpecs, ...requireSpecs]) {
+    if (spec.startsWith('.')) imports.add(spec);
+  }
+  return imports;
+}
+
+// Scripts-only packaging guards must cover every literal runtime edge. Unlike
+// Dockerfile COPY-closure callers, they cannot safely ignore dynamic imports:
+// a conditional import that escapes scripts/ still crashes when that branch
+// executes in Railway's /app scripts root.
+export function collectRelativeRuntimeImports(filePath) {
+  const src = stripComments(readFileSync(filePath, 'utf-8'));
+  const { staticSpecs, dynamicSpecs, requireSpecs } = extractEdges(src);
+  const imports = new Set();
+  for (const spec of [...staticSpecs, ...dynamicSpecs, ...requireSpecs]) {
     if (spec.startsWith('.')) imports.add(spec);
   }
   return imports;

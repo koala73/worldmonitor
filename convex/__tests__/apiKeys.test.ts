@@ -337,6 +337,19 @@ describe("listApiKeys", () => {
     const otherKeys = await t.withIdentity(OTHER_USER).query(api.apiKeys.listApiKeys, {});
     expect(otherKeys).toEqual([]);
   });
+
+  test("returns empty during an unauthenticated query race", async () => {
+    // WORLDMONITOR-XM: the settings query can fire while Convex auth briefly
+    // disappears during initial auth, sign-out, or token rotation. Seed a real
+    // user's key to prove the unauthenticated result is empty rather than a
+    // throw or an accidental cross-user read.
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+
+    const keys = await t.query(api.apiKeys.listApiKeys, {});
+    expect(keys).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

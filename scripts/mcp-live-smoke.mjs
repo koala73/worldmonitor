@@ -27,6 +27,21 @@
 //      /.well-known/oauth-authorization-server must be reachable by POST
 //      (no 3xx redirect, no 405 — the #4938 fingerprints). Probes use a
 //      malformed body so nothing is ever registered/minted.
+//   5. The discovery surface and the cache key behind it. /mcp and
+//      /.well-known/mcp content-negotiate on Accept: a plain GET is a
+//      crawler/human discovery read, an `Accept: text/event-stream` GET is a
+//      transport stream-open that must STILL answer 405. Vercel's edge keys
+//      on URL alone unless the origin sends Vary, and it caches these routes
+//      — a cacheable discovery 200 without Vary is replayed to the SSE GET,
+//      handing an SDK client a document body where the transport contract
+//      requires 405. This was reproduced on production against
+//      /.well-known/mcp (`x-vercel-cache: HIT` on the SSE GET). Like #4938 it
+//      lives in the CDN and is invisible to every in-process test, so the
+//      probe warms the cache with the plain GET first and only then issues
+//      the SSE GET.
+//   6. Variant-subdomain canonicalization — crawler-facing GETs on the
+//      product variants must 308 to the apex /mcp (Google reported the
+//      variant URLs as unreachable), while POST must NOT be redirected.
 //
 // Every request runs under a hard timeout that covers BODY READ, not just
 // response headers — a server/CDN that sends headers then stalls the body
@@ -39,7 +54,12 @@
 // (MAX_PROMPT_GETS / MAX_RESOURCE_READS) and reuses each catalog listing
 // instead of re-fetching it per sub-walk. Current shape: ≤16 /mcp POSTs per
 // host (≤32 total) + 3 non-/mcp OAuth probes per host — comfortable headroom
-// under the bucket even as the prompt/resource catalogs grow.
+// under the bucket even as the prompt/resource catalogs grow. The discovery
+// probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
+// the discovery branch and the transport 405 return ahead of
+// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). The variant
+// probes (6) add one limiter-counted ping plus four GET/HEADs per variant host;
+// redirect, stream-open, and unauthenticated replay all stop before a limiter.
 //
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
@@ -271,8 +291,229 @@ async function walkHost(host) {
   }
 }
 
+// Discovery + cache-key contract. These requests are answered before the
+// anonymous rate limiter (the discovery branch and the transport 405 both
+// return ahead of it), so they cost nothing against the shared 60/min bucket.
+async function probeDiscovery(host) {
+  // Plain GET /mcp — the "can Google read this?" shape.
+  checks += 1;
+  try {
+    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } });
+    if (res.status !== 200) {
+      fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
+    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `expected the markdown guide, got content-type ${res.headers.get('content-type')}`);
+    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    } else if (!text.includes('World Monitor MCP Server')) {
+      fail(host, 'GET /mcp (crawler)', 'body is not the mcp-server.md guide');
+    } else {
+      ok(host, 'GET /mcp (crawler)', '200 markdown guide');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp (crawler)', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  // HEAD must expose the same discovery metadata without a response body.
+  // This is a separate deployed method path, so unit coverage cannot prove
+  // that the CDN and routing layers preserve it.
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      method: 'HEAD',
+      headers: { Accept: 'text/html,*/*' },
+    });
+    if (res.status !== 200) {
+      fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
+    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `expected markdown metadata, got content-type ${res.headers.get('content-type')}`);
+    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    } else if (!/<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i.test(res.headers.get('link') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
+    } else {
+      ok(host, 'HEAD /mcp (crawler)', '200 markdown metadata');
+    }
+  } catch (err) {
+    fail(host, 'HEAD /mcp (crawler)', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  // The canary: an SSE stream-open on the URL just warmed must still be 405.
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/event-stream' } });
+    if (res.status !== 405) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT'
+        ? ' from a CDN cache HIT — the discovery 200 is being replayed to transport clients (missing/ignored Vary)'
+        : '';
+      fail(host, 'GET /mcp (SSE stream open)', `expected 405, got ${res.status}${cached}`);
+    } else {
+      ok(host, 'GET /mcp (SSE stream open)', '405 preserved after a discovery GET');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp (SSE stream open)', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  // Same contract on the well-known manifest, which IS cacheable and so
+  // depends on Vary rather than no-store.
+  checks += 1;
+  try {
+    const { res, text } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'application/json' } });
+    if (res.status !== 200) {
+      fail(host, 'GET /.well-known/mcp', `expected 200, got ${res.status}`);
+    // `(?!-)` is load-bearing: `-` is a word boundary, so a naive /\bAccept\b/
+    // matches the `accept-encoding` that the edge adds on its own and the
+    // check passes against an origin that sends no Vary at all.
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /.well-known/mcp', `cacheable manifest 200 lacks "Vary: Accept" (got "${res.headers.get('vary')}") — a shared cache will serve it to an SSE GET`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /.well-known/mcp', `cacheable manifest 200 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}") — a shared cache will serve it to a replay GET`);
+    } else {
+      JSON.parse(text);
+      ok(host, 'GET /.well-known/mcp', 'cacheable card, correctly varied');
+    }
+  } catch (err) {
+    fail(host, 'GET /.well-known/mcp', `not served or not JSON: ${err?.message ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'text/event-stream' } });
+    if (res.status !== 405) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT'
+        ? ' from a CDN cache HIT — the manifest is being replayed to transport clients'
+        : '';
+      fail(host, '/.well-known/mcp (SSE stream open)', `expected 405, got ${res.status}${cached}`);
+    } else {
+      ok(host, '/.well-known/mcp (SSE stream open)', '405 preserved after a manifest GET');
+    }
+  } catch (err) {
+    fail(host, '/.well-known/mcp (SSE stream open)', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/.well-known/mcp`, {
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+    });
+    if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
+      fail(host, '/.well-known/mcp (replay-shaped GET)', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
+    } else {
+      ok(host, '/.well-known/mcp (replay-shaped GET)', '401 preserved after a manifest GET');
+    }
+  } catch (err) {
+    fail(host, '/.well-known/mcp (replay-shaped GET)', `HANG/transport error: ${err?.name ?? err}`);
+  }
+}
+
+// Variant subdomains: crawler GETs canonicalize to apex, POST never does.
+const VARIANT_HOSTS = (process.env.MCP_SMOKE_VARIANT_HOSTS
+  ?? 'tech,finance,commodity,happy,energy')
+  .split(',').map((v) => v.trim()).filter(Boolean)
+  .map((v) => `https://${v}.worldmonitor.app`);
+
+async function probeVariantCanonical(host) {
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } });
+    const location = res.headers.get('location');
+    if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
+      fail(host, 'GET /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${location}`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    } else {
+      ok(host, 'GET /mcp → apex canonical', '308');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      method: 'HEAD',
+      headers: { Accept: 'text/html,*/*' },
+    });
+    const location = res.headers.get('location');
+    if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
+      fail(host, 'HEAD /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${location}`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    } else {
+      ok(host, 'HEAD /mcp → apex canonical', '308');
+    }
+  } catch (err) {
+    fail(host, 'HEAD /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'Text/Event-Stream' } });
+    if (res.status !== 405) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
+      fail(host, 'GET /mcp SSE stays on variant', `expected 405, got ${res.status}${cached}`);
+    } else {
+      ok(host, 'GET /mcp SSE stays on variant', '405 preserved after cached canonical redirect');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp SSE stays on variant', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+    });
+    if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
+      fail(host, 'GET /mcp replay stays on variant', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
+    } else {
+      ok(host, 'GET /mcp replay stays on variant', '401 preserved after cached canonical redirect');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp replay stays on variant', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} }),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      fail(host, 'POST /mcp stays on host', `POST answered ${res.status} → ${res.headers.get('location')} — a redirected POST becomes a GET and the handshake dies (#4938)`);
+    } else if (res.status !== 200) {
+      fail(host, 'POST /mcp stays on host', `expected 200 ping, got ${res.status}`);
+    } else {
+      ok(host, 'POST /mcp stays on host', '200 — handshake not canonicalized');
+    }
+  } catch (err) {
+    fail(host, 'POST /mcp stays on host', `HANG/transport error: ${err?.name ?? err}`);
+  }
+}
+
 for (const host of HOSTS) {
   await walkHost(host);
+  await probeDiscovery(host);
+}
+
+console.log('\n── variant canonicalization ──');
+for (const host of VARIANT_HOSTS) {
+  await probeVariantCanonical(host);
 }
 
 console.log(`\n${checks} checks across ${HOSTS.length} host(s); ${failures.length} failure(s).`);

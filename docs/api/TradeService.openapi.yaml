@@ -59,7 +59,7 @@ paths:
                                       "id": "example-id"
                                       "measureType": "all"
                                       "notifiedAt": "2026-01-15T12:00:00Z"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTradeRestrictionsResponse'
                 "400":
@@ -183,7 +183,7 @@ paths:
                                     "tariffRate": 75.25
                                     "updatedAt": "2026-01-15"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTariffTrendsResponse'
                 "400":
@@ -290,7 +290,7 @@ paths:
                                       "partnerCountry": "156"
                                       "productSector": "diesel"
                                       "reportingCountry": "840"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTradeFlowsResponse'
                 "400":
@@ -406,7 +406,7 @@ paths:
                                       "notifyingCountry": "US"
                                       "objective": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetTradeBarriersResponse'
                 "400":
@@ -491,7 +491,7 @@ paths:
                                       "fiscalYear": 1
                                       "fytdAmountBillions": 1.5
                                       "monthlyAmountBillions": 1.5
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetCustomsRevenueResponse'
                 "400":
@@ -602,7 +602,7 @@ paths:
                                       "isAnomaly": true
                                       "netWeightKg": 1.5
                                       "partnerCode": "example"
-                                "upstreamUnavailable": true
+                                "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListComtradeFlowsResponse'
                 "400":

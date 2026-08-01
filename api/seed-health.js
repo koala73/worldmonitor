@@ -1,6 +1,11 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import {
+  hasPoolCoverageShortfall,
+  parsePoolCounts,
+  PREDICTION_MARKET_MIN_POOL_COUNTS,
+} from './_pool-coverage.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
@@ -15,8 +20,56 @@ const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_IN
 const RESILIENCE_INTERVAL_PROBE_KEY = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
 const RESILIENCE_INTERVAL_SCORE_MIN = 0;
 const RESILIENCE_INTERVAL_SCORE_MAX = 100;
+const CHINA_DECISION_SIGNAL_GROUP_IDS = Object.freeze([
+  'macro',
+  'policy-enforcement',
+  'cross-strait-activity',
+  'corporate-disclosures',
+  'corridor-conditions',
+  'activity-nowcast',
+]);
+const CHINA_DECISION_SIGNAL_STATES = new Set([
+  'available',
+  'partial',
+  'stale',
+  'unavailable',
+]);
+
+function projectChinaDecisionGroupDiagnostics(meta) {
+  const states = meta?.groupStates;
+  const counts = meta?.groupCounts;
+  if (
+    !states
+    || typeof states !== 'object'
+    || Array.isArray(states)
+    || !counts
+    || typeof counts !== 'object'
+    || Array.isArray(counts)
+  ) return null;
+  const groupStates = Object.fromEntries(
+    CHINA_DECISION_SIGNAL_GROUP_IDS.map((groupId) => [groupId, states[groupId]]),
+  );
+  if (
+    Object.values(groupStates).some((state) => !CHINA_DECISION_SIGNAL_STATES.has(state))
+    || !['populated', 'partial', 'stale', 'unavailable'].every(
+      (key) => Number.isInteger(counts[key])
+        && counts[key] >= 0
+        && counts[key] <= CHINA_DECISION_SIGNAL_GROUP_IDS.length,
+    )
+  ) return null;
+  return {
+    groupStates,
+    groupCounts: {
+      populated: counts.populated,
+      partial: counts.partial,
+      stale: counts.stale,
+      unavailable: counts.unavailable,
+    },
+  };
+}
 
 const SEED_DOMAINS = {
+  'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
   // Phase 1 — Snapshot endpoints
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
   'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 60 },
@@ -44,11 +97,15 @@ const SEED_DOMAINS = {
   'market:crypto':            { key: 'seed-meta:market:crypto',            intervalMin: 15 },
   'market:hyperliquid-flow':  { key: 'seed-meta:market:hyperliquid-flow',  intervalMin: 5 }, // Railway cron 5min via seed-bundle-market-backup
   'market:etf-flows':         { key: 'seed-meta:market:etf-flows',         intervalMin: 30 },
+  // The bundle polls every 30min, but seed-health classifies at intervalMin*2.
+  // Use half of /api/health's 180min alarm budget so both operator surfaces agree.
+  'market:china-corporate-disclosures': { key: 'seed-meta:market:china-corporate-disclosures', intervalMin: 90 },
   'market:gulf-quotes':       { key: 'seed-meta:market:gulf-quotes',       intervalMin: 15 },
   'market:stablecoins':       { key: 'seed-meta:market:stablecoins',       intervalMin: 30 },
   'shared:fx-rates':          { key: 'seed-meta:shared:fx-rates',          intervalMin: 1800 }, // 60h staleness budget in api/health.js
   // Phase 3 — Hybrid endpoints
-  'natural:events':           { key: 'seed-meta:natural:events',           intervalMin: 60 },
+  'natural:events':           { key: 'seed-meta:natural:events',           intervalMin: 270 },
+  'weather:hko-warnings':     { key: 'seed-meta:weather:hko-warnings',     intervalMin: 270 },
   'displacement:summary':     { key: 'seed-meta:displacement:summary',     intervalMin: 360 },
   'economic:energy-prices':   { key: 'seed-meta:economic:energy-prices',   intervalMin: 75 },
   // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
@@ -72,6 +129,11 @@ const SEED_DOMAINS = {
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 720 }, // 720 × 2 = 1440min (24h) staleness; matches api/health.js gpsjam.maxStaleMin. Widened from 360 (12h) on 2026-04-29 alongside Wingbits API quota incident — see PR #3494 + the seeder graceful-failure path at scripts/fetch-gpsjam.mjs:258-262.
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
   'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  'military:cross-strait-activity': { key: 'seed-meta:military:cross-strait-activity', intervalMin: 180 },
+  'military:cross-strait-activity-bootstrap': { key: 'seed-meta:military:cross-strait-activity-bootstrap', intervalMin: 180 },
+  'military:cross-strait-activity:complete': { key: 'seed-meta:military:cross-strait-activity:complete', intervalMin: 180 },
+  'military:cross-strait-activity:taiwan-mnd': { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', intervalMin: 180 },
+  'military:cross-strait-activity:japan-mod': { key: 'seed-meta:military:cross-strait-activity:japan-mod', intervalMin: 180 },
   'military:defense-patents': { key: 'seed-meta:military:defense-patents', intervalMin: 12600 },
   'military-forecast-inputs': { key: 'seed-meta:military-forecast-inputs', intervalMin: 8 },
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
@@ -79,28 +141,43 @@ const SEED_DOMAINS = {
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'infrastructure:submarine-cables': { key: 'seed-meta:infrastructure:submarine-cables', intervalMin: 12600 },
-  'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8 },
+  'prediction:markets': {
+    key: 'seed-meta:prediction:markets',
+    intervalMin: 8,
+    minRecordCount: 20,
+    // Mirrors api/health.js (#5875). A one-market floor detects an empty pool
+    // without asserting that a naturally quiet category must sustain volume.
+    minPoolCounts: PREDICTION_MARKET_MIN_POOL_COUNTS,
+  },
   'aviation:intl':            { key: 'seed-meta:aviation:intl',            intervalMin: 45 }, // intervalMin*2 = 90min staleness. seed-aviation's freshness gate (AVIATIONSTACK_MIN_REFRESH_MIN, default 55) lets fetchedAt age to ~55+cron between paid fetches; 90min matches the aviation:faa sibling + api/health.js intlDelays maxStaleMin:90. Was 15 (30min) and false-WARNed every cycle once the gate landed.
   'theater-posture':          { key: 'seed-meta:theater-posture',          intervalMin: 8 },
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
   'economic:bis-extended':    { key: 'seed-meta:economic:bis-extended',    intervalMin: 720 }, // 12h Railway cron; "seeder ran" aggregate — per-dataset freshness lives below
+  'economic:china-macro':     { key: 'seed-meta:economic:china-macro-transport', intervalMin: 2160 },
+  'economic:china-release-calendar': { key: 'seed-meta:economic:china-release-calendar', intervalMin: 2160 },
+  'china:policy-events':      { key: 'seed-meta:china:policy-events',      intervalMin: 360 },
+  'intelligence:china-decision-signals': { key: 'seed-meta:intelligence:china-decision-signals', intervalMin: 30, minRecordCount: 6 },
   'economic:bis-dsr':                  { key: 'seed-meta:economic:bis-dsr',                  intervalMin: 720 }, // 12h cron; only written when DSR slice fetched fresh entries
   'economic:bis-property-residential': { key: 'seed-meta:economic:bis-property-residential', intervalMin: 720 }, // 12h cron; only written when SPP slice fetched fresh entries
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
   'research:arxiv-hn-trending': { key: 'seed-meta:research:arxiv-hn-trending', intervalMin: 75 },
-  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // seed-health alerts at 420min; /api/health uses a wider 720min freshness budget.
+  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
+  // Corporate intelligence (#5695): intervalMin = maxStaleMin / 2 (api/health.js: 2880 / 120).
+  'intelligence:sec-cik-map': { key: 'seed-meta:intelligence:sec-cik-map', intervalMin: 1440, minRecordCount: 5000 },
+  'intelligence:sec-8k-stream': { key: 'seed-meta:intelligence:sec-8k-stream', intervalMin: 60, minRecordCount: 50 },
   'intelligence:social-reddit': { key: 'seed-meta:intelligence:social-reddit', intervalMin: 270 }, // 180min relay loop (3h; dropped from 60min now that ScrapeCreators handles Reddit); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 270 }, // 180min relay loop (3h); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
-  'comtrade:bilateral-hs4':   { key: 'seed-meta:comtrade:bilateral-hs4',   intervalMin: 17280 }, // 24d gate in seed-comtrade-bilateral-hs4.mjs
+  'comtrade:bilateral-hs4':   { key: 'seed-meta:comtrade:bilateral-hs4',   intervalMin: 25200, minRecordCount: 110 }, // intervalMin*2 = health.js 35d budget for the monthly Railway seed; minRecordCount matches api/health.js + MIN_COUNTRY_COVERAGE
   'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
   'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
   'sanctions:pressure':       { key: 'seed-meta:sanctions:pressure',       intervalMin: 360 },
+  'sanctions:entities':       { key: 'seed-meta:sanctions:entities',       intervalMin: 360 },
   'health:air-quality':       { key: 'seed-meta:health:air-quality',       intervalMin: 60 },  // hourly cron (shared seeder writes health + climate keys)
   'economic:grocery-basket':  { key: 'seed-meta:economic:grocery-basket',  intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
@@ -148,6 +225,31 @@ const SEED_DOMAINS = {
   'economic:eurostat-industrial-production': { key: 'seed-meta:economic:eurostat-industrial-production', intervalMin: 3600 }, // daily cron, monthly data; intervalMin = health.js maxStaleMin / 2 (7200 / 2)
   'resilience:recovery:reexport-share':   { key: 'seed-meta:resilience:recovery:reexport-share',   intervalMin: 43200 }, // monthly bundle cron (30d); intervalMin*2 = 60d matches health.js maxStaleMin
   'resilience:recovery:sovereign-wealth': { key: 'seed-meta:resilience:recovery:sovereign-wealth', intervalMin: 43200 }, // monthly bundle cron (30d); intervalMin*2 = 60d matches health.js maxStaleMin
+  // #5736 — historical-intelligence ingest health. Distinct from each
+  // collector's own seed key above: scripts/_seed-history.mjs appends to the
+  // Convex intel-history store fail-open, so a permanently broken relay leg
+  // used to leave the collector green and the store empty. `fetchedAt` on these
+  // keys is the last HEALTHY append, so a prolonged rejection reads `stale`
+  // here while the collector stays `ok`; `sourceState: 'unavailable'` reports
+  // an un-provisioned relay as `not_configured` rather than an eternal warn.
+  // activationKey: the record only exists after the collector's next Railway
+  // tick, so absence before the first report is pending-activation, not a
+  // degraded 503. intervalMin*2 mirrors api/health.js maxStaleMin.
+  'intel-history:conflict:acled-intel': {
+    key: 'seed-meta:intel-history:conflict:acled-intel',
+    intervalMin: 19,
+    activationKey: 'seed-activated:intel-history:conflict:acled-intel',
+  },
+  'intel-history:military:cross-strait-activity': {
+    key: 'seed-meta:intel-history:military:cross-strait-activity',
+    intervalMin: 360,
+    activationKey: 'seed-activated:intel-history:military:cross-strait-activity',
+  },
+  'intel-history:energy:intelligence': {
+    key: 'seed-meta:intel-history:energy:intelligence',
+    intervalMin: 360,
+    activationKey: 'seed-activated:intel-history:energy:intelligence',
+  },
 };
 
 // Iran-events sunset (war ended 2026-07); mirrors api/health.js. Default OFF:
@@ -332,9 +434,9 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
-  const apiKeyResult = await validateApiKey(req);
-  if (apiKeyResult.required && !apiKeyResult.valid)
-    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
+  const apiKeyResult = await validateApiKey(req, { forceKey: true });
+  if (!apiKeyResult.valid || apiKeyResult.kind !== 'enterprise')
+    return jsonResponse({ error: 'Operator API key required' }, 401, cors);
 
   const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
@@ -368,14 +470,33 @@ export default async function handler(req) {
       }
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
       if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+      if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
       missingCount++;
       continue;
     }
 
     const ageMs = now - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
-    const coveragePartial = cfg.minRecordCount != null && (recordCount == null || recordCount < cfg.minRecordCount);
-    const isError = meta.status === 'error';
+    const poolCounts = parsePoolCounts(meta.poolCounts, cfg.minPoolCounts);
+    const recordCoveragePartial = cfg.minRecordCount != null
+      && (recordCount == null || recordCount < cfg.minRecordCount);
+    const poolCoveragePartial = hasPoolCoverageShortfall(poolCounts, cfg.minPoolCounts);
+    const coveragePartial = recordCoveragePartial || poolCoveragePartial;
+    // Source-specific seed projections retain their last-good records while
+    // reporting a current upstream failure through sourceState. Treat that as
+    // an immediate operator error instead of waiting for the freshness window.
+    // `unavailable` means an optional adapter was never configured, matching
+    // api/health.js's NOT_CONFIGURED treatment rather than a broken source.
+    const sourceUnavailable = meta.sourceState === 'unavailable';
+    const sourceBlocked = domain === 'military:cross-strait-activity:japan-mod'
+      && meta.sourceState === 'blocked'
+      && recordCount != null
+      && recordCount > 0;
+    const sourceError = typeof meta.sourceState === 'string'
+      && meta.sourceState !== 'ok'
+      && !sourceUnavailable
+      && !sourceBlocked;
+    const isError = meta.status === 'error' || sourceError;
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(
       cfg.dataProbe?.sourceVersion &&
@@ -383,21 +504,33 @@ export default async function handler(req) {
       meta.sourceVersion !== '' &&
       meta.sourceVersion !== cfg.dataProbe.sourceVersion
     );
-    const stale = ageMs > maxStalenessMs || coveragePartial || isError || sourceMismatch || probe?.ok === false;
-    if (stale) staleCount++;
+    // Keep the new pool-coverage verdict distinct from freshness. The legacy
+    // scalar minRecordCount path still contributes to `stale` for wire
+    // compatibility, but an empty pool is fresh data with partial coverage.
+    const freshnessStale = ageMs > maxStalenessMs;
+    const stale = freshnessStale
+      || recordCoveragePartial
+      || isError
+      || sourceMismatch
+      || probe?.ok === false;
+    if (stale || poolCoveragePartial) staleCount++;
 
     seeds[domain] = {
-      status: isError
+      status: sourceUnavailable
+        ? 'not_configured'
+        : isError
         ? 'error'
         : sourceMismatch
           ? 'source_version_mismatch'
           : probe?.ok === false
             ? probe.status
-            : coveragePartial
-              ? 'coverage_partial'
-              : stale
+            : freshnessStale
               ? 'stale'
-              : 'ok',
+              : coveragePartial
+                ? 'coverage_partial'
+                : sourceBlocked
+                  ? 'source_blocked'
+                  : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: recordCount ?? meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,
@@ -405,7 +538,26 @@ export default async function handler(req) {
       stale,
     };
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+    if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
+    if (poolCounts) seeds[domain].poolCounts = poolCounts;
+    // Explicit coverage flag so consumers that only inspect `stale` still see
+    // pool/aggregate shortfalls (pool shortfall keeps stale:false by design).
+    if (coveragePartial) seeds[domain].coveragePartial = true;
     if (probe) seeds[domain].dataProbe = probe;
+    // #5736: without this, `status: "error"` names no cause and an operator has
+    // to read raw Redis to learn WHY — which is the log-diving the issue exists
+    // to end. Bounded, producer-controlled vocabulary only (`http_401`,
+    // `budget_exhausted`, `config_removed`, a clamped error-class name); the
+    // free-text `lastErrorReason` carries a relay-controlled body snippet and
+    // is deliberately NOT echoed. Emitted only when present, so every existing
+    // seed entry keeps its exact shape.
+    if (typeof meta.lastErrorCode === 'string' && meta.lastErrorCode) {
+      seeds[domain].lastErrorCode = meta.lastErrorCode;
+    }
+    if (domain === 'intelligence:china-decision-signals') {
+      const diagnostics = projectChinaDecisionGroupDiagnostics(meta);
+      if (diagnostics) Object.assign(seeds[domain], diagnostics);
+    }
   }
 
   const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';

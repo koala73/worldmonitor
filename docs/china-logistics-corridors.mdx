@@ -1,0 +1,109 @@
+---
+title: "China Logistics Corridors"
+description: "Four reviewed China logistics corridors, six source families, composition rules, provenance, freshness, and API behavior."
+---
+
+The China logistics control towers are transparent source compositions over
+reviewed geographic corridors. They report evidence availability and
+freshness by family. They do not generate an opaque logistics-risk score,
+forecast disruption, or infer activity from source presence alone.
+
+## Reviewed corridors
+
+| Corridor ID | Name | Reviewed scope |
+| --- | --- | --- |
+| `china-yangtze-river-delta` | Yangtze River Delta | Shanghai, Jiangsu, and Zhejiang ports, aviation, and advanced-manufacturing nodes |
+| `china-greater-bay-area` | Greater Bay Area | Guangdong, Hong Kong, and Macao-facing ports, airports, hazards, and industrial gateways |
+| `china-bohai-rim` | Bohai Rim | Beijing-Tianjin, Hebei, Shandong, and Liaoning maritime-industrial gateways |
+| `china-western-land-sea-corridor` | Western Land-Sea Corridor | Inland manufacturing hubs, Xinjiang land crossings, and Guangxi maritime gateways |
+
+Each corridor has a reviewed polygon, node registry, node owner, and source
+selector. A source record contributes only when its selector or reviewed
+geography maps it to that corridor. National inputs are clearly marked as
+national and can apply to all four corridors.
+
+## Six signal families
+
+| Family ID | Source contract | Scope and observation |
+| --- | --- | --- |
+| `port` | IMF PortWatch | Reviewed China/Hong Kong port IDs; calls, DWT measures, trend deltas, and anomaly flag when published |
+| `aviation` | AviationStack | Reviewed PEK, PVG, CAN, SZX, CTU, KMG, URC, and HKG provider coverage |
+| `hazard` | Western Pacific cyclone sources and Hong Kong Observatory | Events inside a corridor boundary plus explicit HKO warning coverage for the Greater Bay Area |
+| `power_energy` | WorldMonitor energy spine | National China energy dependency coverage and latest source observation time |
+| `strategic_industry` | UN Comtrade | Annual strategic-product observations for reporter 156 |
+| `trade` | UN Comtrade and Shanghai Shipping Exchange CCFI | Annual reporter-156 trade observations and the current China Containerized Freight Index |
+
+IMF PortWatch and AviationStack are node-scoped. Hazard observations are
+regional. WorldMonitor energy spine, UN Comtrade, and Shanghai Shipping
+Exchange inputs are national. The output keeps those scopes visible rather
+than presenting national evidence as a measured node value.
+
+## Availability composition
+
+Every source signal carries:
+
+- publisher identity and class;
+- source URL when applicable;
+- node, regional, or national scope;
+- observation, release, and retrieval time with precision;
+- revision metadata when available;
+- transport and content freshness;
+- an inspectable summary and source metrics.
+
+Each family condition is `available`, `partial`, `stale`, or `unavailable`.
+A corridor is:
+
+- `available` only when all six conditions are available;
+- `stale` when every condition is available or stale and at least one is
+  stale;
+- `unavailable` when all six are unavailable; or
+- `partial` for every mixed or provenance-invalid state.
+
+An absent configured port or airport becomes an explicit unavailable signal.
+A healthy feed with zero hazards can establish feed coverage, but it does not
+create a hazard event. A present energy-spine payload does not establish an
+activity direction. A current CCFI level without a prior comparison does not
+become a freight change.
+
+## Freshness budgets
+
+The composer evaluates source timestamps at request time:
+
+| Input | Transport budget | Content handling |
+| --- | --- | --- |
+| PortWatch | 36 hours | Individual observations stale after 72 hours |
+| AviationStack | 90 minutes | Individual observations stale after 180 minutes |
+| Western Pacific hazards / HKO | 9 hours | Observations stale after 9 hours |
+| Energy spine | 48 hours | Year/month/day precision gets a corresponding periodic budget |
+| UN Comtrade | 48 hours | Annual observations use a 550-day budget |
+| CCFI | 7 hours | Index content stale after 28 days |
+
+Transport freshness proves that collection ran. Content freshness proves that
+the observation itself is timely. Neither substitutes for the other.
+
+## API and caching
+
+`GET /api/supply-chain/v1/get-china-corridor-control-towers` reads the
+canonical Redis source seeds in one batch and isolates missing dependencies.
+It validates every composed provenance envelope before returning the wire
+payload.
+
+Healthy aggregates use a five-minute server cache. An all-unavailable result
+is not positively cached, so a recovery can appear immediately. The client
+circuit breaker deliberately retains no last-good aggregate that could hide a
+current fail-closed response. The panel refresh interval is 15 minutes.
+
+The response exposes `upstreamUnavailable: true` only when every corridor is
+unavailable. Partial corridor evidence remains inspectable rather than being
+collapsed into total outage or false health.
+
+This detailed control-tower response is a REST/UI surface. MCP has no dedicated
+corridor-control-tower tool; Pro MCP receives only its bounded contribution to
+`get_china_decision_signals`.
+
+## Relationship to the nowcast
+
+The [China Activity Nowcast](/methodology/china-activity-nowcast) can use a
+corridor-family breadth change only when a comparable prior corridor snapshot
+exists. The control-tower response itself remains a source composition and does
+not publish a directional economic conclusion.

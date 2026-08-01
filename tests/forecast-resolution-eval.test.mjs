@@ -7,6 +7,8 @@ import {
   countSettlementLagMs,
   parseMetricKey,
   resolveHardSpec,
+  extractMetricObservation,
+  extractMetricValue,
 } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -657,5 +659,43 @@ describe('resolveHardSpec', () => {
 
   it('fixtures stay omission-shaped', () => {
     assertNoNullFields(entry());
+  });
+});
+
+describe('extractMetricObservation present() semantics (#void-triage)', () => {
+  const parsed = parseMetricKey('infra:outages:v1|present(country==Cuba)');
+
+  it('observes 0 (not NaN) when the subject is absent, matching extractMetricValue', () => {
+    const feed = { outages: [{ country: 'Iraq' }] }; // Cuba absent (no outage)
+    assert.equal(extractMetricValue(parsed, feed), 0);
+    const obs = extractMetricObservation(parsed, feed);
+    assert.equal(obs.value, 0); // was NaN → error sample → false VOID
+    assert.equal(obs.asOf, null);
+  });
+
+  it('observes 1 when the subject is present', () => {
+    const feed = { outages: [{ country: 'Cuba', date: '2026-07-14' }] };
+    const obs = extractMetricObservation(parsed, feed);
+    assert.equal(obs.value, 1);
+    assert.equal(obs.asOf, Date.parse('2026-07-14'));
+  });
+
+  it('lets a within-horizon present spec resolve NO on a sampled absence (not VOID)', () => {
+    const now = Date.parse('2026-07-14T00:00:00Z');
+    const spec = {
+      kind: 'hard',
+      metricKey: 'infra:outages:v1|present(country==Cuba)',
+      operator: '>=',
+      threshold: 1,
+      window: 'within-horizon',
+      deadline: now,
+      sourceFeed: 'infra:outages:v1',
+    };
+    const entry = { spec, generatedAt: now - DAY_MS };
+    // a sampled absence within the window (value 0) — must resolve NO, not VOID
+    const samples = [{ ts: now - DAY_MS / 2, value: 0 }];
+    const res = resolveHardSpec(entry, { outages: [{ country: 'Iraq' }] }, samples, now + 1);
+    assert.equal(res.status, 'resolved');
+    assert.equal(res.outcome, 'NO');
   });
 });

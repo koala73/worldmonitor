@@ -2,6 +2,7 @@ import type { TemporalAnomaly as TemporalAnomalyProto } from '@/generated/client
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
+import { getAnomalySeverity } from '../../shared/analysis-temporal-severity';
 
 export type TemporalEventType =
   | 'military_flights'
@@ -52,11 +53,7 @@ function formatAnomalyMessage(
   return `${TYPE_LABELS[type]} ${mult} normal for ${weekday} (${month}) — ${count} vs baseline ${Math.round(mean)}`;
 }
 
-function getSeverity(zScore: number): 'medium' | 'high' | 'critical' {
-  if (zScore >= 3.0) return 'critical';
-  if (zScore >= 2.0) return 'high';
-  return 'medium';
-}
+const getSeverity = getAnomalySeverity;
 
 function mapServerAnomaly(a: TemporalAnomalyProto): TemporalAnomaly {
   return {

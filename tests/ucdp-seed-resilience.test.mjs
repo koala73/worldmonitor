@@ -141,12 +141,13 @@ describe('UCDP seed resilience branches', () => {
     );
   });
 
-  it('does NOT write seed-meta when mapped is empty after filtering', () => {
-    // The "mapped.length === 0" branch should also not write seed-meta
-    const emptyBranch = fnBody.slice(
-      fnBody.indexOf('mapped.length === 0'),
-      fnBody.indexOf('mapped.length === 0') + 300,
-    );
+  it('does NOT write seed-meta when the capped payload is empty after filtering', () => {
+    // The "capped.length === 0" branch should also not write seed-meta.
+    // indexOf must resolve — a renamed variable would otherwise slice an empty
+    // string and make this guard pass vacuously.
+    const emptyBranchStart = fnBody.indexOf('capped.length === 0');
+    assert.notEqual(emptyBranchStart, -1, 'empty-payload guard must exist in seedUcdpEvents');
+    const emptyBranch = fnBody.slice(emptyBranchStart, emptyBranchStart + 300);
     assert.ok(
       !emptyBranch.includes("upstashSet('seed-meta"),
       'Empty-after-filtering branch must NOT update seed-meta',

@@ -1,5 +1,14 @@
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+import {
+  buildBootstrapR2RumSample,
+  selectBootstrapR2RumTier,
+  type BootstrapR2RumOutcome,
+  type BootstrapR2RumTier,
+} from '@/bootstrap/bootstrap-r2-rum';
+import { reportBootstrapR2Rum } from '@/bootstrap/debugbear-rum';
+import { getWebVitalsFormFactor } from '@/bootstrap/web-vitals-utils';
+import { bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
 
 const hydrationCache = new Map<string, unknown>();
 const BOOTSTRAP_CACHE_PREFIX = 'bootstrap:tier:';
@@ -32,11 +41,109 @@ let lastHydrationState: BootstrapHydrationState = {
 let bootstrapGeneration = 0;
 let activeSlowCtrl: AbortController | null = null;
 let slowTierSettled: Promise<void> | null = null;
+let bootstrapR2RumTier: BootstrapR2RumTier | null = null;
+
+function selectedBootstrapR2RumTier(): BootstrapR2RumTier {
+  bootstrapR2RumTier ??= selectBootstrapR2RumTier();
+  return bootstrapR2RumTier;
+}
+
+function maybeReportBootstrapR2Rum(
+  tier: BootstrapR2RumTier,
+  outcome: BootstrapR2RumOutcome,
+  startedAt: number,
+  response: Response,
+): void {
+  if (selectedBootstrapR2RumTier() !== tier) return;
+  const result = buildBootstrapR2RumSample(
+    tier,
+    outcome,
+    Math.max(0, performance.now() - startedAt),
+    response.headers,
+    getWebVitalsFormFactor(),
+  );
+  if (result.accepted) reportBootstrapR2Rum(result.sample);
+}
 
 export function getHydratedData(key: string): unknown | undefined {
   const val = hydrationCache.get(key);
   if (val !== undefined) hydrationCache.delete(key);
   return val;
+}
+
+// In-flight coalescing for on-demand keys: a panel and a map layer can both ask
+// for the same key in the same tick, and we want one request, not two.
+const onDemandInflight = new Map<string, Promise<unknown | undefined>>();
+
+// The on-demand keys `/api/bootstrap?keys=<name>&public=1` will serve without
+// credentials. The ON-DEMAND PORTION cannot drift: this set, the server's
+// allowlist (ON_DEMAND_KEYS, api/bootstrap.js) and the wm-session interceptor's
+// bypass set (PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS, wm-session.ts) all derive it
+// from the same `bootstrapTierKeyNames('on-demand')` call.
+//
+// The other two additionally accept PUBLIC_WEATHER_BOOTSTRAP_KEY on that URL
+// shape (#5386), so they are supersets of this one — that difference is
+// intentional, not drift. weatherAlerts rides the fast tier, so ensureHydrated's
+// tier-hydration path already covers it and its direct reader is
+// src/services/weather.ts; adding it here would only enable a fetch no caller
+// makes.
+const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand'));
+
+/**
+ * Hydration for keys that ride in NEITHER bootstrap tier (#5300).
+ *
+ * Returns the tier-hydrated value if one is present (so a key promoted back into
+ * a tier keeps working unchanged), otherwise fetches it through its own
+ * CDN-shielded public URL — `?keys=<name>&public=1`, one key per URL, one CDN
+ * entry per key.
+ *
+ * This must NOT fall back to the domain RPC: the RPC reads the same Redis key
+ * with no CDN in front of it, so routing misses there would relocate the egress
+ * rather than remove it — the trap that made #5263's RPC work a no-op until
+ * #5287. Callers keep their existing RPC fallback for the failure case; this
+ * simply gives them a cached path to try first.
+ */
+export async function ensureHydrated(key: string): Promise<unknown | undefined> {
+  const hydrated = getHydratedData(key);
+  if (hydrated !== undefined) return hydrated;
+
+  // The public URL below only serves keys in the on-demand tier
+  // (isPublicOnDemandBootstrapRequest, api/bootstrap.js); anything else falls
+  // through to validateApiKey, which sees no credential — this request omits
+  // them — and answers 401. Issuing it anyway is not merely wasted: the
+  // wm-session interceptor waves through credential-less bootstrap reads only
+  // for keys on the public single-key URL shape (PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS,
+  // wm-session.ts), so
+  // a non-on-demand key enters session recovery, which mints a fresh cookie and
+  // replays a request that still omits credentials, draws the same 401, and
+  // reports `wm_session_route_401` — blaming the anonymous session for a
+  // request that never presented one. That was 100% of WORLDMONITOR-XP
+  // (~125/hr, all route `/api/bootstrap`), via the `slow`-tier key
+  // `crossStraitActivity`. Callers already treat undefined as "use your own
+  // fallback", which is exactly what the 401 produced.
+  if (!PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS.has(key)) return undefined;
+
+  const existing = onDemandInflight.get(key);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const resp = await fetch(
+        toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}&public=1`),
+        { credentials: 'omit', signal: AbortSignal.timeout(10_000) },
+      );
+      if (!resp.ok) return undefined;
+      const payload = (await resp.json()) as { data?: Record<string, unknown> };
+      return payload.data?.[key];
+    } catch {
+      return undefined;
+    } finally {
+      onDemandInflight.delete(key);
+    }
+  })();
+
+  onDemandInflight.set(key, promise);
+  return promise;
 }
 
 export function markBootstrapAsLive(): void {
@@ -114,9 +221,15 @@ async function fetchTier(
 
   let liveData: Record<string, unknown> = {};
   let missingKeys: string[] = [];
+  const requestStartedAt = performance.now();
+  let rumResponse: Response | null = null;
 
   try {
-    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}`), { signal });
+    // public=1 gives the shared seed bundle a cache key distinct from the legacy
+    // credentialed tier URL. credentials:'omit' also avoids sending cookies to
+    // a route whose contract is explicitly public (see #5249).
+    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}&public=1`), { signal, credentials: 'omit' });
+    rumResponse = resp;
     if (resp.ok) {
       const payload = (await resp.json()) as {
         data?: Record<string, unknown>;
@@ -124,8 +237,12 @@ async function fetchTier(
       };
       liveData = payload.data ?? {};
       missingKeys = Array.isArray(payload.missing) ? payload.missing : [];
+      maybeReportBootstrapR2Rum(tier, 'success', requestStartedAt, resp);
     }
   } catch {
+    if (signal.aborted && rumResponse) {
+      maybeReportBootstrapR2Rum(tier, 'abort', requestStartedAt, rumResponse);
+    }
     // Fall through to cached tier.
   }
 
@@ -327,6 +444,7 @@ export const __testing__ = {
   resetBootstrapForTests(): void {
     cancelBootstrapSlowTier();
     hydrationCache.clear();
+    bootstrapR2RumTier = null;
     lastHydrationState = {
       source: 'none',
       tiers: {

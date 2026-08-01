@@ -1,7 +1,13 @@
 import { CHROME_UA } from './constants';
-import { isProviderAvailable } from './llm-health';
+import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
+import {
+  getLlmAttemptTimeoutMs,
+  OPENROUTER_PROVIDER_ROUTING,
+} from '../../scripts/_llm-model-timeouts.mjs';
+
+export { getLlmAttemptTimeoutMs } from '../../scripts/_llm-model-timeouts.mjs';
 
 function promptChars(messages: Array<{ role: string; content: string }>): number {
   return messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
@@ -42,28 +48,12 @@ function isLocalDeployment(): boolean {
   return mode.includes('sidecar') || mode.includes('docker');
 }
 
-// OpenRouter provider routing. WorldMonitor is a geopolitical product, so
-// inference must never physically run on a China-hosted provider — one could
-// log queries or bias outputs on the exact topics we cover (Taiwan, Xinjiang,
-// the South China Sea, etc.). We BLOCK the known China-based providers and let
-// OpenRouter serve the model (DeepSeek weights are fine; hosting is the
-// concern) from the fastest of the rest.
-//   - `ignore`: blocklist. These MUST be OpenRouter's lowercase provider
-//     SLUGS (from GET /api/v1/providers), NOT display names — OpenRouter
-//     silently drops unrecognized entries, so a display name like "DeepSeek"
-//     matches nothing and the block is a no-op (caught in #4993 review).
-//     Verified against /providers 2026-07-07. RE-AUDIT periodically — a new
-//     China-based entrant would otherwise be eligible.
-//   - `sort: throughput`: also steers off OpenRouter's cheapest-but-slowest
-//     default (DeepInfra ~17 tok/s) to the fastest eligible provider, which is
-//     the brief-latency win we were chasing (#4983 follow-up).
-const OPENROUTER_BLOCKED_PROVIDERS = [
-  'baidu', 'alibaba', 'deepseek', 'siliconflow', 'streamlake', 'novita',
-];
-const OPENROUTER_PROVIDER_ROUTING = {
-  ignore: OPENROUTER_BLOCKED_PROVIDERS,
-  sort: 'throughput',
-} as const;
+// OpenRouter provider routing now lives in scripts/_llm-model-timeouts.mjs, next to
+// the Flash completion timeout it is inseparable from. It used to be defined HERE
+// only, which meant the Railway forecast seeder (which cannot import server/) had the
+// timeout but NOT the routing: OpenRouter free-routed its calls to backends 4-7x
+// slower than the timeout allowed, and every market_implications run failed. One
+// source of truth so a consumer cannot pick up the timeout without the routing.
 
 export function getProviderCredentials(
   provider: string,
@@ -414,6 +404,13 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         });
         if (!creds) continue;
 
+        // Model gate first: it is synchronous, so a quarantined model costs
+        // neither a completion request nor an origin probe.
+        if (!isModelUsable(creds.apiUrl, creds.model)) {
+          console.warn(`[llm-stream:${providerName}] Model ${creds.model} quarantined, skipping`);
+          continue;
+        }
+
         if (!(await isProviderAvailable(creds.apiUrl))) {
           console.warn(`[llm-stream:${providerName}] Offline, skipping`);
           continue;
@@ -459,10 +456,19 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           });
           // Timeout stays active — it must bound the streaming body read, not just the connection
 
+          if (resp.ok) {
+            // HTTP success proves the provider accepted this model even if the
+            // application later rejects, strips, or cannot read the payload.
+            recordModelSuccess(creds.apiUrl, creds.model);
+          }
+
           if (!resp.ok || !resp.body) {
             clearTimeout(timeoutId);
             const errBody = resp.body ? await resp.text().catch(() => '') : '';
             console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
+            // The body already told us whether the MODEL was rejected; feeding
+            // it back is what stops the next request re-sending the prompt.
+            recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);
             record(false, `http_${resp.status}`);
             continue;
           }
@@ -576,6 +582,14 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         continue;
       }
 
+      // Model gate: skip a model the provider has already rejected. Runs before
+      // the reachability probe because it is synchronous and network-free.
+      if (!isModelUsable(creds.apiUrl, creds.model)) {
+        console.warn(`[llm:${providerName}] Model ${creds.model} quarantined, skipping`);
+        if (forcedProvider) return null;
+        continue;
+      }
+
       // Health gate: skip provider if endpoint is unreachable
       if (!(await isProviderAvailable(creds.apiUrl))) {
         console.warn(`[llm:${providerName}] Offline, skipping`);
@@ -613,7 +627,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
             temperature,
             max_tokens: maxTokens,
           }),
-          signal: AbortSignal.timeout(timeoutMs),
+          // #5246: DeepSeek V4 Flash is bimodal — healthy calls finish near 2s,
+          // while stalled calls hang to the old 25s clamp. Cut only this model's
+          // dead tail so the existing provider chain can reach its fallback.
+          signal: AbortSignal.timeout(getLlmAttemptTimeoutMs(creds.model, timeoutMs)),
         });
 
         if (!resp.ok) {
@@ -623,10 +640,17 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           // log: never consume a huge/slow error body before falling back.
           const errBody = await readBoundedErrorBody(resp, 300).catch(() => '');
           console.warn(`[llm:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody}`);
+          // The body already told us whether the MODEL was rejected; feeding it
+          // back is what stops the next request re-sending the prompt.
+          recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);
           record(false, { reason: `http_${resp.status}` });
           if (forcedProvider) return null;
           continue;
         }
+
+        // Provider acceptance is the model-health signal. Output validation,
+        // token limits, and content policy are separate application concerns.
+        recordModelSuccess(creds.apiUrl, creds.model);
 
         const data = (await resp.json()) as {
           choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;

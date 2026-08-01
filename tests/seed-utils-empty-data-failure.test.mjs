@@ -16,20 +16,23 @@ const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 };
+const ORIGINAL_SIGTERM_LISTENERS = new Set(process.rawListeners('SIGTERM'));
 
 let recordedCalls;
+let expireResult;
 
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example.com';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   recordedCalls = [];
+  expireResult = 0;
 
   globalThis.fetch = async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     // Lock acquire: SET NX returns OK. Pipeline (EXPIRE) returns array. Default: OK.
     if (Array.isArray(body) && Array.isArray(body[0])) {
-      return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+      return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
   };
@@ -50,6 +53,9 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_ENV.UPSTASH_REDIS_REST_URL;
   if (ORIGINAL_ENV.UPSTASH_REDIS_REST_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
   else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_ENV.UPSTASH_REDIS_REST_TOKEN;
+  for (const listener of process.rawListeners('SIGTERM')) {
+    if (!ORIGINAL_SIGTERM_LISTENERS.has(listener)) process.removeListener('SIGTERM', listener);
+  }
 });
 
 function countMetaSets(resourceSuffix) {
@@ -58,6 +64,14 @@ function countMetaSets(resourceSuffix) {
     && c.body[0] === 'SET'
     && typeof c.body[1] === 'string'
     && c.body[1] === `seed-meta:test:${resourceSuffix}`,
+  ).length;
+}
+
+function countSetsFor(key) {
+  return recordedCalls.filter(c =>
+    Array.isArray(c.body)
+    && c.body[0] === 'SET'
+    && c.body[1] === key,
   ).length;
 }
 
@@ -79,6 +93,20 @@ function expireKeys() {
     .map(cmd => cmd[1]);
 }
 
+function runEmptyContractRetry(resource, opts = {}) {
+  return runWithExitTrap(() =>
+    runSeed('test', resource, `test:${resource}:v1`, async () => ({ items: [] }), {
+      validateFn: (d) => Array.isArray(d?.items),
+      ttlSeconds: 3600,
+      sourceVersion: 'test-v1',
+      schemaVersion: 1,
+      maxStaleMin: 120,
+      declareRecords: (d) => d.items.length,
+      ...opts,
+    }),
+  );
+}
+
 test('fetch failure extends existing TTL and exits with graceful-failure code', async () => {
   const exitCode = await runWithExitTrap(() =>
     runSeed('test', 'fetch-fail', 'test:fetch-fail:v1', async () => {
@@ -89,6 +117,7 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
       validateFn: (d) => Boolean(d),
       ttlSeconds: 3600,
       extraKeys: [{ key: 'test:fetch-fail:extra' }],
+      preserveKeys: ['test:fetch-fail:preserve-only'],
     }),
   );
 
@@ -99,12 +128,44 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
   );
   assert.deepEqual(
     new Set(expireKeys()),
-    new Set(['test:fetch-fail:v1', 'seed-meta:test:fetch-fail', 'test:fetch-fail:extra']),
-    'fetch failure should still preserve last-good data by extending canonical, seed-meta, and extra-key TTLs',
+    new Set(['test:fetch-fail:v1', 'seed-meta:test:fetch-fail', 'test:fetch-fail:extra', 'test:fetch-fail:preserve-only']),
+    'fetch failure should still preserve canonical, seed-meta, extra-key, and explicitly preserved last-good TTLs',
   );
   assert.equal(
     countMetaSets('fetch-fail'), 0,
     'fetch failure must not write fresh seed-meta while reporting graceful failure',
+  );
+});
+
+test('contract RETRY hard-fails when expired keys make last-good preservation impossible', async () => {
+  expireResult = 0;
+  const exitCode = await runEmptyContractRetry('retry-missing', {
+    preserveKeys: ['test:retry-missing:preserve-only'],
+  });
+
+  assert.equal(exitCode, 1,
+    'zero-yield RETRY must be a hard failure when EXPIRE confirms the last-good keys are gone');
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:retry-missing:v1', 'seed-meta:test:retry-missing', 'test:retry-missing:preserve-only']),
+    'RETRY must preserve explicit companion keys before deciding its exit state',
+  );
+  assert.equal(countMetaSets('retry-missing'), 0,
+    'a failed RETRY must not write fresh seed-meta and mask the outage');
+});
+
+test('contract RETRY remains graceful when every last-good key is preserved', async () => {
+  expireResult = 1;
+  const exitCode = await runEmptyContractRetry('retry-preserved', {
+    preserveKeys: ['test:retry-preserved:preserve-only'],
+  });
+
+  assert.equal(exitCode, 0,
+    'zero-yield RETRY may remain exit 0 when every last-good key was actually preserved');
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:retry-preserved:v1', 'seed-meta:test:retry-preserved', 'test:retry-preserved:preserve-only']),
+    'RETRY must preserve explicit companion keys before treating the zero-yield run as graceful',
   );
 });
 
@@ -139,6 +200,73 @@ test('validation failure WITHOUT emptyDataIsFailure DOES refresh seed-meta (quie
   );
 });
 
+test('contract extra keys publish their explicit seed-meta after a successful write', async () => {
+  const exitCode = await runWithExitTrap(() => runSeed('test', 'extra-meta-success', 'test:extra-meta-success:v1', async () => ({
+    events: [{ id: 'canonical' }],
+    warnings: [{ id: 'warning' }],
+  }), {
+    validateFn: (data) => Array.isArray(data?.events),
+    ttlSeconds: 3600,
+    sourceVersion: 'test-v1',
+    schemaVersion: 1,
+    maxStaleMin: 120,
+    declareRecords: (data) => data.events.length,
+    extraKeys: [{
+      key: 'test:extra-meta-success:warnings',
+      transform: (data) => data.warnings,
+      declareRecords: (warnings) => warnings.length,
+      metaKey: 'seed-meta:test:extra-meta-success:warnings',
+      metaCritical: true,
+      skipWhenEmpty: true,
+    }],
+  }));
+
+  assert.equal(exitCode, 0);
+  assert.equal(
+    countSetsFor('seed-meta:test:extra-meta-success:warnings'),
+    1,
+    'a published extra key must refresh its explicit seed-meta key',
+  );
+});
+
+test('skipWhenEmpty preserves the last-good extra key without refreshing its seed-meta', async () => {
+  const exitCode = await runWithExitTrap(() => runSeed('test', 'extra-meta-empty', 'test:extra-meta-empty:v1', async () => ({
+    events: [{ id: 'canonical' }],
+    warnings: [],
+  }), {
+    validateFn: (data) => Array.isArray(data?.events),
+    ttlSeconds: 3600,
+    sourceVersion: 'test-v1',
+    schemaVersion: 1,
+    maxStaleMin: 120,
+    declareRecords: (data) => data.events.length,
+    extraKeys: [{
+      key: 'test:extra-meta-empty:warnings',
+      transform: (data) => data.warnings,
+      declareRecords: (warnings) => warnings.length,
+      metaKey: 'seed-meta:test:extra-meta-empty:warnings',
+      metaCritical: true,
+      skipWhenEmpty: true,
+    }],
+  }));
+
+  assert.equal(exitCode, 0);
+  assert.equal(
+    countSetsFor('seed-meta:test:extra-meta-empty:warnings'),
+    0,
+    'an empty transformed extra key must not refresh freshness metadata',
+  );
+  assert.equal(
+    countSetsFor('test:extra-meta-empty:warnings'),
+    0,
+    'an empty transformed extra key must not overwrite the last-good payload',
+  );
+  assert.ok(
+    expireKeys().includes('test:extra-meta-empty:warnings'),
+    'the skipped extra key must have its TTL extended to preserve last-good data',
+  );
+});
+
 // PR #3582: When validateFn rejects a transient blip but canonical key still
 // holds a contract-mode envelope with recordCount > 0, seed-meta should mirror
 // the canonical's (fetchedAt, recordCount) rather than overwrite with zero.
@@ -148,7 +276,15 @@ test('validation failure WITHOUT emptyDataIsFailure DOES refresh seed-meta (quie
 // EMPTY_DATA even though the canonical data was fine. The mirror behavior
 // keeps health honest while preserving STALE_SEED honesty (mirrored
 // fetchedAt is the canonical's ORIGINAL value, not now).
-function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVersion = 'test-v1', contentAge }) {
+function withCanonicalEnvelope({
+  canonicalKey,
+  fetchedAt,
+  recordCount,
+  sourceVersion = 'test-v1',
+  contentAge,
+  existingSeedMeta,
+  seedMetaKey,
+}) {
   const seed = {
     fetchedAt,
     recordCount,
@@ -175,6 +311,11 @@ function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVer
     // Match GET on the canonical key — return the envelope wrapped in {result}.
     if (u.includes(`/get/${encodeURIComponent(canonicalKey)}`) || u.endsWith(`/get/${canonicalKey}`)) {
       return new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 });
+    }
+    // Prior seed-meta (poolCounts etc.) so validate-skip can re-apply diagnostics.
+    if (existingSeedMeta && seedMetaKey
+      && (u.includes(`/get/${encodeURIComponent(seedMetaKey)}`) || u.endsWith(`/get/${seedMetaKey}`))) {
+      return new Response(JSON.stringify({ result: JSON.stringify(existingSeedMeta) }), { status: 200 });
     }
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
@@ -312,4 +453,69 @@ test('Sprint 1: validation failure with canonical envelope BUT no contentAge wri
   assert.ok(!('newestItemAt' in meta), 'newestItemAt absent for legacy seeders');
   assert.ok(!('oldestItemAt' in meta), 'oldestItemAt absent for legacy seeders');
   assert.ok(!('maxContentAgeMin' in meta), 'maxContentAgeMin absent for legacy seeders');
+});
+
+// #5875 review P1: validate-skip rewrites seed-meta as a full SET. Without
+// merging prior afterPublish diagnostics (poolCounts, errorReason, …),
+// fail-closed health surfaces false-alarm after the first healthy publish.
+test('validation skip preserves prior seed-meta diagnostics (poolCounts)', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const RECORD_COUNT = 38;
+  const POOL_COUNTS = { geopolitical: 18, tech: 12, finance: 8 };
+  const SEED_META_KEY = 'seed-meta:test:pool-diag-preserve';
+
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:pool-diag-preserve:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'prediction-markets-v1',
+    seedMetaKey: SEED_META_KEY,
+    existingSeedMeta: {
+      fetchedAt: FROZEN_FETCHED_AT - 60_000,
+      recordCount: RECORD_COUNT,
+      sourceVersion: 'prediction-markets-v1',
+      poolCounts: POOL_COUNTS,
+      status: 'ok',
+    },
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'pool-diag-preserve', 'test:pool-diag-preserve:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('pool-diag-preserve');
+  assert.ok(meta, 'seed-meta must be rewritten on the mirror path');
+  assert.equal(meta.recordCount, RECORD_COUNT, 'canonical recordCount still mirrored');
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT, 'canonical fetchedAt still mirrored');
+  assert.deepEqual(
+    meta.poolCounts,
+    POOL_COUNTS,
+    'prior poolCounts must survive validate-skip so fail-closed health stays honest',
+  );
+  assert.equal(meta.status, 'ok', 'other non-reserved diagnostics are preserved too');
+});
+
+test('validation skip with no prior diagnostics still writes a clean mirror', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:no-prior-diag:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: 50,
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'no-prior-diag', 'test:no-prior-diag:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('no-prior-diag');
+  assert.ok(meta);
+  assert.equal(meta.recordCount, 50);
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT);
+  assert.equal(Object.hasOwn(meta, 'poolCounts'), false);
 });

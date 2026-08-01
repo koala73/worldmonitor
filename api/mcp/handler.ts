@@ -109,7 +109,7 @@ const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
 
-function getMcpCorsHeaders(methods = 'POST, GET, OPTIONS'): Record<string, string> {
+function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string, string> {
   return {
     ...getPublicCorsHeaders(methods),
     'Cache-Control': MCP_CACHE_CONTROL,
@@ -243,7 +243,7 @@ async function maybeStreamJsonRpcResponse(req: Request, response: Response): Pro
   });
 }
 
-function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Response {
+function handleSseReplay(req: Request, corsHeaders: Record<string, string>, headOnly = false): Response {
   const lastEventId = req.headers.get('last-event-id');
   if (!clientAcceptsSse(req)) {
     return new Response(
@@ -287,7 +287,7 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
     );
   }
 
-  return new Response(createSseStream(events), {
+  return new Response(headOnly ? null : createSseStream(events), {
     status: 200,
     // corsHeaders is getMcpCorsHeaders() (MCP_CACHE_CONTROL = no-store, no-transform):
     // the replay carries previously-streamed tool-result data, so no-store forbids
@@ -296,8 +296,38 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
   });
 }
 
+async function handleAuthenticatedSseReplay(
+  req: Request,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  usage: McpUsage,
+  ctx: { waitUntil: (p: Promise<unknown>) => void } | undefined,
+  headOnly = false,
+): Promise<Response> {
+  const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
+  if (!auth.ok) {
+    usage.phase = 'auth';
+    return auth.response;
+  }
+  setUsageContext(usage, auth.context);
+  const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
+  if (!getPreCheck.ok) {
+    usage.phase = getPreCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
+    return getPreCheck.response;
+  }
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
+  if (getLimited) {
+    usage.phase = 'limit';
+    return getLimited;
+  }
+  const replay = handleSseReplay(req, corsHeaders, headOnly);
+  if (replay.status !== 200) usage.phase = 'transport';
+  return replay;
+}
+
 // ---------------------------------------------------------------------------
-// /.well-known/mcp dual-role support
+// /.well-known/mcp and /mcp dual-role support
 // ---------------------------------------------------------------------------
 // vercel.json rewrites /.well-known/mcp into this handler so ONE URL is both
 // the discovery manifest (plain GET → static server card) and a live
@@ -309,36 +339,121 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
 // Two manifest aliases: bare `/.well-known/mcp` (SEP-1649 server-card style)
 // and `/.well-known/mcp.json` (the ora.ai/registry convention whose schema
 // keys the endpoint as top-level `url`). Both rewrite here via vercel.json.
+//
+// A plain GET to `/mcp` itself is NOT an MCP protocol handshake (that stays
+// POST); it is a human or a crawler opening the endpoint in a browser. They
+// get the human-readable server guide (`/mcp-server.md`) instead of the
+// spec-correct 405 that Google Search Console reports as "cannot access".
+// SSE-flavored GETs and GETs with Last-Event-ID still fall through to the
+// normal 405 / replay paths so Streamable HTTP transport semantics are
+// unchanged.
 const WELL_KNOWN_MCP_PATHS = new Set(['/.well-known/mcp', '/.well-known/mcp.json']);
-// Module-scope cache: the card is a static asset, immutable per deployment.
+const MCP_TRANSPORT_PATH = '/mcp';
+
+// These URLs content-negotiate on request headers: a plain GET gets a
+// discovery document, an `Accept: text/event-stream` GET gets the transport
+// 405, and a `Last-Event-ID` GET gets authenticated replay. Any cache in
+// front of the origin MUST key on those headers, or it will replay a stored
+// discovery body to a transport client.
+//
+// This is not theoretical. Vercel's edge keys on URL alone unless the origin
+// says otherwise, and it caches this route: a `public, max-age=3600` card
+// stored from a plain GET to /.well-known/mcp was empirically served
+// (`x-vercel-cache: HIT`) to a subsequent `Accept: text/event-stream` GET on
+// the same URL, handing an SDK client a 200 JSON body where the transport
+// contract requires 405. Never emit a cacheable discovery 200 on these paths
+// without this Vary.
+const DISCOVERY_VARY = 'Accept, Last-Event-ID';
+const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
+const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
+
+// Module-scope caches: both documents are static assets, immutable per deployment.
 let serverCardCache: string | null = null;
-async function serveServerCard(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
+let mcpGuideCache: string | null = null;
+
+// Self-fetch a static asset off our own deployment. Redirects are followed:
+// `/mcp-server.md` is NOT in the Cloudflare apex→www exemption list
+// (ARCHITECTURE.md:72), so an apex-origin self-fetch 301s to www before it
+// resolves. Returns null on any failure so the caller can fall back rather
+// than cache a failure.
+async function fetchStaticAsset(req: Request, path: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), STATIC_ASSET_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(new URL(path, req.url), {
+      headers: { 'User-Agent': STATIC_ASSET_USER_AGENT },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function serveServerCard(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
   if (serverCardCache === null) {
-    try {
-      const res = await fetch(new URL('/.well-known/mcp/server-card.json', req.url));
-      if (!res.ok) throw new Error(`server-card fetch ${res.status}`);
-      serverCardCache = await res.text();
-    } catch {
+    const text = await fetchStaticAsset(req, '/.well-known/mcp/server-card.json');
+    if (text === null) {
       // Self-fetch failed (deploy skew / transient) — point the fetcher at the
       // canonical static path instead of caching a failure.
       return new Response(null, {
         status: 302,
-        headers: { Location: '/.well-known/mcp/server-card.json', ...corsHeaders },
+        headers: { Location: '/.well-known/mcp/server-card.json', Vary: DISCOVERY_VARY, ...corsHeaders },
       });
     }
+    serverCardCache = text;
   }
-  return new Response(serverCardCache, {
+  return new Response(headOnly ? null : serverCardCache, {
     status: 200,
     // Cache-Control comes AFTER the ...corsHeaders spread: getMcpCorsHeaders()
     // carries MCP_CACHE_CONTROL (`no-store`) for the live JSON-RPC/SSE endpoint,
     // but the manifest is a static, immutable-per-deploy asset that must stay
     // cacheable (it was `public, max-age=3600` as a static file). Spreading last
     // would clobber that back to no-store and re-hit the function on every
-    // discovery fetch.
+    // discovery fetch. Vary is what makes that cacheable 200 SAFE — see
+    // DISCOVERY_VARY.
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       ...corsHeaders,
       'Cache-Control': 'public, max-age=3600',
+      Vary: DISCOVERY_VARY,
+    },
+  });
+}
+
+// The human-facing representation of the transport URL. Deliberately NOT
+// cacheable: `/mcp` is the live Streamable HTTP endpoint, and a stored 200 on
+// that exact URL is the one thing that can be replayed by a shared cache to an
+// SSE stream-open or an authenticated replay GET. Vary alone would be enough
+// if every cache in the path honored it; no-store means correctness does not
+// depend on that. The cost is one function invocation per crawler GET — the
+// cacheable copy of this document still lives at `/mcp-server.md`.
+async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
+  if (mcpGuideCache === null) {
+    const text = await fetchStaticAsset(req, '/mcp-server.md');
+    if (text === null) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: '/mcp-server.md', Vary: DISCOVERY_VARY, ...corsHeaders },
+      });
+    }
+    mcpGuideCache = text;
+  }
+  return new Response(headOnly ? null : mcpGuideCache, {
+    status: 200,
+    // corsHeaders (getMcpCorsHeaders) already carries `no-store, no-transform`
+    // — deliberately NOT overridden here. The canonical link keeps discovery
+    // signals on the apex endpoint, which is the host the Cloudflare apex→www
+    // rule exempts for /mcp (ARCHITECTURE.md:72) and the URL the server card
+    // advertises.
+    headers: {
+      'Content-Type': 'text/markdown; charset=utf-8',
+      ...corsHeaders,
+      Vary: DISCOVERY_VARY,
+      Link: '<https://worldmonitor.app/mcp>; rel="canonical"',
     },
   });
 }
@@ -382,23 +497,62 @@ async function mcpHandlerInner(
     usage.skip = true;
     return new Response(null, { status: 204, headers: withMcpNoStore(corsHeaders) });
   }
+
+  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
+  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
+  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
+
   if (req.method === 'HEAD') {
+    // HEAD is GET without a response body. Preserve transport-shaped GET
+    // semantics before serving the plain discovery representation metadata.
+    if (req.headers.get('last-event-id')) {
+      return handleAuthenticatedSseReplay(req, deps, resourceMetadataUrl, corsHeaders, usage, ctx, true);
+    }
+    if (clientAcceptsSse(req)) {
+      usage.phase = 'transport';
+      return new Response(null, {
+        status: 405,
+        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+      });
+    }
+
     usage.skip = true;
-    return new Response(null, { status: 200, headers: withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders }) });
+    // HEAD is the matching GET with the body suppressed. Reuse the discovery
+    // helpers so cache policy, canonical Link, and static-asset fallback status
+    // cannot drift between the two methods.
+    const pathname = new URL(req.url).pathname;
+    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+      return serveServerCard(req, corsHeaders, true);
+    }
+    if (pathname === MCP_TRANSPORT_PATH) {
+      return serveMcpGuide(req, corsHeaders, true);
+    }
+    return new Response(null, {
+      status: 200,
+      headers: withMcpNoStore({ 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders }),
+    });
   }
 
-  // /.well-known/mcp manifest GET: the card is public static data. A GET that
-  // asks for `text/event-stream` (an SDK opening the optional standalone
-  // stream) or carries `Last-Event-ID` (SSE replay) falls through to the
-  // normal endpoint GET handling so transport semantics stay identical to /mcp.
+  // Discovery GETs. A GET with no `Last-Event-ID` and no `text/event-stream`
+  // Accept is not a transport operation: on the well-known aliases it is a
+  // manifest fetch (JSON server card), and on `/mcp` itself it is a human or
+  // crawler opening the endpoint (the markdown server guide). Both are
+  // answered BEFORE the transport GET branch, so the standalone-stream 405 and
+  // the authenticated replay path below are untouched.
   if (
     req.method === 'GET' &&
-    WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname) &&
     !req.headers.get('last-event-id') &&
-    !(req.headers.get('accept') ?? '').includes('text/event-stream')
+    !clientAcceptsSse(req)
   ) {
-    usage.skip = true;
-    return serveServerCard(req, corsHeaders);
+    const pathname = new URL(req.url).pathname;
+    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+      usage.skip = true;
+      return serveServerCard(req, corsHeaders);
+    }
+    if (pathname === MCP_TRANSPORT_PATH) {
+      usage.skip = true;
+      return serveMcpGuide(req, corsHeaders);
+    }
   }
 
   // No Origin gate (issue #4802): the endpoint advertises CORS `*`, auth is
@@ -413,23 +567,20 @@ async function mcpHandlerInner(
     return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }) });
   }
 
-  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
-  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
-  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
-
-  // GET has two roles on the MCP endpoint:
-  //   1. A bare GET (no `Last-Event-ID`) is a client opening the OPTIONAL
-  //      server->client SSE stream of the Streamable HTTP transport. This
+  // GET has three roles on the MCP endpoint:
+  //   1. A plain GET (no `text/event-stream` Accept, no `Last-Event-ID`) is a
+  //      discovery read and has already been answered above — the markdown
+  //      server guide at `/mcp`, the JSON server card at the well-known
+  //      aliases. The MCP handshake itself remains POST-only.
+  //   2. A GET asking for `text/event-stream` or carrying `Last-Event-ID` is
+  //      either a client opening the OPTIONAL server->client SSE stream of the
+  //      Streamable HTTP transport, or an authenticated SSE replay. This
   //      stateless edge route offers no server-initiated stream, so the MCP
-  //      spec requires HTTP 405 Method Not Allowed here — and MCP SDK clients
+  //      spec requires HTTP 405 Method Not Allowed here — MCP SDK clients
   //      treat 405 as the graceful "no standalone stream" signal, completing
-  //      the handshake cleanly. Answering 401/400 instead makes a strict
-  //      client's `connect()` raise `Failed to open SSE stream` and an
-  //      agent-readiness scanner (orank) report "protocol handshake failed".
-  //      This 405 precedes auth so an UNauthenticated discovery client sees the
-  //      same spec-correct signal (405 leaks nothing). RFC 9110 §15.5.6 requires
-  //      the 405 to advertise `Allow`.
-  //   2. A GET WITH `Last-Event-ID` is our authenticated SSE-replay channel —
+  //      the handshake cleanly. RFC 9110 §15.5.6 requires the 405 to advertise
+  //      `Allow`.
+  //   3. A GET WITH `Last-Event-ID` is our authenticated SSE-replay channel —
   //      it re-serves previously-streamed (Pro) tool-result data, so it stays
   //      fully authenticated (never a discovery surface).
   if (req.method === 'GET') {
@@ -440,25 +591,7 @@ async function mcpHandlerInner(
         headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
       });
     }
-    const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
-    if (!auth.ok) {
-      usage.phase = 'auth';
-      return auth.response;
-    }
-    setUsageContext(usage, auth.context);
-    const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
-    if (getPreCheck) {
-      usage.phase = 'precheck';
-      return getPreCheck;
-    }
-    const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
-    if (getLimited) {
-      usage.phase = 'limit';
-      return getLimited;
-    }
-    const replay = handleSseReplay(req, corsHeaders);
-    if (replay.status !== 200) usage.phase = 'transport';
-    return replay;
+    return handleAuthenticatedSseReplay(req, deps, resourceMetadataUrl, corsHeaders, usage, ctx);
   }
 
   // Parse body BEFORE auth: the method decides whether credentials are required
@@ -504,6 +637,9 @@ async function mcpHandlerInner(
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
   let context: McpAuthContext | null = null;
+  // Set alongside `context` by the gated branch's pre-check. Stays undefined on
+  // the public/anon branch — which never reaches a metered dispatch anyway.
+  let mcpDailyLimit: number | null | undefined;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -537,10 +673,14 @@ async function mcpHandlerInner(
     context = auth.context;
     setUsageContext(usage, context);
     const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
-    if (preCheck) {
-      usage.phase = 'precheck';
-      return preCheck;
+    if (!preCheck.ok) {
+      usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
+      return preCheck.response;
     }
+    // Plan-driven daily allowance, resolved from the entitlement the pre-check
+    // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
+    // dispatch sites below; unset for every caller class but `pro`.
+    mcpDailyLimit = preCheck.mcpDailyLimit;
     const limited = await applyPerMinuteLimit(context, corsHeaders);
     if (limited) {
       usage.phase = 'limit';
@@ -607,8 +747,15 @@ async function mcpHandlerInner(
         usage.phase = 'auth';
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
-      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
-      if (dispatched.status === 429 || dispatched.status === 503) usage.phase = 'dispatch';
+      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
+      // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
+      // classify like the pre-check sites: 'billing' -> billing_verification_503
+      // / tier_403, not rate_limit_degraded (503) or 'ok' (403).
+      if (dispatched.headers.get('X-Billing-Verification')) {
+        usage.phase = 'billing';
+      } else if (dispatched.status === 429 || dispatched.status === 503) {
+        usage.phase = 'dispatch';
+      }
       return maybeStreamJsonRpcResponse(req, dispatched);
     }
     // Prompts are metadata-class — they ship a workflow template, not data.
@@ -672,7 +819,7 @@ async function mcpHandlerInner(
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
       {
-        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx);
+        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
         if (resourceRes.status === 429 || resourceRes.status === 503) usage.phase = 'dispatch';
         return maybeStreamJsonRpcResponse(req, resourceRes);
       }

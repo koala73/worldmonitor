@@ -6,7 +6,7 @@ keywords: "country instability index, political instability index methodology, c
 audience: "Risk analysts, researchers, students of international relations, data journalists, quantitative analysts"
 heroImage: "/blog/images/blog/country-instability-index-methodology-explained.jpg"
 pubDate: "2026-05-30"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Every risk platform sells a number. A country is "72/100" or "high risk" or "amber." Almost none of them will tell you how the number is computed, which means you cannot challenge it, calibrate it, or defend it when a decision built on it goes wrong.
@@ -95,6 +95,10 @@ The decomposition is the analysis. The number is just the index into it.
 - **Dashboard:** the CII panel at [worldmonitor.app](https://www.worldmonitor.app) shows all 31 countries with scores, bands, and 24-hour deltas; any country's brief decomposes its score.
 - **API:** `get-country-risk` returns the score and component breakdown as JSON for [your own models](/blog/posts/build-on-worldmonitor-developer-api-open-source/).
 - **AI agents:** the `get_country_risk` tool on the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) gives Claude and other assistants the same data, so "why did Egypt's risk score move?" becomes a question your agent can actually answer.
+
+## Conflict Data References
+
+The index should be read alongside primary conflict datasets such as the [Uppsala Conflict Data Program](https://ucdp.uu.se/) and [ACLED](https://acleddata.com/). It is an analytical signal, not a substitute for the source event records or local verification.
 
 ## Frequently Asked Questions
 

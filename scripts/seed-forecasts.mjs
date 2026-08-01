@@ -5,12 +5,20 @@
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
+import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
+import {
+  getLlmAttemptTimeoutMs,
+  isDeepseekV4FlashModel,
+  OPENROUTER_PROVIDER_ROUTING,
+  DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
+} from './_llm-model-timeouts.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
@@ -41,6 +49,11 @@ const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1]
 if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'forecast:predictions:v2';
+// Dashboard list: the same predictions with the caseFile dossiers stripped (78% of
+// the payload). The bootstrap fast tier hydrates from THIS key so every visitor
+// stops downloading ~19,000 words of analysis prose they never open (#5300). The
+// canonical key above keeps the dossiers for the RPC, MCP and chat-analyst.
+const DASHBOARD_KEY = 'forecast:predictions-bootstrap:v1';
 const PRIOR_KEY = 'forecast:predictions:prior:v2';
 // Iran-events domain sunset (war ended 2026-07). Default OFF: the strike feed
 // no longer seeds forecast inputs or critical signals (even while the canonical
@@ -184,7 +197,6 @@ const MARKET_DETECTOR_PROB_MAX = 0.85;
 const SUPPLY_CHAIN_DETECTOR_PROB_MAX = 0.85;
 const POLITICAL_DETECTOR_PROB_MAX = 0.80;
 const MILITARY_DETECTOR_PROB_MAX = 0.90;
-const INFRASTRUCTURE_DETECTOR_PROB_MAX = 0.85;
 const VELOCITY_SPIKE_PROBABILITY_LIFT = 0.08;
 const VELOCITY_SPIKE_PROBABILITY_MAX = 0.99;
 const DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT = 0.12;
@@ -352,7 +364,6 @@ function buildForecastInputFeedDefinitions() {
     { key: 'conflict:iran-events:v1', label: 'iranEvents', countRecords: (value) => countArrayField(value, 'events'), enabled: iranEventsEnabled },
     { key: 'conflict:ucdp-events:v1', label: 'ucdpEvents', countRecords: (value) => countArrayField(value, 'events') },
     { key: 'unrest:events:v1', label: 'unrestEvents', countRecords: (value) => countArrayField(value, 'events') },
-    { key: 'infra:outages:v1', label: 'outages', countRecords: (value) => countArrayField(value, 'outages') },
     { key: 'cyber:threats-bootstrap:v2', label: 'cyberThreats', countRecords: (value) => countArrayField(value, 'threats') || countObjectCollection(value) },
     { key: 'intelligence:gpsjam:v2', label: 'gpsJamming', countRecords: countObjectCollection },
     { key: 'news:insights:v1', label: 'newsInsights', countRecords: (value) => countArrayField(value, 'topStories') || countObjectCollection(value) },
@@ -807,7 +818,11 @@ async function redisCommand(url, token, command) {
 
 /** In-memory Redis store injected by tests. When set, redisGet/redisSet skip network calls. */
 let _testRedisStore = null;
-function __setRedisStoreForTests(store) { _testRedisStore = store; }
+let _testRedisPatchFailures = new Set();
+function __setRedisStoreForTests(store, { failPatchKeys = [] } = {}) {
+  _testRedisStore = store;
+  _testRedisPatchFailures = new Set(failPatchKeys);
+}
 
 async function redisGet(url, token, key) {
   if (_testRedisStore) return _testRedisStore[key] ?? null;
@@ -874,23 +889,18 @@ async function readInputKeys() {
   const keys = buildForecastInputFetchKeys();
   // Sized for Upstash REST /pipeline payload limits.
   //
-  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; top 5 keys
-  // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
-  // gpsjam 174KB) = 90% of payload. Because BATCH_SIZE divides the keys
-  // array deterministically by index, the worst batch is fixed by array
-  // order — currently batch 2 (indices 5-9: chokepoints + iran + ucdp +
-  // unrest + outages) at **1.17 MB** verified live. Not random
-  // co-location — deterministic.
+  // STRLEN audit 2026-04-14: the largest inputs were UCDP, chokepoints,
+  // cyber, commodities, and GPS jamming. Batch membership is deterministic
+  // from buildForecastInputFeedDefinitions(), except for time-gated inputs
+  // such as conflict:iran-events:v1. Re-audit neighboring batches whenever a
+  // definition is added, removed, or reordered; retiring the outage detector
+  // also removed infra:outages:v1 from this hot-path fetch list (#5330).
   //
-  // The original 10s timeout deterministically failed every retry on this
-  // batch at Upstash REST's observed slow-spike floor of ~100 KB/s
-  // (Railway log 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
-  // At 100 KB/s, 1.17 MB takes ~12s. 45s gives ~3.7× headroom.
-  //
-  // Future improvement: interleave heavy keys (chokepoints + ucdp) with
-  // smalls in the keys array above. Would split the deterministic
-  // worst-case across two batches, halving the per-request payload.
-  // Tracked as follow-up; not in scope for this hotfix.
+  // The original 10s timeout deterministically failed large response batches
+  // at Upstash REST's observed slow-spike floor of ~100 KB/s (Railway log
+  // 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts). Keep 45s headroom;
+  // if the neighboring payloads grow materially, rebalance the definition
+  // order or reduce BATCH_SIZE rather than extending the timeout again.
   const BATCH_SIZE = 5;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
@@ -936,7 +946,6 @@ async function readInputKeys() {
     iranEvents: iranEventsEnabled() ? parsedByKey['conflict:iran-events:v1'] : [],
     ucdpEvents: parsedByKey['conflict:ucdp-events:v1'],
     unrestEvents: parsedByKey['unrest:events:v1'],
-    outages: parsedByKey['infra:outages:v1'],
     cyberThreats: parsedByKey['cyber:threats-bootstrap:v2'],
     gpsJamming: normalizeGpsJamming(parsedByKey['intelligence:gpsjam:v2']),
     newsInsights: parsedByKey['news:insights:v1'],
@@ -1990,63 +1999,6 @@ function detectMilitaryScenarios(inputs) {
   return predictions;
 }
 
-function detectInfraScenarios(inputs) {
-  const predictions = [];
-  const outages = Array.isArray(inputs.outages) ? inputs.outages : inputs.outages?.outages || [];
-  const cyber = Array.isArray(inputs.cyberThreats) ? inputs.cyberThreats : inputs.cyberThreats?.threats || [];
-  const jamming = Array.isArray(inputs.gpsJamming) ? inputs.gpsJamming : inputs.gpsJamming?.zones || [];
-
-  for (const o of outages) {
-    const rawSev = (o.severity || o.type || '').toLowerCase();
-    // Handle both plain strings and proto enums (SEVERITY_LEVEL_HIGH, SEVERITY_LEVEL_CRITICAL)
-    const severity = rawSev.includes('critical') ? 'critical'
-      : rawSev.includes('high') ? 'major'
-      : rawSev.includes('total') ? 'total'
-      : rawSev.includes('major') ? 'major'
-      : rawSev;
-    if (severity !== 'major' && severity !== 'total' && severity !== 'critical') continue;
-
-    const country = resolveCountryName(o.country || o.region || o.name || '');
-    if (!country) continue;
-
-    const countryLower = country.toLowerCase();
-    const signals = [
-      { type: 'outage', value: `${country} ${severity} outage`, weight: 0.4 },
-    ];
-    let sourceCount = 1;
-
-    const relatedCyber = cyber.filter(t =>
-      textIncludesTerm((t.country || t.target || t.region || '').toLowerCase(), countryLower),
-    );
-    if (relatedCyber.length > 0) {
-      signals.push({ type: 'cyber', value: `${relatedCyber.length} cyber threats targeting ${country}`, weight: 0.3 });
-      sourceCount++;
-    }
-
-    const nearbyJam = jamming.filter(j =>
-      textIncludesTerm((j.country || j.region || j.name || '').toLowerCase(), countryLower),
-    );
-    if (nearbyJam.length > 0) {
-      signals.push({ type: 'gps_jamming', value: `GPS interference in ${country}`, weight: 0.2 });
-      sourceCount++;
-    }
-
-    const cyberBoost = relatedCyber.length > 0 ? 0.15 : 0;
-    const jamBoost = nearbyJam.length > 0 ? 0.05 : 0;
-    const baseLine = severity === 'total' ? 0.55 : 0.4;
-    const prob = Math.min(INFRASTRUCTURE_DETECTOR_PROB_MAX, baseLine + cyberBoost + jamBoost);
-    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
-
-    predictions.push(makePrediction(
-      'infrastructure', country,
-      `Infrastructure cascade risk: ${country}`,
-      prob, confidence, '24h', signals,
-    ));
-  }
-
-  return predictions;
-}
-
 // ── Phase 4: Standalone detectors ───────────────────────────
 function detectUcdpConflictZones(inputs, emaRiskScores) {
   const predictions = [];
@@ -2194,7 +2146,6 @@ const MARKET_CALIBRATION_DOMAIN_CAPS = {
   political: POLITICAL_DETECTOR_PROB_MAX,
   military: MILITARY_DETECTOR_PROB_MAX,
   cyber: CYBER_PROB_MAX,
-  infrastructure: INFRASTRUCTURE_DETECTOR_PROB_MAX,
 };
 const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
   'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
@@ -2221,13 +2172,13 @@ const MARKET_ADVERSE_OUTCOME_PATTERNS = [
   /(?:^|[^a-z0-9])renew(?:s|ed|ing|al|als)?(?:[^a-z0-9]|$)/,
   /(?:^|[^a-z0-9])collaps(?:e|es|ed|ing)?(?:[^a-z0-9]|$)/,
 ];
-const MARKET_DE_ESCALATION_ANCHOR_PATTERN = String.raw`(?:ceasefire|truce|peace(?: agreement| deal)?|agreement)`;
+const MARKET_DE_ESCALATION_ANCHOR_PATTERN = '(?:ceasefire|truce|peace(?: agreement| deal)?|agreement)';
 const MARKET_DE_ESCALATION_FAILURE_PATTERN = String.raw`(?:fail(?:s|ed|ing|ure|ures)?|collaps(?:e|es|ed|ing)?|break(?:s|ing)? down|breakdown|breach(?:es|ed|ing)?|violat(?:e|es|ed|ing|ion|ions)?|reject(?:s|ed|ing|ion|ions)?|expire(?:s|d|ing)?|ends?\b(?!\s+of\b))`;
 const MARKET_FAILED_DE_ESCALATION_PATTERNS = [
   new RegExp(String.raw`\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b`),
   new RegExp(String.raw`\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b`),
 ];
-const MARKET_ADVERSE_CONDITION_PATTERN = String.raw`(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)`;
+const MARKET_ADVERSE_CONDITION_PATTERN = '(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)';
 const MARKET_ADVERSE_CONDITION_END_PATTERNS = [
   new RegExp(String.raw`\b${MARKET_ADVERSE_CONDITION_PATTERN}\b.{0,40}\bend(?:s|ed|ing)?\b(?!\s+of\b)`),
   new RegExp(String.raw`\bend(?:s|ed|ing)?\b(?:\s+of)?.{0,40}\b${MARKET_ADVERSE_CONDITION_PATTERN}\b`),
@@ -2487,7 +2438,10 @@ function capMarketCalibrationProbability(domain, probability) {
 
 function detectFromPredictionMarkets(inputs) {
   const predictions = [];
-  const markets = inputs.predictionMarkets?.geopolitical || [];
+  // All three pools (#5733). This detector scores any market whose title tags a
+  // region, so it wants the whole universe; `.geopolitical` only meant that
+  // while the producer's pools were near-duplicates.
+  const markets = allBootstrapMarkets(inputs.predictionMarkets);
 
   for (const m of markets) {
     if (!Number.isFinite(m?.yesPrice)) continue;
@@ -2657,7 +2611,11 @@ function computeProjections(predictions) {
 }
 
 function calibrateWithMarkets(predictions, markets) {
-  if (!markets?.geopolitical) return;
+  // All three pools (#5733): a prediction is calibrated against whichever market
+  // best matches its region and title, and the best anchor is often a macro,
+  // rates, or commodity line that now lives outside the geopolitical pool.
+  const marketUniverse = allBootstrapMarkets(markets);
+  if (marketUniverse.length === 0) return;
   const stats = {
     applied: 0,
     noPrice: 0,
@@ -2674,7 +2632,7 @@ function calibrateWithMarkets(predictions, markets) {
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
     const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
     if (keywords.length === 0 && regionTerms.length === 0) continue;
-    const candidates = markets.geopolitical
+    const candidates = marketUniverse
       .map(m => {
         const mRegions = tagRegions(m.title);
         const sameMacroRegion = keywords.length > 0 && mRegions.some(r => keywords.includes(r));
@@ -3626,7 +3584,7 @@ async function extractCriticalSignalBundle(inputs) {
     (criticalLlmOptions.providerOrder || []).join('-') || 'default',
     criticalLlmOptions.modelOverrides?.openrouter || 'table',
     criticalLlmOptions.modelOverrides?.groq || 'table',
-  ].join('_').replace(/[^a-zA-Z0-9._\/-]/g, '-');
+  ].join('_').replace(/[^a-zA-Z0-9._/-]/g, '-');
   const cacheKey = `forecast:critical-signals:llm:${criticalRouteTag}:${buildCriticalSignalCandidateHash(candidates)}`;
   const fallbackSignalsFromCandidates = (coveredIndexes = new Set()) =>
     extractRegexCriticalNewsSignals(inputs, candidates.filter((item) => !coveredIndexes.has(item.candidateIndex)));
@@ -14681,26 +14639,52 @@ function selectForecastsForEnrichment(predictions, options = {}) {
 // llama-3.3-70b-versatile is the free-tier/outage fallback. Per-stage
 // FORECAST_LLM_*_PROVIDER_ORDER env still overrides.
 const FORECAST_LLM_PROVIDERS = [
-  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false } } },
+  // `provider.sort: 'throughput'` makes OpenRouter dispatch to its fastest backend
+  // instead of free-routing. Without it the SAME model lands on backends spanning
+  // an order of magnitude (17s .. 110s), and no completion timeout is reliable —
+  // this is the routing that DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS has always
+  // assumed but never had. Fallbacks stay enabled, so a fast backend going down
+  // degrades latency rather than hard-failing the call.
+  // This 25s timeout governs NON-Flash models only (critical_signals overrides this
+  // same entry onto google/gemini-2.5-flash and must keep its 25s window). Flash uses
+  // its own completion deadline via getLlmAttemptTimeoutMs — see _llm-model-timeouts.
+  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
 ];
+
+// market_implications does NOT fall back to groq. Groq's free tier caps at 100k
+// tokens/day and this stage alone needs ~114k (4,749 tokens x 24 hourly runs), so
+// the fallback 429s for most of the day. Reserving 20s of run budget for a provider
+// that returns 429 in 86ms only raises the admission bar and starves the stage.
+// OpenRouter is the primary and, with throughput routing, succeeds 100% of measured
+// runs. Still overridable via FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER.
+const MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER = ['openrouter'];
+
+// Requested window for DeepSeek-Flash in forecast stages. Kept above the Flash
+// completion cap so the cap (not this) is the binding constraint; the provider
+// entry's own 25s stays reserved for the non-Flash models stages pin onto it.
+const FORECAST_FLASH_REQUESTED_TIMEOUT_MS = 45_000;
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
 // out and market_implications wrote an error seed-meta. Bounded by the per-stage /
-// per-run LLM budgets below, so extra attempts can't blow the 180s seed lock.
+// per-run LLM budgets below, so extra attempts can't blow the 240s seed lock.
 const FORECAST_LLM_PROVIDER_MAX_RETRIES = 3;
 const FORECAST_LLM_RETRY_BASE_MS = 1_000;
 const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
-// The forecast seed lock is 180s; leave headroom for non-LLM work and cleanup.
+// The forecast seed lock is 240s; leave headroom for non-LLM work and cleanup.
 const FORECAST_LLM_STAGE_BUDGET_MS = 120_000;
 const FORECAST_LLM_STAGE_BUDGET_GUARD_MS = 5_000;
 // Cumulative LLM ceiling for one seed run. The per-stage budget bounds a single
 // call, but a run makes ~10 LLM calls (scenario/combined/critique/impact +
-// market-implications in afterPublish) — all under the same 180s lock with no
+// market-implications in afterPublish) — all under the same 240s lock with no
 // lock renewal. Without a run-level cap, several degraded stages still serialize
-// past 180s and the lock expires mid-run, letting the next cron tick start a
-// duplicate. 150s leaves ~30s for input reads, publish, and cleanup.
-const FORECAST_LLM_RUN_BUDGET_MS = 150_000;
+// past 240s and the lock expires mid-run, letting the next cron tick start a
+// duplicate. 200s leaves 40s for input reads, publish, and cleanup.
+// The seed lock bounds the WHOLE run (fetch + publish + afterPublish tail).
+// FORECAST_LLM_RUN_BUDGET_MS must stay strictly below it with cleanup headroom;
+// tests/forecast-llm-flash-routing-and-timeout pins that invariant.
+const FORECAST_SEED_LOCK_TTL_MS = 240_000;
+const FORECAST_LLM_RUN_BUDGET_MS = 200_000;
 // Anchored at the start of the direct seed run; null in tests and the deep-forecast
 // worker (separate entry/lock) so only the per-stage budget applies there.
 let forecastLlmRunDeadlineMs = null;
@@ -14742,8 +14726,12 @@ function getForecastLlmCallOptions(stage = 'default') {
       ? (criticalProviderOrder || globalProviderOrder || defaultProviderOrder)
       : stage === 'impact_expansion'
         ? (impactProviderOrder || globalProviderOrder || defaultProviderOrder)
+      // Deliberately does NOT fall through to globalProviderOrder: that env is set
+      // to `openrouter,groq` in production, which would re-add the groq fallback
+      // this stage must not depend on (see MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER).
+      // Its own stage env still overrides.
       : stage === 'market_implications'
-        ? (marketImplicationsProviderOrder || globalProviderOrder || defaultProviderOrder)
+        ? (marketImplicationsProviderOrder || MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER)
       : (globalProviderOrder || defaultProviderOrder);
 
   const openrouterModel = stage === 'combined'
@@ -14776,8 +14764,10 @@ function getForecastLlmCallOptions(stage = 'default') {
         openrouter: process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER || 'google/gemini-2.5-flash',
       },
       // Legacy request-body parity: the pinned models predate the
-      // reasoning-off extraBody on the table's openrouter entry.
-      extraBodyOverrides: { openrouter: null },
+      // reasoning-off extraBody on the table's openrouter entry. Keep that
+      // omission, but never drop the mandatory provider-routing policy: a
+      // Groq fallback still sends this probability-bearing prompt to OpenRouter.
+      extraBodyOverrides: { openrouter: { provider: OPENROUTER_PROVIDER_ROUTING } },
     };
   }
 
@@ -14799,9 +14789,24 @@ function resolveForecastLlmProviders(options = {}) {
     const provider = FORECAST_LLM_PROVIDERS.find(item => item.name === providerName);
     if (!provider) continue;
     seen.add(providerName);
+    const model = options.modelOverrides?.[provider.name] || provider.model;
+    const failFastOnTimeout = isDeepseekV4FlashModel(model);
     providers.push({
       ...provider,
-      model: options.modelOverrides?.[provider.name] || provider.model,
+      model,
+      // #5246: cut off Flash's 25s stall tail while preserving enough room for
+      // the pinned endpoint's observed median completion. Other models are unchanged.
+      // Flash is a LONG generation here (max_tokens 2500 => ~1.2-1.9k completion
+      // tokens, p90 22.4s) and needs its own requested window: the entry's 25s is
+      // calibrated for the NON-Flash models stages override onto it (Gemini), so
+      // reusing it would re-clamp Flash to 25s. getLlmAttemptTimeoutMs still MINs
+      // this against the Flash cap, and leaves non-Flash models on provider.timeout.
+      timeout: getLlmAttemptTimeoutMs(
+        model,
+        isDeepseekV4FlashModel(model) ? FORECAST_FLASH_REQUESTED_TIMEOUT_MS : provider.timeout,
+        DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
+      ),
+      failFastOnTimeout,
       // `null` explicitly clears the table entry's extraBody (R13 pin);
       // undefined leaves it untouched.
       extraBody: options.extraBodyOverrides?.[provider.name] !== undefined
@@ -15086,7 +15091,7 @@ function getForecastLlmStageBudgetMs(options = {}) {
 function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
   const stageRemaining = budgetStartedAtMs + stageBudgetMs - Date.now();
   // The run deadline (when set) caps cumulative LLM time across all stages so
-  // the seed can't outlive its 180s lock; whichever budget is tighter wins.
+  // the seed can't outlive its 240s lock; whichever budget is tighter wins.
   // Single source of truth for run-remaining lives in getRemainingForecastLlmRunBudgetMs.
   const runRemaining = getRemainingForecastLlmRunBudgetMs();
   return Math.max(0, Math.min(stageRemaining, runRemaining));
@@ -15099,8 +15104,8 @@ function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
 // Remaining RUN-level LLM budget in ms (Infinity when no run deadline is set —
 // tests and the deep-forecast worker, which have only the per-stage budget).
 // market_implications runs LAST in afterPublish, so this is the budget that
-// starves it when upstream stages are slow (e.g. deepseek-v4-flash 30s
-// timeouts drain the shared 150s run budget before the tail stage runs). #4978.
+// starves it when upstream stages are slow (e.g. repeated provider stalls drain
+// the shared 200s run budget before the tail stage runs). #4978.
 function getRemainingForecastLlmRunBudgetMs() {
   return forecastLlmRunDeadlineMs == null ? Infinity : forecastLlmRunDeadlineMs - Date.now();
 }
@@ -15266,6 +15271,12 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
               err.__llmAttemptRecorded = true;
               const name = err?.name;
               const timedOut = name === 'TimeoutError' || name === 'AbortError';
+              // A Flash timeout represents the observed provider stall mode,
+              // not a transient response worth replaying four times. Move on
+              // to the fallback provider after the first full 15s window.
+              if (timedOut && provider.failFastOnTimeout && attemptTimeoutMs >= provider.timeout) {
+                err.nonRetryable = true;
+              }
               // Attribute a timeout to the run budget (not the provider) ONLY when
               // this attempt's timeout was itself CAPPED below the provider's own
               // timeout (attemptTimeoutMs < provider.timeout) AND the run budget is
@@ -16019,7 +16030,6 @@ async function fetchForecasts() {
     ...detectSupplyChainScenarios(inputs),
     ...detectPoliticalScenarios(inputs),
     ...detectMilitaryScenarios(inputs),
-    ...detectInfraScenarios(inputs),
     ...detectUcdpConflictZones(inputs, emaRiskScores),
     ...detectCyberScenarios(inputs),
     ...detectGpsJammingScenarios(inputs),
@@ -17025,7 +17035,7 @@ const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications
 // overridden) order that actually has an API key, ONE attempt each (market_implications
 // forces maxRetries:0), summed with the 5s stage guard that getUsableForecastLlmBudgetMs
 // subtracts. Reserving only the PRIMARY timeout (the original 30_000) was a latent bug:
-// with the default openrouter→groq order a 25s deepseek-v4-flash timeout drained the
+// with the default openrouter→groq order a DeepSeek Flash timeout drained the
 // budget so the groq FALLBACK was stranded and a recoverable timeout was misreported as
 // SEED_ERROR (health WARNING). Reserving the full chain means an admitted call can exhaust
 // the primary AND still run the fallback; below that we skip and preserve last-good (green,
@@ -17087,7 +17097,7 @@ async function writeMarketImplicationsFailureMeta(reason) {
 }
 
 // A budget-starve is NOT a producer failure — it's resource contention from
-// slow upstream stages consuming the shared 150s run budget before this tail
+// slow upstream stages consuming the shared 200s run budget before this tail
 // stage runs (#4978). Unlike writeMarketImplicationsFailureMeta, this preserves
 // last-good seed-meta without advancing fetchedAt: existing OK meta is TTL-
 // refreshed, and stale error meta is replaced only when the canonical payload
@@ -17149,8 +17159,8 @@ async function buildAndSeedMarketImplications(inputs) {
   } catch { /* guard is best-effort — fall through to live generation */ }
 
   // Tail-stage budget guard (#4978): market_implications is the LAST forecast
-  // LLM stage under the shared 150s run budget. When upstream stages are slow
-  // (e.g. deepseek-v4-flash 30s timeouts) they drain that budget before this
+  // LLM stage under the shared 200s run budget. When upstream stages are slow
+  // (e.g. repeated provider stalls) they drain that budget before this
   // stage runs; callForecastLLM would then throw a budget error, return null,
   // and we'd (mis)write a SEED_ERROR for benign, self-healing resource
   // contention. Skip gracefully and preserve last-good instead.
@@ -17253,6 +17263,29 @@ export function declareRecords(data) {
 
 export const FORECAST_EXTRA_KEYS = [
   {
+    key: DASHBOARD_KEY,
+    // Compose with buildPublishedSeedPayload — the SAME projection the canonical key
+    // gets via `publishTransform`. runSeed hands extraKey transforms the RAW `data`
+    // (the full internal pipeline state: fullRunPredictions, inputs, situationClusters,
+    // stateUnits, publishSelectionPool, telemetry...), NOT the published projection.
+    // Transforming raw `data` directly published an 11.5 MB dashboard key — 66x larger
+    // than the 172 KB canonical key it compacts. Projecting first makes the dashboard key
+    // "canonical minus the dossiers" BY CONSTRUCTION, so it cannot drift from the shape
+    // the panel actually consumes.
+    transform: (data) => compactForecastDashboardPayload(buildPublishedSeedPayload(data)),
+    // TTL_SECONDS (6h), NOT the 2h the other extra keys use. This key is the
+    // panel's PRIMARY source now, so it needs the canonical key's durability:
+    // at 2h, two missed hourly crons expire it and the panel goes blank, while
+    // the canonical it used to read would have survived (see TTL_SECONDS above —
+    // 1.75x cron was already enough to open a panel gap). 6h also outlives the
+    // 90min seed-meta staleness gate, so a stopped writer surfaces as STALE_SEED
+    // rather than the key vanishing into EMPTY.
+    ttl: TTL_SECONDS,
+    declareRecords,
+    metaKey: 'seed-meta:forecast:predictions-bootstrap',
+    skipWhenEmpty: true,
+  },
+  {
     key: PRIOR_KEY,
     transform: (data) => ({
       predictions: data.predictions.map(buildPriorForecastSnapshot),
@@ -17269,7 +17302,9 @@ if (_isDirectRun) {
   console.log(`  [Trigger] source=${triggerContext.triggerSource}${triggerContext.triggerRequest?.requester ? ` requester=${triggerContext.triggerRequest.requester}` : ''}`);
 
   // Bound cumulative LLM time across every stage of this run (fetchForecasts +
-  // afterPublish market-implications) so the seed can't outlive its 180s lock.
+  // afterPublish market-implications) so the seed can't outlive its 240s lock.
+  // 200s run budget < 240s lock: upstream would have to burn >155s to starve the
+  // ~45s market_implications tail, which throughput-routed stages (p90 26s) cannot.
   beginForecastLlmRunBudget();
 
   await runSeed('forecast', 'predictions', CANONICAL_KEY, async () => {
@@ -17280,7 +17315,7 @@ if (_isDirectRun) {
     };
   }, {
     ttlSeconds: TTL_SECONDS,
-    lockTtlMs: 180_000,
+    lockTtlMs: FORECAST_SEED_LOCK_TTL_MS,
     validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
     declareRecords,
     sourceVersion: 'detectors+llm-pipeline',
@@ -17292,7 +17327,7 @@ if (_isDirectRun) {
         await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
       }
 
-      // market_implications is the last remaining LLM stage and shares the 150s
+      // market_implications is the last remaining LLM stage and shares the 200s
       // run budget (#4978). Run it BEFORE the best-effort telemetry below
       // (history + deep-forecast snapshots, ~20s R2 trace export) so their
       // wall-clock can't push the tail stage past the run deadline and starve
@@ -18081,6 +18116,9 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
   // Mirror the production Lua's envelope-aware unwrap/rewrap so test fixtures
   // can exercise both legacy bare and PR-#3097 enveloped canonical shapes.
   if (_testRedisStore) {
+    if (_testRedisPatchFailures.has(canonicalKey)) {
+      throw new Error(`Injected Redis patch failure for ${canonicalKey}`);
+    }
     const published = _testRedisStore[canonicalKey] ?? null;
     if (!published || typeof published !== 'object') return 'MISSING';
     // Match Lua's strict `type(payload._seed) == 'table'` / `type(payload.data)
@@ -18127,17 +18165,28 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
 }
 
 /**
- * Patch forecast:predictions:v2 in-place with simulation decoration fields.
- * Called immediately after writeSimulationDecorations to update the canonical key
- * for same-run consumers — without this, ForecastPanel only sees the prior run's
- * simulation data until the next fast-path seed re-applies decorations.
+ * Patch the published prediction keys in-place with simulation decoration fields.
+ * Called immediately after writeSimulationDecorations to update them for same-run
+ * consumers — without this, ForecastPanel only sees the prior run's simulation data
+ * until the next fast-path seed re-applies decorations.
+ *
+ * BOTH keys are patched, not just the canonical one. runSeed writes extraKeys during
+ * publish and calls afterPublish (where this runs) afterwards, so DASHBOARD_KEY is
+ * written BEFORE the decorations exist. It is the key the fast tier hydrates
+ * ForecastPanel from, and the panel's list rows render all three fields (the sim bar,
+ * the sim chip, and the demoted row-dimming) — so skipping it here would reintroduce
+ * exactly the stale-decoration bug this function was written to prevent, just one key
+ * over (#5300).
+ *
+ * Each key gets its own atomic EVAL. They don't need to be atomic *together*: readers
+ * fetch them independently, and each script re-applies the same generatedAt guard
+ * against whatever is actually published under that key. The compacted dashboard
+ * payload preserves `generatedAt` and `predictions`, so the guard and the field
+ * mutations behave identically on both.
  *
  * Forecasts present in byForecastId get updated sim fields.
  * Forecasts NOT in byForecastId have their sim fields reset to 0 / false, so that
  * any stale values from a prior run are cleared at the same time.
- *
- * The patch is atomic via Lua EVAL: the read, generatedAt guard, mutations, and write
- * happen in a single Redis operation so a concurrent fast-path seed cannot be overwritten.
  *
  * Non-fatal: any failure is logged as a warning and the function returns.
  *
@@ -18145,19 +18194,29 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
  * @param {number} [runGeneratedAt] — generatedAt from the snapshot that produced byForecastId
  */
 async function patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt) {
+  let credentials;
   try {
-    const { url, token } = getRedisCredentials();
-    const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, runGeneratedAt, TTL_SECONDS);
-    if (status.startsWith('PATCHED:')) {
-      console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${CANONICAL_KEY} (atomic)`);
-    } else if (isRedisWriteSkippedStatus(status)) {
-      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${redisWriteSkippedGeneratedAt(status)}, sim_run=${runGeneratedAt})`);
-    } else if (status === 'MISSING') {
-      console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
-    }
-    // UNCHANGED: no-op, no log needed
+    credentials = getRedisCredentials();
   } catch (err) {
-    console.warn(`  [SimulationDecorations] Canonical key patch failed (non-fatal): ${err.message}`);
+    console.warn(`  [SimulationDecorations] Published key patch failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+
+  for (const key of [CANONICAL_KEY, DASHBOARD_KEY]) {
+    try {
+      const { url, token } = credentials;
+      const status = await redisAtomicPatchSimDecorations(url, token, key, byForecastId, runGeneratedAt, TTL_SECONDS);
+      if (status.startsWith('PATCHED:')) {
+        console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${key} (atomic)`);
+      } else if (isRedisWriteSkippedStatus(status)) {
+        console.log(`  [SimulationDecorations] Skipping patch of ${key} — key is from a newer run (published=${redisWriteSkippedGeneratedAt(status)}, sim_run=${runGeneratedAt})`);
+      } else if (status === 'MISSING') {
+        console.warn(`  [SimulationDecorations] Cannot patch ${key} — predictions missing or not an array`);
+      }
+      // UNCHANGED: no-op, no log needed
+    } catch (err) {
+      console.warn(`  [SimulationDecorations] Cannot patch ${key} (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }
 
@@ -18761,6 +18820,7 @@ async function runSimulationWorker({ once = false, runId = '' } = {}) {
 
 export {
   CANONICAL_KEY,
+  DASHBOARD_KEY,
   PRIOR_KEY,
   HISTORY_KEY,
   HISTORY_MAX_RUNS,
@@ -18782,7 +18842,6 @@ export {
   detectSupplyChainScenarios,
   detectPoliticalScenarios,
   detectMilitaryScenarios,
-  detectInfraScenarios,
   attachNewsContext,
   computeConfidence,
   sanitizeForPrompt,
@@ -18840,6 +18899,9 @@ export {
   selectForecastsForEnrichment,
   parseForecastProviderOrder,
   getForecastLlmCallOptions,
+  getMarketImplicationsMinRunBudgetMs,
+  FORECAST_LLM_RUN_BUDGET_MS,
+  FORECAST_SEED_LOCK_TTL_MS,
   resolveForecastLlmProviders,
   resolveScenarioLlmResult,
   buildFallbackScenario,

@@ -330,7 +330,7 @@ The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
 `/api/intelligence/v1/get-risk-scores` every 8 minutes, lets the RPC handler
 refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`
 for health monitoring when scores are returned. That seed-meta `recordCount`
-is realtime signal-density coverage, not raw feed availability: it counts the
+is real-time signal-density coverage, not raw feed availability: it counts the
 score-relevant Tier-1 conflict (ACLED or UCDP), news, and cyber signal families
-present in the CII refresh. Quiet-but-fresh realtime feeds can therefore produce
+present in the CII refresh. Quiet-but-fresh real-time feeds can therefore produce
 `COVERAGE_PARTIAL`; source-specific freshness remains the feed-heartbeat view.

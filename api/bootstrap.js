@@ -1,4 +1,10 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { waitUntil as vercelWaitUntil } from '@vercel/functions';
+
+import {
+  PUBLIC_BOOTSTRAP_TIERS,
+  isPublicTierBootstrapRequest,
+} from './_bootstrap-public-tier.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import {
   USER_API_KEY_GATEWAY_VALIDATION_ERROR,
   getHeaderApiKey,
@@ -14,7 +20,17 @@ import {
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
-import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
+import {
+  PUBLIC_WEATHER_BOOTSTRAP_KEY,
+  bootstrapTierKeyNames,
+  resolveBootstrapRegistry,
+} from './_bootstrap-tier-keys.js';
+import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
+import {
+  BOOTSTRAP_R2_PROBE_CEILING_MS,
+  readBootstrapTierObject,
+} from './_bootstrap-r2.js';
+import { deliverBootstrapR2Shadow, deriveExecutionRegion } from './_usage-telemetry.js';
 
 export const config = { runtime: 'edge' };
 
@@ -22,192 +38,12 @@ export const config = { runtime: 'edge' };
 // domain to the client. Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
-const BOOTSTRAP_CACHE_KEYS = {
-  earthquakes:      'seismology:earthquakes:v1',
-  outages:          'infra:outages:v1',
-  serviceStatuses:  'infra:service-statuses:v1',
-  ddosAttacks:      'cf:radar:ddos:v1',
-  trafficAnomalies: 'cf:radar:traffic-anomalies:v1',
-  marketQuotes:     'market:stocks-bootstrap:v1',
-  commodityQuotes:  'market:commodities-bootstrap:v1',
-  sectors:          'market:sectors:v2',
-  etfFlows:         'market:etf-flows:v1',
-  macroSignals:     'economic:macro-signals:v1',
-  bisPolicy:        'economic:bis:policy:v1',
-  bisExchange:      'economic:bis:eer:v1',
-  bisCredit:        'economic:bis:credit:v1',
-  bisDsr:           'economic:bis:dsr:v1',
-  bisPropertyResidential: 'economic:bis:property-residential:v1',
-  bisPropertyCommercial:  'economic:bis:property-commercial:v1',
-  imfMacro:         'economic:imf:macro:v2',
-  imfGrowth:        'economic:imf:growth:v1',
-  imfLabor:         'economic:imf:labor:v1',
-  imfExternal:      'economic:imf:external:v1',
-  // plan 2026-04-25-004 Phase 2 (financialSystemExposure data keys):
-  // intentionally NOT added here. The 3 new keys
-  // (economic:wb-external-debt:v1, economic:bis-lbs:v1,
-  //  economic:fatf-listing:v1) are SERVER-ONLY inputs to
-  // scoreFinancialSystemExposure — no client-side panel consumes them
-  // directly. AGENTS.md's "new data sources must hydrate via bootstrap"
-  // applies to keys with `getHydratedData` consumers in src/; the
-  // bootstrap-key-hydration-coverage test enforces that invariant. If
-  // a future PR adds a client panel that displays raw BIS LBS / FATF /
-  // WB external-debt data, register the keys here AND add the
-  // corresponding consumer + cache-keys.ts entries in the same PR.
-  shippingRates:    'supply_chain:shipping:v2',
-  chokepoints:      'supply_chain:chokepoints:v4',
-  minerals:         'supply_chain:minerals:v2',
-  giving:           'giving:summary:v1',
-  climateAnomalies: 'climate:anomalies:v2',
-  climateDisasters: 'climate:disasters:v1',
-  co2Monitoring: 'climate:co2-monitoring:v1',
-  oceanIce: 'climate:ocean-ice:v1',
-  climateNews:      'climate:news-intelligence:v1',
-  radiationWatch: 'radiation:observations:v1',
-  thermalEscalation: 'thermal:escalation:v1',
-  crossSourceSignals: 'intelligence:cross-source-signals:v1',
-  wildfires:        'wildfire:fires:v1',
-  cyberThreats:     'cyber:threats-bootstrap:v2',
-  techReadiness:    'economic:worldbank-techreadiness:v1',
-  progressData:     'economic:worldbank-progress:v1',
-  renewableEnergy:  'economic:worldbank-renewable:v1',
-  positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
-  theaterPosture: 'theater_posture:sebuf:stale:v1',
-  riskScores: CII_RISK_SCORE_CACHE_KEYS.stale,
-  naturalEvents: 'natural:events:v1',
-  flightDelays: 'aviation:delays-bootstrap:v2',
-  insights: 'news:insights:v1',
-  predictions: 'prediction:markets-bootstrap:v1',
-  cryptoQuotes:     'market:crypto:v1',
-  cryptoSectors:    'market:crypto-sectors:v1',
-  defiTokens:       'market:defi-tokens:v1',
-  aiTokens:         'market:ai-tokens:v1',
-  otherTokens:      'market:other-tokens:v1',
-  gulfQuotes:       'market:gulf-quotes:v1',
-  stablecoinMarkets: 'market:stablecoins:v1',
-  unrestEvents: 'unrest:events:v1',
-  iranEvents: 'conflict:iran-events:v1',
-  ucdpEvents: 'conflict:ucdp-events:v1',
-  temporalAnomalies: 'temporal:anomalies:v1',
-  weatherAlerts:     'weather:alerts:v1',
-  spending:          'economic:spending:v1',
-  techEvents:        'research:tech-events-bootstrap:v1',
-  gdeltIntel:        'intelligence:gdelt-intel:v1',
-  correlationCards:   'correlation:cards-bootstrap:v1',
-  forecasts:         'forecast:predictions:v2',
-  securityAdvisories: 'intelligence:advisories-bootstrap:v1',
-  customsRevenue:    'trade:customs-revenue:v1',
-  sanctionsPressure: 'sanctions:pressure:v1',
-  consumerPricesOverview:   'consumer-prices:overview:ae',
-  consumerPricesCategories: 'consumer-prices:categories:ae:30d',
-  consumerPricesMovers:     'consumer-prices:movers:ae:30d',
-  consumerPricesSpread:     'consumer-prices:retailer-spread:ae:essentials-ae',
-  groceryBasket: 'economic:grocery-basket:v1',
-  bigmac:        'economic:bigmac:v1',
-  fuelPrices:    'economic:fuel-prices:v1',
-  faoFoodPriceIndex: 'economic:fao-ffpi:v1',
-  nationalDebt:      'economic:national-debt:v1',
-  euGasStorage:      'economic:eu-gas-storage:v1',
-  eurostatCountryData: 'economic:eurostat-country-data:v1',
-  eurostatHousePrices: 'economic:eurostat:house-prices:v1',
-  eurostatGovDebtQ:    'economic:eurostat:gov-debt-q:v1',
-  eurostatIndProd:     'economic:eurostat:industrial-production:v1',
-  marketImplications: 'intelligence:market-implications:v1',
-  fearGreedIndex:    'market:fear-greed:v1',
-  hyperliquidFlow:   'market:hyperliquid:flow:v1',
-  crudeInventories:  'economic:crude-inventories:v1',
-  natGasStorage:     'economic:nat-gas-storage:v1',
-  ecbFxRates:        'economic:ecb-fx-rates:v1',
-  euFsi:             'economic:fsi-eu:v1',
-  shippingStress:    'supply_chain:shipping_stress:v1',
-  socialVelocity:    'intelligence:social:reddit:v1',
-  wsbTickers:        'intelligence:wsb-tickers:v1',
-  pizzint:           'intelligence:pizzint:seed:v1',
-  diseaseOutbreaks:  'health:disease-outbreaks:v1',
-  economicStress:    'economic:stress-index:v1',
-  electricityPrices:    'energy:electricity:v1:index',
-  jodiOil:              'energy:jodi-oil:v1:_countries',
-  chokepointBaselines:  'energy:chokepoint-baselines:v1',
-  portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
-  portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
-  oilStocksAnalysis:    'energy:oil-stocks-analysis:v1',
-  lngVulnerability:     'energy:lng-vulnerability:v1',
-  sprPolicies:          'energy:spr-policies:v1',
-  pipelinesGas:         'energy:pipelines:gas:v1',
-  pipelinesOil:         'energy:pipelines:oil:v1',
-  storageFacilities:    'energy:storage-facilities:v1',
-  fuelShortages:        'energy:fuel-shortages:v1',
-  energyDisruptions:    'energy:disruptions:v1',
-  energyCrisisPolicies: 'energy:crisis-policies:v1',
-  aaiiSentiment:        'market:aaii-sentiment:v1',
-  breadthHistory:       'market:breadth-history:v1',
-};
-
-const SLOW_KEYS = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit',
-  'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
-  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'minerals', 'giving',
-  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
-  'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
-  'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
-  'naturalEvents',
-  'cryptoQuotes', 'cryptoSectors', 'defiTokens', 'aiTokens', 'otherTokens',
-  'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
-  'techEvents',
-  'securityAdvisories',
-  'customsRevenue',
-  'sanctionsPressure',
-  'consumerPricesOverview', 'consumerPricesCategories', 'consumerPricesMovers', 'consumerPricesSpread',
-  'groceryBasket',
-  'bigmac',
-  'fuelPrices',
-  'faoFoodPriceIndex',
-  'nationalDebt',
-  'euGasStorage',
-  'eurostatCountryData',
-  'eurostatHousePrices',
-  'eurostatGovDebtQ',
-  'eurostatIndProd',
-  'marketImplications',
-  'fearGreedIndex',
-  'hyperliquidFlow',
-  'crudeInventories',
-  'natGasStorage',
-  'ecbFxRates',
-  'euFsi',
-  'diseaseOutbreaks',
-  'economicStress',
-  'pizzint',
-  'electricityPrices',
-  'jodiOil',
-  'chokepointBaselines',
-  'portwatchChokepointsRef',
-  'portwatchPortActivity',
-  'oilStocksAnalysis',
-  'lngVulnerability',
-  'sprPolicies',
-  'pipelinesGas',
-  'pipelinesOil',
-  'storageFacilities',
-  'fuelShortages',
-  'energyDisruptions',
-  'energyCrisisPolicies',
-  'aaiiSentiment',
-  'breadthHistory',
-]);
-const FAST_KEYS = new Set([
-  'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
-  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
-  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
-  'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
-]);
-
-// Iran-events sunset: strip the domain from the bootstrap payload + fast tier
-// when disabled (default), so the client never hydrates it.
-if (!IRAN_EVENTS_ENABLED) {
-  delete BOOTSTRAP_CACHE_KEYS.iranEvents;
-  FAST_KEYS.delete('iranEvents');
-}
+const { cacheKeys: BOOTSTRAP_CACHE_KEYS } = resolveBootstrapRegistry({
+  iranEventsEnabled: IRAN_EVENTS_ENABLED,
+});
+const SLOW_KEYS = new Set(bootstrapTierKeyNames('slow', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
+const FAST_KEYS = new Set(bootstrapTierKeyNames('fast', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
+const ON_DEMAND_KEYS = new Set(bootstrapTierKeyNames('on-demand', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
 // pin ACAO: worldmonitor.app on cached responses, breaking CORS for preview deployments.
@@ -220,8 +56,72 @@ const TIER_CDN_CACHE = {
   slow: 'public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200',
   fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
 };
+const ON_DEMAND_CACHE_PROFILES = {
+  // Seeded every 15 minutes. Keep the caller-invariant public URL from
+  // outliving a complete seed interval; per-group stale/unavailable states
+  // remain part of the payload contract.
+  chinaDecisionSignals: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
+};
 
+// The URL SHAPE shared by every marked single-key public read:
+// `GET /api/bootstrap?keys=<one>&public=1`, no other params, each appearing once.
+// Returns the requested key name, or null when the request is not that shape.
+//
+// GET only: a HEAD has no body to serve and must not mint a cacheable entry.
+//
+// The MEMBERSHIP test deliberately stays with each caller below. Which keys may
+// be served without credentials is the whole semantic difference between them,
+// and folding both allowlists into one here would silently widen each to the
+// other's keys — the shape is shared, the authorization is not.
+function publicSingleKeyBootstrapRequestKey(req) {
+  if (req.method !== 'GET') return null;
+
+  const url = new URL(req.url);
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  if (pathname !== '/api/bootstrap') return null;
+
+  const params = Array.from(url.searchParams.keys());
+  if (params.some((key) => key !== 'keys' && key !== 'public')) return null;
+
+  const keyParams = url.searchParams.getAll('keys');
+  const publicParams = url.searchParams.getAll('public');
+  if (keyParams.length !== 1 || publicParams.length !== 1 || publicParams[0] !== '1') return null;
+
+  return keyParams[0];
+}
+
+// The explicitly-marked public weather URL: `?keys=weatherAlerts&public=1`.
+//
+// Same contract as its `?tier=fast|slow&public=1` and `?keys=<onDemand>&public=1`
+// siblings below: the payload is the shared production seed value, identical for
+// every caller, so the marker gives it its own CDN entry and the response is
+// public REGARDLESS of attached credentials — a CDN hit precedes handler auth,
+// so a credential-dependent answer at this URL could never be honored.
 export function isPublicWeatherBootstrapRequest(req) {
+  return publicSingleKeyBootstrapRequestKey(req) === PUBLIC_WEATHER_BOOTSTRAP_KEY;
+}
+
+// The legacy unmarked weather URL: `?keys=weatherAlerts` with no credentials.
+// Still anonymous and still serves the public payload — it is a documented
+// public path (docs/api-platform.mdx) and the only bootstrap read the map embed
+// could make before the marked URL existed — but it is NEVER shared-cacheable.
+//
+// That is the whole of #5386: this is the SAME URL a credentialed caller uses,
+// and a CDN hit precedes handler auth, so while a warm public entry sat here it
+// answered an invalid-key request with the cached anonymous 200 instead of the
+// origin's 401. The origin and the edge disagreed about one URL. Keeping every
+// response on this URL no-store means the edge never holds an entry that can
+// answer for the origin, so an invalid key always reaches validateApiKey.
+//
+// Deliberately NOT built on publicSingleKeyBootstrapRequestKey above: this
+// predicate is the pre-#5386 one, kept verbatim. It accepts HEAD and tolerates
+// `?keys=weatherAlerts,` / whitespace forms that the marked shape rejects.
+// Reusing the stricter helper here would narrow which requests still reach the
+// documented anonymous path — a behavior change this fix does not intend.
+export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
   const url = new URL(req.url);
@@ -235,7 +135,113 @@ export function isPublicWeatherBootstrapRequest(req) {
   if (keyParams.length !== 1) return false;
 
   const requested = keyParams[0].split(',').map((key) => key.trim()).filter(Boolean);
-  return requested.length === 1 && requested[0] === 'weatherAlerts';
+  return requested.length === 1 && requested[0] === PUBLIC_WEATHER_BOOTSTRAP_KEY;
+}
+
+let nextBootstrapR2ShadowProbeIsCold = true;
+let scheduleBootstrapR2Shadow = vercelWaitUntil;
+let readBootstrapR2ShadowTier = readBootstrapTierObject;
+
+function shouldMeasureBootstrapR2Shadow(authKind, tier) {
+  return process.env.BOOTSTRAP_R2_SHADOW_MEASURE === '1'
+    && process.env.VERCEL_ENV === 'production'
+    && authKind === 'public-tier'
+    && PUBLIC_BOOTSTRAP_TIERS.has(tier);
+}
+
+function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs) {
+  const serializedRedisDurationMs = redisDurationMs.toFixed(3);
+  response.headers.set('Server-Timing', `wm_bootstrap_redis;dur=${serializedRedisDurationMs}`);
+  // Vercel strips user-authored Server-Timing from Edge responses. Keep it for
+  // runtimes that preserve the standard header, but expose the same temporary
+  // U3a diagnostic through a platform-safe header so browser RUM can observe it.
+  response.headers.set('X-WorldMonitor-Bootstrap-Redis-Duration', serializedRedisDurationMs);
+  // A browser cache replay preserves the origin-MISS headers and would make a
+  // local response look like a fresh origin sample. Disable only browser
+  // storage during U3a; CDN-Cache-Control continues to shield the Vercel origin.
+  response.headers.set('Cache-Control', 'no-store');
+  const exposedHeaders = response.headers.get('Access-Control-Expose-Headers');
+  response.headers.set(
+    'Access-Control-Expose-Headers',
+    [
+      exposedHeaders,
+      'Server-Timing',
+      'X-WorldMonitor-Bootstrap-Redis-Duration',
+      'Age',
+      'X-Vercel-Cache',
+      'CF-Cache-Status',
+    ]
+      .filter(Boolean)
+      .join(', '),
+  );
+
+  const executionCold = nextBootstrapR2ShadowProbeIsCold;
+  nextBootstrapR2ShadowProbeIsCold = false;
+  const deliverProbeResult = (result) => deliverBootstrapR2Shadow({
+    r2Outcome: result.status === 'ok' ? 'r2' : 'fallback',
+    r2Reason: result.status === 'fallback' ? result.reason : null,
+    bootstrapTier: tier,
+    r2DurationMs: result.durationMs,
+    redisDurationMs,
+    executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
+    executionCold,
+    status: response.status,
+  });
+  const probe = readBootstrapR2ShadowTier(tier, {
+    timeoutMs: BOOTSTRAP_R2_PROBE_CEILING_MS,
+  }).then(deliverProbeResult).catch(() => {
+    // readBootstrapTierObject is fail-soft by contract. Preserve that contract
+    // if a future implementation accidentally throws before producing a result.
+    return deliverProbeResult({
+      status: 'fallback',
+      reason: 'unreadable',
+      durationMs: 0,
+    });
+  });
+  try {
+    if (typeof ctx?.waitUntil === 'function') ctx.waitUntil(probe);
+    else scheduleBootstrapR2Shadow(probe);
+  } catch {
+    // Background measurement must never alter the Redis response path.
+  }
+  return response;
+}
+
+// An explicit public tier bootstrap read (?tier=fast|slow&public=1, no other
+// params) returns the shared
+// production seed payload — identical for every caller (see PR #4499 non-goals:
+// only static transforms like wildfire compaction / enrichmentMeta strip apply,
+// never per-user variance). The explicit marker gives the shared response its
+// own CDN cache key; the legacy ?tier=fast|slow URLs remain credentialed and
+// no-store, so a warmed public response cannot bypass their auth/CORS contract.
+// The public URL is public regardless of request credentials because a CDN hit
+// occurs before handler auth. Callers that need credential processing must use
+// the legacy URL. Scoped to the two fixed public shapes so the CDN key space
+// stays tiny and hit rate high.
+//
+// GET only: a HEAD here would still run the full registry Redis read to build a
+// body it must not return — the exact unshielded egress this path exists to
+// avoid. HEAD tier reads have no client and fall through to the no-store path.
+export { isPublicTierBootstrapRequest } from './_bootstrap-public-tier.js';
+
+// The on-demand counterpart to the tier URL above: `?keys=<name>&public=1` for a
+// SINGLE on-demand key. Same reasoning — the payload is the shared production
+// seed value, identical for every caller — so it gets its own CDN entry and the
+// same public contract regardless of attached credentials (a cache hit precedes
+// handler auth).
+//
+// Restricted to ONE key drawn from ON_DEMAND_KEYS, deliberately: an arbitrary
+// `?keys=a,b,c` would make the CDN key space combinatorial, and every distinct
+// combination is a cache MISS that re-reads the registry from Redis — the exact
+// amplification #5259/#5287 exist to prevent. One key per URL keeps the space at
+// |ON_DEMAND_KEYS| entries, each independently cached and each fetched only by
+// the clients that actually render it.
+//
+// The legacy multi-key `?keys=a,b` URL keeps working and stays credentialed +
+// no-store, so nothing that relies on it changes.
+export function isPublicOnDemandBootstrapRequest(req) {
+  const key = publicSingleKeyBootstrapRequestKey(req);
+  return key !== null && ON_DEMAND_KEYS.has(key);
 }
 
 const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
@@ -252,41 +258,9 @@ function hasBootstrapCredentialCookie(req) {
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
-const WILDFIRE_DASHBOARD_DETECTION_LIMIT = 500;
+export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
 
-function numeric(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function confidenceRank(confidence) {
-  switch (confidence) {
-    case 'FIRE_CONFIDENCE_HIGH': return 3;
-    case 'FIRE_CONFIDENCE_NOMINAL': return 2;
-    case 'FIRE_CONFIDENCE_LOW': return 1;
-    default: return 0;
-  }
-}
-
-function compareFireDetectionsForDashboard(a, b) {
-  return Number(Boolean(b?.possibleExplosion)) - Number(Boolean(a?.possibleExplosion))
-    || confidenceRank(b?.confidence) - confidenceRank(a?.confidence)
-    || numeric(b?.brightness) - numeric(a?.brightness)
-    || numeric(b?.frp) - numeric(a?.frp)
-    || numeric(b?.detectedAt) - numeric(a?.detectedAt);
-}
-
-export function compactWildfireBootstrapPayload(value, limit = WILDFIRE_DASHBOARD_DETECTION_LIMIT) {
-  if (!value || typeof value !== 'object' || !Array.isArray(value.fireDetections)) return value;
-  if (value.fireDetections.length <= limit) return value;
-  return {
-    ...value,
-    fireDetections: [...value.fireDetections].sort(compareFireDetectionsForDashboard).slice(0, limit),
-    pagination: { nextCursor: '', totalCount: value.fireDetections.length },
-  };
-}
-
-async function getCachedJsonBatch(keys) {
+async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
   const result = new Map();
   if (keys.length === 0) return result;
 
@@ -294,11 +268,28 @@ async function getCachedJsonBatch(keys) {
   // production cache data. Preview/branch deploys don't run handlers that
   // populate prefixed keys, so prefixing would always miss.
   const pipeline = keys.map((k) => ['GET', k]);
+  if (shadowMarkerTier) {
+    // This intentionally-missing marker makes shadow origin requests uniquely
+    // countable in Redis MONITOR. The publisher reads the same tier registry,
+    // so canonical GET counts alone no longer distinguish it from serving.
+    pipeline.push(['GET', `bootstrap:r2-shadow-origin-marker:${shadowMarkerTier}`]);
+  }
   const data = await redisPipeline(pipeline, 3000);
-  if (!data) return result;
+  if (!Array.isArray(data) || data.length !== pipeline.length) {
+    throw new Error('Bootstrap Redis pipeline unavailable');
+  }
 
   for (let i = 0; i < keys.length; i++) {
-    const raw = data[i]?.result;
+    const entry = data[i];
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || !('result' in entry)
+      || entry.error != null
+    ) {
+      throw new Error('Bootstrap Redis pipeline command failed');
+    }
+    const raw = entry.result;
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
@@ -325,8 +316,21 @@ function authFailure(body, status, cors, extraHeaders = {}) {
 
 async function validateBootstrapAuth(req, cors) {
   const headerKey = getHeaderApiKey(req);
-  if (!headerKey && !hasBootstrapCredentialCookie(req) && isPublicWeatherBootstrapRequest(req)) {
+  // The explicit public URL must have one response contract for every request:
+  // Vercel may serve it from cache before cookie/header auth reaches this code.
+  if (isPublicTierBootstrapRequest(req)) {
+    return { ok: true, kind: 'public-tier' };
+  }
+  if (isPublicOnDemandBootstrapRequest(req)) {
+    return { ok: true, kind: 'public-on-demand' };
+  }
+  if (isPublicWeatherBootstrapRequest(req)) {
     return { ok: true, kind: 'public-weather' };
+  }
+  if (!headerKey && !hasBootstrapCredentialCookie(req)) {
+    if (isAnonymousWeatherBootstrapRequest(req)) {
+      return { ok: true, kind: 'anonymous-weather' };
+    }
   }
 
   const apiKeyResult = await validateApiKey(req);
@@ -377,7 +381,15 @@ async function validateBootstrapAuth(req, cors) {
       return {
         ok: false,
         response: authFailure(
-          { error: entitlementResult.error },
+          {
+            error: entitlementResult.error,
+            // Billing-verification denials (#4770) expose their machine-readable
+            // code in the body, matching the {error, code} shape the REST
+            // gateway emits for the same statuses.
+            ...(entitlementResult.headers?.['X-Billing-Verification']
+              ? { code: entitlementResult.reason }
+              : {}),
+          },
           entitlementResult.status,
           cors,
           entitlementResult.headers,
@@ -397,25 +409,68 @@ async function validateBootstrapAuth(req, cors) {
   };
 }
 
-function successCacheHeaders(tier, authKind, cors) {
-  if (authKind !== 'public-weather') {
+// Kinds that serve the shared public seed payload with no per-user variation.
+// They all get ACAO:* and the retryable-outage contract; only the subset below
+// is additionally allowed into a shared cache.
+function isPublicBootstrapKind(authKind) {
+  return authKind === 'public-weather'
+    || authKind === 'anonymous-weather'
+    || authKind === 'public-tier'
+    || authKind === 'public-on-demand';
+}
+
+// Only the explicitly-marked `&public=1` URLs may be stored by a shared cache.
+// The unmarked weather URL is public but no-store — see
+// isAnonymousWeatherBootstrapRequest for why (#5386).
+function isSharedCacheableBootstrapKind(authKind) {
+  return authKind === 'public-weather' || authKind === 'public-tier' || authKind === 'public-on-demand';
+}
+
+function successCacheHeaders(tier, authKind, cors, onDemandKey = null) {
+  if (!isPublicBootstrapKind(authKind)) {
     return {
       ...cors,
       'Cache-Control': 'no-store',
     };
   }
 
-  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
+  // Public seed payload with no per-user variation: serve with ACAO:* (no
+  // Vary: Origin, no Access-Control-Allow-Credentials) so the shared CDN stores
+  // ONE entry per URL instead of one per Origin, and no preview/embed origin can
+  // pin an echoed ACAO onto a cached response. Safe because isDisallowedOrigin()
+  // already rejected unauthorized origins at the handler entry (this is exactly
+  // the contract getPublicCorsHeaders documents).
+  const publicCors = getPublicCorsHeaders();
+  if (!isSharedCacheableBootstrapKind(authKind)) {
+    return {
+      ...publicCors,
+      'Cache-Control': 'no-store',
+    };
+  }
+  const onDemandProfile = authKind === 'public-on-demand'
+    ? ON_DEMAND_CACHE_PROFILES[onDemandKey]
+    : null;
+  const cacheControl = onDemandProfile?.browser
+    || (tier && TIER_CACHE[tier])
+    || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
   return {
-    ...cors,
+    ...publicCors,
     'Cache-Control': cacheControl,
-    'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
+    'CDN-Cache-Control': onDemandProfile?.cdn
+      || (tier && TIER_CDN_CACHE[tier])
+      || TIER_CDN_CACHE.fast,
   };
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
+  // no-store because this rejection is decided by the Origin header, which no
+  // cache layer here keys on (CF ignores Vary — see TIER_CACHE above). Without
+  // it, a 403 minted by one disallowed origin is an ordinary cacheable response
+  // on a `&public=1` URL that every other caller shares, and a shared cache is
+  // free to replay it to legitimate ones. Same reasoning as the split below:
+  // anything whose answer depends on the request must never be cacheable.
   if (isDisallowedOrigin(req))
-    return new Response('Forbidden', { status: 403 });
+    return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store' } });
 
   const cors = getCorsHeaders(req);
   if (req.method === 'OPTIONS')
@@ -439,15 +494,38 @@ export default async function handler(req) {
 
   const keys = Object.values(registry);
   const names = Object.keys(registry);
+  const measureR2Shadow = shouldMeasureBootstrapR2Shadow(auth.kind, tier);
+  const redisStartedAt = measureR2Shadow ? performance.now() : null;
 
   let cached;
   try {
-    cached = await getCachedJsonBatch(keys);
+    cached = await getCachedJsonBatch(keys, measureR2Shadow ? tier : null);
   } catch {
-    // Only the anonymous weather bootstrap may avoid no-store here; every
-    // other successful bootstrap response can carry session/key scoped data.
-    const cacheControl = auth.kind === 'public-weather' ? 'no-cache' : 'no-store';
-    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': cacheControl });
+    const isPublic = isPublicBootstrapKind(auth.kind);
+    if (isPublic) {
+      // Infrastructure failure is not an empty registry. Make it retryable and
+      // omit every CDN cache header so the outage response cannot replace a
+      // healthy public snapshot at the shared cache key.
+      const response = jsonResponse(
+        { error: 'Bootstrap service temporarily unavailable' },
+        503,
+        {
+          ...getPublicCorsHeaders(),
+          'Cache-Control': 'no-store',
+          'Retry-After': '5',
+        },
+      );
+      return measureR2Shadow
+        ? finishBootstrapR2ShadowResponse(
+            req,
+            ctx,
+            tier,
+            response,
+            Math.max(0, performance.now() - redisStartedAt),
+          )
+        : response;
+    }
+    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-store' });
   }
 
   const data = {};
@@ -468,8 +546,41 @@ export default async function handler(req) {
     }
   }
 
+  // Stop before jsonResponse serializes the final body. That serialization also
+  // exists on the future R2 serving path, so counting it as Redis-replaceable
+  // work would make C_happy optimistic, especially for the larger slow tier.
+  const redisDurationMs = measureR2Shadow
+    ? Math.max(0, performance.now() - redisStartedAt)
+    : null;
   // The browser runtime sends API requests with credentials so session and
   // entitlement cookies can ride along. Credentialed requests cannot consume
   // ACAO: * responses, even for public bootstrap data.
-  return jsonResponse({ data, missing }, 200, successCacheHeaders(tier, auth.kind, cors));
+  // Most on-demand keys carry slow-tier seed data. Keys with a faster publisher
+  // cadence can override that default through ON_DEMAND_CACHE_PROFILES.
+  const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null);
+  const onDemandKey = auth.kind === 'public-on-demand' && names.length === 1
+    ? names[0]
+    : null;
+  const response = jsonResponse(
+    { data, missing },
+    200,
+    successCacheHeaders(cacheTier, auth.kind, cors, onDemandKey),
+  );
+  return measureR2Shadow
+    ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs)
+    : response;
 }
+
+export const __testing__ = {
+  resetBootstrapR2ShadowForTests() {
+    nextBootstrapR2ShadowProbeIsCold = true;
+    scheduleBootstrapR2Shadow = vercelWaitUntil;
+    readBootstrapR2ShadowTier = readBootstrapTierObject;
+  },
+  setWaitUntilForTests(waitUntil) {
+    scheduleBootstrapR2Shadow = waitUntil;
+  },
+  setBootstrapR2ShadowReaderForTests(reader) {
+    readBootstrapR2ShadowTier = reader;
+  },
+};

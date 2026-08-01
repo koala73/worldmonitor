@@ -720,207 +720,203 @@
 }
 
 /* ----------------------------------------------------------
-   Giving Panel (Global Giving Activity Index)
+   Giving Panel (published benchmarks and provenance)
    ---------------------------------------------------------- */
 .giving-panel-content {
   font-size: 12px;
+  min-width: 0;
+}
+
+.giving-status {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.giving-status-cached-refresh-unavailable,
+.giving-status-available-but-legacy {
+  border-color: color-mix(in srgb, var(--semantic-elevated) 35%, var(--border));
+  background: color-mix(in srgb, var(--semantic-elevated) 9%, transparent);
 }
 
 .giving-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: 6px;
   margin-bottom: 8px;
 }
 
 .giving-stat-box {
-  background: var(--overlay-subtle);
+  min-width: 0;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px 6px;
-  text-align: center;
+  background: var(--overlay-subtle);
+  text-align: left;
 }
 
-.giving-stat-value {
+.giving-stat-value,
+.giving-benchmark-value {
   display: block;
+  color: var(--text-secondary);
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.giving-stat-label {
+.giving-stat-headline .giving-stat-value {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.giving-stat-label,
+.giving-benchmark-kind {
   display: block;
-  font-size: 9px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
 }
 
-.giving-stat-index .giving-stat-value {
-  font-size: 22px;
+.giving-source-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-/* giving-tabs: now uses shared .panel-tabs / .panel-tab */
+.giving-source-meta a,
+.giving-methodology-source a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.giving-source-meta a:hover,
+.giving-methodology-source a:hover {
+  text-decoration: underline;
+}
 
 .giving-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .giving-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 10px;
-  text-transform: uppercase;
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.giving-table th:first-child,
+.giving-table td:first-child {
+  width: 30%;
 }
 
 .giving-table td {
-  padding: 5px 8px;
+  min-width: 0;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .giving-row:hover {
   background: var(--surface-hover);
 }
 
-.giving-platform-name {
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.giving-platform-vol {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-}
-
-.giving-platform-vel {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.giving-platform-fresh {
-  text-align: right;
-}
-
-.giving-fresh-badge {
-  font-size: 9px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.5px;
-}
-
-.giving-fresh-live {
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 15%, transparent);
-  color: var(--semantic-positive, #44ff88);
-}
-
-.giving-fresh-daily {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-}
-
-.giving-fresh-weekly {
-  background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
-  color: var(--semantic-elevated);
-}
-
-.giving-fresh-annual {
-  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
-  color: var(--text-muted);
-}
-
-.giving-cat-table th:nth-child(2) {
-  text-align: right;
-}
-
+.giving-platform-name,
 .giving-cat-name {
-  white-space: nowrap;
+  font-weight: 600;
+  white-space: normal;
 }
 
-.giving-share-bar {
-  display: inline-block;
-  width: 60px;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-
-.giving-share-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--accent);
-}
-
-.giving-share-label {
-  font-variant-numeric: tabular-nums;
+.giving-unverified {
+  display: block;
+  color: var(--semantic-elevated);
   font-size: 11px;
-}
-
-.giving-trending-badge {
-  font-size: 8px;
-  font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 12%, transparent);
-  color: var(--semantic-positive, #44ff88);
-  letter-spacing: 0.5px;
-  vertical-align: middle;
-  margin-left: 4px;
-}
-
-.giving-crypto-content {}
-
-.giving-crypto-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.giving-crypto-receivers {}
-
-.giving-section-title {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
   font-weight: 600;
 }
-
-.giving-receiver-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.giving-receiver-list li {
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.giving-receiver-list li:last-child {
-  border-bottom: none;
-}
-
-.giving-inst-content {}
 
 .giving-inst-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+}
+
+.giving-methodology {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.giving-methodology summary {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.giving-methodology p {
+  margin: 7px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.giving-methodology ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.giving-methodology-item {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.giving-methodology-source {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.giving-methodology-note {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .giving-stats-grid,
+  .giving-inst-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .giving-table th:first-child,
+  .giving-table td:first-child {
+    width: 36%;
+  }
+
+  .giving-table th,
+  .giving-table td {
+    padding-inline: 5px;
+  }
 }
 
 /* ----------------------------------------------------------

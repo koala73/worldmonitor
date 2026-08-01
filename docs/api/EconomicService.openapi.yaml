@@ -438,6 +438,179 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-china-macro-snapshot:
+        get:
+            tags:
+                - EconomicService
+            summary: GetChinaMacroSnapshot
+            description: |-
+                GetChinaMacroSnapshot reads the normalized China macro and official release
+                 calendar seeds. It never fans out to upstream providers on a cache miss.
+            operationId: GetChinaMacroSnapshot
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "contentObservationDate": "2026-01-15"
+                                "countryCode": "US"
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "indicators":
+                                    - "category": "cs.AI"
+                                      "comparisonBasis": "example"
+                                      "comparisonValue": 1.5
+                                      "contextOnly": true
+                                      "direction": "example"
+                                "latestObservationDate": "40.7128"
+                            schema:
+                                $ref: '#/components/schemas/GetChinaMacroSnapshotResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-china-activity-nowcast:
+        get:
+            tags:
+                - EconomicService
+            summary: GetChinaActivityNowcast
+            description: |-
+                GetChinaActivityNowcast compares the revision-aware official macro pulse
+                 with reviewed proxy families using a deterministic, no-lookahead method.
+            operationId: GetChinaActivityNowcast
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "comparisonState": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "methodVersion": "example"
+                                "payloadJson": "example"
+                                "upstreamUnavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetChinaActivityNowcastResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/economic/v1/get-energy-capacity:
         get:
             tags:
@@ -1166,7 +1339,7 @@ paths:
                                       "debtUsd": 1.5
                                       "gdpUsd": 1.5
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetNationalDebtResponse'
                 "400":
@@ -1463,7 +1636,7 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicCalendarResponse'
                 "400":
@@ -1711,7 +1884,7 @@ paths:
                                       "pair": "example"
                                       "rate": 75.25
                                 "seededAt": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                                 "updatedAt": "2026-01-15"
                             schema:
                                 $ref: '#/components/schemas/GetEcbFxRatesResponse'
@@ -1811,7 +1984,7 @@ paths:
                                             "unit": "example"
                                             "value": 1.5
                                 "seededAt": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEurostatCountryDataResponse'
                 "400":
@@ -1980,7 +2153,7 @@ paths:
                                         "exampleKey": 1.5
                                     "source": "example"
                                     "updatedAt": "2026-01-15"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEuYieldCurveResponse'
                 "400":
@@ -2151,7 +2324,7 @@ paths:
                                 "compositeScore": 42.5
                                 "label": "example"
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicStressResponse'
                 "400":
@@ -2337,7 +2510,7 @@ paths:
                                     "northAmerica":
                                         "avgDays": 7
                                         "netExporters": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetOilStocksAnalysisResponse'
                 "400":
@@ -2552,7 +2725,7 @@ paths:
                                       "measure": "example"
                                 "source": "example"
                                 "sourceUrl": "https://example.com/worldmonitor"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEnergyCrisisPoliciesResponse'
                 "400":
@@ -2571,6 +2744,241 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/list-global-tenders:
+        get:
+            tags:
+                - EconomicService
+            summary: ListGlobalTenders
+            description: ListGlobalTenders returns the Pro-gated, paginated, seed-backed canonical procurement feed. Requires entitlement tier >= 1.
+            operationId: ListGlobalTenders
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: country
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code to match.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: countries
+                  in: query
+                  description: One or more ISO 3166-1 alpha-2 country codes to match.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "US"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: region
+                  in: query
+                  description: Geographic region label to match, such as Europe or North America.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: source
+                  in: query
+                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  description: Source-provided tender status to match, such as open or published.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: deadline_from
+                  in: query
+                  description: Include opportunities whose deadline is on or after this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: deadline_to
+                  in: query
+                  description: Include opportunities whose deadline is on or before this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: min_value
+                  in: query
+                  description: Include opportunities with a stated estimated value at or above this amount.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
+                - name: max_value
+                  in: query
+                  description: Include opportunities with a stated estimated value at or below this amount.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
+                - name: currency
+                  in: query
+                  description: ISO 4217 currency code used with min_value and max_value.
+                  required: false
+                  example: "USD"
+                  schema:
+                    type: string
+                - name: category
+                  in: query
+                  description: Procurement category or classification code to match.
+                  required: false
+                  example: "cs.AI"
+                  schema:
+                    type: string
+                - name: query
+                  in: query
+                  description: Case-insensitive search text matched against tender titles and descriptions.
+                  required: false
+                  example: "supply chain risk"
+                  schema:
+                    type: string
+                - name: page_size
+                  in: query
+                  description: Maximum number of tenders to return per page; capped at 100.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Opaque cursor from a previous response's next_cursor field.
+                  required: false
+                  example: "next-page-token"
+                  schema:
+                    type: string
+                - name: sort
+                  in: query
+                  description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: buyer
+                  in: query
+                  description: Case-insensitive buyer or contracting-authority text to match.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: published_from
+                  in: query
+                  description: Include opportunities published on or after this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: published_to
+                  in: query
+                  description: Include opportunities published on or before this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: min_automation_score
+                  in: query
+                  description: |-
+                    Include only opportunities whose keyword-based automation_fit score is at
+                     or above this integer value (1-100; values above 100 are clamped, and
+                     non-integer or non-positive values disable the filter). Disabled when 0
+                     or unset, which preserves the default all-open-opportunities behavior.
+                     This is an evidence-backed text-relevance threshold only; it does not
+                     assert that any party is eligible to bid.
+                  required: false
+                  example: 42
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "appliedFilters":
+                                    - "example"
+                                "availability": "example"
+                                "countryCoverage": "US"
+                                "dataAvailable": true
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/ListGlobalTendersResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
                     content:
                         application/json:
                             schema:
@@ -3092,6 +3500,239 @@ components:
                         format: double
                         description: Last 30 QQQ close prices for sparkline.
             description: MacroMeta contains supplementary chart data.
+        GetChinaMacroSnapshotRequest:
+            type: object
+        GetChinaMacroSnapshotResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                generatedAt:
+                    type: string
+                status:
+                    type: string
+                launchReady:
+                    type: boolean
+                contentObservationDate:
+                    type: string
+                latestObservationDate:
+                    type: string
+                indicators:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroIndicator'
+                sourceDecisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroSourceDecision'
+                releaseEvents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaReleaseEvent'
+                unavailable:
+                    type: boolean
+                    description: |-
+                        True when the seeded snapshot or release calendar is unavailable; callers
+                         should render the response as degraded rather than treating it as current.
+                schemaVersion:
+                    type: integer
+                    format: int32
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroPillarPulse'
+        ChinaMacroIndicator:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: |-
+                        Kept as "indicator" for API compatibility; each row is a versioned,
+                         revision-aware official observation in cache schema v2.
+                label:
+                    type: string
+                category:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                hasValue:
+                    type: boolean
+                priorValue:
+                    type: number
+                    format: double
+                hasPriorValue:
+                    type: boolean
+                unit:
+                    type: string
+                observationDate:
+                    type: string
+                source:
+                    type: string
+                sourceUrl:
+                    type: string
+                stale:
+                    type: boolean
+                unavailableReason:
+                    type: string
+                contextOnly:
+                    type: boolean
+                geography:
+                    type: string
+                seasonalAdjustment:
+                    type: string
+                periodKind:
+                    type: string
+                observationPeriod:
+                    type: string
+                releaseTime:
+                    type: string
+                retrievalTime:
+                    type: string
+                direction:
+                    type: string
+                directionReason:
+                    type: string
+                comparisonBasis:
+                    type: string
+                comparisonValue:
+                    type: number
+                    format: double
+                hasComparisonValue:
+                    type: boolean
+                revisionState:
+                    type: string
+                vintageId:
+                    type: string
+                revisionSequence:
+                    type: integer
+                    format: int32
+                provenanceJson:
+                    type: string
+                    description: 'Canonical #5581 payload, validated before crossing the cache/API boundary.'
+                vintages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroVintage'
+                transportStatus:
+                    type: string
+                transportFailureReason:
+                    type: string
+        ChinaMacroVintage:
+            type: object
+            properties:
+                vintageId:
+                    type: string
+                sequence:
+                    type: integer
+                    format: int32
+                state:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                hasValue:
+                    type: boolean
+                observationPeriod:
+                    type: string
+                periodKind:
+                    type: string
+                releaseTime:
+                    type: string
+                retrievalTime:
+                    type: string
+                supersededBy:
+                    type: string
+                provenanceJson:
+                    type: string
+        ChinaMacroSourceDecision:
+            type: object
+            properties:
+                source:
+                    type: string
+                host:
+                    type: string
+                status:
+                    type: string
+                reason:
+                    type: string
+                checkedAt:
+                    type: string
+                optional:
+                    type: boolean
+                requestCount:
+                    type: integer
+                    format: int32
+                publisherId:
+                    type: string
+                redirectBehavior:
+                    type: string
+                requestBudget:
+                    type: integer
+                    format: int32
+                robotsStatus:
+                    type: string
+                termsStatus:
+                    type: string
+                sourceUrl:
+                    type: string
+        ChinaReleaseEvent:
+            type: object
+            properties:
+                id:
+                    type: string
+                event:
+                    type: string
+                countryCode:
+                    type: string
+                releaseDate:
+                    type: string
+                releaseTime:
+                    type: string
+                timezone:
+                    type: string
+                kind:
+                    type: string
+                status:
+                    type: string
+                source:
+                    type: string
+                sourceUrl:
+                    type: string
+        ChinaMacroPillarPulse:
+            type: object
+            properties:
+                pillar:
+                    type: string
+                direction:
+                    type: string
+                reason:
+                    type: string
+                observationIds:
+                    type: array
+                    items:
+                        type: string
+        GetChinaActivityNowcastRequest:
+            type: object
+        GetChinaActivityNowcastResponse:
+            type: object
+            properties:
+                generatedAt:
+                    type: string
+                methodVersion:
+                    type: string
+                comparisonState:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+                    description: |-
+                        True only when no official vintage or proxy contribution is available.
+                         Methodological insufficiency with otherwise healthy inputs remains false.
+                payloadJson:
+                    type: string
+                    description: |-
+                        Canonical inspectable method payload. Numeric computation and state
+                         assignment are deterministic and validated before crossing this boundary.
         GetEnergyCapacityRequest:
             type: object
             properties:
@@ -4308,3 +4949,207 @@ components:
                     type: string
                     description: 'Status of the policy: active, planned, or ended.'
             description: EnergyCrisisPolicy represents a single government policy response to the 2026 energy crisis.
+        ListGlobalTendersRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code to match.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: One or more ISO 3166-1 alpha-2 country codes to match.
+                region:
+                    type: string
+                    description: Geographic region label to match, such as Europe or North America.
+                source:
+                    type: string
+                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
+                status:
+                    type: string
+                    description: Source-provided tender status to match, such as open or published.
+                deadlineFrom:
+                    type: string
+                    description: Include opportunities whose deadline is on or after this ISO-8601 timestamp.
+                deadlineTo:
+                    type: string
+                    description: Include opportunities whose deadline is on or before this ISO-8601 timestamp.
+                minValue:
+                    type: number
+                    format: double
+                    description: Include opportunities with a stated estimated value at or above this amount.
+                maxValue:
+                    type: number
+                    format: double
+                    description: Include opportunities with a stated estimated value at or below this amount.
+                currency:
+                    type: string
+                    description: ISO 4217 currency code used with min_value and max_value.
+                category:
+                    type: string
+                    description: Procurement category or classification code to match.
+                query:
+                    type: string
+                    description: Case-insensitive search text matched against tender titles and descriptions.
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum number of tenders to return per page; capped at 100.
+                cursor:
+                    type: string
+                    description: Opaque cursor from a previous response's next_cursor field.
+                sort:
+                    type: string
+                    description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
+                buyer:
+                    type: string
+                    description: Case-insensitive buyer or contracting-authority text to match.
+                publishedFrom:
+                    type: string
+                    description: Include opportunities published on or after this ISO-8601 timestamp.
+                publishedTo:
+                    type: string
+                    description: Include opportunities published on or before this ISO-8601 timestamp.
+                minAutomationScore:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Include only opportunities whose keyword-based automation_fit score is at
+                         or above this integer value (1-100; values above 100 are clamped, and
+                         non-integer or non-positive values disable the filter). Disabled when 0
+                         or unset, which preserves the default all-open-opportunities behavior.
+                         This is an evidence-backed text-relevance threshold only; it does not
+                         assert that any party is eligible to bid.
+        ListGlobalTendersResponse:
+            type: object
+            properties:
+                tenders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GlobalTender'
+                nextCursor:
+                    type: string
+                fetchedAt:
+                    type: string
+                dataAvailable:
+                    type: boolean
+                availability:
+                    type: string
+                sourceStatuses:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TenderSourceStatus'
+                total:
+                    type: integer
+                    format: int32
+                appliedFilters:
+                    type: array
+                    items:
+                        type: string
+                countryCoverage:
+                    type: string
+                    description: |-
+                        `unknown` means the snapshot contains no record for a requested country;
+                         it must not be interpreted as a confirmed no-opportunity or unsupported-country result.
+        GlobalTender:
+            type: object
+            properties:
+                id:
+                    type: string
+                source:
+                    type: string
+                sourceNoticeId:
+                    type: string
+                officialUrl:
+                    type: string
+                countryCode:
+                    type: string
+                region:
+                    type: string
+                title:
+                    type: string
+                description:
+                    type: string
+                buyer:
+                    type: string
+                publishedAt:
+                    type: string
+                updatedAt:
+                    type: string
+                deadline:
+                    type: string
+                status:
+                    type: string
+                noticeType:
+                    type: string
+                money:
+                    $ref: '#/components/schemas/TenderMoney'
+                categoryCodes:
+                    type: array
+                    items:
+                        type: string
+                sectors:
+                    type: array
+                    items:
+                        type: string
+                eligibilityRequirements:
+                    type: array
+                    items:
+                        type: string
+                submissionUrls:
+                    type: array
+                    items:
+                        type: string
+                participationMode:
+                    type: string
+                automationFit:
+                    $ref: '#/components/schemas/AutomationFit'
+        TenderMoney:
+            type: object
+            properties:
+                amount:
+                    type: number
+                    format: double
+                currency:
+                    type: string
+        AutomationFit:
+            type: object
+            properties:
+                level:
+                    type: string
+                score:
+                    type: integer
+                    format: int32
+                classificationVersion:
+                    type: string
+                matchReasons:
+                    type: array
+                    items:
+                        type: string
+                evidence:
+                    type: array
+                    items:
+                        type: string
+        TenderSourceStatus:
+            type: object
+            properties:
+                source:
+                    type: string
+                state:
+                    type: string
+                recordCount:
+                    type: integer
+                    format: int32
+                fetchedAt:
+                    type: string
+                    description: Time of the most recent retrieval attempt for this source.
+                error:
+                    type: string
+                lastSuccessfulAt:
+                    type: string
+                    description: Time of the most recent successful retrieval; preserved across failures.
+                stale:
+                    type: boolean
+                paced:
+                    type: boolean

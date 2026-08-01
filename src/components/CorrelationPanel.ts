@@ -36,6 +36,7 @@ export class CorrelationPanel extends Panel {
   private onMapNavigate?: (lat: number, lon: number) => void;
   private boundUpdateHandler: EventListener;
   private hasLiveData = false;
+  private correlationDestroyed = false;
 
   constructor(id: string, title: string, domain: CorrelationDomain, infoTooltip?: string) {
     super({ id, title, showCount: true, infoTooltip });
@@ -59,6 +60,7 @@ export class CorrelationPanel extends Panel {
   }
 
   override destroy(): void {
+    this.correlationDestroyed = true;
     document.removeEventListener('wm:correlation-updated', this.boundUpdateHandler);
     super.destroy();
   }
@@ -67,12 +69,22 @@ export class CorrelationPanel extends Panel {
     this.onMapNavigate = handler;
   }
 
+  protected navigateToMap(lat: number, lon: number): void {
+    this.onMapNavigate?.(lat, lon);
+  }
+
+  protected renderSupplement(): HTMLElement | null {
+    return null;
+  }
+
   private pendingRender = false;
-  private requestRender(): void {
-    if (this.pendingRender) return;
+  /** Schedule a safe redraw for subclasses that install deferred panel data. */
+  protected requestRender(): void {
+    if (this.correlationDestroyed || this.pendingRender) return;
     this.pendingRender = true;
     requestAnimationFrame(() => {
       this.pendingRender = false;
+      if (this.correlationDestroyed) return;
       this.render();
     });
   }
@@ -86,19 +98,26 @@ export class CorrelationPanel extends Panel {
   }
 
   private render(): void {
+    if (this.correlationDestroyed) return;
     const cards = this.cards;
     this.setCount(cards.length);
+    const supplement = this.renderSupplement();
 
     if (cards.length === 0) {
-      replaceChildren(this.content, h('div', {
+      const empty = h('div', {
         className: 'correlation-empty',
         style: 'padding:12px;text-align:center;opacity:0.5;font-size:11px;',
-      }, t('components.correlation.empty')));
+      }, t('components.correlation.empty'));
+      replaceChildren(this.content, ...(supplement ? [supplement] : []), empty);
       return;
     }
 
     const cardEls = cards.map(card => this.buildCard(card));
-    replaceChildren(this.content, h('div', { className: 'correlation-cards' }, ...cardEls));
+    replaceChildren(
+      this.content,
+      ...(supplement ? [supplement] : []),
+      h('div', { className: 'correlation-cards' }, ...cardEls),
+    );
   }
 
   private buildCard(card: ConvergenceCard): HTMLElement {
@@ -178,7 +197,7 @@ export class CorrelationPanel extends Panel {
       }, t('components.correlation.viewOnMap'));
       mapBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.onMapNavigate?.(card.location!.lat, card.location!.lon);
+        this.navigateToMap(card.location!.lat, card.location!.lon);
       });
       children.push(mapBtn);
     }

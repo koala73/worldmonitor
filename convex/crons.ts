@@ -41,6 +41,24 @@ crons.daily(
   {},
 );
 
+// Daily retention prune for the append-only historical intelligence store
+// (#5694). The table has no natural ceiling — every seeder run appends the
+// events it published — and each row carries a 512-float vector, so the
+// vector index is the real cost being bounded here. Ages rows past
+// INTEL_HISTORY_RETENTION_DAYS out by `ingestedAt` in bounded per-run
+// batches that self-drain. Also drains expired retraction tombstones
+// (#5743) in the same pass, by `retractedAt` — a handful of hand-created
+// rows do not justify a second scheduled function. See `prune` in
+// convex/intelHistory.ts. 04:30 UTC sits between the plan-limit prune
+// (04:45) and the wave-runs cleanup (04:00) so the three delete-heavy jobs
+// never overlap.
+crons.daily(
+  "intel-history-prune",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.intelHistory.prune,
+  {},
+);
+
 crons.daily(
   "broadcast-ramp-runner",
   { hourUTC: 13, minuteUTC: 0 },
@@ -114,6 +132,16 @@ crons.daily(
   internal.followedCountries._dedupeCountryLocks,
 );
 
+// Daily self-heal for the singleton Dodo failure summary. This both restores a
+// missing deploy-time seed and removes duplicate global rows from a rare race
+// between deploy/manual/cron seed invocations. Operational reads tolerate the
+// duplicates until this idempotent pass retains the oldest authority row.
+crons.daily(
+  "dodo-webhook-failure-summary-seed",
+  { hourUTC: 3, minuteUTC: 4 },
+  internal.payments.webhookMutations._seedFailureSummary,
+);
+
 // Dunning + winback scan (#4932). Schedules the due day-3/day-7 payment-
 // failure reminders and the 30-day winback (at most one step per
 // subscription per tick; every send re-validates live state). 14:30 UTC =
@@ -135,6 +163,19 @@ crons.daily(
   "dodo-renewal-reconciliation",
   { hourUTC: 3, minuteUTC: 17 },
   internal.payments.billing.reconcileMissedDodoRenewals,
+  {},
+);
+
+// Business Pro seat grant reconciliation (#4634/#4635) — safety net for the
+// webhook-driven and scheduled grant-revocation paths in subscriptionHelpers.ts.
+// A lost webhook or a dropped scheduled function can leave a grant pointing
+// at a Business subscription that's no longer covering/no longer api_business;
+// this daily sweep independently re-derives every live grant's validity
+// rather than trusting a single revocation trigger to have fired.
+crons.daily(
+  "business-pro-grants-reconciliation",
+  { hourUTC: 3, minuteUTC: 20 },
+  internal.payments.subscriptionHelpers.reconcileBusinessProGrants,
   {},
 );
 

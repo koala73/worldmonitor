@@ -1,0 +1,411 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "2026-07-27",
+  "querySetId": "seo-ai-visibility-v1",
+  "querySetDigest": "sha256:b31f4c299f414d1ffe889d1a3cdbb8614e45bf1f91e79380f89b3f1061de3f39",
+  "observedAt": "2026-07-27T17:15:05Z",
+  "repositoryRevision": "902b108f8239dce64f5577e366da0858cdaf17db",
+  "collectionContext": {
+    "geography": "France",
+    "locale": "en",
+    "signedInStates": [
+      "signed-out",
+      "signed-in"
+    ],
+    "device": "desktop web",
+    "limitations": [
+      "Google Search Console, Bing Webmaster, and analytics exports were not available in this clean worktree because no read-only credentials or exported reports were provided.",
+      "The manual AI audit is an initial four-platform sample for q01, not a population estimate across all 25 queries.",
+      "Google results were signed-in and personalized; the other three observations were signed-out.",
+      "Model names were not exposed consistently by the anonymous/search surfaces, so the platform and observation time are recorded without inventing a model identifier."
+    ]
+  },
+  "aiSurfaces": [
+    {
+      "platform": "chatgpt_search",
+      "status": "available",
+      "reason": null
+    },
+    {
+      "platform": "perplexity",
+      "status": "available",
+      "reason": null
+    },
+    {
+      "platform": "google_ai",
+      "status": "available",
+      "reason": null
+    },
+    {
+      "platform": "copilot_search",
+      "status": "available",
+      "reason": null
+    }
+  ],
+  "search": {
+    "googleSearchConsole": {
+      "status": "unavailable",
+      "property": null,
+      "reason": "No supported Search Console export or read-only property credential was available. Values remain null rather than being estimated from public result pages.",
+      "windows": [
+        {
+          "label": "28d",
+          "startDate": "2026-06-30",
+          "endDate": "2026-07-27",
+          "metrics": {
+            "indexedPages": null,
+            "impressions": null,
+            "clicks": null,
+            "ctr": null,
+            "averagePosition": null
+          }
+        },
+        {
+          "label": "90d",
+          "startDate": "2026-04-29",
+          "endDate": "2026-07-27",
+          "metrics": {
+            "indexedPages": null,
+            "impressions": null,
+            "clicks": null,
+            "ctr": null,
+            "averagePosition": null
+          }
+        }
+      ],
+      "queryRows": [],
+      "pageFamilyRows": []
+    },
+    "bingWebmaster": {
+      "status": "unavailable",
+      "property": null,
+      "reason": "No Bing Webmaster export or property access was available. IndexNow support does not substitute for Bing query and click reporting.",
+      "windows": [
+        {
+          "label": "28d",
+          "startDate": "2026-06-30",
+          "endDate": "2026-07-27",
+          "metrics": {
+            "indexedPages": null,
+            "impressions": null,
+            "clicks": null,
+            "ctr": null,
+            "averagePosition": null
+          }
+        },
+        {
+          "label": "90d",
+          "startDate": "2026-04-29",
+          "endDate": "2026-07-27",
+          "metrics": {
+            "indexedPages": null,
+            "impressions": null,
+            "clicks": null,
+            "ctr": null,
+            "averagePosition": null
+          }
+        }
+      ],
+      "queryRows": [],
+      "pageFamilyRows": []
+    }
+  },
+  "referrals": {
+    "status": "unavailable",
+    "property": null,
+    "reason": "The Umami/commerce aggregates were not exported into this clean environment. Existing event names are documented for the next read-only reconciliation, but no session or conversion count is inferred.",
+    "classification": {
+      "dimensions": [
+        "referrerHost",
+        "utmSource",
+        "landingPageFamily"
+      ],
+      "families": [
+        {
+          "id": "chatgpt",
+          "label": "ChatGPT",
+          "hostSuffixes": [
+            "chatgpt.com",
+            "chat.openai.com"
+          ],
+          "utmSources": [
+            "chatgpt.com"
+          ]
+        },
+        {
+          "id": "perplexity",
+          "label": "Perplexity",
+          "hostSuffixes": [
+            "perplexity.ai"
+          ],
+          "utmSources": [
+            "perplexity"
+          ]
+        },
+        {
+          "id": "google_search_ai",
+          "label": "Google Search / AI",
+          "hostSuffixes": [
+            "google.com",
+            "google.fr",
+            "gemini.google.com"
+          ],
+          "utmSources": [
+            "google"
+          ]
+        },
+        {
+          "id": "copilot_bing",
+          "label": "Copilot / Bing",
+          "hostSuffixes": [
+            "bing.com",
+            "copilot.microsoft.com"
+          ],
+          "utmSources": [
+            "bing",
+            "copilot"
+          ]
+        },
+        {
+          "id": "claude",
+          "label": "Claude",
+          "hostSuffixes": [
+            "claude.ai"
+          ],
+          "utmSources": [
+            "claude"
+          ]
+        },
+        {
+          "id": "other_ai_search",
+          "label": "Other identified AI/search",
+          "hostSuffixes": [],
+          "utmSources": []
+        },
+        {
+          "id": "unknown_direct",
+          "label": "Unknown / direct",
+          "hostSuffixes": [],
+          "utmSources": []
+        }
+      ]
+    },
+    "segments": [],
+    "windows": [
+      {
+        "label": "28d",
+        "startDate": "2026-06-30",
+        "endDate": "2026-07-27",
+        "metrics": {
+          "sessions": null,
+          "dashboardLaunches": null,
+          "pricingViews": null,
+          "signUps": null,
+          "proConversions": null,
+          "apiActions": null,
+          "mcpActions": null
+        }
+      },
+      {
+        "label": "90d",
+        "startDate": "2026-04-29",
+        "endDate": "2026-07-27",
+        "metrics": {
+          "sessions": null,
+          "dashboardLaunches": null,
+          "pricingViews": null,
+          "signUps": null,
+          "proConversions": null,
+          "apiActions": null,
+          "mcpActions": null
+        }
+      }
+    ]
+  },
+  "aiObservations": [
+    {
+      "queryId": "q01",
+      "platform": "chatgpt_search",
+      "observedAt": "2026-07-27T17:10:00Z",
+      "geography": "France",
+      "locale": "en",
+      "signedInState": "signed-out",
+      "brandMention": true,
+      "directCitation": true,
+      "citedUrls": [
+        "https://www.worldmonitor.app/?utm_source=chatgpt.com",
+        "https://gridline.world/?utm_source=chatgpt.com"
+      ],
+      "competitorsCited": [
+        "ACLED Explorer",
+        "GDELT",
+        "Dataminr",
+        "Recorded Future",
+        "Janes",
+        "S&P Global Market Intelligence"
+      ],
+      "sentiment": "positive",
+      "accuracy": "mixed",
+      "summary": "Named World Monitor the best all-around open OSINT dashboard and linked the homepage directly. The answer also made broad numeric and adoption claims that require recurring source-of-truth review before they are treated as accurate product facts.",
+      "limitations": [
+        "Anonymous ChatGPT Search did not expose a stable model identifier.",
+        "Only the visible direct links were recorded; collapsed source metadata was not inferred."
+      ]
+    },
+    {
+      "queryId": "q01",
+      "platform": "perplexity",
+      "observedAt": "2026-07-27T17:11:00Z",
+      "geography": "France",
+      "locale": "en",
+      "signedInState": "signed-out",
+      "brandMention": true,
+      "directCitation": false,
+      "citedUrls": [
+        "https://utilo.io/fr/home/tools/V0K-Vu7bhLfEs-k_47vUTuSYd71"
+      ],
+      "competitorsCited": [],
+      "sentiment": "positive",
+      "accuracy": "mixed",
+      "summary": "Called World Monitor the strongest free single pick, but supported the claim with a third-party directory rather than a World Monitor URL. Its 435+ sources and 45+ layer counts need fact review.",
+      "limitations": [
+        "The answer was generated without signing in.",
+        "A third-party page mentioning World Monitor is a mention source, not a direct World Monitor citation."
+      ]
+    },
+    {
+      "queryId": "q01",
+      "platform": "google_ai",
+      "observedAt": "2026-07-27T17:12:00Z",
+      "geography": "France",
+      "locale": "en",
+      "signedInState": "signed-in",
+      "brandMention": true,
+      "directCitation": true,
+      "citedUrls": [
+        "https://www.worldmonitor.app/",
+        "https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/",
+        "https://www.nexusai-tech.com/ai-apps/world-monitor-ai-global-intelligence-and-real-time-osint-dashboard"
+      ],
+      "competitorsCited": [
+        "BlackRock Geopolitical Risk Dashboard",
+        "Hegemon Global",
+        "Graphika"
+      ],
+      "sentiment": "positive",
+      "accuracy": "mixed",
+      "summary": "The AI Overview called World Monitor the leading open-source geopolitical dashboard and cited the homepage plus the first-party explainer. It also used subjective ranking language and mutable provider-count claims that should remain dated and reviewable.",
+      "limitations": [
+        "The result was personalized because the Google session was signed in.",
+        "No account identifier or precise location was retained in the artifact."
+      ]
+    },
+    {
+      "queryId": "q01",
+      "platform": "copilot_search",
+      "observedAt": "2026-07-27T17:13:00Z",
+      "geography": "France",
+      "locale": "en",
+      "signedInState": "signed-out",
+      "brandMention": true,
+      "directCitation": true,
+      "citedUrls": [
+        "https://www.worldmonitor.app/",
+        "https://github.com/koala73/worldmonitor",
+        "https://www.worldmonitor.io/"
+      ],
+      "competitorsCited": [],
+      "sentiment": "positive",
+      "accuracy": "mixed",
+      "summary": "Presented World Monitor as the most comprehensive current option and cited the homepage and repository. The answer mixed first-party and similarly named third-party domains and included mutable layer, provider, SDK, and feature counts that require correction monitoring.",
+      "limitations": [
+        "Bing wrapped outbound citations in redirect URLs; the normalized destination URLs are recorded.",
+        "The answer was generated without signing in."
+      ]
+    }
+  ],
+  "opportunities": [
+    {
+      "priority": 1,
+      "title": "Complete credentialed search and referral exports",
+      "evidence": "Search Console, Bing Webmaster, and referral/conversion metrics are unavailable, so the baseline cannot yet size demand, indexation health, CTR, or downstream conversion.",
+      "experiment": "Provide a supported 28-day and 90-day Search Console export, a Bing export where property access exists, and read-only aggregate analytics grouped by bounded referrer and page family.",
+      "successCriteria": "The next scorecard contains non-null provider metrics reconciled to their source exports, with no credentials or property identifiers committed.",
+      "queryIds": [
+        "q01",
+        "q06",
+        "q11",
+        "q16",
+        "q21"
+      ]
+    },
+    {
+      "priority": 2,
+      "title": "Expand the four-platform audit from one query to the reviewed panel",
+      "evidence": "All four named AI/search surfaces were observed for q01, but overall coverage is only 4 of 100 possible query-platform observations.",
+      "experiment": "Run the unchanged 25-query panel on the documented geography, locale, and signed-in schedule, prioritizing five queries per weekly pass.",
+      "successCriteria": "Every query has one observation on each required platform, and missing surfaces carry an explicit platform limitation rather than a zero.",
+      "queryIds": [
+        "q01",
+        "q07",
+        "q11",
+        "q16",
+        "q21"
+      ]
+    },
+    {
+      "priority": 3,
+      "title": "Correct and centralize AI-surfaced product facts",
+      "evidence": "The four answers used conflicting source, feed, layer, adoption, SDK, and feature counts; all were therefore marked mixed accuracy even when they cited World Monitor.",
+      "experiment": "Audit the cited homepage, explainer, pricing, machine-readable product files, and repository description against the canonical product-fact source before the next observation window.",
+      "successCriteria": "Repeated answers cite first-party pages with current, mutually consistent facts; mixed/inaccurate entity-answer observations decline without rewriting history.",
+      "queryIds": [
+        "q01",
+        "q21",
+        "q22",
+        "q23",
+        "q25"
+      ]
+    },
+    {
+      "priority": 4,
+      "title": "Earn a first-party Perplexity citation for the category query",
+      "evidence": "Perplexity mentioned World Monitor positively but cited only a third-party directory, while ChatGPT, Google AI, and Copilot linked first-party pages.",
+      "experiment": "Improve the first-party category explainer's dated evidence, visible source links, entity clarity, and internal path from homepage to explainer; then rerun q01 unchanged.",
+      "successCriteria": "Perplexity links a worldmonitor.app URL directly for q01 without paid placement, reciprocal-link manipulation, or a claim-only content rewrite.",
+      "queryIds": [
+        "q01",
+        "q03",
+        "q17"
+      ]
+    },
+    {
+      "priority": 5,
+      "title": "Gate new content on measured developer and use-case demand",
+      "evidence": "The reviewed set covers developer/MCP, chokepoint, country-risk, crisis, airspace, and supply-chain intents, but no credentialed impression, engagement, or conversion data is available yet.",
+      "experiment": "After exports arrive, rank q06-q15 by impressions, indexation health, qualified engagement, and credible product handoff; choose at most one evidence-rich report or page-family experiment.",
+      "successCriteria": "A new page or report proceeds only when demand, healthy indexation, useful engagement, and an intent-matched dashboard/API/MCP conversion path are all evidenced.",
+      "queryIds": [
+        "q06",
+        "q07",
+        "q08",
+        "q09",
+        "q10",
+        "q11",
+        "q12",
+        "q13",
+        "q14",
+        "q15"
+      ]
+    }
+  ],
+  "guardrails": [
+    "Do not automate unauthorized search-result scraping.",
+    "Do not treat an AI mention without a worldmonitor.app source link as a direct citation.",
+    "Do not claim causal uplift from a single observation.",
+    "Do not store personal prompts, account identifiers, or sensitive query context.",
+    "Do not convert unavailable data to zero or estimate it from unrelated public results.",
+    "Do not expand the content corpus solely because an SEO vendor assigns a score.",
+    "Use UTM fields for internal acquisition attribution; ref= remains affiliate attribution."
+  ]
+}

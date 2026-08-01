@@ -75,14 +75,71 @@ Keys are grouped into three tiers that determine alert severity:
 |--------|----------|---------|
 | `OK` | Green | Data present, seed fresh |
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
+| `NOT_CONFIGURED` | Green | An optional source adapter this deployment never supplied a credential for (producer wrote `sourceState: "unavailable"`, e.g. the Global Tenders SAM.gov adapter without `SAM_GOV_API_KEY`). Not a fault and not counted as a problem; flips to `OK` on the first run after the credential is added |
+| `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved no transport path reaches the publisher while retaining fresh reviewed records — either an upstream HTTP 403 after a successful proxy CONNECT (`HTTP_403`), or a target-scoped proxy CONNECT refusal corroborated by a successful control tunnel (`PROXY_TARGET_FORBIDDEN`). Uncorroborated CONNECT refusals, stale, empty, or unreviewed states still fail closed |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
-| `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints or 139/174 PortWatch port-activity countries) |
+| `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
 | `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
+
+### China Coverage Projection
+
+`chinaCoverage` projects the hourly Railway summary at
+`health:china-coverage:v1`. The evaluator checks each launched China contract
+for both a fresh producer heartbeat and fresh, substantive China content; a
+fresh seed cannot hide stale or missing source content. `CHINA_DEGRADED` is a
+warning projection for partial or stale coverage, while `CHINA_UNAVAILABLE` is
+critical when the summary is invalid or the launched content is unavailable.
+
+The final public composition is monitored separately as
+`chinaDecisionSignals`. Its canonical payload must contain all six stable
+groups even when individual groups are explicitly unavailable. Health requires
+six group records and a seed no older than 60 minutes. Per-source transport
+details for policy, exchanges, and cross-Strait publishers remain visible only
+in this authenticated operator view; they are not copied into the public
+country summary or Pro MCP result.
+Blocked China contracts remain visible in the audit with their stable reason
+code but are excluded from the strict launched-entry health count.
+
+The launched cross-Strait activity contract audits the durable archive
+`military:cross-strait-activity:v1` independently for producer transport and
+latest Taiwan MND reporting-window freshness. A fresh seed with a stale
+official report therefore remains degraded. Japan Joint Staff reviewed
+observations are regional augmentation and do not satisfy the Taiwan MND
+content requirement. `/api/health` separately monitors
+`military:cross-strait-activity-bootstrap:v1`; fresh canonical data cannot hide
+a missing compact UI projection. It also exposes dedicated MND and Japan Joint
+Staff transport records. Japan Joint Staff alone reports `SOURCE_BLOCKED`, and
+only when retained reviewed records exist and one of two evidenced conditions
+holds. `HTTP_403` means the direct request and an upstream response received
+after a successful proxy CONNECT both returned HTTP 403 — the publisher itself
+refused both paths. `PROXY_TARGET_FORBIDDEN` means the direct request returned
+HTTP 403 and the proxy refused CONNECT for the target *while a control CONNECT
+to a different contracted host succeeded in the same run through the same
+credentials* — the proxy provider forbids this destination specifically, so no
+configured transport path exists. An uncorroborated CONNECT refusal, a control
+tunnel that also fails, `PROXY_AUTH_FAILED`, stale metadata, a missing source
+record, or any other source using the blocked state still fail closed through
+the existing `STALE_SEED`, `EMPTY`, or `SEED_ERROR` statuses. The distinction
+matters operationally: `PROXY_TARGET_FORBIDDEN` is durable and needs a
+different egress to change, whereas a bare CONNECT refusal is a proxy fault to
+remediate. Other current fetch failures
+report `SEED_ERROR` while the last-good archive remains available.
+The bundle freshness gate advances only after the archive, projection, and
+both source-health records publish successfully. The public bootstrap retains
+the bounded reason codes used for disclosure but omits proxy response
+diagnostics; full sanitized diagnostics remain in the authenticated operator
+source record.
+
+Operators can obtain the same sanitized, read-only audit with
+`node scripts/audit-china-coverage.mjs --json`; add `--strict` to return a
+nonzero exit code unless every launched entry is healthy. The audit reads only
+the compact Redis contracts and emits status, age, and reason-code summaries—
+never credentials or raw upstream payloads.
 
 ### Cascade Groups
 
@@ -106,6 +163,11 @@ health entries where those feeds publish seed metadata.
 `COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country
 PortWatch cache entries, but the canonical country list and healthy seed-meta
 signal do not advance until full 174-country coverage returns.
+
+`predictionMarkets` also requires at least one published market in each
+`geopolitical`, `tech`, and `finance` pool. Its seed metadata publishes
+`poolCounts`; missing, malformed, or under-floor counts report
+`COVERAGE_PARTIAL` even when the aggregate market count is healthy.
 
 ### Staleness Thresholds (maxStaleMin)
 
@@ -189,6 +251,25 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
       "sourceVersion": null,
       "ageMinutes": 5,
       "stale": true
+    },
+    "prediction:markets": {
+      "status": "coverage_partial",
+      "fetchedAt": 1710158100000,
+      "recordCount": 87,
+      "poolCounts": {
+        "geopolitical": 52,
+        "tech": 0,
+        "finance": 35
+      },
+      "minPoolCounts": {
+        "geopolitical": 1,
+        "tech": 1,
+        "finance": 1
+      },
+      "coveragePartial": true,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": false
     }
   }
 }
@@ -196,7 +277,9 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
 
 ### Staleness Logic
 
-A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing. Seeds with an explicit `minRecordCount` also report `coverage_partial` and `stale: true` until their coverage floor is met.
+A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing. Seeds below an aggregate `minRecordCount` report `coverage_partial` and `stale: true`. Seeds below a subgroup floor such as prediction-market `minPoolCounts` also report `coverage_partial`, but retain `stale: false` while their producer heartbeat remains fresh so freshness and coverage stay distinct.
+
+**Consumers:** treat `status` and `overall` as authoritative for coverage. Do not rely on `stale` alone — pool shortfalls keep `stale: false` by design. When either coverage floor fails, the entry also sets `coveragePartial: true` so clients that only inspect booleans still see the shortfall.
 
 | Domain | Interval (min) | Stale After (min) |
 |--------|---------------|-------------------|
@@ -207,6 +290,28 @@ A seed is considered stale when its age exceeds **2x the configured interval**. 
 | Shipping rates, satellites | 90-120 | 180-240 |
 | GPS jamming, displacement | 360 | 720 |
 | Iran events, UCDP | 210-5040 | 420-10080 |
+
+### History ingestion (`intel-history:*`)
+
+Domains prefixed `intel-history:` do **not** describe a seeder's canonical publish. They track whether that collector's post-publish append to the historical intelligence store is still landing:
+
+| Domain | Tracks |
+|--------|--------|
+| `intel-history:conflict:acled-intel` | history appends from `seed-conflict-intel` |
+| `intel-history:military:cross-strait-activity` | history appends from `seed-cross-strait-activity` |
+| `intel-history:energy:intelligence` | history appends from `seed-energy-intelligence` |
+
+The append is fail-open by design — the canonical publish has already committed when it runs, so a failure must never fail the run. That means the collector's own entry (`conflict:acled-intel`, …) stays `ok` while history silently stops accumulating. These entries are the separate signal:
+
+- `fetchedAt` is the last **healthy** append, never the last attempt. A run that reached the relay advances it; a run that delivered nothing (every chunk rejected, or the wall-clock budget died before the first request) does not. So a broken relay freezes it and the entry goes `stale` on the ordinary 2x-interval rule.
+- `status: "error"` means the append failed on two consecutive runs — or, on the very first tick, that a relay credential present during an earlier successful append has since been removed.
+- `lastErrorCode` names the cause when there is one: `http_401`, `budget_exhausted`, `all_chunks_failed`, `config_removed`, or a clamped error-class name. Absent when the ingest has never failed.
+- `status: "not_configured"` means this deployment has **never** had relay credentials. It is visible but never an alarm — no operator action clears it except provisioning the relay. Losing credentials after a successful append is not this state; it reports `error` with `lastErrorCode: "config_removed"`.
+- `recordCount` is the volume the relay accepted on the last successful append. Zero is valid: a run whose records were all deduped still proves the pipeline works.
+
+The richer per-run detail — `lastErrorReason`, `consecutiveFailures`, `missingConfig`, and the inserted/deduped/abandoned counts — is **not** returned by either endpoint. It lives in the Redis record `intel-history:ingest-health:<domain>:<resource>:v1`, which the endpoints project from.
+
+A `stale` or `error` here alongside an `ok` collector means canonical data is fine and the history store is the thing to investigate.
 
 ### Example Request
 

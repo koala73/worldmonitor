@@ -55,6 +55,10 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'PEK', icao: 'ZBAA', name: 'Beijing Capital', city: 'Beijing', country: 'China', lat: 40.0799, lon: 116.6031, region: 'apac' },
   { iata: 'PVG', icao: 'ZSPD', name: 'Shanghai Pudong', city: 'Shanghai', country: 'China', lat: 31.1443, lon: 121.8083, region: 'apac' },
   { iata: 'CAN', icao: 'ZGGG', name: 'Guangzhou Baiyun International', city: 'Guangzhou', country: 'China', lat: 23.3924, lon: 113.2988, region: 'apac' },
+  { iata: 'SZX', icao: 'ZGSZ', name: "Shenzhen Bao'an International", city: 'Shenzhen', country: 'China', lat: 22.6393, lon: 113.8107, region: 'apac' },
+  { iata: 'CTU', icao: 'ZUUU', name: 'Chengdu Shuangliu International', city: 'Chengdu', country: 'China', lat: 30.5785, lon: 103.9471, region: 'apac' },
+  { iata: 'KMG', icao: 'ZPPP', name: 'Kunming Changshui', city: 'Kunming', country: 'China', lat: 25.1019, lon: 102.9292, region: 'apac' },
+  { iata: 'URC', icao: 'ZWWW', name: 'Urumqi Diwopu International', city: 'Urumqi', country: 'China', lat: 43.9071, lon: 87.4742, region: 'apac' },
   { iata: 'HKG', icao: 'VHHH', name: 'Hong Kong International', city: 'Hong Kong', country: 'China', lat: 22.3080, lon: 113.9185, region: 'apac' },
   { iata: 'SIN', icao: 'WSSS', name: 'Singapore Changi', city: 'Singapore', country: 'Singapore', lat: 1.3644, lon: 103.9915, region: 'apac' },
   { iata: 'ICN', icao: 'RKSI', name: 'Incheon International', city: 'Seoul', country: 'South Korea', lat: 37.4602, lon: 126.4407, region: 'apac' },
@@ -144,9 +148,9 @@ export const AVIATIONSTACK_AIRPORTS: string[] = [
   // Europe (16)
   'LHR', 'CDG', 'FRA', 'AMS', 'MAD', 'FCO', 'MUC', 'BCN', 'ZRH', 'IST', 'VIE', 'CPH',
   'DUB', 'LIS', 'ATH', 'WAW',
-  // APAC (15)
-  'HND', 'NRT', 'PEK', 'PVG', 'HKG', 'SIN', 'ICN', 'BKK', 'SYD', 'DEL', 'BOM', 'KUL',
-  'CAN', 'TPE', 'MNL',
+  // APAC (19)
+  'HND', 'NRT', 'PEK', 'PVG', 'CAN', 'SZX', 'CTU', 'KMG', 'URC', 'HKG', 'SIN', 'ICN',
+  'BKK', 'SYD', 'DEL', 'BOM', 'KUL', 'TPE', 'MNL',
   // MENA (9)
   'DXB', 'DOH', 'AUH', 'RUH', 'CAI', 'TLV', 'AMM', 'KWI', 'CMN',
   // Africa (5)

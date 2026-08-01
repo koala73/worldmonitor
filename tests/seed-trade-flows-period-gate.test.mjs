@@ -25,6 +25,8 @@ import {
   fetchAllFlows,
   checkCoverage,
   KEY_PREFIX,
+  TRADE_FLOW_COVERAGE_CODES,
+  TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET,
   __setSleepForTests,
 } from '../scripts/seed-trade-flows.mjs';
 
@@ -59,6 +61,17 @@ test('fetchFlows pins an explicit lagged period (not the bleeding-edge default)'
   );
   const lagYear = String(new Date().getUTCFullYear() - 2);
   assert.ok(url.includes(lagYear), `period window should include the newest safely-published year (${lagYear}); got: ${url}`);
+});
+
+test('fetchFlows uses the stable HS preview route while product metadata tracks HS2022', async () => {
+  await fetchFlows({ code: '156', name: 'China' }, { code: '8542', desc: 'Semiconductors' }, '2024');
+  const url = new URL(fetchCalls[0]);
+
+  assert.equal(
+    url.pathname,
+    '/public/v1/preview/C/A/HS',
+    'the preview API route classifier is HS; H6 is the HS2022 dataset revision and returns HTTP 500 when used in this path',
+  );
 });
 
 // --- Defect 2: structurally-absent reporters must not block publish ---
@@ -152,6 +165,124 @@ test('fetchAllFlows uses the newest period and skips fallback when coverage pass
   assert.equal(res.period, '2024');
   assert.ok(fetchCalls.length > 0);
   assert.ok(fetchCalls.every((u) => u.includes('period=2024')), 'must not fetch the fallback period once coverage passes');
+});
+
+test('fetchAllFlows gates on the baseline while publishing available expansion products', async () => {
+  const coverageCodes = new Set(TRADE_FLOW_COVERAGE_CODES);
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url));
+    fetchCalls.push(parsed.toString());
+    const code = parsed.searchParams.get('cmdCode');
+    const body = coverageCodes.has(code)
+      ? { data: [{ period: 2024, flowCode: 'X', primaryValue: 100, partnerCode: '000' }] }
+      : { data: [] };
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+
+  const res = await fetchAllFlows({ periods: ['2024'], pace: async () => {} });
+  assert.equal(res.period, '2024');
+  assert.ok(res.flows.length > 0);
+
+  const firstExpansionIndex = fetchCalls.findIndex((url) => !coverageCodes.has(new URL(url).searchParams.get('cmdCode')));
+  assert.equal(
+    firstExpansionIndex,
+    GATE_REPORTERS.length * TRADE_FLOW_COVERAGE_CODES.length,
+    'all reporters must finish the baseline before expansion requests begin',
+  );
+});
+
+test('fetchAllFlows caps run-wide 429 waits and preserves a healthy baseline snapshot', async () => {
+  const coverageCodes = new Set(TRADE_FLOW_COVERAGE_CODES);
+  const retrySleeps = [];
+  __setSleepForTests(async (ms) => { retrySleeps.push(ms); });
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url));
+    fetchCalls.push(parsed.toString());
+    const code = parsed.searchParams.get('cmdCode');
+    if (!coverageCodes.has(code)) return new Response('', { status: 429 });
+    return new Response(
+      JSON.stringify({ data: [{ period: 2024, flowCode: 'X', primaryValue: 100, partnerCode: '000' }] }),
+      { status: 200 },
+    );
+  };
+
+  const res = await fetchAllFlows({ periods: ['2024'], pace: async () => {} });
+  assert.equal(res.period, '2024', 'a healthy baseline remains publishable when expansion is rate-limited');
+  assert.deepEqual(
+    retrySleeps,
+    Array.from({ length: TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET }, () => 60_000),
+    '429 waits are bounded across the entire reporter-product matrix',
+  );
+  const baselineCalls = GATE_REPORTERS.length * TRADE_FLOW_COVERAGE_CODES.length;
+  assert.ok(
+    fetchCalls.length <= baselineCalls + TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET * 2 + 1,
+    'the expansion circuit breaker must stop probing after the aggregate retry budget is exhausted',
+  );
+});
+
+test('best-effort reporter 429s cannot starve later required baseline reporters', async () => {
+  const requiredReporterCodes = new Set(REQUIRED_FOUR.map((reporter) => reporter.code));
+  const requestedReporterCodes = [];
+  __setSleepForTests(async () => {});
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url));
+    fetchCalls.push(parsed.toString());
+    const reporterCode = parsed.searchParams.get('reporterCode');
+    requestedReporterCodes.push(reporterCode);
+    if (!requiredReporterCodes.has(reporterCode)) return new Response('', { status: 429 });
+    return new Response(
+      JSON.stringify({ data: [{ period: 2024, flowCode: 'X', primaryValue: 100, partnerCode: '000' }] }),
+      { status: 200 },
+    );
+  };
+
+  const res = await fetchAllFlows({ periods: ['2024'], pace: async () => {} });
+  assert.equal(res.period, '2024');
+  for (const code of requiredReporterCodes) {
+    assert.ok(requestedReporterCodes.includes(code), `required reporter ${code} must be fetched before best-effort quota pressure`);
+  }
+  const firstBestEffortIndex = requestedReporterCodes.findIndex((code) => !requiredReporterCodes.has(code));
+  const lastRequiredIndex = Math.max(...[...requiredReporterCodes].map((code) => requestedReporterCodes.lastIndexOf(code)));
+  assert.ok(firstBestEffortIndex > lastRequiredIndex, 'all required baseline reporters must run before Russia/Iran');
+});
+
+test('a failed fresh baseline falls back before any fresh-period expansion probes', async () => {
+  const coverageCodes = new Set(TRADE_FLOW_COVERAGE_CODES);
+  const bestEffortReporterCodes = new Set(BEST_EFFORT.map((reporter) => reporter.code));
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url));
+    fetchCalls.push(parsed.toString());
+    const period = parsed.searchParams.get('period');
+    const code = parsed.searchParams.get('cmdCode');
+    const reporterCode = parsed.searchParams.get('reporterCode');
+    if (period === '2024' && bestEffortReporterCodes.has(reporterCode)) return new Response('', { status: 429 });
+    const body = period === '2023' && coverageCodes.has(code)
+      ? { data: [{ period: 2023, flowCode: 'X', primaryValue: 100, partnerCode: '000' }] }
+      : { data: [] };
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+
+  const res = await fetchAllFlows({ periods: ['2024', '2023'], pace: async () => {} });
+  assert.equal(res.period, '2023');
+  assert.ok(fetchCalls.some((url) => new URL(url).searchParams.get('period') === '2023'));
+  assert.equal(
+    fetchCalls.some((url) => {
+      const parsed = new URL(url);
+      return parsed.searchParams.get('period') === '2024'
+        && !coverageCodes.has(parsed.searchParams.get('cmdCode'));
+    }),
+    false,
+    'fresh-period expansion must not run after its baseline failed',
+  );
+  assert.equal(
+    fetchCalls.some((url) => {
+      const parsed = new URL(url);
+      return parsed.searchParams.get('period') === '2024'
+        && bestEffortReporterCodes.has(parsed.searchParams.get('reporterCode'));
+    }),
+    false,
+    'fresh-period best-effort reporters must not run after required baseline failure',
+  );
 });
 
 test('fetchAllFlows throws (→ graceful exit 75) when no candidate period has coverage', async () => {

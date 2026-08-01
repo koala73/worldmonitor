@@ -73,7 +73,6 @@ export const RESOLUTION_FEED_KEYS = new Set([
   UNREST_COUNT_SOURCE_FEED,
   CYBER_COUNT_SOURCE_FEED,
   'supply_chain:chokepoints:v4',
-  'infra:outages:v1',
   'prediction:markets-bootstrap:v1',
   'intelligence:gpsjam:v2',
   // MARKET_INPUT_KEYS (scripts/seed-forecasts.mjs :215-227) — copied, not imported.
@@ -92,6 +91,18 @@ export const RESOLUTION_FEED_KEYS = new Set([
   // seeder shapes {wti,brent,production,inventory} into records carrying
   // {metric, value}; bets read via `...|value(metric==<name>)`.
   'energy:eia-petroleum:v1',
+  // Phase-2 bet engine (#5525). Market bets resolve against the DEDICATED
+  // settlement feed — the bootstrap feed never carries settled prices (its
+  // producer only publishes open markets and clips yesPrice to [10,90]); the
+  // resolver populates this key from venue adjudications by slug.
+  'prediction:markets-resolution:v1',
+  // FRED macro series (exact keys — this allowlist is an exact-match Set and
+  // seed-economy writes `economic:fred:v1:<SERIES>:0`). Read via
+  // `value(metric==<SERIES>)` with calendar-derived settlement graces.
+  'economic:fred:v1:FEDFUNDS:0',
+  'economic:fred:v1:UNRATE:0',
+  'economic:fred:v1:CPIAUCSL:0',
+  'economic:fred:v1:DGS10:0',
 ]);
 
 // ── Signal type -> hard family (D3) ──────────────────────────────────────
@@ -115,7 +126,6 @@ export const RESOLUTION_FEED_KEYS = new Set([
 //  - detectSupplyChainScenarios (:1162) -> 'chokepoint', 'ais_gap', 'gps_jamming'
 //  - detectUcdpConflictZones (:1892)    -> 'ucdp'
 //  - detectGpsJammingScenarios (:1983)  -> 'gps_jamming'
-//  - infrastructure detector            -> 'outage'
 //  - detectConflictScenarios (:1001)    -> 'cii', 'conflict_events'
 //  - Polymarket/prediction-market pool  -> 'prediction_market'
 export const SIGNAL_TO_HARD_FAMILY = {
@@ -129,7 +139,6 @@ export const SIGNAL_TO_HARD_FAMILY = {
   unrest_events: 'unrest',
   cyber: 'cyber',
   gps_jamming: 'gps',
-  outage: 'infrastructure',
   conflict_events: 'conflict',
   cii: 'conflict',
   chokepoint: 'supply_chain',
@@ -139,12 +148,14 @@ export const SIGNAL_TO_HARD_FAMILY = {
 // Domains whose forecasts are ALWAYS judged (R3), regardless of what signals
 // they carry. Domain is the claim's SUBJECT; signals are only evidence.
 // Political unrest and cyber concentration now have country/date feeds with a
-// direct count metric, but military still lacks a stable theater id on the
-// forecast object. Keep military judged until the detector carries that id.
+// direct count metric. Military still lacks a stable theater id, while the
+// legacy infrastructure family only measured outage presence rather than its
+// claimed cascade risk (#5330). Keep both judged until they carry a crisp,
+// claim-aligned metric identity.
 // This gate is checked AFTER the state_derived origin check and the
 // prediction_market exemption, and BEFORE the general SIGNAL_TO_HARD_FAMILY
 // lookup.
-export const JUDGED_DOMAINS = new Set(['military']);
+export const JUDGED_DOMAINS = new Set(['infrastructure', 'military']);
 
 // Which hard families a forecast's DOMAIN permits (R3, by-domain constraint).
 // Domain is the claim's SUBJECT; signals are only evidence. A market-domain
@@ -157,14 +168,13 @@ export const JUDGED_DOMAINS = new Set(['military']);
 //
 // Domains verified from real makePrediction call sites (seed-forecasts.mjs):
 // conflict, market, supply_chain (the GPS detector emits domain 'supply_chain'),
-// infrastructure, political, military, cyber; detectFromPredictionMarkets emits
+// political, military, cyber; detectFromPredictionMarkets emits
 // conflict|market|political (the prediction_market exemption runs BEFORE this
 // gate, so those forecasts never reach the table).
 export const DOMAIN_TO_HARD_FAMILIES = {
   conflict: ['conflict', 'ucdp_zone'],
   market: ['market', 'prediction_market'],
   supply_chain: ['supply_chain', 'gps'],
-  infrastructure: ['infrastructure'],
   political: ['unrest'],
   cyber: ['cyber'],
 };
@@ -216,7 +226,6 @@ const FAMILY_FEED = {
   unrest: UNREST_COUNT_SOURCE_FEED,
   cyber: CYBER_COUNT_SOURCE_FEED,
   supply_chain: 'supply_chain:chokepoints:v4',
-  infrastructure: 'infra:outages:v1',
   prediction_market: 'prediction:markets-bootstrap:v1',
   gps: 'intelligence:gpsjam:v2',
   // market has no single fixed feed — resolved per-forecast below from
@@ -238,7 +247,6 @@ const FAMILY_WINDOW = {
   unrest: 'within-horizon',
   cyber: 'within-horizon',
   supply_chain: 'at-deadline',
-  infrastructure: 'within-horizon',
   prediction_market: 'at-endDate',
   gps: 'at-deadline',
   market: 'within-horizon',
@@ -298,7 +306,18 @@ function getInputsIndex(inputs) {
   // truncated title lets the lookup be an exact Map.get on pred.title, which
   // subsumes the exact + prefix match cases (FIX 7). First writer wins.
   const endDateByTitle = new Map();
-  const markets = inputs.predictionMarkets?.geopolitical || [];
+  // All three pools (#5733): settlement endDates must be resolvable for every
+  // market-anchored forecast, not just the geopolitical ones. Reading only
+  // `.geopolitical` was equivalent to "all markets" until the producer's pools
+  // became a disjoint partition. Inlined rather than importing
+  // allBootstrapMarkets from _prediction-classify.mjs so this module stays
+  // import-free (see the header contract); tests/forecast-resolution.test.mjs
+  // pins that both this and seed-forecasts read all three pools.
+  const markets = [
+    inputs.predictionMarkets?.geopolitical,
+    inputs.predictionMarkets?.tech,
+    inputs.predictionMarkets?.finance,
+  ].filter(Array.isArray).flat();
   for (const m of markets) {
     const mt = String(m?.title ?? '');
     if (!mt) continue;
@@ -471,14 +490,6 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
         window: FAMILY_WINDOW[family],
       };
     }
-    case 'infrastructure': {
-      return {
-        metricKey: `infra:outages:v1|present(country==${pred.region})`,
-        operator: '>=',
-        threshold: 1,
-        window: FAMILY_WINDOW[family],
-      };
-    }
     case 'prediction_market': {
       // Percent-anchored so a digit-bearing source label doesn't skew the
       // baseline (FIX 6). Falls back to the emission probability.
@@ -623,8 +634,9 @@ function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
 //     claim's ground truth regardless of the domain the detector assigned
 //     (which can be political/conflict/market). This is unlike a 'cii' signal
 //     on a political claim (evidence, not the claim) — hence the exemption.
-//  3. JUDGED_DOMAINS (currently military) -> ALWAYS judged until the detector
-//     carries the stable metric identity needed for a hard feed lookup.
+//  3. JUDGED_DOMAINS (currently infrastructure and military) -> ALWAYS judged
+//     until the forecast carries the stable, claim-aligned metric identity
+//     needed for a hard feed lookup.
 //  4. Other hard families resolved from pred.signals[].type via
 //     SIGNAL_TO_HARD_FAMILY (with the market-domain chokepoint/ais_gap
 //     exclusion + a calibration.marketPrice fallback for market-domain

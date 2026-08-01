@@ -16,7 +16,10 @@ import { strict as assert } from 'node:assert';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 
-const { extendExistingTtl } = await import('../scripts/_seed-utils.mjs');
+const {
+  extendExistingTtl,
+  extendExistingTtlDetailed,
+} = await import('../scripts/_seed-utils.mjs');
 
 const originalFetch = globalThis.fetch;
 
@@ -42,6 +45,17 @@ test('extendExistingTtl: returns false when any key is missing/expired (EXPIRE n
   mockPipeline([{ result: 1 }, { result: 1 }, { result: 0 }]);
   const ok = await extendExistingTtl(['canonical', 'seed-meta', 'rpc'], 1800);
   assert.equal(ok, false);
+});
+
+test('extendExistingTtlDetailed: preserves mixed per-key EXPIRE outcomes', async () => {
+  mockPipeline([{ result: 1 }, { result: 0 }, { result: null }]);
+  const result = await extendExistingTtlDetailed(['alive', 'missing', 'unknown'], 1800);
+  assert.deepEqual(result, {
+    allExtended: false,
+    extendedKeys: ['alive'],
+    missingKeys: ['missing'],
+    unconfirmedKeys: ['unknown'],
+  });
 });
 
 test('extendExistingTtl: returns false on non-ok HTTP response', async () => {
@@ -79,4 +93,64 @@ test('seed-market-quotes gates the closed-market exit on the extend result', asy
   const gateIdx = src.indexOf('if (extended) {');
   const exitIdx = src.indexOf('process.exit(0)');
   assert.ok(gateIdx > 0 && exitIdx > gateIdx, 'exit(0) must be gated behind if(extended)');
+});
+
+// Transient-Redis retry contract for extendExistingTtl (seed-gdelt-intel
+// PUBLISH_TIMEOUT fix). The helper must retry timeout/5xx/network errors and
+// only fail fast on permanent 4xx. A successful response with some EXPIRE
+// no-ops (missing keys) is a *real* missing-key condition, not a transient
+// error, so it must return false without retrying.
+
+test('extendExistingTtl: retries on timeout and succeeds on second attempt', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'AbortError';
+      throw err;
+    }
+    return { ok: true, json: async () => [{ result: 1 }, { result: 1 }] };
+  };
+
+  const ok = await extendExistingTtl(['a', 'b'], 1800);
+  assert.equal(ok, true);
+  assert.equal(calls, 2, 'must retry once after timeout');
+});
+
+test('extendExistingTtl: retries on 503 and succeeds on second attempt', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return { ok: false, status: 503, json: async () => ({}) };
+    return { ok: true, json: async () => [{ result: 1 }] };
+  };
+
+  const ok = await extendExistingTtl(['a'], 1800);
+  assert.equal(ok, true);
+  assert.equal(calls, 2, 'must retry once after 503');
+});
+
+test('extendExistingTtl: fails fast on permanent 4xx without retry', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: false, status: 401, json: async () => ({}) };
+  };
+
+  const ok = await extendExistingTtl(['a'], 1800);
+  assert.equal(ok, false);
+  assert.equal(calls, 1, 'must not retry permanent 401');
+});
+
+test('extendExistingTtl: does NOT retry when response is OK but a key is missing', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: true, json: async () => [{ result: 1 }, { result: 0 }] };
+  };
+
+  const ok = await extendExistingTtl(['alive', 'missing'], 1800);
+  assert.equal(ok, false);
+  assert.equal(calls, 1, 'missing-key no-op is a real condition, not a transient error');
 });

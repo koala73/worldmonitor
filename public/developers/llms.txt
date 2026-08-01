@@ -1,0 +1,31 @@
+# World Monitor Developer Portal
+
+> Section-scoped llms.txt for the developer surface — the MCP server, REST API, SDKs, CLI, sandbox, and agent skills that expose World Monitor's real-time global-intelligence data as structured JSON. Fetch this file instead of the site-wide briefing when the task is "build against or integrate World Monitor".
+
+All developer surfaces share one auth model (API key `X-WorldMonitor-Key: wm_<40-hex>` or OAuth 2.1 `scope=mcp`) and one tool inventory. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection.
+
+## Build Surfaces
+
+- [MCP server](https://worldmonitor.app/mcp): recommended agent surface — Streamable HTTP, JSON-RPC 2.0. `tools/list`, `prompts/list`, `resources/list`, and `describe_tool` are anonymous. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- [Docs MCP server](https://www.worldmonitor.app/docs/mcp): public search-and-retrieval over the documentation — no auth. Card: https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json
+- [REST API](https://api.worldmonitor.app): OpenAPI 3.1 contract at https://worldmonitor.app/openapi.yaml (JSON: https://worldmonitor.app/openapi.json) · API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
+- [CLI](https://www.npmjs.com/package/worldmonitor): `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the command
+- [SDKs](https://worldmonitor.app/sdks.md): Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript (npm `worldmonitor`)
+- [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): installable skills manifest — `npx skills add koala73/worldmonitor`
+
+## Test Without a Key
+
+- [Sandbox](https://www.worldmonitor.app/sandbox/index.json): deterministic, schema-valid sample responses for representative REST operations — no auth, no quota, safe for CI. Guide: https://www.worldmonitor.app/docs/sandbox
+- Anonymous MCP discovery: `tools/list`, `describe_tool`, `prompts/list`, and `resources/list` are quota-exempt on the live server
+- The data API is read-only — there are no destructive data operations to guard against while testing
+
+## Auth, Limits, Support
+
+- [auth.md](https://worldmonitor.app/auth.md): agent auth walkthrough — API keys and OAuth 2.1 with dynamic client registration; issue a key at https://worldmonitor.app/pro
+- [pricing.md](https://worldmonitor.app/pricing.md): machine-readable plans and limits · live catalog: https://www.worldmonitor.app/api/product-catalog
+- [support.md](https://worldmonitor.app/support.md): support channels · status: https://status.worldmonitor.app
+
+## Related Section Files
+
+- [Site-wide llms.txt](https://worldmonitor.app/llms.txt) · [API section](https://worldmonitor.app/api/llms.txt) · [Docs section](https://www.worldmonitor.app/docs/llms.txt) · [Blog section](https://www.worldmonitor.app/blog/llms.txt)
+- [Developer portal (human)](https://worldmonitor.app/developers.md) · [agents.md](https://worldmonitor.app/agents.md)

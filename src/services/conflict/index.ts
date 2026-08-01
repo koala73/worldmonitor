@@ -5,6 +5,10 @@ import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 import { ConflictServiceClient } from '@/services/generated-rpc-clients';
+import { isDuplicatedByAcled } from './ucdp-dedupe';
+import type { AcledDedupEvent, UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
+export { deduplicateUcdpProjectionAggregates } from './ucdp-dedupe';
+export type { UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
 
 // ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
 
@@ -54,18 +58,7 @@ export interface ConflictData {
   count: number;
 }
 
-export type ConflictIntensity = 'none' | 'minor' | 'war';
 
-export interface UcdpConflictStatus {
-  location: string;
-  intensity: ConflictIntensity;
-  conflictId?: number;
-  conflictName?: string;
-  year: number;
-  typeOfConflict?: number;
-  sideA?: string;
-  sideB?: string;
-}
 
 export interface HapiConflictSummary {
   iso2: string;
@@ -155,90 +148,30 @@ function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
   };
 }
 
-// ---- UCDP classification derivation heuristic ----
+/**
+ * The bootstrap-hydrated UCDP payload. It is a dashboard PROJECTION of
+ * conflict:ucdp-events:v1 (#5300): `events` is capped to the rows the panel
+ * renders, and the numbers the UI derives from the full 2,000-event set —
+ * per-country classifications and per-tab aggregates — arrive precomputed.
+ * The RPC still returns the full, unprojected response.
+ */
+export type HydratedUcdpPayload = ListUcdpEventsResponse & {
+  classifications?: Record<string, UcdpConflictStatus>;
+  aggregates?: Record<string, UcdpTabAggregate>;
+  dedupeIndex?: UcdpDedupeIndexEntry[];
+  totalEvents?: number;
+};
 
-function isRecentUcdpClassificationDate(dateStart: unknown, now: number, windowMs: number): boolean {
-  const eventMs = Number(dateStart);
-  return Number.isFinite(eventMs)
-    && Number.isFinite(now)
-    && eventMs <= now
-    && now - eventMs < windowMs;
-}
-
-function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string, UcdpConflictStatus> {
-  const byCountry = new Map<string, ProtoUcdpEvent[]>();
-  for (const e of events) {
-    const country = e.country;
-    if (!byCountry.has(country)) byCountry.set(country, []);
-    byCountry.get(country)!.push(e);
-  }
-
-  const now = Date.now();
-  const twoYearsMs = 2 * 365 * 24 * 60 * 60 * 1000;
-  const result = new Map<string, UcdpConflictStatus>();
-
-  for (const [country, countryEvents] of byCountry) {
-    // Filter to trailing 2-year window
-    const recentEvents = countryEvents.filter(e => isRecentUcdpClassificationDate(e.dateStart, now, twoYearsMs));
-    const totalDeaths = recentEvents.reduce((sum, e) => sum + e.deathsBest, 0);
-    const eventCount = recentEvents.length;
-
-    let intensity: ConflictIntensity;
-    if (totalDeaths > 1000 || eventCount > 100) {
-      intensity = 'war';
-    } else if (eventCount > 10) {
-      intensity = 'minor';
-    } else {
-      intensity = 'none';
-    }
-
-    // Find the highest-death event for sideA/sideB
-    let maxDeathEvent: ProtoUcdpEvent | undefined;
-    for (const e of recentEvents) {
-      if (!maxDeathEvent || e.deathsBest > maxDeathEvent.deathsBest) {
-        maxDeathEvent = e;
-      }
-    }
-
-    // Most recent event year
-    const mostRecentEvent = recentEvents.reduce<ProtoUcdpEvent | undefined>(
-      (latest, e) => (!latest || e.dateStart > latest.dateStart) ? e : latest,
-      undefined,
-    );
-    const year = mostRecentEvent ? new Date(mostRecentEvent.dateStart).getFullYear() : new Date().getFullYear();
-
-    result.set(country, {
-      location: country,
-      intensity,
-      year,
-      sideA: maxDeathEvent?.sideA,
-      sideB: maxDeathEvent?.sideB,
-    });
-  }
-
-  return result;
-}
-
-// ---- Haversine helper (ported exactly from legacy ucdp-events.ts) ----
-
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// UCDP classification derivation lives in ./ucdp-classify (leaf module, no
+// runtime imports) so the seeder's parity test can load it without Vite.
+import { deriveUcdpClassifications } from './ucdp-classify';
+import type { UcdpConflictStatus } from './ucdp-classify';
+export { deriveUcdpClassifications } from './ucdp-classify';
+export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
 
 // ---- AcledEvent interface for deduplication (ported from legacy) ----
 
-interface AcledEvent {
-  latitude: string | number;
-  longitude: string | number;
-  event_date: string;
-  fatalities: string | number;
-}
+type AcledEvent = AcledDedupEvent;
 
 // ---- Empty fallbacks ----
 
@@ -275,7 +208,14 @@ export async function fetchConflictEvents(): Promise<ConflictData> {
   };
 }
 
-export async function fetchUcdpClassifications(hydrated?: ListUcdpEventsResponse): Promise<Map<string, UcdpConflictStatus>> {
+export async function fetchUcdpClassifications(hydrated?: HydratedUcdpPayload): Promise<Map<string, UcdpConflictStatus>> {
+  // The bootstrap payload is a dashboard projection (#5300): it carries only the
+  // 150 rows the panel renders, so deriving classifications from its `events`
+  // would score CII against a truncated set. The seeder precomputes them over all
+  // 2,000 events instead — use those when present.
+  if (hydrated?.classifications) {
+    return new Map(Object.entries(hydrated.classifications));
+  }
   if (hydrated?.events?.length) return deriveUcdpClassifications(hydrated.events);
 
   const resp = await ucdpBreaker.execute(async () => {
@@ -337,7 +277,7 @@ interface UcdpEventsResponse {
   cached_at: string;
 }
 
-export async function fetchUcdpEvents(hydrated?: ListUcdpEventsResponse): Promise<UcdpEventsResponse> {
+export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
   if (hydrated?.events?.length) {
     const events = hydrated.events.map(toUcdpGeoEvent);
     return { success: true, count: events.length, data: events, cached_at: '' };
@@ -357,38 +297,14 @@ export async function fetchUcdpEvents(hydrated?: ListUcdpEventsResponse): Promis
   };
 }
 
-export function deduplicateAgainstAcled(
-  ucdpEvents: UcdpGeoEvent[],
-  acledEvents: AcledEvent[],
-): UcdpGeoEvent[] {
+export function deduplicateAgainstAcled(ucdpEvents: UcdpGeoEvent[], acledEvents: AcledEvent[]): UcdpGeoEvent[] {
   if (!acledEvents.length) return ucdpEvents;
-
-  return ucdpEvents.filter(ucdp => {
-    const uLat = ucdp.latitude;
-    const uLon = ucdp.longitude;
-    const uDate = new Date(ucdp.date_start).getTime();
-    const uDeaths = ucdp.deaths_best;
-
-    for (const acled of acledEvents) {
-      const aLat = Number(acled.latitude);
-      const aLon = Number(acled.longitude);
-      const aDate = new Date(acled.event_date).getTime();
-      const aDeaths = Number(acled.fatalities) || 0;
-
-      const dayDiff = Math.abs(uDate - aDate) / (1000 * 60 * 60 * 24);
-      if (dayDiff > 7) continue;
-
-      const dist = haversineKm(uLat, uLon, aLat, aLon);
-      if (dist > 50) continue;
-
-      if (uDeaths === 0 && aDeaths === 0) return false;
-      if (uDeaths > 0 && aDeaths > 0) {
-        const ratio = uDeaths / aDeaths;
-        if (ratio >= 0.5 && ratio <= 2.0) return false;
-      }
-    }
-    return true;
-  });
+  return ucdpEvents.filter((ucdp) => !isDuplicatedByAcled({
+    latitude: ucdp.latitude,
+    longitude: ucdp.longitude,
+    dateMs: new Date(ucdp.date_start).getTime(),
+    deathsBest: ucdp.deaths_best,
+  }, acledEvents));
 }
 
 const CONFLICT_HISTORY_RADIUS_DEG = 3;

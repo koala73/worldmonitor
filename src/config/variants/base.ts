@@ -47,6 +47,8 @@ export const REFRESH_INTERVALS = {
   temporalBaseline: 10 * 60 * 1000,
   tradePolicy: 60 * 60 * 1000,
   supplyChain: 60 * 60 * 1000,
+  chinaCorridors: 15 * 60 * 1000,
+  chinaActivityNowcast: 15 * 60 * 1000,
   telegramIntel: 60 * 1000,
   gulfEconomies: 10 * 60 * 1000,
   groceryBasket: 6 * 60 * 60 * 1000,
@@ -107,6 +109,12 @@ export const STORAGE_KEYS = {
   //       re-recovered on subsequent loads (otherwise user-explicit
   //       full-category disabling would be silently undone forever).
   disabledFeedsSchema: 'worldmonitor-disabled-feeds-schema',
+  // `{ [customCategoryKey]: rotationCycle }`. A custom news category is never
+  // in the per-variant server digest, so its capped per-feed fetch rotates
+  // through its sources a window at a time (#5873). The cycle has to survive a
+  // reload or short sessions would replay window 0 forever and the rotation
+  // would never reach sources 4..N — the exact defect it exists to fix.
+  newsFeedRotation: 'worldmonitor-news-feed-rotation',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',

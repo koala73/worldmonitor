@@ -187,7 +187,7 @@ async function assertServerUrlSafe(url) {
 // resolve. This re-resolve-and-recheck immediately before every outbound
 // dispatch NARROWS that DNS-rebinding window but does not close it. The
 // residual rebind window is an ACCEPTED limitation of the Edge runtime (no
-// socket-level pin available) — documented, not fixed here (P1, issue #4674).
+// socket-level pin available) — documented, not fixed here (P2, issue #5061).
 async function revalidateBeforeFetch(url) {
   await assertServerUrlSafe(url);
 }
@@ -222,7 +222,8 @@ async function validateServerUrl(raw) {
 // even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
 // request is refused by the metadata service. Matched case-insensitively. (The
 // full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
-// this Edge mitigation kills the demonstrated PoC without a runtime switch.)
+// this Edge mitigation kills the demonstrated PoC without a runtime switch;
+// the accepted residual and migration trade-off are tracked in issue #5061.)
 const DENIED_FORWARD_HEADERS = new Set([
   'metadata-flavor',
   'metadata',
@@ -248,7 +249,7 @@ function buildHeaders(customHeaders) {
         // them as forbidden header names and silently drops them, so they never
         // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
         // `http.request`, which does NOT auto-drop them, so that PR must add an
-        // explicit hop-by-hop filter — see #4674.)
+        // explicit hop-by-hop filter — see #5061.)
         if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
           h[safeKey] = safeVal;
         }

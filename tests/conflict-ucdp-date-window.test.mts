@@ -13,6 +13,54 @@ import { transformSync } from 'esbuild';
 
 const root = resolve(import.meta.dirname, '..');
 const conflictServiceSource = readFileSync(resolve(root, 'src/services/conflict/index.ts'), 'utf8');
+// index.ts delegates the UCDP classifier to a leaf module with no runtime imports
+// (#5300), so the seeder's drift-parity test can load it without Vite. This harness
+// evaluates index.ts as ONE self-contained module, so inline the leaf back in.
+const ucdpClassifySource = readFileSync(resolve(root, 'src/services/conflict/ucdp-classify.ts'), 'utf8');
+// The aggregate reconciler is also a dependency-free leaf. Keep this harness
+// self-contained for the same reason as the classifier above.
+const ucdpDedupeHarness = `
+const UCDP_PROTO_VIOLENCE_TYPES = [
+  'UCDP_VIOLENCE_TYPE_STATE_BASED',
+  'UCDP_VIOLENCE_TYPE_NON_STATE',
+  'UCDP_VIOLENCE_TYPE_ONE_SIDED',
+];
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function isDuplicatedByAcled(ucdp, acledEvents) {
+  for (const acled of acledEvents) {
+    const aLat = Number(acled.latitude);
+    const aLon = Number(acled.longitude);
+    const aDate = new Date(acled.event_date).getTime();
+    const aDeaths = Number(acled.fatalities) || 0;
+    if (Math.abs(ucdp.dateMs - aDate) / (1000 * 60 * 60 * 24) > 7) continue;
+    if (haversineKm(ucdp.latitude, ucdp.longitude, aLat, aLon) > 50) continue;
+    if (ucdp.deathsBest === 0 && aDeaths === 0) return true;
+    if (ucdp.deathsBest > 0 && aDeaths > 0) {
+      const ratio = ucdp.deathsBest / aDeaths;
+      if (ratio >= 0.5 && ratio <= 2.0) return true;
+    }
+  }
+  return false;
+}
+function deduplicateUcdpProjectionAggregates(aggregates, dedupeIndex, acledEvents) {
+  if (!acledEvents.length) return aggregates;
+  const reconciled = Object.fromEntries(Object.entries(aggregates).map(([type, aggregate]) => [type, { ...aggregate }]));
+  for (const [typeIndex, dateMs, latitude, longitude, deathsBest] of dedupeIndex) {
+    const aggregate = reconciled[UCDP_PROTO_VIOLENCE_TYPES[typeIndex]];
+    if (aggregate && isDuplicatedByAcled({ latitude, longitude, dateMs, deathsBest }, acledEvents)) {
+      aggregate.count = Math.max(0, aggregate.count - 1);
+      aggregate.totalDeaths = Math.max(0, aggregate.totalDeaths - deathsBest);
+    }
+  }
+  return reconciled;
+}
+`;
 
 let moduleCounter = 0;
 
@@ -79,6 +127,22 @@ type ListIranEventsResponse = any;`,
     'const toApiUrl = (path: string) => path;',
     'runtime',
   );
+  patched = replaceRequired(
+    patched,
+    /import \{ isDuplicatedByAcled \} from '\.\/ucdp-dedupe';\nimport type \{ AcledDedupEvent, UcdpDedupeIndexEntry, UcdpTabAggregate \} from '\.\/ucdp-dedupe';\nexport \{ deduplicateUcdpProjectionAggregates \} from '\.\/ucdp-dedupe';\nexport type \{ UcdpDedupeIndexEntry, UcdpTabAggregate \} from '\.\/ucdp-dedupe';/,
+    ucdpDedupeHarness,
+    'ucdp-dedupe leaf',
+  );
+  const inlinedClassifier = ucdpClassifySource
+    .replace(/^import type .*$/m, '')   // type-only import — nothing to resolve
+    .replace(/^export /gm, '');          // the harness re-exports the deriver below
+  patched = replaceRequired(
+    patched,
+    /import \{ deriveUcdpClassifications \} from '\.\/ucdp-classify';\nimport type \{ UcdpConflictStatus \} from '\.\/ucdp-classify';\nexport \{ deriveUcdpClassifications \} from '\.\/ucdp-classify';\nexport type \{ ConflictIntensity, UcdpConflictStatus \} from '\.\/ucdp-classify';/,
+    inlinedClassifier,
+    'ucdp-classify leaf',
+  );
+
   patched = `${patched}\nexport { deriveUcdpClassifications };\n`;
 
   const transformed = transformSync(patched, {

@@ -1,10 +1,11 @@
-// Unit tests for the opinion/analysis classifier (F3, Phase 3).
+// Unit tests for the non-event brief classifier (F3, Phase 3).
 //
 // classifyOpinion is the single shared classifier — imported by the
 // ingest path (list-feed-digest.ts, stamps `isOpinion` on the
 // story:track:v1 row) and the read path (buildDigest, re-classifies
-// residue). The brief is event-driven intelligence; an op-ed column
-// is not an event. See docs/plans/2026-05-14-001-…-plan.md.
+// residue). The brief is event-driven intelligence; an op-ed column or
+// historical explainer is not an event. See
+// docs/plans/2026-05-14-001-…-plan.md.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -230,6 +231,185 @@ describe('classifyOpinion — URL match uses parsed pathname, not raw .includes(
       }),
       true,
     );
+  });
+});
+
+describe('classifyOpinion — historical explainers are not digest events', () => {
+  const JULY_2026 = Date.UTC(2026, 6, 14);
+
+  it('REGRESSION (July 15): DW ten-year Turkey coup retrospective → exclude', () => {
+    assert.equal(
+      classifyOpinion({
+        title: "How Turkey's 2016 coup attempt changed the country for good",
+        link: 'https://amp.dw.com/en/how-turkeys-2016-coup-attempt-changed-the-country-for-good/a-77955154',
+        description: 'Ten years after the failed coup, the events of that night continue to shape Turkey. A look back.',
+        publishedAt: JULY_2026,
+      }),
+      true,
+    );
+  });
+
+  it('REGRESSION (July 16): Al Jazeera duration-led coup retrospective → exclude', () => {
+    assert.equal(
+      classifyOpinion({
+        title: '10 years on from Turkiye’s failed coup attempt on Erdogan',
+        link: 'https://www.aljazeera.com/video/newsfeed/2026/7/15/10-years-on-from-turkiyes-failed-coup-attempt-on-erdogan?traffic_source=rss',
+        description: '10 years on from Turkiye’s coup attempt to overthrow President Erdogan, the country remains divided over its legacy.',
+        publishedAt: Date.parse('2026-07-15T20:35:09Z'),
+      }),
+      true,
+    );
+  });
+
+  it('recognizes publisher rewrites that use reshaped with an historical event year', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How the failed 2016 coup reshaped Turkiye’s civil-military relations',
+        link: 'https://www.aljazeera.com/news/2026/7/15/how-failed-2016-coup-reshaped-turkiyes-and-civil-military-relations',
+        description: 'The attempted takeover 10 years ago accelerated changes to civilian oversight.',
+        publishedAt: JULY_2026,
+      }),
+      true,
+    );
+  });
+
+  it('keeps duration-led live anniversary coverage without retrospective legacy framing', () => {
+    assert.equal(
+      classifyOpinion({
+        title: '10 years on from the coup attempt, authorities launch nationwide arrests',
+        link: 'https://example.com/world/turkey-arrests',
+        description: 'Police detained hundreds of suspects in operations across the country.',
+        publishedAt: JULY_2026,
+      }),
+      false,
+    );
+  });
+
+  it('keeps an anniversary-timed live development with ordinary analytical framing', () => {
+    assert.equal(
+      classifyOpinion({
+        title: '10 years since the nuclear deal, Iran resumes enrichment',
+        link: 'https://example.com/world/iran-enrichment',
+        description: 'Analysts say the move continues to shape regional security.',
+        publishedAt: JULY_2026,
+      }),
+      false,
+    );
+  });
+
+  it('keeps anniversary-timed current politics described as remaining divided', () => {
+    assert.equal(
+      classifyOpinion({
+        title: '10 years on from the election, parliament remains divided on the new sanctions bill',
+        link: 'https://example.com/world/parliament-sanctions',
+        description: 'Lawmakers will vote on the measure this week.',
+        publishedAt: JULY_2026,
+      }),
+      false,
+    );
+  });
+
+  it('trims the headline before matching the explanatory shape', () => {
+    assert.equal(
+      classifyOpinion({
+        title: "  How Turkey's 2016 coup attempt changed the country for good",
+        link: 'https://example.com/features/turkey-coup',
+        publishedAt: JULY_2026,
+      }),
+      true,
+    );
+  });
+
+  it('recognizes every supported historical explainer verb with a stable event-year anchor', () => {
+    for (const verb of ['changed', 'shaped', 'transformed', 'altered', 'became', 'remade', 'defined']) {
+      assert.equal(
+        classifyOpinion({
+          title: `How the 2016 coup attempt ${verb} the country`,
+          link: 'https://example.com/features/coup',
+          publishedAt: JULY_2026,
+        }),
+        true,
+        `${verb} should classify when paired with an historical event year`,
+      );
+    }
+  });
+
+  it('lets an explicit description look-back corroborate a retrospective', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How an unwitting cadet became a victim of Turkiye’s anti-coup crackdown',
+        link: 'https://example.com/features/cadet-anti-coup-crackdown',
+        description: 'This look back follows the cadet’s case and its aftermath.',
+        publishedAt: JULY_2026,
+      }),
+      true,
+    );
+  });
+
+  it('allows a retrospective label in the headline itself', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How the coup attempt changed Turkey: a retrospective',
+        link: 'https://example.com/features/turkey-coup',
+        publishedAt: JULY_2026,
+      }),
+      true,
+    );
+  });
+
+  it('does not let broad anniversary wording in a description drop live coverage', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How the ceasefire changed Gaza',
+        link: 'https://example.com/world/iran-shipping',
+        description: 'The anniversary of a prior agreement remains relevant as negotiators meet again.',
+        publishedAt: JULY_2026,
+      }),
+      false,
+    );
+  });
+
+  it('vetoes current-event language even when a historic event-year anchor is present', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How the 2016 coup attempt changed Turkey today',
+        link: 'https://example.com/world/turkey',
+        publishedAt: JULY_2026,
+      }),
+      false,
+    );
+  });
+
+  it('does not treat money or troop counts as an event year', () => {
+    for (const title of ['How $1999 changed household budgets', 'How 2016 troops changed the battlefield']) {
+      assert.equal(
+        classifyOpinion({ title, link: 'https://example.com/world/counts', publishedAt: JULY_2026 }),
+        false,
+        `${title} should not be a historical event anchor`,
+      );
+    }
+  });
+
+  it('does not suppress a hard-news explainer without a historical anchor', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How the ceasefire changed Gaza',
+        link: 'https://example.com/world/ceasefire',
+        description: 'Officials said the humanitarian situation remains fragile.',
+        publishedAt: JULY_2026,
+      }),
+      false,
+    );
+  });
+
+  it('does not use wall-clock time when the same story is reclassified later', () => {
+    const story = {
+      title: "How Turkey's 2016 coup attempt changed the country for good",
+      link: 'https://example.com/features/turkey-coup',
+      publishedAt: JULY_2026,
+    };
+    assert.equal(classifyOpinion(story), true);
+    assert.equal(classifyOpinion(story), true);
   });
 });
 

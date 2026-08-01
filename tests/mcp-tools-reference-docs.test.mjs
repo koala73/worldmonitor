@@ -80,7 +80,16 @@ function documentedCacheToolNames() {
   return sections.flatMap((section) => {
     const heading = section.match(/^### `([^`]+)`/m);
     if (!heading || !section.includes('**Parameters (tool-specific):**')) return [];
-    return [heading[1]];
+    // The reference also documents selected RPC tools with dedicated query
+    // budgets. This parity suite intentionally owns cache-tool tables only,
+    // because cache tools gain the universal `summary` parameter while RPC
+    // tools do not. Ignore the documented RPC sections here rather than
+    // making their presence look like a stale cache-tool entry.
+    const tool = __testing__.TOOL_REGISTRY.find((entry) => entry.name === heading[1]);
+    // Preserve the bidirectional check: a stale heading must remain visible to
+    // the assertion below instead of being silently mistaken for an RPC tool.
+    if (!tool) return [heading[1]];
+    return tool._execute === undefined ? [heading[1]] : [];
   });
 }
 

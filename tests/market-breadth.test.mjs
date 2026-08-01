@@ -3,30 +3,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BOOTSTRAP_CACHE_KEYS, BOOTSTRAP_TIERS } from '../shared/bootstrap-tier-keys.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 describe('Market breadth bootstrap registration', () => {
-  const cacheKeysSrc = readFileSync(join(root, 'server', '_shared', 'cache-keys.ts'), 'utf-8');
-  const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
   const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf-8');
   const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
 
   it('cache-keys.ts has breadthHistory in BOOTSTRAP_CACHE_KEYS', () => {
-    assert.match(cacheKeysSrc, /breadthHistory:\s+'market:breadth-history:v1'/);
+    assert.equal(BOOTSTRAP_CACHE_KEYS.breadthHistory, 'market:breadth-history:v1');
   });
 
   it('cache-keys.ts has breadthHistory in BOOTSTRAP_TIERS', () => {
-    assert.match(cacheKeysSrc, /breadthHistory:\s+'slow'/);
-  });
-
-  it('bootstrap.js has breadthHistory key', () => {
-    assert.match(bootstrapSrc, /breadthHistory:\s+'market:breadth-history:v1'/);
-  });
-
-  it('bootstrap.js has breadthHistory in SLOW_KEYS', () => {
-    assert.match(bootstrapSrc, /'breadthHistory'/);
+    assert.equal(BOOTSTRAP_TIERS.breadthHistory, 'slow');
   });
 
   it('health.js has breadthHistory data key', () => {

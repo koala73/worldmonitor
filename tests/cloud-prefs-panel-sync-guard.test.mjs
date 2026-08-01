@@ -127,8 +127,8 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudSyncSrc,
-      /_dirtyKeys\.clear\(\);\s*persistDirtyKeys\(\);\s*_dirtyKeysUserId = null;/,
-      'sign-out must clear the persisted dirty-key marker before dropping the current user id',
+      /const preservePersistedDirtyKeys = _syncOperations\.busy && _dirtyKeys\.size > 0;[\s\S]*_dirtyKeys\.clear\(\);\s*if \(!preservePersistedDirtyKeys\) persistDirtyKeys\(\);\s*_dirtyKeysUserId = null;/,
+      'sign-out must retain user-scoped dirty metadata only when an interrupted writer still needs recovery',
     );
   });
 
@@ -137,7 +137,7 @@ describe('cloud prefs panel sync guardrails', () => {
 
     assert.match(
       cloudSyncSrc,
-      /if \(_authGeneration !== myGeneration\) return;[\s\S]*clearSettledDirtyKeys\(postedBlob\)/,
+      /if \(_authGeneration !== myGeneration\) return 'stopped';[\s\S]*clearSettledDirtyKeys\(postedBlob\)/,
       'uploadNow success branch must bail before clearing settled dirty keys when the auth generation advanced (sign-out / account switch mid-upload)',
     );
     assert.match(

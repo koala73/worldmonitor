@@ -60,4 +60,8 @@ message BacktestStockResponse {
   string generated_at = 16;
   repeated BacktestStockEvaluation evaluations = 17;
   string engine_version = 18;
+  // "technical_only": historical Yahoo bars do not include point-in-time
+  // fundamentals, so this result must not be presented as a replay of the
+  // fundamentals-blended live rating.
+  string rating_basis = 19;
 }

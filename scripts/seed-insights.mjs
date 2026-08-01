@@ -1,6 +1,17 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed, withRetry, httpRetryError, createLlmBudgetError, isLlmBudgetError } from './_seed-utils.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  getRedisCredentials,
+  runSeed,
+  withRetry,
+  httpRetryError,
+  createLlmBudgetError,
+  extendExistingTtl,
+  isLlmBudgetError,
+  writeExtraKey,
+} from './_seed-utils.mjs';
 import {
   clusterItems,
   computeEntityCorroboration,
@@ -9,6 +20,7 @@ import {
   ENTITY_BIGRAMS,
 } from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
+import { buildChinaNewsCoverage } from './_china-news-coverage.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import {
   pickBriefCluster,
@@ -48,6 +60,8 @@ if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
+const CHINA_COVERAGE_KEY = 'news:insights:v1:CN';
+const CHINA_NEWS_DIGEST_LANGUAGE = 'zh';
 
 // Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
 // Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
@@ -178,9 +192,13 @@ async function generateLegacySingleHeadlineBrief(topStories) {
   };
 }
 
-async function readDigestFromRedis() {
+function digestKeyForLanguage(language) {
+  return `news:digest:v1:full:${language}`;
+}
+
+async function readDigestFromRedis(key = DIGEST_KEY) {
   const { url, token } = getRedisCredentials();
-  const resp = await fetch(`${url}/get/${encodeURIComponent(DIGEST_KEY)}`, {
+  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(5_000),
   });
@@ -422,7 +440,7 @@ function buildImportanceObservability(clusters, topStories) {
   };
 }
 
-async function warmDigestCache() {
+async function warmDigestCache(language = 'en') {
   const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
   const headers = {
     'User-Agent': CHROME_UA,
@@ -430,11 +448,11 @@ async function warmDigestCache() {
   };
   if (RELAY_API_KEY) headers['X-WorldMonitor-Key'] = RELAY_API_KEY;
   try {
-    const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=en`, {
+    const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=${encodeURIComponent(language)}`, {
       headers,
       signal: AbortSignal.timeout(30_000),
     });
-    if (resp.ok) console.log('  Digest cache warmed via RPC');
+    if (resp.ok) console.log(`  ${language} digest cache warmed via RPC`);
     else {
       const keyNote = RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
       console.warn(`  Digest warm failed: HTTP ${resp.status}${keyNote}`);
@@ -444,15 +462,41 @@ async function warmDigestCache() {
   }
 }
 
-async function fetchInsights() {
-  let digest = await readDigestFromRedis();
-  if (!digest) {
-    console.log('  Digest not in Redis, warming cache via RPC...');
-    await warmDigestCache();
-    // Wait for RPC write to propagate to Redis
-    await new Promise(r => setTimeout(r, 3_000));
-    digest = await readDigestFromRedis();
+async function readOrWarmDigest(language) {
+  const key = digestKeyForLanguage(language);
+  let digest = await readDigestFromRedis(key);
+  if (digest) return digest;
+  console.log(`  ${language} digest not in Redis, warming cache via RPC...`);
+  await warmDigestCache(language);
+  // Wait for the Edge write to propagate before the readback. This is the
+  // existing full/en warm-cache contract, now reused for the Chinese digest.
+  await new Promise(r => setTimeout(r, 3_000));
+  digest = await readDigestFromRedis(key);
+  return digest;
+}
+
+async function readChinaNewsDigest() {
+  try {
+    return await readOrWarmDigest(CHINA_NEWS_DIGEST_LANGUAGE);
+  } catch (err) {
+    // China-source coverage must degrade independently. A Redis or Edge
+    // failure for the supplemental locale digest must not suppress the global
+    // insights payload that the existing English path can still publish.
+    console.warn(`  ${CHINA_NEWS_DIGEST_LANGUAGE} digest coverage check failed: ${err.message}`);
+    return null;
   }
+}
+
+// A degraded global brief may reuse the last known-good public payload even
+// though this run obtained fresh per-source digest evidence. Keep that audit
+// projection attached for afterPublish; publishTransform still prevents it
+// from entering the public insights cache.
+export function preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage) {
+  return chinaNewsCoverage ? { ...existing, chinaNewsCoverage } : existing;
+}
+
+async function fetchInsights() {
+  const digest = await readOrWarmDigest('en');
   if (!digest) {
     // LKG fallback: reuse existing insights if digest is unavailable
     const existing = await readExistingInsights();
@@ -462,6 +506,14 @@ async function fetchInsights() {
     }
     throw new Error('No news digest found in Redis');
   }
+
+  // The global top-eight list is intentionally rank-limited and cannot prove
+  // that a China source completed. Preserve the digest's per-feed outcome as
+  // a compact, audit-only projection before the global ranking can discard it.
+  const chinaNewsCoverage = buildChinaNewsCoverage({
+    en: digest,
+    [CHINA_NEWS_DIGEST_LANGUAGE]: await readChinaNewsDigest(),
+  });
 
   // Digest shape: { categories: { politics: { items: [...] }, ... }, feedStatuses, generatedAt }
   let items;
@@ -651,6 +703,7 @@ async function fetchInsights() {
     fastMovingCount,
     importanceSignals: observability,
     provenance,
+    chinaNewsCoverage,
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -658,7 +711,7 @@ async function fetchInsights() {
     const existing = await readExistingInsights();
     if (existing?.status === 'ok') {
       console.log('  LKG preservation: existing payload is "ok", skipping degraded overwrite');
-      return existing;
+      return preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage);
     }
   }
 
@@ -684,6 +737,20 @@ if (_isDirectRun) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 30,
+    // The source-status projection is not user-facing digest content. It is
+    // retained separately so the China audit can distinguish an unavailable
+    // source from a globally outranked one without changing the public payload.
+    preserveKeys: [CHINA_COVERAGE_KEY],
+    publishTransform: ({ chinaNewsCoverage: _chinaNewsCoverage, ...payload }) => payload,
+    afterPublish: async (data) => {
+      if (!data?.chinaNewsCoverage) {
+        // LKG fallback predates the projection. Keep its timestamp honest: an
+        // extended old projection will become CONTENT_STALE rather than green.
+        await extendExistingTtl([CHINA_COVERAGE_KEY], CACHE_TTL);
+        return;
+      }
+      await writeExtraKey(CHINA_COVERAGE_KEY, data.chinaNewsCoverage, CACHE_TTL);
+    },
   }).catch(async (err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     // Exit gracefully for cron — health endpoint flags stale data via

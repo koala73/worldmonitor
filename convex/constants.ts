@@ -28,6 +28,12 @@ export const digestModeValidator = v.union(
   v.literal("weekly"),
 );
 
+export const proActivationStepIdValidator = v.union(
+  v.literal("brief"),
+  v.literal("alerts"),
+  v.literal("power"),
+);
+
 export const CURRENT_PREFS_SCHEMA_VERSION = 1;
 
 export const MAX_PREFS_BLOB_SIZE = 65536;

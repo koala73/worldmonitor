@@ -89,6 +89,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
       { name: 'Reuters Business', url: gn('site:reuters.com business markets when:1d') },
     ],
+    // MCP digest-backed tools consume `full`, while the finance dashboard
+    // consumes `finance`. Keep this literal array aligned with the finance
+    // bucket below; the static per-variant feed-key guard requires literals.
+    commodities: [
+      { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },
+      { name: 'Gold & Metals', url: gn('("gold price" OR "silver price" OR "precious metals" OR "copper price") when:2d') },
+    ],
     gov: [
       // White House: two direct WordPress RSS feeds. Replaces
       // gn('site:whitehouse.gov ...') so the publisher's pubDate is
@@ -143,6 +150,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'South China Morning Post', url: gn('site:scmp.com when:2d') },
       { name: 'The Hindu', url: 'https://www.thehindu.com/feeder/default.rss' },
       { name: 'Asia News', url: gn('site:asianews.it when:3d') },
+      { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d') },
+      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
+      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
       // Hindi (HI) — mainstream national coverage boosted for Hindi locale users
       { name: 'BBC Hindi', url: 'https://feeds.bbci.co.uk/hindi/rss.xml', lang: 'hi' },
       { name: 'Aaj Tak', url: 'https://www.aajtak.in/rssfeeds/?id=home', lang: 'hi' },
@@ -307,6 +317,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     centralbanks: [
       { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
+      { name: 'PBoC Watch', url: gn('("People\'s Bank of China" OR PBoC OR PBOC) when:7d') },
     ],
     economic: [
       { name: 'Economic Data', url: gn('(CPI OR inflation OR GDP OR "economic data" OR "jobs report") when:2d') },
@@ -463,7 +474,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     science: [
       { name: 'ScienceDaily', url: 'https://www.sciencedaily.com/rss/all.xml' },
-      { name: 'Nature News', url: 'https://feeds.nature.com/nature/rss/current' },
+      { name: 'Nature News', url: 'https://www.nature.com/nature.rss' },
       { name: 'Singularity Hub', url: 'https://singularityhub.com/feed/' },
       { name: 'Human Progress', url: 'https://humanprogress.org/feed/' },
     ],
@@ -486,6 +497,7 @@ export const INTEL_SOURCES: ServerFeed[] = [
   { name: 'Defense One', url: 'https://www.defenseone.com/rss/all/' },
   { name: 'The War Zone', url: 'https://www.twz.com/feed' },
   { name: 'Defense News', url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml' },
+  { name: 'Breaking Defense', url: 'https://breakingdefense.com/feed/' },
   { name: 'Military Times', url: 'https://www.militarytimes.com/arc/outboundfeeds/rss/?outputType=xml' },
   { name: 'Task & Purpose', url: 'https://taskandpurpose.com/feed/' },
   { name: 'USNI News', url: 'https://news.google.com/rss/search?q=site:news.usni.org+when:3d&hl=en-US&gl=US&ceid=US:en' },

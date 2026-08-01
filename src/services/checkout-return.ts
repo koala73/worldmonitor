@@ -30,6 +30,7 @@
 
 import { loadCheckoutAttempt } from './checkout-attempt';
 import { CHECKOUT_RETURN_PARAM, CHECKOUT_RETURN_MARKER } from './checkout-return-url';
+import { applyProBannerEntitlementHint } from './pro-banner-policy';
 
 export type CheckoutReturnResult =
   | { kind: 'none' }
@@ -107,13 +108,29 @@ export function handleCheckoutReturn(): CheckoutReturnResult {
   //      an actionable banner instead of silent drop.
   //   4. Fallback → none.
   if (hasDodoParams) {
-    if (SUCCESS_STATUSES.has(status)) return { kind: 'success' };
+    if (SUCCESS_STATUSES.has(status)) {
+      markJustPaidProBannerHint();
+      return { kind: 'success' };
+    }
     if (FAILED_STATUSES.has(status)) return { kind: 'failed', rawStatus: status };
   }
-  if (hasWmSuccess) return { kind: 'success' };
+  if (hasWmSuccess) {
+    markJustPaidProBannerHint();
+    return { kind: 'success' };
+  }
   if (!hasDodoParams && hasWmReturn && !status && loadCheckoutAttempt()) {
+    markJustPaidProBannerHint();
     return { kind: 'success' };
   }
   if (hasDodoParams && status) return { kind: 'failed', rawStatus: status };
   return { kind: 'none' };
+}
+
+/** Optimistic pre-paint hint for the just-paid session (#5728 empty strip). */
+function markJustPaidProBannerHint(): void {
+  try {
+    applyProBannerEntitlementHint(localStorage, true);
+  } catch {
+    // Storage optional.
+  }
 }

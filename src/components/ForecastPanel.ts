@@ -4,6 +4,8 @@ import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
 import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -259,6 +261,23 @@ export class ForecastPanel extends Panel {
   // applied on every render() — never mutate this by filtering, or refresh
   // updates from data-loader will wipe the filter state.
   private forecasts: Forecast[] = [];
+  /** De-dupe guard for the dossier fetch. Cleared when a refresh brings a forecast we've never fetched. */
+  private caseFilesPromise: Promise<void> | null = null;
+  /**
+   * Dossiers already fetched, by forecast id. Survives refresh ticks: the bootstrap
+   * feed carries the LIST only, so without this cache a refresh would drop the dossier
+   * the user just opened and re-render the pane empty (#5300).
+   */
+  private caseFilesById = new Map<string, NonNullable<Forecast['caseFile']>>();
+  /**
+   * Every forecast id a completed fetch covered — including those that legitimately have
+   * no dossier. Tracked separately from `caseFilesById` so a dossier-less forecast counts
+   * as resolved: keying the refetch decision off a missing `caseFile` alone would refetch
+   * the whole feed on every click of such a pane.
+   */
+  private caseFilesFetchedIds = new Set<string>();
+  /** True once a fetch has completed successfully — so a refresh never cancels an in-flight one. */
+  private caseFilesSettled = false;
   private sourceState: ForecastSourceState = { generatedAt: 0, degraded: false, stale: false, error: '' };
   private activeDomain: string = 'all';
   private selectedRegion: string = '';
@@ -305,6 +324,14 @@ export class ForecastPanel extends Panel {
         const panelId = toggle.dataset.fcToggle;
         const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
         if (detail) detail.classList.toggle('fc-hidden');
+        // The bootstrap payload carries the LIST, not the dossiers — 78% of the old
+        // key was caseFile prose nobody expands (#5300). Fetch them the first time
+        // someone actually opens one; the feed is CDN-shielded, so this is cheap.
+        const forecastId = panelId?.startsWith('detail-') ? panelId.slice('detail-'.length) : '';
+        const forecast = forecastId ? this.forecasts.find((f) => f.id === forecastId) : undefined;
+        if (detail && shouldFetchCaseFile(forecast, !detail.classList.contains('fc-hidden'), !detail.innerHTML.trim())) {
+          void this.loadCaseFiles();
+        }
         return;
       }
 
@@ -319,8 +346,69 @@ export class ForecastPanel extends Panel {
     });
   }
 
+  /**
+   * Fetch the evidence dossiers on first expand (#5300).
+   *
+   * The bootstrap payload is the dashboard LIST: `caseFile` was 78% of the old key —
+   * ~19,000 words of prose that were shipped to every visitor, downloaded on every
+   * page load, and parsed into hidden DOM during the LCP window, for content almost
+   * nobody opens. The full feed still carries them, and it is now CDN-shielded, so
+   * pulling it once when a user actually clicks "Analysis" is cheap.
+   *
+   * Failure is non-fatal: the detail pane just stays empty, exactly as it would if
+   * the seeder had produced no case file.
+   */
+  private async loadCaseFiles(): Promise<void> {
+    if (this.caseFilesPromise) return this.caseFilesPromise;
+
+    this.caseFilesPromise = (async () => {
+      try {
+        const { fetchForecastFeed } = await import('@/services/forecast');
+        const feed = await fetchForecastFeed();
+        for (const f of feed.forecasts) {
+          this.caseFilesFetchedIds.add(f.id);
+          if (f.caseFile) this.caseFilesById.set(f.id, f.caseFile);
+        }
+        this.caseFilesSettled = true;
+        this.forecasts = this.forecasts.map((f) => {
+          const caseFile = this.caseFilesById.get(f.id);
+          return !f.caseFile && caseFile ? { ...f, caseFile } : f;
+        });
+
+        // Patch the panes in place rather than calling render(). A full re-render
+        // rebuilds every detail div with its default `fc-hidden` class and would
+        // slam shut the pane the user just opened.
+        for (const f of this.forecasts) {
+          if (!f.caseFile) continue;
+          const pane = this.element.querySelector(
+            `[data-fc-panel="detail-${CSS.escape(f.id)}"]`,
+          ) as HTMLElement | null;
+          if (pane && !pane.innerHTML.trim()) {
+            // renderDetailBody() escapes every interpolated value (escapeHtml/renderList),
+            // exactly as it does on the eager path this replaces.
+            setTrustedHtml(pane, trustedHtml(this.renderDetailBody(f), 'ForecastPanel case-file detail; same escaped markup as the eager render path (#5300)'));
+          }
+        }
+      } catch {
+        // Leave the pane empty and allow a later retry.
+        this.caseFilesPromise = null;
+      }
+    })();
+
+    return this.caseFilesPromise;
+  }
+
   updateForecasts(forecasts: Forecast[], sourceState?: Partial<ForecastSourceState>): void {
-    this.forecasts = forecasts;
+    // Refresh ticks re-hydrate from the bootstrap feed, which carries the LIST without
+    // the dossiers (#5300). Re-merge anything already fetched, or the dossier the user
+    // has open would vanish on the next tick and re-render as an empty pane.
+    this.forecasts = mergeCachedCaseFiles(forecasts, this.caseFilesById);
+    // A refreshed list can introduce a forecast no completed fetch covered — drop the
+    // de-dupe latch so the next expand re-fetches it.
+    if (needsCaseFileRefetch(this.forecasts, this.caseFilesFetchedIds, this.caseFilesSettled)) {
+      this.caseFilesPromise = null;
+      this.caseFilesSettled = false;
+    }
     this.sourceState = {
       generatedAt: sourceState?.generatedAt ?? this.sourceState.generatedAt,
       degraded: sourceState?.degraded === true,
@@ -600,7 +688,7 @@ export class ForecastPanel extends Panel {
           <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
           ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${sigs.length})</span>` : ''}
         </div>
-        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${this.renderDetailBody(f)}</div>
+        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${f.caseFile ? this.renderDetailBody(f) : ''}</div>
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
     `;

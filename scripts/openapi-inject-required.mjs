@@ -301,7 +301,7 @@ function setYamlSchemaRequired(lines, schemaName, required) {
 
     let insertAt = -1;
     const relative = lines.slice(schemaIndex, schemaEnd);
-    const propertiesIndex = relative.findIndex((line) => line === '            properties:');
+    const propertiesIndex = relative.indexOf('            properties:');
     if (propertiesIndex !== -1) {
       insertAt = schemaIndex + propertiesIndex + 1;
       while (insertAt < schemaEnd) {
@@ -310,7 +310,7 @@ function setYamlSchemaRequired(lines, schemaName, required) {
         insertAt++;
       }
     } else {
-      const typeIndex = relative.findIndex((line) => line === '            type: object');
+      const typeIndex = relative.indexOf('            type: object');
       insertAt = typeIndex === -1 ? schemaEnd : schemaIndex + typeIndex + 1;
     }
     lines.splice(insertAt, 0, ...expected);

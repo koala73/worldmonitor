@@ -67,6 +67,11 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
       ? e.conePolygon.map(ring => ring.points.map(p => [p.lon, p.lat]))
       : undefined,
     pastTrack: e.pastTrack?.length ? e.pastTrack : undefined,
+    canonicalId: e.canonicalId || undefined,
+    matchingConfidence: e.matchingConfidence || undefined,
+    canonicalAliases: e.canonicalAliases?.length ? e.canonicalAliases : undefined,
+    windAveragingPeriodMinutes: e.windAveragingPeriodMinutes ?? undefined,
+    agencyObservations: e.agencyObservations?.length ? e.agencyObservations : undefined,
   };
 }
 

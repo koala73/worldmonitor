@@ -18,12 +18,13 @@ test('Docker entrypoint creates and exports an internal LOCAL_API_TOKEN when uns
   assert.match(entrypoint, /envsubst '\$LOCAL_API_PORT \$LOCAL_API_TOKEN'/);
 });
 
-test('Docker nginx injects LOCAL_API_TOKEN on private sidecar proxy requests', () => {
+test('Docker nginx injects LOCAL_API_TOKEN through a private transport header', () => {
   const nginx = readProjectFile('docker/nginx.conf');
 
   assert.match(nginx, /location \/api\/ \{/);
   assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:\$\{LOCAL_API_PORT\}/);
-  assert.match(nginx, /proxy_set_header Authorization "Bearer \$\{LOCAL_API_TOKEN\}"/);
+  assert.match(nginx, /proxy_set_header X-WorldMonitor-Local-Token "\$\{LOCAL_API_TOKEN\}"/);
+  assert.doesNotMatch(nginx, /proxy_set_header Authorization/);
 });
 
 test('Docker healthcheck uses the dedicated sidecar liveness route', () => {

@@ -196,6 +196,37 @@ describe('atomicPublish retry-on-transient (WM 2026-05-10 incident fix)', () => 
     }
   });
 
+  it('runs a validated beforePublish hook before the first Redis write', async () => {
+    let fetchCalls = 0;
+    let beforePublishCalls = 0;
+    setup(async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    });
+    try {
+      await assert.rejects(
+        atomicPublish(
+          'test:key:v1',
+          { hello: 'world' },
+          () => true,
+          60,
+          {
+            beforePublish: async (data) => {
+              beforePublishCalls += 1;
+              assert.deepEqual(data, { hello: 'world' });
+              throw new Error('pre-publish cohort failed');
+            },
+          },
+        ),
+        /pre-publish cohort failed/,
+      );
+      assert.equal(beforePublishCalls, 1);
+      assert.equal(fetchCalls, 0, 'canonical staging must not start after a pre-publish failure');
+    } finally {
+      teardown();
+    }
+  });
+
   it('retries on transient 503 then succeeds on 2nd attempt', async () => {
     // First attempt: staging SET returns 503 → atomicPublish body throws,
     // withRetry sleeps 1s, re-runs the whole body. Second attempt: all OK.

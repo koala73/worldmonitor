@@ -144,6 +144,48 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.match(body.error?.message ?? '', /Invalid API key/);
   });
 
+  it('rotating unknown wm_ keys are bounded before the Convex-backed resolver', async () => {
+    const order = [];
+    let guardCalls = 0;
+    const { deps } = makeUserKeyDeps({
+      guardUserApiKeyValidation: async () => {
+        order.push('guard');
+        guardCalls += 1;
+        return guardCalls < 3
+          ? null
+          : new Response(JSON.stringify({ error: 'Too many requests' }), {
+            status: 429,
+            headers: { 'Retry-After': '17', 'X-RateLimit-Limit': '60' },
+          });
+      },
+      validateUserApiKey: async () => {
+        order.push('validate');
+        return null;
+      },
+    });
+
+    const first = await mcpHandler(userKeyReq(
+      callBody('describe_tool', { tool_name: 'get_market_data' }),
+      { 'X-WorldMonitor-Key': 'wm_rotating_guess_1' },
+    ), deps);
+    const second = await mcpHandler(userKeyReq(
+      callBody('describe_tool', { tool_name: 'get_market_data' }),
+      { 'X-WorldMonitor-Key': 'wm_rotating_guess_2' },
+    ), deps);
+    const blocked = await mcpHandler(userKeyReq(
+      callBody('describe_tool', { tool_name: 'get_market_data' }),
+      { 'X-WorldMonitor-Key': 'wm_rotating_guess_3' },
+    ), deps);
+
+    assert.equal(first.status, 401);
+    assert.equal(second.status, 401);
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.headers.get('Cache-Control'), 'no-store');
+    assert.equal(blocked.headers.get('Retry-After'), '17');
+    assert.equal((await blocked.json()).error?.code, -32029);
+    assert.deepEqual(order, ['guard', 'validate', 'guard', 'validate', 'guard']);
+  });
+
   it('validateUserApiKey dep throws → 503 (auth backend transient, mirrors bearer-resolve)', async () => {
     const { deps } = makeUserKeyDeps({
       validateUserApiKey: async () => { throw new Error('redis down'); },

@@ -21,15 +21,22 @@
 
 import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
 
-export function isAllowedDomain(hostname) {
-  if (typeof hostname !== 'string' || hostname.length === 0) return false;
+// The www-tolerant candidate forms for a hostname: exact, bare (leading www.
+// stripped), and www-prefixed. Any host-set membership test that must treat the
+// apex and www. forms as equivalent should test all three. Shared so the RSS
+// proxy's relay-only routing check matches hosts the SAME way the allowlist does
+// — otherwise a host allowed via its apex form (e.g. `cisa.gov`) would miss the
+// exact-match relay-only set for `www.cisa.gov` and get direct-fetched from a
+// Vercel edge IP the relay routing exists specifically to avoid.
+export function hostMatchForms(hostname) {
+  if (typeof hostname !== 'string' || hostname.length === 0) return [];
   const bare = hostname.replace(/^www\./, '');
   const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
-  return (
-    RSS_ALLOWED_DOMAINS.includes(hostname) ||
-    RSS_ALLOWED_DOMAINS.includes(bare) ||
-    RSS_ALLOWED_DOMAINS.includes(withWww)
-  );
+  return [...new Set([hostname, bare, withWww])];
+}
+
+export function isAllowedDomain(hostname) {
+  return hostMatchForms(hostname).some((form) => RSS_ALLOWED_DOMAINS.includes(form));
 }
 
 export default isAllowedDomain;

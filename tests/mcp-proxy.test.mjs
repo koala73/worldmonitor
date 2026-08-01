@@ -216,12 +216,20 @@ describe('api/mcp-proxy', () => {
     // 401. This proves the wm_ branch fails closed when the validator
     // can't run — and that the path is exercised (no MODULE_NOT_FOUND
     // like the previous .js → .ts dynamic-import attempt).
+    //
+    // The key MUST be canonically shaped (`wm_` + 40 lowercase hex). Since
+    // #5379, validateUserApiKey rejects a malformed key BEFORE hashing or
+    // calling Convex, so the old placeholder 'wm_user_abc123' still returned
+    // 401 but short-circuited at the format gate — the test kept passing while
+    // silently covering none of the path its comment claims to prove. This key
+    // is well-shaped but never minted, so it reaches fetchFromConvex and is
+    // rejected there.
     it('rejects wm_ user keys when Convex validation cannot run / returns null', async () => {
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       const req = new Request(url.toString(), {
         method: 'GET',
-        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': 'wm_user_abc123' },
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': `wm_${'a'.repeat(40)}` },
       });
       const res = await handler(req);
       assert.equal(res.status, 401);

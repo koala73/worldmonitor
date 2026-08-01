@@ -3,6 +3,7 @@ import type {
   GetCountryEnergyProfileRequest,
   GetCountryEnergyProfileResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import jodiMeasurementFields from '../../../../scripts/shared/jodi-measurement-fields.json';
 
 import { getCachedJson } from '../../../_shared/redis';
 import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
@@ -79,24 +80,24 @@ interface EnergySpine {
     hasIeaStocks?: boolean;
   };
   oil?: {
-    crudeImportsKbd?: number;
-    gasolineDemandKbd?: number;
-    gasolineImportsKbd?: number;
-    dieselDemandKbd?: number;
-    dieselImportsKbd?: number;
-    jetDemandKbd?: number;
-    jetImportsKbd?: number;
-    lpgDemandKbd?: number;
-    lpgImportsKbd?: number;
+    crudeImportsKbd?: number | null;
+    gasolineDemandKbd?: number | null;
+    gasolineImportsKbd?: number | null;
+    dieselDemandKbd?: number | null;
+    dieselImportsKbd?: number | null;
+    jetDemandKbd?: number | null;
+    jetImportsKbd?: number | null;
+    lpgDemandKbd?: number | null;
+    lpgImportsKbd?: number | null;
     daysOfCover?: number;
     netExporter?: boolean;
     belowObligation?: boolean;
   };
   gas?: {
-    lngImportsTj?: number;
-    pipeImportsTj?: number;
-    totalDemandTj?: number;
-    lngShareOfImports?: number;
+    lngImportsTj?: number | null;
+    pipeImportsTj?: number | null;
+    totalDemandTj?: number | null;
+    lngShareOfImports?: number | null;
   };
   mix?: {
     coalShare?: number;
@@ -179,6 +180,8 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   sprSource: '',
   sprAsOf: '',
   sprAvailable: false,
+  jodiOilObservedMeasurements: [],
+  jodiGasObservedMeasurements: [],
 };
 
 function n(v: number | null | undefined): number {
@@ -187,6 +190,50 @@ function n(v: number | null | undefined): number {
 
 function s(v: string | null | undefined): string {
   return typeof v === 'string' ? v : '';
+}
+
+function readPath(value: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, part) => {
+    if (current == null || typeof current !== 'object') return undefined;
+    return (current as Record<string, unknown>)[part];
+  }, value);
+}
+
+function observedMeasurementPaths(value: unknown, paths: readonly string[]): string[] {
+  return paths.filter((path) => {
+    const measurement = readPath(value, path);
+    return typeof measurement === 'number' && Number.isFinite(measurement);
+  });
+}
+
+export function hasJodiOilMeasurements(jodiOil: JodiOil | null): boolean {
+  return getObservedJodiOilMeasurements(jodiOil).length > 0;
+}
+
+export function hasJodiGasMeasurements(jodiGas: JodiGas | null): boolean {
+  return getObservedJodiGasMeasurements(jodiGas).length > 0;
+}
+
+export function getObservedJodiOilMeasurements(jodiOil: JodiOil | null): string[] {
+  return jodiOil == null ? [] : observedMeasurementPaths(jodiOil, jodiMeasurementFields.oil);
+}
+
+export function getObservedJodiGasMeasurements(jodiGas: JodiGas | null): string[] {
+  return jodiGas == null ? [] : observedMeasurementPaths(jodiGas, jodiMeasurementFields.gas);
+}
+
+function flattenMeasurementPath(path: string): string {
+  const [head = '', ...tail] = path.split('.');
+  return head + tail.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+}
+
+function observedSpineMeasurementPaths(value: unknown, paths: readonly string[]): string[] {
+  if (value == null || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  return paths.filter((path) => {
+    const measurement = record[flattenMeasurementPath(path)];
+    return typeof measurement === 'number' && Number.isFinite(measurement);
+  });
 }
 
 interface SprPolicy {
@@ -238,7 +285,7 @@ function buildSprFields(sprPolicy: SprPolicy | null | undefined): Pick<
   };
 }
 
-function buildResponseFromSpine(
+export function buildResponseFromSpine(
   spine: EnergySpine,
   gasStorage: GasStorage | null,
   electricity: ElectricityEntry | null,
@@ -299,6 +346,8 @@ function buildResponseFromSpine(
     gasLngImportsTj: n(gas.lngImportsTj),
     gasPipeImportsTj: n(gas.pipeImportsTj),
     gasLngShare: n(gas.lngShareOfImports != null ? gas.lngShareOfImports * 100 : null),
+    jodiOilObservedMeasurements: observedSpineMeasurementPaths(oil, jodiMeasurementFields.oil),
+    jodiGasObservedMeasurements: observedSpineMeasurementPaths(gas, jodiMeasurementFields.gas),
 
     ieaStocksAvailable: cov.hasIeaStocks === true,
     ieaStocksDataMonth: s(src.ieaStocksMonth),
@@ -394,7 +443,7 @@ export async function getCountryEnergyProfile(
     electricitySource: electricityAvailable ? s(electricity?.source) : '',
     electricityDate: electricityAvailable ? s(electricity?.date) : '',
 
-    jodiOilAvailable: jodiOil != null,
+    jodiOilAvailable: hasJodiOilMeasurements(jodiOil),
     jodiOilDataMonth: s(jodiOil?.dataMonth),
     gasolineDemandKbd: n(jodiOil?.gasoline?.demandKbd),
     gasolineImportsKbd: n(jodiOil?.gasoline?.importsKbd),
@@ -406,12 +455,14 @@ export async function getCountryEnergyProfile(
     lpgImportsKbd: n(jodiOil?.lpg?.importsKbd),
     crudeImportsKbd: n(jodiOil?.crude?.importsKbd),
 
-    jodiGasAvailable: jodiGas != null,
+    jodiGasAvailable: hasJodiGasMeasurements(jodiGas),
     jodiGasDataMonth: s(jodiGas?.dataMonth),
     gasTotalDemandTj: n(jodiGas?.totalDemandTj),
     gasLngImportsTj: n(jodiGas?.lngImportsTj),
     gasPipeImportsTj: n(jodiGas?.pipeImportsTj),
     gasLngShare: n(jodiGas?.lngShareOfImports != null ? jodiGas.lngShareOfImports * 100 : null),
+    jodiOilObservedMeasurements: getObservedJodiOilMeasurements(jodiOil),
+    jodiGasObservedMeasurements: getObservedJodiGasMeasurements(jodiGas),
 
     ieaStocksAvailable: ieaStocks != null && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && ieaStocks.anomaly !== true)),
     ieaStocksDataMonth: s(ieaStocks?.dataMonth),

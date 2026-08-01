@@ -178,7 +178,7 @@ function injectYaml(text) {
       }
     }
     if (acceptedIndex === -1) continue;
-    let acceptedEnd = blockEndAtIndent(lines, acceptedIndex, responsesEnd, 16);
+    const acceptedEnd = blockEndAtIndent(lines, acceptedIndex, responsesEnd, 16);
 
     // 2. Replace the success description (single-line, first 20-indent
     //    `description:` child of the 202 block).

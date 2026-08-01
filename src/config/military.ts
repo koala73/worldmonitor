@@ -210,9 +210,9 @@ export const ADVERSARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^RUSSIAN', operator: 'vks', description: 'Russian military' },
 
   // Chinese PLA
-  { pattern: '^CCA', operator: 'plaaf', description: 'PLA Air Force' },
-  { pattern: '^CHH', operator: 'plan', description: 'PLA Navy Air' },
-  { pattern: '^CHINA', operator: 'plaaf', description: 'Chinese military' },
+  { pattern: '^PLAAF', operator: 'plaaf', description: 'PLA Air Force' },
+  { pattern: '^PLA[0-9]', operator: 'plaaf', description: 'PLA aircraft' },
+  { pattern: '^CHINA\\s?(AIR\\s?FORCE|MIL|NAVY)', operator: 'plaaf', description: 'Chinese military' },
 ];
 
 // All military callsign patterns combined
@@ -335,6 +335,18 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
  * These help identify military aircraft even without callsigns
  * Reference: https://www.ads-b.nl/icao.php
  */
+export const KNOWN_MILITARY_AIRCRAFT: Record<string, {
+  operator: MilitaryOperator;
+  country: string;
+  aircraftType: MilitaryAircraftType;
+}> = {
+  // Exact observed PLA aircraft; never expand this into China's national range.
+  '7A4262': { operator: 'plaaf', country: 'China', aircraftType: 'reconnaissance' },
+  '7A444F': { operator: 'plaaf', country: 'China', aircraftType: 'tanker' },
+  '7A446F': { operator: 'plaaf', country: 'China', aircraftType: 'transport' },
+  '7A4403': { operator: 'plaaf', country: 'China', aircraftType: 'transport' },
+};
+
 export const MILITARY_HEX_RANGES: { start: string; end: string; operator: MilitaryOperator; country: string }[] = [
   // United States DoD — civil N-numbers end at ADF7C7; everything above is military
   { start: 'ADF7C8', end: 'AFFFFF', operator: 'usaf', country: 'USA' },
@@ -711,11 +723,18 @@ export function identifyByAircraftType(typeCode: string): { type: MilitaryAircra
 /**
  * Helper to check if a hex code is in known military range
  */
-export function isKnownMilitaryHex(hexCode: string): { operator: MilitaryOperator; country: string } | undefined {
+export function isKnownMilitaryHex(hexCode: string): {
+  operator: MilitaryOperator;
+  country: string;
+  aircraftType?: MilitaryAircraftType;
+  confidence: 'high' | 'medium';
+} | undefined {
   const hex = hexCode.toUpperCase();
+  const exact = KNOWN_MILITARY_AIRCRAFT[hex];
+  if (exact) return { ...exact, confidence: 'high' };
   for (const range of MILITARY_HEX_RANGES) {
     if (hex >= range.start && hex <= range.end) {
-      return { operator: range.operator, country: range.country };
+      return { operator: range.operator, country: range.country, confidence: 'medium' };
     }
   }
   return undefined;

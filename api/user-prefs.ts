@@ -213,10 +213,17 @@ export default async function handler(
       const msg = err instanceof Error ? err.message : String(err);
       const kind = extractConvexErrorKind(err, msg);
       // UNAUTHENTICATED on this path means the Clerk token PASSED our edge's
-      // `validateBearerToken` but Convex still rejected it — i.e. genuine
-      // auth/audience/issuer drift between our Clerk JWKS validation and
-      // Convex's auth config (a Clerk JWKS rotation lag, an audience mismatch,
-      // a stale CLERK_JWT_ISSUER_DOMAIN env var). User-bad-token cases are
+      // `validateBearerToken` but Convex still rejected it. One feeder is now
+      // expected-by-design: a token our edge accepted only via the bounded
+      // clockTolerance (already past `exp` on our clock) can age past Convex's
+      // own leeway during the round trip. That is near-expiry traffic, not
+      // drift — skip the drift capture for it so the WORLDMONITOR-QK bucket
+      // keeps meaning what its comment says.
+      //
+      // Every other UNAUTHENTICATED here is genuine auth/audience/issuer
+      // drift between our Clerk JWKS validation and Convex's auth config (a
+      // Clerk JWKS rotation lag, an audience mismatch, a stale
+      // CLERK_JWT_ISSUER_DOMAIN env var); other user-bad-token cases are
       // caught earlier (the `validateBearerToken` 401 above) and never reach
       // this catch. Capture before returning 401 so the drift surfaces under
       // a stable Sentry bucket instead of silently 401'ing every request.
@@ -229,6 +236,12 @@ export default async function handler(
       // bucket). A genuine systemic drift incident would still surface
       // because volume would escalate and reopen the archived issue.
       if (kind === 'UNAUTHENTICATED') {
+        if (session.acceptedWithinClockTolerance) {
+          console.warn(
+            '[user-prefs] GET 401 for token accepted within edge clock tolerance (expected near-expiry, not drift)',
+          );
+          return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
+        }
         console.warn('[user-prefs] GET convex auth drift:', err);
         captureSilentError(err, buildSentryContext(err, msg, {
           method: 'GET', convexFn: 'userPreferences:getPreferences',
@@ -341,11 +354,19 @@ export default async function handler(
       ));
     }
     if (kind === 'UNAUTHENTICATED') {
-      // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex
-      // auth drift (token already passed validateBearerToken). Capture
-      // at `warning` for visibility without paging — the observed pattern
-      // is transient single-event-per-user that recovers on client retry
-      // (WORLDMONITOR-QK).
+      // See GET branch above — a token the edge accepted only via the bounded
+      // clockTolerance aging past Convex's own leeway is expected near-expiry
+      // traffic, not drift; skip the drift capture for it. Every other
+      // UNAUTHENTICATED here means Clerk-vs-Convex auth drift (token already
+      // passed validateBearerToken). Capture at `warning` for visibility
+      // without paging — the observed pattern is transient
+      // single-event-per-user that recovers on client retry (WORLDMONITOR-QK).
+      if (session.acceptedWithinClockTolerance) {
+        console.warn(
+          '[user-prefs] POST 401 for token accepted within edge clock tolerance (expected near-expiry, not drift)',
+        );
+        return finish(jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors));
+      }
       console.warn('[user-prefs] POST convex auth drift:', err);
       captureSilentError(err, buildSentryContext(err, msg, {
         method: 'POST', convexFn: 'userPreferences:setPreferences',

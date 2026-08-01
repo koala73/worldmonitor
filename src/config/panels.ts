@@ -59,8 +59,11 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1, premium: 'locked' as const },
   'chat-analyst': { name: 'WM Analyst', enabled: true, priority: 1, premium: 'locked' as const },
   economic: { name: 'Macro Stress', enabled: true, priority: 1 },
+  'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: true, priority: 1 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: true, priority: 1 },
   finance: { name: 'Financial', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 2 },
   crypto: { name: 'Crypto', enabled: true, priority: 2 },
@@ -290,6 +293,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   'internet-disruptions': { name: 'Internet Disruptions', enabled: true, priority: 2 },
   'service-status': { name: 'Service Status', enabled: true, priority: 2 },
   economic: { name: 'Macro Stress', enabled: true, priority: 2 },
+  'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -462,9 +466,12 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'other-tokens': { name: 'Alt Tokens', enabled: true, priority: 2 },
   centralbanks: { name: 'Central Bank Watch', enabled: true, priority: 1 },
   economic: { name: 'Macro Stress', enabled: true, priority: 1 },
+  'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
   ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
@@ -781,6 +788,8 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'base-metals': { name: 'Base Metals', enabled: true, priority: 1 },
   'mining-companies': { name: 'Mining Companies', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain & Logistics', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'commodity-regulation': { name: 'Regulation & Policy', enabled: true, priority: 1 },
   markets: { name: 'Commodity Markets', enabled: true, priority: 1 },
   commodities: { name: 'Live Metals & Materials', enabled: true, priority: 1 },
@@ -959,6 +968,8 @@ const ENERGY_PANELS: Record<string, PanelConfig> = {
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   // Supply-chain & chokepoint context
   'supply-chain': { name: 'Chokepoints & Routes', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
   // Gulf / OPEC
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 2 },
@@ -1227,7 +1238,7 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
   if (!config.premium) return true;
   // Dodo entitlements unlock all premium panels
   if (isEntitled()) return true;
-  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'regional-intelligence', 'deduction', 'chat-analyst', 'wsb-ticker-scanner', 'trade-policy'];
+  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'regional-intelligence', 'deduction', 'chat-analyst', 'wsb-ticker-scanner', 'trade-policy', 'global-procurement'];
   if (apiKeyPanels.includes(key)) {
     return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
   }
@@ -1363,7 +1374,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
+    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
     variants: ['full', 'energy'],
   },
   topical: {
@@ -1395,7 +1406,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   techMarkets: {
     labelKey: 'header.panelCatMarkets',
-    panelKeys: ['markets', 'finance', 'crypto', 'economic', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
+    panelKeys: ['markets', 'finance', 'crypto', 'economic', 'global-procurement', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
     variants: ['tech'],
   },
 
@@ -1422,7 +1433,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   centralBanksEcon: {
     labelKey: 'header.panelCatCentralBanks',
-    panelKeys: ['centralbanks', 'economic', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'economic-news'],
+    panelKeys: ['centralbanks', 'economic', 'global-procurement', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'economic-news'],
     variants: ['finance'],
   },
   dealsInstitutional: {
@@ -1444,7 +1455,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   miningIndustry: {
     labelKey: 'header.panelCatMining',
-    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'commodity-regulation'],
     variants: ['commodity'],
   },
   commodityEcon: {

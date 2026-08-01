@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, writeFreshnessMetadata } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
-import { getUsEquitySession, isUsEquityTradingDay } from './shared/market-hours.cjs';
+import { CHINA_COUNTRY_STOCK_INDEX_KEY, buildCountryStockIndexSnapshot } from './_country-stock-index.mjs';
+import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
+import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
 
@@ -47,6 +49,7 @@ async function fetchYahooQuote(symbol) {
 }
 
 async function fetchMarketQuotes() {
+  const previousPayloadPromise = readSeedSnapshot(CANONICAL_KEY);
   const quotes = [];
   const avKey = process.env.ALPHA_VANTAGE_API_KEY;
   const finnhubKey = process.env.FINNHUB_API_KEY;
@@ -97,8 +100,14 @@ async function fetchMarketQuotes() {
     throw new Error('All market quote fetches failed');
   }
 
+  const previousPayload = await previousPayloadPromise;
+  const previousQuotes = Array.isArray(previousPayload?.quotes) ? previousPayload.quotes : [];
+  const mergedQuotes = mergeLastGoodQuotes(MARKET_SYMBOLS, quotes, previousQuotes);
+  const retainedCount = mergedQuotes.length - quotes.length;
+  if (retainedCount > 0) console.log(`  [last-good] Retained ${retainedCount} quotes missing from this refresh`);
+
   return {
-    quotes,
+    quotes: mergedQuotes,
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? 'ALPHA_VANTAGE_API_KEY and FINNHUB_API_KEY not configured' : '',
     rateLimited: false,
@@ -114,37 +123,63 @@ export function declareRecords(data) {
 }
 
 
-// #4922d: on non-trading days (weekends + full NYSE holidays) the last
+// #4922d: when every tracked exchange is on a non-trading day, the last
 // published close IS the current truth — skip the upstream fetch entirely and
 // keep last-good alive with the same TTL-extension helper the runSeed phase-1
 // graceful (exit-75) path uses, plus a seed-meta refresh so freshness
 // monitors stay green over a 60h+ weekend. Exit 0, NEVER 75 — a recurring 75
 // is classified as a chronic crash by the fleet diagnoser. Gated on the
-// TRADING DAY, not session === 'closed': the symbol list mixes in NSE
-// tickers whose IST session falls inside the US weekday-overnight window.
+// MULTI-MARKET TRADING DAY, not the US session: the symbol list also includes
+// NSE, mainland-China, and Hong Kong tickers that can trade on NYSE holidays.
 // If last-good is missing/expired (fresh Redis, weekend deploy), fall
 // through to a real fetch so the keys repopulate. We only report fresh and
 // exit(0) when the TTL extension actually CONFIRMS (every key still alive and
 // re-expired) — a silently-failed extension must not refresh seed-meta and
 // leave health monitors green over a canonical key that then lapses.
-if (!isUsEquityTradingDay()) {
+if (!isMultiMarketEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
-    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY], CACHE_TTL);
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, CHINA_COUNTRY_STOCK_INDEX_KEY], CACHE_TTL);
     if (extended) {
       await writeFreshnessMetadata('market', 'stocks', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
-      console.log(`[seed-market-quotes] US market closed (session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
+      console.log(`[seed-market-quotes] Tracked equity markets closed (US session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
       process.exit(0);
     }
-    console.warn('[seed-market-quotes] US market closed but TTL extension did not confirm all keys — fetching to repopulate');
+    console.warn('[seed-market-quotes] Tracked equity markets closed but TTL extension did not confirm all keys — fetching to repopulate');
   } else {
-    console.warn('[seed-market-quotes] US market closed but no last-good canonical data — fetching anyway');
+    console.warn('[seed-market-quotes] Tracked equity markets closed but no last-good canonical data — fetching anyway');
   }
 }
 
 async function writeRequiredCompanionKeys(data) {
   if (!data) return;
   await writeExtraKey(RPC_KEY, data, CACHE_TTL);
+  try {
+    await writeChinaCountryStockIndex();
+  } catch (err) {
+    // A China-specific source failure must remain visible to its audit without
+    // turning an otherwise successful global market seed into a false outage.
+    // Preserve last-good long enough for the audit's content-age budget to
+    // distinguish a transient provider error from a missing cache.
+    const preserved = await extendExistingTtl([CHINA_COUNTRY_STOCK_INDEX_KEY], CACHE_TTL);
+    console.warn(
+      `[seed-market-quotes] China country index refresh failed: ${err.message}; `
+      + (preserved ? 'preserved last-good cache TTL' : 'no last-good cache TTL to preserve'),
+    );
+  }
+}
+
+async function writeChinaCountryStockIndex() {
+  // Keep the China deep-dive cache Railway-backed. The RPC may still refresh
+  // on demand, but audit health cannot depend on someone opening the panel.
+  await sleep(YAHOO_DELAY_MS);
+  const chart = await fetchYahooJson(
+    'https://query1.finance.yahoo.com/v8/finance/chart/000001.SS?range=1mo&interval=1d',
+    { label: 'China country index' },
+  );
+  const snapshot = buildCountryStockIndexSnapshot(chart);
+  if (!snapshot) throw new Error('China country index returned insufficient closes');
+  await writeExtraKey(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, CACHE_TTL);
 }
 
 runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
@@ -154,6 +189,10 @@ runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 30,
+  // This companion payload is written after the global market publish because
+  // it needs a different Yahoo chart shape. Preserve its last-good TTL across
+  // every runSeed graceful path, just like normal extra keys.
+  preserveKeys: [CHINA_COUNTRY_STOCK_INDEX_KEY],
   afterPublish: async (data) => {
     // runSeed exits the process on success; required companion writes must be
     // awaited here so the RPC key is published before the terminal exit.

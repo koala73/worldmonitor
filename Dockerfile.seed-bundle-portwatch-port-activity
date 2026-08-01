@@ -1,5 +1,5 @@
 # =============================================================================
-# Seed Bundle: PortWatch Port-Activity (daily cron, standalone)
+# Seed Bundle: PortWatch Port-Activity (12-hour cron, standalone)
 # =============================================================================
 # Runs scripts/seed-bundle-portwatch-port-activity.mjs which spawns the single
 # PW-Port-Activity section via _bundle-runner.mjs. Split out of the main

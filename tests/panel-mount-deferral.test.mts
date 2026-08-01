@@ -472,4 +472,26 @@ describe('panel mount deferral', () => {
       'mountPanelElement must flush runWhenConnected callbacks after inserting the panel element',
     );
   });
+
+  it('reserves a grid slot for immediate-tier lazy panels before their chunk loads (#5332)', async () => {
+    const source = await readFile(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
+    const method = source.match(/private\s+insertInitialPanelByKey\([\s\S]*?\n {2}\}/);
+
+    assert.ok(method, 'insertInitialPanelByKey method not found');
+    assert.doesNotMatch(
+      method[0],
+      /mountLazyPanel\(/,
+      'immediate-tier boot mounts must not use the placeholder-less mountLazyPanel path: the async '
+        + 'chunk arrival inserts a brand-new grid item and shoves every panel below it — field mover '
+        + 'data (#5332) named these insertions as the dominant desktop CLS mechanism',
+    );
+    assert.match(
+      method[0],
+      /this\.deferPanelMount\(key, null, grid, this\.ctx\.panelSettings\[key\]\?\.enabled === true\);\s*if \(this\.shouldMountPanelImmediately\(key\)\) \{\s*this\.mountDeferredPanel\(key\);\s*\}/,
+      'insertInitialPanelByKey must reserve the slot first (withShell tied to the enabled flag), with the '
+        + 'immediate mount nested inside the shouldMountPanelImmediately budget gate and running after '
+        + 'deferPanelMount — hoisting, reordering, or dropping the enabled arg defeats the immediate-tier '
+        + 'budget or the shell reservation (#5332)',
+    );
+  });
 });

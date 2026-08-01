@@ -21,12 +21,13 @@ export const UNKNOWN_CLIENT_IP = 'unknown';
 // the request actually transited CF. Keep in sync with api/_client-ip.js.
 const CF_EDGE_PROOF_HEADER = 'x-wm-edge-proof';
 
-// Constant-time comparison for the edge-proof secret. Synchronous so getClientIp
-// stays sync (per-request rate-limit hot path, several non-awaiting callers).
+// Compare the edge-proof secret without an early exit on length mismatch.
+// Synchronous so getClientIp stays sync (per-request rate-limit hot path,
+// several non-awaiting callers). Keep in sync with api/_client-ip.js.
 function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const len = b.length;
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i += 1) diff |= (a.charCodeAt(i) || 0) ^ b.charCodeAt(i);
   return diff === 0;
 }
 

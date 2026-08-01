@@ -7,6 +7,7 @@ import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
+import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 import {
@@ -42,10 +43,6 @@ export interface PanelOptions {
   collapsible?: boolean;
   defaultRowSpan?: number;
 }
-
-const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
-
-const upgradeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
 
 const ROW_RESIZE_STEP_PX = 80;
 const COL_RESIZE_STEP_PX = 80;
@@ -139,11 +136,16 @@ export class Panel {
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingContentCallback: (() => void) | null = null;
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
   private retryAttempt = 0;
   private _fetching = false;
   private _locked = false;
+  // Last reason rendered by showGatedCta, so repeat gating passes with an
+  // unchanged verdict skip the DOM teardown/rebuild (#4771 re-runs gating on
+  // every subscription-row change, including fields irrelevant to gating).
+  private _lastGateReason: PanelGateReason | null = null;
   // Snapshot of this.content's children at the moment showLocked /
   // showGatedCta replaces them with a lock CTA. unlockPanel re-attaches
   // these nodes so subclasses whose UI is constructed once (typically in
@@ -612,7 +614,16 @@ export class Panel {
   }
 
 
-  protected setDataBadge(state: 'live' | 'cached' | 'unavailable', detail?: string): void {
+  /**
+   * `detailTitle` explains a `detail` the badge is too small to justify on its
+   * own (e.g. a partial source count). Cleared when absent so a stale
+   * explanation can't outlive the detail it described.
+   */
+  protected setDataBadge(
+    state: 'live' | 'cached' | 'unavailable',
+    detail?: string,
+    detailTitle?: string,
+  ): void {
     if (!this.statusBadgeEl) return;
     const labels = {
       live: t('common.live'),
@@ -621,6 +632,13 @@ export class Panel {
     } as const;
     this.statusBadgeEl.textContent = detail ? `${labels[state]} · ${detail}` : labels[state];
     this.statusBadgeEl.className = `panel-data-badge ${state}`;
+    if (detailTitle) {
+      this.statusBadgeEl.title = detailTitle;
+      this.statusBadgeEl.setAttribute('aria-label', detailTitle);
+    } else {
+      this.statusBadgeEl.removeAttribute('title');
+      this.statusBadgeEl.removeAttribute('aria-label');
+    }
     this.statusBadgeEl.style.display = 'inline-flex';
   }
 
@@ -892,6 +910,19 @@ export class Panel {
     this.retryAttempt = 0;
   }
 
+  /**
+   * Drop the error badge, the pending auto-retry countdown, and the backoff.
+   * `setContentHtml` does this implicitly, but panels that paint their content
+   * with `replaceChildren` bypass it — without this, a showError() countdown
+   * scheduled before a successful load keeps ticking and fires one redundant
+   * refresh after the panel has already recovered.
+   */
+  public clearErrorState(): void {
+    this.setErrorState(false);
+    this.clearRetryCountdown();
+    this.retryAttempt = 0;
+  }
+
   public showLocked(features: string[] = []): void {
     this._locked = true;
     this.clearRetryCountdown();
@@ -933,22 +964,69 @@ export class Panel {
     replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
   }
 
-  public showGatedCta(reason: PanelGateReason, onAction: () => void): void {
-    const config: Record<string, { icon: string; desc: string; cta: string }> = {
-      [PanelGateReason.ANONYMOUS]: {
-        icon: lockSvg,
-        desc: t('premium.signInToUnlock'),
-        cta: t('premium.signIn'),
-      },
-      [PanelGateReason.FREE_TIER]: {
-        icon: upgradeSvg,
-        desc: t('premium.upgradeDesc'),
-        cta: t('premium.upgradeToPro'),
-      },
-    };
+  /**
+   * CTA copy per gate reason, resolved lazily so each call translates only
+   * the two strings it renders. #4771 billing-aware states: the user has
+   * (or had) paid evidence, so the CTA must never read as a fresh upsell
+   * (duplicate-checkout risk). Their keys live under components.billingState
+   * (NOT premium.*): premium. is a first-paint shell namespace and these
+   * CTAs only render after the Convex entitlement round-trip, well past
+   * full-locale load.
+   */
+  private static gatedCtaEntry(
+    reason: PanelGateReason,
+  ): { icon: string; desc: string; cta: string } | null {
+    switch (reason) {
+      case PanelGateReason.ANONYMOUS:
+        return {
+          icon: lockSvg,
+          desc: t('premium.signInToUnlock'),
+          cta: t('premium.signIn'),
+        };
+      case PanelGateReason.FREE_TIER:
+        return {
+          icon: upgradeSvg,
+          desc: t('premium.upgradeDesc'),
+          cta: t('premium.upgradeToPro'),
+        };
+      case PanelGateReason.PAYMENT_ON_HOLD:
+        return {
+          icon: lockSvg,
+          desc: t('components.billingState.onHoldDesc'),
+          cta: t('components.billingState.updatePayment'),
+        };
+      case PanelGateReason.RENEWAL_PENDING:
+        return {
+          icon: lockSvg,
+          desc: t('components.billingState.renewalPendingDesc'),
+          cta: t('components.billingState.refreshStatus'),
+        };
+      case PanelGateReason.RENEWAL_FAILED:
+        return {
+          icon: lockSvg,
+          desc: t('components.billingState.renewalFailedDesc'),
+          cta: t('components.billingState.manageBilling'),
+        };
+      case PanelGateReason.LAPSED:
+        return {
+          icon: upgradeSvg,
+          desc: t('components.billingState.lapsedDesc'),
+          cta: t('components.billingState.resubscribe'),
+        };
+      default:
+        return null;
+    }
+  }
 
-    const entry = config[reason];
+  public showGatedCta(reason: PanelGateReason, onAction: () => void): void {
+    const entry = Panel.gatedCtaEntry(reason);
     if (!entry) return; // PanelGateReason.NONE should never reach here
+
+    // Same verdict already rendered — skip the DOM teardown/rebuild.
+    // Gating re-runs on every subscription-row change (#4771), including
+    // Convex updates to fields irrelevant to the gate verdict.
+    if (this._locked && this._lastGateReason === reason) return;
+    this._lastGateReason = reason;
 
     // Bail-out done — now commit to the locked state. Doing this AFTER the
     // guard avoids a half-locked DOM (header siblings hidden, panel-is-locked
@@ -978,6 +1056,7 @@ export class Panel {
   public unlockPanel(): void {
     if (!this._locked) return;
     this._locked = false;
+    this._lastGateReason = null;
     this.element.classList.remove('panel-is-locked');
     // Re-show hidden elements
     for (let child = this.header.nextElementSibling; child && child !== this.content; child = child.nextElementSibling) {
@@ -995,6 +1074,23 @@ export class Panel {
     } else {
       replaceChildren(this.content);
     }
+  }
+
+  /**
+   * Remove sensitive panel payloads from both the visible DOM and the
+   * pre-lock restoration snapshot. Pro panels call this on sign-out or
+   * downgrade so unlockPanel() cannot resurrect data captured before the
+   * entitlement changed.
+   */
+  protected clearSensitiveContent(): void {
+    this._savedContent = null;
+    this.pendingContentHtml = null;
+    this.pendingContentCallback = null;
+    if (this.contentDebounceTimer) {
+      clearTimeout(this.contentDebounceTimer);
+      this.contentDebounceTimer = null;
+    }
+    if (!this._locked) replaceChildren(this.content);
   }
 
   // Capture this.content's current child nodes so unlockPanel can put them
@@ -1097,20 +1193,26 @@ export class Panel {
     }
   }
 
-  public setSafeContent(html: SafeHtml): void {
-    this.setContentHtml(safeHtmlToString(html));
+  public setSafeContent(html: SafeHtml, afterUpdate?: () => void): void {
+    this.setContentHtml(safeHtmlToString(html), afterUpdate);
   }
 
-  private setContentHtml(html: string): void {
+  private setContentHtml(html: string, afterUpdate?: () => void): void {
     if (this._locked) return;
     this.setErrorState(false);
     this.clearRetryCountdown();
     this.retryAttempt = 0;
-    if (this.pendingContentHtml === html || this.content.innerHTML === html) {
+    if (this.pendingContentHtml === html) {
+      if (afterUpdate) this.pendingContentCallback = afterUpdate;
+      return;
+    }
+    if (this.content.innerHTML === html) {
+      afterUpdate?.();
       return;
     }
 
     this.pendingContentHtml = html;
+    this.pendingContentCallback = afterUpdate ?? null;
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
     }
@@ -1129,9 +1231,12 @@ export class Panel {
     }
 
     this.pendingContentHtml = null;
+    const afterUpdate = this.pendingContentCallback;
+    this.pendingContentCallback = null;
     if (this.content.innerHTML !== html) {
       setTrustedHtml(this.content, trustedHtml(html, 'legacy direct innerHTML migration'));
     }
+    afterUpdate?.();
   }
 
   public show(): void {
@@ -1249,6 +1354,7 @@ export class Panel {
       this.contentDebounceTimer = null;
     }
     this.pendingContentHtml = null;
+    this.pendingContentCallback = null;
     // Drop the snapshot of pre-lock children so a panel destroyed while
     // still in the locked state doesn't retain the detached DOM subtree
     // for the lifetime of the Panel instance. PR #3814 review (Greptile P2).

@@ -460,8 +460,10 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
   let deps;
   let server;
   let aliasUrl;
+  let staticFetchCalls;
   const realFetch = globalThis.fetch;
   const cardText = readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8');
+  const guideText = readFileSync(new URL('../public/mcp-server.md', import.meta.url), 'utf8');
 
   beforeEach(async () => {
     process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
@@ -474,13 +476,19 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     deps = makeProDeps().deps;
     server = await startMcpServer(mcpHandler, deps);
     aliasUrl = server.url.replace('/mcp', '/.well-known/mcp');
+    staticFetchCalls = [];
     // The handler self-fetches the static card asset; the localhost harness
     // has no static file server, so serve the on-disk card for that one URL
     // and delegate everything else (including the test's own requests).
     globalThis.fetch = (input, init) => {
       const href = typeof input === 'string' ? input : input.url ?? String(input);
       if (href.endsWith('/.well-known/mcp/server-card.json')) {
+        staticFetchCalls.push({ href, init });
         return Promise.resolve(new Response(cardText, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      if (href.endsWith('/mcp-server.md')) {
+        staticFetchCalls.push({ href, init });
+        return Promise.resolve(new Response(guideText, { status: 200, headers: { 'Content-Type': 'text/markdown' } }));
       }
       return realFetch(input, init);
     };
@@ -509,6 +517,13 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(card.kind, 'product');
     assert.equal(card.serverUrl, 'https://worldmonitor.app/mcp');
     assert.equal(card.remotes?.[0]?.url, 'https://worldmonitor.app/mcp');
+    const cardFetch = staticFetchCalls.find(({ href }) => href.endsWith('/.well-known/mcp/server-card.json'));
+    assert.ok(cardFetch, 'server card must be loaded through the deployment self-fetch');
+    assert.equal(
+      new Headers(cardFetch.init?.headers).get('user-agent'),
+      'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)',
+      'server-side fetches must identify WorldMonitor to the deployment edge',
+    );
     // The manifest is a static, immutable-per-deploy asset — it must stay
     // cacheable (it was `public, max-age=3600` as a static file). The MCP
     // no-store CORS bundle must NOT clobber that on the manifest GET, or every
@@ -523,6 +538,175 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(res.status, 200);
     const card = await res.json();
     assert.equal(card.url, 'https://worldmonitor.app/mcp');
+  });
+
+  it('plain GET /mcp serves the human-readable server guide (crawler-accessible discovery)', async () => {
+    const res = await fetch(server.url, {
+      headers: { Accept: 'text/html,application/xhtml+xml,*/*' },
+    });
+    assert.equal(res.status, 200, 'a plain GET /mcp must not be the transport 405 (Search Console reads it as "cannot access")');
+    assert.match(res.headers.get('content-type') ?? '', /text\/markdown/i);
+    const body = await res.text();
+    assert.match(body, /# World Monitor MCP Server/, 'must be the mcp-server.md guide, not the JSON card');
+    assert.match(body, /https:\/\/worldmonitor\.app\/mcp/, 'guide must advertise the apex transport URL');
+    assert.match(res.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
+      'discovery representation must declare the apex endpoint canonical');
+  });
+
+  it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {
+    // Import the implementation directly with a unique query so its module-scope
+    // document caches start empty; api/mcp.ts re-exports a shared handler module.
+    const fresh = await import(`../api/mcp/handler.ts?fallback=${Date.now()}-${Math.random()}`);
+    const fallbackServer = await startMcpServer(fresh.mcpHandler, deps);
+    const fallbackAliasUrl = fallbackServer.url.replace('/mcp', '/.well-known/mcp');
+    const successfulStaticFetch = globalThis.fetch;
+
+    globalThis.fetch = (input, init) => {
+      const href = typeof input === 'string' ? input : input.url ?? String(input);
+      if (href.endsWith('/.well-known/mcp/server-card.json')) {
+        return Promise.reject(new Error('deployment self-fetch failed'));
+      }
+      if (href.endsWith('/mcp-server.md')) {
+        return Promise.resolve(new Response(null, { status: 503 }));
+      }
+      return realFetch(input, init);
+    };
+
+    try {
+      const cardFallback = await fetch(fallbackAliasUrl, {
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+      });
+      assert.equal(cardFallback.status, 302);
+      assert.equal(cardFallback.headers.get('location'), '/.well-known/mcp/server-card.json');
+      assert.match(cardFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+      assert.match(cardFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+
+      const guideFallback = await fetch(fallbackServer.url, {
+        headers: { Accept: 'text/html,*/*' },
+        redirect: 'manual',
+      });
+      assert.equal(guideFallback.status, 302);
+      assert.equal(guideFallback.headers.get('location'), '/mcp-server.md');
+      assert.match(guideFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+      assert.match(guideFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+
+      const cardHeadFallback = await fetch(fallbackAliasUrl, {
+        method: 'HEAD',
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+      });
+      assert.equal(cardHeadFallback.status, cardFallback.status);
+      assert.equal(cardHeadFallback.headers.get('location'), cardFallback.headers.get('location'));
+
+      const guideHeadFallback = await fetch(fallbackServer.url, {
+        method: 'HEAD',
+        headers: { Accept: 'text/html,*/*' },
+        redirect: 'manual',
+      });
+      assert.equal(guideHeadFallback.status, guideFallback.status);
+      assert.equal(guideHeadFallback.headers.get('location'), guideFallback.headers.get('location'));
+    } finally {
+      globalThis.fetch = successfulStaticFetch;
+      await fallbackServer.close();
+    }
+  });
+
+  // ── cache-key contract ────────────────────────────────────────────────────
+  // Regression net for a bug reproduced on production: /.well-known/mcp served
+  // a `public, max-age=3600` card with no Vary, and Vercel's edge (which keys
+  // on URL alone) replayed that stored 200 to a subsequent
+  // `Accept: text/event-stream` GET — handing an SDK client a JSON body where
+  // the transport contract requires 405. Any cacheable discovery 200 on these
+  // URLs MUST carry Vary; the transport URL must not be cacheable at all.
+  it('server card 200 is cacheable ONLY because it varies on the negotiating headers', async () => {
+    const res = await fetch(aliasUrl, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('cache-control') ?? '', /max-age=3600/,
+      'server card GET must stay cacheable');
+    const vary = res.headers.get('vary') ?? '';
+    // `(?!-)` is load-bearing: `-` is a word boundary, so a naive /\bAccept\b/
+    // also matches the `accept-encoding` an edge adds on its own — the check
+    // would pass against an origin sending no Vary at all.
+    assert.match(vary, /\bAccept\b(?!-)/i,
+      'a cacheable 200 negotiated on Accept MUST Vary on Accept, or a shared cache serves it to an SSE GET');
+    assert.match(vary, /\bLast-Event-ID\b/i,
+      'the same URL branches on Last-Event-ID into authenticated replay — that must be part of the cache key too');
+  });
+
+  it('the /mcp transport URL never emits a cacheable 200 body', async () => {
+    const res = await fetch(server.url, { headers: { Accept: '*/*' } });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('cache-control') ?? '', /no-store/,
+      '/mcp is the live transport URL — a stored 200 here can be replayed to an SSE or replay GET');
+    assert.match(res.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+  });
+
+  it('an SSE-flavoured GET /mcp still gets the transport 405, never the guide', async () => {
+    const res = await fetch(server.url, { headers: { Accept: 'text/event-stream' } });
+    assert.equal(res.status, 405, 'standalone SSE stream open must keep its graceful 405 signal');
+    assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
+    assert.doesNotMatch(res.headers.get('content-type') ?? '', /text\/markdown/i);
+  });
+
+  it('classifies SSE Accept values case-insensitively and honors q=0', async () => {
+    const mixedCaseSse = await fetch(server.url, { headers: { Accept: 'Text/Event-Stream' } });
+    assert.equal(mixedCaseSse.status, 405, 'media types are case-insensitive, so mixed-case SSE remains transport');
+
+    const rejectedSse = await fetch(server.url, { headers: { Accept: 'text/event-stream;q=0, text/html' } });
+    assert.equal(rejectedSse.status, 200, 'q=0 explicitly rejects SSE and must select the discovery guide');
+    assert.match(rejectedSse.headers.get('content-type') ?? '', /text\/markdown/i);
+  });
+
+  it('HEAD /mcp preserves discovery, stream-open, and replay GET semantics', async () => {
+    const discovery = await fetch(server.url, { method: 'HEAD' });
+    assert.equal(discovery.status, 200);
+    assert.match(discovery.headers.get('content-type') ?? '', /text\/markdown/i,
+      'HEAD must not claim application/json when GET returns markdown');
+    assert.match(discovery.headers.get('cache-control') ?? '', /\bno-store\b/i);
+    assert.match(discovery.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+    assert.match(discovery.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+    assert.match(discovery.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
+      'HEAD must retain the matching guide GET canonical link');
+
+    const manifest = await fetch(aliasUrl, { method: 'HEAD', headers: { Accept: 'application/json' } });
+    assert.equal(manifest.status, 200);
+    assert.match(manifest.headers.get('content-type') ?? '', /application\/json/i);
+    assert.match(manifest.headers.get('cache-control') ?? '', /max-age=3600/,
+      'HEAD must advertise the matching manifest GET cache policy');
+    assert.doesNotMatch(manifest.headers.get('cache-control') ?? '', /no-store/);
+    assert.match(manifest.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+    assert.match(manifest.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+
+    const streamOpen = await fetch(server.url, {
+      method: 'HEAD',
+      headers: { Accept: 'text/event-stream' },
+    });
+    assert.equal(streamOpen.status, 405, 'HEAD must preserve the equivalent standalone-stream GET status');
+    assert.match(streamOpen.headers.get('allow') ?? '', /\bPOST\b/);
+
+    const replay = await fetch(server.url, {
+      method: 'HEAD',
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+    });
+    assert.equal(replay.status, 401, 'HEAD must preserve the equivalent authenticated replay GET status');
+    assert.match(replay.headers.get('www-authenticate') ?? '', /^Bearer\b/i);
+  });
+
+  it('advertises transport-aware HEAD through CORS preflight', async () => {
+    const res = await fetch(server.url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://claude.ai',
+        'Access-Control-Request-Method': 'HEAD',
+        'Access-Control-Request-Headers': 'Last-Event-ID, Mcp-Session-Id',
+      },
+    });
+    assert.equal(res.status, 204);
+    assert.match(res.headers.get('access-control-allow-methods') ?? '', /\bHEAD\b/,
+      'cross-origin replay-shaped HEAD must pass preflight');
+    assert.match(res.headers.get('access-control-allow-headers') ?? '', /\bLast-Event-ID\b/i);
+    assert.match(res.headers.get('access-control-allow-headers') ?? '', /\bMcp-Session-Id\b/i);
   });
 
   it('POST initialize completes the live Streamable HTTP handshake at the well-known URL', async () => {

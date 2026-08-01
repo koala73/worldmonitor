@@ -5,7 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { dedupeErrorResponses } from '../scripts/openapi-dedup-responses.mjs';
+import { dedupeErrorResponses, dedupeSharedParameters } from '../scripts/openapi-dedup-responses.mjs';
+import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
 // On 2026-07-05 the per-op rate-limit/idempotency/example doc injections grew
@@ -14,11 +15,11 @@ import { dedupeErrorResponses } from '../scripts/openapi-dedup-responses.mjs';
 // typed schemas") to WARN ("API spec found but couldn't validate function
 // calling compatibility") — the same error path its validator hits on
 // elevenlabs' 1.8 MB and openrouter's 1.5 MB specs, while sub-800 KB specs get
-// computed verdicts. build-openapi-json.mjs now $ref-dedupes the repeated
-// non-2xx error responses when emitting the JSON artifact; these tests prove
-// the dedup is lossless, keeps scanner-credited 2xx responses inline, and
-// keeps the artifact under budget so the next injector can't silently
-// re-cross the cap.
+// computed verdicts. build-openapi-json.mjs now $ref-dedupes repeated non-2xx
+// error responses and the shared China provenance value schemas when emitting
+// the JSON artifact; these tests prove the transforms are lossless, keep
+// scanner-credited 2xx responses inline, and keep the artifact under budget so
+// the next injector cannot silently re-cross the cap.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
@@ -56,6 +57,55 @@ function resolveResponseRefs(spec) {
   }
   delete spec.components?.responses;
   if (spec.components && Object.keys(spec.components).length === 0) delete spec.components;
+  return spec;
+}
+
+function resolveParameterRefs(spec) {
+  for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
+    for (const [method, op] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method.toLowerCase()) || !Array.isArray(op?.parameters)) continue;
+      op.parameters.forEach((param, index) => {
+        const ref = param?.$ref;
+        if (!ref) return;
+        const name = ref.replace('#/components/parameters/', '');
+        const target = spec.components?.parameters?.[name];
+        assert.ok(target, `${method.toUpperCase()} ${path} parameters[${index}]: dangling ${ref}`);
+        op.parameters[index] = structuredClone(target);
+      });
+    }
+  }
+  delete spec.components?.parameters;
+  if (spec.components && Object.keys(spec.components).length === 0) delete spec.components;
+  return spec;
+}
+
+function resolveSharedChinaProvenanceRefs(spec) {
+  const refPrefix =
+    '#/components/schemas/worldmonitor_intelligence_v1_ChinaDecisionSignalProvenanceClaims/';
+  const resolvePointer = (ref) =>
+    ref
+      .slice(2)
+      .split('/')
+      .reduce(
+        (value, segment) => value[segment.replaceAll('~1', '/').replaceAll('~0', '~')],
+        spec,
+      );
+  const visit = (value) => {
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index++) {
+        const child = value[index];
+        if (child?.$ref?.startsWith(refPrefix)) value[index] = structuredClone(resolvePointer(child.$ref));
+        else visit(child);
+      }
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+      if (child?.$ref?.startsWith(refPrefix)) value[key] = structuredClone(resolvePointer(child.$ref));
+      else visit(child);
+    }
+  };
+  visit(spec);
   return spec;
 }
 
@@ -128,13 +178,96 @@ describe('dedupeErrorResponses (fixture)', () => {
   });
 });
 
-describe('dedupeErrorResponses (real bundle)', () => {
+describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
+  it('reuses only structurally identical known-value schemas across the two China surfaces', () => {
+    const sharedKnownValue = { type: 'string', minLength: 1 };
+    const spec = {
+      components: {
+        schemas: {
+          worldmonitor_supply_chain_v1_ChinaCorridorProvenance: {
+            properties: {
+              claims: {
+                properties: {
+                  publisher: {
+                    oneOf: [
+                      {
+                        properties: {
+                          status: { const: 'known' },
+                          value: structuredClone(sharedKnownValue),
+                        },
+                      },
+                      { type: 'null' },
+                    ],
+                  },
+                  revision: {
+                    oneOf: [
+                      {
+                        properties: {
+                          status: { const: 'known' },
+                          value: { type: 'number' },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          worldmonitor_intelligence_v1_ChinaDecisionSignalProvenanceClaims: {
+            properties: {
+              publisher: {
+                oneOf: [
+                  {
+                    properties: {
+                      status: { const: 'known' },
+                      value: structuredClone(sharedKnownValue),
+                    },
+                  },
+                ],
+              },
+              revision: {
+                oneOf: [
+                  {
+                    properties: {
+                      status: { const: 'known' },
+                      value: { type: 'integer' },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = dedupeSharedChinaProvenanceSchemas(spec);
+    assert.deepEqual(stats, { compared: 2, replacedRefs: 1 });
+    assert.equal(
+      spec.components.schemas.worldmonitor_supply_chain_v1_ChinaCorridorProvenance
+        .properties.claims.properties.publisher.oneOf[0].properties.value.$ref,
+      '#/components/schemas/worldmonitor_intelligence_v1_ChinaDecisionSignalProvenanceClaims/properties/publisher/oneOf/0/properties/value',
+    );
+    assert.deepEqual(
+      spec.components.schemas.worldmonitor_supply_chain_v1_ChinaCorridorProvenance
+        .properties.claims.properties.revision.oneOf[0].properties.value,
+      { type: 'number' },
+    );
+  });
+});
+
+describe('public OpenAPI dedupe (real bundle)', () => {
   const original = loadYaml(readFileSync(bundlePath, 'utf8'));
   const deduped = structuredClone(original);
   const stats = dedupeErrorResponses(deduped);
+  const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);
+  const paramStats = dedupeSharedParameters(deduped);
 
   it('is lossless: resolving the $refs reproduces the original spec exactly', () => {
-    assert.deepEqual(resolveResponseRefs(structuredClone(deduped)), original);
+    assert.deepEqual(
+      resolveResponseRefs(resolveSharedChinaProvenanceRefs(resolveParameterRefs(structuredClone(deduped)))),
+      original,
+    );
   });
 
   it('keeps every 2xx response inline (orank credits only the inline responses["200"])', () => {
@@ -156,6 +289,19 @@ describe('dedupeErrorResponses (real bundle)', () => {
     assert.ok(stats.replacedRefs >= 500, `expected wide dedup, got ${stats.replacedRefs} refs`);
   });
 
+  it('reuses the shared China provenance value schemas only after exact comparison', () => {
+    assert.equal(schemaStats.compared, 17);
+    assert.equal(schemaStats.replacedRefs, 17);
+  });
+
+  it('actually engages on the fleet-wide injected parameters (jmespath et al.)', () => {
+    assert.ok(
+      deduped.components.parameters.JmespathParam,
+      'the injector-stamped jmespath param must dedupe into components.parameters.JmespathParam',
+    );
+    assert.ok(paramStats.replacedRefs >= 200, `expected fleet-wide dedup, got ${paramStats.replacedRefs} refs`);
+  });
+
   it(`keeps the minified JSON under the ${SIZE_BUDGET_BYTES}-byte scanner budget`, () => {
     const bytes = JSON.stringify(deduped).length;
     assert.ok(
@@ -169,9 +315,12 @@ describe('dedupeErrorResponses (real bundle)', () => {
 });
 
 describe('build-openapi-json wiring', () => {
-  it('the build script applies dedupeErrorResponses before writing public/openapi.json', () => {
+  it('the build script applies response and shared-provenance dedupe before writing JSON', () => {
     const src = readFileSync(buildScriptPath, 'utf8');
     assert.match(src, /from '\.\/openapi-dedup-responses\.mjs'/);
+    assert.match(src, /from '\.\/openapi-dedup-schemas\.mjs'/);
     assert.match(src, /dedupeErrorResponses\(spec\)/);
+    assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
+    assert.match(src, /dedupeSharedParameters\(spec\)/);
   });
 });

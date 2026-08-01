@@ -5,25 +5,28 @@ package worldmonitor.giving.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/giving/v1/giving.proto";
 
-// GetGivingSummaryRequest specifies parameters for retrieving the global giving summary.
+// GetGivingSummaryRequest specifies projections over the published-claim snapshot.
 message GetGivingSummaryRequest {
-  // Number of platforms to include (0 = all).
+  // Number of platform rows to return (0 = all). Aggregates and provenance
+  // continue to describe the full snapshot.
   int32 platform_limit = 1 [(sebuf.http.query) = { name: "platform_limit" }];
-  // Number of category breakdowns to include (0 = all).
+  // Number of category rows to return (0 = all). Aggregates and provenance
+  // continue to describe the full snapshot.
   int32 category_limit = 2 [(sebuf.http.query) = { name: "category_limit" }];
 }
 
-// GetGivingSummaryResponse contains the global giving activity summary.
+// GetGivingSummaryResponse contains a cacheable published-claim snapshot.
 message GetGivingSummaryResponse {
-  // The giving summary.
+  // The populated giving summary. It may be absent during graceful degradation.
   GivingSummary summary = 1;
 
-  // Time the summary was generated, as Unix epoch milliseconds. A value of 0
-  // means the snapshot is unavailable/degraded, not that giving activity is
-  // zero.
+  // Cache/response materialization time as Unix epoch milliseconds. This is not
+  // source publication or observation time. A value of 0 means the snapshot is
+  // unavailable/degraded, not that giving activity is zero.
   int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 
-  // True when summary is populated. False means an absent/empty summary is
-  // graceful degradation because the snapshot is unavailable.
+  // True when a summary payload is populated. False means an absent/empty
+  // summary is graceful degradation because the snapshot is unavailable;
+  // provenance and data mode are not required on that degraded shape.
   bool data_available = 3;
 }

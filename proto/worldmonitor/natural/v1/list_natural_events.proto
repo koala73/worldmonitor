@@ -32,6 +32,30 @@ message NaturalEvent {
   repeated ForecastPoint forecast_track = 23;
   repeated CoordRing cone_polygon = 24;
   repeated PastTrackPoint past_track = 25;
+
+  // Cross-agency tropical cyclone identity and attribution. These fields keep
+  // each agency's observation intact instead of collapsing incompatible wind
+  // averaging periods into one number.
+  optional string canonical_id = 26;
+  optional string matching_confidence = 27;
+  repeated string canonical_aliases = 28;
+  optional int32 wind_averaging_period_minutes = 29;
+  repeated CycloneAgencyObservation agency_observations = 30;
+}
+
+message CycloneAgencyObservation {
+  string agency = 1;
+  string agency_id = 2;
+  int64 observed_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  double lat = 4;
+  double lon = 5;
+  optional int32 wind_kt = 6;
+  optional int32 wind_averaging_period_minutes = 7;
+  optional int32 pressure_mb = 8;
+  optional string classification = 9;
+  string status = 10;
+  optional string source_name = 11;
+  optional string source_url = 12;
 }
 
 message ForecastPoint {

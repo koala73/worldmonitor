@@ -1,0 +1,43 @@
+---
+import {
+  BLOG_CONVERSION_EVENT,
+  BLOG_CONVERSION_MEDIUM,
+  BLOG_CONVERSION_SOURCE,
+  BLOG_PRODUCT_URLS,
+  normalizeBlogAttributionToken,
+  type BlogProductDestination,
+} from '../lib/blog-conversion-attribution';
+
+interface Props {
+  destination: BlogProductDestination;
+  href?: string;
+  placement: string;
+  campaign?: string;
+  class?: string;
+}
+
+const {
+  destination,
+  href,
+  placement,
+  campaign,
+  class: className,
+} = Astro.props;
+const normalizedCampaign = normalizeBlogAttributionToken(campaign, 'blog-site');
+const normalizedPlacement = normalizeBlogAttributionToken(placement, 'product-link');
+---
+
+<a
+  href={href ?? BLOG_PRODUCT_URLS[destination]}
+  class={className}
+  target="_blank"
+  rel="noopener noreferrer"
+  data-umami-event={BLOG_CONVERSION_EVENT}
+  data-umami-event-destination={destination}
+  data-umami-event-placement={normalizedPlacement}
+  data-umami-event-campaign={normalizedCampaign}
+  data-umami-event-source={BLOG_CONVERSION_SOURCE}
+  data-umami-event-medium={BLOG_CONVERSION_MEDIUM}
+>
+  <slot />
+</a>

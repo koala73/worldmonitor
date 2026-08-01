@@ -124,6 +124,26 @@ test('reportClsMetric captures formFactor before deferred Sentry drain', () => {
   assert.equal(out.ctx.tags.formFactor, 'mobile');
 });
 
+test('reportClsMetric snapshots movers before deferred Sentry drain', () => {
+  let queued: ((s: any) => void) | undefined;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    queued = fn;
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  const movers = ['t=100 v=0.2 sized:intel+80'];
+  reportClsMetric(
+    { value: 0.22, rating: 'poor' },
+    fakeEnqueue,
+    undefined,
+    () => true,
+    () => movers,
+  );
+  movers.push('t=900 v=0.4 ins:late-panel');
+
+  let ctx: any;
+  queued?.({ captureMessage: (_msg: string, value: unknown) => { ctx = value; } });
+  assert.deepEqual(ctx.extra.movers, ['t=100 v=0.2 sized:intel+80']);
+});
+
 test('collectClsReportEnv is safe (empty) in non-browser contexts', () => {
   // Node test runner has no window/document; the collector must not throw and
   // the report path must still work with the resulting empty env.

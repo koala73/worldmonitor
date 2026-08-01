@@ -88,6 +88,24 @@ function extensionFrame(filename = 'blob:https://example.com/ext-1234', fn = 'in
   return { filename, lineno: 1, function: fn };
 }
 
+// ─── ignoreErrors message matches ────────────────────────────────────────
+
+describe('ignoreErrors filters', () => {
+  it('suppresses Clerk SDK UI chunk load failure', () => {
+    assert.ok(
+      isIgnored('[clerk] failed to load https://clerk.worldmonitor.app/npm/@clerk/ui@1/dist/ui.browser.js'),
+      'Clerk SDK load-failure message must be ignored',
+    );
+  });
+
+  it('does NOT suppress a generic "failed to load" error from our code', () => {
+    assert.ok(
+      !isIgnored('Failed to load dashboard config'),
+      'Generic first-party load-failure messages must NOT be ignored',
+    );
+  });
+});
+
 // ─── P2: firstPartyFile regex covers all Vite chunk patterns ─────────────
 
 describe('first-party file detection', () => {
@@ -362,6 +380,14 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // is engine-emitted only.
     ['Unexpected EOF', 'SyntaxError'],
     ['SyntaxError: Unexpected EOF', 'SyntaxError'],
+    // Ancient Android WebView (Chrome 98) parse failures from injected
+    // bridge/extension scripts — zero captured frames, bare keyword token.
+    // Our compiled bundle cannot emit runtime SyntaxErrors without a source-
+    // mapped .ts frame or an owned hashed-chunk URL (handled above).
+    ["Unexpected token 'else'", 'SyntaxError'],
+    ["Unexpected token 'for'", 'SyntaxError'],
+    ['SyntaxError: Unexpected token \'else\'', 'SyntaxError'],
+    ['SyntaxError: Unexpected token \'for\'', 'SyntaxError'],
     // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
     // engine-equivalent of Chrome's bare `Failed to fetch` above. Zero frames
     // via `onunhandledrejection` = background / service-worker / extension /
@@ -554,6 +580,18 @@ describe('existing beforeSend filters', () => {
       { filename: 'chrome-extension://bkkbcggnhapdmkeljlodobbkopceiche/injectScriptAdjust.js', lineno: 1, function: 'doDefault' },
     ]);
     assert.equal(beforeSend(event), null, 'Extension-wrapped window.fetch network blip should be suppressed');
+  });
+
+  it('suppresses bare "Failed to fetch" when extension frame function chains to window.fetch', () => {
+    // Real 2026-07-16 stack: extension `frame_ant/frame_ant.js` wraps fetch and the
+    // leaked rejection frame function is `r.class.c.value.window.fetch`. The original
+    // SG regex only matched `window.fetch` or `Object.apply`; broaden it to any chain
+    // ending in `.window.fetch` while still rejecting `prefetch`/`fetchContent`.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/main-B1YHLdCi.js', lineno: 401, function: 'h' },
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'r.class.c.value.window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Extension chain-ending-in-window.fetch fetch failure should be suppressed');
   });
 
   it('does NOT suppress bare "Failed to fetch" with a first-party frame and a NON-fetch extension frame', () => {
@@ -857,6 +895,39 @@ describe('existing beforeSend filters', () => {
       firstPartyFrame('src/services/stream.ts', 'onmessage'),
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
+  });
+
+  // WORLDMONITOR-RA: SnapTube (Android video-downloader in-app WebView) JS bridge
+  // parses its own `undefined` payload. `/SnapTube/` already sits in ignoreErrors,
+  // but that layer matches the MESSAGE only — here the attribution lives purely in a
+  // frame function, so it needs the stack-aware layer.
+  it('suppresses SyntaxError "is not valid JSON" from the SnapTube WebView bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '/assets/sentry-DMxp_zBn.js', lineno: 488, function: 'r' },
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'Object.jsReceiveMessages' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress SnapTube-shaped JSON errors when a first-party frame is present', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      firstPartyFrame('src/services/panel-storage.ts', 'readCached'),
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party JSON.parse regression must surface');
+  });
+
+  it('does NOT suppress "is not valid JSON" from an unnamed anonymous bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '<anonymous>', lineno: 1, function: 'e.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.ok(
+      beforeSend(event) !== null,
+      'suppression must key off the named SnapTube bridge, not bare !hasFirstParty',
+    );
   });
 
   // WORLDMONITOR-NR: deck.gl/maplibre internal null-access on Layer.isHidden
@@ -1185,5 +1256,93 @@ describe('bare "Failed to fetch" via DebugBear RUM fetch wrapper (WORLDMONITOR-V
   it('does NOT suppress a non-"Failed to fetch" error that merely has a DebugBear frame', () => {
     const event = makeEvent('Something else entirely', 'TypeError', vcStack);
     assert.ok(beforeSend(event) !== null, 'gate is scoped to the bare Failed-to-fetch message');
+  });
+
+  // WORLDMONITOR-VQ (20ev/12u, 2026-07-09+): the SAME DebugBear-wrapper class as
+  // VC, slipping the gate because a later Vite build emits the trampoline frame
+  // with a minified receiver prefix — `Rt.window.fetch` instead of the bare
+  // `window.fetch` VC carried. The anchored `^(?:window\.)?fetch$` function match
+  // rejects the prefix, `nonInfraFrames.every` fails, and the event surfaces.
+  // The prefix is bounded to a minified identifier (≤3 chars) so a real named
+  // receiver (`apiClient.fetch`) still surfaces as a genuine caller.
+  const vqStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+    { filename: '/assets/widget-store-DxbOqNLQ.js', lineno: 38, function: 'Rt.window.fetch' },
+    { filename: '/assets/panel-storage-GsJWN0Dg.js', lineno: 2, function: 'window.fetch' },
+  ];
+
+  it('suppresses the exact VQ stack (minified-prefixed `Rt.window.fetch` trampoline)', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', vqStack)), null,
+      'minified-prefixed trampoline is the same DebugBear wrapper class as VC');
+  });
+
+  it('suppresses a minified-prefixed bare `fetch` trampoline', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/panel-storage-GsJWN0Dg.js', lineno: 2, function: 'Xt.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'minified receiver on a bare fetch trampoline is still a trampoline');
+  });
+
+  it('does NOT suppress a NAMED receiver on a fetch trampoline frame', () => {
+    // Safety bound: the minified-prefix tolerance must not swallow a real
+    // first-party caller that happens to invoke `.fetch` off a named object.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/widget-store-DxbOqNLQ.js', lineno: 38, function: 'apiClient.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a named receiver is a real caller, not a minified trampoline');
+  });
+
+  it('does NOT suppress a minified-prefixed trampoline in a NON-allowlisted chunk', () => {
+    // The chunk allowlist stays load-bearing: runtime.ts is our real fetch
+    // wrapper, so its failures must surface regardless of frame naming.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 38, function: 'Rt.window.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'runtime fetch wrapper failures must still reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-WH/WJ: `Failed to fetch (abacus.worldmonitor.app)` ──────────
+//
+// abacus.worldmonitor.app is our SELF-HOSTED Umami analytics collector
+// (src/services/analytics.ts → `https://abacus.worldmonitor.app/script.js`, which
+// POSTs events to `/api/send`). A dropped analytics beacon is invisible to the
+// user and unactionable — the same disposition as the `data.debugbear.com` RUM
+// collector above. It reaches Sentry because the leaked rejection carries our
+// Vite `window.fetch` trampolines (widget-store / panel-storage), which make
+// hasFirstParty true and so defeat the extension-only gate.
+describe('`Failed to fetch (abacus.worldmonitor.app)` — Umami beacon (WORLDMONITOR-WH/WJ)', () => {
+  // Verbatim production stack from WORLDMONITOR-WH.
+  const whStack = [
+    { filename: '/script.js', lineno: 1, function: 'C' },
+    { filename: '/assets/sentry-DMxp_zBn.js', lineno: 1, function: null },
+    { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+    { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'o' },
+    { filename: '/assets/widget-store-dMTCHpAl.js', lineno: 38, function: 'window.fetch' },
+    { filename: '/assets/panel-storage-BWxNKlQM.js', lineno: 2, function: 'window.fetch' },
+  ];
+
+  it('suppresses the exact WH stack (Umami beacon through an extension fetch wrapper)', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', whStack)), null,
+      'a dropped Umami analytics beacon is unactionable');
+  });
+
+  it('suppresses the Firefox host-suffixed phrasing for the same host', () => {
+    const event = makeEvent('NetworkError when attempting to fetch resource. (abacus.worldmonitor.app)', 'TypeError', []);
+    assert.equal(beforeSend(event), null, 'host allowlist decides regardless of engine phrasing');
+  });
+
+  it('still surfaces `Failed to fetch (api.worldmonitor.app)` with the same stack shape', () => {
+    // The allowlist is host-scoped, so adding the beacon host must not widen the
+    // gate for our data-serving API — a real outage still has to reach Sentry.
+    const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', whStack);
+    assert.ok(beforeSend(event) !== null, 'API-outage canary must never be masked by the beacon allowlist');
   });
 });

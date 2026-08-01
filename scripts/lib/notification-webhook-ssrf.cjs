@@ -217,8 +217,12 @@ async function assertNotificationWebhookDeliveryUrlSafe(rawUrl, resolveHostname 
 }
 
 function responseFromNode(statusCode, statusMessage, headers, body) {
-  return new Response(new Uint8Array(body), {
-    status: statusCode || 502,
+  const status = statusCode || 502;
+  const responseBody = status === 204 || status === 205 || status === 304
+    ? null
+    : new Uint8Array(body);
+  return new Response(responseBody, {
+    status,
     statusText: statusMessage,
     headers,
   });
@@ -294,4 +298,5 @@ module.exports = {
   blockedNotificationWebhookUrlReason,
   isBlockedResolvedAddress,
   postJsonWithPinnedAddress,
+  responseFromNode,
 };

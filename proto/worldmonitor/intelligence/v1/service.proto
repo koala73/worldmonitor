@@ -12,6 +12,8 @@ import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/list_security_advisories.proto";
 import "worldmonitor/intelligence/v1/list_company_signals.proto";
+import "worldmonitor/intelligence/v1/search_sec_filings.proto";
+import "worldmonitor/intelligence/v1/list_material_events.proto";
 import "worldmonitor/intelligence/v1/list_gps_interference.proto";
 import "worldmonitor/intelligence/v1/list_oref_alerts.proto";
 import "worldmonitor/intelligence/v1/list_satellites.proto";
@@ -24,9 +26,13 @@ import "worldmonitor/intelligence/v1/get_social_velocity.proto";
 import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
 import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
 import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
+import "worldmonitor/intelligence/v1/get_china_decision_signals.proto";
 import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
 import "worldmonitor/intelligence/v1/get_regime_history.proto";
 import "worldmonitor/intelligence/v1/get_regional_brief.proto";
+import "worldmonitor/intelligence/v1/search_intel_history.proto";
+import "worldmonitor/intelligence/v1/get_intel_timeline.proto";
+import "worldmonitor/intelligence/v1/get_similar_events.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -114,26 +120,40 @@ service IntelligenceService {
     };
   }
 
-  // GetCompanyEnrichment is DISABLED and returns an empty stub. The route is preserved
-  // for contract stability, but the handler no longer aggregates any external data
-  // (the prior domain-slug attribution heuristic was unsound). Deprecated pending a
-  // verified attribution model.
+  // GetCompanyEnrichment aggregates a per-company intelligence composite: SEC EDGAR
+  // identity and recent filings (via authoritative ticker-to-CIK resolution), market
+  // profile and earnings surprises from Finnhub, and recent news mentions.
   rpc GetCompanyEnrichment(GetCompanyEnrichmentRequest) returns (GetCompanyEnrichmentResponse) {
-    option deprecated = true;
     option (sebuf.http.config) = {
       path: "/get-company-enrichment"
       method: HTTP_METHOD_GET
     };
   }
 
-  // ListCompanySignals is DISABLED and returns an empty stub. The route is preserved
-  // for contract stability, but the handler no longer discovers any signals (the prior
-  // guessed-identity/keyword heuristic was unsound). Deprecated pending a verified
-  // attribution model.
+  // ListCompanySignals discovers classified intelligence signals for a company from
+  // authoritative sources: SEC 8-K material events and recent news mentions, with
+  // per-type summary rollups. Fiscal period ends are not used as event timestamps.
   rpc ListCompanySignals(ListCompanySignalsRequest) returns (ListCompanySignalsResponse) {
-    option deprecated = true;
     option (sebuf.http.config) = {
       path: "/list-company-signals"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // SearchSecFilings runs a full-text search over SEC EDGAR filings with optional
+  // form-type and date-range filters.
+  rpc SearchSecFilings(SearchSecFilingsRequest) returns (SearchSecFilingsResponse) {
+    option (sebuf.http.config) = {
+      path: "/search-sec-filings"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListMaterialEvents returns the pre-seeded stream of recent SEC 8-K material-event
+  // filings (M&A, executive changes, restatements, bankruptcies) across all filers.
+  rpc ListMaterialEvents(ListMaterialEventsRequest) returns (ListMaterialEventsResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-material-events"
       method: HTTP_METHOD_GET
     };
   }
@@ -183,6 +203,12 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
   }
 
+  // GetChinaDecisionSignals composes the six launched China decision-parity
+  // domains into one bounded provenance-preserving public snapshot.
+  rpc GetChinaDecisionSignals(GetChinaDecisionSignalsRequest) returns (GetChinaDecisionSignalsResponse) {
+    option (sebuf.http.config) = {path: "/get-china-decision-signals", method: HTTP_METHOD_GET};
+  }
+
   // GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
   // region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
   // this handler only reads canonical state. Premium-gated.
@@ -201,5 +227,27 @@ service IntelligenceService {
   // Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
   rpc GetRegionalBrief(GetRegionalBriefRequest) returns (GetRegionalBriefResponse) {
     option (sebuf.http.config) = {path: "/get-regional-brief", method: HTTP_METHOD_GET};
+  }
+
+  // SearchIntelHistory searches the durable historical intelligence store
+  // (convex/intelHistory.ts) by semantic similarity to a free-text query.
+  // The handler embeds the query, so each cache miss costs one embeddings
+  // call — the route carries its own fail-closed rate policy. Premium-gated.
+  rpc SearchIntelHistory(SearchIntelHistoryRequest) returns (SearchIntelHistoryResponse) {
+    option (sebuf.http.config) = {path: "/search-intel-history", method: HTTP_METHOD_POST};
+  }
+
+  // GetIntelTimeline returns the durable historical intelligence store
+  // newest-first for one domain and/or country. Pure index read — no
+  // embedding, no ranking. Premium-gated.
+  rpc GetIntelTimeline(GetIntelTimelineRequest) returns (GetIntelTimelineResponse) {
+    option (sebuf.http.config) = {path: "/get-intel-timeline", method: HTTP_METHOD_GET};
+  }
+
+  // GetSimilarEvents returns historical precedents for a described situation.
+  // Same vector search as SearchIntelHistory over a longer free-text input,
+  // so it is likewise embeddings-backed and rate-policied. Premium-gated.
+  rpc GetSimilarEvents(GetSimilarEventsRequest) returns (GetSimilarEventsResponse) {
+    option (sebuf.http.config) = {path: "/get-similar-events", method: HTTP_METHOD_POST};
   }
 }

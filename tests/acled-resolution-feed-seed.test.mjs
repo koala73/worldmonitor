@@ -48,10 +48,18 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
     // Regression guard for #5106: a *missing* ACLED credential must NOT crash the
     // seed every cron tick. When creds are absent the seed runs in its long-standing
     // auxiliary-only mode — publish an empty ACLED payload and exit 0 rather than throw.
+    //
+    // #5256: returning a BARE `{ events: [], pagination: undefined }` was not enough to
+    // deliver the exit 0 this guard promises. It laundered an upstream outage into a
+    // "0 records" result, which runSeed reads as contract RETRY — and once the last-good
+    // keys expired, #5258's guard exited 1 and the seeder crash-looped forever. The
+    // payload must carry `sourceUnavailable: true` so runSeed skips the publish (an empty
+    // envelope would overwrite last-good) and exits 0. Keep the flag in the pattern:
+    // dropping it silently reinstates the crash loop.
     assert.match(conflictSeed, /missingCredentials\s*=\s*acled\.status\s*===\s*'fulfilled'/);
     assert.match(
       conflictSeed,
-      /if\s*\(\s*missingCredentials\s*\)\s*\{[\s\S]*?return\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/,
+      /if\s*\(\s*missingCredentials\s*\)\s*\{[\s\S]*?return\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined,\s*sourceUnavailable:\s*true\s*\}/,
     );
   });
 

@@ -168,8 +168,8 @@ async function fetchFeed(url) {
     // full FETCH_TIMEOUT so "Timeout (15s)" in the report means a real
     // 15s on a single network call, not 17s+ aggregated across a chain.
     let currentUrl = assertCiAllowed(url).href;
-    const MAX_HOPS = 3;
-    for (let hop = 0; hop < MAX_HOPS; hop++) {
+    const MAX_REDIRECTS = 3;
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
       let resp;
@@ -185,6 +185,7 @@ async function fetchFeed(url) {
       if (resp.status >= 300 && resp.status < 400) {
         const loc = resp.headers.get('location');
         if (!loc) throw new Error(`HTTP ${resp.status} without Location header`);
+        if (redirectCount === MAX_REDIRECTS) throw new Error(CONFIG_DRIFT_REASONS.TOO_MANY_REDIRECTS);
         const nextUrl = new URL(loc, currentUrl);
         assertCiAllowed(nextUrl.href);
         currentUrl = nextUrl.href;
@@ -383,10 +384,11 @@ async function main() {
   if (configDrift.length) {
     console.error(
       `\nFAIL: ${configDrift.length} feed(s) violate the CI guardrails ` +
-      `(allowlist drift or plaintext URL). Fix src/config/feeds.ts and/or the 5 ` +
+      `(allowlist drift or plaintext URL). Fix src/config/feeds.ts and/or the 4 ` +
       `allowlist mirrors (shared/rss-allowed-domains.json, .cjs, ` +
       `scripts/shared/rss-allowed-domains.json, ` +
-      `api/_rss-allowed-domains.js, vite.config.ts:RSS_PROXY_ALLOWED_DOMAINS).`
+      `api/_rss-allowed-domains.js). vite.config.ts now imports isAllowedDomain ` +
+      `from api/_rss-allowed-domain-match.js — no separate dev mirror to sync.`
     );
     process.exit(1);
   }

@@ -1,5 +1,8 @@
 export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
-export const DEBUGBEAR_RUM_SAMPLE_RATE = 100;
+// 10% sampling. 100% overran the DebugBear RUM monthly quota (~529k/500k, 2026-07). The R2-origin
+// experiment that justified full sampling is a no-go (KTD7 feasibility failure); ongoing web-vitals
+// RUM needs only a fraction. Keep in sync with pro-test/src/debugbear-rum.ts (asserted by the test).
+export const DEBUGBEAR_RUM_SAMPLE_RATE = 10;
 const DEBUGBEAR_RUM_SCRIPT_PATHNAME = new URL(DEBUGBEAR_RUM_SCRIPT_SRC).pathname;
 const DEBUGBEAR_RUM_HOSTS = new Set([
   'worldmonitor.app',
@@ -11,7 +14,13 @@ const DEBUGBEAR_RUM_HOSTS = new Set([
   'energy.worldmonitor.app',
 ]);
 
-type DebugBearRumEvent = ['presampling', number] | ['error' | 'unhandledrejection', Event];
+import type { BootstrapR2RumSample } from './bootstrap-r2-rum';
+
+type DebugBearRumEvent =
+  | ['presampling', number]
+  | ['error' | 'unhandledrejection', Event]
+  | ['metric1' | 'metric2' | 'metric3', number]
+  | ['tag1' | 'tag2' | 'tag3', string];
 
 declare global {
   interface Window {
@@ -60,6 +69,23 @@ export function initDebugBearRum(): void {
   }
 
   loadDebugBearRumScript();
+}
+
+/**
+ * Temporary U3a page-level custom fields. One tier is selected per page so a
+ * later tier cannot overwrite the same DebugBear custom slots. These fields
+ * contain only closed tags and numeric durations; no request or stable ID.
+ */
+export function reportBootstrapR2Rum(sample: BootstrapR2RumSample): void {
+  if (!debugBearRumStarted || typeof window === 'undefined' || !window.dbbRum) return;
+  window.dbbRum.push(
+    ['metric1', sample.total_duration_ms],
+    ['metric2', sample.redis_duration_ms],
+    ['metric3', sample.non_r2_overhead_ms],
+    ['tag1', sample.bootstrap_tier],
+    ['tag2', sample.outcome],
+    ['tag3', sample.device_class],
+  );
 }
 
 export function resetDebugBearRumForTesting(): void {

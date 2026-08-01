@@ -17,6 +17,12 @@ const scriptSsrf = require('../scripts/lib/notification-webhook-ssrf.cjs') as {
   ) => Promise<{ url: URL; resolvedAddresses: string[] }>;
   blockedNotificationWebhookUrlReason: (rawUrl: string) => string | null;
   isBlockedResolvedAddress: (address: string) => boolean;
+  responseFromNode: (
+    statusCode: number,
+    statusMessage: string,
+    headers: Record<string, string>,
+    body: Uint8Array,
+  ) => Response;
 };
 
 const blockedUrls = [
@@ -176,11 +182,50 @@ describe('notification webhook SSRF guard', () => {
     }
   });
 
+  test('Slack and Discord senders validate DNS and pin delivery to the vetted address', () => {
+    for (const relPath of ['scripts/notification-relay.cjs', 'scripts/seed-digest-notifications.mjs']) {
+      const source = readFileSync(resolve(process.cwd(), relPath), 'utf8');
+      const slackStart = source.indexOf('async function sendSlack');
+      const discordStart = source.indexOf('async function sendDiscord', slackStart);
+      const emailStart = source.indexOf('async function sendEmail', discordStart);
+
+      assert.ok(slackStart >= 0 && discordStart > slackStart && emailStart > discordStart, `${relPath} delivery functions must stay discoverable`);
+
+      const slackSource = source.slice(slackStart, discordStart);
+      const discordSource = source.slice(discordStart, emailStart);
+      for (const [channel, functionSource] of [['Slack', slackSource], ['Discord', discordSource]] as const) {
+        assert.match(
+          functionSource,
+          /assertNotificationWebhookDeliveryUrlSafe\(webhookUrl\)/,
+          `${relPath} ${channel} delivery must validate the final DNS answer`,
+        );
+        assert.match(
+          functionSource,
+          /postJsonWithPinnedAddress\(/,
+          `${relPath} ${channel} delivery must pin the connection to a vetted address`,
+        );
+        assert.doesNotMatch(
+          functionSource,
+          /fetch\(webhookUrl/,
+          `${relPath} ${channel} delivery must not re-resolve through ordinary fetch`,
+        );
+      }
+    }
+  });
+
   test('pinned delivery helper keeps hard timeout and response body caps', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/lib/notification-webhook-ssrf.cjs'), 'utf8');
     assert.match(source, /MAX_WEBHOOK_RESPONSE_BYTES/);
     assert.match(source, /totalBytes > MAX_WEBHOOK_RESPONSE_BYTES/);
     assert.match(source, /hardDeadline = setTimeout/);
     assert.match(source, /clearTimeout\(hardDeadline\)/);
+  });
+
+  test('pinned delivery helper preserves every null-body HTTP status', async () => {
+    for (const status of [204, 205, 304]) {
+      const response = scriptSsrf.responseFromNode(status, 'No Content', {}, new Uint8Array());
+      assert.equal(response.status, status);
+      assert.equal(await response.text(), '');
+    }
   });
 });

@@ -12,7 +12,6 @@
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
 import { createRequire } from 'node:module';
-import dns from 'node:dns/promises';
 import {
   escapeHtml,
   escapeTelegramHtml,
@@ -32,7 +31,6 @@ const WATCHLIST_STOCKS_DATA = require('../shared/stocks.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
-  isBlockedResolvedAddress,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
@@ -42,9 +40,9 @@ const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs')
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
-import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
+import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
   composeBriefFromDigestStories,
   compareRules,
@@ -714,24 +712,12 @@ async function buildDigest(rule, windowStartMs) {
       continue;
     }
 
-    // Opinion / analysis exclusion (F3). The brief is event-driven
-    // intelligence — an op-ed column is not an event. Ingest stamps
-    // `isOpinion` on the story:track:v1 row; trust that stamp when
-    // present ('1' | '0'). Pre-stamp residue rows (ingested before the
-    // ingest-side stamp shipped) have NO `isOpinion` field at all — for
-    // those, re-classify from the persisted title/link/description so
-    // residue is still excluded for the row's TTL window. See
-    // docs/plans/2026-05-14-001-…-plan.md (F3, Phase 3).
-    const stampedOpinion = track.isOpinion === '1';
-    const stampMissing = typeof track.isOpinion !== 'string' || track.isOpinion.length === 0;
-    if (
-      stampedOpinion ||
-      (stampMissing && classifyOpinion({
-        title: track.title,
-        link: track.link ?? '',
-        description: typeof track.description === 'string' ? track.description : '',
-      }))
-    ) {
+    // Non-event brief exclusion (F3). The brief is event-driven intelligence
+    // — an op-ed or historical explainer is not an event.
+    // Ingest stamps `isOpinion` on the story:track:v1 row. Explicit "1" and
+    // "0" are authoritative; only unstamped legacy rows are classified at
+    // read time by the pure helper below.
+    if (shouldDropOpinionTrack(track)) {
       droppedOpinion++;
       continue;
     }
@@ -1307,10 +1293,6 @@ async function deactivateChannel(userId, channelType) {
   }
 }
 
-function isPrivateIP(ip) {
-  return isBlockedResolvedAddress(ip);
-}
-
 // ── Send functions ────────────────────────────────────────────────────────────
 
 const TELEGRAM_MAX_LEN = 4096;
@@ -1449,18 +1431,21 @@ async function sendSlack(userId, webhookEnvelope, text) {
     console.warn(`[digest] Slack decrypt failed for ${userId}:`, err.message); return false;
   }
   if (!SLACK_RE.test(webhookUrl)) { console.warn(`[digest] Slack URL invalid for ${userId}`); return false; }
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const hostname = new URL(webhookUrl).hostname;
-    const addrs = await dns.resolve4(hostname).catch(() => []);
-    if (addrs.some(isPrivateIP)) { console.warn(`[digest] Slack SSRF blocked for ${userId}`); return false; }
-  } catch { return false; }
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
+  } catch (err) {
+    console.warn(`[digest] Slack URL rejected for ${userId}:`, err.message);
+    return false;
+  }
   try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-      body: JSON.stringify({ text, unfurl_links: false }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await postJsonWithPinnedAddress(
+      safeUrl,
+      JSON.stringify({ text, unfurl_links: false }),
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      resolvedAddresses,
+    );
     if (res.status === 404 || res.status === 410) {
       console.warn(`[digest] Slack webhook gone for ${userId}, deactivating`);
       await deactivateChannel(userId, 'slack');
@@ -1483,19 +1468,22 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     console.warn(`[digest] Discord decrypt failed for ${userId}:`, err.message); return false;
   }
   if (!DISCORD_RE.test(webhookUrl)) { console.warn(`[digest] Discord URL invalid for ${userId}`); return false; }
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const hostname = new URL(webhookUrl).hostname;
-    const addrs = await dns.resolve4(hostname).catch(() => []);
-    if (addrs.some(isPrivateIP)) { console.warn(`[digest] Discord SSRF blocked for ${userId}`); return false; }
-  } catch { return false; }
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
+  } catch (err) {
+    console.warn(`[digest] Discord URL rejected for ${userId}:`, err.message);
+    return false;
+  }
   const content = text.length > 2000 ? text.slice(0, 1999) + '\u2026' : text;
   try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-      body: JSON.stringify({ content }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await postJsonWithPinnedAddress(
+      safeUrl,
+      JSON.stringify({ content }),
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      resolvedAddresses,
+    );
     if (res.status === 404 || res.status === 410) {
       console.warn(`[digest] Discord webhook gone for ${userId}, deactivating`);
       await deactivateChannel(userId, 'discord');

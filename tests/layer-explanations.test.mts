@@ -211,7 +211,7 @@ describe('layer explanation metadata', () => {
   });
 
   test('freshness contract assertions fail on stale copied cadence values', () => {
-    const staleNaturalText = renderedFreshnessText('natural').replace('2 hours', '12 hours');
+    const staleNaturalText = renderedFreshnessText('natural').replace('3 hours', '12 hours');
 
     assert.throws(
       () => assertDuration(staleNaturalText, /every\s+([0-9]+)\s+(hour)s?/i, maxStaleMin('scripts/seed-natural-events.mjs', 'events') / 3, 'natural event seed cadence'),

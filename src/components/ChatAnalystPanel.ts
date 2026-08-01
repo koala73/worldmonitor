@@ -5,6 +5,15 @@ import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { yieldToMain } from '@/utils/after-paint';
 import { premiumFetch } from '@/services/premium-fetch';
+import { getAuthState } from '@/services/auth-state';
+import { readClientEntitlementBelief } from '@/services/panel-gating';
+import {
+  analystDenialMessage,
+  isBillingVerificationDenial,
+  PRO_VERIFICATION_RETRY_MESSAGE,
+} from '@/services/analyst-denial';
+import { classifyDenialResponse, type ClientEntitlementBelief } from '@/services/premium-denial';
+import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackAnalystControlAction } from '@/services/analytics';
 import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import {
@@ -51,6 +60,40 @@ interface MetaEvent {
 }
 
 type DashboardControlStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
+
+/**
+ * Turn a failed /api/chat-analyst response into user-facing copy.
+ *
+ * A 403 has several causes and only one of them is "you need to buy Pro":
+ * the route 403s on a missing plan (api/chat-analyst.ts:126), and the shared
+ * gateway also 403s an unidentified caller and a failed entitlement lookup.
+ * Telling a customer who paid minutes ago to buy a subscription — which is
+ * what the old blanket `status === 403` branch did during the #5600 poison
+ * window — is worse than saying nothing (#5608).
+ *
+ * Consumes the response body, so it is only called on the !ok path where the
+ * stream is never read.
+ */
+async function describeDenial(
+  res: Response,
+  requestBelief: ClientEntitlementBelief,
+  requestUserId: string | null,
+): Promise<string> {
+  const requestIdentityChanged = () => (getAuthState().user?.id ?? null) !== requestUserId;
+  if (requestIdentityChanged()) throw new DOMException('account changed during analyst request', 'AbortError');
+  // #5622: the route now answers an entitlement it could not VERIFY with a
+  // retryable 503 + `X-Billing-Verification` instead of flattening it into the
+  // 403 upsell. Both this check and the verdict-to-copy mapping live in
+  // src/services/analyst-denial.ts so they are reachable from a test — this
+  // module imports DOMPurify at scope and cannot be loaded by `tsx --test`.
+  if (isBillingVerificationDenial(res.status, res.headers.get('X-Billing-Verification'))) {
+    return PRO_VERIFICATION_RETRY_MESSAGE;
+  }
+  const verdict = await classifyDenialResponse(res, requestBelief);
+  if (requestIdentityChanged()) throw new DOMException('account changed while reading analyst denial', 'AbortError');
+  if (verdict === 'entitlement_desync') reportEntitlementDesync('chat-analyst');
+  return analystDenialMessage(res.status, verdict);
+}
 
 interface DashboardControlResult {
   ok: boolean;
@@ -486,7 +529,11 @@ export class ChatAnalystPanel extends Panel {
     const { bubble, body: streamingBody } = this.appendStreamingBubble();
     let accumulatedText = '';
 
-    this.streamAbort = new AbortController();
+    const controller = new AbortController();
+    this.streamAbort = controller;
+    const requestAuthState = getAuthState();
+    const requestUserId = requestAuthState.user?.id ?? null;
+    const requestBelief = readClientEntitlementBelief(requestAuthState);
 
     try {
       const res = await premiumFetch(API_URL, {
@@ -499,12 +546,15 @@ export class ChatAnalystPanel extends Panel {
           // geoContext (ISO-2 country focus) is supported by the API but wired in Phase 2
           // when the panel can read the map's selected country. Agent callers can pass it directly.
         }),
-        signal: this.streamAbort.signal,
+        signal: controller.signal,
       });
 
       if (!res.ok) {
-        const err = res.status === 403 ? 'Pro subscription required.' : `Error ${res.status}`;
-        this.finalizeStreamingBubble(streamingBody, `⚠ ${err}`, false);
+        this.finalizeStreamingBubble(
+          streamingBody,
+          `⚠ ${await describeDenial(res, requestBelief, requestUserId)}`,
+          false,
+        );
         return;
       }
 
@@ -540,9 +590,17 @@ export class ChatAnalystPanel extends Panel {
         this.finalizeStreamingBubble(streamingBody, '⚠ Network error. Try again.', false);
       }
     } finally {
-      this.streamAbort = null;
-      this.isStreaming = false;
-      this.setSendDisabled(false);
+      // Only tear down the shared streaming state if we still OWN it. Every
+      // exit path here follows an await, and clear() resets isStreaming, so a
+      // user who clears mid-flight can start a second send before this block
+      // runs — unconditionally nulling streamAbort would then cancel-proof the
+      // NEW stream and leave the send button stuck. Keying on controller
+      // identity makes a superseded invocation clean up only its own bubble.
+      if (this.streamAbort === controller) {
+        this.streamAbort = null;
+        this.isStreaming = false;
+        this.setSendDisabled(false);
+      }
       bubble.classList.remove('chat-msg-streaming');
     }
   }

@@ -88,7 +88,14 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { onEntitlementChange } from '@/services/entitlements';
+import { evaluateAvailableExportFormats, evaluateExportGate, exportLockToGateReason } from '@/services/gates/export';
+import { primeExportGateActivation } from '@/services/gates/export-resolver';
+import type { DataExportFormat } from '@/services/gates/export-resolver';
+import { evaluatePlaybackGate } from '@/services/gates/playback';
+import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
+import { ExportGateControl } from '@/components/ExportGateControl';
+import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
@@ -209,6 +216,12 @@ export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
+  /**
+   * Tell the data loader that the rendered news no longer reflects the last
+   * load, so the next loadAllData() refetches it even though the category set
+   * is unchanged. See DataLoader.invalidateNewsHydration.
+   */
+  invalidateNewsHydration: () => void;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
   loadDataForLayer: (layer: string) => void;
@@ -255,6 +268,7 @@ export class EventHandlerManager implements AppModule {
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private authStateUnsubscribers: Array<() => void> = [];
+  private proGateUnsubscribers: Array<() => void> = [];
   private exportPanelLoad: Promise<NonNullable<AppContext['exportPanel']>> | null = null;
   private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -495,6 +509,8 @@ export class EventHandlerManager implements AppModule {
     }
     for (const unsub of this.authStateUnsubscribers) unsub();
     this.authStateUnsubscribers = [];
+    for (const unsub of this.proGateUnsubscribers) unsub();
+    this.proGateUnsubscribers = [];
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
     this.ctx.unifiedSettings?.destroy();
@@ -1604,8 +1620,11 @@ export class EventHandlerManager implements AppModule {
       }
     };
 
+    let currentExportFormats: readonly DataExportFormat[] = [];
+
     const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
       if (this.ctx.exportPanel) {
+        this.ctx.exportPanel.setAvailableFormats(currentExportFormats);
         attachExportPanel(this.ctx.exportPanel);
         return Promise.resolve(this.ctx.exportPanel);
       }
@@ -1616,7 +1635,7 @@ export class EventHandlerManager implements AppModule {
           if (this.ctx.isDestroyed) {
             throw new Error('EventHandlerManager destroyed before export panel loaded');
           }
-          const panel = new ExportPanel(getExportData);
+          const panel = new ExportPanel(getExportData, currentExportFormats);
           this.ctx.exportPanel = panel;
           attachExportPanel(panel);
           return panel;
@@ -1629,26 +1648,112 @@ export class EventHandlerManager implements AppModule {
       return this.exportPanelLoad;
     };
 
-    let currentIsPro = getAuthState().user?.role === 'pro';
-    const applyProGate = (isPro: boolean, initial = false) => {
-      currentIsPro = isPro;
-      if (!isPro) {
-        const el = this.ctx.exportPanel?.getElement();
-        if (el) el.style.display = 'none';
-        if (initial) trackGateHit('export');
+    // --- Data-export gate (plan 2026-07-25-001, U5) -------------------------
+    // Replaces the old Clerk-role check plus display:none toggle. The `role`
+    // field is written by nothing in our webhook pipeline, so that check hid
+    // the export button from every paying subscriber. The control is now
+    // visible to everyone and only its MENU changes: format rows when
+    // entitled, a single locked row (reason + CTA) otherwise.
+    let lockedControl: ExportGateControl | null = null;
+    let lockedReason: PanelGateReason | null = null;
+    let isUnlocked = false;
+
+    // Created up front and empty: an aria-live region only announces content
+    // injected AFTER it is in the accessibility tree.
+    const liveRegion = h('span', { className: 'wm-visually-hidden', role: 'status' });
+    liveRegion.setAttribute('aria-live', 'polite');
+    const initialHeaderRight = this.ctx.container.querySelector('.header-right');
+    initialHeaderRight?.appendChild(liveRegion);
+
+    const removeLockedControl = (): void => {
+      lockedControl?.destroy();
+      lockedControl = null;
+      lockedReason = null;
+    };
+
+    const showLocked = (reason: PanelGateReason): void => {
+      isUnlocked = false;
+      const panelEl = this.ctx.exportPanel?.getElement();
+      if (panelEl) panelEl.style.display = 'none';
+      lockedReason = reason;
+      if (lockedControl) {
+        lockedControl.update(reason);
         return;
       }
+      lockedControl = new ExportGateControl({
+        reason,
+        onOpen: () => trackGateHit('export'),
+        onAction: () => {
+          if (lockedReason === null) return;
+          resolveGateAction(lockedReason, { openAuthModal: () => this.ctx.authModal?.open() })();
+        },
+      });
+      const headerRight = this.ctx.container.querySelector('.header-right');
+      headerRight?.insertBefore(lockedControl.getElement(), headerRight.firstChild);
+    };
 
+    const unlock = (formats: readonly DataExportFormat[]): void => {
+      currentExportFormats = formats;
+      const wasLocked = lockedControl !== null;
+      // Change-detection guard: gating re-fires on every auth AND entitlement
+      // emission, most with an unchanged verdict — skip the re-import/DOM
+      // write when already unlocked (same pattern as Panel.showGatedCta's
+      // repeat-verdict skip).
+      if (!wasLocked && isUnlocked) {
+        this.ctx.exportPanel?.setAvailableFormats(currentExportFormats);
+        return;
+      }
+      isUnlocked = true;
+      removeLockedControl();
       void ensureExportPanel()
         .then((panel) => {
-          panel.getElement().style.display = currentIsPro ? '' : 'none';
+          if (this.ctx.isDestroyed) return;
+          // The verdict can flip back while the chunk is in flight (sign-out
+          // mid-load); the locked control winning is the safe resolution.
+          if (lockedControl) {
+            panel.getElement().style.display = 'none';
+            return;
+          }
+          panel.setAvailableFormats(currentExportFormats);
+          panel.getElement().style.display = '';
+          if (wasLocked) liveRegion.textContent = t('components.exportGate.unlockedAnnouncement');
         })
         .catch((err) => {
+          // Allow the next emission to retry the import — the guard above
+          // must not latch an unlocked state the chunk never delivered.
+          isUnlocked = false;
           console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
         });
     };
-    applyProGate(currentIsPro, true);
-    this.authStateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
+    const applyGate = (): void => {
+      if (this.ctx.isDestroyed) return;
+      const authState = getAuthState();
+      const verdict = evaluateExportGate(authState);
+      if (verdict.locked) {
+        showLocked(exportLockToGateReason(verdict.reason));
+        return;
+      }
+      // Only a would-be-locked user pays for the catalog probe; the gate stays
+      // inactive (export available) until it proves Pro Business is
+      // purchasable, so the takeaway and the tier flip together (R10).
+      if (verdict.pendingActivation) {
+        void primeExportGateActivation().then((active) => {
+          if (active) applyGate();
+        });
+      }
+      unlock(evaluateAvailableExportFormats(authState));
+    };
+
+    applyGate();
+    // BOTH subscriptions: auth alone misses the entitlement snapshot landing
+    // after sign-in (documented at src/app/panel-layout.ts:2470-2485), which is
+    // exactly the post-checkout unlock path.
+    this.proGateUnsubscribers.push(subscribeAuthState(() => applyGate()));
+    this.proGateUnsubscribers.push(onEntitlementChange(() => applyGate()));
+    this.proGateUnsubscribers.push(() => {
+      removeLockedControl();
+      liveRegion.remove();
+    });
   }
 
   setupUnifiedSettings(): void {
@@ -1756,12 +1861,14 @@ export class EventHandlerManager implements AppModule {
     const modal = new AuthLauncher();
     this.ctx.authModal = modal;
 
-    // The settings gear is rendered once by the standalone unifiedSettings
-    // button (#unifiedSettingsMount), which is mounted regardless of auth state
-    // (so signed-out users keep it too). Passing onSettingsClick here makes
-    // AuthHeaderWidget render a second gear next to the avatar for signed-in
-    // users — a duplicate. Leave it unset.
-    const widget = new AuthHeaderWidget(() => modal.open());
+    // The standalone gear remains available to every user. Signed-in users
+    // also get explicit Settings and Plan & billing destinations inside the
+    // avatar menu, keeping account and subscription actions in one place.
+    const widget = new AuthHeaderWidget(
+      () => modal.open(),
+      () => this.ctx.unifiedSettings?.open('settings'),
+      () => this.ctx.unifiedSettings?.open('billing'),
+    );
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');
     if (mount) {
@@ -1790,12 +1897,34 @@ export class EventHandlerManager implements AppModule {
       headerRight.insertBefore(el, headerRight.firstChild);
     }
 
-    const applyProGate = (isPro: boolean, initial = false) => {
-      el.style.display = isPro ? '' : 'none';
-      if (initial && !isPro) trackGateHit('playback');
+    // #5632: gate on the entitlement chain, NOT `user.role === 'pro'` — nothing
+    // writes Clerk publicMetadata, so that field read 'free' for paying
+    // subscribers and the control rendered for nobody.
+    let gateHitTracked = false;
+    const applyGate = (): void => {
+      if (this.ctx.isDestroyed) return;
+      const verdict = evaluatePlaybackGate(getAuthState());
+      const visible = verdict === 'visible';
+      el.style.display = visible ? '' : 'none';
+      // Losing access mid-replay must also LEAVE playback. `display: none`
+      // alone strands the dashboard on historical data — the "Live" button is
+      // inside the element we just hid. No-ops unless playback is active.
+      if (!visible) this.ctx.playbackControl?.exitPlayback();
+      // Affirmative denials only, once per session. 'pending' also hides, but
+      // counting it would tick the funnel on every page load — including for
+      // subscribers whose control appears a moment later.
+      if (verdict === 'denied' && !gateHitTracked) {
+        gateHitTracked = true;
+        trackGateHit('playback');
+      }
     };
-    applyProGate(getAuthState().user?.role === 'pro', true);
-    this.authStateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
+    applyGate();
+    // BOTH subscriptions, same as setupExportPanel above: the Convex
+    // entitlement watcher (services/entitlements.ts) is a separate emitter from
+    // Clerk's, so an auth-only subscription never re-runs when a snapshot lands
+    // after sign-in — exactly the post-checkout unlock path.
+    this.proGateUnsubscribers.push(subscribeAuthState(() => applyGate()));
+    this.proGateUnsubscribers.push(onEntitlementChange(() => applyGate()));
   }
 
   setupSnapshotSaving(): void {
@@ -1824,6 +1953,11 @@ export class EventHandlerManager implements AppModule {
   }
 
   restoreSnapshot(snapshot: DashboardSnapshot): void {
+    // Replay parks every news panel on a loading state and never refills it —
+    // leaving playback calls loadAllData() to do that. Its news task is skipped
+    // when the category set is unchanged (#5376), which replay does not touch,
+    // so drop the record here and the exit reload happens.
+    this.callbacks.invalidateNewsHydration();
     for (const panel of Object.values(this.ctx.newsPanels)) {
       panel.showLoading();
     }
@@ -2153,7 +2287,7 @@ export class EventHandlerManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
