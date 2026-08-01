@@ -37,6 +37,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'IAEA': 'gov', 'WHO': 'gov', 'UNHCR': 'gov',
   'Xinhua': 'wire', 'TASS': 'wire', 'RT': 'wire', 'RT Russia': 'wire',
   'NHK World': 'mainstream', 'Nikkei Asia': 'market',
+  // Independent RU exile / UA English primary (default-eligible under #5950 balance rule)
+  'Meduza': 'mainstream', 'Moscow Times': 'mainstream', 'Kyiv Independent': 'mainstream',
 
   // Mainstream outlets
   'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
@@ -229,8 +231,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Le Monde': { risk: 'low', note: 'French newspaper of record' },
   'DW News': { risk: 'medium', stateAffiliated: 'Germany', note: 'German state-funded, editorially independent' },
   'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
-  'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian perspective on Russia-Ukraine war' },
-  'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent, critical of Russian government' },
+  'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian English-language primary on Russia-Ukraine war (#5950 balance: dedicated UA voice)' },
+  'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent English-language Russian outlet, critical of Kremlin' },
+  // Independent RU exile press — not state media; eligible for EN defaults (#5950)
+  'Meduza': { risk: 'low', knownBiases: ['Anti-Kremlin'], note: 'Independent Russian exile outlet (Riga); English + Russian RSS' },
 
   // Low risk - Independent with editorial standards (explicit)
   'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },

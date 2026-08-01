@@ -475,6 +475,8 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 
 源还带有**宣传风险评级**和**国家关联标志**。国家关联来源（RT、新华社、IRNA）为完整性而被纳入，但会以视觉标记标出，以便分析师考虑编辑偏见。威胁分类置信度按来源分级加权 — 在焦点检测算法中，Tier 1 的突发警报比 Tier 4 的博客帖子权重更高。
 
+**乌克兰/俄罗斯英文默认平衡（#5950，史诗 #5948）：** 英文 full 变体路径下，`DEFAULT_ENABLED_SOURCES.europe` 须保留 **≥1 个乌克兰主源**（当前为 Kyiv Independent）与 **≥1 个独立俄语/俄语流亡媒体**（当前为 Meduza 和/或 Moscow Times）。俄国家媒体（TASS、RT、RT Russia）仅作为高宣传风险条目进入目录供可选开启，**永不默认开启**。免费档源数量上限（`selectSourcesUnderCap`）将 `FRONTLINE_EUROPE_PROTECTED_SOURCES` 标为受保护，以免未登录英文用户被轮询裁掉平衡集。更多乌克兰机构与前线英文源归入 P1 乌克兰深度包（#5951），不塞入最小默认集。
+
 ---
 
 ## 数据新鲜度与情报缺口

@@ -165,11 +165,15 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
-    // Russia & Ukraine
-    // Independent / exile / UA outlets (Meduza, Novaya Gazeta Europe, Kyiv Independent,
-    // Moscow Times) are eligible for DEFAULT_ENABLED_SOURCES.europe.
-    // TASS / RT / RT Russia stay cataloged for opt-in only — state propaganda
-    // (SOURCE_PROPAGANDA_RISK high, stateAffiliated: Russia); never default-on.
+    // Russia & Ukraine — EN default balance rule (#5950):
+    // For DEFAULT_ENABLED_SOURCES.europe (EN full-variant path), keep at least:
+    //   ≥1 dedicated UA primary (today: Kyiv Independent)
+    //   ≥1 independent RU (today: Meduza and/or Moscow Times)
+    // Never default-enable TASS / RT / RT Russia (state propaganda; catalog opt-in only).
+    // Default EN path must not be “Western wires + RU state media only.”
+    // Additional UA institutional / frontline EN sources (Ukrainska Pravda EN, NV EN,
+    // Ukrinform, Suspilne, …) are deferred to the P1 Ukraine depth pack (#5951).
+    // Independent / exile / UA outlets below are eligible for defaults; state media is not.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
     { name: 'Meduza', url: {
@@ -1033,13 +1037,30 @@ export function getFeedProvenanceState(sourceName: string): SourceProvenanceStat
   return getSourceProvenanceState(sourceName);
 }
 
+/**
+ * Ukraine-war frontline + UA/RU balance sources that free-tier source-cap
+ * must not strip (#5949, #5950). Passed to `selectSourcesUnderCap` as
+ * `protectedNames` so round-robin late-in-bucket ordering cannot drop the
+ * dedicated UA primary / independent RU / PL frontline set for free EN users.
+ * Keep in sync with DEFAULT_ENABLED_SOURCES.europe frontline additions and
+ * the one-shot migration in App.ts (`worldmonitor-frontline-europe-enable-v1`).
+ */
+export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+] as const;
+
 // Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
-  // Europe defaults include Ukraine war frontline coverage for EN users (#5949):
-  // Kyiv Independent (UA), TVN24 + Rzeczpospolita (PL — not all three PL to limit noise),
-  // Meduza + Moscow Times (independent RU). TASS/RT stay off (state propaganda).
+  // Europe defaults — Ukraine war frontline (#5949) + UA/RU balance rule (#5950):
+  // ≥1 dedicated UA primary (Kyiv Independent) + ≥1 independent RU (Meduza, Moscow Times).
+  // PL frontline: TVN24 + Rzeczpospolita (not all three PL; noise control).
+  // TASS/RT never default-on. Extra UA outlets deferred to #5951.
   // HU/EL locale packs remain locale-boosted only, not EN default-on.
   europe: [
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',

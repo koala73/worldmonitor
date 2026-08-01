@@ -83,7 +83,14 @@ import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode }
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
-import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
+import {
+  computeDefaultDisabledSources,
+  FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  getLocaleBoostedSources,
+  getTotalFeedCount,
+  FEEDS,
+  INTEL_SOURCES,
+} from '@/config/feeds';
 import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
 import {
   cancelBootstrapSlowTier,
@@ -916,15 +923,10 @@ export class App {
       // that already wrote the v3 disabled list (which defaulted these off).
       // Additive only: remove named sources from disabledFeeds once; never
       // re-disable anything the user later turned back on after this migration.
+      // Names: FRONTLINE_EUROPE_PROTECTED_SOURCES (shared with free-tier cap #5950).
       const frontlineKey = 'worldmonitor-frontline-europe-enable-v1';
       if (!localStorage.getItem(frontlineKey)) {
-        const frontline = new Set([
-          'Kyiv Independent',
-          'TVN24',
-          'Rzeczpospolita',
-          'Meduza',
-          'Moscow Times',
-        ]);
+        const frontline = new Set<string>(FRONTLINE_EUROPE_PROTECTED_SOURCES);
         const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
         const updated = current.filter((name) => !frontline.has(name));
         if (updated.length !== current.length) {
@@ -1924,7 +1926,14 @@ export class App {
       let explicitLocale = '';
       try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
       const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
-      const protectedNames = userLang === 'en' ? new Set<string>() : getLocaleBoostedSources(userLang);
+      // Locale-boosted sources (non-en) + UA/RU/PL frontline balance set (#5950).
+      // Without frontline protection, free EN users lose Kyiv Independent / Meduza /
+      // Moscow Times to round-robin late-in-europe-bucket ordering — the #5950
+      // balance rule would only hold for Pro (uncapped) profiles.
+      const protectedNames = new Set<string>(FRONTLINE_EUROPE_PROTECTED_SOURCES);
+      if (userLang !== 'en') {
+        for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
+      }
       const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES, protectedNames);
       // Defense in depth: feeds.ts has 35+ source names that appear in
       // multiple category buckets. The helper guarantees keep ∩ autoDisabled

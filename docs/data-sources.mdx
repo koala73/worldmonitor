@@ -520,6 +520,8 @@ Every RSS feed is assigned a source tier reflecting editorial reliability:
 
 Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
 
+**UA/RU EN default balance (#5950, epic #5948):** for the English full-variant path, `DEFAULT_ENABLED_SOURCES.europe` must keep **≥1 dedicated Ukrainian primary** (currently Kyiv Independent) and **≥1 independent Russian outlet** (currently Meduza and/or Moscow Times). Russian state media (TASS, RT, RT Russia) stays cataloged with high propaganda-risk tags for opt-in only — never default-on. Free-tier round-robin source-cap (`selectSourcesUnderCap`) treats `FRONTLINE_EUROPE_PROTECTED_SOURCES` as protected so the balance set is not stripped for unsigned EN users. Additional Ukrainian institutional and frontline English sources are tracked under the P1 Ukraine depth pack (#5951), not jammed into the minimal default set.
+
 ---
 
 ## Data Freshness & Intelligence Gaps

@@ -38,6 +38,7 @@ interface FeedEntry {
 interface FeedsModule {
   DEFAULT_ENABLED_SOURCES: Record<string, string[]>;
   DEFAULT_ENABLED_INTEL: string[];
+  FRONTLINE_EUROPE_PROTECTED_SOURCES: readonly string[];
   SOURCE_TYPES: Record<string, string>;
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
   FULL_FEEDS?: Record<string, FeedEntry[]>;
@@ -48,7 +49,7 @@ interface FeedsModule {
   listConfiguredFeedNames: () => string[];
 }
 
-/** Sources #5949 ships as EN-default frontline Europe coverage. */
+/** Sources #5949/#5950 ship as EN-default frontline Europe coverage (cap-protected). */
 const FRONTLINE_EUROPE = [
   'Kyiv Independent',
   'TVN24',
@@ -248,6 +249,80 @@ describe('feed catalog drift', () => {
       assert.ok(profile, `${name} must remain in SOURCE_PROPAGANDA_RISK`);
       assert.equal(profile.risk, 'high', `${name} must remain high-risk`);
       assert.equal(profile.stateAffiliated, 'Russia');
+    }
+  });
+
+  // Issue #5950 — catalog must not drift back to Russia-heavy EN defaults.
+  // Balance rule (documented in feeds.ts Russia & Ukraine block + DEFAULT_ENABLED europe):
+  //   ≥1 dedicated UA primary + ≥1 independent RU; TASS/RT never default-on;
+  //   propaganda tags required for TASS/RT/Kyiv Independent (and default-on independent RU).
+  const UA_PRIMARY_DEFAULTS = ['Kyiv Independent'] as const;
+  const INDEPENDENT_RU_DEFAULTS = ['Meduza', 'Moscow Times'] as const;
+  const RU_STATE_PROPAGANDA = ['TASS', 'RT', 'RT Russia'] as const;
+
+  it('EN defaults satisfy UA/RU balance rule (≥1 UA primary + ≥1 independent RU) (#5950)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+
+    const uaOn = UA_PRIMARY_DEFAULTS.filter((n) => enabled.has(n) && !disabledEn.has(n));
+    assert.ok(
+      uaOn.length >= 1,
+      `EN defaults need ≥1 dedicated UA primary among [${UA_PRIMARY_DEFAULTS.join(', ')}]; got none`,
+    );
+
+    const ruIndOn = INDEPENDENT_RU_DEFAULTS.filter((n) => enabled.has(n) && !disabledEn.has(n));
+    assert.ok(
+      ruIndOn.length >= 1,
+      `EN defaults need ≥1 independent RU among [${INDEPENDENT_RU_DEFAULTS.join(', ')}]; got none`,
+    );
+
+    for (const stateMedia of RU_STATE_PROPAGANDA) {
+      assert.ok(!enabled.has(stateMedia), `${stateMedia} must never be EN default-on (#5950)`);
+    }
+  });
+
+  it('FRONTLINE_EUROPE_PROTECTED_SOURCES matches the default-on frontline set (#5950)', () => {
+    // Free-tier cap protection and DEFAULT_ENABLED must not drift apart.
+    assert.deepEqual(
+      [...feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES].sort(),
+      [...FRONTLINE_EUROPE].sort(),
+    );
+    const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
+    for (const name of feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES) {
+      assert.ok(europe.includes(name), `${name} must be DEFAULT_ENABLED europe (cap-protected set)`);
+    }
+  });
+
+  it('propaganda risk tags present for TASS/RT/Kyiv Independent and default-on independent RU (#5950)', () => {
+    for (const name of RU_STATE_PROPAGANDA) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} must have a SOURCE_PROPAGANDA_RISK entry`);
+      assert.equal(profile.risk, 'high');
+      assert.equal(profile.stateAffiliated, 'Russia');
+    }
+
+    const kyiv = feeds.SOURCE_PROPAGANDA_RISK['Kyiv Independent'];
+    assert.ok(kyiv, 'Kyiv Independent must have a SOURCE_PROPAGANDA_RISK entry');
+    assert.notEqual(kyiv.risk, 'unknown', 'Kyiv Independent must be reviewed (not unknown)');
+    // UA primary is perspective-bearing, not state-media high.
+    assert.ok(
+      kyiv.risk === 'medium' || kyiv.risk === 'low',
+      `Kyiv Independent risk should be medium|low, got ${kyiv.risk}`,
+    );
+
+    for (const name of INDEPENDENT_RU_DEFAULTS) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} (default-on independent RU) must have SOURCE_PROPAGANDA_RISK entry`);
+      assert.notEqual(profile.risk, 'unknown', `${name} must be reviewed`);
+      assert.notEqual(
+        profile.stateAffiliated,
+        'Russia',
+        `${name} is independent/exile — must not be tagged stateAffiliated:Russia`,
+      );
+      assert.ok(
+        profile.risk === 'low' || profile.risk === 'medium',
+        `${name} risk should be low|medium (not state-media high), got ${profile.risk}`,
+      );
     }
   });
 });
