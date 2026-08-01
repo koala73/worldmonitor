@@ -82,6 +82,21 @@ const EASTERN_FLANK_FEEDS = {
   'Daily Sabah': { url: 'https://www.dailysabah.com/rss/home-page' },
 } as const;
 
+const AFRICA_DEPTH_EN_DEFAULTS = ['Hiiraan Online', 'RFI Afrique'] as const;
+const AFRICA_DEPTH_FEEDS = {
+  'Radio Tamazuj': { url: 'https://www.radiotamazuj.org/en/feed' },
+  'The Reporter Ethiopia': { url: 'https://www.thereporterethiopia.com/feed/' },
+  'Ethiopia Insight': { url: 'https://www.ethiopia-insight.com/feed/' },
+  'Dabanga Sudan': { url: 'https://www.dabangasudan.org/en/feed' },
+  'Hiiraan Online': { url: 'https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en' },
+  'Actualite.cd': { url: 'https://actualite.cd/feed', lang: 'fr' },
+  'Radio Okapi': { url: 'https://www.radiookapi.net/rss.xml', lang: 'fr' },
+  'MyJoyOnline': { url: 'https://www.myjoyonline.com/feed/' },
+  'Citi Newsroom': { url: 'https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en' },
+  'Le Quotidien': { url: 'https://lequotidien.sn/feed/', lang: 'fr' },
+  'RFI Afrique': { url: 'https://www.rfi.fr/en/africa/rss' },
+} as const;
+
 let feeds: FeedsModule;
 let serverFeeds: ServerFeedsModule;
 
@@ -384,7 +399,7 @@ describe('feed catalog drift', () => {
   it('keeps both Eastern-flank EN defaults under the production free cap (#5952)', () => {
     assert.deepEqual(
       [...feeds.FREE_CAP_PROTECTED_SOURCES].sort(),
-      [...FRONTLINE_EUROPE, ...EASTERN_FLANK_EN_DEFAULTS].sort(),
+      [...FRONTLINE_EUROPE, ...EASTERN_FLANK_EN_DEFAULTS, ...AFRICA_DEPTH_EN_DEFAULTS].sort(),
       'free-cap protected defaults must match the editorially protected sets',
     );
 
@@ -398,6 +413,52 @@ describe('feed catalog drift', () => {
     );
 
     for (const name of EASTERN_FLANK_EN_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('locks additive Africa-depth URL/lang parity and EN defaults (#5955)', () => {
+    const clientByName = new Map((feeds.FEEDS.africa ?? []).map((feed) => [feed.name, feed]));
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.africa ?? []).map((feed) => [feed.name, feed]),
+    );
+    const africaDefaults = feeds.DEFAULT_ENABLED_SOURCES.africa ?? [];
+
+    for (const [name, expected] of Object.entries(AFRICA_DEPTH_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must remain in the client Africa catalog`);
+      assert.ok(server, `${name} must remain in the server full/Africa catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+
+    for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
+      assert.ok(africaDefaults.includes(name), `${name} must remain an Africa EN default`);
+    }
+  });
+
+  it('allows every Africa-depth feed through the RSS proxy host policy (#5955)', () => {
+    for (const [name, { url }] of Object.entries(AFRICA_DEPTH_FEEDS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+    }
+  });
+
+  it('keeps both Africa-depth EN defaults under the production free cap (#5955)', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+
+    for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
       assert.ok(keep.has(name), `${name} must survive the free source cap`);
       assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
     }

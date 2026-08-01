@@ -165,7 +165,7 @@ if ('_budget_exceeded' in parsed) {
 
 ### `get_market_data`
 
-来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格（包括黄金期货 GC=F）、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现、ETF 资金流和海湾市场报价。
+来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格（包括黄金期货 GC=F）、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
 
 **参数（工具特定）：**
 
@@ -178,6 +178,7 @@ if ('_budget_exceeded' in parsed) {
 - **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`unavailableSymbols` 列出没有当前估值的代码；`lastGood` 列出其收益指标来自旧快照的代码，并包含该快照时间戳。`valuationDiagnostics` 是按代码限制的路由元数据，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
 
 <CodeGroup>
 

@@ -176,12 +176,18 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // Horn of Africa
       { name: 'Radio Tamazuj', url: 'https://www.radiotamazuj.org/en/feed' },
       { name: 'The Reporter Ethiopia', url: 'https://www.thereporterethiopia.com/feed/' },
+      { name: 'Ethiopia Insight', url: 'https://www.ethiopia-insight.com/feed/' },
+      { name: 'Dabanga Sudan', url: 'https://www.dabangasudan.org/en/feed' },
+      { name: 'Hiiraan Online', url: gn('site:hiiraan.com when:7d') },
       // DRC / Great Lakes
       { name: 'Actualite.cd', url: 'https://actualite.cd/feed', lang: 'fr' },
-      { name: 'Radio Okapi', url: 'https://www.radiookapi.net/feed', lang: 'fr' },
-      // West Africa (non-Nigeria)
+      { name: 'Radio Okapi', url: 'https://www.radiookapi.net/rss.xml', lang: 'fr' },
+      // West Africa beyond Nigeria
       { name: 'MyJoyOnline', url: 'https://www.myjoyonline.com/feed/' },
+      { name: 'Citi Newsroom', url: gn('site:citinewsroom.com when:7d') },
       { name: 'Le Quotidien', url: 'https://lequotidien.sn/feed/', lang: 'fr' },
+      // Pan-African
+      { name: 'RFI Afrique', url: 'https://www.rfi.fr/en/africa/rss' },
     ],
     latam: [
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },

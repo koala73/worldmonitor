@@ -326,12 +326,18 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Horn of Africa
     { name: 'Radio Tamazuj', url: rss('https://www.radiotamazuj.org/en/feed') },
     { name: 'The Reporter Ethiopia', url: rss('https://www.thereporterethiopia.com/feed/') },
+    { name: 'Ethiopia Insight', url: rss('https://www.ethiopia-insight.com/feed/') },
+    { name: 'Dabanga Sudan', url: rss('https://www.dabangasudan.org/en/feed') },
+    { name: 'Hiiraan Online', url: rss('https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     // DRC / Great Lakes
     { name: 'Actualite.cd', url: rss('https://actualite.cd/feed'), lang: 'fr' },
-    { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/feed'), lang: 'fr' },
-    // West Africa (non-Nigeria)
+    { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/rss.xml'), lang: 'fr' },
+    // West Africa beyond Nigeria
     { name: 'MyJoyOnline', url: rss('https://www.myjoyonline.com/feed/') },
+    { name: 'Citi Newsroom', url: rss('https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Le Quotidien', url: rss('https://lequotidien.sn/feed/'), lang: 'fr' },
+    // Pan-African
+    { name: 'RFI Afrique', url: rss('https://www.rfi.fr/en/africa/rss') },
   ],
   latam: [
     { name: 'Latin America', url: rss('https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -1120,6 +1126,11 @@ const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
   'ERR News',
 ] as const;
 
+const AFRICA_DEPTH_EN_DEFAULT_SOURCES = [
+  'Hiiraan Online',
+  'RFI Afrique',
+] as const;
+
 /**
  * Editorially required EN defaults that must survive the free-tier source cap.
  * Keep the narrower frontline set above for its one-shot migration contract;
@@ -1128,6 +1139,7 @@ const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
 export const FREE_CAP_PROTECTED_SOURCES = [
   ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
   ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+  ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
 ] as const;
 
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
@@ -1151,7 +1163,11 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
-  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis', 'Radio Tamazuj', 'Actualite.cd'],
+  africa: [
+    'BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News',
+    'Premium Times', 'Channels TV', 'Sahel Crisis',
+    ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+  ],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
 asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
     'Eurasianet', 'The Astana Times',

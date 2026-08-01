@@ -358,5 +358,14 @@ export default [
   "www.taipeitimes.com",
   "www.thejakartapost.com",
   "www.thestar.com.my",
-  "www.irrawaddy.com"
+  "www.irrawaddy.com",
+  "www.radiotamazuj.org",
+  "www.thereporterethiopia.com",
+  "www.ethiopia-insight.com",
+  "www.dabangasudan.org",
+  "actualite.cd",
+  "www.radiookapi.net",
+  "www.myjoyonline.com",
+  "lequotidien.sn",
+  "www.rfi.fr"
 ];
