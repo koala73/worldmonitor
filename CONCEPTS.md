@@ -52,6 +52,20 @@ An Alert Rule's optional country restriction. Empty means unscoped — every eve
 
 The country identity a notification publisher attaches to an event at publish time, normalized to ISO-3166 alpha-2 through the shared country-name map. Attribution is the publisher's job, not the dispatcher's: a publisher that knows the country must attach it, because a missing or unresolvable attribution is indistinguishable downstream from a genuinely global event. A name-normalization miss that silently omits the attribution converts "lookup failed" into "field never existed" — the failure mode that lets scoped delivery leak. See also: Country Scope.
 
+## Product Analytics Collection
+
+### Write Receipt
+
+The body the analytics collector returns for a write it actually stored, carrying the session and visit identifiers it minted for that write. The receipt — not the status code — is the delivery proof: the collector answers a success status to writes it accepts and then discards, so treating a 2xx as stored is what lets a dropped conversion look delivered. A response that carries a success status but no receipt is undelivered, and whether it is worth reporting depends on *why* the receipt is missing. See also: Bot-Filtered Write, Environment Noise.
+
+### Bot-Filtered Write
+
+A write the collector deliberately discarded because it judged the client non-human, acknowledged with a success status and a fixed sentinel body instead of a Write Receipt. It is a real delivery failure — nothing was stored, so retry policy and any durable conversion marker must treat it exactly as they treat any other missing receipt — but it is not an incident, so it must never raise an alert. That split is the load-bearing part: the distinction belongs in the *alerting* decision, never in the *delivery* classification, because collapsing them turns a silenced alert into a silenced retry. First-party crawlers and headless browsers hitting production pages land in this class, so any browser-side alarm sees the project's own monitoring traffic unless it excludes it. See also: Write Receipt, Environment Noise.
+
+### Environment Noise
+
+The class of collector failures produced by the client's own environment — a blocked request, an unanswered one — rather than by the collector. Locally indistinguishable from a total outage, because a blocked client and a dead collector both fail every write on that page; nothing computable in one browser separates them. The consequence is that the outage signal is the aggregate volume of these reports across users, not any single report, so the reporting policy gates them behind both a minimum sample and a minimum failure rate within a rolling window and admits at most one per page per window. Without the per-page bound, one heavily-blocked session outproduces the incident the gate exists to expose. Failures the origin answered — any non-success status — are outside this class and always reportable, which is what keeps a dead origin loud. See also: Write Receipt, Bot-Filtered Write, Vacuous Guard.
+
 ## Company Attribution
 
 ### Filer
