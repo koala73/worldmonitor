@@ -5,6 +5,7 @@ import {
   AUTH_SETTLE_GRACE_MS,
   FreeTierGate,
   panelGateStateChanged,
+  shouldRunCloudLegacyRecovery,
   sweepLegacyDisabledCustomWidgets,
 } from '../src/app/free-tier-gate.ts';
 
@@ -96,6 +97,29 @@ describe('free-tier gate fallback timer', () => {
       mock.timers.reset();
     }
   });
+
+  it('resets the deadline for a new auth/account window', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      let enforced = 0;
+      const gate = new FreeTierGate(() => {
+        enforced += 1;
+      });
+
+      gate.scheduleFallback();
+      mock.timers.tick(AUTH_SETTLE_GRACE_MS);
+      assert.equal(gate.authSettleDeadlineExceeded, true);
+
+      gate.resetForAuthTransition();
+      assert.equal(gate.authSettleDeadlineExceeded, false);
+      gate.scheduleFallback();
+      mock.timers.tick(AUTH_SETTLE_GRACE_MS);
+
+      assert.equal(enforced, 2, 'a new account must receive a fresh grace period');
+    } finally {
+      mock.timers.reset();
+    }
+  });
 });
 
 describe('legacy custom-widget recovery sweep', () => {
@@ -177,5 +201,21 @@ describe('panel gate change detection', () => {
       panelGateStateChanged({}, { news: { name: 'News', enabled: true } }),
       true,
     );
+  });
+});
+
+describe('bounded cloud legacy recovery', () => {
+  it('allows the first cloud version after the local baseline', () => {
+    assert.equal(shouldRunCloudLegacyRecovery(7, null, 8), true);
+  });
+
+  it('does not re-arm after a cloud version was already recovered', () => {
+    assert.equal(shouldRunCloudLegacyRecovery(7, 8, 9), false);
+  });
+
+  it('does not recover without an incoming cloud version or for the baseline', () => {
+    assert.equal(shouldRunCloudLegacyRecovery(7, null, undefined), false);
+    assert.equal(shouldRunCloudLegacyRecovery(7, null, 7), false);
+    assert.equal(shouldRunCloudLegacyRecovery(7, null, 6), false);
   });
 });

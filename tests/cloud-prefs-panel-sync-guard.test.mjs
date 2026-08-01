@@ -52,13 +52,28 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudSyncSrc,
-      /dispatchCloudPrefsApplied\(changedKeys\)/,
-      'cloud-applied localStorage writes must dispatch changed keys',
+      /dispatchCloudPrefsApplied\(changedKeys, syncVersion\)/,
+      'cloud-applied localStorage writes must dispatch changed keys and the cloud version',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /applyCloudBlob\(toApply, cloud\.syncVersion\)/,
+      'cloud reconciliation must attach the incoming sync version to the applied event',
     );
     assert.match(
       appSrc,
       /window\.addEventListener\(CLOUD_PREFS_APPLIED_EVENT,\s*this\.handleCloudPrefsApplied\)/,
       'App must subscribe to same-tab cloud preference application',
+    );
+    assert.match(
+      appSrc,
+      /detail\?\.syncVersion/,
+      'App must consume the incoming cloud sync version for bounded recovery',
+    );
+    assert.match(
+      appSrc,
+      /pendingCloudRecoverySyncVersion/,
+      'App must retain a panel-bearing cloud version that arrives before entitlement settles',
     );
     assert.match(
       appSrc,
@@ -78,7 +93,7 @@ describe('cloud prefs panel sync guardrails', () => {
     const cloudApplyBlock = appSrc.slice(cloudApplyStart, cloudApplyEnd);
     assert.match(
       cloudApplyBlock,
-      /const reconciledPanelSettings = this\.enforceFreeTierLimits\(\);/,
+      /const reconciledPanelSettings = this\.enforceFreeTierLimits\(cloudSyncVersion\);/,
       'cloud panel snapshots must re-run entitlement reconciliation',
     );
     assert.match(
@@ -136,6 +151,19 @@ describe('cloud prefs panel sync guardrails', () => {
     );
   });
 
+  it('resets the fallback before enforcing a new auth/account window', () => {
+    const appSrc = readSrc('src/App.ts');
+    const authStart = appSrc.indexOf('this.unsubFreeTier = subscribeAuthState((session) => {');
+    const authEnd = appSrc.indexOf('const geoCoordsPromise', authStart);
+    assert.ok(authStart >= 0 && authEnd > authStart, 'auth subscription body must exist');
+    const authBody = appSrc.slice(authStart, authEnd);
+    assert.match(
+      authBody,
+      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(\);/,
+      'a new account must receive a fresh grace window before auth enforcement runs',
+    );
+  });
+
   it('never persists a free-tier clamp to dashboard tabs while the tier is unresolved', () => {
     const panelLayoutSrc = readSrc('src/app/panel-layout.ts');
     const appSrc = readSrc('src/App.ts');
@@ -149,13 +177,13 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       healBody,
-      /if \(!state \|\| !isProTierResolved\(\)\) return;/,
-      'the stored-tab heal must bail out until the entitlement is known',
+      /if \(!state \|\| !this\.isProTierResolvedOrFallback\(\)\) return;/,
+      'the stored-tab heal must bail out until the entitlement is known or the bounded free fallback has fired',
     );
     assert.match(
       panelLayoutSrc,
-      /const capped = isProTierResolved\(\)\s*\?\s*enforceFreePanelLimit\(next, isProUser\(\)\)\s*:\s*next;/,
-      'applyTabPanelState must not clamp before the entitlement is known',
+      /const capped = this\.isProTierResolvedOrFallback\(\)\s*\n\s*\?\s*enforceFreePanelLimit\(next, isProUser\(\)\)\s*\n\s*:\s*next;/,
+      'applyTabPanelState must not clamp before the entitlement is known unless the fallback has settled free-tier enforcement',
     );
 
     // ...and the heal must be re-run once it resolves, or an unopened tab keeps
@@ -164,6 +192,11 @@ describe('cloud prefs panel sync guardrails', () => {
       appSrc,
       /this\.panelLayout\.healStoredTabSnapshots\(\);/,
       'App must re-heal stored tab snapshots when auth or entitlement resolves',
+    );
+    assert.match(
+      appSrc,
+      /this\.enforceFreeTierLimits\(\);\s*this\.panelLayout\.healStoredTabSnapshots\(\);/,
+      'the fallback callback must heal stored tab snapshots after clamping global panels',
     );
   });
 

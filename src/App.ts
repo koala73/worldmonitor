@@ -109,6 +109,7 @@ import { EventHandlerManager } from '@/app/event-handlers';
 import {
   FreeTierGate,
   panelGateStateChanged,
+  shouldRunCloudLegacyRecovery,
   sweepLegacyDisabledCustomWidgets,
 } from '@/app/free-tier-gate';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
@@ -118,6 +119,7 @@ import { showProBanner } from '@/components/ProBanner';
 import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
+  getSyncVersion,
   install as installCloudPrefsSync,
   onSignIn as cloudPrefsSignIn,
   onSignOut as cloudPrefsSignOut,
@@ -162,6 +164,8 @@ import type { CorrelationPanel } from '@/components/CorrelationPanel';
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
 const CW_PRO_GATE_RECOVERY_KEY = 'worldmonitor-cw-pro-gate-recovery-v1';
+const CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY = 'worldmonitor-cw-pro-gate-cloud-recovery-baseline-v1';
+const CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY = 'worldmonitor-cw-pro-gate-cloud-recovery-applied-v1';
 type SignalModalInstance = import('@/components/SignalModal').SignalModal;
 
 export type { CountryBriefSignals } from '@/app/app-context';
@@ -212,6 +216,7 @@ export class App {
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
+  private pendingCloudRecoverySyncVersion: number | undefined;
   private readonly handleWmSessionDegraded = (): void => {
     if (!this.state.isDestroyed) {
       showToast('Anonymous data is temporarily unavailable. Check your cookie settings, then reload.');
@@ -249,17 +254,23 @@ export class App {
     this.showFollowedCountriesCapDropToast(kept, dropped);
   };
   private readonly handleCloudPrefsApplied = (ev: Event): void => {
-    const keys = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail?.keys ?? [];
-    this.applyCloudSyncedPrefsToRuntime(keys);
+    const detail = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail;
+    this.applyCloudSyncedPrefsToRuntime(detail?.keys ?? [], detail?.syncVersion);
   };
 
-  private applyCloudSyncedPrefsToRuntime(keys: readonly string[]): void {
+  private applyCloudSyncedPrefsToRuntime(keys: readonly string[], cloudSyncVersion?: number): void {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
     invalidatePanelStorageCacheForKeys(keys);
 
     if (keySet.has(STORAGE_KEYS.panels)) {
+      // Cloud can reconcile before Clerk/Convex finishes settling. Preserve
+      // the first panel-bearing cloud generation so a later Pro callback can
+      // still run the bounded legacy recovery pass.
+      if (cloudSyncVersion !== undefined && this.pendingCloudRecoverySyncVersion === undefined) {
+        this.pendingCloudRecoverySyncVersion = cloudSyncVersion;
+      }
       this.state.panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         this.state.panelSettings,
@@ -271,7 +282,7 @@ export class App {
       // Returns false while the tier is still unresolved — the fallback below
       // then just re-renders the snapshot, which is all this handler did
       // before reconciliation moved here.
-      const reconciledPanelSettings = this.enforceFreeTierLimits();
+      const reconciledPanelSettings = this.enforceFreeTierLimits(cloudSyncVersion);
       if (!reconciledPanelSettings) {
         this.panelLayout.applyPanelSettings();
         this.state.unifiedSettings?.refreshPanelToggles();
@@ -1051,6 +1062,7 @@ export class App {
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
+      isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
@@ -1487,9 +1499,19 @@ export class App {
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
     this.unsubFreeTier = subscribeAuthState((session) => {
-      firePremiumLoaders();
-
       const userId = session.user?.id ?? null;
+      const accountTransition = (
+        (userId !== null && userId !== _prevUserId) ||
+        (userId === null && _prevUserId !== null)
+      );
+      if (accountTransition) {
+        // A cloud snapshot and its recovery version belong to the account that
+        // was active when they arrived. Do not let a late Pro reconcile for a
+        // different account consume that pending recovery opportunity.
+        this.pendingCloudRecoverySyncVersion = undefined;
+        this.freeTierGate.resetForAuthTransition();
+      }
+
       if (userId !== null && userId !== _prevUserId) {
         const handoffGeneration = ++_convexWatchHandoffGeneration;
 
@@ -1626,6 +1648,9 @@ export class App {
         resetEntitlementState();
       }
       _prevUserId = userId;
+      // Run after account handoff/reset so this pass cannot enforce the
+      // previous user's entitlement against the new user's panels.
+      firePremiumLoaders();
     });
 
 
@@ -1817,6 +1842,7 @@ export class App {
    */
   private readonly freeTierGate = new FreeTierGate(() => {
     this.enforceFreeTierLimits();
+    this.panelLayout.healStoredTabSnapshots();
   });
 
   /**
@@ -1825,7 +1851,7 @@ export class App {
    * were disabled by a pre-fix build (see the one-time recovery below —
    * those entries pre-date the `proGated` marker, so they need the sweep).
    */
-  private restoreProGatedCustomWidgets(): boolean {
+  private restoreProGatedCustomWidgets(cloudSyncVersion?: number): boolean {
     const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
     let restored = restoreProGatedPanels(panelSettings);
 
@@ -1838,22 +1864,54 @@ export class App {
     //
     // Each device still heals itself on its first post-fix Pro reconcile, and
     // from then on `proGated` travels with the synced blob, so the targeted
-    // restore above covers the cross-device case. The migration gap this leaves
-    // is a browser that already burned its one-shot receiving pre-fix damage
-    // from a device that never loaded this build — which keeps re-damaging
-    // itself anyway until it does.
+    // restore above covers the cross-device case. A panel-bearing cloud
+    // generation received before entitlement settles is retained in memory
+    // until that Pro reconcile, so the one bounded second chance is not lost.
     //
     // The marker is burned on the first look, not the first repair: widget
     // specs are device-local (`wm-custom-widgets` is not a cloud-sync key), so
     // `loadWidgets()` is fully hydrated here and "found nothing" is a real
     // answer, not a not-yet-loaded one.
     try {
-      if (!localStorage.getItem(CW_PRO_GATE_RECOVERY_KEY)) {
-        restored = sweepLegacyDisabledCustomWidgets(
-          restored,
-          new Set(loadWidgets().map((w) => w.id)),
-        );
+      let ownedWidgetIds: Set<string> | null = null;
+      const sweepLegacy = (): void => {
+        ownedWidgetIds ??= new Set(loadWidgets().map((w) => w.id));
+        restored = sweepLegacyDisabledCustomWidgets(restored, ownedWidgetIds);
+      };
+      const recoveryMarker = localStorage.getItem(CW_PRO_GATE_RECOVERY_KEY);
+      const baselineRaw = localStorage.getItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY);
+      const baselineParsed = baselineRaw === null ? Number.NaN : Number.parseInt(baselineRaw, 10);
+      const baselineSyncVersion = Number.isFinite(baselineParsed) ? baselineParsed : null;
+      const appliedRaw = localStorage.getItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY);
+      const appliedParsed = appliedRaw === null ? Number.NaN : Number.parseInt(appliedRaw, 10);
+      const appliedSyncVersion = Number.isFinite(appliedParsed) ? appliedParsed : null;
+      const effectiveCloudSyncVersion = cloudSyncVersion ?? this.pendingCloudRecoverySyncVersion;
+
+      if (!recoveryMarker) {
+        sweepLegacy();
         localStorage.setItem(CW_PRO_GATE_RECOVERY_KEY, 'done');
+        // The current cloud snapshot was swept as part of the first recovery,
+        // so mark it consumed when this call came from cloud reconciliation.
+        const baseline = effectiveCloudSyncVersion ?? getSyncVersion();
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY, String(baseline));
+        if (effectiveCloudSyncVersion !== undefined) {
+          localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY, String(effectiveCloudSyncVersion));
+        }
+      } else if (baselineSyncVersion === null && effectiveCloudSyncVersion !== undefined) {
+        // A browser may have burned the original marker before this bounded
+        // cloud-generation guard shipped. Give its first observed cloud
+        // snapshot one recovery pass, then never re-arm for later versions.
+        sweepLegacy();
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY, String(effectiveCloudSyncVersion));
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY, String(effectiveCloudSyncVersion));
+      } else if (baselineSyncVersion === null) {
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY, String(getSyncVersion()));
+      } else if (shouldRunCloudLegacyRecovery(baselineSyncVersion, appliedSyncVersion, effectiveCloudSyncVersion)) {
+        // One bounded second chance covers a pre-fix snapshot arriving after
+        // the local migration marker was already consumed. Deliberate hides
+        // are protected from future cloud replays by the applied marker.
+        sweepLegacy();
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY, String(effectiveCloudSyncVersion));
       }
     } catch {
       // Persistence-only migration; blocked storage already uses defaults.
@@ -1874,7 +1932,7 @@ export class App {
    * Reads current values from storage, trims if necessary, and saves back.
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
-  private enforceFreeTierLimits(): boolean {
+  private enforceFreeTierLimits(cloudSyncVersion?: number): boolean {
     // ── One-time v1 cap-bug recovery ──────────────────────────────────
     // Pre-2026-05-01 the source cap was enforced by Array.sort().slice(),
     // which silently auto-disabled every source past alphabetical position
@@ -1906,7 +1964,8 @@ export class App {
     }
 
     if (isProUser()) {
-      return this.restoreProGatedCustomWidgets();
+      this.freeTierGate.cancelFallback();
+      return this.restoreProGatedCustomWidgets(cloudSyncVersion);
     }
 
     // Pro/free is NOT knowable yet on a normal page load. initAuthState()

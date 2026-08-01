@@ -41,6 +41,7 @@ export const CLOUD_PREFS_APPLIED_EVENT = 'wm:cloud-prefs-applied';
 
 export interface CloudPrefsAppliedDetail {
   keys: CloudSyncKey[];
+  syncVersion?: number;
 }
 
 // localStorage state keys — never uploaded to cloud
@@ -192,7 +193,7 @@ export function isCloudSyncEnabled(): boolean {
 
 // ── State helpers ─────────────────────────────────────────────────────────────
 
-function getSyncVersion(): number {
+export function getSyncVersion(): number {
   return parseInt(localStorage.getItem(KEY_SYNC_VERSION) ?? '0', 10) || 0;
 }
 
@@ -216,14 +217,14 @@ function buildCloudBlob(): Record<string, string> {
   return blob;
 }
 
-function dispatchCloudPrefsApplied(keys: CloudSyncKey[]): void {
+function dispatchCloudPrefsApplied(keys: CloudSyncKey[], syncVersion?: number): void {
   if (keys.length === 0 || typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<CloudPrefsAppliedDetail>(CLOUD_PREFS_APPLIED_EVENT, {
-    detail: { keys },
+    detail: { keys, ...(syncVersion === undefined ? {} : { syncVersion }) },
   }));
 }
 
-function applyCloudBlob(data: Record<string, unknown>): void {
+function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): void {
   const changedKeys: CloudSyncKey[] = [];
   _suppressPatch = true;
   try {
@@ -240,7 +241,7 @@ function applyCloudBlob(data: Record<string, unknown>): void {
   } finally {
     _suppressPatch = false;
   }
-  dispatchCloudPrefsApplied(changedKeys);
+  dispatchCloudPrefsApplied(changedKeys, syncVersion);
 }
 
 function applyMigrations(
@@ -446,7 +447,7 @@ async function resolveConflictWithMerge(token: string, variant: string, callerGe
   }
   const migratedCloud = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
   const merged = mergeCloudWithLocalDirty(migratedCloud, buildCloudBlob(), _dirtyKeys);
-  applyCloudBlob(merged);
+  applyCloudBlob(merged, fresh.syncVersion);
   setSyncVersion(fresh.syncVersion);
   setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
   const retry = await postCloudPrefs(token, variant, merged, fresh.syncVersion);
@@ -510,7 +511,7 @@ export function onSignIn(userId: string, variant: string): Promise<void> {
         const toApply = hasDirty
           ? mergeCloudWithLocalDirty(migrated, buildCloudBlob(), _dirtyKeys)
           : migrated;
-        applyCloudBlob(toApply);
+        applyCloudBlob(toApply, cloud.syncVersion);
         setSyncVersion(cloud.syncVersion);
         // After applyCloudBlob, local data IS at CURRENT schema (applyMigrations
         // ran every step from cloud.schemaVersion to CURRENT). Mark it so the

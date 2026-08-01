@@ -24,10 +24,10 @@ export const AUTH_SETTLE_GRACE_MS = 8000;
 /**
  * Owns the "enforce anyway if the session never settles" backstop.
  *
- * The deadline is sticky once it fires: a session that never resolves must not
- * be able to defer the caps a second time. Cancelling a still-pending timer
- * (normal settle, or teardown) leaves the deadline unset, so a later
- * unresolved window can arm a fresh one.
+ * The deadline is sticky within one auth/entitlement window: a session that
+ * never resolves must not be able to defer the caps a second time. A new
+ * account handoff explicitly resets the window so the next account gets its
+ * own grace period.
  */
 export class FreeTierGate {
   private deadlineExceeded = false;
@@ -64,6 +64,12 @@ export class FreeTierGate {
     if (this.fallbackTimer === null) return;
     clearTimeout(this.fallbackTimer);
     this.fallbackTimer = null;
+  }
+
+  /** Start a fresh grace window for a new auth/account transition. */
+  resetForAuthTransition(): void {
+    this.cancelFallback();
+    this.deadlineExceeded = false;
   }
 }
 
@@ -121,4 +127,20 @@ export function panelGateStateChanged(
     if (before[key]?.proGated !== after[key]?.proGated) return true;
   }
   return false;
+}
+
+/**
+ * A bounded second chance for a cloud snapshot that predates `proGated`.
+ *
+ * The first cloud version after the local recovery baseline is the only
+ * snapshot eligible for the legacy sweep. Once it has been processed, later
+ * cloud writes must never re-arm the heuristic and undo deliberate hides.
+ */
+export function shouldRunCloudLegacyRecovery(
+  baselineSyncVersion: number | null,
+  appliedSyncVersion: number | null,
+  incomingSyncVersion: number | undefined,
+): boolean {
+  if (incomingSyncVersion === undefined || appliedSyncVersion !== null) return false;
+  return baselineSyncVersion === null || incomingSyncVersion > baselineSyncVersion;
 }
