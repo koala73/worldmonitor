@@ -76,6 +76,17 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Rzeczpospolita', url: 'https://www.rp.pl/rss_main' },
       { name: 'Meduza', url: 'https://meduza.io/rss/en/all' },
       { name: 'Moscow Times', url: 'https://www.themoscowtimes.com/rss/news' },
+      // Caucasus (#5953) — secondary Russian periphery / BRI hinterland
+      { name: 'Civil.ge', url: 'https://civil.ge/feed/' },
+      { name: 'OC Media', url: 'https://oc-media.org/feed/' },
+      { name: 'JAMnews', url: 'https://jam-news.net/feed/' },
+      // Risk-tagged state wires
+      { name: 'Azertag', url: gn('site:azertag.az when:3d') },
+      { name: 'Armenpress', url: gn('site:armenpress.am when:3d') },
+      // Belarus / Moldova (#5953)
+      { name: 'Zerkalo', url: gn('site:zerkalo.io when:2d') },
+      { name: 'NewsMaker', url: 'https://newsmaker.md/en/feed/' },
+      { name: 'Ziarul de Gardă', url: 'https://www.zdg.md/feed/', lang: 'ro' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
@@ -186,6 +197,11 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Aaj Tak', url: 'https://www.aajtak.in/rssfeeds/?id=home', lang: 'hi' },
       { name: 'NDTV India', url: 'https://feeds.feedburner.com/ndtvkhabar-latest', lang: 'hi' },
       { name: 'Amar Ujala', url: 'https://www.amarujala.com/rss/national.xml', lang: 'hi' },
+      // Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
+      { name: 'Eurasianet', url: 'https://eurasianet.org/feed/' },
+      { name: 'RFE/RL Central Asia', url: gn('site:rferl.org Central+Asia when:3d') },
+      { name: 'The Astana Times', url: 'https://astanatimes.com/feed/' },
+      { name: 'The Times of Central Asia', url: 'https://timesca.com/feed/' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },
