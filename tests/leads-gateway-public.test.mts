@@ -75,7 +75,9 @@ describe('leads gateway public access', { concurrency: 1 }, () => {
         message: 'hello',
         source: 'enterprise-contact',
         website: 'http://honeypot-filled.example',
-        turnstileToken: '',
+        // The generated request validator requires a non-empty token; the
+        // honeypot still short-circuits before the handler verifies it.
+        turnstileToken: 'test-token',
       }),
     }));
 
