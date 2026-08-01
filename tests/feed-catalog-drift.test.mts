@@ -15,21 +15,21 @@
  *
  * Loading note: src/config/feeds.ts pulls `rssProxyUrl` → `import.meta.env.DEV`,
  * and Node/tsx has no Vite env object, so we esbuild-bundle with defines — the
- * same pattern as tests/source-provenance.test.mts and tests/mission-presets.test.mts.
+ * shared harness lives in tests/_lib/bundle-feeds-module.mts.
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
 import { selectSourcesUnderCap } from '../src/services/source-cap';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
-const outfile = join(tempDir, 'feeds-bundle.mjs');
 const serverOutfile = join(tempDir, 'server-feeds-bundle.mjs');
 
 interface FeedEntry {
@@ -86,46 +86,7 @@ let feeds: FeedsModule;
 let serverFeeds: ServerFeedsModule;
 
 before(async () => {
-  mkdirSync(tempDir, { recursive: true });
-  // Stub the @/utils barrel so we don't drag proxy → i18n → import.meta.glob.
-  // feeds.ts only needs rssProxyUrl, and identity is fine for name registries.
-  const stubUtilsPlugin = {
-    name: 'stub-utils-barrel',
-    setup(buildApi: { onResolve: Function; onLoad: Function }) {
-      buildApi.onResolve({ filter: /^@\/utils$/ }, () => ({
-        path: 'stub-utils',
-        namespace: 'stub',
-      }));
-      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-        contents: 'export function rssProxyUrl(url) { return url; }\n',
-        loader: 'js',
-      }));
-    },
-  };
-  const result = await build({
-    entryPoints: [join(repoRoot, 'src/config/feeds.ts')],
-    bundle: true,
-    format: 'esm',
-    platform: 'neutral',
-    target: 'es2022',
-    write: false,
-    absWorkingDir: repoRoot,
-    alias: { '@': join(repoRoot, 'src') },
-    plugins: [stubUtilsPlugin as never],
-    define: {
-      'import.meta.env': JSON.stringify({
-        DEV: false,
-        PROD: true,
-        SSR: false,
-        MODE: 'test',
-        BASE_URL: '/',
-        VITE_VARIANT: 'full',
-        VITE_RSS_DIRECT_TO_RELAY: 'false',
-      }),
-    },
-  });
-  writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
-  feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`) as FeedsModule;
+  feeds = await bundleFeedsModule<FeedsModule>({ repoRoot, tempDir });
 
   const serverResult = await build({
     entryPoints: [join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts')],
