@@ -4,6 +4,7 @@ import {
   pickBriefCluster,
   briefSystemPrompt,
   briefUserPrompt,
+  composeSynthesizedBrief,
 } from '../scripts/_insights-brief.mjs';
 
 describe('pickBriefCluster', () => {
@@ -109,5 +110,79 @@ describe('briefUserPrompt', () => {
 
   it('instructs using only facts from the provided headline', () => {
     assert.match(briefUserPrompt('X'), /only facts from this headline/i);
+  });
+});
+
+// #5947 (second failure mode): the lead's own sentence splitter used a bare
+// /(?<=[.!?])\s+/, so a dotted acronym broke the lead mid-clause. Production
+// leads citing "U.S. embassies" split into a fragment ending at "U.S.", which
+// then carried the WRONG citation set and was flagged for the proper noun
+// "us" — rejecting the whole brief. brief-llm-core already normalizes dotted
+// acronyms before tokenizing for exactly this hazard (PR #3836); the lead
+// gate has to do the same before it decides where sentences end.
+describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
+  const topStories = [
+    {
+      primaryTitle: 'GCC condemns Iranian attacks on Kuwait',
+      primarySource: 'The National',
+      primaryLink: 'http://gcc',
+      sources: ['The National', 'Reuters'],
+      memberTitles: ['GCC condemns Iranian attacks on Kuwait'],
+    },
+    {
+      primaryTitle: 'U.S. embassies urge citizens to consider leaving the region',
+      primarySource: 'The Hindu',
+      primaryLink: 'http://embassies',
+      sources: ['The Hindu', 'AP News'],
+      memberTitles: ['U.S. embassies urge citizens to consider leaving the region'],
+    },
+  ];
+  const raw = JSON.stringify({
+    lead: 'The GCC condemned Iranian attacks on Kuwait [1], while U.S. embassies urged citizens to consider leaving the region [2].',
+    lines: [
+      { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+      { n: 2, text: 'U.S. embassies urge citizens to consider leaving the region [2]' },
+    ],
+  });
+
+  it('does not split the lead inside a dotted acronym', () => {
+    const composed = composeSynthesizedBrief(raw, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'a grounded lead citing "U.S." must not be rejected');
+    assert.match(composed.lead, /U\.S\. embassies/, 'the published lead keeps its original text');
+  });
+
+  it('still rejects a genuinely uncited lead sentence', () => {
+    const uncited = JSON.stringify({
+      lead: 'The GCC condemned Iranian attacks on Kuwait [1]. Analysts expect further escalation soon.',
+      lines: [
+        { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+        { n: 2, text: 'U.S. embassies urge citizens to consider leaving the region [2]' },
+      ],
+    });
+    assert.equal(composeSynthesizedBrief(uncited, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('still rejects a hallucinated proper noun in a cited sentence', () => {
+    const halluc = JSON.stringify({
+      lead: 'The GCC condemned Venezuelan attacks on Montevideo [1], while U.S. embassies urged citizens to consider leaving the region [2].',
+      lines: [
+        { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+        { n: 2, text: 'U.S. embassies urge citizens to consider leaving the region [2]' },
+      ],
+    });
+    assert.equal(composeSynthesizedBrief(halluc, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('keeps citation scoping per sentence rather than pooling the whole lead', () => {
+    // Story 2's proper nouns must NOT ground a claim that only cites [1].
+    const crossed = JSON.stringify({
+      lead: 'The GCC condemned attacks on Kuwait [1]. Kuwait embassies urged citizens to leave [1].',
+      lines: [
+        { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+        { n: 2, text: 'U.S. embassies urge citizens to consider leaving the region [2]' },
+      ],
+    });
+    const composed = composeSynthesizedBrief(crossed, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'both sentences cite [1] and use only story 1 nouns');
   });
 });

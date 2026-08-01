@@ -6,6 +6,7 @@ import {
   validateNoHallucinatedProperNouns,
   checkLeadGrounding,
   verifyCitationIndexes,
+  normalizeDottedAcronyms,
 } from './shared/brief-llm-core.js';
 
 /**
@@ -200,7 +201,15 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
   let strippedCitations = 0;
   const leadCheck = verifyCitationIndexes(parsed.lead, topStories.length);
   strippedCitations += leadCheck.stripped;
-  const leadSentences = leadCheck.text.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.trim().length > 0);
+  // #5947: split on NORMALIZED text ("U.S." -> "US") so a dotted acronym is
+  // not read as a sentence boundary. Production leads citing "U.S. embassies"
+  // broke into a fragment ending at "U.S." that inherited the previous
+  // clause's citation set, so "us" grounded against the wrong story and the
+  // whole brief was rejected. Only the gate's view is normalized — the
+  // published lead below stays leadCheck.text, punctuation intact.
+  const leadSentences = normalizeDottedAcronyms(leadCheck.text)
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => sentence.trim().length > 0);
   if (leadSentences.length === 0) return null;
   for (const sentence of leadSentences) {
     const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
