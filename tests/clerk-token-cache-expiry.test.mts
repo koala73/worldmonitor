@@ -261,19 +261,49 @@ describe('getClerkToken', () => {
 
   it('rejects a fallback when Clerk switches sessions before refresh failure returns', async () => {
     const nearExpiry = tokenExpiringAt(Date.now() + 5_000);
+    const replacementSession = {
+      async getToken() {
+        return null;
+      },
+    };
     const session = {
       async getToken(options: { template?: string; skipCache?: boolean } = {}) {
         if (options.skipCache) {
-          clerk.session = null;
+          clerk.session = replacementSession;
           throw new Error('network');
         }
         return nearExpiry;
       },
     };
-    const clerk: { session: typeof session | null } = { session };
+    const clerk: { session: typeof session | typeof replacementSession | null } = { session };
     __setClerkInstanceForTests(clerk as never);
 
     assert.equal(await getClerkToken(), null);
+  });
+
+  it('does not reuse a cached token after Clerk switches to another session', async () => {
+    const tokenA = tokenExpiringAt(Date.now() + 60_000);
+    const tokenB = tokenExpiringAt(Date.now() + 60_000);
+    let sessionBCalls = 0;
+    const sessionA = {
+      async getToken() {
+        return tokenA;
+      },
+    };
+    const sessionB = {
+      async getToken() {
+        sessionBCalls += 1;
+        return tokenB;
+      },
+    };
+    const clerk: { session: typeof sessionA | typeof sessionB | null } = { session: sessionA };
+    __setClerkInstanceForTests(clerk as never);
+
+    assert.equal(await getClerkToken(), tokenA);
+    clerk.session = sessionB;
+
+    assert.equal(await getClerkToken(), tokenB);
+    assert.equal(sessionBCalls, 1);
   });
 
   it('does not cache a fallback token', async () => {

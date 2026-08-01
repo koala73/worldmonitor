@@ -469,6 +469,7 @@ export function getClerkUserCreatedAt(): number | null {
 export async function signOut(): Promise<void> {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
   await clerkInstance?.signOut();
@@ -490,6 +491,7 @@ export async function signOut(): Promise<void> {
 export function clearClerkTokenCache(): void {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
 }
@@ -508,6 +510,7 @@ export function clearClerkTokenCache(): void {
  */
 let _cachedToken: string | null = null;
 let _cachedTokenAt = 0;
+let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
@@ -603,7 +606,10 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
 }
 
 export async function getClerkToken(): Promise<string | null> {
-  if (shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })) {
+  if (
+    clerkInstance?.session === _cachedSession &&
+    shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })
+  ) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -650,6 +656,7 @@ export async function getClerkToken(): Promise<string | null> {
       if (shouldReuseCachedClerkToken({ token, cachedAt: fetchedAt, now: fetchedAt })) {
         _cachedToken = token;
         _cachedTokenAt = fetchedAt;
+        _cachedSession = session;
         return token;
       }
       // Deliberately uncached: serving a near-expiry token for the full TTL is
