@@ -200,6 +200,41 @@ describe('getClerkToken', () => {
     assert.equal(await getClerkToken(), nearExpiry);
   });
 
+  it('does not fall back when the forced refresh resolves without a token', async () => {
+    const nearExpiry = tokenExpiringAt(Date.now() + 5_000);
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        return options.skipCache ? null : nearExpiry;
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkToken(), null);
+  });
+
+  it('does not return a token that expires during a failed refresh', async () => {
+    const originalDateNow = Date.now;
+    let now = 1_760_000_000_000;
+    Date.now = () => now;
+    const nearExpiry = tokenExpiringAt(now + 5_000);
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        if (options.skipCache) {
+          now += 6_000;
+          throw new Error('network');
+        }
+        return nearExpiry;
+      },
+    };
+
+    try {
+      __setClerkInstanceForTests({ session } as never);
+      assert.equal(await getClerkToken(), null);
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
+
   /**
    * The fallback must not strand the session on the degraded token: once Clerk
    * is reachable again the very next caller gets a healthy one.

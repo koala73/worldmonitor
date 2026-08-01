@@ -570,10 +570,24 @@ export function shouldReuseCachedClerkToken(input: {
   return now < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
 }
 
-async function fetchClerkToken(session: ClerkSession, skipCache = false): Promise<string | null> {
+type ClerkTokenFetchResult = {
+  token: string | null;
+  unavailable: boolean;
+};
+
+async function fetchClerkToken(session: ClerkSession, skipCache = false): Promise<ClerkTokenFetchResult> {
   const cacheOptions = skipCache ? { skipCache: true } : {};
-  return (await session.getToken({ template: 'convex', ...cacheOptions }).catch(() => null))
-    ?? await session.getToken(cacheOptions).catch(() => null);
+  let firstRequestSucceeded = false;
+  try {
+    const token = await session.getToken({ template: 'convex', ...cacheOptions });
+    firstRequestSucceeded = true;
+    if (token) return { token, unavailable: false };
+  } catch { /* Try the standard session token below. */ }
+  try {
+    return { token: await session.getToken(cacheOptions), unavailable: false };
+  } catch {
+    return { token: null, unavailable: !firstRequestSucceeded };
+  }
 }
 
 export async function getClerkToken(): Promise<string | null> {
@@ -597,7 +611,8 @@ export async function getClerkToken(): Promise<string | null> {
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.
-      let token = await fetchClerkToken(session);
+      const initial = await fetchClerkToken(session);
+      let token = initial.token;
       const firstFetchedAt = Date.now();
       let refreshUnavailable = false;
       if (token && !shouldReuseCachedClerkToken({ token, cachedAt: firstFetchedAt, now: firstFetchedAt })) {
@@ -612,8 +627,8 @@ export async function getClerkToken(): Promise<string | null> {
         // the only one there is, and its remaining seconds can still sign the
         // request being made right now — so keep it rather than manufacturing a
         // signed-out state for a live session (Sentry WORLDMONITOR-Q9).
-        if (refreshed) token = refreshed;
-        else refreshUnavailable = true;
+        if (refreshed.token) token = refreshed.token;
+        else refreshUnavailable = refreshed.unavailable;
       }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
@@ -628,7 +643,11 @@ export async function getClerkToken(): Promise<string | null> {
       // Deliberately uncached: serving a near-expiry token for the full TTL is
       // the stacked-cache defect this function was rewritten to fix, so the next
       // caller must go back to Clerk once it is reachable again.
-      return refreshUnavailable ? token : null;
+      if (refreshUnavailable) {
+        const expiresAt = clerkTokenExpiresAtMs(token);
+        if (expiresAt === null || fetchedAt < expiresAt) return token;
+      }
+      return null;
     } catch {
       return null;
     } finally {
