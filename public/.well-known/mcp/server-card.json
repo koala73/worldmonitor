@@ -258,11 +258,11 @@
     },
     {
       "name": "extract_entities",
-      "description": "Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB) to extract from it, or omit text to aggregate entities across the current headline digest. No LLM involved."
+      "description": "Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB) to extract from it, or omit text to aggregate entities across the current headline digest (optionally restricted with category, e.g. \"commodities\"). No LLM involved."
     },
     {
       "name": "get_news_clusters",
-      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM."
+      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. \"commodities\"). Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM."
     },
     {
       "name": "get_keyword_spikes",

@@ -205,11 +205,19 @@ describe('#5697 NLP MCP tools', () => {
       byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('commodities'),
       'extract_entities category enum must include commodities',
     );
+    assert.ok(
+      byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('intel'),
+      'extract_entities category enum must include intel',
+    );
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.limit.maximum, 25);
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.category.type, 'string');
     assert.ok(
       byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('commodities'),
       'get_news_clusters category enum must include commodities',
+    );
+    assert.ok(
+      byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('intel'),
+      'get_news_clusters category enum must include intel',
     );
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
@@ -396,6 +404,54 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
+    it('can restrict digest aggregation to the intel category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'CVE-2026-9999 prompts an emergency regional summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        intel: {
+          items: [
+            { source: 'Defense One', title: 'CVE-2026-7777 tracked by APT28 in military networks', link: 'https://n/intel', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'intel' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.category, 'intel');
+        assert.equal(result.note, undefined);
+        assert.ok(result.patternEntities.some((entity) => entity.value === 'CVE-2026-7777'));
+        assert.equal(
+          result.patternEntities.some((entity) => entity.value === 'CVE-2026-9999'),
+          false,
+        );
+      });
+    });
+
+    it('keeps a present but empty category distinct from an unknown category', async () => {
+      await withDigestCategories({ commodities: { items: [] } }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined);
+        assert.deepEqual(result.entities, []);
+        assert.deepEqual(result.patternEntities, []);
+      });
+    });
+
+    it('lists the static category inventory when the digest has no buckets', async () => {
+      await withDigestCategories({}, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.category, 'commodities');
+        assert.match(result.note, /Unknown digest category "commodities"/);
+        assert.match(result.note, /intel/);
+        assert.deepEqual(result.entities, []);
+        assert.deepEqual(result.patternEntities, []);
+      });
+    });
+
     it('returns a corrective note when category is unknown', async () => {
       await withDigestCategories({
         politics: {
@@ -462,6 +518,51 @@ describe('#5697 NLP MCP tools', () => {
         assert.equal(result.category, 'commodities');
         assert.equal(result.note, undefined);
         assert.match(result.clusters[0].title, /Crude oil/);
+      });
+    });
+
+    it('can restrict clustering to the intel category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'Diplomatic talks resume after regional summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        intel: {
+          items: [
+            { source: 'Defense One', title: 'Military networks targeted by APT28 operators', link: 'https://n/intel', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'intel' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.totalClusters, 1);
+        assert.equal(result.category, 'intel');
+        assert.equal(result.note, undefined);
+        assert.match(result.clusters[0].title, /Military networks/);
+      });
+    });
+
+    it('keeps a present but empty category distinct from an unknown category', async () => {
+      await withDigestCategories({ commodities: { items: [] } }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.totalClusters, 0);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined);
+        assert.deepEqual(result.clusters, []);
+      });
+    });
+
+    it('lists the static category inventory when the digest has no buckets', async () => {
+      await withDigestCategories({}, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.totalClusters, 0);
+        assert.equal(result.category, 'commodities');
+        assert.match(result.note, /Unknown digest category "commodities"/);
+        assert.match(result.note, /intel/);
+        assert.deepEqual(result.clusters, []);
       });
     });
 

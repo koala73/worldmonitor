@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+import { INTEL_SOURCES, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,11 +29,29 @@ describe('commodities news agent parity (#5889)', () => {
     );
     assert.ok(match, 'FULL_DIGEST_CATEGORIES must be declared in nlp-tools.ts');
     const enumKeys = [...match[1].matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]).sort();
-    const feedKeys = Object.keys(VARIANT_FEEDS.full ?? {}).sort();
+    const feedKeys = [
+      ...Object.keys(VARIANT_FEEDS.full ?? {}),
+      ...(INTEL_SOURCES.length > 0 ? ['intel'] : []),
+    ].sort();
     assert.deepEqual(
       enumKeys,
       feedKeys,
-      'FULL_DIGEST_CATEGORIES must list every VARIANT_FEEDS.full key (and no extras)',
+      'FULL_DIGEST_CATEGORIES must list every category emitted by the full digest (and no extras)',
     );
+  });
+
+  it('keeps the published MCP server card discoverable for category filtering', () => {
+    const card = JSON.parse(readFileSync(
+      join(ROOT, 'public/.well-known/mcp/server-card.json'),
+      'utf8',
+    ));
+    const tools = new Map((card.tools ?? []).map((tool) => [tool.name, tool.description]));
+    for (const name of ['extract_entities', 'get_news_clusters']) {
+      const description = tools.get(name) ?? '';
+      assert.match(description, /category/,
+        `${name} server-card description must advertise category filtering`);
+      assert.match(description, /commodities/,
+        `${name} server-card description must advertise commodities filtering`);
+    }
   });
 });

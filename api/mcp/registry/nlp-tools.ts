@@ -59,7 +59,7 @@ const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 const FULL_DIGEST_CATEGORIES = [
   'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance',
   'commodities', 'gov', 'africa', 'latam', 'asia', 'energy', 'thinktanks',
-  'crisis', 'layoffs',
+  'crisis', 'layoffs', 'intel',
 ] as const;
 const FULL_DIGEST_CATEGORY_DESC =
   'Restrict to one full-digest category: ' +
