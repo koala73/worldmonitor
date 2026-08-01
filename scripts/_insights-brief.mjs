@@ -6,8 +6,13 @@ import {
   validateNoHallucinatedProperNouns,
   checkLeadGrounding,
   verifyCitationIndexes,
-  normalizeDottedAcronyms,
 } from './shared/brief-llm-core.js';
+
+// A dotted acronym ("U.S.", "U.N.", "D.O.J.") followed by a lowercase word.
+// Sentences start with a capital, so this run is necessarily mid-clause and its
+// periods are not sentence boundaries. Deliberately narrow — see the sentence
+// split in composeSynthesizedBrief for why the ambiguous cases must not match.
+const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+\p{Ll})/gu;
 
 /**
  * Choose which clustered story to summarize for the WORLD BRIEF.
@@ -201,13 +206,19 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
   let strippedCitations = 0;
   const leadCheck = verifyCitationIndexes(parsed.lead, topStories.length);
   strippedCitations += leadCheck.stripped;
-  // #5947: split on NORMALIZED text ("U.S." -> "US") so a dotted acronym is
-  // not read as a sentence boundary. Production leads citing "U.S. embassies"
-  // broke into a fragment ending at "U.S." that inherited the previous
-  // clause's citation set, so "us" grounded against the wrong story and the
-  // whole brief was rejected. Only the gate's view is normalized — the
+  // #5947: a dotted acronym mid-clause ("U.S. embassies") was read as a
+  // sentence boundary, so the fragment ending at "U.S." inherited the previous
+  // clause's citations and "us" grounded against the wrong story — rejecting
+  // otherwise-valid briefs. Collapse the dots ONLY when the acronym is followed
+  // by a lowercase word, which cannot start a sentence and is therefore
+  // provably mid-clause. A capitalized continuation stays a boundary: review of
+  // this fix showed that collapsing every acronym merged genuine sentences into
+  // one validation unit whose citation set was the UNION of both, re-opening
+  // the misattribution #4928 closed and letting an uncited sentence ride inside
+  // a cited one. Ambiguity must fail closed. Only the gate's view changes — the
   // published lead below stays leadCheck.text, punctuation intact.
-  const leadSentences = normalizeDottedAcronyms(leadCheck.text)
+  const leadSentences = leadCheck.text
+    .replace(MIDSENTENCE_DOTTED_ACRONYM, (acronym) => acronym.replace(/\./g, ''))
     .split(/(?<=[.!?])\s+/)
     .filter((sentence) => sentence.trim().length > 0);
   if (leadSentences.length === 0) return null;

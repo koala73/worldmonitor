@@ -268,8 +268,13 @@ describe('_clustering.mjs', () => {
     };
 
     it('keeps a corroborated cluster in top stories when alerts sweep the ranking', () => {
-      const top = selectTopStories([...alertClusters, corroborated], 8);
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 8, stats);
       assert.equal(top.length, 8);
+      // Assert the premise too: if scoring drifts so the corroborated cluster
+      // ranks top-8 on merit, this test would still pass while silently no
+      // longer exercising the reservation.
+      assert.equal(stats.briefEligiblePromoted, true, 'fixture must still force the reservation path');
       assert.ok(
         top.some(isBriefLeadEligible),
         'top stories must retain a brief-eligible cluster when one exists in the corpus',
@@ -277,10 +282,35 @@ describe('_clustering.mjs', () => {
     });
 
     it('yields a usable brief lead instead of MISSING_CLUSTER', () => {
-      const top = selectTopStories([...alertClusters, corroborated], 8);
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 8, stats);
+      assert.equal(stats.briefEligiblePromoted, true, 'fixture must still force the reservation path');
       const lead = pickBriefCluster(top);
       assert.notEqual(lead, null, 'pickBriefCluster must not return null when the corpus has a corroborated cluster');
       assert.equal(lead.primarySource, 'BBC World');
+    });
+
+    it('reserves the highest-ranked eligible candidate, not just any', () => {
+      const weaker = {
+        ...corroborated,
+        primaryTitle: 'Local council approves a new footpath in a quiet village',
+        primarySource: 'Village Gazette',
+        primaryLink: 'http://weaker',
+        sources: ['Village Gazette', 'County Wire'],
+        pubDate: ageISO(14),
+        lastUpdated: ageISO(14),
+      };
+      const stats = {};
+      const top = selectTopStories([...alertClusters, weaker, corroborated], 8, stats);
+      assert.equal(stats.briefEligibleConsidered, 2);
+      assert.equal(stats.briefEligiblePromoted, true);
+      const eligible = top.filter(isBriefLeadEligible);
+      assert.equal(eligible.length, 1, 'exactly one slot is reserved');
+      assert.equal(
+        eligible[0].primarySource,
+        'BBC World',
+        'the better-ranked eligible cluster must win the reserved slot',
+      );
     });
 
     it('reports the reservation in selection stats', () => {
@@ -307,20 +337,77 @@ describe('_clustering.mjs', () => {
     });
 
     it('respects the per-source cap while promoting', () => {
+      // 5 same-source candidates against 8 slots: the cap must bind and drop
+      // 2, otherwise this asserts nothing (the slots would run out first).
       const capped = Array.from({ length: 5 }, (_, i) => ({
-        primaryTitle: `Missile attack kills dozens in airstrike variant ${i}`,
+        primaryTitle: `Iran war latest: missile attack kills troops in airstrike variant ${i}`,
         primarySource: 'Capped Wire',
         primaryLink: `http://capped-${i}`,
         sources: ['Capped Wire', 'Second Wire'],
         sourceCount: 2,
         isAlert: true,
-        pubDate: new Date(now - 5 * 60_000).toISOString(),
-        lastUpdated: new Date(now - 5 * 60_000).toISOString(),
+        pubDate: ageISO(0.1),
+        lastUpdated: ageISO(0.1),
       }));
-      const top = selectTopStories([...alertClusters, ...capped], 8);
+      const stats = {};
+      const top = selectTopStories([...alertClusters.slice(0, 3), ...capped], 8, stats);
       const fromCapped = top.filter(s => s.primarySource === 'Capped Wire').length;
-      assert.ok(fromCapped <= 3, `per-source cap breached: ${fromCapped}`);
+      assert.equal(fromCapped, 3, 'per-source cap must admit exactly MAX_PER_SOURCE');
+      assert.ok(stats.sourceCapDropped >= 2, `cap must actually bind, got ${stats.sourceCapDropped}`);
       assert.ok(top.some(isBriefLeadEligible));
+    });
+
+    it('does not claim a promotion when no slot exists', () => {
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 0, stats);
+      assert.deepEqual(top, []);
+      assert.equal(stats.briefEligiblePromoted, false, 'no slot means no promotion to report');
+    });
+
+    it('gives the single available slot to the corroborated cluster', () => {
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 1, stats);
+      assert.equal(top.length, 1);
+      assert.equal(stats.briefEligiblePromoted, true);
+      assert.equal(top[0].primarySource, 'BBC World');
+    });
+
+    it('reserves a slot for an entity-corroborated single-source cluster', () => {
+      // isBriefLeadEligible has two arms; the >=2-sources arm is covered above.
+      // Corroboration must be EARNED through computeEntityCorroboration (which
+      // selectTopStories recomputes, resetting any hand-set flag), so these two
+      // single-source clusters share the iran+deal bigram inside the 24h window.
+      const entityPair = [
+        {
+          primaryTitle: 'Iran deal talks resume in Geneva',
+          primarySource: 'Wire Desk',
+          primaryLink: 'http://entity-a',
+          sources: ['Wire Desk'],
+          sourceCount: 1,
+          isAlert: false,
+          pubDate: ageISO(6),
+          lastUpdated: ageISO(6),
+          memberTitles: ['Iran deal talks resume in Geneva'],
+        },
+        {
+          primaryTitle: 'Officials say Iran deal framework is close',
+          primarySource: 'Second Desk',
+          primaryLink: 'http://entity-b',
+          sources: ['Second Desk'],
+          sourceCount: 1,
+          isAlert: false,
+          pubDate: ageISO(6),
+          lastUpdated: ageISO(6),
+          memberTitles: ['Officials say Iran deal framework is close'],
+        },
+      ];
+      const stats = {};
+      const top = selectTopStories([...alertClusters, ...entityPair], 8, stats);
+      assert.equal(stats.briefEligiblePromoted, true);
+      const lead = pickBriefCluster(top);
+      assert.notEqual(lead, null, 'entity corroboration alone must satisfy the reservation');
+      assert.equal(lead.entityCorroboration, true);
+      assert.equal(lead.sources.length, 1, 'this arm covers single-source entity corroboration');
     });
   });
 });

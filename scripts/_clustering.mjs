@@ -317,9 +317,12 @@ export function computeEntityCorroboration(clusters, nowMs = Date.now()) {
 /**
  * @param {object[]} clusters
  * @param {number} [maxCount]
- * @param {{ considered?: number; admissibilityDropped?: number; sourceCapDropped?: number; overflowDropped?: number }} [stats]
+ * @param {{ considered?: number; admissibilityDropped?: number; sourceCapDropped?: number; overflowDropped?: number; briefEligibleConsidered?: number; briefEligiblePromoted?: boolean }} [stats]
  *   #4920 coverage ledger: when provided, populated with how many clusters
  *   each gate dropped — previously all three gates were silent.
+ *   #5947 adds `briefEligibleConsidered` (corroborated clusters in the whole
+ *   corpus) and `briefEligiblePromoted` (whether a slot had to be reserved to
+ *   keep one in the list).
  */
 // biome-ignore lint/style/useDefaultParameterLast: maxCount's default predates the trailing params; reordering would break the (clusters, maxCount, stats) call shape
 export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
@@ -400,8 +403,13 @@ export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
   // rank 9+. Reserve one slot for the highest-ranked corroborated candidate
   // rather than shipping no brief at all. This does not lower the brief's
   // corroboration bar — it guarantees selection can satisfy it.
+  // maxCount <= 0 selects nothing, so no slot exists to reserve — guard here
+  // rather than only inside fill(), or the stats below would report a
+  // promotion that never happened.
   const briefEligible = admissible.filter(entry => isBriefLeadEligible(entry.cluster));
-  const promoted = result.selected.some(isBriefLeadEligible) ? null : (briefEligible[0] ?? null);
+  const promoted = maxCount > 0 && !result.selected.some(isBriefLeadEligible)
+    ? (briefEligible[0] ?? null)
+    : null;
   if (promoted) result = fill(promoted);
 
   if (stats && typeof stats === 'object') {

@@ -173,8 +173,12 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
     assert.equal(composeSynthesizedBrief(halluc, topStories, { validatorMode: 'enforce' }), null);
   });
 
-  it('keeps citation scoping per sentence rather than pooling the whole lead', () => {
-    // Story 2's proper nouns must NOT ground a claim that only cites [1].
+  // NOTE: this asserts the acronym fix does not over-reject a lead whose
+  // sentences all cite the same story. It does NOT prove citation scoping —
+  // mutation-testing showed it stays green when grounding is pooled across all
+  // stories. The scoping guarantee is pinned by "rejects a claim whose proper
+  // nouns come from a story it does not cite" below.
+  it('accepts a multi-sentence lead that cites one story throughout', () => {
     const crossed = JSON.stringify({
       lead: 'The GCC condemned attacks on Kuwait [1]. Kuwait embassies urged citizens to leave [1].',
       lines: [
@@ -184,5 +188,62 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
     });
     const composed = composeSynthesizedBrief(crossed, topStories, { validatorMode: 'enforce' });
     assert.notEqual(composed, null, 'both sentences cite [1] and use only story 1 nouns');
+  });
+});
+
+// #5947 review (adversarial + correctness, independently): collapsing EVERY
+// dotted acronym before splitting removed real sentence boundaries too, merging
+// two sentences into one validation unit whose citation set is the UNION of
+// both. That re-opens the shape-valid misattribution #4928 closed, and lets an
+// uncited sentence ride along inside a cited one. Only an acronym followed by a
+// lowercase word is provably mid-sentence; anything else must stay a boundary.
+describe('composeSynthesizedBrief acronym boundaries fail closed (#5947 review)', () => {
+  const topStories = [
+    {
+      primaryTitle: 'GCC condemns Iranian attacks on Kuwait',
+      primarySource: 'The National',
+      primaryLink: 'http://gcc',
+      sources: ['The National', 'Reuters'],
+      memberTitles: ['GCC condemns Iranian attacks on Kuwait'],
+    },
+    {
+      primaryTitle: 'U.S. Embassies Urge Citizens to Consider Leaving the Region',
+      primarySource: 'The Hindu',
+      primaryLink: 'http://embassies',
+      sources: ['The Hindu', 'AP News'],
+      memberTitles: ['U.S. Embassies Urge Citizens to Consider Leaving the Region'],
+    },
+  ];
+  const lines = [
+    { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+    { n: 2, text: 'U.S. Embassies urge citizens to consider leaving the region [2]' },
+  ];
+
+  it('rejects a claim whose proper nouns come from a story it does not cite', () => {
+    // "the U.S." is attributed to [1], which never mentions the US. A merged
+    // validation unit would let it ground against [2] instead.
+    const misattributed = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1], and warnings were issued by the U.S. Embassies urged citizens to leave the region [2].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('rejects an uncited sentence that follows an acronym-terminated sentence', () => {
+    const uncitedMiddle = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Meanwhile pressure mounted on the U.S. Embassies urged citizens to leave the region [2].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(uncitedMiddle, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('keeps a genuine sentence boundary after a terminal acronym', () => {
+    // Capitalized continuation = real boundary. The second sentence is uncited,
+    // so a correct gate rejects; a gate that merged them would publish.
+    const terminalAcronym = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. Embassies remain open for now.',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(terminalAcronym, topStories, { validatorMode: 'enforce' }), null);
   });
 });

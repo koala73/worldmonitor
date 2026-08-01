@@ -181,17 +181,14 @@ export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStat
 }
 
 /**
- * Build only the diagnostic patch owned by the insights seeder. `fetchedAt`
- * remains under runSeed's control: on a rejected LKG attempt it is mirrored
- * from the old canonical envelope, while a successful publish gets `now`.
- */
-/**
  * #5947: how many corroborated (brief-eligible) clusters the corpus held on
  * this run. Bounded and numeric so it is safe for seed-meta/health/logs, and
  * it is the field that separates the two very different worlds behind a
  * MISSING_CLUSTER rejection: 0 means the corpus genuinely had nothing to lead
  * with (legitimately degraded), while >0 means selection failed to surface a
- * cluster that existed — the production incident this issue tracked.
+ * cluster that existed — the production incident this issue tracked. Absent
+ * stats normalize to null, never 0, so a telemetry failure cannot impersonate
+ * a bare corpus.
  */
 const INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS = 1000;
 
@@ -200,6 +197,11 @@ function normalizeBriefEligibleClusters(value) {
   return Math.min(INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS, value);
 }
 
+/**
+ * Build only the diagnostic patch owned by the insights seeder. `fetchedAt`
+ * remains under runSeed's control: on a rejected LKG attempt it is mirrored
+ * from the old canonical envelope, while a successful publish gets `now`.
+ */
 export function buildInsightsFreshnessMetaPatch({
   previousMeta,
   outcome,
@@ -743,14 +745,19 @@ async function fetchInsights() {
   // nothing corroborated to lead with. Log the corpus count (and whether the
   // reservation had to fire) so a recurrence is diagnosable from the run log
   // and seed-meta alone.
-  const briefEligibleClusters = selectionStats.briefEligibleConsidered ?? 0;
+  // Do NOT default to 0 here: 0 is the meaningful value "the corpus had nothing
+  // corroborated to lead with". Substituting it for absent stats would make a
+  // telemetry failure read exactly like a benign bare-corpus run.
+  const briefEligibleClusters = typeof selectionStats.briefEligibleConsidered === 'number'
+    ? selectionStats.briefEligibleConsidered
+    : null;
   if (selectionStats.briefEligiblePromoted) {
     console.log(
       `  Brief lead reserved: promoted a corroborated cluster into top-${topStories.length} ` +
-        `(${briefEligibleClusters} eligible in corpus, source=${briefCluster?.primarySource ?? 'unknown'})`,
+        `(${briefEligibleClusters ?? 'unknown'} eligible in corpus, source=${briefCluster?.primarySource ?? 'unknown'})`,
     );
   } else if (!hasBriefCluster) {
-    console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters})`);
+    console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters ?? 'unknown'})`);
   }
   const synthesisResult = hasBriefCluster
     ? await callLLM(null, {

@@ -511,7 +511,7 @@ const SENTENCE_START_AMBIGUOUS = new Set([
  *   "i.e., these things"             → "i.e., these things"  (lowercase, no match)
  *   "end of sentence."               → "end of sentence."    (single dot, no run)
  */
-export function normalizeDottedAcronyms(text) {
+function normalizeDottedAcronyms(text) {
   return text.replace(/(\b[A-Z]\.(?:[A-Z]\.?)+)/g, (match) => match.replace(/\./g, ''));
 }
 
