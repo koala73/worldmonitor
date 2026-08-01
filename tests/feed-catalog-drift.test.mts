@@ -30,9 +30,12 @@ const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
 const outfile = join(tempDir, 'feeds-bundle.mjs');
 
 interface FeedsModule {
+  DEFAULT_ENABLED_SOURCES: Record<string, string[]>;
   DEFAULT_ENABLED_INTEL: string[];
   SOURCE_TYPES: Record<string, string>;
+  SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
   getAllDefaultEnabledSources: () => Set<string>;
+  getLocaleBoostedSources: (locale: string) => Set<string>;
   listConfiguredFeedNames: () => string[];
 }
 
@@ -120,5 +123,67 @@ describe('feed catalog drift', () => {
     const shared = readFileSync(join(repoRoot, 'shared/source-tiers.json'), 'utf8');
     const scripts = readFileSync(join(repoRoot, 'scripts/shared/source-tiers.json'), 'utf8');
     assert.equal(scripts, shared, 'scripts/shared/source-tiers.json drifted from shared/source-tiers.json');
+  });
+
+  // Issue #5949 — EN full-variant defaults under-cover the Ukraine war.
+  // Kyiv Independent, PL frontline, and independent RU were cataloged but
+  // off-by-default, so users only saw Western wire/EU framing.
+  it('default-enables Ukraine/Poland/independent-Russia frontline sources for EN (#5949)', () => {
+    const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
+    const enabled = feeds.getAllDefaultEnabledSources();
+
+    assert.ok(
+      europe.includes('Kyiv Independent'),
+      'Kyiv Independent must be default-on in europe for EN full-variant sessions',
+    );
+
+    const polishFrontline = ['TVN24', 'Rzeczpospolita'].filter((n) => europe.includes(n));
+    assert.ok(
+      polishFrontline.length >= 1,
+      'At least one Polish frontline source (TVN24 / Rzeczpospolita) must be default-on',
+    );
+
+    const independentRu = ['Meduza', 'Moscow Times'].filter((n) => europe.includes(n));
+    assert.ok(
+      independentRu.length >= 1,
+      'At least one independent Russia source (Meduza / Moscow Times) must be default-on',
+    );
+
+    // State propaganda stays cataloged but off-by-default.
+    for (const stateMedia of ['TASS', 'RT', 'RT Russia'] as const) {
+      assert.ok(
+        !enabled.has(stateMedia),
+        `${stateMedia} must remain off-by-default (state propaganda; catalog-only)`,
+      );
+    }
+
+    // Intel: Bellingcat stays on (already default-enabled).
+    assert.ok(
+      feeds.DEFAULT_ENABLED_INTEL.includes('Bellingcat'),
+      'Bellingcat must remain default-enabled in intel',
+    );
+  });
+
+  it('does not default-enable Hungary/Greece locale packs for EN (#5949)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    // These stay locale-boosted (lang: hu / el), not EN default-on.
+    for (const localeOnly of ['Telex', 'Index.hu', 'Kathimerini', 'Naftemporiki'] as const) {
+      assert.ok(
+        !enabled.has(localeOnly),
+        `${localeOnly} must stay locale-boosted, not EN default-on`,
+      );
+    }
+    // Sanity: hu/el locale boost still works so the packs are not dead.
+    assert.ok(feeds.getLocaleBoostedSources('hu').has('Telex'));
+    assert.ok(feeds.getLocaleBoostedSources('el').has('Kathimerini'));
+  });
+
+  it('SOURCE_PROPAGANDA_RISK still high-labels Russian state media (#5949)', () => {
+    for (const name of ['TASS', 'RT', 'RT Russia'] as const) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} must remain in SOURCE_PROPAGANDA_RISK`);
+      assert.equal(profile.risk, 'high', `${name} must remain high-risk`);
+      assert.equal(profile.stateAffiliated, 'Russia');
+    }
   });
 });
