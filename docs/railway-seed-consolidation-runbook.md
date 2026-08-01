@@ -432,6 +432,28 @@ continuous metric.
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
 | **Note** | Cross-Strait Activity is the only direct external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the bounded public composition after reading its domain lanes. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
+#### Staged correlation runtime modes
+
+Correlation uses one Redis control key, `correlation:runtime-mode:v1`, whose
+value is a JSON object with one strict field, for example
+`{"mode":"legacy"}`, `{"mode":"exact"}`, or `{"mode":"fuzzy"}`.
+The browser reads the public `GET /api/correlation-runtime-mode` contract with
+`cache: "no-store"` at startup and before every correlation refresh. The
+correlation seeder reads the Redis key again on every compute cycle; it does not
+reuse a previous cycle's decision.
+
+Every missing key, malformed JSON or shape, unknown mode, missing Redis
+credentials, failed Redis request, non-OK browser response, or failed browser
+payload parse resolves to `legacy`. `legacy` remains the current keyword
+clustering behavior. Exact entity clustering and fuzzy resolution are staged
+follow-ups owned by #5984 and #5989; this control slice does not activate either
+mode or change live configuration.
+
+Changing the key is an operational activation or rollback and requires separate
+operator approval. Keep that approval, the observed validation evidence, and
+the rollback decision outside the code deployment; the code path is only the
+fail-closed read and hand-off contract.
+
 #### Japan MOD transport recovery gate
 
 The official Japan Joint Staff index is

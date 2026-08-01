@@ -12,6 +12,7 @@ import { haversineKm } from '@/utils/distance';
 import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
+import type { CorrelationRuntimeMode } from '@/services/correlation-runtime-mode';
 
 const LLM_SCORE_THRESHOLD = 60;
 const LLM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -35,6 +36,7 @@ export class CorrelationEngine {
   private consecutiveSlowRuns = 0;
   private peakSlowRunMs = 0;
   private warnedForCurrentSlowStreak = false;
+  private runtimeMode: CorrelationRuntimeMode = 'legacy';
 
   constructor() {
     // Use '' base URL — requests go to current origin, same as other panels.
@@ -50,8 +52,9 @@ export class CorrelationEngine {
     this.previousClusters.set(adapter.domain, []);
   }
 
-  async run(ctx: AppContext): Promise<void> {
+  async run(ctx: AppContext, runtimeMode: CorrelationRuntimeMode = 'legacy'): Promise<void> {
     if (this.running) return;
+    this.runtimeMode = runtimeMode;
     this.running = true;
     try {
       this.pruneLlmCache();
@@ -96,6 +99,10 @@ export class CorrelationEngine {
 
   getAllCards(): ConvergenceCard[] {
     return Array.from(this.cards.values()).flat();
+  }
+
+  getRuntimeMode(): CorrelationRuntimeMode {
+    return this.runtimeMode;
   }
 
   private recordRunDuration(elapsedMs: number): void {

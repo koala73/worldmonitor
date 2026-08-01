@@ -41,6 +41,16 @@ afterEach(() => {
 });
 
 describe('CorrelationEngine performance warning', () => {
+  it('retains the selected runtime mode at the strategy handoff boundary', async () => {
+    const engine = createEngine();
+
+    await engine.run({} as Parameters<CorrelationEngine['run']>[0], 'exact');
+    expect(engine.getRuntimeMode()).toBe('exact');
+
+    await engine.run({} as Parameters<CorrelationEngine['run']>[0], 'fuzzy');
+    expect(engine.getRuntimeMode()).toBe('fuzzy');
+  });
+
   it('does not warn for an isolated cold-start breach', async () => {
     vi.spyOn(performance, 'now')
       .mockReturnValueOnce(0)
