@@ -102,6 +102,12 @@ function isNullableDateString(value: unknown): boolean {
   return value === null || isDateString(value);
 }
 
+function isDateOnlyString(value: unknown): boolean {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`));
+}
+
 function isNullableString(value: unknown): boolean {
   return value === null || typeof value === 'string';
 }
@@ -121,6 +127,34 @@ function isProxyFailureDetail(value: unknown): boolean {
     && isNullableString(value.bodyPrefix)
     && isNullableString(value.errorCode)
     && isNullableString(value.errorMessage);
+}
+
+function isJapanModCandidate(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.sourceUrl === 'string'
+    && typeof value.documentId === 'string'
+    && typeof value.title === 'string'
+    && isDateOnlyString(value.publicationDay);
+}
+
+function isShadowIndexProbe(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (
+    value.httpStatus !== undefined
+    && value.httpStatus !== null
+    && (
+      !Number.isInteger(value.httpStatus)
+      || Number(value.httpStatus) < 100
+      || Number(value.httpStatus) > 599
+    )
+  ) return false;
+  return typeof value.url === 'string'
+    && isDateString(value.checkedAt)
+    && (
+      value.status === undefined
+      || ['reachable', 'blocked', 'error'].includes(String(value.status))
+    )
+    && (value.errorCode === undefined || isNullableString(value.errorCode));
 }
 
 function isStringRecord(value: unknown): boolean {
@@ -201,6 +235,7 @@ function isObservation(value: unknown): boolean {
         value.indexPresence === undefined
         || value.indexPresence === 'present'
         || value.indexPresence === 'not_observed_in_current_index'
+        || value.indexPresence === 'not_covered_by_current_index'
         || value.indexPresence === 'unknown'
       );
   }
@@ -233,6 +268,19 @@ function isSourceHealth(value: unknown): boolean {
       value.proxyControlProbe === undefined
       || value.proxyControlProbe === 'reachable'
       || value.proxyControlProbe === 'unreachable'
+    )
+    && (value.transportMode === undefined || typeof value.transportMode === 'string')
+    && (
+      value.companionResolution === undefined
+      || typeof value.companionResolution === 'string'
+    )
+    && (
+      value.candidates === undefined
+      || (Array.isArray(value.candidates) && value.candidates.every(isJapanModCandidate))
+    )
+    && (
+      value.shadowIndexProbe === undefined
+      || isShadowIndexProbe(value.shadowIndexProbe)
     )
     && (
       value.fallbackReason === undefined

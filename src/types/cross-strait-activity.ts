@@ -51,7 +51,16 @@ export interface JapanModActivityObservation extends CrossStraitActivityObservat
   sourceId: 'japan-mod';
   observationKind: 'reviewed_regional_augmentation';
   categories: JapanModActivityCategories;
-  indexPresence?: 'present' | 'not_observed_in_current_index' | 'unknown';
+  /**
+   * `not_covered_by_current_index` means the discovery surface does not
+   * enumerate this document's series at all, so its absence is not evidence the
+   * publisher withdrew it -- unlike `not_observed_in_current_index`.
+   */
+  indexPresence?:
+    | 'present'
+    | 'not_observed_in_current_index'
+    | 'not_covered_by_current_index'
+    | 'unknown';
 }
 
 export type CrossStraitActivityObservation =
@@ -135,10 +144,46 @@ export interface CrossStraitActivitySourceHealth {
    * specifically, which is what licenses `PROXY_TARGET_FORBIDDEN`.
    */
   proxyControlProbe?: 'reachable' | 'unreachable';
+  /** Which publisher surface discovery ran against. */
+  transportMode?: string;
+  /**
+   * Why no English-language document URL accompanies a Japanese release. The
+   * English press index is Cloudflare-blocked and the English series carries its
+   * own counter, so no companion URL is derivable from a discovered release.
+   */
+  companionResolution?: string;
+  /**
+   * Operator-only, same projection carve-out as `proxyFailureDetail`. Bounded
+   * list of official releases the last successful fetch discovered, so newly
+   * admitted rows can be tied back to a specific transport success. Discovery
+   * only -- nothing here is an admitted observation.
+   */
+  candidates?: CrossStraitJapanModCandidate[];
+  /**
+   * Operator-only, same projection carve-out as `proxyFailureDetail`. Last
+   * result of the low-frequency diagnostic against the blocked English press
+   * index. Never affects transportStatus, lastSuccessAt, or errorCodes.
+   */
+  shadowIndexProbe?: CrossStraitShadowIndexProbe;
   errorCodes: string[];
   lastSuccessAt: string | null;
   admittedDocumentCount?: number;
   unreviewedCandidateCount?: number;
+}
+
+export interface CrossStraitJapanModCandidate {
+  sourceUrl: string;
+  documentId: string;
+  publicationDay: string;
+  title: string;
+}
+
+export interface CrossStraitShadowIndexProbe {
+  url: string;
+  checkedAt: string;
+  status?: 'reachable' | 'blocked' | 'error';
+  httpStatus?: number | null;
+  errorCode?: string | null;
 }
 
 export interface CrossStraitActivitySnapshot {
