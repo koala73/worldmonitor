@@ -9,6 +9,7 @@
 const { strict: assert } = require('node:assert');
 const http = require('node:http');
 const test = require('node:test');
+const { nextBackoffMs } = require('./_ingestion-coverage.cjs');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -443,4 +444,9 @@ test('RSS proxy: stale-on-error resolves in-flight (no hang)', async (_t) => {
   assert.equal(proxy.inFlight.size, 0, 'In-flight map should be empty after settlement');
 
   proxy.server.close();
+});
+
+test('RSS fallback exhaustion: repeated failures stop at the bounded cooldown cap', () => {
+  const delays = [0, 1, 2, 3, 4, 5].map((failures) => nextBackoffMs(failures, 60_000, 900_000));
+  assert.deepEqual(delays, [60_000, 120_000, 240_000, 480_000, 900_000, 900_000]);
 });

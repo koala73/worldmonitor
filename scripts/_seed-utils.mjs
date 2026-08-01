@@ -946,10 +946,11 @@ export function extraKeyPayloadBytes(key, data, envelopeMeta) {
   return Buffer.byteLength(serializeExtraKeyValue(key, data, envelopeMeta), 'utf8');
 }
 
-export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds) {
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
   const { url, token } = getRedisCredentials();
   const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
+  if (coverage) meta.coverage = coverage;
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
@@ -964,9 +965,9 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   return true;
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
   await writeExtraKey(key, data, ttl);
-  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
+  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds, coverage);
 }
 
 // Detailed counterpart to extendExistingTtl. Results stay aligned to the input
