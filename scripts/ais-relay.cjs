@@ -29,6 +29,7 @@ const {
   YahooQuoteSummaryClient,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
+  collectSectorValuations,
 } = require('./_yahoo-sector-valuations.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const {
@@ -2340,25 +2341,22 @@ async function seedSectorSummary() {
     return 0;
   }
 
-  const valuations = {};
-  const valuationSources = new Set();
-  let valCount = 0;
-  for (const s of SECTOR_SYMBOLS) {
-    const raw = await fetchYahooQuoteSummary(s);
-    const parsed = parseSectorValuation(raw);
-    if (parsed) {
-      valuations[s] = parsed;
-      if (raw?.source) valuationSources.add(raw.source);
-      valCount++;
-    }
-    await sleep(150);
-  }
+  const {
+    valuations,
+    valuationSources,
+    valuationCount: valCount,
+  } = await collectSectorValuations({
+    symbols: SECTOR_SYMBOLS,
+    fetchValue: fetchYahooQuoteSummary,
+    parseValue: parseSectorValuation,
+    sleepFn: sleep,
+  });
 
   const valuationCoverage = buildSectorValuationCoverage({
     valuationCount: valCount,
     expectedCount: SECTOR_SYMBOLS.length,
     fetchedAt: Date.now(),
-    sources: [...valuationSources],
+    sources: valuationSources,
   });
   const { payload, meta: sectorMeta } = buildSectorValuationPublication({
     sectors,

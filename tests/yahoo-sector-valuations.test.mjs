@@ -4,9 +4,12 @@ import { EventEmitter } from 'node:events';
 
 import {
   YahooQuoteSummaryClient,
+  buildCurlConfig,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   parseCurlResponse,
+  parseQuoteSummary,
+  requestCurlText,
   requestHttpsText,
 } from '../scripts/_yahoo-sector-valuations.cjs';
 
@@ -98,6 +101,85 @@ describe('requestHttpsText', () => {
     );
     assert.equal(requestDestroyed, true);
     assert.equal(responseDestroyed, true);
+  });
+});
+
+describe('requestCurlText', () => {
+  function fakeCurlProcess(responseText, onSpawn) {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new EventEmitter();
+    child.kill = () => {};
+    child.stdin.end = (config) => {
+      onSpawn(config);
+      queueMicrotask(() => {
+        child.stdout.emit('data', responseText);
+        child.emit('close', 0, null);
+      });
+    };
+    return child;
+  }
+
+  it('keeps proxy credentials and Yahoo cookies out of curl argv', async () => {
+    const secretProxy = 'proxy-user:proxy-password@proxy.example:10000';
+    const secretCookie = 'A3=private-cookie';
+    let spawnedArgs;
+    let config;
+    const responseText = 'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{}\n__WM_HTTP_STATUS__:200';
+    const result = await requestCurlText('https://query1.finance.yahoo.com/test', {
+      proxy: secretProxy,
+      headers: { Cookie: secretCookie },
+      spawnFn: (command, args) => {
+        assert.equal(command, 'curl');
+        spawnedArgs = args;
+        return fakeCurlProcess(responseText, (input) => { config = input; });
+      },
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(spawnedArgs.includes(secretProxy), false);
+    assert.equal(spawnedArgs.some((arg) => arg.includes(secretCookie)), false);
+    assert.match(config, /proxy = "http:\/\/proxy-user:proxy-password@proxy\.example:10000"/);
+    assert.match(config, /header = "Cookie: A3=private-cookie"/);
+    assert.match(buildCurlConfig('https://query1.finance.yahoo.com/test', {
+      proxy: secretProxy,
+      headers: { Cookie: secretCookie },
+    }), /url = "https:\/\/query1\.finance\.yahoo\.com\/test"/);
+  });
+
+  it('bounds proxy response buffering', async () => {
+    let killed = false;
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new EventEmitter();
+    child.kill = () => { killed = true; };
+    child.stdin.end = () => {
+      queueMicrotask(() => child.stdout.emit('data', Buffer.alloc(2 * 1024 * 1024 + 1, 'x')));
+    };
+
+    await assert.rejects(
+      requestCurlText('https://query1.finance.yahoo.com/test', {
+        proxy: 'proxy.example:10000',
+        spawnFn: () => child,
+      }),
+      (error) => error.code === 'RESPONSE_TOO_LARGE',
+    );
+    assert.equal(killed, true);
+  });
+});
+
+describe('parseQuoteSummary', () => {
+  it('classifies malformed upstream JSON as invalid_json', () => {
+    assert.deepEqual(parseQuoteSummary('{not-json'), { kind: 'invalid_json', value: null });
+  });
+
+  it('classifies an empty Yahoo result as no_data', () => {
+    assert.deepEqual(parseQuoteSummary(JSON.stringify({ quoteSummary: { result: [] } })), {
+      kind: 'no_data',
+      value: null,
+    });
   });
 });
 

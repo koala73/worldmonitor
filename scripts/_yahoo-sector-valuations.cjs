@@ -1,10 +1,7 @@
 'use strict';
 
 const https = require('node:https');
-const { execFile } = require('node:child_process');
-const { promisify } = require('node:util');
-
-const execFileAsync = promisify(execFile);
+const { spawn } = require('node:child_process');
 
 const YAHOO_COOKIE_URL = 'https://fc.yahoo.com';
 const YAHOO_CRUMB_URL = 'https://query1.finance.yahoo.com/v1/test/getcrumb';
@@ -14,6 +11,7 @@ const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_SPACING_MS = 150;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const CURL_PROCESS_GRACE_MS = 5_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -120,9 +118,29 @@ function parseCurlResponse(stdout) {
   };
 }
 
+function curlConfigValue(value) {
+  const text = String(value);
+  if (/\r|\n/.test(text)) throw new Error('Yahoo proxy config value contains a newline');
+  return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+}
+
+function buildCurlConfig(url, { headers = {}, proxy } = {}) {
+  const lines = [`proxy = ${curlConfigValue(`http://${proxy}`)}`];
+  for (const [name, value] of Object.entries(headers)) {
+    lines.push(`header = ${curlConfigValue(`${name}: ${value}`)}`);
+  }
+  lines.push(`url = ${curlConfigValue(url)}`);
+  return `${lines.join('\n')}\n`;
+}
+
 async function requestCurlText(
   url,
-  { headers = {}, timeoutMs = 15_000, proxy } = {},
+  {
+    headers = {},
+    timeoutMs = 15_000,
+    proxy,
+    spawnFn = spawn,
+  } = {},
 ) {
   if (!proxy) throw new Error('Yahoo proxy route is not configured');
   const args = [
@@ -130,22 +148,75 @@ async function requestCurlText(
     '--compressed',
     '--max-time',
     String(Math.max(1, Math.ceil(timeoutMs / 1000))),
-    '-x',
-    `http://${proxy}`,
     '-D',
     '-',
+    '-w',
+    '\n__WM_HTTP_STATUS__:%{http_code}',
+    '--config',
+    '-',
   ];
-  for (const [name, value] of Object.entries(headers)) {
-    args.push('-H', `${name}: ${value}`);
-  }
-  args.push('-w', '\n__WM_HTTP_STATUS__:%{http_code}', url);
+  const config = buildCurlConfig(url, { headers, proxy });
 
-  const { stdout } = await execFileAsync('curl', args, {
-    encoding: 'utf8',
-    timeout: timeoutMs + 5_000,
-    maxBuffer: 2 * 1024 * 1024,
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdoutBytes = 0;
+    const chunks = [];
+    let child;
+    let timer;
+
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+
+    try {
+      child = spawnFn('curl', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (error) {
+      fail(error);
+      return;
+    }
+
+    timer = setTimeout(() => {
+      const error = new Error(`Yahoo proxy request timed out after ${timeoutMs}ms`);
+      error.code = 'ETIMEDOUT';
+      try { child.kill('SIGKILL'); } catch {}
+      fail(error);
+    }, timeoutMs + CURL_PROCESS_GRACE_MS);
+
+    child.stdout.on('data', (chunk) => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stdoutBytes += buffer.byteLength;
+      if (stdoutBytes > DEFAULT_MAX_RESPONSE_BYTES) {
+        const error = new Error(`Yahoo proxy response exceeded ${DEFAULT_MAX_RESPONSE_BYTES} byte limit`);
+        error.code = 'RESPONSE_TOO_LARGE';
+        try { child.kill('SIGKILL'); } catch {}
+        fail(error);
+        return;
+      }
+      chunks.push(buffer);
+    });
+    child.stderr.on('data', () => {});
+    child.on('error', fail);
+    child.on('close', (code, signal) => {
+      if (settled) return;
+      if (code !== 0) {
+        fail(new Error(`Yahoo proxy curl exited with ${signal || `code ${code}`}`));
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      try {
+        resolve(parseCurlResponse(Buffer.concat(chunks).toString('utf8')));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    child.stdin.on('error', fail);
+    child.stdin.end(config);
   });
-  return parseCurlResponse(stdout);
 }
 
 function headerValues(headers, name) {
@@ -413,6 +484,32 @@ function buildSectorValuationCoverage({
   };
 }
 
+async function collectSectorValuations({
+  symbols,
+  fetchValue,
+  parseValue,
+  sleepFn = sleep,
+}) {
+  const valuations = {};
+  const valuationSources = new Set();
+  let valuationCount = 0;
+  for (const symbol of symbols) {
+    const raw = await fetchValue(symbol);
+    const parsed = parseValue(raw);
+    if (parsed) {
+      valuations[symbol] = parsed;
+      if (raw?.source) valuationSources.add(raw.source);
+      valuationCount++;
+    }
+    await sleepFn(DEFAULT_REQUEST_SPACING_MS);
+  }
+  return {
+    valuations,
+    valuationSources: [...valuationSources],
+    valuationCount,
+  };
+}
+
 function buildSectorValuationPublication({
   sectors,
   valuations,
@@ -446,8 +543,10 @@ function buildSectorValuationPublication({
 
 module.exports = {
   YahooQuoteSummaryClient,
+  buildCurlConfig,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
+  collectSectorValuations,
   parseCurlResponse,
   parseQuoteSummary,
   requestHttpsText,

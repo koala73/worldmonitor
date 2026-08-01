@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { collectSectorValuations } from '../scripts/_yahoo-sector-valuations.cjs';
+
 const src = readFileSync('scripts/ais-relay.cjs', 'utf8');
 const valuationFetcherSrc = readFileSync('scripts/_yahoo-sector-valuations.cjs', 'utf8');
 
@@ -142,35 +144,38 @@ describe('authenticated Yahoo quoteSummary integration (static analysis)', () =>
   });
 });
 
-describe('seedSectorSummary valuation integration (static analysis)', () => {
-  const fnStart = src.indexOf('async function seedSectorSummary()');
-  const fnEnd = src.indexOf('\n// Gulf Quotes');
-  const fnBody = src.slice(fnStart, fnEnd);
+describe('sector valuation collection', () => {
+  it('executes one bounded, paced fetch per symbol and preserves source coverage', async () => {
+    const calls = [];
+    const delays = [];
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'XLF', 'XLE'],
+      fetchValue: async (symbol) => {
+        calls.push(symbol);
+        if (symbol === 'XLF') return null;
+        return {
+          source: symbol === 'XLK'
+            ? 'yahoo_quote_summary_authenticated_direct'
+            : 'yahoo_quote_summary_authenticated_proxy',
+          value: { trailingPE: symbol === 'XLK' ? 25 : 18 },
+        };
+      },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async (ms) => delays.push(ms),
+    });
 
-  it('calls fetchYahooQuoteSummary for each sector', () => {
-    assert.match(fnBody, /fetchYahooQuoteSummary\(s\)/, 'should call fetchYahooQuoteSummary per sector');
-  });
-
-  it('calls parseSectorValuation on raw response', () => {
-    assert.match(fnBody, /parseSectorValuation\(raw\)/, 'should parse raw valuation data');
-  });
-
-  it('includes valuations in payload', () => {
-    assert.match(fnBody, /valuations/, 'payload should include valuations object');
-  });
-
-  it('publishes valuation coverage separately from sector price count', () => {
-    assert.match(fnBody, /buildSectorValuationPublication\(\{/);
-    assert.match(fnBody, /const \{ payload, meta: sectorMeta \}/);
-    assert.match(fnBody, /envelopeWrite\('market:sectors:v2', payload/);
-    assert.match(fnBody, /upstashSet\('seed-meta:market:sectors', sectorMeta/);
-  });
-
-  it('sleeps between Yahoo requests (rate limit)', () => {
-    assert.match(fnBody, /await sleep\(150\)/, 'should sleep 150ms between Yahoo calls');
-  });
-
-  it('logs valuation count', () => {
-    assert.match(fnBody, /valCount/, 'should log how many valuations were fetched');
+    assert.deepEqual(calls, ['XLK', 'XLF', 'XLE']);
+    assert.deepEqual(delays, [150, 150, 150]);
+    assert.deepEqual(result, {
+      valuations: {
+        XLK: { trailingPE: 25 },
+        XLE: { trailingPE: 18 },
+      },
+      valuationSources: [
+        'yahoo_quote_summary_authenticated_direct',
+        'yahoo_quote_summary_authenticated_proxy',
+      ],
+      valuationCount: 2,
+    });
   });
 });
