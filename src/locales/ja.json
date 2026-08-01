@@ -3335,5 +3335,31 @@
     "deleteTab": "タブを削除",
     "deleteTabAria": "タブ {{name}} を削除",
     "tabNameAria": "タブ名"
+  },
+  "theaterPresets": {
+    "label": "Coverage presets",
+    "applied": "{{preset}} preset applied: {{count}} sources enabled",
+    "alreadyApplied": "{{preset}} preset already applied",
+    "ukraineWar": {
+      "label": "Ukraine War",
+      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel & West Africa",
+      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucasus & Central Asia",
+      "description": "Enable South Caucasus and Central Asia regional sources"
+    },
+    "middleEastFlashpoints": {
+      "label": "Middle East Flashpoints",
+      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+    },
+    "unavailable": "{{preset}} preset is not available with your current panels"
   }
 }

@@ -19359,6 +19359,40 @@ a.prediction-link:hover {
   color: var(--green);
 }
 
+/* Coverage presets (#5956) — one-click theater source sets in Sources settings.
+   Chips compose with .unified-settings-region-pill; only the deltas live here. */
+.unified-settings-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.unified-settings-presets-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.unified-settings-preset-chip {
+  border-style: dashed;
+}
+
+.unified-settings-preset-chip:hover,
+.unified-settings-preset-chip:focus-visible {
+  border-color: rgba(68, 255, 136, 0.4);
+  color: var(--green);
+  background: rgba(68, 255, 136, 0.06);
+}
+
+.unified-settings-preset-chip:focus-visible {
+  outline: none;
+}
+
 /* Unified settings selects */
 .unified-settings-select,
 .unified-settings-lang-select {
