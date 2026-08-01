@@ -29,6 +29,7 @@ import assert from 'node:assert/strict';
 import {
   __setClerkInstanceForTests,
   clerkTokenExpiresAtMs,
+  clearClerkTokenCache,
   getClerkToken,
   shouldReuseCachedClerkToken,
 } from '../src/services/clerk.ts';
@@ -39,9 +40,17 @@ afterEach(() => {
   __setClerkInstanceForTests(null);
 });
 
-/** A JWT whose payload carries `exp`, the only claim this cache decision reads. */
+/** A JWT whose payload carries an `exp` claim. */
 function tokenExpiringAt(expMs: number): string {
-  const payload = Buffer.from(JSON.stringify({ sub: 'user_1', exp: Math.floor(expMs / 1_000) }))
+  return tokenWithClaims({ exp: expMs });
+}
+
+function tokenWithClaims(claims: { exp: number; iat?: number }): string {
+  const payload = Buffer.from(JSON.stringify({
+    sub: 'user_1',
+    exp: Math.floor(claims.exp / 1_000),
+    ...(claims.iat === undefined ? {} : { iat: Math.floor(claims.iat / 1_000) }),
+  }))
     .toString('base64url');
   return `header.${payload}.signature`;
 }
@@ -139,6 +148,38 @@ describe('shouldReuseCachedClerkToken', () => {
 
   it('never reuses a missing token', () => {
     assert.equal(shouldReuseCachedClerkToken({ token: null, cachedAt: NOW, now: NOW }), false);
+  });
+
+  it('uses the server-time correction for a fast client clock', () => {
+    const serverNow = NOW;
+    const clientNow = serverNow + 50_000;
+    const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 20_000 });
+
+    assert.equal(
+      shouldReuseCachedClerkToken({
+        token,
+        cachedAt: clientNow - 1_000,
+        now: clientNow,
+        clockSkewMs: serverNow - clientNow,
+      }),
+      true,
+    );
+  });
+
+  it('keeps the near-expiry safety margin for a slow client clock', () => {
+    const serverNow = NOW;
+    const clientNow = serverNow - 50_000;
+    const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
+
+    assert.equal(
+      shouldReuseCachedClerkToken({
+        token,
+        cachedAt: clientNow - 1_000,
+        now: clientNow,
+        clockSkewMs: serverNow - clientNow,
+      }),
+      false,
+    );
   });
 });
 
@@ -262,5 +303,147 @@ describe('getClerkToken', () => {
     assert.equal(await getClerkToken(), nearExpiry);
     refreshBroken = false;
     assert.equal(await getClerkToken(), healthy);
+  });
+
+  it('calibrates from a fresh token when the client clock is fast', async () => {
+    const serverNow = Date.now();
+    let clientNow = serverNow + 50_000;
+    const initialToken = tokenWithClaims({ iat: serverNow - 30_000, exp: serverNow + 60_000 });
+    const calibratedToken = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return options.skipCache ? calibratedToken : initialToken;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+
+      assert.equal(await getClerkToken(), calibratedToken);
+      assert.deepEqual(calls, [
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+      ]);
+
+      clientNow += 20_000;
+      assert.equal(await getClerkToken(), calibratedToken);
+      assert.equal(calls.length, 2, 'the corrected cache should serve the second request');
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('keeps a truly near-expiry token rejected when the client clock is slow', async () => {
+    const serverNow = Date.now();
+    const clientNow = serverNow - 50_000;
+    const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return token;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+
+      assert.equal(await getClerkToken(), null);
+      assert.deepEqual(calls, [
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+      ]);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('preserves the opaque-token flat-TTL cache path', async () => {
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return 'opaque-token';
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkToken(), 'opaque-token');
+    assert.equal(await getClerkToken(), 'opaque-token');
+    assert.deepEqual(calls, [{ template: 'convex' }]);
+  });
+
+  it('recalibrates after the token cache is cleared', async () => {
+    const now = Date.now();
+    const token = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return token;
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkToken(), token);
+    assert.equal(calls.length, 2);
+
+    clearClerkTokenCache();
+    assert.equal(await getClerkToken(), token);
+    assert.equal(calls.length, 4);
+  });
+
+  it('bounds retries when the initial clock calibration refresh fails', async () => {
+    const serverNow = Date.now();
+    let clientNow = serverNow + 50_000;
+    const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return options.skipCache ? null : token;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+
+      assert.equal(await getClerkToken(), null);
+      const callsAfterFailedCalibration = calls.length;
+      assert.ok(callsAfterFailedCalibration > 1);
+
+      assert.equal(await getClerkToken(), null);
+      assert.equal(calls.length, callsAfterFailedCalibration + 1, 'backoff should avoid a forced refresh');
+
+      clientNow += 10_000;
+      assert.equal(await getClerkToken(), null);
+      assert.ok(calls.length > callsAfterFailedCalibration, 'calibration should retry after backoff');
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('fails closed for a slow client when calibration refresh fails', async () => {
+    const serverNow = Date.now();
+    let clientNow = serverNow - 50_000;
+    const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
+    const session = {
+      async getToken(options: { skipCache?: boolean } = {}) {
+        return options.skipCache ? null : token;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+      assert.equal(await getClerkToken(), null);
+    } finally {
+      Date.now = realDateNow;
+    }
   });
 });
