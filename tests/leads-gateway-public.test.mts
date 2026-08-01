@@ -46,7 +46,7 @@ async function loadLeadsGateway() {
   };
 }
 
-describe('leads gateway public access', () => {
+describe('leads gateway public access', { concurrency: 1 }, () => {
   it('declares both leads RPCs public-no-auth and non-premium', async () => {
     const { PUBLIC_NO_AUTH_RPC_PATHS, PREMIUM_RPC_PATHS } = await loadLeadsGateway();
     assert.equal(PUBLIC_NO_AUTH_RPC_PATHS.has('/api/leads/v1/submit-contact'), true);
