@@ -461,8 +461,9 @@ use an approved authenticated HTTPS integration instead.
 After provisioning, recovery is accepted only when:
 
 1. `crossStraitActivityJapanMod` reports `OK` for two consecutive scheduled
-   three-hour runs;
-2. `lastSuccessAt` is non-null and later than the configuration change;
+   three-hour runs from distinct scheduled executions;
+2. `lastSuccessAt` is non-null, later than the configuration change, and
+   advances between those two successful runs;
 3. newly admitted Japan MOD records are tied to the successful index fetch;
 4. the combined cross-Strait publication remains available and explicitly
    source-degraded when a later Japan MOD request fails.
