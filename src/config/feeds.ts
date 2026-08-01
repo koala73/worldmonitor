@@ -53,7 +53,9 @@ export function getSourcePanelId(sourceName: string): string {
   return _sourcePanelMap.get(sourceName) ?? 'politics';
 }
 
-const FULL_FEEDS: Record<string, Feed[]> = {
+// Exported for the geographic coverage audit (scripts/geo-coverage-health.mjs,
+// #5957) — the full-variant news catalog is the reference set the audit counts.
+export const FULL_FEEDS: Record<string, Feed[]> = {
   politics: [
     { name: 'BBC World', url: rss('https://feeds.bbci.co.uk/news/world/rss.xml') },
     { name: 'Guardian World', url: rss('https://www.theguardian.com/world/rss') },
