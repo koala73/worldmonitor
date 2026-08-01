@@ -296,6 +296,18 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Channels TV', url: rss('https://www.channelstv.com/feed/') },
     { name: 'Daily Trust', url: rss('https://dailytrust.com/feed/') },
     { name: 'ThisDay', url: rss('https://www.thisdaylive.com/feed') },
+    // Horn of Africa
+    { name: 'Ethiopia Insight', url: rss('https://www.ethiopia-insight.com/feed/') },
+    { name: 'Dabanga Sudan', url: rss('https://www.dabangasudan.org/en/feed') },
+    { name: 'Hiiraan Online', url: rss('https://www.hiiraan.com/rss.xml') },
+    // DRC / Great Lakes
+    { name: 'Actualite.cd', url: rss('https://actualite.cd/feed'), lang: 'fr' },
+    { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/rss.xml'), lang: 'fr' },
+    // West Africa beyond Nigeria
+    { name: 'MyJoyOnline', url: rss('https://www.myjoyonline.com/feed/') },
+    { name: 'Citi Newsroom', url: rss('https://citinewsroom.com/feed/') },
+    // Pan-African
+    { name: 'RFI Afrique', url: rss('https://www.rfi.fr/en/africa/rss') },
   ],
   latam: [
     { name: 'Latin America', url: rss('https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -1078,7 +1090,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
-  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis'],
+  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis', 'Hiiraan Online', 'RFI Afrique'],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
   asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu'],
   tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
