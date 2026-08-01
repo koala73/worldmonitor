@@ -46,16 +46,18 @@ describe('reported landing-page SEO metadata', () => {
     );
   });
 
-  it('keeps the Pro shell and Chinese sandbox description bounded', () => {
+  it('keeps the Pro shell and documentation sandbox descriptions bounded', () => {
     const proHtml = source('pro-test/index.html');
     const builtProHtml = source('public/pro/index.html');
     const proLocale = JSON.parse(source('pro-test/src/locales/en.json'));
+    const englishSandbox = source('docs/sandbox.mdx');
     const sandbox = source('docs/zh/sandbox.mdx');
 
     const proTitle = proHtml.match(/<title>([^<]+)<\/title>/)?.[1]?.replace('&amp;', '&');
     const proDescription = proHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
     const builtProTitle = builtProHtml.match(/<title>([^<]+)<\/title>/)?.[1]?.replace('&amp;', '&');
     const builtProDescription = builtProHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
+    const englishSandboxDescription = englishSandbox.match(/^description:\s*"([^"]+)"$/m)?.[1];
     const sandboxDescription = sandbox.match(/^description:\s*"([^"]+)"$/m)?.[1];
 
     assertTitle('Pro', proTitle);
@@ -64,9 +66,38 @@ describe('reported landing-page SEO metadata', () => {
     assertDescription('built Pro', builtProDescription);
     assert.equal(proLocale.meta.title, 'World Monitor Pro | AI Intelligence & MCP');
     assertDescription('Pro locale', proLocale.meta.description);
-    assert.ok(
-      sandboxDescription?.length >= 120,
-      `Chinese sandbox description should be expanded, got ${sandboxDescription?.length ?? 0}`,
-    );
+    assertDescription('English sandbox', englishSandboxDescription);
+    assertDescription('Chinese sandbox', sandboxDescription);
+  });
+
+  it('keeps full and variant dashboard descriptions bounded and synchronized', () => {
+    const variantMetaSource = source('src/config/variant-meta.ts');
+    const middlewareSource = source('middleware.ts');
+    const indexHtml = source('index.html');
+    const variants = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+
+    for (const variant of variants) {
+      const block = variantMetaSource.match(
+        new RegExp(`${variant}: \\{([\\s\\S]*?)\\n  \\},`),
+      )?.[1];
+      const description = block?.match(/^\s+description: '([^']+)'/m)?.[1];
+      assertDescription(`${variant} variant`, description);
+
+      if (variant === 'full') continue;
+      const middlewareBlock = middlewareSource.match(
+        new RegExp(`${variant}: \\{([\\s\\S]*?)\\n  \\},`),
+      )?.[1];
+      const middlewareDescription = middlewareBlock?.match(/^\s+description: '([^']+)'/m)?.[1];
+      assert.equal(
+        middlewareDescription,
+        description,
+        `${variant} crawler metadata must match src/config/variant-meta.ts`,
+      );
+    }
+
+    const fullDescription = indexHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
+    const fullBlock = variantMetaSource.match(/full: \{([\s\S]*?)\n {2}\},/)?.[1];
+    const expectedFullDescription = fullBlock?.match(/^\s+description: '([^']+)'/m)?.[1];
+    assert.equal(fullDescription, expectedFullDescription, 'index.html must use the full variant description');
   });
 });

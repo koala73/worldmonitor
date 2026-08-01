@@ -74,7 +74,7 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
   tech: {
     name: 'Tech Monitor',
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
-    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
+    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and technology events worldwide with live context.',
     image: 'https://tech.worldmonitor.app/favico/tech/og-image.png',
     url: 'https://tech.worldmonitor.app/dashboard',
   },
@@ -88,14 +88,14 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
   commodity: {
     name: 'Commodity Monitor',
     title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
-    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
+    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global trade flows with live context.',
     image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
     url: 'https://commodity.worldmonitor.app/dashboard',
   },
   happy: {
     name: 'Happy Monitor',
     title: 'Happy Monitor - Good News & Global Progress',
-    description: 'Curated positive news, progress data, and uplifting stories from around the world.',
+    description: 'Curated positive news, global progress data, science breakthroughs, conservation wins, and uplifting stories from around the world with daily highlights.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
     url: 'https://happy.worldmonitor.app/dashboard',
   },
