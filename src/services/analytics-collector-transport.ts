@@ -25,6 +25,7 @@
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import {
   extractCollectorFailureMetadata,
+  isBotFilteredBody,
   isSessionDataConflict,
 } from '../../shared/collector-failure-metadata';
 
@@ -33,6 +34,17 @@ export type CollectorFailure = {
   status?: number;
   prismaCode?: string;
   constraint?: string;
+  /**
+   * The collector answered 200 with its bot-filter sentinel and stored nothing.
+   *
+   * This is a MARKER, not a `kind`, on purpose. The write really was dropped,
+   * so every delivery policy — retry, and the durable checkout marker — must
+   * keep treating it exactly like any other receiptless 200. Only the alerting
+   * decision reads this flag. Promoting it to its own `kind` would silently
+   * change `isRetryableCollectorFailure` and `isDurableMarkerResolved`, turning
+   * an alert-noise fix into a conversion-accounting change.
+   */
+  botFiltered?: boolean;
 };
 
 export type CollectorRequestType = 'event' | 'identify';
@@ -118,7 +130,7 @@ let collectorFetchWrapper: typeof window.fetch | null = null;
 let collectorUnloadFlush: (() => void) | null = null;
 let collectorVisibilityFlush: (() => void) | null = null;
 let collectorTransportGeneration = 0;
-let collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0 };
+let collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0, noiseReported: false };
 let pendingObservation: ObservationSlot | null = null;
 /**
  * Non-zero while this module is dispatching. If a foreign wrapper installed on
@@ -200,7 +212,13 @@ export async function inspectCollectorResponse(response: Response): Promise<Coll
   const hasReceipt = receipt !== null && WRITE_RECEIPT_FIELDS.every(
     (field) => typeof receipt?.[field] === 'string' && (receipt[field] as string).trim() !== '',
   );
-  if (!hasReceipt) return { kind: 'missing-receipt', status: response.status };
+  if (!hasReceipt) {
+    return {
+      kind: 'missing-receipt',
+      status: response.status,
+      ...(isBotFilteredBody(body) ? { botFiltered: true } : {}),
+    };
+  }
 
   return null;
 }
@@ -244,10 +262,64 @@ export function isRetryableIdentityFailure(failure: CollectorFailure): boolean {
   return failure.status !== undefined && RETRYABLE_IDENTITY_STATUSES.has(failure.status);
 }
 
+/**
+ * Failure kinds produced by the CLIENT's environment rather than the collector.
+ *
+ * A blocked request (uBlock/Brave/Pi-hole all block `abacus.`) and a dead
+ * collector are indistinguishable from inside one browser: both fail 100% of
+ * writes. Nothing computed on this page can separate them, so the outage signal
+ * is the AGGREGATE volume of these events across users, not any single one —
+ * which is exactly why each page is allowed at most one per health window
+ * below. Alerting on every occurrence buries the step change in the baseline.
+ */
+const ENVIRONMENT_NOISE_KINDS = new Set<CollectorFailure['kind']>(['network', 'timeout']);
+
+/**
+ * Minimum writes in the health window before an environment failure can alert.
+ *
+ * A page that has issued one or two writes and failed them says nothing — a
+ * single blocked beacon is the overwhelmingly common case. Requiring a real
+ * sample is what removes the ad-blocker baseline.
+ */
+const ENVIRONMENT_NOISE_MIN_WRITES = 5;
+
+/** Minimum in-window failure rate before an environment failure can alert. */
+const ENVIRONMENT_NOISE_MIN_FAILURE_RATE = 0.5;
+
+/**
+ * Whether a failure is worth a Sentry event, as opposed to merely worth a
+ * console warning.
+ *
+ * Extracted as a pure function of (failure, window) so the policy is testable
+ * without standing up the fetch gate, the deferred Sentry queue, and a real
+ * tracker — the wiring test then only has to prove this is the predicate the
+ * reporting path consults.
+ */
+export function isAlertWorthyCollectorFailure(
+  failure: CollectorFailure,
+  window: { writes: number; failures: number; noiseReported?: boolean },
+): boolean {
+  // Known, unfixed upstream race (umami#4183). Expected background condition.
+  if (isKnownSessionDataConflict(failure)) return false;
+  // The collector deliberately discarded a bot's write. Working as designed.
+  if (failure.botFiltered) return false;
+  if (ENVIRONMENT_NOISE_KINDS.has(failure.kind)) {
+    // At most one environment event per page per window. Without this, crossing
+    // the rate floor makes EVERY remaining failure in the window report, so one
+    // ad-blocked power user out-produces the incident the floor exists to show.
+    if (window.noiseReported) return false;
+    if (window.writes < ENVIRONMENT_NOISE_MIN_WRITES) return false;
+    return window.failures / window.writes >= ENVIRONMENT_NOISE_MIN_FAILURE_RATE;
+  }
+  // Everything left is actionable: a non-2xx from the origin, an unexplained
+  // receiptless 200, or a queue-overflow drop that is our own bug.
+  return true;
+}
+
 function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFailure | null): void {
   const now = Date.now();
   if (collectorHealthWindow.startedAt === 0 || now - collectorHealthWindow.startedAt >= HEALTH_WINDOW_MS) {
-    collectorHealthWindow = { startedAt: now, writes: 0, failures: 0 };
+    collectorHealthWindow = { startedAt: now, writes: 0, failures: 0, noiseReported: false };
   }
   collectorHealthWindow.writes += 1;
 
@@ -272,14 +344,22 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
     writeCount: collectorHealthWindow.writes,
     prismaCode: failure.prismaCode ?? null,
     constraint: failure.constraint ?? null,
+    // The console warning fires for suppressed failures too, so it has to say
+    // WHY a receiptless 200 happened — otherwise a developer reading devtools
+    // during a bot-filtered write starts debugging a write path that is fine.
+    botFiltered: failure.botFiltered ?? false,
   };
   console.warn('[Analytics] Umami collector write failed', diagnostics);
 
-  // A console warning in a user's devtools is not observable. The known #4183
-  // race is expected and would only add noise, but anything else is the signal
-  // this monitoring work exists to surface — route it the same way wm-session
-  // and checkout report their degraded writes so it aggregates on a dashboard.
-  if (isKnownSessionDataConflict(failure)) return;
+  // A console warning in a user's devtools is not observable, so genuine
+  // failures are routed to Sentry the same way wm-session and checkout report
+  // their degraded writes. But an alarm that fires on expected background
+  // conditions trains everyone to ignore it — the alert-fatigue path straight
+  // back to #5565, where a dead collector went unnoticed for four days. Only
+  // actionable failures get an event.
+  if (!isAlertWorthyCollectorFailure(failure, collectorHealthWindow)) return;
+  if (ENVIRONMENT_NOISE_KINDS.has(failure.kind)) collectorHealthWindow.noiseReported = true;
+
   try {
     enqueueSentryCall((s) => s.captureMessage('Umami collector write failed', {
       level: 'warning',
@@ -558,10 +638,18 @@ export function resetCollectorTransportForTesting(): void {
   collectorVisibilityFlush = null;
   collectorFetchOriginal = null;
   collectorFetchWrapper = null;
-  collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0 };
+  collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0, noiseReported: false };
 }
 
 /** Test-only: current rolling health window. */
-export function getCollectorHealthForTesting(): { writes: number; failures: number } {
-  return { writes: collectorHealthWindow.writes, failures: collectorHealthWindow.failures };
+export function getCollectorHealthForTesting(): {
+  writes: number;
+  failures: number;
+  noiseReported: boolean;
+} {
+  return {
+    writes: collectorHealthWindow.writes,
+    failures: collectorHealthWindow.failures,
+    noiseReported: collectorHealthWindow.noiseReported,
+  };
 }

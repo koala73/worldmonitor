@@ -216,16 +216,19 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   // race. Treating it as undelivered would replay the conversion on every boot
   // for the life of the tab — the duplicate the no-retry policy exists to stop.
   //
-  // The same reasoning generalises: ANY failure the retry policy refuses to
-  // re-send in-page must also be terminal for the durable marker. A 502/504 (or
-  // a 500 whose body carried no Prisma metadata to recognise) reached the origin
-  // and may have committed the row, and a receiptless 200 was accepted and
-  // discarded — none of them are retried, so leaving the marker armed would let
-  // the boot replay smuggle the event back in and duplicate the conversion that
-  // isRetryableCollectorFailure just declined to risk.
+  // The same reasoning generalises to the rest of the HTTP failures the retry
+  // policy refuses to re-send in-page: a 502/504 (or a 500 whose body carried no
+  // Prisma metadata to recognise) reached the origin and may have committed the
+  // row, so leaving the marker armed would let the boot replay smuggle the event
+  // back in and duplicate the conversion isRetryableCollectorFailure declined to
+  // risk.
   //
-  // A queue-overflow drop is the one exception: it never reached the network at
-  // all, so the marker must survive for the next boot to replay it.
+  // It does NOT generalise past that, which is why isDurableMarkerResolved keys
+  // off `kind === 'http'` and not off retryability. A queue-overflow, a network
+  // error, a timeout, and a receiptless 200 (including a bot-filtered one) all
+  // leave no row behind — never dispatched, never answered, or accepted and
+  // discarded — so for those the marker must SURVIVE and replay. That replay is
+  // a recovery, not a duplicate.
   if (!isDurableMarkerResolved(outcome.failure)) return;
 
   if (outcome.eventName === 'checkout-success') clearPendingCheckoutSuccessMarker();

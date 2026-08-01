@@ -779,3 +779,167 @@ describe('Umami client retry policy (#5715)', () => {
     });
   });
 });
+
+const {
+  inspectCollectorResponse,
+  isRetryableCollectorFailure,
+  isRetryableIdentityFailure,
+  isAlertWorthyCollectorFailure,
+  getCollectorHealthForTesting,
+} = await import('../src/services/analytics-collector-transport.ts');
+
+/**
+ * A bot-filtered write is a REAL delivery failure — Umami stored nothing — but
+ * it is not an incident. It is the collector doing its job on traffic we do not
+ * want counted. The distinction has to live in the alerting decision, never in
+ * the delivery classification, or a suppressed alert silently becomes a
+ * suppressed retry and a cleared conversion marker.
+ */
+describe('bot-filtered collector writes (#5964 alert-noise regression)', () => {
+  const botBody = '{"beep":"boop"}';
+
+  it('flags a bot-filtered 200 without changing its delivery classification', async () => {
+    const failure = await inspectCollectorResponse(collectorResponse(true, 200, botBody));
+    assert.equal(failure?.kind, 'missing-receipt', 'the write really was dropped');
+    assert.equal(failure?.status, 200);
+    assert.equal(failure?.botFiltered, true);
+  });
+
+  it('does not flag a genuine receipt or an ordinary receiptless 200', async () => {
+    assert.equal(await inspectCollectorResponse(collectorResponse(true, 200, RECEIPT_BODY)), null);
+
+    const odd = await inspectCollectorResponse(collectorResponse(true, 200, '{"cache":"only"}'));
+    assert.equal(odd?.kind, 'missing-receipt');
+    assert.ok(!odd?.botFiltered, 'a non-sentinel receiptless 200 is still unexplained and must stay reportable');
+  });
+
+  it('leaves retry and durable-marker policy identical to a plain missing receipt', async () => {
+    const bot = (await inspectCollectorResponse(collectorResponse(true, 200, botBody)))!;
+    const plain = (await inspectCollectorResponse(collectorResponse(true, 200, '{}')))!;
+
+    // Both must stay non-retryable (a retry is filtered identically) and both
+    // must stay kind:'missing-receipt' so isDurableMarkerResolved keeps the
+    // conversion marker armed for replay. Diverging here would turn an alerting
+    // change into a conversion-accounting change.
+    assert.equal(isRetryableCollectorFailure(bot), isRetryableCollectorFailure(plain));
+    assert.equal(isRetryableIdentityFailure(bot), isRetryableIdentityFailure(plain));
+    assert.equal(isRetryableCollectorFailure(bot), false);
+    assert.equal(bot.kind, plain.kind);
+  });
+
+  it('never alerts on a bot-filtered write, at any failure rate', () => {
+    const bot = { kind: 'missing-receipt' as const, status: 200, botFiltered: true };
+    assert.equal(isAlertWorthyCollectorFailure(bot, { writes: 1, failures: 1 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(bot, { writes: 500, failures: 500 }), false);
+  });
+
+  it('still alerts on an unexplained receiptless 200', () => {
+    const plain = { kind: 'missing-receipt' as const, status: 200 };
+    assert.equal(isAlertWorthyCollectorFailure(plain, { writes: 1, failures: 1 }), true);
+  });
+});
+
+describe('collector alert policy suppresses expected background conditions', () => {
+  const net = { kind: 'network' as const };
+  const timeout = { kind: 'timeout' as const };
+
+  it('stays silent for a lone blocked request — the ad-blocker baseline', () => {
+    // The overwhelmingly common shape: a page issues one or two writes and an
+    // extension blocks them. Nothing here indicates a collector problem.
+    assert.equal(isAlertWorthyCollectorFailure(net, { writes: 1, failures: 1 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(net, { writes: 4, failures: 4 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(timeout, { writes: 3, failures: 3 }), false);
+  });
+
+  it('reports once the window carries a real sample AND a real failure rate', () => {
+    assert.equal(isAlertWorthyCollectorFailure(net, { writes: 5, failures: 5 }), true);
+    assert.equal(isAlertWorthyCollectorFailure(timeout, { writes: 20, failures: 20 }), true);
+  });
+
+  it('stays silent when a big sample is mostly succeeding', () => {
+    // A collector that answers 80% of writes is not down; one flaky beacon in a
+    // healthy window must not page.
+    assert.equal(isAlertWorthyCollectorFailure(net, { writes: 100, failures: 20 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(net, { writes: 10, failures: 4 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(net, { writes: 10, failures: 5 }), true);
+  });
+
+  it('caps environment noise at one event per window', () => {
+    const saturated = { writes: 50, failures: 50 };
+    assert.equal(isAlertWorthyCollectorFailure(net, saturated), true);
+    assert.equal(
+      isAlertWorthyCollectorFailure(net, { ...saturated, noiseReported: true }),
+      false,
+      'a single ad-blocked page must not out-produce the outage it mimics',
+    );
+  });
+
+  it('always reports failures that are actionable, whatever the window', () => {
+    // These are never the client's environment: the origin answered non-2xx, or
+    // our own bounded queue dropped a write. One occurrence is worth knowing.
+    assert.equal(
+      isAlertWorthyCollectorFailure({ kind: 'http', status: 500 }, { writes: 1, failures: 1 }),
+      true,
+    );
+    assert.equal(
+      isAlertWorthyCollectorFailure({ kind: 'queue-overflow' }, { writes: 1, failures: 1 }),
+      true,
+    );
+    // ...and the cap never applies to them.
+    assert.equal(
+      isAlertWorthyCollectorFailure({ kind: 'http', status: 400 }, { writes: 50, failures: 50, noiseReported: true }),
+      true,
+    );
+  });
+
+  it('stays silent for the known umami#4183 session_data race', () => {
+    assert.equal(
+      isAlertWorthyCollectorFailure(
+        { kind: 'http', status: 500, prismaCode: 'P2002', constraint: 'session_data_pkey' },
+        { writes: 1, failures: 1 },
+      ),
+      false,
+    );
+  });
+});
+
+describe('collector alert policy is wired into the reporting path', () => {
+  beforeEach(() => {
+    resetAnalyticsForTesting();
+  });
+
+  afterEach(() => {
+    delete (globalThis.window as WinWithUmami).umami;
+  });
+
+  it('flips the once-per-window latch only after the sample floor is crossed', async () => {
+    // Drives REAL writes through the gate so this proves recordCollectorOutcome
+    // consults the predicate — a policy unit test alone would pass even if the
+    // reporting path ignored it entirely.
+    window.fetch = (() => Promise.reject(new TypeError('Failed to fetch'))) as typeof window.fetch;
+    stubFailingUmami();
+
+    // 'panel-open' is not a CRITICAL_TRACK_EVENT, so a network failure does not
+    // schedule a retry and each call is exactly one write.
+    const fire = async (n: number) => {
+      for (let i = 0; i < n; i += 1) {
+        track('panel-open' as Parameters<typeof track>[0], { i });
+        await drainPromiseHandlers();
+      }
+    };
+
+    await fire(4);
+    const below = getCollectorHealthForTesting();
+    assert.equal(below.writes, 4);
+    assert.equal(below.failures, 4);
+    assert.equal(below.noiseReported, false, 'four blocked beacons must not alert');
+
+    await fire(1);
+    assert.equal(getCollectorHealthForTesting().noiseReported, true, 'the fifth crosses the floor');
+
+    await fire(10);
+    const after = getCollectorHealthForTesting();
+    assert.equal(after.writes, 15, 'writes keep accruing');
+    assert.equal(after.noiseReported, true, 'the latch stays set — no second event this window');
+  });
+});
