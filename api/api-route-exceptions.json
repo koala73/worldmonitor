@@ -794,6 +794,13 @@
       "removal_issue": "#3207"
     },
     {
+      "path": "api/correlation-runtime-mode.js",
+      "category": "ops-admin",
+      "reason": "Public no-store read of the operator-controlled correlation runtime mode. This three-value control-plane decision is consumed by both browser and Railway seeder paths; it is not product data, has no write surface, and must remain independently switchable without a deployment.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/skills/fetch-agentskills.ts",
       "category": "migration-pending",
       "reason": "Migrating to analyst/v1.ListAgentSkills in commit 9 of #3207. Blocked on sebuf#150.",
