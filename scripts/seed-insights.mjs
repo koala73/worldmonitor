@@ -185,12 +185,28 @@ export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStat
  * remains under runSeed's control: on a rejected LKG attempt it is mirrored
  * from the old canonical envelope, while a successful publish gets `now`.
  */
+/**
+ * #5947: how many corroborated (brief-eligible) clusters the corpus held on
+ * this run. Bounded and numeric so it is safe for seed-meta/health/logs, and
+ * it is the field that separates the two very different worlds behind a
+ * MISSING_CLUSTER rejection: 0 means the corpus genuinely had nothing to lead
+ * with (legitimately degraded), while >0 means selection failed to surface a
+ * cluster that existed — the production incident this issue tracked.
+ */
+const INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS = 1000;
+
+function normalizeBriefEligibleClusters(value) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
+  return Math.min(INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS, value);
+}
+
 export function buildInsightsFreshnessMetaPatch({
   previousMeta,
   outcome,
   failureCode = null,
   nowMs = Date.now(),
   servedGeneratedAt = null,
+  briefEligibleClusters = null,
 } = {}) {
   const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
   const now = Number.isFinite(nowMs) && nowMs > 0 ? Math.floor(nowMs) : Date.now();
@@ -201,6 +217,7 @@ export function buildInsightsFreshnessMetaPatch({
     ? servedGeneratedAt
     : (typeof previous.servedGeneratedAt === 'string' ? previous.servedGeneratedAt : null);
   const normalizedFailureCode = failureCode == null ? null : normalizeInsightsFailureCode(failureCode);
+  const eligibleClusters = normalizeBriefEligibleClusters(briefEligibleClusters);
 
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
@@ -209,6 +226,7 @@ export function buildInsightsFreshnessMetaPatch({
       servedGeneratedAt: servedAt,
       consecutiveFailures: 0,
       lastSynthesisFailureCode: normalizedFailureCode,
+      briefEligibleClusters: eligibleClusters,
     };
   }
 
@@ -218,6 +236,7 @@ export function buildInsightsFreshnessMetaPatch({
     servedGeneratedAt: servedAt,
     consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
     lastSynthesisFailureCode: normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    briefEligibleClusters: eligibleClusters,
   };
 }
 
@@ -720,6 +739,19 @@ async function fetchInsights() {
 
   const briefCluster = pickBriefCluster(topStories);
   const hasBriefCluster = briefCluster != null;
+  // #5947: a MISSING_CLUSTER rejection is only legitimate when the corpus had
+  // nothing corroborated to lead with. Log the corpus count (and whether the
+  // reservation had to fire) so a recurrence is diagnosable from the run log
+  // and seed-meta alone.
+  const briefEligibleClusters = selectionStats.briefEligibleConsidered ?? 0;
+  if (selectionStats.briefEligiblePromoted) {
+    console.log(
+      `  Brief lead reserved: promoted a corroborated cluster into top-${topStories.length} ` +
+        `(${briefEligibleClusters} eligible in corpus, source=${briefCluster?.primarySource ?? 'unknown'})`,
+    );
+  } else if (!hasBriefCluster) {
+    console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters})`);
+  }
   const synthesisResult = hasBriefCluster
     ? await callLLM(null, {
         systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
@@ -869,6 +901,7 @@ async function fetchInsights() {
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+          briefEligibleClusters,
         },
       );
     }
@@ -877,6 +910,7 @@ async function fetchInsights() {
   return decorateInsightsRun(payload, {
     outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
     failureCode: synthesisFailureCode,
+    briefEligibleClusters,
   });
 }
 
@@ -894,6 +928,24 @@ async function writeInsightsChinaCoverage(data) {
   await writeExtraKey(CHINA_COVERAGE_KEY, data.chinaNewsCoverage, CACHE_TTL);
 }
 
+/**
+ * Project a decorated run's non-serialized metadata onto the freshness-patch
+ * inputs. Exported so the run-meta -> seed-meta seam is unit-testable without
+ * Redis I/O: a source-text guard over finalizeInsightsRun would still pass
+ * with the wiring cut, so the mapping lives here as a pure function instead.
+ */
+export function insightsFreshnessPatchArgs(data, outcome, previousMeta, nowMs = Date.now()) {
+  const runMeta = insightsRunMeta(data);
+  return {
+    previousMeta,
+    outcome,
+    failureCode: runMeta?.failureCode,
+    nowMs,
+    servedGeneratedAt: data?.generatedAt,
+    briefEligibleClusters: runMeta?.briefEligibleClusters ?? null,
+  };
+}
+
 async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
   const [resolvedPreviousMeta] = await Promise.all([
     previousMeta === undefined
@@ -901,15 +953,10 @@ async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
       : Promise.resolve(previousMeta),
     writeInsightsChinaCoverage(data),
   ]);
-  const runMeta = insightsRunMeta(data);
   return {
-    freshnessMetaPatch: buildInsightsFreshnessMetaPatch({
-      previousMeta: resolvedPreviousMeta,
-      outcome,
-      failureCode: runMeta?.failureCode,
-      nowMs: Date.now(),
-      servedGeneratedAt: data?.generatedAt,
-    }),
+    freshnessMetaPatch: buildInsightsFreshnessMetaPatch(
+      insightsFreshnessPatchArgs(data, outcome, resolvedPreviousMeta, Date.now()),
+    ),
   };
 }
 
