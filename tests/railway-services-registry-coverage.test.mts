@@ -311,12 +311,13 @@ describe('Railway service registry coverage', () => {
       (r) => r.service === 'seed-conflict-intel',
     );
     assert.ok(conflictIntel, 'seed-conflict-intel must be registered');
+    const watchPatterns = conflictIntel.watchPatterns;
     assert.ok(
-      Array.isArray((conflictIntel as any).watchPatterns),
+      Array.isArray(watchPatterns),
       'seed-conflict-intel must declare watchPatterns',
     );
     assert.ok(
-      (conflictIntel as any).watchPatterns.includes('scripts/_gdelt-bulk-contract.mjs'),
+      watchPatterns.includes('scripts/_gdelt-bulk-contract.mjs'),
       'seed-conflict-intel watchPaths must include scripts/_gdelt-bulk-contract.mjs ' +
         '(the GDELT bulk Redis key contract shared by the materializer, conflict intel, ' +
         'and unrest consumers)',
