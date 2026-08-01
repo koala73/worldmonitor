@@ -21,8 +21,6 @@
 
 import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import ts from 'typescript';
-import { parse as parseYaml } from 'yaml';
 
 import { isMainModule } from './lib/main-module.mjs';
 
@@ -75,21 +73,85 @@ export function discoverDesktopBuildWorkflows(rootDir) {
     .filter((workflowPath) => extractTauriBuildSteps(readFileSync(path.join(rootDir, workflowPath), 'utf8')).length > 0);
 }
 
+function lineIndent(line) {
+  return line.match(/^[ \t]*/)[0].length;
+}
+
+function yamlValue(value) {
+  return value
+    .replace(/\s+#.*$/, '')
+    .trim()
+    .replace(/^(['"])(.*)\1$/, '$2');
+}
+
 /**
  * Extract every step block using tauri-apps/tauri-action from a workflow
- * source, returning [{ name, envKeys }]. Structural YAML parsing handles
- * indentation, multiple jobs, folded values, and uses-first unnamed steps
- * without silently dropping a valid build leg.
+ * source, returning [{ name, envKeys }]. The indentation-aware parser handles
+ * multiple jobs, folded values, and uses-first unnamed steps without requiring
+ * npm dependencies in the install-free desktop-config CI job.
  */
 export function extractTauriBuildSteps(workflowSource) {
-  const workflow = parseYaml(workflowSource);
+  const lines = workflowSource.replace(/\r\n/g, '\n').split('\n');
   const steps = [];
-  for (const job of Object.values(workflow?.jobs ?? {})) {
-    for (const step of job?.steps ?? []) {
-      if (typeof step?.uses !== 'string' || !step.uses.startsWith('tauri-apps/tauri-action@')) continue;
+  for (let stepsIndex = 0; stepsIndex < lines.length; stepsIndex++) {
+    const stepsMatch = lines[stepsIndex].match(/^(\s*)steps:\s*(?:#.*)?$/);
+    if (!stepsMatch) continue;
+    const stepsIndent = stepsMatch[1].length;
+    let blockEnd = lines.length;
+    let itemIndent = null;
+    for (let index = stepsIndex + 1; index < lines.length; index++) {
+      const line = lines[index];
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const indent = lineIndent(line);
+      if (indent < stepsIndent || (indent === stepsIndent && !trimmed.startsWith('-'))) {
+        blockEnd = index;
+        break;
+      }
+      if (itemIndent === null && indent >= stepsIndent && /^-\s*/.test(trimmed)) itemIndent = indent;
+    }
+    if (itemIndent === null) continue;
+
+    const itemStarts = [];
+    for (let index = stepsIndex + 1; index < blockEnd; index++) {
+      if (lineIndent(lines[index]) === itemIndent && /^\s*-\s*/.test(lines[index])) itemStarts.push(index);
+    }
+    for (let itemIndex = 0; itemIndex < itemStarts.length; itemIndex++) {
+      const start = itemStarts[itemIndex];
+      const end = itemStarts[itemIndex + 1] ?? blockEnd;
+      const itemLines = lines.slice(start, end);
+      const firstLine = itemLines[0].replace(/^\s*-\s*/, '');
+      const firstMapping = firstLine.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      const mappingIndent = itemLines
+        .slice(1)
+        .map((line) => ({ line, indent: lineIndent(line), trimmed: line.trim() }))
+        .find(({ indent, trimmed }) => indent > itemIndent && /^[A-Za-z0-9_-]+:\s*/.test(trimmed))?.indent;
+      const fieldIndent = mappingIndent ?? itemIndent;
+      const fields = [
+        ...(firstMapping ? [{ indent: itemIndent, text: firstLine }] : []),
+        ...itemLines.slice(1).map((line) => ({ indent: lineIndent(line), text: line.trim() })),
+      ];
+      const usesField = fields.find(({ indent, text }) => indent <= fieldIndent && /^uses:\s*/.test(text));
+      if (!usesField || !yamlValue(usesField.text.replace(/^uses:\s*/, '')).startsWith('tauri-apps/tauri-action@')) continue;
+      const nameField = fields.find(({ indent, text }) => indent <= fieldIndent && /^name:\s*/.test(text));
+      const envField = fields.find(({ indent, text }) => indent === fieldIndent && /^env:\s*$/.test(text));
+      const envKeys = [];
+      if (envField) {
+        const envIndex = itemLines.findIndex(
+          (line) => lineIndent(line) === envField.indent && /^env:\s*$/.test(line.trim()),
+        );
+        for (let index = envIndex + 1; index < itemLines.length; index++) {
+          const line = itemLines[index];
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          if (lineIndent(line) <= envField.indent) break;
+          const key = trimmed.match(/^([A-Z0-9_]+):(?:\s|$)/);
+          if (key) envKeys.push(key[1]);
+        }
+      }
       steps.push({
-        name: typeof step.name === 'string' ? step.name : `<unnamed tauri step #${steps.length + 1}>`,
-        envKeys: step.env && typeof step.env === 'object' ? Object.keys(step.env) : [],
+        name: nameField ? yamlValue(nameField.text.replace(/^name:\s*/, '')) : `<unnamed tauri step #${steps.length + 1}>`,
+        envKeys,
       });
     }
   }
@@ -99,38 +161,99 @@ export function extractTauriBuildSteps(workflowSource) {
 /**
  * Recursively collect literal VITE_* property reads under the client-
  * importable trees: src/ always, plus shared/ when present (it is imported by
- * src/ and would be bundled with it). AST property reads cover direct,
+ * src/ and would be bundled with it). Token-aware property reads cover direct,
  * parenthesized/cast, aliased, and bracket access without treating comments
  * or arbitrary string literals as reads.
  */
-function collectVitePropertyNames(source, filePath) {
-  const extension = path.extname(filePath);
-  const scriptKind =
-    extension === '.tsx'
-      ? ts.ScriptKind.TSX
-      : extension === '.jsx'
-        ? ts.ScriptKind.JSX
-        : extension === '.js' || extension === '.mjs' || extension === '.cjs'
-          ? ts.ScriptKind.JS
-          : ts.ScriptKind.TS;
-  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, scriptKind);
+function readQuotedString(source, start) {
+  const quote = source[start];
+  let value = '';
+  for (let index = start + 1; index < source.length; index++) {
+    const character = source[index];
+    if (character === '\\') {
+      value += source[index + 1] ?? '';
+      index++;
+    } else if (character === quote) {
+      return { value, end: index + 1 };
+    } else if (character === '\n' || character === '\r') {
+      return { value, end: index };
+    } else {
+      value += character;
+    }
+  }
+  return { value, end: source.length };
+}
+
+function collectVitePropertyNames(source) {
   const vars = new Set();
   const add = (value) => {
     if (/^VITE_[A-Z0-9_]+$/.test(value)) vars.add(value);
   };
-  const visit = (node) => {
-    if (ts.isPropertyAccessExpression(node)) {
-      add(node.name.text);
-    } else if (
-      ts.isElementAccessExpression(node) &&
-      node.argumentExpression &&
-      ts.isStringLiteral(node.argumentExpression)
-    ) {
-      add(node.argumentExpression.text);
+  const scan = (start, stopAtBrace = false) => {
+    let braceDepth = 0;
+    let previousSignificant = '';
+    for (let index = start; index < source.length; index++) {
+      const character = source[index];
+      const next = source[index + 1];
+      if (stopAtBrace && character === '}' && braceDepth === 0) return index + 1;
+      if (character === '{') {
+        braceDepth++;
+        previousSignificant = character;
+        continue;
+      }
+      if (character === '}') {
+        braceDepth--;
+        previousSignificant = character;
+        continue;
+      }
+      if (character === '/' && next === '/') {
+        const lineEnd = source.indexOf('\n', index + 2);
+        index = lineEnd === -1 ? source.length : lineEnd;
+        continue;
+      }
+      if (character === '/' && next === '*') {
+        const commentEnd = source.indexOf('*/', index + 2);
+        index = commentEnd === -1 ? source.length : commentEnd + 1;
+        continue;
+      }
+      if (character === '`') {
+        index++;
+        while (index < source.length) {
+          if (source[index] === '\\') {
+            index++;
+          } else if (source[index] === '`') {
+            break;
+          } else if (source[index] === '$' && source[index + 1] === '{') {
+            index = scan(index + 2, true) - 1;
+          }
+          index++;
+        }
+        previousSignificant = '`';
+        continue;
+      }
+      if (character === '\'' || character === '"') {
+        const quoted = readQuotedString(source, index);
+        if (previousSignificant === '[') add(quoted.value);
+        index = quoted.end - 1;
+        previousSignificant = 'string';
+        continue;
+      }
+      if (character === '.') {
+        const property = source.slice(index + 1).match(/^([A-Za-z_$][A-Za-z0-9_$]*)/);
+        if (property) add(property[1]);
+      } else if (character === '[') {
+        let quotedIndex = index + 1;
+        while (/\s/.test(source[quotedIndex] ?? '')) quotedIndex++;
+        if (source[quotedIndex] === '\'' || source[quotedIndex] === '"') {
+          const quoted = readQuotedString(source, quotedIndex);
+          add(quoted.value);
+        }
+      }
+      if (!/\s/.test(character)) previousSignificant = character;
     }
-    ts.forEachChild(node, visit);
+    return source.length;
   };
-  visit(sourceFile);
+  scan(0);
   return vars;
 }
 
@@ -144,7 +267,7 @@ export function collectSpaViteVars(rootDir) {
         walk(full);
       } else if (/\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/.test(entry)) {
         const source = readFileSync(full, 'utf8');
-        for (const variable of collectVitePropertyNames(source, full)) vars.add(variable);
+        for (const variable of collectVitePropertyNames(source)) vars.add(variable);
       }
     }
   };
