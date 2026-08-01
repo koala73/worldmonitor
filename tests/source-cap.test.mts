@@ -1,9 +1,26 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { selectSourcesUnderCap, findFullyDisabledCategories } from '../src/services/source-cap';
+import {
+  computeCapDisabledSources,
+  selectSourcesUnderCap,
+  findFullyDisabledCategories,
+} from '../src/services/source-cap';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
+
+describe('computeCapDisabledSources: legacy migration fingerprint', () => {
+  it('reconstructs the exact mixed default-plus-cap disabled set', () => {
+    const defaultDisabled = new Set(['a2']);
+    const result = computeCapDisabledSources(
+      { a: F('a1', 'a2'), b: F('b1', 'b2') },
+      [],
+      defaultDisabled,
+      2,
+    );
+    assert.deepEqual([...result].sort(), ['a2', 'b2']);
+  });
+});
 
 describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
   it('returns empty when cap is 0', () => {

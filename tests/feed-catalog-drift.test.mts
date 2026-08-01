@@ -28,6 +28,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
 const outfile = join(tempDir, 'feeds-bundle.mjs');
+const serverOutfile = join(tempDir, 'server-feeds-bundle.mjs');
 
 interface FeedEntry {
   name: string;
@@ -48,6 +49,10 @@ interface FeedsModule {
   listConfiguredFeedNames: () => string[];
 }
 
+interface ServerFeedsModule {
+  VARIANT_FEEDS: Record<string, Record<string, FeedEntry[]>>;
+}
+
 /** Sources #5949 ships as EN-default frontline Europe coverage. */
 const FRONTLINE_EUROPE = [
   'Kyiv Independent',
@@ -58,6 +63,7 @@ const FRONTLINE_EUROPE = [
 ] as const;
 
 let feeds: FeedsModule;
+let serverFeeds: ServerFeedsModule;
 
 before(async () => {
   mkdirSync(tempDir, { recursive: true });
@@ -100,6 +106,18 @@ before(async () => {
   });
   writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
   feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`) as FeedsModule;
+
+  const serverResult = await build({
+    entryPoints: [join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    write: false,
+    absWorkingDir: repoRoot,
+  });
+  writeFileSync(serverOutfile, serverResult.outputFiles[0].text, 'utf8');
+  serverFeeds = await import(`${pathToFileURL(serverOutfile).href}?t=${Date.now()}`) as ServerFeedsModule;
 });
 
 after(() => {
@@ -198,33 +216,39 @@ describe('feed catalog drift', () => {
         );
       }
     }
+
+    const expectedEnUrls: Record<string, string> = {
+      TVN24: 'https://tvn24.pl/swiat.xml',
+      Rzeczpospolita: 'https://www.rp.pl/rss_main',
+    };
+    for (const [name, url] of Object.entries(expectedEnUrls)) {
+      const feed = byName.get(name);
+      assert.equal(
+        typeof feed?.url === 'object' ? feed.url.en : undefined,
+        url,
+        `${name} EN must use the verified native RSS fallback`,
+      );
+    }
   });
 
   it('server VARIANT_FEEDS.full.europe catalogs the same frontline names (#5949)', () => {
-    // Digest path is the product path for full/EN europe. Client defaults
-    // alone cannot invent items the server never fetched.
-    const serverSrc = readFileSync(join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts'), 'utf8');
-    // Locate the first `europe: [` (VARIANT_FEEDS.full) and slice until the
-    // next top-level category key `middleeast:`.
-    const europeKey = serverSrc.indexOf('europe: [');
-    assert.ok(europeKey >= 0, 'failed to find europe: [ in server _feeds.ts');
-    const afterEurope = serverSrc.slice(europeKey);
-    const middleeastKey = afterEurope.indexOf('middleeast: [');
-    assert.ok(middleeastKey > 0, 'failed to find middleeast: [ after europe in server _feeds.ts');
-    const europeBody = afterEurope.slice(0, middleeastKey);
+    // Digest path is the product path for full/EN europe. Import the server
+    // catalog so this assertion exercises the executable data structure rather
+    // than passing because a source name appears in a comment or string.
+    const europe = serverFeeds.VARIANT_FEEDS.full?.europe ?? [];
+    const byName = new Map(europe.map((feed) => [feed.name, feed]));
+    const expectedUrls: Record<string, string> = {
+      'Kyiv Independent': 'https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en',
+      TVN24: 'https://tvn24.pl/swiat.xml',
+      Rzeczpospolita: 'https://www.rp.pl/rss_main',
+      Meduza: 'https://meduza.io/rss/en/all',
+      'Moscow Times': 'https://www.themoscowtimes.com/rss/news',
+    };
     for (const name of FRONTLINE_EUROPE) {
-      assert.ok(
-        europeBody.includes(`name: '${name}'`) || europeBody.includes(`name: "${name}"`),
-        `server VARIANT_FEEDS.full.europe must include "${name}" for EN digests`,
-      );
-      // Guard against accidental lang:'pl'/'ru' on the server entry (would drop from EN digests).
-      const nameIdx = europeBody.indexOf(`'${name}'`);
-      if (nameIdx < 0) continue;
-      const window = europeBody.slice(nameIdx, nameIdx + 220);
-      assert.ok(
-        !/lang:\s*'pl'|lang:\s*'ru'/.test(window),
-        `server entry for "${name}" must not set lang:pl/ru (EN digests would skip it)`,
-      );
+      const feed = byName.get(name);
+      assert.ok(feed, `server VARIANT_FEEDS.full.europe must include "${name}" for EN digests`);
+      assert.equal(feed?.url, expectedUrls[name], `server EN URL drifted for "${name}"`);
+      assert.ok(!feed?.lang, `server entry for "${name}" must not set a non-en lang`);
     }
   });
 
