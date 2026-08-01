@@ -62,8 +62,8 @@ const summarizeSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/summarize-article.ts'),
   'utf8',
 );
-const summarySharedSrc = readFileSync(
-  resolve(repoRoot, 'server/worldmonitor/news/v1/_shared.ts'),
+const summaryCacheKeySrc = readFileSync(
+  resolve(repoRoot, 'src/utils/summary-cache-key.ts'),
   'utf8',
 );
 const feedsSrc = readFileSync(
@@ -274,16 +274,16 @@ function extractStringUnionValues(src, propertyName) {
   return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
-function extractPromptPairLimit(src, sharedSrc) {
+function extractPromptPairLimit(src, cacheKeySrc) {
   const match = src.match(/nonEmpty\.slice\(0,\s*([0-9]+)\)/);
   if (match) return Number(match[1]);
 
   assert.match(
     src,
-    /selectUniqueHeadlinePairs\(nonEmpty\)/,
+    /selectUniqueHeadlinePairs\(paired\)/,
     'failed to locate prompt-pair headline selection',
   );
-  return extractNumericConst(sharedSrc, 'MAX_SUMMARY_HEADLINES');
+  return extractNumericConst(cacheKeySrc, 'MAX_SUMMARY_HEADLINES');
 }
 
 function extractEntityCorroborationCap(src) {
@@ -433,7 +433,7 @@ function assertDocMatches(re, label) {
 describe('news digest methodology parity', () => {
   it('keeps SummarizeArticle headline limits aligned across implementation and API docs', () => {
     const rawHeadlineLimit = extractNumericConst(summarizeSrc, 'MAX_HEADLINES');
-    const promptPairLimit = extractPromptPairLimit(summarizeSrc, summarySharedSrc);
+    const promptPairLimit = extractPromptPairLimit(summarizeSrc, summaryCacheKeySrc);
     assert.equal(rawHeadlineLimit, 10);
     assert.equal(promptPairLimit, 5);
 

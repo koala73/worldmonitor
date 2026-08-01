@@ -195,16 +195,24 @@ export async function summarizeArticle(
         // the cache key stays aligned with the browser while the actual
         // prompt is protected against semantic injection phrases.
         //
-        // Pair headlines with bodies BEFORE deduping so sanitizeHeadlines
-        // drops / merges don't break the 1:1 mapping. sanitizeHeadlines
-        // operates elementwise so paired indices survive per-element
-        // replacement; we then dedup pairs together (seen-set on the
-        // sanitized headline) to preserve the pairing post-dedup.
+        // Select the prompt window from the same headline/body pairs used by
+        // the cache key. Full prompt sanitization happens only after that
+        // bounded selection, so a sixth story cannot become prompt-relevant
+        // while remaining absent from cache identity if an earlier headline
+        // sanitizes to empty or aliases another selected headline.
         const paired = headlines.map((h, i) => ({
-          h: sanitizeHeadlines([h])[0] ?? '',
+          h,
           b: bodies[i] ?? '',
         }));
-        const nonEmpty = paired.filter((p) => p.h.length > 0);
+        const selectedPairs = selectUniqueHeadlinePairs(paired);
+        const sanitizedPairs = selectedPairs.map((pair) => ({
+          h: sanitizeHeadlines([pair.h])[0] ?? '',
+          b: pair.b,
+        }));
+        const nonEmpty = sanitizedPairs.filter((pair) => pair.h.length > 0);
+        // Sanitization can make two distinct selected headlines identical;
+        // collapse that prompt-only alias without backfilling from outside
+        // the cache-key window.
         const uniquePairs = selectUniqueHeadlinePairs(nonEmpty);
         // Preserves the existing variable name for downstream prompt
         // builder callers that expect the full sanitised-headline list.

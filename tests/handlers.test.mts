@@ -509,6 +509,27 @@ describe('selectUniqueHeadlinePairs', () => {
       ['Alpha', 'Beta'],
     );
   });
+
+  it('keeps the first body for a headline and stops after five unique pairs', () => {
+    const pairs = [
+      { h: 'Alpha', b: 'first alpha body' },
+      { h: 'Alpha', b: 'later alpha body' },
+      { h: '', b: 'empty headline body' },
+      { h: 'Beta', b: 'beta body' },
+      { h: 'Charlie', b: 'charlie body' },
+      { h: 'Delta', b: 'delta body' },
+      { h: 'Echo', b: 'echo body' },
+      { h: 'Foxtrot', b: 'must be outside the prompt window' },
+    ];
+
+    assert.deepEqual(selectUniqueHeadlinePairs(pairs), [
+      { h: 'Alpha', b: 'first alpha body' },
+      { h: 'Beta', b: 'beta body' },
+      { h: 'Charlie', b: 'charlie body' },
+      { h: 'Delta', b: 'delta body' },
+      { h: 'Echo', b: 'echo body' },
+    ]);
+  });
 });
 
 

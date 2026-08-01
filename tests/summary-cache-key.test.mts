@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSummaryCacheKey } from '../src/utils/summary-cache-key.ts';
+import {
+  buildSummaryCacheKey,
+  selectUniqueHeadlinePairs,
+} from '../src/utils/summary-cache-key.ts';
 
 const HEADLINES = ['Inflation rises to 3.5%', 'Fed holds rates steady', 'Markets react'];
 
@@ -31,9 +34,9 @@ describe('buildSummaryCacheKey', () => {
 
   it('systemAppend suffix does not break existing namespace', () => {
     const base = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en');
-    // v7 → v8 on 2026-07-06 (#4944 DeepSeek cutover); v6 → v7 on 2026-07-05
-    // (#4914 pair-dedup); v5 → v6 on 2026-04-24 (RSS grounding fix, U6).
-    assert.match(base, /^summary:v8:/);
+    // v8 → v9 on 2026-08-01 (#5969 prompt/cache selection parity);
+    // v7 → v8 on 2026-07-06 (#4944 DeepSeek cutover).
+    assert.match(base, /^summary:v9:/);
     assert.doesNotMatch(base, /:fw/);
   });
 
@@ -86,7 +89,7 @@ describe('buildSummaryCacheKey', () => {
 
   it('bodies.length < headlines.length is padded (no crash)', () => {
     const k = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en', undefined, ['only first']);
-    assert.ok(k.startsWith('summary:v8:brief:'));
+    assert.ok(k.startsWith('summary:v9:brief:'));
   });
 
   it('translate mode ignores bodies (no :b segment)', () => {
@@ -104,10 +107,8 @@ describe('buildSummaryCacheKey', () => {
 });
 
 describe('duplicate-composition stability (#4914)', () => {
-  // The server prompt path (summarize-article.ts) dedups headline/body
-  // pairs AFTER the key is computed, so the same unique story set with a
-  // different duplicate composition produced an identical prompt under
-  // distinct keys — every composition variant was a paid cache miss.
+  // Prompt generation and key construction share first-arrival headline
+  // deduplication, so duplicate composition cannot change only one side.
   it('same unique headline set with different duplicate composition produces the same key', () => {
     const base = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en');
     const dupFirst = buildSummaryCacheKey([HEADLINES[0], ...HEADLINES], 'brief', 'US', 'full', 'en');
@@ -122,13 +123,48 @@ describe('duplicate-composition stability (#4914)', () => {
     assert.equal(
       buildSummaryCacheKey(padded, 'brief', 'US', 'full', 'en'),
       buildSummaryCacheKey(uniques, 'brief', 'US', 'full', 'en'),
-      'exact-pair dedup must run before the slice so dups cannot crowd out unique stories',
+      'headline dedup must run before the slice so dups cannot crowd out unique stories',
     );
   });
 
-  it('a repeated headline with a DIFFERENT body stays distinct (only exact pairs dedup)', () => {
+  it('a later body for a repeated headline is ignored by both prompt and key', () => {
     const withTwoBodies = buildSummaryCacheKey(['Same headline', 'Same headline'], 'brief', 'US', 'full', 'en', undefined, ['body one', 'body two']);
     const withOneBody = buildSummaryCacheKey(['Same headline'], 'brief', 'US', 'full', 'en', undefined, ['body one']);
-    assert.notEqual(withTwoBodies, withOneBody, 'distinct bodies are distinct prompt content — keys must not merge');
+    assert.equal(withTwoBodies, withOneBody, 'the prompt keeps only the first body, so the key must do the same');
+  });
+
+  it('the first body for a repeated headline remains cache-relevant', () => {
+    const firstBodyOne = buildSummaryCacheKey(['Same headline', 'Same headline'], 'brief', 'US', 'full', 'en', undefined, ['body one', 'body two']);
+    const firstBodyTwo = buildSummaryCacheKey(['Same headline', 'Same headline'], 'brief', 'US', 'full', 'en', undefined, ['body two', 'body one']);
+    assert.notEqual(firstBodyOne, firstBodyTwo, 'changing the first body changes prompt content and must bust the key');
+  });
+
+  it('different fifth prompt stories cannot collide after dedup-before-limit (#5969)', () => {
+    const zuluPairs = [
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Beta', b: '' },
+      { h: 'Charlie', b: '' },
+      { h: 'Delta', b: '' },
+      { h: 'Zulu', b: '' },
+      { h: 'Echo', b: '' },
+    ];
+    const yankeePairs = zuluPairs.map((pair) => (
+      pair.h === 'Zulu' ? { h: 'Yankee', b: '' } : pair
+    ));
+
+    assert.deepEqual(
+      selectUniqueHeadlinePairs(zuluPairs).map((pair) => pair.h),
+      ['Alpha', 'Beta', 'Charlie', 'Delta', 'Zulu'],
+    );
+    assert.deepEqual(
+      selectUniqueHeadlinePairs(yankeePairs).map((pair) => pair.h),
+      ['Alpha', 'Beta', 'Charlie', 'Delta', 'Yankee'],
+    );
+    assert.notEqual(
+      buildSummaryCacheKey(zuluPairs.map((pair) => pair.h), 'brief', 'US', 'full', 'en'),
+      buildSummaryCacheKey(yankeePairs.map((pair) => pair.h), 'brief', 'US', 'full', 'en'),
+      'different prompt windows must always produce different cache keys',
+    );
   });
 });

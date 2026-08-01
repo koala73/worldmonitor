@@ -4,6 +4,12 @@
 // or client/server cache keys will silently diverge.
 import { hashString } from './hash';
 
+// Bumped v8 → v9 on 2026-08-01 (#5969): prompt generation and cache
+// identity now select the same first five unique, non-empty headlines in
+// request order before the selected pairs are sorted for stable hashing.
+// Retire v8 rows so a key minted with the old sort-before-cap window cannot
+// serve a summary generated from a different story set.
+//
 // Bumped v7 → v8 on 2026-07-06 (#4944): the summarize provider chain moved
 // from groq llama-3.1-8b-instant-first to OpenRouter deepseek-v4-flash-first,
 // so v7 rows carry old-model voice — retire them cleanly at cutover instead
@@ -18,12 +24,38 @@ import { hashString } from './hash';
 // DON'T pass `bodies` saw a forced cold-start so the pre-grounding
 // headline-only rows aged out cleanly on first tick after deploy. See
 // docs/plans/2026-04-24-001-fix-rss-description-end-to-end-plan.md U6.
-export const CACHE_VERSION = 'v8';
+export const CACHE_VERSION = 'v9';
 
 const MAX_HEADLINE_LEN = 500;
-const MAX_HEADLINES_FOR_KEY = 5;
+export const MAX_SUMMARY_HEADLINES = 5;
 const MAX_GEO_CONTEXT_LEN = 2000;
 const MAX_BODY_LEN = 400; // matches SummarizeArticle prompt interpolation clip
+
+export interface SummaryHeadlinePair {
+  h: string;
+  b: string;
+}
+
+/**
+ * Select the exact headline/body window used by summary prompts and cache
+ * identity. Headline identity is first-arrival-wins because the prompt also
+ * keeps the first body paired with a repeated headline.
+ */
+export function selectUniqueHeadlinePairs(
+  pairs: readonly SummaryHeadlinePair[],
+): SummaryHeadlinePair[] {
+  const selected: SummaryHeadlinePair[] = [];
+  const seen = new Set<string>();
+
+  for (const pair of pairs) {
+    if (pair.h.length === 0 || seen.has(pair.h)) continue;
+    seen.add(pair.h);
+    selected.push(pair);
+    if (selected.length === MAX_SUMMARY_HEADLINES) break;
+  }
+
+  return selected;
+}
 
 export function canonicalizeSummaryInputs(
   headlines: string[],
@@ -53,7 +85,7 @@ export function canonicalizeSummaryInputs(
  * with identical inputs for the cache to align — sanitise any adversarial
  * text (bodies, geoContext) the same way on both sides before calling.
  *
- * @param bodies Paired 1:1 with headlines (post-sort, post-sanitize).
+ * @param bodies Paired 1:1 with headlines (request order, post-sanitize).
  *   - When every body is empty → no `:bd<hash>` segment → key identical to
  *     the headline-only v5 shape (modulo the v5→v6 version bump).
  *   - When any body is non-empty → appends `:bd<hash>` where hash is over
@@ -70,36 +102,18 @@ export function buildSummaryCacheKey(
   bodies?: string[],
 ): string {
   const canon = canonicalizeSummaryInputs(headlines, geoContext, bodies);
-  // Pair-wise sort: keep (headline, body) paired through canonical order so
-  // the cache identity shifts when either a headline OR its body changes.
-  // Without pair-wise sort, swapping a body between stories that share the
-  // alphabetic tier would collide the key for distinct prompt content.
   const pairs = canon.headlines.map((h, i) => ({ h, b: canon.bodies[i] ?? '' }));
-  pairs.sort((a, b) => {
+  // Select in request order before sorting. Prompt generation uses the same
+  // helper, so no story outside the cache-key window can affect the summary.
+  // Sorting only the selected pairs keeps cache identity order-insensitive
+  // while preserving each headline/body association.
+  const topPairs = selectUniqueHeadlinePairs(pairs).sort((a, b) => {
     if (a.h < b.h) return -1;
     if (a.h > b.h) return 1;
-    // Tie-break on body so duplicate headlines produce stable order across
-    // runs — without this, duplicate-headline pairs sort non-deterministically
-    // and the bodies-hash drifts across rebuilds.
     if (a.b < b.b) return -1;
     if (a.b > b.b) return 1;
     return 0;
   });
-  // #4914: dedup identical (headline, body) pairs BEFORE the top-5 slice.
-  // The server prompt path (summarize-article.ts) dedups pairs AFTER this
-  // key is computed, so the same unique story set with a different
-  // duplicate composition minted distinct keys for an identical prompt —
-  // every composition variant was a paid cache miss. Exact-pair dedup only:
-  // a repeated headline with a different body stays distinct (the prompt
-  // keeps first-arrival bodies, so merging those keys could serve a summary
-  // generated from other body content). Pairs are sorted, so identical
-  // pairs are adjacent.
-  const dedupedPairs = pairs.filter((p, i) => {
-    if (i === 0) return true;
-    const prev = pairs[i - 1];
-    return prev === undefined || p.h !== prev.h || p.b !== prev.b;
-  });
-  const topPairs = dedupedPairs.slice(0, MAX_HEADLINES_FOR_KEY);
   const sortedHeadlines = topPairs.map(p => p.h).join('|');
 
   const anyBody = topPairs.some(p => p.b.length > 0);
