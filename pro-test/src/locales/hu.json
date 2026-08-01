@@ -314,9 +314,9 @@
   },
   "soonBadge": "Hamarosan",
   "meta": {
-    "title": "World Monitor Pro — AI-elemző, személyes hírszerzési desk, MCP Claude-hoz és GPT-hez",
-    "description": "A geopolitikai AI-réteg. Kérdezze, iratkozzon fel rá, építsen rá. WM Analyst chat 30+ élő szolgáltatáson át, AI digest napi, napi kétszeri vagy heti kézbesítéssel Slackre, Discordra, Telegramra, e-mailre vagy webhookra, custom widget builder (HTML/CSS/JS + AI) és MCP-csatlakozók Claude-hoz, GPT-hez és saját LLM-ekhez.",
-    "ogTitle": "World Monitor Pro — A geopolitikai AI-réteg",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "A World Monitor Pro AI-elemzőt, ütemezett hírösszefoglalókat, egyéni widgeteket, piackutatást és MCP-hozzáférést ad az élő geopolitikai és pénzügyi adatokhoz.",
+    "ogTitle": "World Monitor Pro | Geopolitikai AI",
     "ogDescription": "Kérdezze, iratkozzon fel rá, építsen rá. WM Analyst chat, AI digest az Ön ütemezése szerint (napi, napi kétszeri vagy heti), custom widget builder és MCP Claude/GPT-hez — 30+ élő szolgáltatáson át, egy kulcs alatt."
   },
   "pricing": {
