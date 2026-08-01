@@ -10,6 +10,7 @@ import {
   buildArticlePrompts,
   getProviderCredentials,
   getCacheKey,
+  selectUniqueHeadlinePairs,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from '../../../_shared/llm-health';
@@ -204,14 +205,7 @@ export async function summarizeArticle(
           b: bodies[i] ?? '',
         }));
         const nonEmpty = paired.filter((p) => p.h.length > 0);
-        const uniquePairs: Array<{ h: string; b: string }> = [];
-        const seen = new Set<string>();
-        for (const p of nonEmpty.slice(0, 5)) {
-          if (!seen.has(p.h)) {
-            seen.add(p.h);
-            uniquePairs.push(p);
-          }
-        }
+        const uniquePairs = selectUniqueHeadlinePairs(nonEmpty);
         // Preserves the existing variable name for downstream prompt
         // builder callers that expect the full sanitised-headline list.
         const promptHeadlines = nonEmpty.map((p) => p.h);

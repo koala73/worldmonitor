@@ -33,6 +33,23 @@ export { deduplicateHeadlines } from './dedup.mjs';
 // ========================================================================
 
 const MAX_BODY_INTERPOLATION_LEN = 400;
+const MAX_SUMMARY_HEADLINES = 5;
+
+export function selectUniqueHeadlinePairs(
+  pairs: Array<{ h: string; b: string }>,
+): Array<{ h: string; b: string }> {
+  const uniquePairs: Array<{ h: string; b: string }> = [];
+  const seen = new Set<string>();
+
+  for (const pair of pairs) {
+    if (seen.has(pair.h)) continue;
+    seen.add(pair.h);
+    uniquePairs.push(pair);
+    if (uniquePairs.length === MAX_SUMMARY_HEADLINES) break;
+  }
+
+  return uniquePairs;
+}
 
 export function buildArticlePrompts(
   headlines: string[],
