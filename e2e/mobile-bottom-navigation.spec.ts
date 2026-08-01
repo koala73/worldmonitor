@@ -57,12 +57,14 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await page.locator('#mobileMenuRegion').click();
     await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
     await expect(page.locator('#regionBottomSheet')).toHaveClass(/open/);
+    await expect.poll(async () => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
 
     const historyMarker = await page.evaluate(() => history.state?.__wmOverlay?.id ?? null);
     expect(historyMarker).toBe('region');
     await page.evaluate(() => history.back());
     await expect(page.locator('#regionBottomSheet')).not.toHaveClass(/open/);
     await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
+    await expect.poll(async () => page.evaluate(() => document.body.style.overflow)).toBe('');
   });
 
   test('atomically replaces More with Search in one history entry', async ({ page }) => {
@@ -113,6 +115,28 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
   });
 
+  test('keyboard Search coalesces with a pending mobile tab load', async ({ page }) => {
+    let releaseSearch!: () => void;
+    const searchReleased = new Promise<void>((resolve) => { releaseSearch = resolve; });
+    await page.route('**/src/app/search-manager.ts*', async (route) => {
+      await searchReleased;
+      await route.continue();
+    });
+
+    const baselineHistoryLength = await page.evaluate(() => history.length);
+    await page.locator('[data-mobile-tab="search"]').click();
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('search-pending');
+    await page.keyboard.press('Control+k');
+    releaseSearch();
+
+    const search = page.locator('.search-overlay.search-mobile');
+    await expect(search).toHaveClass(/open/);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('search');
+    expect(await page.evaluate(() => history.length)).toBe(baselineHistoryLength + 1);
+    await page.evaluate(() => history.back());
+    await expect(search).toHaveCount(0);
+  });
+
   test('Back cancels a pending lazy Settings transition', async ({ page }) => {
     let releaseSettings!: () => void;
     const settingsReleased = new Promise<void>((resolve) => { releaseSettings = resolve; });
@@ -129,6 +153,43 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await expect(page.locator('#unifiedSettingsModal')).toHaveCount(0);
     await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('Back-cancelled Settings load failure stays silent', async ({ page }) => {
+    let rejectSettings!: () => void;
+    const settingsRejected = new Promise<void>((resolve) => { rejectSettings = resolve; });
+    await page.route('**/src/components/UnifiedSettings.ts*', async (route) => {
+      await settingsRejected;
+      await route.abort('failed');
+    });
+
+    await page.locator('[data-mobile-tab="more"]').click();
+    await page.locator('#mobileMenuSettings').click();
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings-pending');
+    await page.evaluate(() => history.back());
+    rejectSettings();
+
+    await expect(page.locator('#unifiedSettingsModal')).toHaveCount(0);
+    await expect(page.locator('[data-mobile-tab="today"]')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.toast-notification')).toHaveCount(0);
+  });
+
+  test('control-dismissed Search removes its synthetic history marker', async ({ page }) => {
+    const search = page.locator('.search-overlay.search-mobile');
+
+    await page.locator('[data-mobile-tab="search"]').click();
+    await expect(search).toHaveClass(/open/);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('search');
+    await search.locator('.search-sheet-cancel').click();
+    await expect(search).toHaveCount(0, { timeout: 2_000 });
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
+
+    await page.locator('[data-mobile-tab="search"]').click();
+    await expect(search).toHaveClass(/open/);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('search');
+    await search.click({ position: { x: 2, y: 2 } });
+    await expect(search).toHaveCount(0, { timeout: 2_000 });
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
   });
 
   test('closes Settings with browser Back after opening it from More', async ({ page }) => {
@@ -165,6 +226,24 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(confirm).toHaveCount(0);
     await expect(settings).toHaveClass(/active/);
     await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings');
+  });
+
+  test('primary-tab transitions preserve unsaved Settings changes', async ({ page }) => {
+    await page.locator('[data-mobile-tab="more"]').click();
+    await page.locator('#mobileMenuSettings').click();
+    const settings = page.locator('#unifiedSettingsModal');
+    await expect(settings).toHaveClass(/active/);
+    await page.locator('#us-tab-panels').click();
+    await page.locator('.panel-toggle-item:not(.pro-locked)').first().click();
+
+    await page.locator('[data-mobile-tab="search"]').click();
+    await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(1);
+    await expect(settings).toHaveClass(/active/);
+    await expect(page.locator('.search-overlay.search-mobile')).toHaveCount(0);
+    await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('settings');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.confirm-dialog-overlay')).toHaveCount(0);
+    await expect(settings).toHaveClass(/active/);
   });
 
   test('reveals an enabled alert panel and reports when none are enabled', async ({ page }) => {

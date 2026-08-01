@@ -17,6 +17,7 @@ function loadReconcileHarness(overlayHistory: unknown): new () => {
   setActive(tab: string): void;
   reconcileOverlayForTab(tab: string): string | undefined | null;
   activeCalls: string[];
+  ctx: { unifiedSettings: { hasPendingChanges(): boolean; close(): void } | null };
 } {
   const signature = 'private reconcileOverlayForTab(';
   const start = mobileNav.indexOf(signature);
@@ -38,6 +39,7 @@ function loadReconcileHarness(overlayHistory: unknown): new () => {
   const method = mobileNav.slice(start, end).replace(/^private\s+/, '');
   const source = `class Harness {
     activeCalls: string[] = [];
+    ctx: { unifiedSettings: { hasPendingChanges(): boolean; close(): void } | null } = { unifiedSettings: null };
     setActive(tab: string): void { this.activeCalls.push(tab); }
     ${method}
   }`;
@@ -63,6 +65,10 @@ describe('mobile P0 navigation contract (#5201)', () => {
     assert.doesNotMatch(css, /\.hamburger-btn/);
     assert.doesNotMatch(css, /\.search-mobile-fab/);
     assert.match(css, /\.mobile-tab-bar\s*\{/);
+    assert.match(css, /\.mobile-tab-bar\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*10003/);
+    assert.match(css, /\.map-popup\.map-popup-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/);
+    assert.match(css, /\.region-bottom-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/);
+    assert.match(css, /\.search-overlay\.search-mobile \.search-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/);
   });
 
   it('wires Today, Map, Search, Alerts, and More as distinct actions', () => {
@@ -72,6 +78,9 @@ describe('mobile P0 navigation contract (#5201)', () => {
     assert.match(mobileNav, /case 'search':/);
     assert.match(mobileNav, /case 'alerts':/);
     assert.match(mobileNav, /case 'more':/);
+    assert.match(mobileNav, /private alertScrollFrame: number \| null = null/);
+    assert.match(mobileNav, /this\.alertScrollFrame = requestAnimationFrame/);
+    assert.match(mobileNav, /cancelAnimationFrame\(this\.alertScrollFrame\)/);
   });
 
   it('defaults first-time mobile visitors to the collapsed-map Today state before hydration', () => {
@@ -88,7 +97,7 @@ describe('mobile P0 navigation contract (#5201)', () => {
     assert.match(mobileNav, /overlayHistory\.open\('menu'/);
     assert.match(mobileNav, /overlayHistory\.replaceInPlace\(replaceOverlayId, 'region'/);
     assert.match(search, /overlayHistory\.open\('search'/);
-    assert.match(popup, /overlayHistory\.open\('map-popup'/);
+    assert.match(popup, /overlayHistory\.openCancelable\('map-popup'/);
     assert.match(settings, /overlayHistory\.open\('settings'/);
     assert.match(deepDive, /overlayHistory\.open\('deep-dive'/);
     assert.match(handlers, /history\.replaceState\(history\.state, '', shareUrl\)/);
@@ -123,5 +132,15 @@ describe('mobile P0 navigation contract (#5201)', () => {
 
     top = 'settings-pending';
     assert.equal(harness.reconcileOverlayForTab('search'), 'settings-pending');
+
+    let dirtyCloseCalls = 0;
+    harness.ctx.unifiedSettings = {
+      hasPendingChanges: () => true,
+      close: () => { dirtyCloseCalls += 1; },
+    };
+    top = 'settings';
+    assert.equal(harness.reconcileOverlayForTab('search'), null, 'dirty Settings must block replacement');
+    assert.equal(dirtyCloseCalls, 1);
+    assert.deepEqual(harness.activeCalls.at(-1), 'more');
   });
 });

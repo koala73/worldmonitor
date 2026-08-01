@@ -1634,7 +1634,7 @@ canvas,
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 10004;
+    z-index: 10003;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     min-height: 58px;
@@ -8031,6 +8031,7 @@ a.prediction-link:hover {
   will-change: transform;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 .map-popup.map-popup-sheet.open {
@@ -11310,6 +11311,7 @@ a.prediction-link:hover {
   border-radius: 16px 16px 0 0;
   display: flex;
   flex-direction: column;
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
   transform: translateY(100%);
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -13210,7 +13212,7 @@ a.prediction-link:hover {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   display: none;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 .region-bottom-sheet.open {

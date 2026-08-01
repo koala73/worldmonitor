@@ -27,6 +27,8 @@ export type { UnifiedSettingsTabId };
 
 export interface UnifiedSettingsController {
   open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending?: boolean): void;
+  close(): void;
+  hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
   getButton(): HTMLButtonElement;
   destroy(): void;

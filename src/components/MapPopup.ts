@@ -27,7 +27,7 @@ import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { renderPopupSourceLinks } from './map-popup-source-links';
-import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
+import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
@@ -239,6 +239,7 @@ export class MapPopup {
   private sheetCurrentOffset = 0;
   private readonly mobileDismissThreshold = 96;
   private outsideListenerTimeoutId: number | null = null;
+  private mapPopupHistoryOpen: OverlayOpenHandle | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -359,17 +360,18 @@ export class MapPopup {
     });
 
     if (this.isMobileSheet) {
-      overlayHistory.open('map-popup', (origin) => this.hide(origin));
+      this.mapPopupHistoryOpen = overlayHistory.openCancelable('map-popup', (origin) => this.hide(origin));
       this.popup.addEventListener('touchstart', this.handleSheetTouchStart, { passive: true });
       this.popup.addEventListener('touchmove', this.handleSheetTouchMove, { passive: false });
       this.popup.addEventListener('touchend', this.handleSheetTouchEnd);
       this.popup.addEventListener('touchcancel', this.handleSheetTouchEnd);
+      const popup = this.popup;
       requestAnimationFrame(() => {
-        if (!this.popup) return;
-        this.popup.classList.add('open');
+        if (this.popup !== popup) return;
+        popup.classList.add('open');
         // Remove will-change after slide-in transition to free GPU memory
-        this.popup.addEventListener('transitionend', () => {
-          if (this.popup) this.popup.style.willChange = 'auto';
+        popup.addEventListener('transitionend', () => {
+          if (this.popup === popup) popup.style.willChange = 'auto';
         }, { once: true });
       });
     }
@@ -597,6 +599,9 @@ export class MapPopup {
   public hide(origin: OverlayCloseOrigin = 'control'): void {
     this.transitChart?.destroy();
     this.transitChart = null;
+
+    this.mapPopupHistoryOpen?.cancel();
+    this.mapPopupHistoryOpen = null;
 
     if (this.outsideListenerTimeoutId !== null) {
       window.clearTimeout(this.outsideListenerTimeoutId);

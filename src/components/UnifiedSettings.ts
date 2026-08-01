@@ -417,6 +417,10 @@ export class UnifiedSettings {
     this.teardownSettings(origin);
   }
 
+  public hasPendingChanges(): boolean {
+    return this.hasPendingPanelChanges();
+  }
+
   private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
     if (origin === 'control' && this.historyRegistered) {
       overlayHistory.close('settings');

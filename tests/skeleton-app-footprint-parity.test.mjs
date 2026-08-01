@@ -141,6 +141,29 @@ function runPrepaintBootScript(mapCollapsed) {
   return classes;
 }
 
+function runMapPreferencePrepaintScript({ storageThrows = false } = {}) {
+  const script = html.match(/<script data-wm-map-prepaint>([\s\S]*?)<\/script>/);
+  assert.ok(script, 'Expected the isolated mobile map pre-paint script in index.html');
+  const classes = new Set();
+  runInNewContext(script[1], {
+    document: {
+      documentElement: {
+        classList: {
+          add: (name) => classes.add(name),
+          remove: (name) => classes.delete(name),
+        },
+      },
+    },
+    localStorage: {
+      getItem: () => {
+        if (storageThrows) throw new Error('storage blocked');
+        return null;
+      },
+    },
+  });
+  return classes;
+}
+
 describe('#4580 boot skeleton <-> app footprint parity', () => {
   it('mobile skeleton map reserves the same height as the real .map-section', () => {
     // Source of truth: the full-viewport mobile map rule in main.css.
@@ -209,6 +232,10 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
     assert.ok(
       !runPrepaintBootScript(false).has('wm-map-collapsed'),
       'the inline pre-paint script must leave the expanded-map cohort unchanged',
+    );
+    assert.ok(
+      runMapPreferencePrepaintScript({ storageThrows: true }).has('wm-map-collapsed'),
+      'blocked storage must keep the feed-first collapsed default on the first paint',
     );
 
     const mobileMapToggle = classMethodBody(panelLayout, 'private setupMobileMapToggle()');

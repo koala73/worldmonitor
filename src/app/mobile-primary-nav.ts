@@ -22,6 +22,7 @@ export class MobilePrimaryNav {
   private readonly listeners = new AbortController();
   private menuOpenFrame: number | null = null;
   private regionOpenFrame: number | null = null;
+  private alertScrollFrame: number | null = null;
   private authWidget: AuthHeaderWidget | null = null;
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeHistory: (() => void) | null = null;
@@ -95,8 +96,10 @@ export class MobilePrimaryNav {
     this.authWidget = null;
     if (this.menuOpenFrame !== null) cancelAnimationFrame(this.menuOpenFrame);
     if (this.regionOpenFrame !== null) cancelAnimationFrame(this.regionOpenFrame);
+    if (this.alertScrollFrame !== null) cancelAnimationFrame(this.alertScrollFrame);
     this.menuOpenFrame = null;
     this.regionOpenFrame = null;
+    this.alertScrollFrame = null;
   }
 
   private setupTabBar(): void {
@@ -106,6 +109,10 @@ export class MobilePrimaryNav {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-mobile-tab]');
       const tab = button?.dataset.mobileTab;
       if (!tab) return;
+      if (this.alertScrollFrame !== null) {
+        cancelAnimationFrame(this.alertScrollFrame);
+        this.alertScrollFrame = null;
+      }
       const replaceOverlayId = this.reconcileOverlayForTab(tab);
       if (replaceOverlayId === null) return;
 
@@ -139,7 +146,12 @@ export class MobilePrimaryNav {
           );
           if (panel?.dataset.panel) {
             window.dispatchEvent(new CustomEvent('wm:reveal-panel', { detail: { panelId: panel.dataset.panel } }));
-            requestAnimationFrame(() => panel.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+            this.alertScrollFrame = requestAnimationFrame(() => {
+              this.alertScrollFrame = null;
+              if (this.activeTab === 'alerts') {
+                panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+              }
+            });
           } else {
             showToast('No active alerts yet');
           }
@@ -243,10 +255,13 @@ export class MobilePrimaryNav {
       this.regionOpenFrame = null;
       sheet.classList.add('open');
     });
-    document.body.style.overflow = 'hidden';
     const close = (origin: OverlayCloseOrigin) => this.closeRegion(origin);
     if (replaceOverlayId) overlayHistory.replaceInPlace(replaceOverlayId, 'region', close);
     else overlayHistory.open('region', close);
+    // replaceInPlace closes the outgoing menu synchronously. Restore the lock
+    // after that callback so the region sheet does not briefly unlock the page
+    // before its opening frame runs.
+    document.body.style.overflow = 'hidden';
   }
 
   private closeRegion(origin: OverlayCloseOrigin = 'control'): void {
@@ -270,6 +285,13 @@ export class MobilePrimaryNav {
       || top === 'region'
       || top === 'settings'
       || top === 'settings-pending';
+    if (top === 'settings' && this.ctx.unifiedSettings?.hasPendingChanges()) {
+      // Do not replace or dismiss a dirty Settings overlay: those paths call
+      // close('replacement') and would discard the draft without confirmation.
+      this.ctx.unifiedSettings.close();
+      this.setActive('more');
+      return null;
+    }
     if ((tab === 'search' && isSearchOverlay) || (tab === 'more' && isMoreOverlay)) {
       overlayHistory.dismiss(top);
       this.setActive('today');

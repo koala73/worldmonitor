@@ -30,3 +30,23 @@ test('mobile deep dive closes through Back, restores focus, and releases its cal
     harness.cleanup();
   }
 });
+
+test('mobile deep dive control close clears its history marker', async () => {
+  const harness = await createCountryDeepDivePanelHarness({ mobile: true });
+  try {
+    const panel = harness.createPanel();
+    let closeCalls = 0;
+    panel.onClose(() => { closeCalls += 1; });
+    panel.show('Canada', 'CA', null, {});
+
+    const closeButton = harness.getPanelRoot().querySelector('#deep-dive-close');
+    assert.ok(closeButton, 'the deep-dive close control must be rendered');
+    closeButton.dispatchEvent(new Event('click'));
+
+    assert.equal(harness.getPanelRoot().classList.contains('active'), false);
+    assert.equal(harness.getHistoryEntry(), null);
+    assert.equal(closeCalls, 1);
+  } finally {
+    harness.cleanup();
+  }
+});

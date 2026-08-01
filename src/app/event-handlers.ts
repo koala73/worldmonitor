@@ -150,7 +150,10 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
       // deliberate unmount, not a failure the user should be toasted about.
-      if (this.destroyed) return;
+      // Back can cancel the pending history transition before the lazy chunk
+      // rejects; that cancellation is also an expected teardown path.
+      const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
+      if (this.destroyed || actionWasCancelled) return;
       console.warn('[settings] Failed to load settings window:', error);
       pendingGate?.cancel();
       showToast(t('common.error'));
@@ -159,6 +162,14 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
 
   refreshPanelToggles(): void {
     this.instance?.refreshPanelToggles();
+  }
+
+  close(): void {
+    this.instance?.close();
+  }
+
+  hasPendingChanges(): boolean {
+    return this.instance?.hasPendingChanges() ?? false;
   }
 
   destroy(): void {
@@ -519,7 +530,13 @@ export class EventHandlerManager implements AppModule {
         // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
           e.preventDefault();
-          this.callbacks.openSearch({ toggle: true });
+          // A keyboard toggle can arrive while the mobile tab is still
+          // loading Search. Reuse that pending marker so the eventual modal
+          // replaces it instead of pushing a second history entry.
+          this.callbacks.openSearch({
+            toggle: true,
+            historyPending: overlayHistory.top() === 'search-pending',
+          });
         }
       };
       document.addEventListener('keydown', this.boundSearchKeyHandler);

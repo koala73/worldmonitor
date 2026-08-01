@@ -3,9 +3,9 @@ import { describe, it } from 'node:test';
 
 import { OverlayHistoryManager, type OverlayHistoryEnvironment } from '../src/utils/overlay-history';
 
-function createEnvironment({ asyncBack = false } = {}) {
+function createEnvironment({ asyncBack = false, initialState = null } = {}) {
   const listeners = new Set<(event: PopStateEvent) => void>();
-  const entries: unknown[] = [null];
+  const entries: unknown[] = [initialState];
   const pendingBacks: Array<() => void> = [];
   let index = 0;
 
@@ -169,6 +169,35 @@ describe('OverlayHistoryManager', () => {
       ((environment.state as Record<string, unknown>).__wmOverlay as { id: string }).id,
       'settings',
     );
+    manager.destroy();
+  });
+
+  it('cancels a queued open when the overlay is hidden before Back settles', () => {
+    const { environment, flushBack } = createEnvironment({ asyncBack: true });
+    const manager = new OverlayHistoryManager(environment);
+
+    manager.open('search', () => {});
+    manager.close('search');
+    const open = manager.openCancelable('map-popup', () => {});
+    open.cancel();
+
+    flushBack();
+    assert.equal(manager.top(), null);
+    assert.equal(environment.state, null);
+    manager.destroy();
+  });
+
+  it('strips an orphaned marker left by a page reload', () => {
+    const { environment, getIndex } = createEnvironment({
+      initialState: { __wmOverlay: { id: 'search', token: 'previous-page' } },
+    });
+    const manager = new OverlayHistoryManager(environment);
+
+    assert.equal(getIndex(), 0);
+    assert.equal((environment.state as Record<string, unknown>).__wmOverlay, undefined);
+    manager.open('search', () => {});
+    manager.close('search');
+    assert.equal(getIndex(), 0, 'the first Back closes the new overlay entry');
     manager.destroy();
   });
 

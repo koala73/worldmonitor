@@ -36,6 +36,10 @@ export interface PendingOverlayGate {
   cancel(): void;
 }
 
+export interface OverlayOpenHandle {
+  cancel(): void;
+}
+
 function markerFromState(state: unknown): OverlayMarker | null {
   if (!state || typeof state !== 'object') return null;
   const marker = (state as Record<string, unknown>)[OVERLAY_STATE_KEY];
@@ -100,6 +104,12 @@ export class OverlayHistoryManager {
   };
 
   constructor(private readonly environment: OverlayHistoryEnvironment) {
+    // Synthetic overlay markers describe in-memory UI owned by this manager.
+    // A reload starts with no matching entries, so retain no orphan marker
+    // that would force an extra Back press before leaving the page.
+    if (markerFromState(this.environment.state)) {
+      this.environment.replaceState(withoutMarker(this.environment.state));
+    }
     this.environment.addPopStateListener(this.handlePopState);
   }
 
@@ -119,6 +129,29 @@ export class OverlayHistoryManager {
     this.entries.push(entry);
     this.environment.pushState(withMarker(this.environment.state, { id: entry.id, token: entry.token }));
     this.notify();
+  }
+
+  /**
+   * Open an overlay, allowing callers that can disappear before an async Back
+   * traversal settles to cancel a queued registration.
+   */
+  public openCancelable(id: OverlayId, close: OverlayCloseCallback): OverlayOpenHandle {
+    let queued = true;
+    let cancelled = false;
+    const register = () => {
+      if (cancelled) return;
+      queued = false;
+      this.open(id, close);
+    };
+    if (this.deferUntilPop(register)) {
+      return {
+        cancel: () => {
+          if (queued) cancelled = true;
+        },
+      };
+    }
+    register();
+    return { cancel: () => {} };
   }
 
   public replace(fromId: OverlayId, id: OverlayId, close: OverlayCloseCallback): void {
