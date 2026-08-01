@@ -55,11 +55,19 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Czech (CS) — V4 balance with Hungary (#5952). Locale-boosted for cs users.
+      { name: 'Seznam Zprávy', url: 'https://www.seznamzpravy.cz/rss', lang: 'cs' },
       // Croatian (HR) — mainstream + investigative; Balkan Insight is English-language (no lang tag)
       { name: 'N1 Croatia', url: 'https://n1info.hr/feed/', lang: 'hr' },
       { name: 'Index.hr', url: 'https://www.index.hr/rss', lang: 'hr' },
       { name: 'Jutarnji list', url: 'https://www.jutarnji.hr/feed', lang: 'hr' },
       { name: 'Balkan Insight', url: 'https://balkaninsight.com/feed/' },
+      // Romanian (RO) — Eastern flank (#5952). Locale-boosted for ro users.
+      { name: 'Digi24', url: 'https://www.digi24.ro/rss', lang: 'ro' },
+      { name: 'HotNews', url: 'https://www.hotnews.ro/rss', lang: 'ro' },
+      { name: 'G4Media', url: 'https://www.g4media.ro/feed/', lang: 'ro' },
+      // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
+      { name: 'Dnevnik', url: 'https://www.dnevnik.bg/rss.xml', lang: 'bg' },
       // Ukraine war frontline for EN digests (#5949). Names must match client
       // DEFAULT_ENABLED_SOURCES.europe. No non-en `lang` tags — buildDigest
       // filters `!f.lang || f.lang === lang`, so lang:pl/ru would never ship to EN.
@@ -87,6 +95,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Zerkalo', url: gn('site:zerkalo.io when:2d') },
       { name: 'NewsMaker', url: 'https://newsmaker.md/en/feed/' },
       { name: 'Ziarul de Gardă', url: 'https://www.zdg.md/feed/', lang: 'ro' },
+      // Baltic states — Eastern flank (#5952). English-language, no lang tag,
+      // so EN digests include them.
+      { name: 'ERR News', url: 'https://news.err.ee/rss' },
+      { name: 'LRT English', url: 'https://www.lrt.lt/en/rss' },
+      { name: 'LSM English', url: 'https://eng.lsm.lv/feed/' },
+      // Daily Sabah (EN) — Turkey EN path improvement (#5952).
+      { name: 'Daily Sabah', url: 'https://www.dailysabah.com/rss' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

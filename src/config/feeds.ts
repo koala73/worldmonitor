@@ -130,6 +130,9 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
     { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
+    // Daily Sabah (EN) — Turkey EN path improvement (#5952). English-language,
+    // no lang tag, so EN digests include it as a default-on flank source.
+    { name: 'Daily Sabah', url: rss('https://www.dailysabah.com/rss') },
     // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
     // Their native RSS feeds are used for both locales: the Google News site
     // queries previously used for EN returned HTTP 200 with no <item> nodes.
@@ -155,17 +158,30 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
     { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
     { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
+    // Czech (CS) — V4 balance with Hungary (#5952). Locale-boosted for cs users.
+    { name: 'Seznam Zprávy', url: rss('https://www.seznamzpravy.cz/rss'), lang: 'cs' },
     // Croatian (HR) — mainstream + investigative
     { name: 'N1 Croatia', url: rss('https://n1info.hr/feed/'), lang: 'hr' },
     { name: 'Index.hr', url: rss('https://www.index.hr/rss'), lang: 'hr' },
     { name: 'Jutarnji list', url: rss('https://www.jutarnji.hr/feed'), lang: 'hr' },
     { name: 'Balkan Insight', url: rss('https://balkaninsight.com/feed/') },
+    // Romanian (RO) — Eastern flank (#5952). Locale-boosted for ro users.
+    { name: 'Digi24', url: rss('https://www.digi24.ro/rss'), lang: 'ro' },
+    { name: 'HotNews', url: rss('https://www.hotnews.ro/rss'), lang: 'ro' },
+    { name: 'G4Media', url: rss('https://www.g4media.ro/feed/'), lang: 'ro' },
+    // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
+    { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss.xml'), lang: 'bg' },
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Baltic states — Eastern flank (#5952). English-language Baltic news
+    // services (no lang tag) so EN digests can include them as flank sources.
+    { name: 'ERR News', url: rss('https://news.err.ee/rss') },
+    { name: 'LRT English', url: rss('https://www.lrt.lt/en/rss') },
+    { name: 'LSM English', url: rss('https://eng.lsm.lv/feed/') },
     // Russia & Ukraine — EN default balance rule (#5950):
     // For DEFAULT_ENABLED_SOURCES.europe (EN full-variant path), keep at least:
     //   ≥1 dedicated UA primary (today: Kyiv Independent)
@@ -1107,8 +1123,11 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   // PL frontline: TVN24 + Rzeczpospolita (not all three PL; noise control).
   // TASS/RT never default-on. Extra UA outlets deferred to #5951.
   // HU/EL locale packs remain locale-boosted only, not EN default-on.
+  // Eastern flank (#5952): Daily Sabah (EN Turkey) + ERR News (EN Baltic) as
+  // default-on; RO/BG/CS feeds stay locale-boosted (lang tags).
   europe: [
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
+    'Daily Sabah', 'ERR News',
     ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
     'Ukrainska Pravda EN',
     'NV EN',

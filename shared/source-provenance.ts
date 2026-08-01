@@ -57,6 +57,16 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // Croatian (HR)
   'N1 Croatia': 'mainstream', 'Index.hr': 'mainstream', 'Jutarnji list': 'mainstream',
   'Balkan Insight': 'intel',
+  // Romanian (RO) — Eastern flank (#5952)
+  'Digi24': 'mainstream', 'HotNews': 'mainstream', 'G4Media': 'mainstream',
+  // Bulgarian (BG) — Black Sea flank (#5952)
+  'Dnevnik': 'mainstream',
+  // Baltic states — Eastern flank (#5952)
+  'ERR News': 'mainstream', 'LRT English': 'mainstream', 'LSM English': 'mainstream',
+  // Turkey EN path (#5952)
+  'Daily Sabah': 'mainstream',
+  // Czech (CS) — V4 balance (#5952)
+  'Seznam Zprávy': 'mainstream',
   // Hindi (HI)
   'BBC Hindi': 'mainstream', 'Aaj Tak': 'mainstream', 'NDTV India': 'mainstream', 'Amar Ujala': 'mainstream',
   // Hungarian (HU)
@@ -261,6 +271,15 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   // Low risk - Independent with editorial standards (explicit)
   'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },
   'Ynetnews': { risk: 'low', knownBiases: ['Israeli mainstream'], note: 'Yedioth Ahronoth English edition' },
+  'Digi24': { risk: 'low', note: 'Romanian independent news channel, member of ERNO' },
+  'HotNews': { risk: 'low', note: 'Romanian independent online news portal' },
+  'G4Media': { risk: 'low', note: 'Romanian independent investigative outlet' },
+  'Dnevnik': { risk: 'low', note: 'Bulgarian independent daily newspaper' },
+  'ERR News': { risk: 'low', note: 'Estonian Public Broadcasting English service' },
+  'LRT English': { risk: 'low', note: 'Lithuanian Public Broadcasting English service' },
+  'LSM English': { risk: 'low', note: 'Latvian Public Broadcasting English service' },
+  'Daily Sabah': { risk: 'medium', stateAffiliated: 'Turkey', note: 'Turkish pro-government daily, English edition' },
+  'Seznam Zprávy': { risk: 'low', note: 'Czech independent online news outlet' },
   'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },
   'AP News': { risk: 'low', note: 'Wire service, nonprofit cooperative' },
   'AFP': { risk: 'low', note: 'Wire service, editorially independent' },
