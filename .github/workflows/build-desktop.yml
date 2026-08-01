@@ -72,6 +72,34 @@ jobs:
         shell: bash
         run: echo "JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
 
+      - name: Release client-env preflight (#5905)
+        # A tag-push or published manual release with empty client env secrets
+        # would ship sign-in/Pro/basemap/relay silently disabled again — the
+        # exact regression #5905 fixed. Draft dispatch builds may still run
+        # before the repo secrets exist. Key *presence* in the build steps is
+        # separately enforced by scripts/check-desktop-build-env.mjs in PR CI.
+        shell: bash
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: |
+          MISSING=""
+          for k in VITE_CLERK_PUBLISHABLE_KEY VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
+            [ -n "${!k}" ] || MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            if [ "${{ github.event_name }}" = "push" ] || {
+              [ "${{ github.event_name }}" = "workflow_dispatch" ] &&
+              [ "${{ github.event.inputs.draft }}" != "true" ];
+            }; then
+              echo "::error::Release build with empty client env secrets:$MISSING — the shipped app would have sign-in, entitlements, basemap, or relay capabilities silently disabled (#5905). Add the repo secrets before tagging."
+              exit 1
+            fi
+            echo "::warning::Client env secrets empty:$MISSING — this dispatch build will have those capabilities disabled (#5905)."
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
@@ -85,7 +113,7 @@ jobs:
           targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || (matrix.label == 'Linux-ARM64' && 'aarch64-unknown-linux-gnu' || '') }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -210,12 +238,21 @@ jobs:
       # ── Build: Full variant (signed) ──
       - name: Build Tauri app (full, signed)
         if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -235,12 +272,21 @@ jobs:
       # ── Build: Full variant (unsigned — no Apple certs) ──
       - name: Build Tauri app (full, unsigned)
         if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           tagName: v__VERSION__
@@ -254,12 +300,21 @@ jobs:
       # ── Build: Tech variant (signed) ──
       - name: Build Tauri app (tech, signed)
         if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -280,12 +335,21 @@ jobs:
       # ── Build: Tech variant (unsigned — no Apple certs) ──
       - name: Build Tauri app (tech, unsigned)
         if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
           VITE_DESKTOP_RUNTIME: '1'
           VITE_WS_API_URL: https://worldmonitor.app
+          # Client env parity (#5905): a key missing here silently disables the
+          # capability in every shipped build — checked by
+          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
+          # Secret-sourced keys render empty until the repo secret exists.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           tagName: v__VERSION__-tech

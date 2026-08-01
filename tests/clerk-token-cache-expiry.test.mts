@@ -238,11 +238,6 @@ describe('getClerkToken', () => {
   /**
    * The fallback must not strand the session on the degraded token: once Clerk
    * is reachable again the very next caller gets a healthy one.
-   *
-   * Note this does NOT assert the fallback goes uncached, and no test can —
-   * a token rejected by the freshness gate at fetch time can never satisfy that
-   * same gate on a later read, so the cache entry is unreachable either way.
-   * Mutating the source to cache it leaves every test in this file green.
    */
   it('recovers to a healthy token as soon as the forced refresh works again', async () => {
     const nearExpiry = tokenExpiringAt(Date.now() + 5_000);
@@ -262,5 +257,80 @@ describe('getClerkToken', () => {
     assert.equal(await getClerkToken(), nearExpiry);
     refreshBroken = false;
     assert.equal(await getClerkToken(), healthy);
+  });
+
+  it('rejects a fallback when Clerk switches sessions before refresh failure returns', async () => {
+    const nearExpiry = tokenExpiringAt(Date.now() + 5_000);
+    const replacementSession = {
+      async getToken() {
+        return null;
+      },
+    };
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        if (options.skipCache) {
+          clerk.session = replacementSession;
+          throw new Error('network');
+        }
+        return nearExpiry;
+      },
+    };
+    const clerk: { session: typeof session | typeof replacementSession | null } = { session };
+    __setClerkInstanceForTests(clerk as never);
+
+    assert.equal(await getClerkToken(), null);
+  });
+
+  it('does not reuse a cached token after Clerk switches to another session', async () => {
+    const tokenA = tokenExpiringAt(Date.now() + 60_000);
+    const tokenB = tokenExpiringAt(Date.now() + 60_000);
+    let sessionBCalls = 0;
+    const sessionA = {
+      async getToken() {
+        return tokenA;
+      },
+    };
+    const sessionB = {
+      async getToken() {
+        sessionBCalls += 1;
+        return tokenB;
+      },
+    };
+    const clerk: { session: typeof sessionA | typeof sessionB | null } = { session: sessionA };
+    __setClerkInstanceForTests(clerk as never);
+
+    assert.equal(await getClerkToken(), tokenA);
+    clerk.session = sessionB;
+
+    assert.equal(await getClerkToken(), tokenB);
+    assert.equal(sessionBCalls, 1);
+  });
+
+  it('does not cache a fallback token', async () => {
+    const originalNow = Date.now;
+    let now = 10_000;
+    Date.now = () => now;
+    try {
+      const nearExpiry = tokenExpiringAt(20_000);
+      const healthy = tokenExpiringAt(100_000);
+      let normalCalls = 0;
+      const session = {
+        async getToken(options: { skipCache?: boolean } = {}) {
+          if (options.skipCache) throw new Error('network');
+          normalCalls += 1;
+          return normalCalls === 1 ? nearExpiry : healthy;
+        },
+      };
+      __setClerkInstanceForTests({ session } as never);
+
+      assert.equal(await getClerkToken(), nearExpiry);
+      // Move back one millisecond so a mutant that caches the fallback would
+      // pass the freshness gate; the real implementation must call Clerk.
+      now -= 1;
+      assert.equal(await getClerkToken(), healthy);
+      assert.equal(normalCalls, 2);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });

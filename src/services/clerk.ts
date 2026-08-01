@@ -469,6 +469,7 @@ export function getClerkUserCreatedAt(): number | null {
 export async function signOut(): Promise<void> {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
   await clerkInstance?.signOut();
@@ -490,6 +491,7 @@ export async function signOut(): Promise<void> {
 export function clearClerkTokenCache(): void {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
 }
@@ -508,6 +510,7 @@ export function clearClerkTokenCache(): void {
  */
 let _cachedToken: string | null = null;
 let _cachedTokenAt = 0;
+let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
@@ -542,6 +545,18 @@ export function clerkTokenExpiresAtMs(token: string | null): number | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether a token still has any lifetime left. This is intentionally weaker
+ * than shouldReuseCachedClerkToken(): a failed forced refresh may return the
+ * token already in hand for the request being made now, but never after its
+ * own expiry has passed.
+ */
+function hasTokenRemainingLifetime(token: string | null, now: number): boolean {
+  if (!token) return false;
+  const expiresAt = clerkTokenExpiresAtMs(token);
+  return expiresAt === null || now < expiresAt;
 }
 
 /**
@@ -591,7 +606,10 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
 }
 
 export async function getClerkToken(): Promise<string | null> {
-  if (shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })) {
+  if (
+    clerkInstance?.session === _cachedSession &&
+    shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })
+  ) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -633,21 +651,18 @@ export async function getClerkToken(): Promise<string | null> {
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
-      if (myGen !== _tokenGen) return null;
+      if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
       const fetchedAt = Date.now();
       if (shouldReuseCachedClerkToken({ token, cachedAt: fetchedAt, now: fetchedAt })) {
         _cachedToken = token;
         _cachedTokenAt = fetchedAt;
+        _cachedSession = session;
         return token;
       }
       // Deliberately uncached: serving a near-expiry token for the full TTL is
       // the stacked-cache defect this function was rewritten to fix, so the next
       // caller must go back to Clerk once it is reachable again.
-      if (refreshUnavailable) {
-        const expiresAt = clerkTokenExpiresAtMs(token);
-        if (expiresAt === null || fetchedAt < expiresAt) return token;
-      }
-      return null;
+      return refreshUnavailable && hasTokenRemainingLifetime(token, Date.now()) ? token : null;
     } catch {
       return null;
     } finally {

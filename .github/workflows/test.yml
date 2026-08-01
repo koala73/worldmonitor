@@ -95,9 +95,10 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
-            /^\.github\/workflows\/(build-desktop|test-linux-app|test)\.yml$/ { count++ }
+            /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
             END { print count + 0 }
           ')
           echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -198,6 +199,11 @@ jobs:
             }
             console.log(`sidecar handler bundles ok: ${domains.length} domains`);
           '
+      - name: Desktop build env parity (#5905)
+        # Twin of the desktop-config leg: here it fires when src/ gains a new
+        # import.meta.env.VITE_ read (code=true), forcing the author to
+        # classify it for desktop builds before it can silently miss them.
+        run: node scripts/check-desktop-build-env.mjs
 
   consumer-prices:
     needs: changes
@@ -254,6 +260,13 @@ jobs:
           }
       - name: Linux AppImage post-processing script parses
         run: bash -n scripts/repack-linux-appimage.sh
+      - name: Desktop build env parity (#5905)
+        # A VITE_ key missing from the Tauri build steps silently disables the
+        # capability in every shipped build (sign-in, Pro, Cyber Threats were
+        # all dark this way). Also runs in `unit` — this leg covers workflow
+        # edits (build-desktop.yml is excluded from the `code` filter), the
+        # unit leg covers new import.meta.env.VITE_ reads added under src/.
+        run: node scripts/check-desktop-build-env.mjs
       - name: Tauri config and capability files parse
         run: |
           node -e '
@@ -298,7 +311,7 @@ jobs:
         with:
           toolchain: stable
       - name: Rust cache
-        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true

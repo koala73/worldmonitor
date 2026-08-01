@@ -46,7 +46,7 @@ jobs:
           toolchain: stable
 
       - name: Rust cache
-        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -76,15 +76,45 @@ jobs:
           NODE_TARGET: 'x86_64-unknown-linux-gnu'
         run: bash scripts/download-node.sh --target "$NODE_TARGET"
 
+      - name: Client env preflight (#5905)
+        # The canary must not qualify an AppImage built without the client
+        # configuration that release artifacts require.
+        shell: bash
+        env:
+          VITE_VARIANT: full
+          VITE_DESKTOP_RUNTIME: '1'
+          VITE_WS_API_URL: https://worldmonitor.app
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: |
+          MISSING=""
+          for k in VITE_VARIANT VITE_DESKTOP_RUNTIME VITE_WS_API_URL VITE_CLERK_PUBLISHABLE_KEY VITE_CONVEX_URL VITE_ENABLE_CYBER_LAYER VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
+            [ -n "${!k}" ] || MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Desktop canary requires non-empty client env:$MISSING (#5905)"
+            exit 1
+          fi
+
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           # Match the release build env (build-desktop.yml) so the canary
-          # exercises the shipped configuration, not a drifted one.
+          # exercises the shipped configuration, not a drifted one — parity
+          # checked by scripts/check-desktop-build-env.mjs (#5905).
           VITE_WS_API_URL: https://worldmonitor.app
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           args: ''
