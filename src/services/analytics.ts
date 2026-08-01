@@ -15,7 +15,6 @@ import {
   collectorFailureFromError,
   configureCollectorTransport,
   installCollectorFetchGate,
-  isKnownSessionDataConflict,
   isRetryableCollectorFailure,
   isRetryableIdentityFailure,
   observeCollectorDelivery,
@@ -187,6 +186,27 @@ export type UmamiEvent = keyof typeof EVENTS;
  * Both invariants now key off a confirmed collector receipt rather than "track()
  * returned without throwing".
  */
+/**
+ * Whether a completed write settles a durable checkout marker.
+ *
+ * The question is only ever "could this have committed a row?", because that is
+ * what makes a boot replay a DUPLICATE rather than a recovery:
+ *
+ * - delivered (no failure)        -> settled.
+ * - an HTTP failure we will not retry (500/502/504, and #4183's P2002) -> the
+ *   origin engaged the request and may have written the event row before
+ *   failing. The in-page retry already refuses to re-send it for exactly that
+ *   reason; leaving the marker armed would let the next boot re-send it anyway.
+ * - queue-overflow / missing-receipt / network / timeout -> no row can exist
+ *   (never dispatched, or accepted-and-discarded, or never answered), so the
+ *   marker must survive and replay. These are recoveries, not duplicates.
+ */
+function isDurableMarkerResolved(failure: CollectorOutcome['failure']): boolean {
+  if (failure === null) return true;
+  if (failure.kind !== 'http') return false;
+  return !isRetryableCollectorFailure(failure);
+}
+
 function handleCollectorOutcome(outcome: CollectorOutcome): void {
   if (outcome.requestType !== 'event') return;
 
@@ -195,8 +215,18 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   // P2002 means the event committed and the follow-up metadata write lost a
   // race. Treating it as undelivered would replay the conversion on every boot
   // for the life of the tab — the duplicate the no-retry policy exists to stop.
-  const delivered = outcome.failure === null || isKnownSessionDataConflict(outcome.failure);
-  if (!delivered) return;
+  //
+  // The same reasoning generalises: ANY failure the retry policy refuses to
+  // re-send in-page must also be terminal for the durable marker. A 502/504 (or
+  // a 500 whose body carried no Prisma metadata to recognise) reached the origin
+  // and may have committed the row, and a receiptless 200 was accepted and
+  // discarded — none of them are retried, so leaving the marker armed would let
+  // the boot replay smuggle the event back in and duplicate the conversion that
+  // isRetryableCollectorFailure just declined to risk.
+  //
+  // A queue-overflow drop is the one exception: it never reached the network at
+  // all, so the marker must survive for the next boot to replay it.
+  if (!isDurableMarkerResolved(outcome.failure)) return;
 
   if (outcome.eventName === 'checkout-success') clearPendingCheckoutSuccessMarker();
   if (outcome.eventName === 'checkout-start' && isReplayedCheckoutStart(outcome.requestBody)) {

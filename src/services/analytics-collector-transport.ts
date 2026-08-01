@@ -115,6 +115,8 @@ const collectorRequestQueue: CollectorRequest[] = [];
 let collectorRequestInFlight = false;
 let collectorFetchOriginal: typeof window.fetch | null = null;
 let collectorFetchWrapper: typeof window.fetch | null = null;
+let collectorUnloadFlush: (() => void) | null = null;
+let collectorVisibilityFlush: (() => void) | null = null;
 let collectorTransportGeneration = 0;
 let collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0 };
 let pendingObservation: ObservationSlot | null = null;
@@ -353,6 +355,24 @@ function drainCollectorRequestQueue(): void {
   });
 }
 
+/**
+ * Dispatch the whole backlog at once because the page is going away.
+ *
+ * The tracker issues every write with `keepalive: true` so an in-flight request
+ * survives unload — but a request still sitting in this queue was never handed
+ * to the network stack, so keepalive cannot protect it. Serialization exists to
+ * avoid session_data contention, which stops mattering once the page is gone;
+ * losing a queued checkout-start to a navigation does not.
+ */
+function flushCollectorQueueForUnload(): void {
+  if (collectorRequestQueue.length === 0) return;
+  const pending = collectorRequestQueue.splice(0, collectorRequestQueue.length);
+  const generation = collectorTransportGeneration;
+  for (const request of pending) {
+    void runCollectorRequest(request, generation);
+  }
+}
+
 function rejectOverflow(request: CollectorRequest): void {
   const failure: CollectorFailure = { kind: 'queue-overflow' };
   recordCollectorOutcome(request, failure);
@@ -456,6 +476,26 @@ export function installCollectorFetchGate(): boolean {
   }
   collectorFetchOriginal = originalFetch;
   collectorFetchWrapper = wrappedFetch;
+
+  // pagehide ALWAYS flushes — the page is leaving whatever visibilityState says.
+  // visibilitychange flushes only once actually hidden, since it also fires on
+  // the way back to visible.
+  const onPageHide = (): void => { flushCollectorQueueForUnload(); };
+  const onVisibilityChange = (): void => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+    flushCollectorQueueForUnload();
+  };
+  collectorUnloadFlush = onPageHide;
+  collectorVisibilityFlush = onVisibilityChange;
+  try {
+    window.addEventListener('pagehide', onPageHide);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+  } catch {
+    // No lifecycle events in this host (non-DOM test harness); the queue keeps
+    // its normal drain behavior.
+  }
   return true;
 }
 
@@ -504,6 +544,18 @@ export function resetCollectorTransportForTesting(): void {
       // Test harnesses may expose a non-writable fetch property.
     }
   }
+  if (typeof window !== 'undefined' && collectorUnloadFlush) {
+    try {
+      window.removeEventListener('pagehide', collectorUnloadFlush);
+      if (typeof document !== 'undefined' && collectorVisibilityFlush) {
+        document.removeEventListener('visibilitychange', collectorVisibilityFlush);
+      }
+    } catch {
+      // Listener teardown is best-effort.
+    }
+  }
+  collectorUnloadFlush = null;
+  collectorVisibilityFlush = null;
   collectorFetchOriginal = null;
   collectorFetchWrapper = null;
   collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0 };

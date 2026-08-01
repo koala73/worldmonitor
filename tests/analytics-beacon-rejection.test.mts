@@ -453,6 +453,97 @@ describe('Umami client retry policy (#5715)', () => {
     }
   });
 
+  it('clears the durable marker on a 502/504 so the next boot cannot duplicate', async () => {
+    // The mirror of the receiptless-200 case below. 502/504 reach the origin,
+    // which may have committed the event row before failing — that ambiguity is
+    // why the in-page retry refuses to re-send them. Keeping the marker armed
+    // would let replayPendingCheckoutSuccess re-send it on the next boot anyway,
+    // turning one purchase into two conversions.
+    for (const status of [502, 504]) {
+      resetAnalyticsForTesting();
+      const fakeTimers = installFakeTimers();
+      let calls = 0;
+      window.fetch = (() => {
+        calls += 1;
+        return Promise.resolve(collectorResponse(false, status));
+      }) as typeof window.fetch;
+      (globalThis.window as WinWithUmami).umami = {
+        track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+          ...(data as Record<string, unknown> | undefined),
+          name: event as string,
+        }),
+        identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+      };
+      const storage = new Map<string, string>();
+      (globalThis.window as Record<string, unknown>).sessionStorage = {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      };
+
+      try {
+        const analytics = await import('../src/services/analytics.ts');
+        analytics.trackCheckoutSuccess('url-return');
+        await drainPromiseHandlers();
+        assert.equal(calls, 1, `HTTP ${status}: one attempt`);
+        assert.equal(
+          storage.has('wm-checkout-success-pending'),
+          false,
+          `HTTP ${status} may follow a committed row, so the marker must not survive to replay it`,
+        );
+      } finally {
+        fakeTimers.restore();
+      }
+    }
+  });
+
+  it('flushes queued writes on pagehide instead of losing them to navigation', async () => {
+    // The tracker sends with keepalive:true so an in-flight request survives
+    // unload — but a write still sitting in this queue was never handed to the
+    // network stack, so keepalive cannot protect it.
+    const listeners: Record<string, Array<() => void>> = {};
+    (globalThis.window as Record<string, unknown>).addEventListener = (
+      type: string,
+      handler: () => void,
+    ) => {
+      (listeners[type] ??= []).push(handler);
+    };
+    (globalThis.window as Record<string, unknown>).removeEventListener = () => {};
+
+    let calls = 0;
+    let releaseFirst: ((response: Response) => void) | undefined;
+    window.fetch = (() => {
+      calls += 1;
+      if (calls === 1) return new Promise<Response>((resolve) => { releaseFirst = resolve; });
+      return Promise.resolve(collectorResponse(true, 200, RECEIPT_BODY));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    // Occupy the single in-flight slot with a write that never settles.
+    track('theme-changed', { theme: 'dark' });
+    await drainPromiseHandlers();
+    assert.equal(calls, 1);
+
+    // A conversion queues behind it and would die with the navigation.
+    track('checkout-start', { productId: 'pro-monthly', surface: 'dashboard', authed: false });
+    await drainPromiseHandlers();
+    assert.equal(calls, 1, 'queued behind the stalled write');
+
+    assert.ok((listeners.pagehide ?? []).length > 0, 'the gate registered a pagehide flush');
+    for (const handler of listeners.pagehide ?? []) handler();
+    await drainPromiseHandlers();
+    assert.equal(calls, 2, 'pagehide dispatches the backlog so keepalive can carry it');
+
+    releaseFirst?.(collectorResponse(true, 200, RECEIPT_BODY));
+    await drainPromiseHandlers();
+  });
+
   it('treats a receiptless 200 as undelivered and keeps the durable marker', async () => {
     // Umami answers 200 to a bot-filtered write it silently drops. The CI
     // monitor already refuses that shape; the browser must agree or it clears a
