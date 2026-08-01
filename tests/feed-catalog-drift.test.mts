@@ -61,6 +61,8 @@ const FRONTLINE_EUROPE = [
   'Rzeczpospolita',
   'Meduza',
   'Moscow Times',
+  'NV EN',
+  'Ukrainska Pravda EN',
 ] as const;
 
 let feeds: FeedsModule;
@@ -240,6 +242,8 @@ describe('feed catalog drift', () => {
     const byName = new Map(europe.map((feed) => [feed.name, feed]));
     const expectedUrls: Record<string, string> = {
       'Kyiv Independent': 'https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en',
+      'Ukrainska Pravda EN': 'https://news.google.com/rss/search?q=site%3Aeuromaidanpress.com%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
+      'NV EN': 'https://news.google.com/rss/search?q=site%3Aenglish.nv.ua%20when%3A2d&hl=en-US&gl=US&ceid=US:en',
       TVN24: 'https://tvn24.pl/swiat.xml',
       Rzeczpospolita: 'https://www.rp.pl/rss_main',
       Meduza: 'https://meduza.io/rss/en/all',
