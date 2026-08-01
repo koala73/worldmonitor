@@ -13,7 +13,7 @@ import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
-const UMAMI_IDENTIFY_ENDPOINT = new URL('/api/send', UMAMI_SCRIPT_SRC).href;
+const UMAMI_COLLECTOR_ENDPOINT = new URL('/api/send', UMAMI_SCRIPT_SRC).href;
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // data-domains is temporarily reduced to the worldmonitor.app hosts + happy
 // while upstream Umami issue #4183 (https://github.com/umami-software/umami/issues/4183)
@@ -34,9 +34,18 @@ const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
 const UMAMI_IDENTIFY_RETRY_LIMIT = 2;
 const UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS = 1_000;
+const UMAMI_TRACK_RETRY_LIMIT = 2;
+const UMAMI_COLLECTOR_QUEUE_LIMIT = 25;
+const UMAMI_HEALTH_WINDOW_MS = 60_000;
+const RETRYABLE_COLLECTOR_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
+const CRITICAL_TRACK_EVENTS = new Set<UmamiEvent>([
+  'checkout-start',
+  'checkout-success',
+  'checkout-failed',
+]);
 
 type QueuedUmamiCall =
-  | { kind: 'track'; event: UmamiEvent; data?: Record<string, unknown> }
+  | { kind: 'track'; event: UmamiEvent; data?: Record<string, unknown>; retryAttempt?: number }
   | {
       kind: 'identify';
       data: Record<string, unknown>;
@@ -44,6 +53,24 @@ type QueuedUmamiCall =
       retryAttempt: number;
     };
 type IdentifyCall = Extract<QueuedUmamiCall, { kind: 'identify' }>;
+
+type CollectorFailure = {
+  kind: 'http' | 'network' | 'queue-overflow';
+  status?: number;
+  prismaCode?: string;
+  constraint?: string;
+};
+
+type CollectorRequest = {
+  input: RequestInfo | URL;
+  init?: RequestInit;
+  originalFetch: typeof window.fetch;
+  requestType: 'event' | 'identify';
+  eventName?: string;
+  critical: boolean;
+  resolve: (response: Response) => void;
+  reject: (error: unknown) => void;
+};
 
 const pendingUmamiCalls: QueuedUmamiCall[] = [];
 let umamiLoadScheduled = false;
@@ -54,6 +81,12 @@ let identifyRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let identifyInFlight = false;
 let pendingIdentityCall: IdentifyCall | null = null;
 let identifyDeliveryGeneration = 0;
+let collectorRequestQueue: CollectorRequest[] = [];
+let collectorRequestInFlight = false;
+let collectorFetchOriginal: typeof window.fetch | null = null;
+let collectorFetchWrapper: typeof window.fetch | null = null;
+let collectorTransportGeneration = 0;
+let collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0 };
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -147,6 +180,278 @@ const EVENTS = {
 
 export type UmamiEvent = keyof typeof EVENTS;
 
+type CollectorRequestClassification = Pick<CollectorRequest, 'requestType' | 'eventName' | 'critical'>;
+
+class CollectorDeliveryError extends Error {
+  readonly failure: CollectorFailure;
+
+  constructor(failure: CollectorFailure) {
+    super(`Umami collector write failed${failure.status ? ` with HTTP ${failure.status}` : ''}`);
+    this.name = 'CollectorDeliveryError';
+    this.failure = failure;
+  }
+}
+
+function extractCollectorFailureMetadata(body: string): Pick<CollectorFailure, 'prismaCode' | 'constraint'> {
+  if (!body) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return {};
+  }
+
+  let prismaCode: string | undefined;
+  let constraint: string | undefined;
+  const visit = (value: unknown, key = ''): void => {
+    if (value === null || value === undefined || (prismaCode && constraint)) return;
+    if (typeof value === 'string') {
+      if (!prismaCode && key === 'code' && /^P\d{4}$/.test(value)) prismaCode = value;
+      if (!constraint && (key === 'constraint' || key === 'target') && /(?:^|_)pkey$/.test(value)) {
+        constraint = value;
+      }
+      if (!constraint && key === 'message') constraint = value.match(/\b[\w]+_pkey\b/)?.[0];
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, key);
+      return;
+    }
+    if (typeof value === 'object') {
+      for (const [childKey, childValue] of Object.entries(value)) visit(childValue, childKey);
+    }
+  };
+  visit(parsed);
+
+  return {
+    ...(prismaCode ? { prismaCode } : {}),
+    ...(constraint ? { constraint } : {}),
+  };
+}
+
+function classifyCollectorRequest(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): CollectorRequestClassification | null {
+  const url = typeof input === 'string'
+    ? input
+    : input instanceof URL
+      ? input.href
+      : input.url;
+  const method = init?.method ?? (
+    typeof Request !== 'undefined' && input instanceof Request ? input.method : 'GET'
+  );
+  if (url !== UMAMI_COLLECTOR_ENDPOINT || method.toUpperCase() !== 'POST' || typeof init?.body !== 'string') {
+    return null;
+  }
+
+  try {
+    const body = JSON.parse(init.body) as { type?: unknown; payload?: unknown };
+    if (body.type !== 'event' && body.type !== 'identify') return null;
+    const payload = body.payload && typeof body.payload === 'object'
+      ? body.payload as { name?: unknown }
+      : {};
+    const eventName = typeof payload.name === 'string' ? payload.name : undefined;
+    return {
+      requestType: body.type,
+      eventName,
+      critical: body.type === 'identify' || (eventName !== undefined && CRITICAL_TRACK_EVENTS.has(eventName as UmamiEvent)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function inspectCollectorResponse(response: Response): Promise<CollectorFailure | null> {
+  if (response.ok) return null;
+
+  let body = '';
+  try {
+    const readable = typeof response.clone === 'function' ? response.clone() : response;
+    if (typeof readable.text === 'function') body = await readable.text();
+  } catch {
+    // Status and transport type are still useful when a proxy body is unreadable.
+  }
+
+  return {
+    kind: 'http',
+    status: response.status,
+    ...extractCollectorFailureMetadata(body),
+  };
+}
+
+function collectorFailureFromError(error: unknown): CollectorFailure {
+  if (error instanceof CollectorDeliveryError) return error.failure;
+  return { kind: 'network' };
+}
+
+function isKnownSessionDataConflict(failure: CollectorFailure): boolean {
+  return failure.prismaCode === 'P2002' || failure.constraint === 'session_data_pkey';
+}
+
+function isRetryableCollectorFailure(failure: CollectorFailure): boolean {
+  if (isKnownSessionDataConflict(failure)) return false;
+  if (failure.kind === 'network') return true;
+  return failure.status !== undefined && RETRYABLE_COLLECTOR_STATUSES.has(failure.status);
+}
+
+function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFailure | null): void {
+  const now = Date.now();
+  if (now - collectorHealthWindow.startedAt >= UMAMI_HEALTH_WINDOW_MS) {
+    collectorHealthWindow = { startedAt: now, writes: 0, failures: 0 };
+  }
+  if (collectorHealthWindow.startedAt === 0) collectorHealthWindow.startedAt = now;
+  collectorHealthWindow.writes += 1;
+  if (!failure) return;
+
+  collectorHealthWindow.failures += 1;
+  // Deliberately log only delivery metadata. The event payload can contain
+  // billing or identity data and must never be copied into diagnostics.
+  console.warn('[Analytics] Umami collector write failed', {
+    requestType: request.requestType,
+    status: failure.status ?? null,
+    failureKind: failure.kind,
+    failureRate: collectorHealthWindow.failures / collectorHealthWindow.writes,
+    failureCount: collectorHealthWindow.failures,
+    writeCount: collectorHealthWindow.writes,
+    prismaCode: failure.prismaCode ?? null,
+    constraint: failure.constraint ?? null,
+  });
+}
+
+function confirmCollectorDelivery(request: CollectorRequest, delivered: boolean): void {
+  if (!delivered || request.requestType !== 'event') return;
+  if (request.eventName === 'checkout-success') clearPendingCheckoutSuccessMarker();
+  if (request.eventName === 'checkout-start') {
+    // Only replays clear the durable /pro handoff. A live dashboard event does
+    // not prove that an older handoff marker reached the collector.
+    let replayed = false;
+    try {
+      const body = typeof request.init?.body === 'string'
+        ? JSON.parse(request.init.body) as { payload?: { data?: { replayed?: unknown } } }
+        : null;
+      replayed = body?.payload?.data?.replayed === true;
+    } catch {
+      // A malformed tracker body cannot be a confirmed replay.
+    }
+    if (replayed) clearPendingProFunnelMarker();
+  }
+}
+
+async function runCollectorRequest(request: CollectorRequest, generation: number): Promise<Response> {
+  try {
+    const response = await request.originalFetch(request.input, request.init);
+    if (generation === collectorTransportGeneration) {
+      const failure = await inspectCollectorResponse(response);
+      recordCollectorOutcome(request, failure);
+      confirmCollectorDelivery(request, failure === null);
+    }
+    return response;
+  } catch (error) {
+    if (generation === collectorTransportGeneration) {
+      recordCollectorOutcome(request, collectorFailureFromError(error));
+    }
+    throw error;
+  }
+}
+
+function drainCollectorRequestQueue(): void {
+  if (collectorRequestInFlight || collectorRequestQueue.length === 0) return;
+  const request = collectorRequestQueue.shift();
+  if (!request) return;
+
+  collectorRequestInFlight = true;
+  const generation = collectorTransportGeneration;
+  void runCollectorRequest(request, generation)
+    .then(request.resolve, request.reject)
+    .finally(() => {
+      if (generation !== collectorTransportGeneration) return;
+      collectorRequestInFlight = false;
+      drainCollectorRequestQueue();
+    });
+}
+
+function enqueueCollectorRequest(
+  classification: CollectorRequestClassification,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  originalFetch: typeof window.fetch,
+): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const request: CollectorRequest = {
+      ...classification,
+      input,
+      init,
+      originalFetch,
+      resolve,
+      reject,
+    };
+
+    if (collectorRequestQueue.length >= UMAMI_COLLECTOR_QUEUE_LIMIT) {
+      const dropIndex = collectorRequestQueue.findIndex((candidate) => !candidate.critical);
+      if (dropIndex >= 0) {
+        const [dropped] = collectorRequestQueue.splice(dropIndex, 1);
+        dropped?.reject(new Error('Umami collector request queue overflow'));
+        if (dropped) {
+          recordCollectorOutcome(dropped, { kind: 'queue-overflow' });
+        }
+      } else if (!request.critical) {
+        const failure = { kind: 'queue-overflow' as const };
+        recordCollectorOutcome(request, failure);
+        reject(new Error('Umami collector request queue overflow'));
+        return;
+      } else {
+        const dropped = collectorRequestQueue.shift();
+        dropped?.reject(new Error('Umami collector request queue overflow'));
+        if (dropped) recordCollectorOutcome(dropped, { kind: 'queue-overflow' });
+      }
+    }
+
+    collectorRequestQueue.push(request);
+    drainCollectorRequestQueue();
+  });
+}
+
+function installCollectorFetchGate(): boolean {
+  if (typeof window === 'undefined' || typeof window.fetch !== 'function') return false;
+  if (collectorFetchWrapper && window.fetch === collectorFetchWrapper) return true;
+
+  const originalFetch = window.fetch;
+  const wrappedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const classification = classifyCollectorRequest(input, init);
+    if (!classification) return originalFetch(input, init);
+    return enqueueCollectorRequest(classification, input, init, originalFetch);
+  }) as typeof window.fetch;
+
+  try {
+    window.fetch = wrappedFetch;
+  } catch {
+    return false;
+  }
+  collectorFetchOriginal = originalFetch;
+  collectorFetchWrapper = wrappedFetch;
+  return true;
+}
+
+function resetCollectorTransportForTesting(): void {
+  collectorTransportGeneration += 1;
+  for (const request of collectorRequestQueue.splice(0, collectorRequestQueue.length)) {
+    request.reject(new Error('Umami collector transport reset'));
+  }
+  collectorRequestInFlight = false;
+  if (typeof window !== 'undefined' && collectorFetchWrapper && window.fetch === collectorFetchWrapper && collectorFetchOriginal) {
+    try {
+      window.fetch = collectorFetchOriginal;
+    } catch {
+      // Test harnesses may expose a non-writable fetch property.
+    }
+  }
+  collectorFetchOriginal = null;
+  collectorFetchWrapper = null;
+  collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0 };
+}
+
 function queueUmamiCall(call: QueuedUmamiCall): void {
   // Identity is a latest-snapshot write, not an append-only event. Auth and
   // billing can both publish before the deferred tracker loads; replaying every
@@ -204,41 +509,26 @@ function scheduleIdentityRetry(call: IdentifyCall): void {
   }, delay);
 }
 
-function isUmamiIdentifyBeacon(input: RequestInfo | URL, init?: RequestInit): boolean {
-  const url = typeof input === 'string'
-    ? input
-    : input instanceof URL
-      ? input.href
-      : input.url;
-  const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
-  if (url !== UMAMI_IDENTIFY_ENDPOINT || method.toUpperCase() !== 'POST' || typeof init?.body !== 'string') {
-    return false;
-  }
-  try {
-    return (JSON.parse(init.body) as { type?: unknown }).type === 'identify';
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Umami v3.1.0 swallows its own fetch and JSON failures, including HTTP 500s,
- * so its public identify() promise does not tell us whether the collector
- * accepted an identity snapshot. Observe just this synchronous beacon while
- * leaving the native request/promise chain untouched for Umami's cache update.
+ * so its public tracker promises do not tell us whether the collector accepted
+ * a write. Observe just the synchronous beacon while leaving the native
+ * request/promise chain untouched for Umami's cache update.
  */
-function identifyWithDeliveryObserver(
-  umami: NonNullable<Window['umami']>,
-  data: Record<string, unknown>,
+function withCollectorDeliveryObserver(
+  invoke: () => unknown,
+  requestType: CollectorRequestClassification['requestType'],
 ): unknown {
   const originalFetch = window.fetch;
   let observedDelivery: Promise<Response> | undefined;
   const observedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    if (!isUmamiIdentifyBeacon(input, init)) return originalFetch(input, init);
+    const classification = classifyCollectorRequest(input, init);
+    if (!classification || classification.requestType !== requestType) return originalFetch(input, init);
     try {
       const result = originalFetch(input, init);
-      const delivery = Promise.resolve(result).then((response) => {
-        if (!response.ok) throw new Error(`Umami identify collector returned HTTP ${response.status}`);
+      const delivery = Promise.resolve(result).then(async (response) => {
+        const failure = await inspectCollectorResponse(response);
+        if (failure) throw new CollectorDeliveryError(failure);
         return response;
       });
       // Keep an unexpected synchronous tracker throw from turning the observer
@@ -259,18 +549,33 @@ function identifyWithDeliveryObserver(
     window.fetch = observedFetch;
   } catch {
     // A non-writable fetch is not a delivery signal; preserve the native
-    // tracker behavior rather than fabricating a request or failing identity.
-    return umami.identify(data);
+    // tracker behavior rather than fabricating a request or failing delivery.
+    return invoke();
   }
   try {
-    const nativeResult = umami.identify(data);
+    const nativeResult = invoke();
     return observedDelivery ?? nativeResult;
   } finally {
     window.fetch = originalFetch;
   }
 }
 
-function finishIdentityDelivery(call: IdentifyCall, generation: number, failed: boolean): void {
+function identifyWithDeliveryObserver(
+  umami: NonNullable<Window['umami']>,
+  data: Record<string, unknown>,
+): unknown {
+  return withCollectorDeliveryObserver(() => umami.identify(data), 'identify');
+}
+
+function trackWithDeliveryObserver(
+  umami: NonNullable<Window['umami']>,
+  event: UmamiEvent,
+  data?: Record<string, unknown>,
+): unknown {
+  return withCollectorDeliveryObserver(() => umami.track(event, data), 'event');
+}
+
+function finishIdentityDelivery(call: IdentifyCall, generation: number, error?: unknown): void {
   if (generation !== identifyDeliveryGeneration) return;
 
   identifyInFlight = false;
@@ -282,7 +587,7 @@ function finishIdentityDelivery(call: IdentifyCall, generation: number, failed: 
     }
     return;
   }
-  if (failed) {
+  if (error && isRetryableCollectorFailure(collectorFailureFromError(error))) {
     scheduleIdentityRetry(call);
   }
 }
@@ -306,48 +611,65 @@ function sendIdentityCall(
     const result = identifyWithDeliveryObserver(umami, call.data);
     if (result && typeof (result as { then?: unknown }).then === 'function') {
       void Promise.resolve(result).then(
-        () => finishIdentityDelivery(call, generation, false),
-        () => finishIdentityDelivery(call, generation, true),
+        () => finishIdentityDelivery(call, generation),
+        (error) => finishIdentityDelivery(call, generation, error),
       );
     } else {
-      finishIdentityDelivery(call, generation, false);
+      finishIdentityDelivery(call, generation);
     }
-  } catch {
-    finishIdentityDelivery(call, generation, true);
+  } catch (error) {
+    finishIdentityDelivery(call, generation, error);
   }
   return true;
+}
+
+function scheduleTrackRetry(call: Extract<QueuedUmamiCall, { kind: 'track' }>, error: unknown): void {
+  const failure = collectorFailureFromError(error);
+  if (!isRetryableCollectorFailure(failure)) return;
+  const retryAttempt = call.retryAttempt ?? 0;
+  if (retryAttempt >= UMAMI_TRACK_RETRY_LIMIT) return;
+
+  const generation = collectorTransportGeneration;
+  const retryCall = { ...call, retryAttempt: retryAttempt + 1 };
+  const delay = UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS * (2 ** retryAttempt);
+  setTimeout(() => {
+    if (generation !== collectorTransportGeneration) return;
+    if (!sendUmamiCall(retryCall)) queueUmamiCall(retryCall);
+  }, delay);
+}
+
+function clearSynchronousCriticalMarker(call: Extract<QueuedUmamiCall, { kind: 'track' }>): void {
+  if (call.event === 'checkout-success') clearPendingCheckoutSuccessMarker();
+  if (call.event === 'checkout-start' && call.data?.replayed === true) {
+    clearPendingProFunnelMarker();
+  }
 }
 
 function sendUmamiCall(call: QueuedUmamiCall): boolean {
   if (typeof window === 'undefined') return false;
   const umami = window.umami;
   if (!umami) return false;
+  installCollectorFetchGate();
   if (call.kind === 'identify') {
     return sendIdentityCall(call, umami);
   }
   try {
-    const result: unknown = umami.track(call.event, call.data);
-    // A tracker promise can reject ASYNCHRONOUSLY on a transient network
-    // failure. Track remains at-most-once: Umami #4183 can return 500 after
-    // committing the event row.
-    if (result && typeof (result as { catch?: unknown }).catch === 'function') {
-      void (result as Promise<unknown>).catch(() => {});
-    }
-    // Durable-delivery contract for the terminal funnel event (#4934
-    // round-2 F2): the marker written by trackCheckoutSuccess is cleared
-    // only once the event actually reached the tracker, so a page reload
-    // that races the deferred queue replays instead of dropping it.
-    if (call.kind === 'track' && call.event === 'checkout-success') {
-      clearPendingCheckoutSuccessMarker();
-    }
-    // Same contract for /pro checkout-start replays (#4934 round-6): the
-    // handoff marker survives until a replayed event actually reaches the
-    // tracker — clearing at read time reopened the round-2 reload race.
-    // Only replayed events clear it (a live dashboard checkout-start
-    // delivering proves nothing about the queued replays). All replays
-    // flush in one synchronous loop, so first-delivery-clears is safe.
-    if (call.kind === 'track' && call.event === 'checkout-start' && call.data?.replayed === true) {
-      clearPendingProFunnelMarker();
+    const critical = CRITICAL_TRACK_EVENTS.has(call.event);
+    const result = critical
+      ? trackWithDeliveryObserver(umami, call.event, call.data)
+      : umami.track(call.event, call.data);
+    if (result && typeof (result as { then?: unknown }).then === 'function') {
+      void Promise.resolve(result).then(
+        () => {},
+        (error) => {
+          if (critical) scheduleTrackRetry(call, error);
+        },
+      );
+    } else if (critical) {
+      // Test doubles and alternate trackers may expose a synchronous API. In
+      // that case there is no response to inspect, so preserve the historical
+      // fire-and-forget marker behavior rather than claiming a richer signal.
+      clearSynchronousCriticalMarker(call);
     }
     return true;
   } catch {
@@ -358,12 +680,14 @@ function sendUmamiCall(call: QueuedUmamiCall): boolean {
 function flushPendingUmamiCalls(): void {
   if (pendingUmamiCalls.length === 0) return;
   if (typeof window === 'undefined' || !window.umami) return;
+  installCollectorFetchGate();
   const calls = pendingUmamiCalls.splice(0, pendingUmamiCalls.length);
   for (const call of calls) sendUmamiCall(call);
 }
 
 function loadUmamiScript(): void {
   if (umamiLoadStarted || typeof document === 'undefined') return;
+  installCollectorFetchGate();
   const existing = document.querySelector<HTMLScriptElement>(`script[src="${UMAMI_SCRIPT_SRC}"]`);
   if (existing) {
     // A script tag already exists (e.g. re-entry after a soft navigation).
@@ -624,6 +948,7 @@ export function trackSignOut(): void {
  * across the shared module import in tests/secondary-startup.test.mts.
  */
 export function resetAnalyticsForTesting(): void {
+  resetCollectorTransportForTesting();
   clearScheduledIdentityRetry();
   identifyDeliveryGeneration += 1;
   identifyInFlight = false;

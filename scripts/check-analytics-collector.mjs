@@ -20,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
 export const ANALYTICS_CANARY_WEBSITE_ID = '373c80a2-1109-42a7-868b-565bcf7bf168';
 const ANALYTICS_CANARY_HOSTNAME = 'analytics-canary.worldmonitor.app';
+const ANALYTICS_CANARY_SESSION_ID = 'worldmonitor-analytics-collector-monitor';
 
 /**
  * Cloudflare's WAF 403s a bare `curl/*` User-Agent on this host (verified
@@ -34,6 +35,48 @@ const BROWSER_USER_AGENT =
 const REQUEST_TIMEOUT_MS = 20_000;
 const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3_000;
+const WRITE_RECEIPT_FIELDS = Object.freeze(['cache', 'sessionId', 'visitId']);
+
+const ANALYTICS_CANARY_PAYLOAD = Object.freeze({
+  website: ANALYTICS_CANARY_WEBSITE_ID,
+  hostname: ANALYTICS_CANARY_HOSTNAME,
+  url: '/__monitor__/analytics-collector',
+  title: 'World Monitor analytics collector canary',
+  referrer: '',
+  screen: '1x1',
+  language: 'en-US',
+  // Keep the three requests on one session_data key, like a browser page
+  // emitting a pageview, event, and identify during startup. The dedicated
+  // website keeps this exercise outside product funnels.
+  id: ANALYTICS_CANARY_SESSION_ID,
+});
+
+function buildWriteCanaryProbe(name, type, extraPayload = {}) {
+  return Object.freeze({
+    name,
+    path: '/api/send',
+    method: 'POST',
+    okStatuses: Object.freeze([200]),
+    userAgent: BROWSER_USER_AGENT,
+    receiptFields: WRITE_RECEIPT_FIELDS,
+    writeCanary: true,
+    body: Object.freeze({
+      type,
+      payload: Object.freeze({ ...ANALYTICS_CANARY_PAYLOAD, ...extraPayload }),
+    }),
+  });
+}
+
+export const ANALYTICS_WRITE_CANARY_PROBES = Object.freeze([
+  buildWriteCanaryProbe('write-canary-pageview', 'event'),
+  buildWriteCanaryProbe('write-canary-event', 'event', {
+    name: 'collector-write-canary',
+    data: Object.freeze({ source: 'github-actions' }),
+  }),
+  buildWriteCanaryProbe('write-canary-identify', 'identify', {
+    data: Object.freeze({ monitor: 'github-actions' }),
+  }),
+]);
 
 export const COLLECTOR_PROBES = Object.freeze([
   Object.freeze({
@@ -60,31 +103,9 @@ export const COLLECTOR_PROBES = Object.freeze([
     // below separately proves that the database-backed write path succeeds.
     okStatuses: Object.freeze([400, 405]),
   }),
-  Object.freeze({
-    name: 'write-canary',
-    path: '/api/send',
-    method: 'POST',
-    okStatuses: Object.freeze([200]),
-    userAgent: BROWSER_USER_AGENT,
-    receiptFields: Object.freeze(['cache', 'sessionId', 'visitId']),
-    // This website is deliberately separate from World Monitor's production
-    // website id, so one synthetic event every 5 minutes cannot contaminate
-    // product funnels or pageview counts.
-    body: Object.freeze({
-      type: 'event',
-      payload: Object.freeze({
-        website: ANALYTICS_CANARY_WEBSITE_ID,
-        hostname: ANALYTICS_CANARY_HOSTNAME,
-        url: '/__monitor__/analytics-collector',
-        title: 'World Monitor analytics collector canary',
-        referrer: '',
-        screen: '1x1',
-        language: 'en-US',
-        name: 'collector-write-canary',
-        data: Object.freeze({ source: 'github-actions' }),
-      }),
-    }),
-  }),
+  // These probes deliberately begin together so the monitor reproduces the
+  // real concurrent startup write pattern instead of validating one request.
+  ...ANALYTICS_WRITE_CANARY_PROBES,
 ]);
 
 /** Build the request shape for one probe without performing network I/O. */
@@ -99,6 +120,61 @@ export function buildProbeRequest(probe) {
     request.body = JSON.stringify(probe.body);
   }
   return request;
+}
+
+/**
+ * Pull only stable database failure identifiers from an Umami error body.
+ * Never return the server's message, stack, or request payload: v3.1.0
+ * included those details in its 500 response.
+ */
+export function extractCollectorFailureMetadata(body) {
+  if (typeof body !== 'string' || body.length === 0) return {};
+
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return {};
+  }
+
+  let prismaCode;
+  let constraint;
+  const visit = (value, key = '') => {
+    if (value === null || value === undefined || (prismaCode && constraint)) return;
+    if (typeof value === 'string') {
+      if (!prismaCode && key === 'code' && /^P\d{4}$/.test(value)) prismaCode = value;
+      if (!constraint && (key === 'constraint' || key === 'target') && /(?:^|_)pkey$/.test(value)) {
+        constraint = value;
+      }
+      if (!constraint && key === 'message') {
+        constraint = value.match(/\b[\w]+_pkey\b/)?.[0];
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, key);
+      return;
+    }
+    if (typeof value === 'object') {
+      for (const [childKey, childValue] of Object.entries(value)) visit(childValue, childKey);
+    }
+  };
+  visit(parsed);
+
+  return {
+    ...(prismaCode ? { prismaCode } : {}),
+    ...(constraint ? { constraint } : {}),
+  };
+}
+
+function formatFailureMetadata(body) {
+  const metadata = extractCollectorFailureMetadata(body);
+  if (!metadata.prismaCode && !metadata.constraint) return '';
+  const details = [
+    metadata.prismaCode ? `Prisma ${metadata.prismaCode}` : null,
+    metadata.constraint ? `constraint ${metadata.constraint}` : null,
+  ].filter(Boolean).join(' ');
+  return ` — ${details}`;
 }
 
 /**
@@ -125,7 +201,7 @@ export function evaluateProbeResult(probe, result) {
       result.status === 403
         ? ' — Cloudflare WAF rejected the probe; check the User-Agent, not the collector'
         : '';
-    return `HTTP ${result.status} (expected ${probe.okStatuses.join(' or ')})${hint}`;
+    return `HTTP ${result.status} (expected ${probe.okStatuses.join(' or ')})${hint}${formatFailureMetadata(result.body)}`;
   }
 
   if (probe.mustInclude && !String(result.body ?? '').includes(probe.mustInclude)) {
@@ -157,6 +233,24 @@ export function summarizeProbeFailures(probes, resultsByName) {
     .map(({ probe, reason }) => ({ name: probe.name, path: probe.path, reason }));
 }
 
+/** Summarize write-path failures independently from process/route liveness. */
+export function summarizeWriteCanaryResults(probes, resultsByName) {
+  const writeProbes = probes.filter((probe) => probe.writeCanary);
+  const failures = writeProbes
+    .map((probe) => ({
+      name: probe.name,
+      reason: evaluateProbeResult(probe, resultsByName[probe.name]),
+    }))
+    .filter(({ reason }) => reason !== null);
+
+  return {
+    total: writeProbes.length,
+    failed: failures.length,
+    failureRate: writeProbes.length === 0 ? 0 : failures.length / writeProbes.length,
+    failures,
+  };
+}
+
 async function runProbe(origin, probe) {
   const url = new URL(probe.path, origin).toString();
   try {
@@ -164,9 +258,12 @@ async function runProbe(origin, probe) {
       ...buildProbeRequest(probe),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    // Only read bodies asserted by a probe — the tracker is ~4.6 KB and the
-    // write canary needs its receipt, while the other /api/send probe does not.
-    const body = probe.mustInclude || probe.receiptFields ? await response.text() : '';
+    // Read only bodies needed for an assertion or sanitized failure metadata.
+    // Never print this body: v3.1.0 could include the full Prisma stack and
+    // request-adjacent details in a 500 response.
+    const body = probe.mustInclude || probe.receiptFields || probe.captureFailureMetadata
+      ? await response.text()
+      : '';
     return { status: response.status, body };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
@@ -203,6 +300,11 @@ async function main() {
   );
 
   const failures = summarizeProbeFailures(COLLECTOR_PROBES, resultsByName);
+  const writeSummary = summarizeWriteCanaryResults(COLLECTOR_PROBES, resultsByName);
+  const writeRate = `${(writeSummary.failureRate * 100).toFixed(1)}%`;
+  console.log(
+    `Analytics collector write canary: ${writeSummary.failed}/${writeSummary.total} failed (${writeRate}).`,
+  );
   if (failures.length === 0) {
     console.log(`Analytics collector healthy at ${origin}: ${COLLECTOR_PROBES.length} probes OK.`);
     return;
