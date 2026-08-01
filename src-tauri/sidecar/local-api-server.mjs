@@ -156,20 +156,75 @@ function firstIPv6Address(addresses = []) {
 // validated against AAAA records but reconnected under family:4 by the OS,
 // reopening the TOCTOU window the pinned lookup is meant to close.
 function pickPinnedAddress(addresses = []) {
-  const v4 = firstIPv4Address(addresses);
-  if (v4) return { address: v4, family: 4 };
-  const v6 = firstIPv6Address(addresses);
-  if (v6) return { address: v6, family: 6 };
-  return null;
+  if (!Array.isArray(addresses) || addresses.length === 0) return null;
+  const records = [];
+  const seen = new Set();
+  for (const addr of addresses) {
+    const fam = isIP(addr);
+    if (!fam) continue;
+    const key = `${fam}:${addr}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      records.push({ address: addr, family: fam });
+    }
+  }
+  if (records.length === 0) return null;
+  const v4 = records.find((r) => r.family === 4);
+  const v6 = records.find((r) => r.family === 6);
+  const primary = v4 || v6;
+  return {
+    address: primary.address,
+    family: primary.family,
+    records,
+  };
 }
 
-function makePinnedLookup(address, family = 4) {
+function makePinnedLookup(input, family = 4) {
+  const records = [];
+  const seen = new Set();
+  const rawList = Array.isArray(input)
+    ? input
+    : input && Array.isArray(input.records)
+      ? input.records
+      : [{ address: input && typeof input === 'object' ? input.address : input, family: input && typeof input === 'object' ? input.family : (isIP(input) || family || 4) }];
+
+  for (const item of rawList) {
+    if (!item) continue;
+    const addr = typeof item === 'string' ? item : item.address;
+    const fam = typeof item === 'string' ? (isIP(item) || 4) : (item.family || isIP(addr) || 4);
+    if (!addr) continue;
+    const key = `${fam}:${addr}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      records.push({ address: addr, family: fam });
+    }
+  }
+
   return (_hostname, options, callback) => {
     const cb = typeof options === 'function' ? options : callback;
-    const lookupOptions = typeof options === 'object' && options !== null ? options : {};
+    const lookupOptions = typeof options === 'object' && options !== null
+      ? options
+      : typeof options === 'number'
+        ? { family: options }
+        : {};
+
+    const reqFamily = Number(lookupOptions.family) || 0;
+    const matching = reqFamily === 0
+      ? records
+      : records.filter((r) => r.family === reqFamily);
+
     queueMicrotask(() => {
-      if (lookupOptions.all) cb(null, [{ address, family }]);
-      else cb(null, address, family);
+      if (matching.length === 0) {
+        const err = new Error(`ENOTFOUND ${_hostname} (no pinned address matching family ${reqFamily})`);
+        err.code = 'ENOTFOUND';
+        cb(err);
+        return;
+      }
+      if (lookupOptions.all) {
+        cb(null, matching);
+      } else {
+        cb(null, matching[0].address, matching[0].family);
+      }
     });
   };
 }
@@ -237,7 +292,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       family: pinned?.family ?? 4,
     };
     if (pinned) {
-      requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
+      requestOptions.lookup = makePinnedLookup(pinned);
     }
     // Settle idempotently and reject on every stream event that can leave a
     // response mid-flight (upstream accepts the connection, sends headers,
@@ -400,14 +455,17 @@ async function isSafeUrl(urlString) {
   // resolves to a private IP.
   let addresses = [];
   try {
-    try {
-      const v4 = await dns.resolve4(hostname);
-      addresses = addresses.concat(v4);
-    } catch { /* no A records — try AAAA */ }
-    try {
-      const v6 = await dns.resolve6(hostname);
-      addresses = addresses.concat(v6);
-    } catch { /* no AAAA records */ }
+    const [v4, v6, lookupRes] = await Promise.all([
+      dns.resolve4(hostname).catch(() => []),
+      dns.resolve6(hostname).catch(() => []),
+      dns.lookup(hostname, { all: true }).catch(() => []),
+    ]);
+    for (const addr of v4) addresses.push(addr);
+    for (const addr of v6) addresses.push(addr);
+    for (const item of lookupRes) {
+      if (item && item.address) addresses.push(item.address);
+    }
+    addresses = [...new Set(addresses)];
 
     if (addresses.length === 0) {
       return { safe: false, reason: 'Could not resolve hostname' };
@@ -920,7 +978,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
       // The hostname is kept for SNI / TLS certificate validation.
       if (fetchOptions.resolvedAddress) {
-        reqOpts.lookup = makePinnedLookup(fetchOptions.resolvedAddress, 4);
+        reqOpts.lookup = makePinnedLookup(fetchOptions.resolvedAddress, isIP(fetchOptions.resolvedAddress) || 4);
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
@@ -1785,6 +1843,9 @@ export const __testing__ = {
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },
+  isSafeUrl,
+  pickPinnedAddress,
+  makePinnedLookup,
 };
 
 export async function createLocalApiServer(options = {}) {
