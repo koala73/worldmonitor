@@ -137,6 +137,37 @@ describe('SEO and AI visibility baseline', () => {
     );
   });
 
+  it('validates Bing AI Performance citations as bounded first-party evidence', () => {
+    const available = structuredClone(baseline);
+    available.search.bingWebmaster.aiPerformance = {
+      status: 'available',
+      reason: null,
+      windows: available.search.bingWebmaster.aiPerformance.windows.map((window) => ({
+        ...window,
+        metrics: { totalCitations: 12, averageCitedPages: 2 },
+        groundingQueries: [{ phrase: 'geopolitical risk API', citationCount: 3 }],
+        citedPages: [{ url: 'https://www.worldmonitor.app/docs/api-reference', citationCount: 4 }],
+      })),
+    };
+    assert.doesNotThrow(() => validateBaseline(available, querySet));
+
+    const external = structuredClone(available);
+    external.search.bingWebmaster.aiPerformance.windows[0].citedPages[0].url =
+      'https://example.com/not-world-monitor';
+    assert.throws(
+      () => validateBaseline(external, querySet),
+      /must be a World Monitor HTTPS URL/,
+    );
+
+    const insecure = structuredClone(available);
+    insecure.search.bingWebmaster.aiPerformance.windows[0].citedPages[0].url =
+      'http://worldmonitor.app/docs/api-reference';
+    assert.throws(
+      () => validateBaseline(insecure, querySet),
+      /must be a World Monitor HTTPS URL/,
+    );
+  });
+
   it('distinguishes an AI brand mention from a direct citation', () => {
     const invalid = structuredClone(baseline);
     invalid.aiObservations[0].directCitation = true;
@@ -181,7 +212,7 @@ describe('SEO and AI visibility baseline', () => {
 
   it('rejects committed property IDs, malformed guardrails, and invalid priorities', () => {
     const property = structuredClone(baseline);
-    property.search.googleSearchConsole.property = 'sc-domain:worldmonitor.app';
+    property.search.googleSearchConsole.property = 'operator-only-property-id';
     assert.throws(
       () => validateBaseline(property, querySet),
       /property must remain null/,
@@ -361,6 +392,7 @@ describe('scorecard computation', () => {
       null,
     );
     assert.equal(scorecard.referrals.status, 'unavailable');
+    assert.equal(scorecard.search.bingWebmaster.aiPerformance.status, 'unavailable');
     assert.equal(Object.keys(scorecard.byIntent).length, 5);
     assert.equal(
       Object.keys(scorecard.byPageFamily).length,
@@ -454,6 +486,7 @@ describe('scorecard computation', () => {
             pricingViews: 3,
             signUps: 2,
             proConversions: 1,
+            activations: 1,
             apiActions: 1,
             mcpActions: 1,
           },
@@ -470,6 +503,7 @@ describe('scorecard computation', () => {
             pricingViews: 2,
             signUps: 1,
             proConversions: 1,
+            activations: 1,
             apiActions: 0,
             mcpActions: 0,
           },
@@ -484,6 +518,7 @@ describe('scorecard computation', () => {
             pricingViews: 1,
             signUps: 1,
             proConversions: 0,
+            activations: 0,
             apiActions: 1,
             mcpActions: 1,
           },
@@ -714,6 +749,45 @@ describe('scorecard computation', () => {
 
     assert.equal(comparison.search.googleSearchConsole.metrics.impressions.absolute, 150);
     assert.equal(comparison.search.googleSearchConsole.metrics.indexedPages, null);
+  });
+
+  it('compares and renders Bing AI Performance metrics only across advancing windows', () => {
+    const [previous, current] = buildComparableScorecards();
+    previous.search.bingWebmaster.aiPerformance = {
+      status: 'partial',
+      reason: 'Grounding phrase export is incomplete.',
+      windows: [{
+        label: '28d',
+        startDate: '2026-06-30',
+        endDate: '2026-07-27',
+        metrics: { totalCitations: 20, averageCitedPages: 2 },
+        groundingQueries: [],
+        citedPages: [],
+      }],
+    };
+    current.search.bingWebmaster.aiPerformance = {
+      status: 'partial',
+      reason: 'Grounding phrase export is incomplete.',
+      windows: [{
+        label: '28d',
+        startDate: '2026-07-31',
+        endDate: '2026-08-27',
+        metrics: { totalCitations: 35, averageCitedPages: 3.5 },
+        groundingQueries: [],
+        citedPages: [],
+      }],
+    };
+
+    const comparison = compareScorecards(previous, current);
+    assert.equal(comparison.search.bingAiPerformance.windowLabel, '28d');
+    assert.equal(comparison.search.bingAiPerformance.metrics.totalCitations.absolute, 15);
+    assert.equal(comparison.search.bingAiPerformance.metrics.totalCitations.meaningful, true);
+    assert.equal(comparison.search.bingAiPerformance.metrics.averageCitedPages.absolute, 1.5);
+    current.comparison = comparison;
+    const markdown = formatScorecardMarkdown(current);
+    assert.match(markdown, /## Bing AI Performance/);
+    assert.match(markdown, /Meaningful search changes: .*bingAiPerformance\.totalCitations/);
+    assert.match(markdown, /\| 28d \| 35 \| 3\.5 \|/);
   });
 
   it('prefers the 28d window for comparisons regardless of authored window order', () => {

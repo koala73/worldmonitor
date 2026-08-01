@@ -71,27 +71,32 @@ const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
 const SENTIMENTS = new Set(['positive', 'neutral', 'negative', 'mixed']);
 const ACCURACY_STATES = new Set(['accurate', 'mixed', 'inaccurate', 'unverified']);
 const REFERENCE_ROLES = new Set(['competitor', 'source']);
-const SEARCH_METRICS = Object.freeze([
+export const SEARCH_METRICS = Object.freeze([
   'indexedPages',
   'impressions',
   'clicks',
   'ctr',
   'averagePosition',
 ]);
-const SEARCH_PERFORMANCE_METRICS = Object.freeze([
+export const SEARCH_PERFORMANCE_METRICS = Object.freeze([
   'impressions',
   'clicks',
   'ctr',
   'averagePosition',
 ]);
-const REFERRAL_METRICS = Object.freeze([
+export const REFERRAL_METRICS = Object.freeze([
   'sessions',
   'dashboardLaunches',
   'pricingViews',
   'signUps',
   'proConversions',
+  'activations',
   'apiActions',
   'mcpActions',
+]);
+export const BING_AI_METRICS = Object.freeze([
+  'totalCitations',
+  'averageCitedPages',
 ]);
 
 const PLATFORM_LABELS = domainLabels(AI_PLATFORM_DOMAIN);
@@ -102,7 +107,7 @@ function invariant(condition, message) {
   if (!condition) throw new Error(`[seo-visibility] ${message}`);
 }
 
-function isNonEmptyString(value) {
+export function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
@@ -210,12 +215,15 @@ function validateWindowedSource(
   metricNames,
   label,
   latestEndDate,
+  { requireProperty = true } = {},
 ) {
   invariant(source && typeof source === 'object', `${label} is required`);
-  invariant(
-    source.property === null,
-    `${label}.property must remain null in committed artifacts`,
-  );
+  if (requireProperty || 'property' in source) {
+    invariant(
+      source.property === null,
+      `${label}.property must remain null in committed artifacts`,
+    );
+  }
   invariant(
     AVAILABILITY_STATES.has(source.status),
     `${label}.status must be available, partial, or unavailable`,
@@ -264,6 +272,60 @@ function validateWindowedSource(
       );
     }
     assertNullableMetrics(window.metrics, metricNames, windowLabel, source.status);
+  }
+}
+
+function validateBingAiPerformance(aiPerformance, label, latestEndDate) {
+  validateWindowedSource(
+    aiPerformance,
+    BING_AI_METRICS,
+    label,
+    latestEndDate,
+    { requireProperty: false },
+  );
+  for (const [index, window] of aiPerformance.windows.entries()) {
+    const windowLabel = `${label}.windows[${index}]`;
+    invariant(Array.isArray(window.groundingQueries), `${windowLabel}.groundingQueries must be an array`);
+    invariant(Array.isArray(window.citedPages), `${windowLabel}.citedPages must be an array`);
+    if (aiPerformance.status === 'unavailable') {
+      invariant(window.groundingQueries.length === 0, `${windowLabel}.groundingQueries must be empty when unavailable`);
+      invariant(window.citedPages.length === 0, `${windowLabel}.citedPages must be empty when unavailable`);
+    }
+    const groundingPhrases = new Set();
+    for (const [queryIndex, query] of window.groundingQueries.entries()) {
+      const queryLabel = `${windowLabel}.groundingQueries[${queryIndex}]`;
+      invariant(isNonEmptyString(query.phrase), `${queryLabel}.phrase is required`);
+      invariant(!groundingPhrases.has(query.phrase), `${label} has duplicate grounding phrase ${query.phrase}`);
+      groundingPhrases.add(query.phrase);
+      assertCitationCount(query.citationCount, queryLabel, aiPerformance.status);
+    }
+    const citedUrls = new Set();
+    for (const [pageIndex, page] of window.citedPages.entries()) {
+      const pageLabel = `${windowLabel}.citedPages[${pageIndex}]`;
+      invariant(
+        typeof page.url === 'string'
+          && page.url.startsWith('https://')
+          && isWorldMonitorUrl(page.url),
+        `${pageLabel}.url must be a World Monitor HTTPS URL`,
+      );
+      invariant(!citedUrls.has(page.url), `${label} has duplicate cited page ${page.url}`);
+      citedUrls.add(page.url);
+      assertCitationCount(page.citationCount, pageLabel, aiPerformance.status);
+    }
+  }
+}
+
+function assertCitationCount(value, label, status) {
+  invariant(
+    value === null
+      || (typeof value === 'number' && Number.isFinite(value) && value >= 0),
+    `${label}.citationCount must be a finite non-negative number or null`,
+  );
+  if (status === 'available') {
+    invariant(
+      typeof value === 'number' && Number.isFinite(value),
+      `${label}.citationCount must be finite when available`,
+    );
   }
 }
 
@@ -347,7 +409,7 @@ function validateReferralSegments(referrals, referrerFamilyIds) {
   }
 }
 
-function isWorldMonitorUrl(value) {
+export function isWorldMonitorUrl(value) {
   try {
     const url = new URL(value);
     return url.hostname === 'worldmonitor.app'
@@ -501,6 +563,11 @@ export function validateBaseline(baseline, querySet) {
     baseline.search.bingWebmaster,
     'search.bingWebmaster',
     queryIds,
+    baselineObservationDate,
+  );
+  validateBingAiPerformance(
+    baseline.search.bingWebmaster.aiPerformance,
+    'search.bingWebmaster.aiPerformance',
     baselineObservationDate,
   );
   validateWindowedSource(
@@ -911,6 +978,8 @@ const MEANINGFUL_ABSOLUTE_CHANGE = Object.freeze({
   indexedPages: 5,
   clicks: 10,
   impressions: 100,
+  totalCitations: 10,
+  averageCitedPages: 1,
   sessions: 10,
   dashboardLaunches: 1,
   pricingViews: 1,
@@ -1040,6 +1109,12 @@ export function compareScorecards(previous, current) {
         SEARCH_METRICS,
         'bingWebmaster',
       ),
+      bingAiPerformance: compareWindowedSource(
+        previous.search.bingWebmaster.aiPerformance,
+        current.search.bingWebmaster.aiPerformance,
+        BING_AI_METRICS,
+        'bingAiPerformance',
+      ),
     },
     referrals: compareWindowedSource(
       previous.referrals,
@@ -1102,6 +1177,13 @@ function referralMetricCell(source, metric) {
 function formatReferralRow(label, source) {
   const cells = REFERRAL_METRICS.map((metric) => referralMetricCell(source, metric));
   return `| ${label} | ${cells.join(' | ')} |`;
+}
+
+function formatBingAiPerformance(source) {
+  const noObservedRows = source.status !== 'available';
+  return source.windows.map((window) => (
+    `| ${window.label} | ${window.metrics.totalCitations ?? 'Unavailable'} | ${window.metrics.averageCitedPages ?? 'Unavailable'} | ${noObservedRows ? 'Unavailable' : window.groundingQueries.length} | ${noObservedRows ? 'Unavailable' : window.citedPages.length} |`
+  ));
 }
 
 function markdownLink(url) {
@@ -1207,6 +1289,7 @@ export function formatScorecardMarkdown(scorecard) {
     ...searchProviderRows(scorecard).map(([label, source]) => (
       `| ${label} | ${markdownCell(displayStatus(source))} | ${source.windows.map((window) => window.label).join(', ')} |`
     )),
+    `| Bing AI Performance | ${markdownCell(displayStatus(scorecard.search.bingWebmaster.aiPerformance))} | ${scorecard.search.bingWebmaster.aiPerformance.windows.map((window) => window.label).join(', ')} |`,
     '',
     '| AI surface | Status |',
     '| --- | --- |',
@@ -1215,6 +1298,14 @@ export function formatScorecardMarkdown(scorecard) {
     )),
     '',
     `Referral families: ${scorecard.referrals.classification.families.map((family) => family.label).join(', ')}.`,
+    '',
+    '## Bing AI Performance',
+    '',
+    'Citation counts describe observed source usage, not ranking, authority, or causal traffic.',
+    '',
+    '| Window | Total citations | Average cited pages | Grounding phrases | Cited pages |',
+    '| --- | ---: | ---: | ---: | ---: |',
+    ...formatBingAiPerformance(scorecard.search.bingWebmaster.aiPerformance),
     '',
     '## Query registry',
     '',
@@ -1237,14 +1328,14 @@ export function formatScorecardMarkdown(scorecard) {
     'Referral segments retain both the major referrer family and landing-page family.',
     'Unavailable aggregates remain unavailable in every slice.',
     '',
-    '| Referrer family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | API actions | MCP actions |',
-    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    '| Referrer family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | Activations | API actions | MCP actions |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...scorecard.referrals.classification.families.map(({ id, label }) => (
       formatReferralRow(label, scorecard.referrals.byReferrerFamily[id])
     )),
     '',
-    '| Landing-page family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | API actions | MCP actions |',
-    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    '| Landing-page family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | Activations | API actions | MCP actions |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...Object.entries(scorecard.referrals.byPageFamily).map(([family, source]) => (
       formatReferralRow(PAGE_FAMILY_LABELS[family], source)
     )),

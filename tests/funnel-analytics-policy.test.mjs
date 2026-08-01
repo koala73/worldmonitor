@@ -37,9 +37,24 @@ test('UMAMI_DOMAINS covers the canonical www host', () => {
 
 test('funnel events exist in the typed catalog', () => {
   const src = read('src/services/analytics.ts');
-  for (const ev of ['checkout-start', 'checkout-success', 'checkout-failed']) {
+  for (const ev of ['checkout-start', 'checkout-success', 'checkout-failed', 'api-action']) {
     assert.ok(src.includes(`'${ev}': true`), `event '${ev}' missing from EVENTS catalog`);
   }
+});
+
+test('API outcome telemetry is bounded to successful key lifecycle actions', () => {
+  const analytics = read('src/services/analytics.ts');
+  const settings = read('src/components/UnifiedSettings.ts');
+  assert.ok(analytics.includes("['key-created', 'key-revoked'] as const"),
+    'API action vocabulary must stay closed to key lifecycle outcomes');
+  assert.ok(analytics.includes("track('api-action', { action })"),
+    'API action helper must emit only the normalized action bucket');
+  assert.ok(settings.includes("trackApiAction('key-created')"),
+    'successful API key creation no longer contributes to API outcomes');
+  assert.ok(settings.includes("trackApiAction('key-revoked')"),
+    'successful API key revocation no longer contributes to API outcomes');
+  assert.ok(!settings.includes('trackApiAction(keyId)'),
+    'API telemetry must not include a key identifier');
 });
 
 test('dashboard checkout entry fires checkout-start', () => {

@@ -121,6 +121,9 @@ const EVENTS = {
   'checkout-start': true,
   'checkout-success': true,
   'checkout-failed': true,
+  // API outcome telemetry — closed-vocabulary key lifecycle actions only;
+  // never include key names, ids, prompts, or request/user data.
+  'api-action': true,
   // Premium entitlement health — a client that believes it is Pro received a
   // server-side denial. This is trend telemetry, never an authorization signal.
   'entitlement-desync': true,
@@ -820,6 +823,15 @@ const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'ca
 export function trackCheckoutFailed(rawStatus: string): void {
   const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
   track('checkout-failed', { status });
+}
+
+const API_ACTIONS = ['key-created', 'key-revoked'] as const;
+export type ApiActionName = (typeof API_ACTIONS)[number];
+
+/** Track a successful, bounded API product action without leaking key data. */
+export function trackApiAction(action: ApiActionName): void {
+  if (!API_ACTIONS.includes(action)) return;
+  track('api-action', { action });
 }
 
 // ---------------------------------------------------------------------------
