@@ -70,3 +70,4 @@ export function verifyCitationIndexes(
   text: string,
   sourceCount: number,
 ): { text: string; stripped: number };
+export function normalizeDottedAcronyms(text: string): string;
