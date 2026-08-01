@@ -131,16 +131,17 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
     { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
     // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
-    // Multi-URL: EN digests use Google News (English-reachable); PL UI uses native RSS.
+    // Their native RSS feeds are used for both locales: the Google News site
+    // queries previously used for EN returned HTTP 200 with no <item> nodes.
     // No `lang` tag so isFeedInLanguage / server digests do not drop them for EN.
     // Polsat News stays PL-only (locale-boosted, not EN default-on).
     { name: 'TVN24', url: {
-      en: rss('https://news.google.com/rss/search?q=site:tvn24.pl+when:2d&hl=en-US&gl=US&ceid=US:en'),
+      en: rss('https://tvn24.pl/swiat.xml'),
       pl: rss('https://tvn24.pl/swiat.xml'),
     } },
     { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
     { name: 'Rzeczpospolita', url: {
-      en: rss('https://news.google.com/rss/search?q=site:rp.pl+when:2d&hl=en-US&gl=US&ceid=US:en'),
+      en: rss('https://www.rp.pl/rss_main'),
       pl: rss('https://www.rp.pl/rss_main'),
     } },
     // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
@@ -1053,7 +1054,6 @@ export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
   'Moscow Times',
 ] as const;
 
-// Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
@@ -1064,7 +1064,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   // HU/EL locale packs remain locale-boosted only, not EN default-on.
   europe: [
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
-    'Kyiv Independent', 'TVN24', 'Rzeczpospolita', 'Meduza', 'Moscow Times',
+    ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
@@ -1115,6 +1115,18 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
   for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) all.add(f.name);
   for (const f of INTEL_SOURCES) all.add(f.name);
   return [...all].filter(name => !enabled.has(name));
+}
+
+/**
+ * The v3 source-reduction migration's pre-#5949 disabled set. This is used
+ * only for a conservative one-time frontline migration: an exact match means
+ * the profile still has the old untouched defaults, while any extra or
+ * missing entry is treated as a user-customized preference and left alone.
+ */
+export function computeLegacyDefaultDisabledSources(): string[] {
+  const disabled = new Set(computeDefaultDisabledSources());
+  for (const name of FRONTLINE_EUROPE_PROTECTED_SOURCES) disabled.add(name);
+  return [...disabled];
 }
 
 export function getTotalFeedCount(): number {

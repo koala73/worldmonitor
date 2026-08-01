@@ -85,13 +85,18 @@ import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
 import {
   computeDefaultDisabledSources,
+  computeLegacyDefaultDisabledSources,
+  FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getLocaleBoostedSources,
   getTotalFeedCount,
-  FEEDS,
   INTEL_SOURCES,
 } from '@/config/feeds';
-import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
+import {
+  computeCapDisabledSources,
+  findFullyDisabledCategories,
+  selectSourcesUnderCap,
+} from '@/services/source-cap';
 import {
   cancelBootstrapSlowTier,
   fetchBootstrapData,
@@ -124,6 +129,7 @@ import {
   onSignOut as cloudPrefsSignOut,
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
+import { migrateFrontlineEuropeDefaultsV3 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
   getConvexApi,
@@ -919,16 +925,28 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
-      // #5949 — re-enable Ukraine/Poland frontline sources for existing profiles
-      // that already wrote the v3 disabled list (which defaulted these off).
-      // Additive only: remove named sources from disabledFeeds once; never
-      // re-disable anything the user later turned back on after this migration.
-      // Names: FRONTLINE_EUROPE_PROTECTED_SOURCES (shared with free-tier cap #5950).
+      // #5949 — re-enable Ukraine/Poland frontline sources for profiles that
+      // still have the untouched pre-#5949 default disabled set. An exact-set
+      // guard is important here: a customized disabledFeeds set is user
+      // intent, and must not be rewritten by the startup migration.
       const frontlineKey = 'worldmonitor-frontline-europe-enable-v1';
       if (!localStorage.getItem(frontlineKey)) {
         const frontline = new Set<string>(FRONTLINE_EUROPE_PROTECTED_SOURCES);
+        const legacyDefaultDisabled = new Set(computeLegacyDefaultDisabledSources());
+        const legacyCapDisabled = computeCapDisabledSources(
+          FEEDS,
+          INTEL_SOURCES,
+          new Set(computeDefaultDisabledSources()),
+          FREE_MAX_SOURCES,
+        );
         const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
-        const updated = current.filter((name) => !frontline.has(name));
+        const migrated = migrateFrontlineEuropeDefaultsV3(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          legacyDefaultDisabled,
+          frontline,
+          legacyCapDisabled,
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         if (updated.length !== current.length) {
           saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
           console.log(
