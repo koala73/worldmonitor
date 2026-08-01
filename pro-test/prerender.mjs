@@ -227,11 +227,17 @@ for (const { file, content, rootAttributes } of PAGES) {
     process.exit(1);
   }
   html = html.replace('</head>', `${ORGANIZATION_JSONLD}\n  </head>`);
-  if (!html.includes('<div id="root"></div>')) {
-    console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
+  const emptyRoot = '<div id="root"></div>';
+  if (content || rootAttributes) {
+    if (!html.includes(emptyRoot)) {
+      console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
+      process.exit(1);
+    }
+    html = html.replace(emptyRoot, `<div id="root"${rootAttributes}>${content}</div>`);
+  } else if (!html.includes('<div id="root">')) {
+    console.error(`[prerender] ERROR: ${file} has no #root mount point.`);
     process.exit(1);
   }
-  html = html.replace('<div id="root"></div>', `<div id="root"${rootAttributes}>${content}</div>`);
   writeFileSync(htmlPath, html, 'utf-8');
   console.log(`[prerender] Injected critical CSS and visible content into public/pro/${file}`);
 }
