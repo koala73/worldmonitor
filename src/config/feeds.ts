@@ -130,10 +130,19 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
     { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
-    // Polish (PL)
-    { name: 'TVN24', url: rss('https://tvn24.pl/swiat.xml'), lang: 'pl' },
+    // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
+    // Multi-URL: EN digests use Google News (English-reachable); PL UI uses native RSS.
+    // No `lang` tag so isFeedInLanguage / server digests do not drop them for EN.
+    // Polsat News stays PL-only (locale-boosted, not EN default-on).
+    { name: 'TVN24', url: {
+      en: rss('https://news.google.com/rss/search?q=site:tvn24.pl+when:2d&hl=en-US&gl=US&ceid=US:en'),
+      pl: rss('https://tvn24.pl/swiat.xml'),
+    } },
     { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
-    { name: 'Rzeczpospolita', url: rss('https://www.rp.pl/rss_main'), lang: 'pl' },
+    { name: 'Rzeczpospolita', url: {
+      en: rss('https://news.google.com/rss/search?q=site:rp.pl+when:2d&hl=en-US&gl=US&ceid=US:en'),
+      pl: rss('https://www.rp.pl/rss_main'),
+    } },
     // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
     // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
     // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
@@ -162,11 +171,16 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // TASS / RT / RT Russia stay cataloged for opt-in only — state propaganda
     // (SOURCE_PROPAGANDA_RISK high, stateAffiliated: Russia); never default-on.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
-    { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
+    // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
+    { name: 'Meduza', url: {
+      en: rss('https://meduza.io/rss/en/all'),
+      ru: rss('https://meduza.io/rss/all'),
+    } },
     { name: 'Novaya Gazeta Europe', url: rss('https://novayagazeta.eu/feed/rss'), lang: 'ru' },
     { name: 'TASS', url: rss('https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'RT', url: rss('https://www.rt.com/rss/') },
     { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
+    // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Moscow Times', url: rss('https://www.themoscowtimes.com/rss/news') },
   ],

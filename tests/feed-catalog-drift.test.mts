@@ -29,15 +29,33 @@ const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
 const outfile = join(tempDir, 'feeds-bundle.mjs');
 
+interface FeedEntry {
+  name: string;
+  lang?: string;
+  url: string | Record<string, string>;
+}
+
 interface FeedsModule {
   DEFAULT_ENABLED_SOURCES: Record<string, string[]>;
   DEFAULT_ENABLED_INTEL: string[];
   SOURCE_TYPES: Record<string, string>;
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
+  FULL_FEEDS?: Record<string, FeedEntry[]>;
+  FEEDS: Record<string, FeedEntry[]>;
   getAllDefaultEnabledSources: () => Set<string>;
   getLocaleBoostedSources: (locale: string) => Set<string>;
+  computeDefaultDisabledSources: (locale?: string) => string[];
   listConfiguredFeedNames: () => string[];
 }
+
+/** Sources #5949 ships as EN-default frontline Europe coverage. */
+const FRONTLINE_EUROPE = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+] as const;
 
 let feeds: FeedsModule;
 
@@ -128,26 +146,19 @@ describe('feed catalog drift', () => {
   // Issue #5949 — EN full-variant defaults under-cover the Ukraine war.
   // Kyiv Independent, PL frontline, and independent RU were cataloged but
   // off-by-default, so users only saw Western wire/EU framing.
-  it('default-enables Ukraine/Poland/independent-Russia frontline sources for EN (#5949)', () => {
+  it('default-enables exact Ukraine/Poland/independent-Russia frontline set for EN (#5949)', () => {
     const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
     const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
 
-    assert.ok(
-      europe.includes('Kyiv Independent'),
-      'Kyiv Independent must be default-on in europe for EN full-variant sessions',
-    );
-
-    const polishFrontline = ['TVN24', 'Rzeczpospolita'].filter((n) => europe.includes(n));
-    assert.ok(
-      polishFrontline.length >= 1,
-      'At least one Polish frontline source (TVN24 / Rzeczpospolita) must be default-on',
-    );
-
-    const independentRu = ['Meduza', 'Moscow Times'].filter((n) => europe.includes(n));
-    assert.ok(
-      independentRu.length >= 1,
-      'At least one independent Russia source (Meduza / Moscow Times) must be default-on',
-    );
+    for (const name of FRONTLINE_EUROPE) {
+      assert.ok(europe.includes(name), `${name} must be listed in DEFAULT_ENABLED_SOURCES.europe`);
+      assert.ok(enabled.has(name), `${name} must be in getAllDefaultEnabledSources()`);
+      assert.ok(
+        !disabledEn.has(name),
+        `${name} must not appear in computeDefaultDisabledSources('en')`,
+      );
+    }
 
     // State propaganda stays cataloged but off-by-default.
     for (const stateMedia of ['TASS', 'RT', 'RT Russia'] as const) {
@@ -155,6 +166,7 @@ describe('feed catalog drift', () => {
         !enabled.has(stateMedia),
         `${stateMedia} must remain off-by-default (state propaganda; catalog-only)`,
       );
+      assert.ok(disabledEn.has(stateMedia), `${stateMedia} must be in EN disabled defaults`);
     }
 
     // Intel: Bellingcat stays on (already default-enabled).
@@ -162,6 +174,58 @@ describe('feed catalog drift', () => {
       feeds.DEFAULT_ENABLED_INTEL.includes('Bellingcat'),
       'Bellingcat must remain default-enabled in intel',
     );
+  });
+
+  it('frontline Europe sources are EN-reachable (no exclusive non-en lang) (#5949)', () => {
+    // buildDigest filters `!f.lang || f.lang === lang`. A default-on source
+    // with only lang:'pl'/'ru' never contributes to EN digests.
+    const byName = new Map<string, FeedEntry>();
+    for (const feed of feeds.FEEDS.europe ?? []) byName.set(feed.name, feed);
+
+    for (const name of FRONTLINE_EUROPE) {
+      const feed = byName.get(name);
+      assert.ok(feed, `${name} must exist in FEEDS.europe catalog`);
+      assert.ok(
+        !feed.lang || feed.lang === 'en',
+        `${name} must not be gated to a non-en lang (got lang=${feed.lang ?? 'none'}); ` +
+          'use multi-URL without lang, or an English-only URL, so EN digests include it',
+      );
+      // Multi-URL sources must expose an `en` key for EN fetch resolution.
+      if (typeof feed.url === 'object' && feed.url !== null) {
+        assert.ok(
+          typeof feed.url.en === 'string' && feed.url.en.length > 0,
+          `${name} multi-URL entry must include a non-empty en URL`,
+        );
+      }
+    }
+  });
+
+  it('server VARIANT_FEEDS.full.europe catalogs the same frontline names (#5949)', () => {
+    // Digest path is the product path for full/EN europe. Client defaults
+    // alone cannot invent items the server never fetched.
+    const serverSrc = readFileSync(join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts'), 'utf8');
+    // Locate the first `europe: [` (VARIANT_FEEDS.full) and slice until the
+    // next top-level category key `middleeast:`.
+    const europeKey = serverSrc.indexOf('europe: [');
+    assert.ok(europeKey >= 0, 'failed to find europe: [ in server _feeds.ts');
+    const afterEurope = serverSrc.slice(europeKey);
+    const middleeastKey = afterEurope.indexOf('middleeast: [');
+    assert.ok(middleeastKey > 0, 'failed to find middleeast: [ after europe in server _feeds.ts');
+    const europeBody = afterEurope.slice(0, middleeastKey);
+    for (const name of FRONTLINE_EUROPE) {
+      assert.ok(
+        europeBody.includes(`name: '${name}'`) || europeBody.includes(`name: "${name}"`),
+        `server VARIANT_FEEDS.full.europe must include "${name}" for EN digests`,
+      );
+      // Guard against accidental lang:'pl'/'ru' on the server entry (would drop from EN digests).
+      const nameIdx = europeBody.indexOf(`'${name}'`);
+      if (nameIdx < 0) continue;
+      const window = europeBody.slice(nameIdx, nameIdx + 220);
+      assert.ok(
+        !/lang:\s*'pl'|lang:\s*'ru'/.test(window),
+        `server entry for "${name}" must not set lang:pl/ru (EN digests would skip it)`,
+      );
+    }
   });
 
   it('does not default-enable Hungary/Greece locale packs for EN (#5949)', () => {

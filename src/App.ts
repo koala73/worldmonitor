@@ -912,6 +912,29 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
+      // #5949 — re-enable Ukraine/Poland frontline sources for existing profiles
+      // that already wrote the v3 disabled list (which defaulted these off).
+      // Additive only: remove named sources from disabledFeeds once; never
+      // re-disable anything the user later turned back on after this migration.
+      const frontlineKey = 'worldmonitor-frontline-europe-enable-v1';
+      if (!localStorage.getItem(frontlineKey)) {
+        const frontline = new Set([
+          'Kyiv Independent',
+          'TVN24',
+          'Rzeczpospolita',
+          'Meduza',
+          'Moscow Times',
+        ]);
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const updated = current.filter((name) => !frontline.has(name));
+        if (updated.length !== current.length) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log(
+            `[App] Frontline Europe enable (#5949): re-enabled ${current.length - updated.length} source(s)`,
+          );
+        }
+        localStorage.setItem(frontlineKey, 'done');
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
