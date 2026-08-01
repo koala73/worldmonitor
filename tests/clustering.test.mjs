@@ -228,4 +228,99 @@ describe('_clustering.mjs', () => {
       assert.equal(clusters.some(c => c.entityCorroboration), false);
     });
   });
+
+  // #5947: production ran 35 consecutive INSIGHTS_SYNTHESIS_MISSING_CLUSTER
+  // rejections while 11 corroborated clusters sat in the corpus. The brief's
+  // lead requires a corroborated cluster, but selection admits single-source
+  // alerts (isAlert / score > 100) and ranks by score * recencyWeight — and
+  // corroborated clusters are inherently OLDER (a second source takes time to
+  // arrive), so recency systematically pushes them out. On an alert-heavy news
+  // cycle every top-8 slot went to a single-source alert and the brief could
+  // never publish. Selection must guarantee the brief's own precondition
+  // whenever the corpus can satisfy it.
+  describe('brief-lead reservation (#5947)', () => {
+    const now = Date.now();
+    const ageISO = (hours) => new Date(now - hours * 3600_000).toISOString();
+    // Fresh, high-intensity single-source alerts — the Iran/Ukraine cycle that
+    // swept production's top-8 (effective scores ~145-170 here).
+    const alertClusters = Array.from({ length: 12 }, (_, i) => ({
+      primaryTitle: `Iran war latest: missile attack kills troops in massive airstrike on base ${i}`,
+      primarySource: `Alert Wire ${i}`,
+      primaryLink: `http://alert-${i}`,
+      sources: [`Alert Wire ${i}`],
+      sourceCount: 1,
+      isAlert: true,
+      pubDate: ageISO(0.1),
+      lastUpdated: ageISO(0.1),
+    }));
+    // Corroborated but lower-intensity and older, so score * recencyWeight
+    // ranks it below every alert (effective score ~81) — production's
+    // 4-source avalanche story sat at rank 9+ for the same reason.
+    const corroborated = {
+      primaryTitle: 'Mountaineer killed in Pakistan avalanche, his company confirms',
+      primarySource: 'BBC World',
+      primaryLink: 'http://corroborated',
+      sources: ['BBC World', 'CNN', 'Sky News', 'CBS News'],
+      sourceCount: 4,
+      isAlert: false,
+      pubDate: ageISO(6),
+      lastUpdated: ageISO(6),
+    };
+
+    it('keeps a corroborated cluster in top stories when alerts sweep the ranking', () => {
+      const top = selectTopStories([...alertClusters, corroborated], 8);
+      assert.equal(top.length, 8);
+      assert.ok(
+        top.some(isBriefLeadEligible),
+        'top stories must retain a brief-eligible cluster when one exists in the corpus',
+      );
+    });
+
+    it('yields a usable brief lead instead of MISSING_CLUSTER', () => {
+      const top = selectTopStories([...alertClusters, corroborated], 8);
+      const lead = pickBriefCluster(top);
+      assert.notEqual(lead, null, 'pickBriefCluster must not return null when the corpus has a corroborated cluster');
+      assert.equal(lead.primarySource, 'BBC World');
+    });
+
+    it('reports the reservation in selection stats', () => {
+      const stats = {};
+      selectTopStories([...alertClusters, corroborated], 8, stats);
+      assert.equal(stats.briefEligibleConsidered, 1);
+      assert.equal(stats.briefEligiblePromoted, true);
+    });
+
+    it('does not promote when the top stories already carry a corroborated cluster', () => {
+      const stats = {};
+      const top = selectTopStories([corroborated, ...alertClusters.slice(0, 3)], 8, stats);
+      assert.ok(top.some(isBriefLeadEligible));
+      assert.equal(stats.briefEligiblePromoted, false);
+    });
+
+    it('leaves a genuinely uncorroborated corpus degraded', () => {
+      const stats = {};
+      const top = selectTopStories(alertClusters, 8, stats);
+      assert.equal(top.length, 8);
+      assert.equal(stats.briefEligibleConsidered, 0);
+      assert.equal(stats.briefEligiblePromoted, false);
+      assert.equal(pickBriefCluster(top), null);
+    });
+
+    it('respects the per-source cap while promoting', () => {
+      const capped = Array.from({ length: 5 }, (_, i) => ({
+        primaryTitle: `Missile attack kills dozens in airstrike variant ${i}`,
+        primarySource: 'Capped Wire',
+        primaryLink: `http://capped-${i}`,
+        sources: ['Capped Wire', 'Second Wire'],
+        sourceCount: 2,
+        isAlert: true,
+        pubDate: new Date(now - 5 * 60_000).toISOString(),
+        lastUpdated: new Date(now - 5 * 60_000).toISOString(),
+      }));
+      const top = selectTopStories([...alertClusters, ...capped], 8);
+      const fromCapped = top.filter(s => s.primarySource === 'Capped Wire').length;
+      assert.ok(fromCapped <= 3, `per-source cap breached: ${fromCapped}`);
+      assert.ok(top.some(isBriefLeadEligible));
+    });
+  });
 });
