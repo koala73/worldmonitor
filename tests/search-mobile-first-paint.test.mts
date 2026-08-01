@@ -67,8 +67,8 @@ const harnessSource = `
     showRecentOrEmpty() { this.recentOrEmptyCalls++; }
     renderChips() { this.chipRenderCalls++; }
 
-    ${extractMethod('public open(): void {')}
-    ${extractMethod('public close(): void {')}
+    ${extractMethod('public open(replaceOverlayId?: OverlayId): void {')}
+    ${extractMethod("public close(origin: OverlayCloseOrigin = 'control'): void {")}
     ${extractMethod('public refreshSearch(): void {')}
     ${extractMethod('private scheduleMobileReveal(overlay: HTMLElement): void {')}
     ${extractMethod('private scheduleMobileInitialPopulation(): void {')}
@@ -90,7 +90,10 @@ interface SearchModalHarness {
   recentOrEmptyCalls: number;
   chipRenderCalls: number;
 }
-const Harness = new Function('isMobileDevice', harnessJs)(() => true) as new () => SearchModalHarness;
+const Harness = new Function('isMobileDevice', 'overlayHistory', harnessJs)(
+  () => true,
+  { open() {}, replace() {}, close() {} },
+) as new () => SearchModalHarness;
 
 function withAnimationFrames(run: (frames: FrameRequestCallback[]) => void): void {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');

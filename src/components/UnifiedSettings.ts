@@ -2,13 +2,13 @@ import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feed
 import {
   PANEL_CATEGORY_MAP,
   ALL_PANELS,
-  VARIANT_DEFAULTS,
   getEffectivePanelConfig,
   getVariantPanelCategories,
   isPanelEntitled,
   FREE_MAX_PANELS,
   countFreePanelCapUsage,
   isFreePanelCapCounted,
+  isPanelInVariantDefaults,
 } from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
@@ -29,7 +29,7 @@ import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { track } from '@/services/analytics';
+import { track, trackApiAction } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
@@ -43,6 +43,12 @@ import {
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  overlayHistory,
+  type OverlayCloseOrigin,
+  type OverlayId,
+} from '@/utils/overlay-history';
+import { isMobileDevice } from '@/utils';
 
 
 function showToast(msg: string): void {
@@ -87,6 +93,7 @@ export class UnifiedSettings {
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
   private confirmingClose = false;
+  private historyRegistered = false;
   private apiKeys: ApiKeyInfo[] = [];
   private apiKeysLoading = false;
   private apiKeysError = '';
@@ -411,7 +418,7 @@ export class UnifiedSettings {
       && request.userId === getAuthState().user?.id;
   }
 
-  public open(tab?: TabId): void {
+  public open(tab?: TabId, replaceOverlayId?: OverlayId): void {
     const requestedTab = tab ?? this.activeTab;
     this.activeTab = requestedTab === 'mcp-clients' && !hasFeature('mcpAccess')
       ? 'settings'
@@ -423,6 +430,12 @@ export class UnifiedSettings {
     this.entitlementReady = getEntitlementState() !== null;
     this.render();
     this.overlay.classList.add('active');
+    if (isMobileDevice()) {
+      this.historyRegistered = true;
+      const close = (origin: OverlayCloseOrigin) => this.close(origin);
+      if (replaceOverlayId) overlayHistory.replace(replaceOverlayId, 'settings', close);
+      else overlayHistory.open('settings', close);
+    }
     localStorage.setItem('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
     (this.overlay.querySelector('.unified-settings-tabs') as HTMLElement)?.addEventListener('keydown', (e: KeyboardEvent) => this.handleKeyDown(e));
@@ -507,23 +520,36 @@ export class UnifiedSettings {
     if (next) upgradeSection.replaceWith(next);
   }
 
-  public close(): void {
+  public close(origin: OverlayCloseOrigin = 'control'): void {
+    if (origin === 'history') this.historyRegistered = false;
     // Unsaved panel changes → confirm before tearing down. The confirm is a
     // non-blocking in-app dialog (#4559): close() stays synchronous (8 callers)
     // and defers teardown to the user's choice instead of a blocking confirm().
-    if (this.hasPendingPanelChanges()) {
+    if (origin !== 'replacement' && this.hasPendingPanelChanges()) {
+      if (origin === 'history' && !this.historyRegistered) {
+        this.historyRegistered = true;
+        overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
+      }
       if (this.confirmingClose) return; // a confirm is already on screen
       this.confirmingClose = true;
       void confirmDialog({ message: t('header.unsavedChanges') }).then((discard) => {
         this.confirmingClose = false;
-        if (discard) this.teardownSettings();
+        if (discard) this.teardownSettings('control');
       });
       return;
     }
-    this.teardownSettings();
+    this.teardownSettings(origin);
   }
 
-  private teardownSettings(): void {
+  public hasPendingChanges(): boolean {
+    return this.hasPendingPanelChanges();
+  }
+
+  private teardownSettings(origin: OverlayCloseOrigin = 'control'): void {
+    if (origin === 'control' && this.historyRegistered) {
+      overlayHistory.close('settings');
+    }
+    this.historyRegistered = false;
     this.overlay.classList.remove('active');
     this.prefsCleanup?.();
     this.prefsCleanup = null;
@@ -554,6 +580,8 @@ export class UnifiedSettings {
   }
 
   public destroy(): void {
+    if (this.historyRegistered) overlayHistory.close('settings');
+    this.historyRegistered = false;
     if (this.savedTimeout) clearTimeout(this.savedTimeout);
     this.prefsCleanup?.();
     this.prefsCleanup = null;
@@ -997,7 +1025,7 @@ export class UnifiedSettings {
       const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
       const entitled = isPanelEntitled(key, resolvedPanel, pro);
       const locked = !entitled;
-      const changed = !locked && savedSettings[key]?.enabled !== panel.enabled;
+      const changed = !locked && this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled;
       const displayName = this.config.getLocalizedPanelName(key, resolvedPanel.name ?? panel.name);
       const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
       return `
@@ -1016,10 +1044,9 @@ export class UnifiedSettings {
     const cloned: Record<string, PanelConfig> = Object.fromEntries(
       Object.entries(source).map(([key, panel]) => [key, { ...panel }]),
     );
-    const variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
     for (const key of Object.keys(ALL_PANELS)) {
       if (!(key in cloned)) {
-        cloned[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: variantDefaults.has(key) };
+        cloned[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: isPanelInVariantDefaults(key) };
       }
     }
     return cloned;
@@ -1030,9 +1057,17 @@ export class UnifiedSettings {
     this.panelsJustSaved = false;
   }
 
+  private getSavedPanelEnabled(key: string, savedSettings: Record<string, PanelConfig>): boolean {
+    const savedPanel = savedSettings[key];
+    if (savedPanel) return savedPanel.enabled;
+    return Boolean(ALL_PANELS[key]) && isPanelInVariantDefaults(key);
+  }
+
   private hasPendingPanelChanges(): boolean {
     const savedSettings = this.config.getPanelSettings();
-    return Object.entries(this.draftPanelSettings).some(([key, panel]) => savedSettings[key]?.enabled !== panel.enabled);
+    return Object.entries(this.draftPanelSettings).some(
+      ([key, panel]) => this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled,
+    );
   }
 
   private toggleDraftPanel(key: string): void {
@@ -1449,6 +1484,7 @@ export class UnifiedSettings {
     try {
       const result = await createApiKey(name);
       if (!this.isAccountRequestCurrent(request)) return;
+      trackApiAction('key-created');
       this.newlyCreatedKey = result.key;
       input.value = '';
       this.showCreatedBanner(result.key);
@@ -1480,6 +1516,7 @@ export class UnifiedSettings {
     try {
       await revokeApiKey(keyId);
       if (!this.isAccountRequestCurrent(request)) return;
+      trackApiAction('key-revoked');
       await this.loadApiKeys();
     } catch (err) {
       if (!this.isAccountRequestCurrent(request)) return;

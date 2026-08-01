@@ -250,15 +250,19 @@ describe('api/slack/oauth/callback.ts safety', () => {
     );
   });
 
-  it('consumes CSRF state from Upstash after validation (prevents replay)', () => {
+  it('atomically consumes CSRF state from Upstash (prevents concurrent replay)', () => {
     const src = readFileSync(callbackPath, 'utf-8');
-    const getIdx = src.indexOf('upstashGet');
-    const delIdx = src.indexOf('upstashDel');
-    assert.ok(getIdx !== -1, 'callback.ts: must call upstashGet to validate state');
-    assert.ok(delIdx !== -1, 'callback.ts: must call upstashDel to consume state after validation');
     assert.ok(
-      getIdx < delIdx,
-      'callback.ts: must validate state (upstashGet) before consuming it (upstashDel)',
+      src.includes('upstashGetDel'),
+      'callback.ts: must use a single atomic upstashGetDel operation to validate and consume state',
+    );
+    assert.ok(
+      src.includes('/getdel/'),
+      'callback.ts: state consumption must use Upstash GETDEL, not separate GET and DEL requests',
+    );
+    assert.ok(
+      !src.includes('/get/') && !src.includes('/del/'),
+      'callback.ts: split GET/DEL state consumption permits concurrent replay',
     );
   });
 

@@ -1646,18 +1646,69 @@ canvas,
   color: var(--text-dim);
 }
 
+/* Mobile application navigation is injected with the hydrated shell but stays
+   out of desktop layout entirely. */
+.mobile-tab-bar {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .site-footer {
-    flex-direction: column;
-    gap: 10px;
-    text-align: center;
-    padding: 12px 16px;
+    display: none;
   }
-  .site-footer nav {
-    flex-wrap: wrap;
+
+  .mobile-tab-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10003;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    min-height: 58px;
+    padding: 4px max(4px, env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px));
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-tab {
+    appearance: none;
+    display: flex;
+    min-width: 0;
+    min-height: 50px;
+    align-items: center;
     justify-content: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-dim);
+    font: 600 10px/1 var(--font-mono, monospace);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
+
+  .mobile-tab-icon {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .mobile-tab.active {
+    color: var(--accent);
+    background: var(--overlay-subtle);
+  }
+
+  .panels-grid {
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .cached-mode-banner {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+
 }
 
 .panel {
@@ -8603,6 +8654,7 @@ a.prediction-link:hover {
   will-change: transform;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 .map-popup.map-popup-sheet.open {
@@ -12032,38 +12084,6 @@ a.prediction-link:hover {
   margin-right: 4px;
 }
 
-/* Mobile search FAB — always visible floating button */
-.search-mobile-fab {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .search-mobile-fab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-    right: 16px;
-    width: 56px;
-    height: 56px;
-    background: var(--accent, #4488ff);
-    border: none;
-    border-radius: 50%;
-    box-shadow: 0 4px 20px rgba(68, 136, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
-    color: #fff;
-    font-size: 22px;
-    cursor: pointer;
-    z-index: 500;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .search-mobile-fab:active {
-    transform: scale(0.9);
-    opacity: 0.85;
-  }
-}
-
 /* Mobile bottom sheet search */
 .search-overlay.search-mobile {
   align-items: flex-end;
@@ -12078,6 +12098,7 @@ a.prediction-link:hover {
   border-radius: 16px 16px 0 0;
   display: flex;
   flex-direction: column;
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
   transform: translateY(100%);
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -13762,20 +13783,8 @@ a.prediction-link:hover {
 }
 
 /* ==========================================================================
-   Mobile Hamburger Menu
+   Mobile Menu
    ========================================================================== */
-
-.hamburger-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  color: var(--text);
-  cursor: pointer;
-  padding: 4px;
-  -webkit-tap-highlight-color: transparent;
-}
 
 .mobile-search-btn {
   display: none;
@@ -13861,6 +13870,41 @@ a.prediction-link:hover {
   height: 1px;
   background: var(--border);
   margin: 4px 0;
+}
+
+.mobile-menu-account {
+  min-height: 60px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-menu-account-icon {
+  width: 20px;
+  color: var(--green);
+  font-size: 18px;
+  text-align: center;
+}
+
+.mobile-auth-fallback {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 600 14px/1 var(--font-mono, monospace);
+  cursor: pointer;
+}
+
+.mobile-menu-account .auth-header-widget {
+  min-height: 44px;
+  justify-content: flex-start;
+}
+
+.mobile-menu-account .auth-signin-btn,
+.mobile-menu-account .auth-signup-link {
+  min-height: 44px;
 }
 
 .mobile-menu-item {
@@ -13974,7 +14018,7 @@ a.prediction-link:hover {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   display: none;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 .region-bottom-sheet.open {
@@ -14031,10 +14075,6 @@ a.prediction-link:hover {
 }
 
 @media (max-width: 768px) {
-  .hamburger-btn {
-    display: flex;
-  }
-
   .mobile-search-btn {
     display: none;
   }
@@ -26264,16 +26304,12 @@ body.map-width-resizing {
 
   /* The mobile .map-section height (100dvh - 48px) outranks the generic
    * .live-news-fullscreen height:auto by file order — restate it here so
-   * fullscreen truly reaches bottom:0 instead of leaving a 48px strip. */
+   * fullscreen reaches the fixed tab bar without leaving an extra strip. */
   .map-section.live-news-fullscreen {
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
-  }
-
-  /* Search FAB floats above the z-10000 fullscreen overlay — hide it. */
-  body.live-news-fullscreen-active .search-mobile-fab {
-    display: none;
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Category filter: composes with Panel.toggle()'s `.hidden` — a panel

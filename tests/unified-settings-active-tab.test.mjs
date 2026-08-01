@@ -73,6 +73,8 @@ function extractOpen() {
     'setTrustedHtml',
     'trustedHtml',
     'track',
+    'isMobileDevice',
+    'overlayHistory',
     `${js}\nreturn __UnifiedSettingsOpenHarness;`,
   );
 }
@@ -88,6 +90,8 @@ const Harness = extractOpen()(
   () => {},
   (value) => value,
   () => {},
+  () => false,
+  { open() {}, replace() {} },
 );
 
 function makeInstance(initialTab = 'settings') {

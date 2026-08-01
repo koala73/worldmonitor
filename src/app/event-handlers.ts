@@ -30,7 +30,6 @@ import {
   debounce,
   saveToStorage,
   getCurrentTheme,
-  setTheme,
   showToast,
 } from '@/utils';
 import { clearPanelColSpans, clearPanelSpans } from '@/utils/panel-storage';
@@ -71,7 +70,6 @@ import {
   track,
   trackPanelView,
   trackVariantSwitch,
-  trackThemeChanged,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -102,6 +100,8 @@ import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
+import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
+import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
 
 function readStorageValue(key: string): string | null {
   try {
@@ -134,6 +134,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
   private instance: RealUnifiedSettings | null = null;
   private loadPromise: Promise<RealUnifiedSettings> | null = null;
   private destroyed = false;
+  private openEpoch = 0;
 
   constructor(private readonly config: UnifiedSettingsConfig) {
     this.button = createSettingsButton(() => this.open());
@@ -143,20 +144,39 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.button;
   }
 
-  open(tab?: UnifiedSettingsTabId): void {
+  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending = false): void {
+    const epoch = ++this.openEpoch;
+    const pendingId: OverlayId = 'settings-pending';
+    const pendingGate = historyPending
+      ? overlayHistory.beginPending(pendingId, replaceOverlayId, () => { this.openEpoch += 1; })
+      : null;
     void this.load().then((settings) => {
-      if (!this.destroyed) settings.open(tab);
+      if (this.destroyed || this.openEpoch !== epoch) return;
+      if (pendingGate && !pendingGate.isCurrent()) return;
+      settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
       // deliberate unmount, not a failure the user should be toasted about.
-      if (this.destroyed) return;
+      // Back can cancel the pending history transition before the lazy chunk
+      // rejects; that cancellation is also an expected teardown path.
+      const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
+      if (this.destroyed || actionWasCancelled) return;
       console.warn('[settings] Failed to load settings window:', error);
+      pendingGate?.cancel();
       showToast(t('common.error'));
     });
   }
 
   refreshPanelToggles(): void {
     this.instance?.refreshPanelToggles();
+  }
+
+  close(): void {
+    this.instance?.close();
+  }
+
+  hasPendingChanges(): boolean {
+    return this.instance?.hasPendingChanges() ?? false;
   }
 
   destroy(): void {
@@ -192,7 +212,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
 
 
 export interface EventHandlerCallbacks {
-  openSearch: (options?: { toggle?: boolean }) => void;
+  openSearch: (options?: { toggle?: boolean; replaceOverlayId?: OverlayId; historyPending?: boolean }) => void;
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
@@ -237,7 +257,7 @@ export class EventHandlerManager implements AppModule {
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private readonly registeredSearchButtons = new Set<string>();
   private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
-  private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private readonly mobilePrimaryNav: MobilePrimaryNav;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -247,6 +267,7 @@ export class EventHandlerManager implements AppModule {
   private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
+  private authStateUnsubscribers: Array<() => void> = [];
   private proGateUnsubscribers: Array<() => void> = [];
   private exportPanelLoad: Promise<NonNullable<AppContext['exportPanel']>> | null = null;
   private closedPanelStack: string[] = []; // max-items: 20
@@ -258,7 +279,9 @@ export class EventHandlerManager implements AppModule {
   private readonly debouncedUrlSync = debounce(() => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
-    try { history.replaceState(null, '', shareUrl); } catch { }
+    // Preserve the shared mobile-overlay marker while syncing map URL state;
+    // replacing it with null makes Android Back skip the open sheet.
+    try { history.replaceState(history.state, '', shareUrl); } catch { }
   }, 250);
 
   private readonly debouncedWebcamReload = debounce(() => {
@@ -270,11 +293,17 @@ export class EventHandlerManager implements AppModule {
   constructor(ctx: AppContext, callbacks: EventHandlerCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
+    this.mobilePrimaryNav = new MobilePrimaryNav(ctx, {
+      openSearch: (options) => this.callbacks.openSearch(options),
+      navigateToVariant: (variant, options) => this.navigateToVariant(variant, options),
+      openMission: (anchor) => this.openMissionPresetPopover(anchor, true),
+    });
   }
 
   init(): void {
     this.setupSearchControls();
     this.setupEventListeners();
+    this.mobilePrimaryNav.init();
     this.setupIdleDetection();
     this.setupTvMode();
   }
@@ -453,10 +482,7 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundSearchKeyHandler);
       this.boundSearchKeyHandler = null;
     }
-    if (this.boundMobileMenuKeyHandler) {
-      document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
-      this.boundMobileMenuKeyHandler = null;
-    }
+    this.mobilePrimaryNav.destroy();
     if (this.boundPanelCloseHandler) {
       this.ctx.container.removeEventListener('wm:panel-close', this.boundPanelCloseHandler);
       this.boundPanelCloseHandler = null;
@@ -481,6 +507,8 @@ export class EventHandlerManager implements AppModule {
       window.clearTimeout(this.missionDataRefreshTimer);
       this.missionDataRefreshTimer = null;
     }
+    for (const unsub of this.authStateUnsubscribers) unsub();
+    this.authStateUnsubscribers = [];
     for (const unsub of this.proGateUnsubscribers) unsub();
     this.proGateUnsubscribers = [];
     this.ctx.tvMode?.destroy();
@@ -491,6 +519,7 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authHeaderWidget = null;
     this.ctx.authModal?.destroy();
     this.ctx.authModal = null;
+    overlayHistory.reset();
   }
 
   setupSearchControls(): void {
@@ -511,14 +540,19 @@ export class EventHandlerManager implements AppModule {
     };
     wireSearchButton('searchBtn', 'desktop');
     wireSearchButton('mobileSearchBtn', 'mobile');
-    wireSearchButton('searchMobileFab', 'fab');
     if (!this.boundSearchKeyHandler) {
       this.boundSearchKeyHandler = (e: KeyboardEvent) => {
         // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
         // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
           e.preventDefault();
-          this.callbacks.openSearch({ toggle: true });
+          // A keyboard toggle can arrive while the mobile tab is still
+          // loading Search. Reuse that pending marker so the eventual modal
+          // replaces it instead of pushing a second history entry.
+          this.callbacks.openSearch({
+            toggle: true,
+            historyPending: overlayHistory.top() === 'search-pending',
+          });
         }
       };
       document.addEventListener('keydown', this.boundSearchKeyHandler);
@@ -714,11 +748,10 @@ export class EventHandlerManager implements AppModule {
 
     this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
-      this.updateMobileMenuThemeItem();
+      this.mobilePrimaryNav.updateThemeItem();
     };
     window.addEventListener('theme-changed', this.boundThemeChangedHandler);
 
-    this.setupMobileMenu();
     this.setupMissionPresets();
 
     if (this.ctx.isDesktopApp) {
@@ -751,85 +784,8 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
-  private setupMobileMenu(): void {
-    const hamburger = document.getElementById('hamburgerBtn');
-    const overlay = document.getElementById('mobileMenuOverlay');
-    const menu = document.getElementById('mobileMenu');
-    const closeBtn = document.getElementById('mobileMenuClose');
-    if (!hamburger || !overlay || !menu || !closeBtn) return;
-
-    hamburger.addEventListener('click', () => this.openMobileMenu());
-    overlay.addEventListener('click', () => this.closeMobileMenu());
-    closeBtn.addEventListener('click', () => this.closeMobileMenu());
-
-    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    menu.querySelectorAll<HTMLButtonElement>('.mobile-menu-variant').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const variant = btn.dataset.variant;
-        if (!variant || variant === SITE_VARIANT) return;
-        void this.navigateToVariant(variant, { isLocalDev });
-      });
-    });
-
-    document.getElementById('mobileMenuRegion')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      this.openRegionSheet();
-    });
-
-    document.getElementById('mobileMenuSettings')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      this.ctx.unifiedSettings?.open();
-    });
-
-    document.getElementById('mobileMenuTheme')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
-      setTheme(next);
-      trackThemeChanged(next);
-    });
-
-    const sheetBackdrop = document.getElementById('regionSheetBackdrop');
-    sheetBackdrop?.addEventListener('click', () => this.closeRegionSheet());
-
-    const sheet = document.getElementById('regionBottomSheet');
-    sheet?.querySelectorAll<HTMLButtonElement>('.region-sheet-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        const region = opt.dataset.region;
-        if (!region) return;
-        this.ctx.map?.setView(region as MapView);
-        trackMapViewChange(region);
-        const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
-        if (regionSelect) regionSelect.value = region;
-        sheet.querySelectorAll('.region-sheet-option').forEach(o => {
-          o.classList.toggle('active', o === opt);
-          const check = o.querySelector('.region-sheet-check');
-          if (check) check.textContent = o === opt ? '✓' : '';
-        });
-        const menuRegionLabel = document.getElementById('mobileMenuRegion')?.querySelector('.mobile-menu-item-label');
-        if (menuRegionLabel) menuRegionLabel.textContent = opt.querySelector('span')?.textContent ?? '';
-        this.closeRegionSheet();
-      });
-    });
-
-    this.boundMobileMenuKeyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (sheet?.classList.contains('open')) {
-          this.closeRegionSheet();
-        } else if (menu.classList.contains('open')) {
-          this.closeMobileMenu();
-        }
-      }
-    };
-    document.addEventListener('keydown', this.boundMobileMenuKeyHandler);
-  }
-
   private setupMissionPresets(): void {
     this.renderMissionPresetControl();
-
-    document.getElementById('mobileMenuMission')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      this.openMissionPresetPopover(document.getElementById('hamburgerBtn'), true);
-    });
 
     const shouldPrompt =
       !this.ctx.isMobile &&
@@ -1157,43 +1113,6 @@ export class EventHandlerManager implements AppModule {
     showToast('Mission preset reset');
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
-  }
-
-  private openMobileMenu(): void {
-    const overlay = document.getElementById('mobileMenuOverlay');
-    const menu = document.getElementById('mobileMenu');
-    if (!overlay || !menu) return;
-    overlay.classList.add('open');
-    requestAnimationFrame(() => menu.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-  }
-
-  private closeMobileMenu(): void {
-    const overlay = document.getElementById('mobileMenuOverlay');
-    const menu = document.getElementById('mobileMenu');
-    if (!overlay || !menu) return;
-    menu.classList.remove('open');
-    overlay.classList.remove('open');
-    const sheetOpen = document.getElementById('regionBottomSheet')?.classList.contains('open');
-    if (!sheetOpen) document.body.style.overflow = '';
-  }
-
-  private openRegionSheet(): void {
-    const backdrop = document.getElementById('regionSheetBackdrop');
-    const sheet = document.getElementById('regionBottomSheet');
-    if (!backdrop || !sheet) return;
-    backdrop.classList.add('open');
-    requestAnimationFrame(() => sheet.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-  }
-
-  private closeRegionSheet(): void {
-    const backdrop = document.getElementById('regionSheetBackdrop');
-    const sheet = document.getElementById('regionBottomSheet');
-    if (!backdrop || !sheet) return;
-    sheet.classList.remove('open');
-    backdrop.classList.remove('open');
-    document.body.style.overflow = '';
   }
 
   private setupIdleDetection(): void {
@@ -1627,16 +1546,6 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
-  private updateMobileMenuThemeItem(): void {
-    const btn = document.getElementById('mobileMenuTheme');
-    if (!btn) return;
-    const isDark = getCurrentTheme() === 'dark';
-    const icon = btn.querySelector('.mobile-menu-item-icon');
-    const label = btn.querySelector('.mobile-menu-item-label');
-    if (icon) icon.textContent = isDark ? '☀️' : '🌙';
-    if (label) label.textContent = isDark ? 'Light Mode' : 'Dark Mode';
-  }
-
   startHeaderClock(): void {
     const el = document.getElementById('headerClock');
     if (!el) return;
@@ -1816,7 +1725,6 @@ export class EventHandlerManager implements AppModule {
           console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
         });
     };
-
     const applyGate = (): void => {
       if (this.ctx.isDestroyed) return;
       const authState = getAuthState();
@@ -1966,6 +1874,8 @@ export class EventHandlerManager implements AppModule {
     if (mount) {
       mount.appendChild(widget.getElement());
     }
+
+    this.mobilePrimaryNav.setupAuth(modal);
   }
 
   setupPlaybackControl(): void {
@@ -2008,7 +1918,6 @@ export class EventHandlerManager implements AppModule {
         trackGateHit('playback');
       }
     };
-
     applyGate();
     // BOTH subscriptions, same as setupExportPanel above: the Convex
     // entitlement watcher (services/entitlements.ts) is a separate emitter from

@@ -467,11 +467,7 @@ export function getClerkUserCreatedAt(): number | null {
 
 /** Sign out the current user. */
 export async function signOut(): Promise<void> {
-  _cachedToken = null;
-  _cachedTokenAt = 0;
-  _cachedSession = null;
-  _tokenInflight = null;
-  _tokenGen++;
+  clearClerkTokenCache();
   await clerkInstance?.signOut();
 }
 
@@ -494,6 +490,7 @@ export function clearClerkTokenCache(): void {
   _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
+  _clerkClockState = { kind: 'uncalibrated' };
 }
 
 /**
@@ -513,7 +510,19 @@ let _cachedTokenAt = 0;
 let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
+// Positive means the client clock is behind the issuer clock. This is measured
+// from a token fetched with skipCache so a stale Clerk token cannot masquerade
+// as a clock offset. Keep the modes explicit: a trusted zero skew is different
+// from an opaque token that can only use the legacy flat TTL.
+type ClerkClockState =
+  | { kind: 'uncalibrated' }
+  | { kind: 'trusted'; skewMs: number }
+  | { kind: 'opaque-ttl' }
+  | { kind: 'retry-after'; atMs: number };
+
+let _clerkClockState: ClerkClockState = { kind: 'uncalibrated' };
 const TOKEN_CACHE_TTL_MS = 50_000;
+const CLOCK_CALIBRATION_RETRY_BACKOFF_MS = 5_000;
 
 /**
  * How long before a token's own `exp` we stop reusing it.
@@ -523,6 +532,38 @@ const TOKEN_CACHE_TTL_MS = 50_000;
  * consuming that entire server-side allowance.
  */
 const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
+
+function clockSkewMsForReuse(state: ClerkClockState): number | null {
+  if (state.kind === 'trusted') return state.skewMs;
+  if (state.kind === 'opaque-ttl') return 0;
+  return null;
+}
+
+function effectiveClerkNowMs(now: number, state: ClerkClockState): number {
+  return now + (state.kind === 'trusted' ? state.skewMs : 0);
+}
+
+function canCacheClerkToken(state: ClerkClockState): boolean {
+  return state.kind === 'trusted' || state.kind === 'opaque-ttl';
+}
+
+type ClerkTokenClaimsMs = { exp: number | null; iat: number | null };
+
+function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+  const payload = token?.split('.')[1];
+  if (!payload) return { exp: null, iat: null };
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(
+      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
+    ) as Record<string, unknown>;
+    const toEpochMs = (value: unknown): number | null =>
+      typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
+    return { exp: toEpochMs(claims.exp), iat: toEpochMs(claims.iat) };
+  } catch {
+    return { exp: null, iat: null };
+  }
+}
 
 /**
  * The `exp` claim of a Clerk JWT as epoch ms, or null when it cannot be read.
@@ -534,29 +575,29 @@ const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
  * a forged `exp` can only make this client refresh sooner.
  */
 export function clerkTokenExpiresAtMs(token: string | null): number | null {
-  const payload = token?.split('.')[1];
-  if (!payload) return null;
-  try {
-    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const exp = (
-      JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { exp?: unknown }
-    ).exp;
-    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1_000 : null;
-  } catch {
-    return null;
-  }
+  return clerkTokenClaimsMs(token).exp;
 }
 
-/**
- * Whether a token still has any lifetime left. This is intentionally weaker
- * than shouldReuseCachedClerkToken(): a failed forced refresh may return the
- * token already in hand for the request being made now, but never after its
- * own expiry has passed.
- */
-function hasTokenRemainingLifetime(token: string | null, now: number): boolean {
+type ClerkTokenReuseInput = {
+  token: string | null;
+  cachedAt: number;
+  now: number;
+  /** Issuer time minus client time, measured from a fresh Clerk token. */
+  clockSkewMs?: number | null;
+};
+
+function shouldReuseCachedClerkTokenWithExpiry(
+  input: ClerkTokenReuseInput,
+  expiresAt: number | null,
+): boolean {
+  const { token, cachedAt, now, clockSkewMs } = input;
   if (!token) return false;
-  const expiresAt = clerkTokenExpiresAtMs(token);
-  return expiresAt === null || now < expiresAt;
+  if (now - cachedAt >= TOKEN_CACHE_TTL_MS) return false;
+  if (expiresAt === null) return true;
+  const effectiveNow = now + (
+    typeof clockSkewMs === 'number' && Number.isFinite(clockSkewMs) ? clockSkewMs : 0
+  );
+  return effectiveNow < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
 }
 
 /**
@@ -572,17 +613,8 @@ function hasTokenRemainingLifetime(token: string | null, now: number): boolean {
  * The TTL is still enforced on top: it is what bounds how long a session that
  * was revoked but not yet expired keeps working.
  */
-export function shouldReuseCachedClerkToken(input: {
-  token: string | null;
-  cachedAt: number;
-  now: number;
-}): boolean {
-  const { token, cachedAt, now } = input;
-  if (!token) return false;
-  if (now - cachedAt >= TOKEN_CACHE_TTL_MS) return false;
-  const expiresAt = clerkTokenExpiresAtMs(token);
-  if (expiresAt === null) return true;
-  return now < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
+export function shouldReuseCachedClerkToken(input: ClerkTokenReuseInput): boolean {
+  return shouldReuseCachedClerkTokenWithExpiry(input, clerkTokenExpiresAtMs(input.token));
 }
 
 type ClerkTokenFetchResult = {
@@ -606,10 +638,20 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
 }
 
 export async function getClerkToken(): Promise<string | null> {
-  if (
-    clerkInstance?.session === _cachedSession &&
-    shouldReuseCachedClerkToken({ token: _cachedToken, cachedAt: _cachedTokenAt, now: Date.now() })
-  ) {
+  const now = Date.now();
+  const clockState = _clerkClockState;
+  const calibrationBackoffActive = clockState.kind !== 'retry-after'
+    || now < clockState.atMs;
+  const clockSkewMs = clockSkewMsForReuse(clockState);
+  if (clerkInstance?.session === _cachedSession
+    && clockSkewMs !== null
+    && calibrationBackoffActive
+    && shouldReuseCachedClerkToken({
+      token: _cachedToken,
+      cachedAt: _cachedTokenAt,
+      now,
+      clockSkewMs,
+    })) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -633,36 +675,105 @@ export async function getClerkToken(): Promise<string | null> {
       let token = initial.token;
       const firstFetchedAt = Date.now();
       let refreshUnavailable = false;
-      if (token && !shouldReuseCachedClerkToken({ token, cachedAt: firstFetchedAt, now: firstFetchedAt })) {
+      let nextClockState = _clerkClockState;
+      let tokenClaims = clerkTokenClaimsMs(token);
+      const tokenNeedsRefresh = token && !shouldReuseCachedClerkTokenWithExpiry({
+        token,
+        cachedAt: firstFetchedAt,
+        now: firstFetchedAt,
+        clockSkewMs: clockSkewMsForReuse(nextClockState),
+      }, tokenClaims.exp);
+      const shouldRetryCalibration = nextClockState.kind === 'retry-after'
+        && firstFetchedAt >= nextClockState.atMs;
+      const calibrationBackoffActive = nextClockState.kind === 'retry-after'
+        && !shouldRetryCalibration;
+      const shouldCalibrateClock = token !== null && tokenClaims.iat !== null
+        && (nextClockState.kind === 'uncalibrated'
+          || nextClockState.kind === 'opaque-ttl'
+          || shouldRetryCalibration);
+      if (shouldRetryCalibration && tokenClaims.iat === null) {
+        // Opaque/legacy tokens cannot provide a better clock sample.
+        nextClockState = { kind: 'uncalibrated' };
+      }
+      // A first token cannot establish clock offset safely: it may be an older
+      // stale-while-revalidate value whose age is indistinguishable from a fast
+      // client clock. Force one fresh token so its iat is an issuer-time sample.
+      if (token && ((tokenNeedsRefresh === true && !calibrationBackoffActive) || shouldCalibrateClock)) {
         // Clerk may return a near-expiry cached token while refreshing it in the
         // background. The initiating caller must not receive that stale token:
         // force one server refresh, then accept only a token outside the margin.
         const refreshed = await fetchClerkToken(session, true);
-        // A refresh that fails outright (Clerk unreachable, blocked, 5xx) is a
-        // different event from one that succeeds and still returns a near-expiry
-        // token. Only the latter justifies null: there, a better credential
-        // exists and the caller should retry for it. Here the token in hand is
-        // the only one there is, and its remaining seconds can still sign the
-        // request being made right now — so keep it rather than manufacturing a
-        // signed-out state for a live session (Sentry WORLDMONITOR-Q9).
-        if (refreshed.token) token = refreshed.token;
-        else refreshUnavailable = refreshed.unavailable;
+        if (refreshed.token) {
+          // A successful fresh response is authoritative for both the token
+          // and the issuer/client clock relationship.
+          token = refreshed.token;
+          tokenClaims = clerkTokenClaimsMs(refreshed.token);
+          nextClockState = tokenClaims.iat === null
+            ? { kind: 'opaque-ttl' }
+            : { kind: 'trusted', skewMs: tokenClaims.iat - Date.now() };
+        } else {
+          // A failed forced refresh is distinct from a successful refresh that
+          // still returns a near-expiry token. Preserve #5933's bounded fallback
+          // when a trusted clock sample already exists; without one, returning
+          // the original JWT could admit a near-expiry token on a slow client.
+          refreshUnavailable = refreshed.unavailable;
+          if (shouldCalibrateClock) {
+            // Without a trusted sample, the local clock cannot safely decide
+            // whether a JWT is still inside the server-side expiry margin.
+            // Fail closed until a later bounded retry can calibrate it.
+            nextClockState = {
+              kind: 'retry-after',
+              atMs: Date.now() + CLOCK_CALIBRATION_RETRY_BACKOFF_MS,
+            };
+          }
+        }
+      }
+      if (nextClockState.kind === 'retry-after' && !shouldRetryCalibration
+        && tokenClaims.iat !== null) {
+        // A JWT remains unsafe to return while calibration is backed off.
+        token = null;
+      }
+      // Opaque/legacy tokens have no issuer clock to sample. Preserve the
+      // pre-existing flat-TTL behavior rather than adding an extra fetch that
+      // cannot improve the expiry decision.
+      if (token && nextClockState.kind === 'uncalibrated' && !shouldCalibrateClock
+        && tokenNeedsRefresh !== true) {
+        nextClockState = { kind: 'opaque-ttl' };
       }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+      if (token === null && nextClockState.kind === 'retry-after') {
+        _cachedToken = null;
+        _cachedTokenAt = 0;
+        _cachedSession = null;
+      }
+      _clerkClockState = nextClockState;
       const fetchedAt = Date.now();
-      if (shouldReuseCachedClerkToken({ token, cachedAt: fetchedAt, now: fetchedAt })) {
-        _cachedToken = token;
-        _cachedTokenAt = fetchedAt;
-        _cachedSession = session;
+      if (shouldReuseCachedClerkTokenWithExpiry({
+        token,
+        cachedAt: fetchedAt,
+        now: fetchedAt,
+        clockSkewMs: clockSkewMsForReuse(nextClockState),
+      }, tokenClaims.exp)) {
+        // Cache only after a trusted clock sample exists, or after the opaque
+        // token path has explicitly opted back into the legacy flat TTL.
+        if (canCacheClerkToken(nextClockState)) {
+          _cachedToken = token;
+          _cachedTokenAt = fetchedAt;
+          _cachedSession = session;
+        }
         return token;
       }
       // Deliberately uncached: serving a near-expiry token for the full TTL is
       // the stacked-cache defect this function was rewritten to fix, so the next
       // caller must go back to Clerk once it is reachable again.
-      return refreshUnavailable && hasTokenRemainingLifetime(token, Date.now()) ? token : null;
+      if (refreshUnavailable) {
+        const expiresAt = clerkTokenExpiresAtMs(token);
+        if (expiresAt === null || effectiveClerkNowMs(fetchedAt, nextClockState) < expiresAt) return token;
+      }
+      return null;
     } catch {
       return null;
     } finally {

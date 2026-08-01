@@ -36,6 +36,7 @@ import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } fro
 import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice, showToast } from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
+import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
@@ -1137,7 +1138,7 @@ export class App {
     this.searchManager?.updateFlightSource(adsb, military);
   }
 
-  private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean } = {}): Promise<void> {
+  private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean; replaceOverlayId?: OverlayId; historyPending?: boolean } = {}): Promise<void> {
     // Concurrency model: each press registers its intent, then claims a
     // monotonic epoch. After the lazy load resolves, only the latest epoch acts
     // — superseded presses bail. This yields one deterministic modal.open() for
@@ -1146,8 +1147,15 @@ export class App {
     // the XOR flip happens BEFORE the epoch claim so every rapid Cmd+K still
     // counts (odd → open, even → cancel), even the ones that get superseded.
     let epoch = this.openSearchEpoch;
+    const pendingId: OverlayId = 'search-pending';
+    const pendingGate = options.historyPending
+      ? overlayHistory.beginPending(pendingId, options.replaceOverlayId, () => {
+          this.searchToggleDesiredOpen = false;
+        })
+      : null;
     try {
       await this.waitForUiReady();
+      if (pendingGate && !pendingGate.isCurrent()) return;
 
       const existingModal = this.state.searchModal;
       if (options.toggle && existingModal?.isOpen()) {
@@ -1163,6 +1171,7 @@ export class App {
       epoch = ++this.openSearchEpoch;
       const manager = await this.ensureSearchManager();
       if (this.openSearchEpoch !== epoch) return;
+      if (pendingGate && !pendingGate.isCurrent()) return;
 
       const wantOpen = togglingBeforeLoad ? this.searchToggleDesiredOpen : true;
       if (!wantOpen) return;
@@ -1170,12 +1179,14 @@ export class App {
       manager.updateSearchIndex();
       const modal = this.state.searchModal;
       if (!modal) throw new Error('Search modal is not initialised');
-      modal.open();
+      modal.open(pendingGate ? pendingId : options.replaceOverlayId);
     } catch (error) {
-      if (!this.state.isDestroyed) {
+      const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
+      if (!this.state.isDestroyed && !actionWasCancelled) {
         console.warn('[search] Failed to load search manager:', error);
         if (!options.throwOnFailure) showToast('Search failed to load. Please try again.');
       }
+      pendingGate?.cancel();
       if (options.throwOnFailure) throw error;
     } finally {
       // Reset the toggle accumulator once the latest press settles.

@@ -3,6 +3,7 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { ConflictEvent } from '@/services/conflict';
 import type { GpsJamHex } from '@/services/gps-interference';
+import type { OverlayId } from '@/utils/overlay-history';
 
 // Geometry-resolved satellite-fire shape ingested into CII. Mirrors the inline
 // projection built in DataLoaderManager.loadFirmsData so the cache can replay it
@@ -25,7 +26,9 @@ import type { UnifiedSettingsTabId } from '@/components/settings-types';
 export type { UnifiedSettingsTabId };
 
 export interface UnifiedSettingsController {
-  open(tab?: UnifiedSettingsTabId): void;
+  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending?: boolean): void;
+  close(): void;
+  hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
   getButton(): HTMLButtonElement;
   destroy(): void;

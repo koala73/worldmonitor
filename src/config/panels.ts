@@ -1196,8 +1196,10 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
  * (e.g. tech-readiness on commodity/finance/energy) blow their 5s fetch
  * budget on a key that will never populate.
  */
+const SITE_VARIANT_DEFAULTS = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
+
 export function isPanelInVariantDefaults(key: string): boolean {
-  return (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
+  return SITE_VARIANT_DEFAULTS.has(key);
 }
 
 export const FREE_MAX_PANELS = 40;
