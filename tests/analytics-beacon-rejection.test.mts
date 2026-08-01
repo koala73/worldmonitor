@@ -943,3 +943,34 @@ describe('collector alert policy is wired into the reporting path', () => {
     assert.equal(after.noiseReported, true, 'the latch stays set — no second event this window');
   });
 });
+
+/**
+ * An alarm has to be attacked for the case it exists to catch: can it stay
+ * SILENT while the collector is actually dead? #5565 ran for four days unseen.
+ */
+describe('collector alert policy still fires when the collector is dead', () => {
+  it('alerts on the first 5xx, with no sample or rate floor to clear', () => {
+    // The #5565 shape: Railway origin OOM-dead, Cloudflare answers 502. This is
+    // kind:'http', so it is never subject to the environment-noise gating.
+    for (const status of [500, 502, 503, 504]) {
+      assert.equal(
+        isAlertWorthyCollectorFailure({ kind: 'http', status }, { writes: 1, failures: 1 }),
+        true,
+        `HTTP ${status} must alert immediately`,
+      );
+    }
+  });
+
+  it('alerts on a sustained total network failure once the floor is crossed', () => {
+    assert.equal(isAlertWorthyCollectorFailure({ kind: 'network' }, { writes: 5, failures: 5 }), true);
+  });
+
+  it('cannot be muted by a non-2xx body that mimics the bot sentinel', async () => {
+    // The suppression must be reachable ONLY through a 2xx. A proxy or a dead
+    // origin echoing {"beep":"boop"} with an error status is still an outage.
+    const failure = await inspectCollectorResponse(collectorResponse(false, 502, '{"beep":"boop"}'));
+    assert.equal(failure?.kind, 'http');
+    assert.ok(!failure?.botFiltered, 'a non-2xx must never be classified as bot-filtered');
+    assert.equal(isAlertWorthyCollectorFailure(failure!, { writes: 1, failures: 1 }), true);
+  });
+});
