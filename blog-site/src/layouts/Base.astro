@@ -180,7 +180,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
     <!-- Keep inbound acquisition context on every tracked content handoff.
          Internal content fields use wm_content_*; affiliate ref params are
          intentionally outside this allowlist. -->
-    <script is:inline>
+    <script is:inline nonce="wm-static-bootstrap">
       (() => {
         const utmParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
         const incoming = new URLSearchParams(window.location.search);

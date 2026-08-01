@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 import {
   BLOG_CONVERSION_EVENT,
@@ -16,9 +17,53 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 
+function executeInlineUtmPropagation(incomingSearch: string, hrefs: Array<string | null>): Array<string | null> {
+  const base = readFileSync(resolve(root, 'blog-site/src/layouts/Base.astro'), 'utf8');
+  const script = base.match(
+    /<script is:inline nonce="wm-static-bootstrap">([\s\S]*?)<\/script>/,
+  )?.[1];
+  assert.ok(script, 'the inline UTM propagation script must remain present and CSP-authorized');
+
+  const anchors = hrefs.map((initialHref) => {
+    let href = initialHref;
+    return {
+      getAttribute(name: string): string | null {
+        return name === 'href' ? href : null;
+      },
+      setAttribute(name: string, value: string): void {
+        assert.equal(name, 'href');
+        href = value;
+      },
+      currentHref(): string | null {
+        return href;
+      },
+    };
+  });
+  const location = {
+    href: `https://www.worldmonitor.app/blog/posts/example/${incomingSearch}`,
+    get search(): string {
+      return new URL(this.href).search;
+    },
+  };
+
+  runInNewContext(script, {
+    URL,
+    URLSearchParams,
+    window: { location },
+    document: {
+      querySelectorAll(selector: string) {
+        assert.equal(selector, 'a[data-wm-content-link]');
+        return anchors;
+      },
+    },
+  });
+
+  return anchors.map((anchor) => anchor.currentHref());
+}
+
 describe('blog conversion attribution', () => {
   it('keeps base product URLs clean and puts bounded attribution on handoffs', () => {
-    assert.equal(BLOG_PRODUCT_URLS.dashboard, 'https://www.worldmonitor.app/');
+    assert.equal(BLOG_PRODUCT_URLS.dashboard, 'https://www.worldmonitor.app/dashboard');
     assert.equal(BLOG_PRODUCT_URLS.pro, 'https://www.worldmonitor.app/pro');
     assert.equal(new URL(BLOG_PRODUCT_URLS.pro).search, '');
     assert.equal(BLOG_CONVERSION_SOURCE, 'worldmonitor-blog');
@@ -83,5 +128,30 @@ describe('blog conversion attribution', () => {
     assert.match(post, /article-cta-api/);
     assert.match(post, /article-cta-mcp/);
     assert.equal(BLOG_CONVERSION_EVENT, 'blog-product-cta-click');
+  });
+
+  it('executes the inline UTM propagation contract without clobbering destination values', () => {
+    const hrefs = executeInlineUtmPropagation(
+      `?utm_source=inbound&utm_source=second&utm_medium=email&utm_campaign=${'x'.repeat(120)}&utm_term=term&utm_content=button&ref=affiliate&wm_referral=partner`,
+      [
+        'https://www.worldmonitor.app/dashboard?utm_source=destination&utm_medium=existing',
+        '/pro?utm_campaign=article',
+        null,
+      ],
+    );
+
+    const dashboard = new URL(hrefs[0]!);
+    assert.equal(dashboard.searchParams.get('utm_source'), 'destination');
+    assert.equal(dashboard.searchParams.get('utm_medium'), 'existing');
+    assert.equal(dashboard.searchParams.get('utm_campaign')?.length, 100);
+    assert.equal(dashboard.searchParams.get('utm_term'), 'term');
+    assert.equal(dashboard.searchParams.get('utm_content'), 'button');
+    assert.equal(dashboard.searchParams.has('ref'), false);
+    assert.equal(dashboard.searchParams.has('wm_referral'), false);
+
+    const pro = new URL(hrefs[1]!);
+    assert.equal(pro.searchParams.get('utm_source'), 'inbound');
+    assert.equal(pro.searchParams.get('utm_campaign'), 'article');
+    assert.equal(hrefs[2], null);
   });
 });

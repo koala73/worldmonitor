@@ -11,7 +11,7 @@ export const BLOG_CONVERSION_MEDIUM = 'owned-content';
 export type BlogProductDestination = Exclude<ContentDestination, 'unknown'>;
 
 export const BLOG_PRODUCT_URLS: Record<BlogProductDestination, string> = {
-  dashboard: 'https://www.worldmonitor.app/',
+  dashboard: 'https://www.worldmonitor.app/dashboard',
   pro: 'https://www.worldmonitor.app/pro',
   api: 'https://www.worldmonitor.app/docs/api-reference',
   mcp: 'https://www.worldmonitor.app/docs/mcp-quickstart',

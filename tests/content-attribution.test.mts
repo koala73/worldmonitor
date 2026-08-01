@@ -1,15 +1,37 @@
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
   appendContentAttributionToUrl,
   appendInboundUtmParams,
+  captureContentAttributionFromUrl,
+  CONTENT_ATTRIBUTION_STORAGE_KEY,
   getContentAttributionAnalyticsFields,
   inferLandingPageFamily,
   normalizeContentAttribution,
   parseContentAttribution,
   withContentAttribution,
 } from '../shared/content-attribution.ts';
+
+class MemoryStorage {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+}
+
+afterEach(() => {
+  delete (globalThis as { window?: unknown }).window;
+});
 
 describe('content attribution contract', () => {
   it('parses direct handoffs into the closed reporting dimensions', () => {
@@ -120,5 +142,50 @@ describe('content attribution contract', () => {
     assert.equal(inferLandingPageFamily('/mcp'), 'developer_mcp');
     assert.equal(inferLandingPageFamily('/docs/api-reference'), 'documentation');
     assert.equal(inferLandingPageFamily('/crafted-by-a-user'), 'unknown');
+  });
+
+  it('captures a direct handoff once, cleans the URL, and persists the record', () => {
+    const storage = new MemoryStorage();
+    const location = {
+      href: 'https://www.worldmonitor.app/dashboard'
+        + '?wm_content_source=worldmonitor-blog'
+        + '&wm_content_medium=owned-content'
+        + '&wm_content_campaign=country-risk'
+        + '&wm_content_destination=dashboard'
+        + '&wm_content_placement=article-cta-dashboard'
+        + '&utm_source=chatgpt.com#overview',
+    };
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location,
+        sessionStorage: storage,
+        history: {
+          replaceState(_state: unknown, _title: string, nextUrl: string) {
+            location.href = new URL(nextUrl, location.href).href;
+          },
+        },
+      },
+    });
+
+    const captured = captureContentAttributionFromUrl();
+    assert.ok(captured);
+    assert.deepEqual({ ...captured, capturedAt: undefined }, {
+      source: 'worldmonitor-blog',
+      medium: 'owned-content',
+      campaign: 'country-risk',
+      destination: 'dashboard',
+      placement: 'article-cta-dashboard',
+      landingPageFamily: 'dashboard',
+      capturedAt: undefined,
+    });
+    assert.equal(new URL(location.href).search, '?utm_source=chatgpt.com');
+    assert.equal(new URL(location.href).hash, '#overview');
+
+    const stored = JSON.parse(storage.getItem(CONTENT_ATTRIBUTION_STORAGE_KEY)!);
+    assert.equal(stored.source, 'worldmonitor-blog');
+    assert.equal(stored.destination, 'dashboard');
+    assert.equal(typeof stored.capturedAt, 'number');
+    assert.equal(captureContentAttributionFromUrl(), null);
   });
 });
