@@ -80,8 +80,9 @@ describe('leads gateway public access', { concurrency: 1 }, () => {
     }));
 
     assert.notEqual(res.status, 401, 'gateway must not 401 anonymous contact submissions');
-    assert.equal(res.status, 200);
-    const body = await res.json() as { status?: string };
+    const bodyText = await res.text();
+    assert.equal(res.status, 200, bodyText);
+    const body = JSON.parse(bodyText) as { status?: string };
     assert.equal(body.status, 'sent');
   });
 
