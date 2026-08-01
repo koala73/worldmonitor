@@ -892,13 +892,13 @@ describe('collector alert policy suppresses expected background conditions', () 
     );
   });
 
-  it('stays silent for the known umami#4183 session_data race', () => {
+  it('reports the known umami#4183 session_data race until the server is upgraded', () => {
     assert.equal(
       isAlertWorthyCollectorFailure(
         { kind: 'http', status: 500, prismaCode: 'P2002', constraint: 'session_data_pkey' },
         { writes: 1, failures: 1 },
       ),
-      false,
+      true,
     );
   });
 });
@@ -936,11 +936,13 @@ describe('collector alert policy is wired into the reporting path', () => {
 
     await fire(1);
     assert.equal(getCollectorHealthForTesting().noiseReported, true, 'the fifth crosses the floor');
+    assert.equal(getCollectorHealthForTesting().reportedFailureSignatures, 1, 'the window emits one event per signature');
 
     await fire(10);
     const after = getCollectorHealthForTesting();
     assert.equal(after.writes, 15, 'writes keep accruing');
     assert.equal(after.noiseReported, true, 'the latch stays set — no second event this window');
+    assert.equal(after.reportedFailureSignatures, 1, 'repeated failures stay latched');
   });
 });
 

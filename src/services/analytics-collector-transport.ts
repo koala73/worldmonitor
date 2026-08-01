@@ -6,7 +6,7 @@
  * requests when a page issues concurrent writes for one session. This module
  * serializes our writes through a single in-flight slot so we stop generating
  * that contention ourselves, and turns the tracker's swallowed failures into an
- * observable delivery signal.
+ * observable delivery signal while the server upgrade is pending.
  *
  * Two invariants keep this from becoming a worse failure than the one it fixes:
  *
@@ -27,6 +27,7 @@ import {
   extractCollectorFailureMetadata,
   isBotFilteredBody,
   isSessionDataConflict,
+  WRITE_RECEIPT_FIELDS,
 } from '../../shared/collector-failure-metadata';
 
 export type CollectorFailure = {
@@ -98,9 +99,6 @@ const RETRYABLE_CRITICAL_EVENT_STATUSES = new Set([408, 425, 429]);
  */
 const RETRYABLE_IDENTITY_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
-/** Fields Umami returns on a genuine write. Mirrors the CI monitor's receipt check. */
-const WRITE_RECEIPT_FIELDS = ['cache', 'sessionId', 'visitId'] as const;
-
 type CollectorRequest = {
   input: RequestInfo | URL;
   init?: RequestInit;
@@ -130,7 +128,7 @@ let collectorFetchWrapper: typeof window.fetch | null = null;
 let collectorUnloadFlush: (() => void) | null = null;
 let collectorVisibilityFlush: (() => void) | null = null;
 let collectorTransportGeneration = 0;
-let collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0, noiseReported: false };
+let collectorHealthWindow = newCollectorHealthWindow();
 let pendingObservation: ObservationSlot | null = null;
 /**
  * Non-zero while this module is dispatching. If a foreign wrapper installed on
@@ -299,6 +297,25 @@ type CollectorHealthSnapshot = {
   noiseReported?: boolean;
 };
 
+type CollectorHealthWindow = CollectorHealthSnapshot & {
+  startedAt: number;
+  reportedFailureSignatures: Set<string>;
+};
+
+function newCollectorHealthWindow(startedAt = 0): CollectorHealthWindow {
+  return {
+    startedAt,
+    writes: 0,
+    failures: 0,
+    noiseReported: false,
+    reportedFailureSignatures: new Set(),
+  };
+}
+
+function collectorFailureSignature(failure: CollectorFailure): string {
+  return [failure.kind, failure.status ?? 'none', failure.prismaCode ?? 'none', failure.constraint ?? 'none'].join('|');
+}
+
 /**
  * Whether a failure is worth a Sentry event, as opposed to merely worth a
  * console warning.
@@ -312,8 +329,6 @@ export function isAlertWorthyCollectorFailure(
   failure: CollectorFailure,
   window: CollectorHealthSnapshot,
 ): boolean {
-  // Known, unfixed upstream race (umami#4183). Expected background condition.
-  if (isKnownSessionDataConflict(failure)) return false;
   // The collector deliberately discarded a bot's write. Working as designed.
   if (failure.botFiltered) return false;
   if (ENVIRONMENT_NOISE_KINDS.has(failure.kind)) {
@@ -332,7 +347,7 @@ export function isAlertWorthyCollectorFailure(
 function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFailure | null): void {
   const now = Date.now();
   if (collectorHealthWindow.startedAt === 0 || now - collectorHealthWindow.startedAt >= HEALTH_WINDOW_MS) {
-    collectorHealthWindow = { startedAt: now, writes: 0, failures: 0, noiseReported: false };
+    collectorHealthWindow = newCollectorHealthWindow(now);
   }
   collectorHealthWindow.writes += 1;
 
@@ -372,6 +387,14 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
   // actionable failures get an event.
   if (!isAlertWorthyCollectorFailure(failure, collectorHealthWindow)) return;
   if (ENVIRONMENT_NOISE_KINDS.has(failure.kind)) collectorHealthWindow.noiseReported = true;
+
+  // Keep every failure observable through the aggregate counters and console,
+  // but emit at most one Sentry event per redacted failure signature per
+  // minute. The upstream race can affect every concurrent write; one event
+  // with the live rate and Prisma identifiers is enough to page on it.
+  const signature = collectorFailureSignature(failure);
+  if (collectorHealthWindow.reportedFailureSignatures.has(signature)) return;
+  collectorHealthWindow.reportedFailureSignatures.add(signature);
 
   try {
     enqueueSentryCall((s) => s.captureMessage('Umami collector write failed', {
@@ -651,7 +674,7 @@ export function resetCollectorTransportForTesting(): void {
   collectorVisibilityFlush = null;
   collectorFetchOriginal = null;
   collectorFetchWrapper = null;
-  collectorHealthWindow = { startedAt: 0, writes: 0, failures: 0, noiseReported: false };
+  collectorHealthWindow = newCollectorHealthWindow();
 }
 
 /** Test-only: current rolling health window. */
@@ -659,10 +682,12 @@ export function getCollectorHealthForTesting(): {
   writes: number;
   failures: number;
   noiseReported: boolean;
+  reportedFailureSignatures: number;
 } {
   return {
     writes: collectorHealthWindow.writes,
     failures: collectorHealthWindow.failures,
-    noiseReported: collectorHealthWindow.noiseReported,
+    noiseReported: collectorHealthWindow.noiseReported ?? false,
+    reportedFailureSignatures: collectorHealthWindow.reportedFailureSignatures.size,
   };
 }

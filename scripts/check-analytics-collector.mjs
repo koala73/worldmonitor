@@ -15,12 +15,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { realpathSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isMainModule } from './lib/main-module.mjs';
 
 import {
   extractCollectorFailureMetadata,
   isBotFilteredBody,
+  WRITE_RECEIPT_FIELDS,
 } from '../shared/collector-failure-metadata.js';
 
 export { extractCollectorFailureMetadata, isBotFilteredBody };
@@ -50,7 +50,6 @@ const BROWSER_USER_AGENT =
 const REQUEST_TIMEOUT_MS = 20_000;
 const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3_000;
-const WRITE_RECEIPT_FIELDS = Object.freeze(['cache', 'sessionId', 'visitId']);
 
 /**
  * Write canaries are fired as synchronized BURSTS, not through the liveness
@@ -61,18 +60,6 @@ const WRITE_RECEIPT_FIELDS = Object.freeze(['cache', 'sessionId', 'visitId']);
  */
 const WRITE_CANARY_BURSTS = 3;
 const WRITE_BURST_DELAY_MS = 3_000;
-
-/**
- * Alert threshold for the attempt-level write failure rate.
- *
- * Umami #4183 is unfixed upstream and produced a 4-8% background failure rate
- * in production, so alerting on any single failure would page on a known,
- * accepted condition and train everyone to ignore this monitor — the alert
- * fatigue path back to #5565. This sits above that band so a step change pages
- * while the known race does not. Tune once a baseline exists in the job logs;
- * the rate is printed on every run precisely so the baseline is observable.
- */
-const WRITE_FAILURE_ALERT_RATE = 0.25;
 
 const ANALYTICS_CANARY_PAYLOAD = Object.freeze({
   website: ANALYTICS_CANARY_WEBSITE_ID,
@@ -363,10 +350,12 @@ export async function runCollectorChecks({
   const livenessFailures = summarizeProbeFailures(livenessProbes, resultsByName);
   const writeSummary = summarizeWriteCanaryResults(writeRun.attempts);
 
-  // A write path that is entirely down is the #5565 class and pages regardless
-  // of the rate threshold, which exists only to tolerate the known #4183 race.
+  // The write canary is the acceptance gate for #5715: the collector must
+  // accept every realistic POST in every burst. A single P2002 or other failed
+  // write is actionable; the rate remains in the report for diagnosis, not as
+  // a tolerance band for a known database race.
   const writePathDead = writeSummary.total > 0 && writeSummary.failed === writeSummary.total;
-  const writeRateBreached = writeSummary.failureRate > WRITE_FAILURE_ALERT_RATE;
+  const hasWriteFailures = writeSummary.failed > 0;
 
   return {
     origin,
@@ -374,8 +363,8 @@ export async function runCollectorChecks({
     livenessFailures,
     writeSummary,
     writePathDead,
-    writeRateBreached,
-    alerting: livenessFailures.length > 0 || writePathDead || writeRateBreached,
+    hasWriteFailures,
+    alerting: livenessFailures.length > 0 || hasWriteFailures,
   };
 }
 
@@ -403,9 +392,9 @@ function reportCollectorChecks(report) {
   }
   if (report.writePathDead) {
     console.error('- Write path is fully down: every canary attempt failed.');
-  } else if (report.writeRateBreached) {
+  } else if (report.hasWriteFailures) {
     console.error(
-      `- Write failure rate ${writeRate} exceeds the ${(WRITE_FAILURE_ALERT_RATE * 100).toFixed(0)}% threshold (known Umami #4183 baseline is 4-8%).`,
+      `- Write canary has ${writeSummary.failed}/${writeSummary.total} failed attempts; any failed POST is actionable after #5715 remediation.`,
     );
   }
   // Deduplicate by reason so a race that hits every burst reads as one line.
@@ -426,15 +415,7 @@ async function main() {
   if (report.alerting) process.exitCode = 1;
 }
 
-// realpath BOTH sides: through a symlinked checkout Node sets import.meta.url
-// to the realpath while argv[1] keeps the symlink, and the naive comparison
-// silently no-ops the whole monitor (exit 0, nothing checked).
-const isMainModule =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(realpathSync(process.argv[1])).href ===
-    pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
-
-if (isMainModule) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

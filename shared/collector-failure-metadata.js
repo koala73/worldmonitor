@@ -16,6 +16,9 @@
  * @typedef {{ prismaCode?: string, constraint?: string }} CollectorFailureMetadata
  */
 
+/** Fields present in a genuine Umami write receipt. */
+export const WRITE_RECEIPT_FIELDS = Object.freeze(['cache', 'sessionId', 'visitId']);
+
 /**
  * Prisma error codes are always `P` + 4 digits, so this bounds the value to 5
  * characters and cannot pass arbitrary text through.

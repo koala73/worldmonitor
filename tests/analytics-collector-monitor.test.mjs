@@ -266,6 +266,7 @@ describe('scheduled analytics collector monitor', () => {
 
     assert.ok(report.writeSummary.failed > 0, 'a failed attempt must survive a later success');
     assert.ok(report.writeSummary.failureRate > 0, 'the reported rate must not be 0.0%');
+    assert.equal(report.alerting, true, 'any failed write attempt is actionable after #5715 remediation');
     assert.match(report.writeSummary.failures[0].reason, /P2002/);
   });
 
@@ -283,10 +284,10 @@ describe('scheduled analytics collector monitor', () => {
     assert.equal(report.alerting, true, 'a dead write path must alert on its own');
   });
 
-  it('tolerates the known #4183 background rate without paging', async () => {
-    // One failing attempt out of a full run sits under the alert threshold: the
-    // upstream race is unfixed and alerting on it would train everyone to
-    // ignore this monitor.
+  it('alerts on any known #4183 conflict until the upstream race is remediated', async () => {
+    // A single collision is enough to fail the acceptance contract: every
+    // canary burst must be 4/4 successful, and two consecutive scheduled runs
+    // must remain clean after the upstream upsert fix is deployed.
     let seen = 0;
     const report = await runCollectorChecks({
       sleep: async () => {},
@@ -299,8 +300,8 @@ describe('scheduled analytics collector monitor', () => {
     });
 
     assert.ok(report.writeSummary.failureRate > 0, 'the rate is still reported');
-    assert.equal(report.writeRateBreached, false);
-    assert.equal(report.alerting, false, 'the known background race must not page');
+    assert.equal(report.hasWriteFailures, true);
+    assert.equal(report.alerting, true, 'the known race must remain visible until fixed');
   });
 
   it('reports every failing probe, in probe order, and nothing else', () => {
