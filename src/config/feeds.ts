@@ -172,8 +172,6 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     //   ≥1 independent RU (today: Meduza and/or Moscow Times)
     // Never default-enable TASS / RT / RT Russia (state propaganda; catalog opt-in only).
     // Default EN path must not be “Western wires + RU state media only.”
-    // Additional UA institutional / frontline EN sources (Ukrainska Pravda EN, NV EN,
-    // Ukrinform, Suspilne, …) are deferred to the P1 Ukraine depth pack (#5951).
     // Independent / exile / UA outlets below are eligible for defaults; state media is not.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
@@ -187,6 +185,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
     // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Ukraine depth pack (#5951) — local institutional + independent sources
+    { name: 'Ukrinform', url: rss('https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Suspilne', url: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Ukrainska Pravda EN', url: rss('https://news.google.com/rss/search?q=site:euromaidanpress.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'NV EN', url: rss('https://news.google.com/rss/search?q=site:english.nv.ua+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Hromadske EN', url: rss('https://news.google.com/rss/search?q=site:hromadske.ua+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Moscow Times', url: rss('https://www.themoscowtimes.com/rss/news') },
   ],
   middleeast: [
@@ -269,6 +273,8 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'FPRI', url: rss('https://www.fpri.org/feed/') },
     // Jamestown Foundation - Eurasia/China/Terrorism analysis
     { name: 'Jamestown', url: rss('https://jamestown.org/feed/') },
+    // ISW — Institute for the Study of War, daily Ukraine frontline operational assessments
+    { name: 'ISW', url: rss('https://news.google.com/rss/search?q=site:understandingwar.org+when:2d&hl=en-US&gl=US&ceid=US:en') },
   ],
   crisis: [
     { name: 'CrisisWatch', url: rss('https://www.crisisgroup.org/rss') },
@@ -1052,6 +1058,8 @@ export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
   'Rzeczpospolita',
   'Meduza',
   'Moscow Times',
+  'Ukrainska Pravda EN',
+  'NV EN',
 ] as const;
 
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
@@ -1065,6 +1073,8 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   europe: [
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
     ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+    'Ukrainska Pravda EN',
+    'NV EN',
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
@@ -1076,7 +1086,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   finance: ['CNBC', 'MarketWatch', 'Yahoo Finance', 'Financial Times', 'Reuters Business'],
   gov: ['White House', 'State Dept', 'Pentagon', 'UN News', 'CISA', 'Treasury', 'DOJ', 'CDC'],
   layoffs: ['Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News'],
-  thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks'],
+  thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks', 'ISW'],
   crisis: ['CrisisWatch', 'IAEA', 'WHO', 'UNHCR'],
   energy: ['Oil & Gas', 'Nuclear Energy', 'Reuters Energy', 'Mining & Resources'],
 };

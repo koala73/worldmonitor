@@ -64,6 +64,12 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // DEFAULT_ENABLED_SOURCES.europe. No non-en `lang` tags — buildDigest
       // filters `!f.lang || f.lang === lang`, so lang:pl/ru would never ship to EN.
       { name: 'Kyiv Independent', url: gn('site:kyivindependent.com when:3d') },
+      // Ukraine depth pack (#5951) — local institutional + independent sources
+      { name: 'Ukrinform', url: gn('site:ukrinform.net when:3d') },
+      { name: 'Suspilne', url: gn('site:suspilne.media when:2d') },
+      { name: 'Ukrainska Pravda EN', url: gn('site:euromaidanpress.com when:2d') },
+      { name: 'NV EN', url: gn('site:english.nv.ua when:2d') },
+      { name: 'Hromadske EN', url: gn('site:hromadske.ua when:3d') },
       // Google News returned HTTP 200 with no items for these site queries;
       // use the outlets' live native RSS feeds for the EN digest path too.
       { name: 'TVN24', url: 'https://tvn24.pl/swiat.xml' },
@@ -180,6 +186,8 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Foreign Affairs', url: 'https://www.foreignaffairs.com/rss.xml' },
       { name: 'War on the Rocks', url: 'https://warontherocks.com/feed/' },
       { name: 'CSIS', url: 'https://www.csis.org/rss.xml' },
+      // ISW — Institute for the Study of War, daily Ukraine frontline operational assessments
+      { name: 'ISW', url: gn('site:understandingwar.org when:2d') },
     ],
     crisis: [
       { name: 'CrisisWatch', url: 'https://www.crisisgroup.org/rss' },

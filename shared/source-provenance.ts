@@ -39,6 +39,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'NHK World': 'mainstream', 'Nikkei Asia': 'market',
   // Independent RU exile / UA English primary (default-eligible under #5950 balance rule)
   'Meduza': 'mainstream', 'Moscow Times': 'mainstream', 'Kyiv Independent': 'mainstream',
+  // Ukraine depth pack (#5951)
+  'Ukrinform': 'wire', 'Suspilne': 'mainstream',
+  'Ukrainska Pravda EN': 'mainstream', 'NV EN': 'mainstream', 'Hromadske EN': 'mainstream', 'ISW': 'intel',
 
   // Mainstream outlets
   'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
@@ -232,6 +235,13 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'DW News': { risk: 'medium', stateAffiliated: 'Germany', note: 'German state-funded, editorially independent' },
   'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
   'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian English-language primary on Russia-Ukraine war (#5950 balance: dedicated UA voice)' },
+  // Ukraine depth pack (#5951) — local institutions + frontline assessment
+  'Ukrinform': { risk: 'high', stateAffiliated: 'Ukraine', note: 'Ukrainian national state news agency (UKRINFORM)' },
+  'Suspilne': { risk: 'medium', stateAffiliated: 'Ukraine', note: 'Ukrainian public broadcaster, state-funded' },
+  'Ukrainska Pravda EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Independent Ukrainian outlet, high-signal English edition' },
+  'NV EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'New Voice of Ukraine English edition, independent' },
+  'Hromadske EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian independent public broadcaster (English)' },
+  'ISW': { risk: 'low', note: 'Institute for the Study of War, nonpartisan research nonprofit, daily frontline assessments' },
   'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent English-language Russian outlet, critical of Kremlin' },
   // Independent RU exile press — not state media; eligible for EN defaults (#5950)
   'Meduza': { risk: 'low', knownBiases: ['Anti-Kremlin'], note: 'Independent Russian exile outlet (Riga); English + Russian RSS' },
