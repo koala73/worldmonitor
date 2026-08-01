@@ -36,6 +36,8 @@ test('parsePoolCounts is a no-op when no floors are configured', () => {
 test('hasPoolCoverageShortfall fails closed on missing counts and respects floors', () => {
   assert.equal(hasPoolCoverageShortfall(null, FLOORS), true);
   assert.equal(hasPoolCoverageShortfall(undefined, FLOORS), true);
+  assert.equal(hasPoolCoverageShortfall({ geopolitical: 1, tech: 1 }, FLOORS), true);
+  assert.equal(hasPoolCoverageShortfall({ geopolitical: 1, tech: '1', finance: 1 }, FLOORS), true);
   assert.equal(hasPoolCoverageShortfall({ geopolitical: 0, tech: 1, finance: 1 }, FLOORS), true);
   assert.equal(hasPoolCoverageShortfall({ geopolitical: 1, tech: 1, finance: 1 }, FLOORS), false);
   assert.equal(hasPoolCoverageShortfall({ geopolitical: 1, tech: 1, finance: 36 }, FLOORS), false);

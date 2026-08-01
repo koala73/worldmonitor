@@ -31,5 +31,8 @@ export function parsePoolCounts(value, minimums) {
 export function hasPoolCoverageShortfall(counts, minimums) {
   if (!minimums) return false;
   if (!counts) return true;
-  return Object.entries(minimums).some(([pool, minimum]) => counts[pool] < minimum);
+  return Object.entries(minimums).some(([pool, minimum]) => {
+    const count = counts[pool];
+    return !Number.isSafeInteger(count) || count < minimum;
+  });
 }
