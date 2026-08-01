@@ -403,7 +403,18 @@ const SEED_META = {
     // without treating ordinary pool-volume variation as an incident.
     minPoolCounts: PREDICTION_MARKET_MIN_POOL_COUNTS,
   },
-  newsInsights:     { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
+  newsInsights:     {
+    key: 'seed-meta:news:insights',
+    maxStaleMin: 30,
+    // `fetchedAt` is deliberately held at the served LKG timestamp when a
+    // synthesis is rejected. This separate bounded contract warns before the
+    // generic 30-minute seed-age gate when repeated attempts keep failing.
+    synthesisFailure: {
+      warnAfterConsecutive: 2,
+      warnAfterAgeMin: 20,
+      warnWithoutSuccess: true,
+    },
+  },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
   newsFeedHealth:   { key: 'seed-meta:news:feed-health',        maxStaleMin: 2880 },
   newsRecallBenchmark: { key: 'seed-meta:news:recall-benchmark', maxStaleMin: 2880 },
@@ -917,12 +928,12 @@ function keyHasData(redisKey, len) {
 
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, synthesisFailure: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, synthesisFailure: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -949,6 +960,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       poolCounts,
       contentAge: null,
       errorCode,
+      synthesisFailure: null,
     };
   }
   let seedAge = null;
@@ -1002,6 +1014,45 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
+  let synthesisFailure = null;
+  if (seedCfg.synthesisFailure) {
+    const consecutiveFailures = Number.isInteger(meta?.consecutiveFailures)
+      && meta.consecutiveFailures >= 0
+      ? Math.min(meta.consecutiveFailures, 100)
+      : 0;
+    const lastAttemptAt = Number.isFinite(Number(meta?.lastAttemptAt)) && Number(meta.lastAttemptAt) > 0
+      ? Number(meta.lastAttemptAt)
+      : null;
+    const lastSuccessAt = Number.isFinite(Number(meta?.lastSuccessAt)) && Number(meta.lastSuccessAt) > 0
+      ? Number(meta.lastSuccessAt)
+      : null;
+    const synthesisFailureAgeMin = lastAttemptAt == null
+      ? null
+      : Math.round((now - lastAttemptAt) / 60_000);
+    const lastSynthesisFailureCode = typeof meta?.lastSynthesisFailureCode === 'string'
+      && /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER)$/.test(meta.lastSynthesisFailureCode)
+      ? meta.lastSynthesisFailureCode
+      : null;
+    const servedGeneratedAt = typeof meta?.servedGeneratedAt === 'string'
+      && meta.servedGeneratedAt.length <= 64
+      ? meta.servedGeneratedAt
+      : null;
+    const warning = consecutiveFailures > 0 && (
+      consecutiveFailures >= seedCfg.synthesisFailure.warnAfterConsecutive
+      || (synthesisFailureAgeMin != null
+        && synthesisFailureAgeMin >= seedCfg.synthesisFailure.warnAfterAgeMin)
+      || (seedCfg.synthesisFailure.warnWithoutSuccess && lastSuccessAt == null)
+    );
+    synthesisFailure = {
+      consecutiveFailures,
+      lastAttemptAt,
+      lastSuccessAt,
+      servedGeneratedAt,
+      synthesisFailureAgeMin,
+      lastSynthesisFailureCode,
+      warning,
+    };
+  }
   return {
     hasMeta: meta != null,
     seedAge,
@@ -1014,6 +1065,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     poolCounts,
     contentAge,
     errorCode,
+    synthesisFailure,
   };
 }
 
@@ -1060,6 +1112,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     poolCounts,
     contentAge,
     errorCode,
+    synthesisFailure,
   } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
@@ -1080,6 +1133,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     status = 'SEED_ERROR';
   }
   else if (sourceBlocked && hasData && records > 0 && seedStale !== true) status = 'SOURCE_BLOCKED';
+  else if (synthesisFailure?.warning) status = 'SEED_ERROR';
   else if (seedError) status = 'SEED_ERROR';
   else if (!hasData) {
     if (cascadeCovered) status = 'OK_CASCADE';
@@ -1140,6 +1194,20 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (contentAge) {
     entry.contentAgeMin = contentAge.contentAgeMin;          // null when contentMeta returned null
     entry.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
+  if (synthesisFailure) {
+    entry.consecutiveFailures = synthesisFailure.consecutiveFailures;
+    if (synthesisFailure.lastAttemptAt != null) entry.lastAttemptAt = synthesisFailure.lastAttemptAt;
+    if (synthesisFailure.lastSuccessAt != null || synthesisFailure.consecutiveFailures > 0) {
+      entry.lastSuccessAt = synthesisFailure.lastSuccessAt;
+    }
+    if (synthesisFailure.servedGeneratedAt != null) entry.servedGeneratedAt = synthesisFailure.servedGeneratedAt;
+    if (synthesisFailure.synthesisFailureAgeMin != null && synthesisFailure.consecutiveFailures > 0) {
+      entry.synthesisFailureAgeMin = synthesisFailure.synthesisFailureAgeMin;
+    }
+    if (status === 'SEED_ERROR' && synthesisFailure.lastSynthesisFailureCode) {
+      entry.lastSynthesisFailureCode = synthesisFailure.lastSynthesisFailureCode;
+    }
   }
   return entry;
 }
