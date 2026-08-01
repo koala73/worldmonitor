@@ -287,6 +287,19 @@ const ENVIRONMENT_NOISE_MIN_WRITES = 5;
 const ENVIRONMENT_NOISE_MIN_FAILURE_RATE = 0.5;
 
 /**
+ * As much of the rolling health window as the alert policy reads.
+ *
+ * `noiseReported` is optional so a caller reasoning about a hypothetical window
+ * — every test in the policy suite — can omit the latch and get the
+ * first-occurrence answer.
+ */
+type CollectorHealthSnapshot = {
+  writes: number;
+  failures: number;
+  noiseReported?: boolean;
+};
+
+/**
  * Whether a failure is worth a Sentry event, as opposed to merely worth a
  * console warning.
  *
@@ -297,7 +310,7 @@ const ENVIRONMENT_NOISE_MIN_FAILURE_RATE = 0.5;
  */
 export function isAlertWorthyCollectorFailure(
   failure: CollectorFailure,
-  window: { writes: number; failures: number; noiseReported?: boolean },
+  window: CollectorHealthSnapshot,
 ): boolean {
   // Known, unfixed upstream race (umami#4183). Expected background condition.
   if (isKnownSessionDataConflict(failure)) return false;
