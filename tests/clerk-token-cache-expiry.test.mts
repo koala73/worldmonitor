@@ -214,15 +214,13 @@ describe('getClerkToken', () => {
 
   it('does not return a token that expires during a failed refresh', async () => {
     const originalDateNow = Date.now;
-    let now = 1_760_000_000_000;
-    Date.now = () => now;
+    const now = 1_760_000_000_000;
+    let dateNowReads = 0;
+    Date.now = () => (dateNowReads++ < 2 ? now : now + 6_000);
     const nearExpiry = tokenExpiringAt(now + 5_000);
     const session = {
       async getToken(options: { template?: string; skipCache?: boolean } = {}) {
-        if (options.skipCache) {
-          now += 6_000;
-          throw new Error('network');
-        }
+        if (options.skipCache) throw new Error('network');
         return nearExpiry;
       },
     };
