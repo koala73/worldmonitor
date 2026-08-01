@@ -11,6 +11,11 @@ import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
+import {
+  getContentAttributionAnalyticsFields,
+  getContentAttributionForAnalytics,
+  withContentAttribution,
+} from '../../shared/content-attribution';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_IDENTIFY_ENDPOINT = new URL('/api/send', UMAMI_SCRIPT_SRC).href;
@@ -121,6 +126,7 @@ const EVENTS = {
   'checkout-start': true,
   'checkout-success': true,
   'checkout-failed': true,
+  'content-handoff': true,
   // Premium entitlement health — a client that believes it is Pro received a
   // server-side denial. This is trend telemetry, never an authorization signal.
   'entitlement-desync': true,
@@ -400,9 +406,17 @@ function loadUmamiScript(): void {
 
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
 export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
-  if (!sendUmamiCall({ kind: 'track', event, data })) {
-    queueUmamiCall({ kind: 'track', event, data });
+  const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
+  if (!sendUmamiCall({ kind: 'track', event, data: enrichedData })) {
+    queueUmamiCall({ kind: 'track', event, data: enrichedData });
   }
+}
+
+/** Fire once for a freshly captured content landing, not on every reload. */
+export function trackContentHandoff(): void {
+  const attribution = getContentAttributionForAnalytics();
+  if (!attribution) return;
+  track('content-handoff', getContentAttributionAnalyticsFields(attribution));
 }
 
 export function initAnalytics(): void {

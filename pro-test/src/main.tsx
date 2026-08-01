@@ -5,7 +5,12 @@ import { ensureTurnstileScript } from './turnstile';
 import { initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
+import { trackContentHandoff } from './services/checkout';
+import { captureContentAttributionFromUrl } from '../../shared/content-attribution';
 import './index.css';
+
+const capturedContentAttribution = captureContentAttributionFromUrl();
+if (capturedContentAttribution) trackContentHandoff();
 
 initSentry();
 initDebugBearRum();

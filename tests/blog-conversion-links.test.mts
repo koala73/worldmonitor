@@ -9,6 +9,7 @@ import {
   BLOG_CONVERSION_MEDIUM,
   BLOG_CONVERSION_SOURCE,
   BLOG_PRODUCT_URLS,
+  buildBlogProductLinkUrl,
   normalizeBlogAttributionToken,
 } from '../blog-site/src/lib/blog-conversion-attribution.ts';
 
@@ -16,12 +17,27 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 
 describe('blog conversion attribution', () => {
-  it('keeps internal product links clean so inbound acquisition UTMs survive', () => {
+  it('keeps base product URLs clean and puts bounded attribution on handoffs', () => {
     assert.equal(BLOG_PRODUCT_URLS.dashboard, 'https://www.worldmonitor.app/');
     assert.equal(BLOG_PRODUCT_URLS.pro, 'https://www.worldmonitor.app/pro');
     assert.equal(new URL(BLOG_PRODUCT_URLS.pro).search, '');
     assert.equal(BLOG_CONVERSION_SOURCE, 'worldmonitor-blog');
     assert.equal(BLOG_CONVERSION_MEDIUM, 'owned-content');
+
+    for (const destination of ['dashboard', 'pro', 'api', 'mcp'] as const) {
+      const url = new URL(buildBlogProductLinkUrl(
+        destination,
+        `article-cta-${destination}`,
+        'A useful article',
+      ));
+      assert.equal(url.searchParams.get('wm_content_source'), BLOG_CONVERSION_SOURCE);
+      assert.equal(url.searchParams.get('wm_content_medium'), BLOG_CONVERSION_MEDIUM);
+      assert.equal(url.searchParams.get('wm_content_campaign'), 'a-useful-article');
+      assert.equal(url.searchParams.get('wm_content_destination'), destination);
+      assert.equal(url.searchParams.get('wm_content_placement'), `article-cta-${destination}`);
+      assert.equal(url.searchParams.has('ref'), false);
+      assert.equal(url.searchParams.has('wm_referral'), false);
+    }
   });
 
   it('normalizes empty and high-cardinality values', () => {
@@ -57,10 +73,15 @@ describe('blog conversion attribution', () => {
       /data-domains="[^"]*\bwww\.worldmonitor\.app\b[^"]*"/,
     );
     assert.match(trackedLink, /BLOG_CONVERSION_EVENT/);
+    assert.match(trackedLink, /data-wm-content-link/);
     assert.match(trackedLink, /data-umami-event-source/);
     assert.match(trackedLink, /data-umami-event-medium/);
+    assert.match(trackedLink, /data-umami-event-content-campaign/);
+    assert.match(base, /utm_source/);
     assert.match(post, /article-cta-dashboard/);
     assert.match(post, /article-cta-pro/);
+    assert.match(post, /article-cta-api/);
+    assert.match(post, /article-cta-mcp/);
     assert.equal(BLOG_CONVERSION_EVENT, 'blog-product-cta-click');
   });
 });
