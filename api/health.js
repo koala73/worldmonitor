@@ -518,11 +518,11 @@ const SEED_META = {
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
   blsSeries:           { key: 'seed-meta:economic:bls-series',                maxStaleMin: 2880 }, // daily seed; 2880min = 48h = 2x interval
-  sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 },
+  sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 }, // 6h cron; 12h = 2× interval, before the 18h data TTL
   crossSourceSignals:  { key: 'seed-meta:intelligence:cross-source-signals',  maxStaleMin: 30 }, // 15min cron; 30min = 2x interval
   regionalSnapshots:   { key: 'seed-meta:intelligence:regional-snapshots',    maxStaleMin: 720 }, // 6h cron via seed-bundle-derived-signals; 720min = 12h = 2x interval
   regionalBriefs:      { key: 'seed-meta:intelligence:regional-briefs',      maxStaleMin: 20160 }, // weekly cron; 20160min = 14 days = 2x interval
-  sanctionsEntities:   { key: 'seed-meta:sanctions:entities',                 maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
+  sanctionsEntities:   { key: 'seed-meta:sanctions:entities',                 maxStaleMin: 720 }, // same 6h producer; co-pinned with pressure so both alarm before the 18h TTL
   radiationWatch:      { key: 'seed-meta:radiation:observations',             maxStaleMin: 30 },
   groceryBasket:       { key: 'seed-meta:economic:grocery-basket',            maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
   bigmac:              { key: 'seed-meta:economic:bigmac',                    maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days

@@ -314,9 +314,9 @@
   },
   "soonBadge": "Σύντομα",
   "meta": {
-    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP για Claude & GPT",
-    "description": "Το γεωπολιτικό στρώμα AI. Ρωτήστε το, εγγραφείτε σε αυτό, δημιουργήστε πάνω του. WM Analyst chat σε 30+ live services, ένα AI digest που παραδίδεται καθημερινά, δύο φορές την ημέρα ή εβδομαδιαία σε Slack, Discord, Telegram, Email ή webhook, ένα custom widget builder (HTML/CSS/JS + AI), και MCP connectors για Claude, GPT και custom LLMs.",
-    "ogTitle": "World Monitor Pro — Το Γεωπολιτικό Στρώμα AI",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "Το World Monitor Pro προσθέτει έναν αναλυτή AI, προγραμματισμένα δελτία πληροφοριών, προσαρμοσμένα γραφήματα, έρευνα αγοράς και πρόσβαση MCP σε live γεωπολιτικά και χρηματοοικονομικά δεδομένα.",
+    "ogTitle": "World Monitor Pro | Γεωπολιτική AI",
     "ogDescription": "Ρωτήστε το, εγγραφείτε σε αυτό, δημιουργήστε πάνω του. WM Analyst chat, ένα AI digest σύμφωνα με το πρόγραμμά σας (καθημερινά, δύο φορές την ημέρα ή εβδομαδιαία), custom widget builder και MCP για Claude/GPT — σε 30+ live services με ένα κλειδί."
   },
   "pricing": {

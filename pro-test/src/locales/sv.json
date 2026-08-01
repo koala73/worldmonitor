@@ -314,9 +314,9 @@
   },
   "soonBadge": "Snart",
   "meta": {
-    "title": "World Monitor Pro — AI-analytiker, personaliserat informationscenter, MCP för Claude & GPT",
-    "description": "Geopolitikens AI-skikt. Fråga den, prenumerera på den, bygga på den. WM Analyst-chatt över 30+ live-tjänster, en AI-sammanfattning levererad dagligen, två gånger dagligen eller veckovis till Slack, Discord, Telegram, E-post eller webhook, en anpassad widgetbyggare (HTML/CSS/JS + AI) och MCP-kopplingar för Claude, GPT och anpassade LLM:er.",
-    "ogTitle": "World Monitor Pro — Geopolitikens AI-skikt",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "World Monitor Pro lägger till en AI-analytiker, schemalagda intelligenssammanfattningar, anpassade widgetar, marknadsundersökningar och MCP-åtkomst till live-data för geopolitik och finans.",
+    "ogTitle": "World Monitor Pro | Geopolitisk AI",
     "ogDescription": "Fråga den, prenumerera på den, bygga på den. WM Analyst-chatt, en AI-sammanfattning enligt ditt schema (dagligen, två gånger dagligen eller veckovis), anpassad widgetbyggare och MCP för Claude/GPT — över 30+ live-tjänster under en nyckel."
   },
   "pricing": {

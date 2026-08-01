@@ -8,16 +8,50 @@
  *
  * IndexNow requires all URLs in one request to share the same host.
  * Submits separate batches per subdomain.
+ * The committed root sitemap and blog source corpus are the submission
+ * inventory, so adding a canonical page does not require a second URL list.
  */
 
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const INDEXNOW_KEY = 'a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b';
 const APEX_INDEXNOW_KEY = '315df476ff0a007d587f6a7455aa3e4e';
 const BLOG_DIR = new URL('../blog-site/src/content/blog/', import.meta.url);
+const BLOG_AUTHORS_DIR = new URL('../blog-site/src/pages/authors/', import.meta.url);
+const GLOSSARY_SOURCE = new URL('../blog-site/src/data/glossary.ts', import.meta.url);
+const ROOT_SITEMAP = new URL('../public/sitemap.xml', import.meta.url);
 const USER_AGENT = 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)';
+
+function decodeXml(value) {
+  return String(value)
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+}
+
+function uniqueSorted(urls) {
+  return [...new Set(urls)].sort();
+}
+
+function getRootSitemapUrls() {
+  const source = readFileSync(ROOT_SITEMAP, 'utf8');
+  const urls = [...source.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+    .map((match) => decodeXml(match[1].trim()));
+  if (urls.length === 0) throw new Error(`${ROOT_SITEMAP.pathname} contains no canonical URLs`);
+  return urls;
+}
+
+const ROOT_SITEMAP_URLS = getRootSitemapUrls();
+
+function getSitemapUrlsForHost(host) {
+  const urls = ROOT_SITEMAP_URLS.filter((value) => new URL(value).hostname === host);
+  if (urls.length === 0) throw new Error(`${ROOT_SITEMAP.pathname} contains no URLs for ${host}`);
+  return urls;
+}
 
 function getBlogPostUrls() {
   return readdirSync(BLOG_DIR)
@@ -26,12 +60,39 @@ function getBlogPostUrls() {
     .sort();
 }
 
-const WWW_URLS = [
-  'https://www.worldmonitor.app/',
-  'https://www.worldmonitor.app/pro',
-  'https://www.worldmonitor.app/blog/',
-  ...getBlogPostUrls(),
-];
+function getBlogAuthorUrls() {
+  return readdirSync(BLOG_AUTHORS_DIR)
+    .filter((file) => file.endsWith('.astro'))
+    .map((file) => `https://www.worldmonitor.app/blog/authors/${basename(file, '.astro')}/`)
+    .sort();
+}
+
+function getBlogGlossaryUrls() {
+  const source = readFileSync(GLOSSARY_SOURCE, 'utf8');
+  const slugs = [...source.matchAll(/^\s*slug:\s*'([^']+)'/gm)].map((match) => match[1]);
+  if (slugs.length === 0) throw new Error(`${GLOSSARY_SOURCE.pathname} contains no glossary slugs`);
+  return slugs.map((slug) => `https://www.worldmonitor.app/blog/glossary/${slug}/`).sort();
+}
+
+function getBlogUrls() {
+  return [
+    'https://www.worldmonitor.app/blog/',
+    'https://www.worldmonitor.app/blog/glossary/',
+    ...getBlogAuthorUrls(),
+    ...getBlogGlossaryUrls(),
+    ...getBlogPostUrls(),
+  ];
+}
+
+const APEX_URLS = uniqueSorted(getSitemapUrlsForHost('worldmonitor.app'));
+const WWW_URLS = uniqueSorted([
+  ...getSitemapUrlsForHost('www.worldmonitor.app'),
+  ...getBlogUrls(),
+]);
+
+function urlsForHost(host, extraUrls = []) {
+  return uniqueSorted([...getSitemapUrlsForHost(host), ...extraUrls]);
+}
 
 function batch(host, urls, key = INDEXNOW_KEY) {
   return {
@@ -43,11 +104,11 @@ function batch(host, urls, key = INDEXNOW_KEY) {
 }
 
 export const INDEXNOW_BATCHES = Object.freeze([
-  batch('worldmonitor.app', ['https://worldmonitor.app/mcp'], APEX_INDEXNOW_KEY),
+  batch('worldmonitor.app', APEX_URLS, APEX_INDEXNOW_KEY),
   batch('www.worldmonitor.app', WWW_URLS),
-  batch('tech.worldmonitor.app', ['https://tech.worldmonitor.app/']),
-  batch('finance.worldmonitor.app', ['https://finance.worldmonitor.app/']),
-  batch('happy.worldmonitor.app', ['https://happy.worldmonitor.app/']),
+  batch('tech.worldmonitor.app', urlsForHost('tech.worldmonitor.app', ['https://tech.worldmonitor.app/'])),
+  batch('finance.worldmonitor.app', urlsForHost('finance.worldmonitor.app', ['https://finance.worldmonitor.app/'])),
+  batch('happy.worldmonitor.app', urlsForHost('happy.worldmonitor.app', ['https://happy.worldmonitor.app/'])),
 ]);
 
 export const INDEXNOW_ENDPOINTS = Object.freeze([

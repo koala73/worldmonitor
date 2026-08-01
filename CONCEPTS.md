@@ -102,6 +102,10 @@ This project's standard of evidence that a guard actually guards: deliberately b
 
 A deliberately broken call site that the test suite fails to notice — the unit in which guard coverage is actually measured, and the artefact a per-site mutation sweep is run to enumerate. Survivors cluster in two shapes that reading cannot reveal and a whole-helper mutation cannot localize: a *branch no fixture reaches*, typically a fallback whose primary path every realistic fixture satisfies and thereby short-circuits; and a *sibling field* on an output row that interpolates several untrusted values, where poisoning one field proves exactly one of them. Both are properties of the fixtures rather than of the code, so they persist through code review and through a rising test count. The useful discipline is to report coverage as a ratio of sites with no survivor rather than as a count of red tests, since the latter saturates while the former does not. See also: Mutation Proof, Vacuous Guard.
 
+### Closed-World Gate
+
+A completeness check structured so the universe it covers is mechanically enumerated from the source of truth and every member must be classified — required (mechanically asserted at every consumer) or excluded with a recorded reason — so an unclassified member fails the gate at the moment it is introduced. The inverse of an opt-in allowlist, which can only catch what someone remembered to add and therefore rots silently as the universe grows; a closed world converts each new member into a forced, recorded decision, and the classification record doubles as a decision log distinguishing deliberately-absent from forgotten. Both halves need their own vacuous-pass protection: an enumerator that finds zero members, or an extractor that finds zero consumers, must fail rather than skip. See also: Vacuous Guard, Mutation Proof.
+
 ## News Story Tracking & Trend Detection
 
 ### Feed Digest

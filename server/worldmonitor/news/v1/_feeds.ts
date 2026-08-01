@@ -89,6 +89,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
       { name: 'Reuters Business', url: gn('site:reuters.com business markets when:1d') },
     ],
+    // MCP digest-backed tools consume `full`, while the finance dashboard
+    // consumes `finance`. Keep this literal array aligned with the finance
+    // bucket below; the static per-variant feed-key guard requires literals.
+    commodities: [
+      { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },
+      { name: 'Gold & Metals', url: gn('("gold price" OR "silver price" OR "precious metals" OR "copper price") when:2d') },
+    ],
     gov: [
       // White House: two direct WordPress RSS feeds. Replaces
       // gn('site:whitehouse.gov ...') so the publisher's pubDate is

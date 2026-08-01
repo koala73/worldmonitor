@@ -737,6 +737,7 @@ Deterministic named-entity extraction shared with the dashboard: registry entiti
 | Name | Type | Description |
 |------|------|-------------|
 | `text` | string | Optional text to extract from, max 2048 characters (longer input is rejected with an `error`). When omitted, the tool aggregates entities across the current headline digest instead. |
+| `category` | string (enum) | In headlines mode, restrict aggregation to one full-digest category (`politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`). Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
 | `limit` | integer | Maximum entities per list (1-50). Defaults to 20. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest` (headlines mode only; text mode performs no fetch).
@@ -768,6 +769,7 @@ Current topic clusters computed over the live headline digest with the same Jacc
 |------|------|-------------|
 | `limit` | integer | Maximum clusters returned (1-25). Defaults to 10. |
 | `min_sources` | integer | Only return clusters carrying at least this many **distinct outlets** (1-10) — real corroboration, not one outlet filing twice. Defaults to 1. |
+| `category` | string (enum) | Restrict clustering to one full-digest category (`politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`). Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest`
 - **Kind:** deterministic local compute — clustering runs per call over the ~150-200 digest headlines (CDN/Redis-cached upstream, 15-min cadence).
@@ -782,7 +784,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_news_clusters","arguments":{"min_sources":2,"limit":10}}
+    "params":{"name":"get_news_clusters","arguments":{"category":"commodities","min_sources":2,"limit":10}}
   }'
 ```
 

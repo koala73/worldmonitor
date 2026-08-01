@@ -314,10 +314,10 @@
   },
   "soonBadge": "Binnenkort",
   "meta": {
-    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP voor Claude & GPT",
-    "description": "De geopolitieke AI-laag. Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat over 30+ live services, een AI-digest dagelijks, twee keer per dag of wekelijks naar Slack, Discord, Telegram, Email of webhook, een custom widget builder (HTML/CSS/JS + AI), en MCP connectors voor Claude, GPT en aangepaste LLM's.",
+    "title": "World Monitor Pro | AI-intelligentie & MCP",
+    "description": "World Monitor Pro voegt een AI-analist, geplande intelligentie-samenvattingen, aangepaste widgets, marktonderzoek en MCP-toegang tot live geopolitieke en financiële gegevens toe.",
     "ogDescription": "Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat, een AI-digest volgens je schema (dagelijks, twee keer per dag of wekelijks), custom widget builder en MCP voor Claude/GPT — over 30+ live services onder één sleutel.",
-    "ogTitle": "World Monitor Pro — The Geopolitical AI Layer"
+    "ogTitle": "World Monitor Pro | Geopolitieke AI"
   },
   "pricing": {
     "suffixForever": "altijd",

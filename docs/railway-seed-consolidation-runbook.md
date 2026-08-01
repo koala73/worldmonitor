@@ -432,6 +432,42 @@ continuous metric.
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
 | **Note** | Cross-Strait Activity is the only direct external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the bounded public composition after reading its domain lanes. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
+#### Japan MOD transport recovery gate
+
+The official Japan Joint Staff index is
+`https://www.mod.go.jp/js/press/index-en.html`. The runtime makes one direct
+index request and, after a transport failure, one request through
+`JAPAN_MOD_PROXY_URL` (falling back to `PROXY_URL`). It never downloads linked
+PDFs during a scheduled run.
+
+As of 2026-07-31, destination allowlisting is not recovery: direct Railway
+egress and the configured Decodo gateway both receive an HTTP 403 Cloudflare
+managed challenge (`Just a moment...`). Production therefore remains
+truthfully `SOURCE_BLOCKED` with `blockedReason: HTTP_403`; its two reviewed
+rows are retained context, not proof of a successful fetch.
+
+Recovery requires an account-approved managed-browser/unblocker route that
+returns the authentic official index. For the current provider, the concrete
+external dependency is an active
+[Decodo Site Unblocker](https://help.decodo.com/docs/site-unblocker-quick-start)
+subscription with source-specific credentials and a successful target test.
+The ordinary residential gateway credential is not a substitute for that
+product. Do not repoint `JAPAN_MOD_PROXY_URL` until the exact adapter request
+returns a 2xx response containing valid Japan Joint Staff PDF links within the
+existing 524,288-byte bound. If the provider requires disabling TLS
+verification, do not weaken the adapter; provision a trusted provider CA or
+use an approved authenticated HTTPS integration instead.
+
+After provisioning, recovery is accepted only when:
+
+1. `crossStraitActivityJapanMod` reports `OK` for two consecutive scheduled
+   three-hour runs from distinct scheduled executions;
+2. `lastSuccessAt` is non-null, later than the configuration change, and
+   advances between those two successful runs;
+3. newly admitted Japan MOD records are tied to the successful index fetch;
+4. the combined cross-Strait publication remains available and explicitly
+   source-degraded when a later Japan MOD request fails.
+
 ### Bundle 6: seed-bundle-climate
 
 | Setting | Value |

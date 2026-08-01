@@ -487,6 +487,7 @@ export async function signOut(): Promise<void> {
 export function clearClerkTokenCache(): void {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
   _clerkClockState = { kind: 'uncalibrated' };
@@ -506,6 +507,7 @@ export function clearClerkTokenCache(): void {
  */
 let _cachedToken: string | null = null;
 let _cachedTokenAt = 0;
+let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
 // Positive means the client clock is behind the issuer clock. This is measured
@@ -641,12 +643,15 @@ export async function getClerkToken(): Promise<string | null> {
   const calibrationBackoffActive = clockState.kind !== 'retry-after'
     || now < clockState.atMs;
   const clockSkewMs = clockSkewMsForReuse(clockState);
-  if (clockSkewMs !== null && calibrationBackoffActive && shouldReuseCachedClerkToken({
-    token: _cachedToken,
-    cachedAt: _cachedTokenAt,
-    now,
-    clockSkewMs,
-  })) {
+  if (clerkInstance?.session === _cachedSession
+    && clockSkewMs !== null
+    && calibrationBackoffActive
+    && shouldReuseCachedClerkToken({
+      token: _cachedToken,
+      cachedAt: _cachedTokenAt,
+      now,
+      clockSkewMs,
+    })) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -738,10 +743,11 @@ export async function getClerkToken(): Promise<string | null> {
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
-      if (myGen !== _tokenGen) return null;
+      if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
       if (token === null && nextClockState.kind === 'retry-after') {
         _cachedToken = null;
         _cachedTokenAt = 0;
+        _cachedSession = null;
       }
       _clerkClockState = nextClockState;
       const fetchedAt = Date.now();
@@ -756,6 +762,7 @@ export async function getClerkToken(): Promise<string | null> {
         if (canCacheClerkToken(nextClockState)) {
           _cachedToken = token;
           _cachedTokenAt = fetchedAt;
+          _cachedSession = session;
         }
         return token;
       }
