@@ -18,9 +18,12 @@ import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { extractCollectorFailureMetadata } from '../shared/collector-failure-metadata.js';
+import {
+  extractCollectorFailureMetadata,
+  isBotFilteredBody,
+} from '../shared/collector-failure-metadata.js';
 
-export { extractCollectorFailureMetadata };
+export { extractCollectorFailureMetadata, isBotFilteredBody };
 
 const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
 export const ANALYTICS_CANARY_WEBSITE_ID = '373c80a2-1109-42a7-868b-565bcf7bf168';
@@ -222,6 +225,16 @@ export function evaluateProbeResult(probe, result) {
   }
 
   if (probe.receiptFields) {
+    // Checked BEFORE the field loop so the reason names the actual condition.
+    // Umami drops a bot-detected write with 200 + `{"beep":"boop"}`; reporting
+    // that as "receipt missing non-empty string cache" points the reader at a
+    // broken write path instead of at the UA heuristic. This still counts as a
+    // probe FAILURE: the canary sends a browser User-Agent precisely so it is
+    // not filtered, so being filtered means the probe has stopped exercising
+    // the write path it exists to measure.
+    if (isBotFilteredBody(result.body)) {
+      return `HTTP ${result.status} but the write was bot-filtered by the collector (probe User-Agent now matches Umami's bot heuristic; the write path was never exercised)`;
+    }
     let receipt;
     try {
       receipt = JSON.parse(result.body);

@@ -6,3 +6,5 @@ export interface CollectorFailureMetadata {
 export function extractCollectorFailureMetadata(body: unknown): CollectorFailureMetadata;
 
 export function isSessionDataConflict(metadata: CollectorFailureMetadata): boolean;
+
+export function isBotFilteredBody(body: unknown): boolean;

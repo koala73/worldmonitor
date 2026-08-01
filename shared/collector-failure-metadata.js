@@ -102,3 +102,30 @@ export function extractCollectorFailureMetadata(body) {
 export function isSessionDataConflict(metadata) {
   return metadata.prismaCode === 'P2002' || metadata.constraint === 'session_data_pkey';
 }
+
+/**
+ * True when a 200 body is Umami's bot-filter sentinel.
+ *
+ * When Umami's User-Agent bot check rejects a write it answers `HTTP 200` with
+ * `{"beep":"boop"}` and stores nothing — an intentional silent drop, not a
+ * failure of the write path. Verified against production 2026-08-01: a
+ * HeadlessChrome UA gets this 15-byte body while a real browser UA gets the
+ * full `{cache, sessionId, visitId}` receipt.
+ *
+ * This is deliberately keyed off the PARSED `beep` property rather than a
+ * substring scan of the raw body. A receipt's field values are upstream-
+ * controlled strings, so `body.includes('beep')` would let one forge a
+ * bot-filter verdict and mute a genuine delivery failure.
+ *
+ * @param {unknown} body Raw response body text.
+ * @returns {boolean}
+ */
+export function isBotFilteredBody(body) {
+  if (typeof body !== 'string' || body.length === 0) return false;
+  try {
+    const parsed = JSON.parse(body);
+    return typeof parsed === 'object' && parsed !== null && parsed.beep === 'boop';
+  } catch {
+    return false;
+  }
+}

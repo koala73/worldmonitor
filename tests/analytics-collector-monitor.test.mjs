@@ -8,6 +8,7 @@ import {
   buildProbeRequest,
   evaluateProbeResult,
   extractCollectorFailureMetadata,
+  isBotFilteredBody,
   runCollectorChecks,
   summarizeProbeFailures,
   summarizeWriteCanaryResults,
@@ -138,14 +139,38 @@ describe('scheduled analytics collector monitor', () => {
 
   it('rejects bot-filtered and malformed write-canary receipts despite HTTP 200', () => {
     const writeCanary = probeByName('write-canary-event');
+    // A bot-filtered 200 must be NAMED as such. Reporting it as a generic
+    // missing receipt blames the write path for a drop Umami made on purpose,
+    // which sends the on-call reader looking for a database fault that is not
+    // there. The canary sends a browser User-Agent, so this firing at all means
+    // the bot heuristic now matches us and the probe has stopped measuring the
+    // write path it claims to measure.
     assert.match(
       evaluateProbeResult(writeCanary, { status: 200, body: '{"beep":"boop"}' }),
-      /receipt missing non-empty string cache/,
+      /bot-filtered/,
     );
     assert.match(
       evaluateProbeResult(writeCanary, { status: 200, body: '{not json' }),
       /receipt was not valid JSON/,
     );
+  });
+
+  it('detects the Umami bot-filter sentinel without matching a real receipt', () => {
+    assert.equal(isBotFilteredBody('{"beep":"boop"}'), true);
+    assert.equal(isBotFilteredBody('  {"beep":"boop"}  '), true);
+    // A genuine receipt is never the sentinel, even if a field value happens to
+    // spell one of the sentinel's words — this must key off the parsed `beep`
+    // property, not a substring scan an upstream value could forge.
+    assert.equal(isBotFilteredBody(receiptBody), false);
+    assert.equal(
+      isBotFilteredBody(JSON.stringify({ cache: 'beep', sessionId: 'boop', visitId: 'v' })),
+      false,
+    );
+    assert.equal(isBotFilteredBody('{"beep":"something-else"}'), false);
+    assert.equal(isBotFilteredBody('{not json'), false);
+    assert.equal(isBotFilteredBody(''), false);
+    assert.equal(isBotFilteredBody(undefined), false);
+    assert.equal(isBotFilteredBody(null), false);
   });
 
   it('surfaces Prisma failure metadata without retaining the analytics payload', () => {
