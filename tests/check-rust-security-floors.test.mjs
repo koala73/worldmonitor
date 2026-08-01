@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
   RUST_SECURITY_FLOORS,
+  checkManifestSecurityFloor,
   checkRustSecurityFloors,
   compareVersions,
   parseCargoLockVersions,
@@ -13,6 +16,7 @@ import {
 } from '../scripts/check-rust-security-floors.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const checker = resolve(root, 'scripts/check-rust-security-floors.mjs');
 const realLock = readFileSync(resolve(root, 'src-tauri/Cargo.lock'), 'utf8');
 
 const lockFixture = (crate, version) =>
@@ -95,24 +99,64 @@ describe('check-rust-security-floors', () => {
   });
 
   it('keeps the manifest constraint at or above every recorded floor', () => {
-    // The lockfile gate is the real backstop, but if the manifest lower bound
-    // drifted below the floor a fresh resolution could legitimately land on a
-    // vulnerable version. Pin the two together so they cannot diverge.
     for (const floor of RUST_SECURITY_FLOORS.filter((f) => f.manifestFile)) {
       const manifest = readFileSync(resolve(root, floor.manifestFile), 'utf8');
-      const line = manifest
-        .split('\n')
-        .find((l) => new RegExp(`^${floor.crate}\\s*=`).test(l.trim()));
-      assert.ok(line, `${floor.manifestFile} must declare ${floor.crate}`);
-      const lowerBound = line.match(/>=\s*(\d+\.\d+\.\d+)/)?.[1];
-      assert.ok(
-        lowerBound,
-        `${floor.crate} in ${floor.manifestFile} must carry an explicit >= lower bound so it cannot resolve below the security floor; found: ${line.trim()}`,
+      assert.deepEqual(checkManifestSecurityFloor(manifest, floor), []);
+    }
+  });
+
+  it('fails when a manifest lower bound is below its recorded floor', () => {
+    const floor = RUST_SECURITY_FLOORS.find((entry) => entry.crate === 'tauri');
+    assert.ok(floor);
+    const errors = checkManifestSecurityFloor(
+      'tauri = { version = ">=2.10.3, <3", features = [] }\n',
+      floor,
+    );
+    assert.match(errors[0], /allows tauri >= 2\.10\.3, below the recorded security floor 2\.11\.1/);
+  });
+
+  it('exercises the CLI entrypoint for default cwd and --root invocations', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'rust-security-floor-cli-'));
+    try {
+      const tauriRoot = join(fixtureRoot, 'src-tauri');
+      mkdirSync(tauriRoot);
+      writeFileSync(
+        join(tauriRoot, 'Cargo.toml'),
+        'tauri = { version = ">=2.11.1, <3", features = [] }\n',
       );
-      assert.ok(
-        compareVersions(lowerBound, floor.minVersion) >= 0,
-        `${floor.manifestFile} allows ${floor.crate} >= ${lowerBound}, below the recorded security floor ${floor.minVersion} (${floor.advisory})`,
+      writeFileSync(join(tauriRoot, 'Cargo.lock'), lockFixture('tauri', '2.11.5'));
+
+      const defaultRun = spawnSync(process.execPath, [checker], {
+        cwd: fixtureRoot,
+        encoding: 'utf8',
+      });
+      assert.equal(defaultRun.status, 0, defaultRun.stderr);
+      assert.match(defaultRun.stdout, /rust security floors OK: tauri >= 2\.11\.1/);
+
+      writeFileSync(
+        join(tauriRoot, 'Cargo.toml'),
+        'tauri = { version = ">=2.10.3, <3", features = [] }\n',
       );
+      const manifestRun = spawnSync(process.execPath, [checker, `--root=${fixtureRoot}`], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      assert.equal(manifestRun.status, 1);
+      assert.match(manifestRun.stderr, /Cargo\.toml allows tauri >= 2\.10\.3, below/);
+
+      writeFileSync(
+        join(tauriRoot, 'Cargo.toml'),
+        'tauri = { version = ">=2.11.1, <3", features = [] }\n',
+      );
+      writeFileSync(join(tauriRoot, 'Cargo.lock'), lockFixture('tauri', '2.10.3'));
+      const rootRun = spawnSync(process.execPath, [checker, `--root=${fixtureRoot}`], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      assert.equal(rootRun.status, 1);
+      assert.match(rootRun.stderr, /::error::rust security floor: tauri 2\.10\.3 is below/);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
 

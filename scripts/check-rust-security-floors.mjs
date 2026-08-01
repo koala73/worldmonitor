@@ -118,6 +118,28 @@ export function checkRustSecurityFloors(lockSource, floors = RUST_SECURITY_FLOOR
   return errors;
 }
 
+export function checkManifestSecurityFloor(manifestSource, floor) {
+  const line = manifestSource
+    .split('\n')
+    .find((l) => new RegExp(`^${floor.crate}\\s*=`).test(l.trim()));
+  if (!line) {
+    return [`${floor.manifestFile} must declare ${floor.crate}`];
+  }
+
+  const lowerBound = line.match(/>=\s*(\d+\.\d+\.\d+)/)?.[1];
+  if (!lowerBound) {
+    return [
+      `${floor.crate} in ${floor.manifestFile} must carry an explicit >= lower bound so it cannot resolve below the security floor; found: ${line.trim()}`,
+    ];
+  }
+  if (compareVersions(lowerBound, floor.minVersion) < 0) {
+    return [
+      `${floor.manifestFile} allows ${floor.crate} >= ${lowerBound}, below the recorded security floor ${floor.minVersion} (${floor.advisory})`,
+    ];
+  }
+  return [];
+}
+
 /**
  * Resolve `--root <dir>` / `--root=<dir>`. Both spellings are handled because
  * silently ignoring one would make this gate audit the wrong tree and report
@@ -151,6 +173,17 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const lockPath = path.join(rootDir, 'src-tauri', 'Cargo.lock');
 
   const errors = checkRustSecurityFloors(readFileSync(lockPath, 'utf8'));
+  for (const floor of RUST_SECURITY_FLOORS.filter((f) => f.manifestFile)) {
+    const manifestPath = path.join(rootDir, floor.manifestFile);
+    let manifestSource;
+    try {
+      manifestSource = readFileSync(manifestPath, 'utf8');
+    } catch (err) {
+      errors.push(`${floor.manifestFile} could not be read: ${err.message}`);
+      continue;
+    }
+    errors.push(...checkManifestSecurityFloor(manifestSource, floor));
+  }
   if (errors.length > 0) {
     for (const e of errors) console.error(`::error::rust security floor: ${e}`);
     process.exit(1);

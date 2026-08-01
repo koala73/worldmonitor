@@ -43,7 +43,7 @@ jobs:
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// { next }
             /^CHANGELOG\.md$/ { next }
             /^LICENSE$/ { next }
-            /^\.github\/workflows\/(build-desktop|docker-publish)\.yml$/ { next }
+            /^\.github\/workflows\/docker-publish\.yml$/ { next }
             { count++ }
             END { print count + 0 }
           ')

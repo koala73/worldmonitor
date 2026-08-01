@@ -579,6 +579,15 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('runs workflow coverage when the release workflow changes', () => {
+    const codeFilter = shellAwkAssignmentBlock('CODE');
+    assert.doesNotMatch(
+      codeFilter,
+      /build-desktop\.yml/,
+      'build-desktop.yml changes must run the unit workflow-coverage assertions',
+    );
+  });
+
   it('runs scheduled and per-PR production dependency audits for every package lockfile', () => {
     const packageLockfiles = collectPackageLockfiles();
 
