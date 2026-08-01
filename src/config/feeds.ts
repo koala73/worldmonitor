@@ -130,6 +130,9 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
     { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
+    // Daily Sabah (EN) — Turkey EN path improvement (#5952). English-language,
+    // no lang tag, so EN digests include it as a default-on flank source.
+    { name: 'Daily Sabah', url: rss('https://www.dailysabah.com/rss/home-page') },
     // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
     // Their native RSS feeds are used for both locales: the Google News site
     // queries previously used for EN returned HTTP 200 with no <item> nodes.
@@ -155,17 +158,30 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
     { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
     { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
+    // Czech (CS) — V4 balance with Hungary (#5952). Locale-boosted for cs users.
+    { name: 'Seznam Zprávy', url: rss('https://www.seznamzpravy.cz/rss'), lang: 'cs' },
     // Croatian (HR) — mainstream + investigative
     { name: 'N1 Croatia', url: rss('https://n1info.hr/feed/'), lang: 'hr' },
     { name: 'Index.hr', url: rss('https://www.index.hr/rss'), lang: 'hr' },
     { name: 'Jutarnji list', url: rss('https://www.jutarnji.hr/feed'), lang: 'hr' },
     { name: 'Balkan Insight', url: rss('https://balkaninsight.com/feed/') },
+    // Romanian (RO) — Eastern flank (#5952). Locale-boosted for ro users.
+    { name: 'Digi24', url: rss('https://www.digi24.ro/rss'), lang: 'ro' },
+    { name: 'HotNews', url: rss('https://www.hotnews.ro/rss'), lang: 'ro' },
+    { name: 'G4Media', url: rss('https://www.g4media.ro/feed/'), lang: 'ro' },
+    // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
+    { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss/'), lang: 'bg' },
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Baltic states — Eastern flank (#5952). English-language Baltic news
+    // services (no lang tag) so EN digests can include them as flank sources.
+    { name: 'ERR News', url: rss('https://news.err.ee/rss') },
+    { name: 'LRT English', url: rss('https://www.lrt.lt/en/news-in-english?rss') },
+    { name: 'LSM English', url: rss('https://eng.lsm.lv/rss/') },
     // Russia & Ukraine — EN default balance rule (#5950):
     // For DEFAULT_ENABLED_SOURCES.europe (EN full-variant path), keep at least:
     //   ≥1 dedicated UA primary (today: Kyiv Independent)
@@ -308,15 +324,18 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Daily Trust', url: rss('https://dailytrust.com/feed/') },
     { name: 'ThisDay', url: rss('https://www.thisdaylive.com/feed') },
     // Horn of Africa
+    { name: 'Radio Tamazuj', url: rss('https://www.radiotamazuj.org/en/feed') },
+    { name: 'The Reporter Ethiopia', url: rss('https://www.thereporterethiopia.com/feed/') },
     { name: 'Ethiopia Insight', url: rss('https://www.ethiopia-insight.com/feed/') },
     { name: 'Dabanga Sudan', url: rss('https://www.dabangasudan.org/en/feed') },
-    { name: 'Hiiraan Online', url: rss('https://www.hiiraan.com/rss.xml') },
+    { name: 'Hiiraan Online', url: rss('https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     // DRC / Great Lakes
     { name: 'Actualite.cd', url: rss('https://actualite.cd/feed'), lang: 'fr' },
     { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/rss.xml'), lang: 'fr' },
     // West Africa beyond Nigeria
     { name: 'MyJoyOnline', url: rss('https://www.myjoyonline.com/feed/') },
-    { name: 'Citi Newsroom', url: rss('https://citinewsroom.com/feed/') },
+    { name: 'Citi Newsroom', url: rss('https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Le Quotidien', url: rss('https://lequotidien.sn/feed/'), lang: 'fr' },
     // Pan-African
     { name: 'RFI Afrique', url: rss('https://www.rfi.fr/en/africa/rss') },
   ],
@@ -384,6 +403,18 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'RFE/RL Central Asia', url: rss('https://news.google.com/rss/search?q=site:rferl.org+Central+Asia+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Astana Times', url: rss('https://astanatimes.com/feed/') },
     { name: 'The Times of Central Asia', url: rss('https://timesca.com/feed/') },
+    // Taiwan (#5954)
+    { name: 'Focus Taiwan', url: rss('https://focustaiwan.tw/search/simple/all/1/rss') },
+    { name: 'Taipei Times', url: rss('https://www.taipeitimes.com/feeds/front.xml') },
+    { name: 'Taiwan News', url: rss('https://www.taiwannews.com.tw/rss') },
+    // Pakistan (#5954)
+    { name: 'Dawn', url: rss('https://www.dawn.com/feeds/home/') },
+    { name: 'Geo News', url: rss('https://news.google.com/rss/search?q=site:geo.tv+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    // SE Asia security (#5954)
+    { name: 'Jakarta Post', url: rss('https://www.thejakartapost.com/rss/news.xml') },
+    { name: 'Rappler', url: rss('https://www.rappler.com/feed/') },
+    { name: 'The Star (Malaysia)', url: rss('https://www.thestar.com.my/rss/editors-pick') },
+    { name: 'Irrawaddy', url: rss('https://www.irrawaddy.com/feed/') },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -1090,6 +1121,27 @@ export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
   'NV EN',
 ] as const;
 
+const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
+  'Daily Sabah',
+  'ERR News',
+] as const;
+
+const AFRICA_DEPTH_EN_DEFAULT_SOURCES = [
+  'Hiiraan Online',
+  'RFI Afrique',
+] as const;
+
+/**
+ * Editorially required EN defaults that must survive the free-tier source cap.
+ * Keep the narrower frontline set above for its one-shot migration contract;
+ * this broader set is only for current cap selection.
+ */
+export const FREE_CAP_PROTECTED_SOURCES = [
+  ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+  ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+] as const;
+
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
@@ -1098,8 +1150,11 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   // PL frontline: TVN24 + Rzeczpospolita (not all three PL; noise control).
   // TASS/RT never default-on. Extra UA outlets deferred to #5951.
   // HU/EL locale packs remain locale-boosted only, not EN default-on.
+  // Eastern flank (#5952): Daily Sabah (EN Turkey) + ERR News (EN Baltic) as
+  // default-on; RO/BG/CS feeds stay locale-boosted (lang tags).
   europe: [
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
+    ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
     ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
     'Ukrainska Pravda EN',
     'NV EN',
@@ -1108,9 +1163,16 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
-  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis', 'Hiiraan Online', 'RFI Afrique'],
+  africa: [
+    'BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News',
+    'Premium Times', 'Channels TV', 'Sahel Crisis',
+    ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+  ],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
-  asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu', 'Eurasianet', 'The Astana Times'],
+asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
+    'Eurasianet', 'The Astana Times',
+    'Focus Taiwan', 'Dawn', 'Rappler',
+  ],
   tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
   ai: ['AI News', 'VentureBeat AI', 'The Verge AI', 'MIT Tech Review', 'ArXiv AI'],
   finance: ['CNBC', 'MarketWatch', 'Yahoo Finance', 'Financial Times', 'Reuters Business'],

@@ -89,6 +89,7 @@ import {
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
+  FREE_CAP_PROTECTED_SOURCES,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getLocaleBoostedSources,
   getTotalFeedCount,
@@ -2137,11 +2138,11 @@ export class App {
       let explicitLocale = '';
       try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
       const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
-      // Locale-boosted sources (non-en) + UA/RU/PL frontline balance set (#5950).
+      // Locale-boosted sources (non-en) + editorially protected EN defaults.
       // Without frontline protection, free EN users lose Kyiv Independent / Meduza /
-      // Moscow Times to round-robin late-in-europe-bucket ordering — the #5950
-      // balance rule would only hold for Pro (uncapped) profiles.
-      const protectedNames = new Set<string>(FRONTLINE_EUROPE_PROTECTED_SOURCES);
+      // Moscow Times to round-robin late-in-europe-bucket ordering; without the
+      // Eastern-flank additions, Daily Sabah / ERR News are also stripped (#5952).
+      const protectedNames = new Set<string>(FREE_CAP_PROTECTED_SOURCES);
       if (userLang !== 'en') {
         for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
       }

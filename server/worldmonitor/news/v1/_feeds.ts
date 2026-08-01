@@ -55,11 +55,19 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Czech (CS) — V4 balance with Hungary (#5952). Locale-boosted for cs users.
+      { name: 'Seznam Zprávy', url: 'https://www.seznamzpravy.cz/rss', lang: 'cs' },
       // Croatian (HR) — mainstream + investigative; Balkan Insight is English-language (no lang tag)
       { name: 'N1 Croatia', url: 'https://n1info.hr/feed/', lang: 'hr' },
       { name: 'Index.hr', url: 'https://www.index.hr/rss', lang: 'hr' },
       { name: 'Jutarnji list', url: 'https://www.jutarnji.hr/feed', lang: 'hr' },
       { name: 'Balkan Insight', url: 'https://balkaninsight.com/feed/' },
+      // Romanian (RO) — Eastern flank (#5952). Locale-boosted for ro users.
+      { name: 'Digi24', url: 'https://www.digi24.ro/rss', lang: 'ro' },
+      { name: 'HotNews', url: 'https://www.hotnews.ro/rss', lang: 'ro' },
+      { name: 'G4Media', url: 'https://www.g4media.ro/feed/', lang: 'ro' },
+      // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
+      { name: 'Dnevnik', url: 'https://www.dnevnik.bg/rss/', lang: 'bg' },
       // Ukraine war frontline for EN digests (#5949). Names must match client
       // DEFAULT_ENABLED_SOURCES.europe. No non-en `lang` tags — buildDigest
       // filters `!f.lang || f.lang === lang`, so lang:pl/ru would never ship to EN.
@@ -87,6 +95,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Zerkalo', url: gn('site:zerkalo.io when:2d') },
       { name: 'NewsMaker', url: 'https://newsmaker.md/en/feed/' },
       { name: 'Ziarul de Gardă', url: 'https://www.zdg.md/feed/', lang: 'ro' },
+      // Baltic states — Eastern flank (#5952). English-language, no lang tag,
+      // so EN digests include them.
+      { name: 'ERR News', url: 'https://news.err.ee/rss' },
+      { name: 'LRT English', url: 'https://www.lrt.lt/en/news-in-english?rss' },
+      { name: 'LSM English', url: 'https://eng.lsm.lv/rss/' },
+      // Daily Sabah (EN) — Turkey EN path improvement (#5952).
+      { name: 'Daily Sabah', url: 'https://www.dailysabah.com/rss/home-page' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
@@ -159,15 +174,18 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Jeune Afrique', url: 'https://www.jeuneafrique.com/feed/', lang: 'fr' },
       { name: 'Premium Times', url: 'https://www.premiumtimesng.com/feed' },
       // Horn of Africa
+      { name: 'Radio Tamazuj', url: 'https://www.radiotamazuj.org/en/feed' },
+      { name: 'The Reporter Ethiopia', url: 'https://www.thereporterethiopia.com/feed/' },
       { name: 'Ethiopia Insight', url: 'https://www.ethiopia-insight.com/feed/' },
       { name: 'Dabanga Sudan', url: 'https://www.dabangasudan.org/en/feed' },
-      { name: 'Hiiraan Online', url: 'https://www.hiiraan.com/rss.xml' },
+      { name: 'Hiiraan Online', url: gn('site:hiiraan.com when:7d') },
       // DRC / Great Lakes
       { name: 'Actualite.cd', url: 'https://actualite.cd/feed', lang: 'fr' },
       { name: 'Radio Okapi', url: 'https://www.radiookapi.net/rss.xml', lang: 'fr' },
       // West Africa beyond Nigeria
       { name: 'MyJoyOnline', url: 'https://www.myjoyonline.com/feed/' },
-      { name: 'Citi Newsroom', url: 'https://citinewsroom.com/feed/' },
+      { name: 'Citi Newsroom', url: gn('site:citinewsroom.com when:7d') },
+      { name: 'Le Quotidien', url: 'https://lequotidien.sn/feed/', lang: 'fr' },
       // Pan-African
       { name: 'RFI Afrique', url: 'https://www.rfi.fr/en/africa/rss' },
     ],
@@ -197,11 +215,23 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Aaj Tak', url: 'https://www.aajtak.in/rssfeeds/?id=home', lang: 'hi' },
       { name: 'NDTV India', url: 'https://feeds.feedburner.com/ndtvkhabar-latest', lang: 'hi' },
       { name: 'Amar Ujala', url: 'https://www.amarujala.com/rss/national.xml', lang: 'hi' },
-      // Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
+// Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
       { name: 'Eurasianet', url: 'https://eurasianet.org/feed/' },
       { name: 'RFE/RL Central Asia', url: gn('site:rferl.org Central+Asia when:3d') },
       { name: 'The Astana Times', url: 'https://astanatimes.com/feed/' },
       { name: 'The Times of Central Asia', url: 'https://timesca.com/feed/' },
+      // Taiwan (#5954)
+      { name: 'Focus Taiwan', url: 'https://focustaiwan.tw/search/simple/all/1/rss' },
+      { name: 'Taipei Times', url: 'https://www.taipeitimes.com/feeds/front.xml' },
+      { name: 'Taiwan News', url: 'https://www.taiwannews.com.tw/rss' },
+      // Pakistan (#5954)
+      { name: 'Dawn', url: 'https://www.dawn.com/feeds/home/' },
+      { name: 'Geo News', url: gn('site:geo.tv when:2d') },
+      // SE Asia security (#5954)
+      { name: 'Jakarta Post', url: 'https://www.thejakartapost.com/rss/news.xml' },
+      { name: 'Rappler', url: 'https://www.rappler.com/feed/' },
+      { name: 'The Star (Malaysia)', url: 'https://www.thestar.com.my/rss/editors-pick' },
+      { name: 'Irrawaddy', url: 'https://www.irrawaddy.com/feed/' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

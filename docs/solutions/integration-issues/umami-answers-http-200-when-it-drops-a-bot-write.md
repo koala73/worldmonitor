@@ -19,6 +19,11 @@ tags: [umami, analytics, sentry, alerting, alert-fatigue, bot-filter, observabil
 
 # Umami answers HTTP 200 when it drops a bot write, and the alarm built on it paged on its own crawler
 
+> Historical note: this document records the bot-filter regression fixed by
+> #5964/#5974. The collector's separate `session_data_pkey` race recurred after
+> that work and reopened #5715 on 2026-08-01; the current remediation and
+> acceptance contract are in [`docs/analytics-collector-operations.md`](../../analytics-collector-operations.md).
+
 ## Problem
 
 PR #5964 added a browser-side Sentry warning for every Umami collector write failure. It fired 45 events across 24 users in its first 32 minutes and caught **zero** instances of the umami#4183 `session_data` race it was built to detect. Most of the "failures" were HTTP 200 successes, and most of those came from WorldMonitor's own crawler.
@@ -70,16 +75,20 @@ export function isAlertWorthyCollectorFailure(
   failure: CollectorFailure,
   window: CollectorHealthSnapshot,
 ): boolean {
-  if (isKnownSessionDataConflict(failure)) return false;  // known umami#4183
   if (failure.botFiltered) return false;                  // dropped on purpose
   if (ENVIRONMENT_NOISE_KINDS.has(failure.kind)) {        // network | timeout
     if (window.noiseReported) return false;               // 1 per page per window
     if (window.writes < ENVIRONMENT_NOISE_MIN_WRITES) return false;
     return window.failures / window.writes >= ENVIRONMENT_NOISE_MIN_FAILURE_RATE;
   }
-  return true;  // non-2xx, unexplained receiptless 200, queue-overflow
+  return true;  // non-2xx, P2002, unexplained 200, queue-overflow
 }
 ```
+
+The original #5964 policy also suppressed the known Umami #4183 uniqueness
+race. That suppression was intentionally removed when #5715 was reopened: the
+server-side race is now an acceptance failure until the upstream upsert fix is
+deployed and two scheduled canary windows are clean.
 
 `botFiltered` is a **marker on `CollectorFailure`, deliberately not a new `kind`**. The write really was dropped, so `isRetryableCollectorFailure` and `isDurableMarkerResolved` must keep treating it exactly like any other receiptless 200. Promoting it to a `kind` would have turned an alert-noise fix into a conversion-accounting change.
 
@@ -118,7 +127,8 @@ The rate gate matters for a reason worth stating plainly: **an ad-blocked client
 ## Related Issues
 
 - #5973 — tracking issue for this regression
-- #5964 — the PR that introduced the alarm (and fixed the real #5715 write-path gap)
+- #5964 — the PR that introduced the alarm and corrected its receipt semantics
 - #5715 — collector 500s dropping checkout conversions
 - #5565 — collector dead 4 days, unnoticed; the alert-fatigue endpoint this fix exists to avoid
-- umami-software/umami#4183 — the unfixed upstream `session_data` race
+- umami-software/umami#4183 — the upstream `session_data` race, fixed by
+  upstream commit `7c030e4` but still pending deployment and verification here

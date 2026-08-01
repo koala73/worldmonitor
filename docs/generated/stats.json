@@ -72,12 +72,13 @@
     "seed-freshness-monitor.yml",
     "test-linux-app.yml",
     "test.yml",
-    "typecheck.yml"
+    "typecheck.yml",
+    "umami-storage-monitor.yml"
   ],
-  "workflowCount": 25,
+  "workflowCount": 26,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 594,
+  "feedDefinitions": 615,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
