@@ -378,8 +378,9 @@ describe('getClerkToken', () => {
   });
 
   it('recalibrates after the token cache is cleared', async () => {
-    const now = Date.now();
-    const token = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    const serverNow = Date.now();
+    let clientNow = serverNow + 50_000;
+    const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
     const calls: Array<{ template?: string; skipCache?: boolean }> = [];
     const session = {
       async getToken(options: { template?: string; skipCache?: boolean } = {}) {
@@ -387,14 +388,29 @@ describe('getClerkToken', () => {
         return token;
       },
     };
-    __setClerkInstanceForTests({ session } as never);
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
 
-    assert.equal(await getClerkToken(), token);
-    assert.equal(calls.length, 2);
+      assert.equal(await getClerkToken(), token);
+      assert.deepEqual(calls, [
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+      ]);
 
-    clearClerkTokenCache();
-    assert.equal(await getClerkToken(), token);
-    assert.equal(calls.length, 4);
+      clearClerkTokenCache();
+      clientNow += 1_000;
+      assert.equal(await getClerkToken(), token);
+      assert.deepEqual(calls, [
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+      ]);
+    } finally {
+      Date.now = realDateNow;
+    }
   });
 
   it('bounds retries when the initial clock calibration refresh fails', async () => {
@@ -420,9 +436,106 @@ describe('getClerkToken', () => {
       assert.equal(await getClerkToken(), null);
       assert.equal(calls.length, callsAfterFailedCalibration + 1, 'backoff should avoid a forced refresh');
 
+      const callsBeforeRetry = calls.length;
       clientNow += 10_000;
       assert.equal(await getClerkToken(), null);
-      assert.ok(calls.length > callsAfterFailedCalibration, 'calibration should retry after backoff');
+      assert.deepEqual(calls.slice(callsBeforeRetry), [
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+        { skipCache: true },
+      ], 'calibration should retry with a forced refresh after backoff');
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('rejects an issuer-expired token during an unavailable refresh on a slow client', async () => {
+    const serverNow = Date.now();
+    let clientNow = serverNow - 50_000;
+    const calibrated = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
+    const issuerExpired = tokenWithClaims({ iat: serverNow, exp: serverNow + 10_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    let refreshUnavailable = false;
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        if (refreshUnavailable && options.skipCache) throw new Error('network');
+        return refreshUnavailable ? issuerExpired : calibrated;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+      assert.equal(await getClerkToken(), calibrated);
+
+      refreshUnavailable = true;
+      clientNow = serverNow + 1_000;
+      assert.equal(await getClerkToken(), null);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('keeps an issuer-valid token during an unavailable refresh on a fast client', async () => {
+    const serverNow = Date.now();
+    let clientNow = serverNow + 50_000;
+    const calibrated = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
+    const issuerValid = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    let refreshUnavailable = false;
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        if (refreshUnavailable && options.skipCache) throw new Error('network');
+        return refreshUnavailable ? issuerValid : calibrated;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+      assert.equal(await getClerkToken(), calibrated);
+
+      refreshUnavailable = true;
+      clientNow = serverNow + 100_000;
+      assert.equal(await getClerkToken(), issuerValid);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  it('recovers from failed JWT calibration when Clerk returns an opaque token', async () => {
+    const serverNow = Date.now();
+    let clientNow = serverNow + 50_000;
+    const jwt = tokenWithClaims({ iat: serverNow, exp: serverNow + 60_000 });
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    let returnOpaqueToken = false;
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        if (returnOpaqueToken) return 'opaque-token';
+        return options.skipCache ? null : jwt;
+      },
+    };
+    const realDateNow = Date.now;
+    Date.now = () => clientNow;
+    try {
+      __setClerkInstanceForTests({ session } as never);
+      assert.equal(await getClerkToken(), null);
+
+      returnOpaqueToken = true;
+      clientNow += 10_000;
+      assert.equal(await getClerkToken(), 'opaque-token');
+      assert.deepEqual(calls, [
+        { template: 'convex' },
+        { template: 'convex', skipCache: true },
+        { skipCache: true },
+        { template: 'convex' },
+      ]);
+
+      assert.equal(await getClerkToken(), 'opaque-token');
+      assert.equal(calls.length, 4, 'opaque token should use the flat-TTL cache after recovery');
     } finally {
       Date.now = realDateNow;
     }
