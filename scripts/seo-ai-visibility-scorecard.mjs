@@ -285,14 +285,38 @@ function validateBingAiPerformance(aiPerformance, label, latestEndDate) {
   );
   for (const [index, window] of aiPerformance.windows.entries()) {
     const windowLabel = `${label}.windows[${index}]`;
-    invariant(Array.isArray(window.groundingQueries), `${windowLabel}.groundingQueries must be an array`);
-    invariant(Array.isArray(window.citedPages), `${windowLabel}.citedPages must be an array`);
+    const groundingQueries = window.groundingQueries;
+    const citedPages = window.citedPages;
+    invariant(
+      groundingQueries == null || Array.isArray(groundingQueries),
+      `${windowLabel}.groundingQueries must be an array, null, or omitted`,
+    );
+    invariant(
+      citedPages == null || Array.isArray(citedPages),
+      `${windowLabel}.citedPages must be an array, null, or omitted`,
+    );
+    if (aiPerformance.status === 'available') {
+      invariant(
+        Array.isArray(groundingQueries),
+        `${windowLabel}.groundingQueries must be an array when available`,
+      );
+      invariant(
+        Array.isArray(citedPages),
+        `${windowLabel}.citedPages must be an array when available`,
+      );
+    }
     if (aiPerformance.status === 'unavailable') {
-      invariant(window.groundingQueries.length === 0, `${windowLabel}.groundingQueries must be empty when unavailable`);
-      invariant(window.citedPages.length === 0, `${windowLabel}.citedPages must be empty when unavailable`);
+      invariant(
+        groundingQueries == null || groundingQueries.length === 0,
+        `${windowLabel}.groundingQueries must be empty when unavailable`,
+      );
+      invariant(
+        citedPages == null || citedPages.length === 0,
+        `${windowLabel}.citedPages must be empty when unavailable`,
+      );
     }
     const groundingPhrases = new Set();
-    for (const [queryIndex, query] of window.groundingQueries.entries()) {
+    for (const [queryIndex, query] of (groundingQueries ?? []).entries()) {
       const queryLabel = `${windowLabel}.groundingQueries[${queryIndex}]`;
       invariant(isNonEmptyString(query.phrase), `${queryLabel}.phrase is required`);
       invariant(!groundingPhrases.has(query.phrase), `${label} has duplicate grounding phrase ${query.phrase}`);
@@ -300,7 +324,7 @@ function validateBingAiPerformance(aiPerformance, label, latestEndDate) {
       assertCitationCount(query.citationCount, queryLabel, aiPerformance.status);
     }
     const citedUrls = new Set();
-    for (const [pageIndex, page] of window.citedPages.entries()) {
+    for (const [pageIndex, page] of (citedPages ?? []).entries()) {
       const pageLabel = `${windowLabel}.citedPages[${pageIndex}]`;
       invariant(
         typeof page.url === 'string'
@@ -412,8 +436,13 @@ function validateReferralSegments(referrals, referrerFamilyIds) {
 export function isWorldMonitorUrl(value) {
   try {
     const url = new URL(value);
-    return url.hostname === 'worldmonitor.app'
-      || url.hostname.endsWith('.worldmonitor.app');
+    return url.protocol === 'https:'
+      && url.username === ''
+      && url.password === ''
+      && (
+        url.hostname === 'worldmonitor.app'
+        || url.hostname.endsWith('.worldmonitor.app')
+      );
   } catch {
     return false;
   }
@@ -1171,7 +1200,11 @@ function formatSearchPerformance(source, includeIndexedPages = false) {
 
 function referralMetricCell(source, metric) {
   const value = preferredWindow(source).metrics[metric];
-  return value === null ? 'Unavailable' : value;
+  return formatReferralMetric(value);
+}
+
+function formatReferralMetric(value) {
+  return value === null || value === undefined ? 'Unavailable' : value;
 }
 
 function formatReferralRow(label, source) {
@@ -1179,10 +1212,23 @@ function formatReferralRow(label, source) {
   return `| ${label} | ${cells.join(' | ')} |`;
 }
 
+function formatReferralAggregateRows(source) {
+  return source.windows
+    .filter(({ metrics }) => Object.values(metrics).some((value) => Number.isFinite(value)))
+    .map(({ label, metrics }) => {
+      const cells = REFERRAL_METRICS.map((metric) => formatReferralMetric(metrics[metric]));
+      return `| ${label} | ${cells.join(' | ')} |`;
+    });
+}
+
+function formatBingAiDetailCount(source, detail) {
+  if (source.status === 'unavailable' || !Array.isArray(detail)) return 'Unavailable';
+  return detail.length;
+}
+
 function formatBingAiPerformance(source) {
-  const noObservedRows = source.status !== 'available';
   return source.windows.map((window) => (
-    `| ${window.label} | ${window.metrics.totalCitations ?? 'Unavailable'} | ${window.metrics.averageCitedPages ?? 'Unavailable'} | ${noObservedRows ? 'Unavailable' : window.groundingQueries.length} | ${noObservedRows ? 'Unavailable' : window.citedPages.length} |`
+    `| ${window.label} | ${window.metrics.totalCitations ?? 'Unavailable'} | ${window.metrics.averageCitedPages ?? 'Unavailable'} | ${formatBingAiDetailCount(source, window.groundingQueries)} | ${formatBingAiDetailCount(source, window.citedPages)} |`
   ));
 }
 
@@ -1266,6 +1312,7 @@ function formatComparison(comparison) {
 }
 
 export function formatScorecardMarkdown(scorecard) {
+  const aggregateReferralRows = formatReferralAggregateRows(scorecard.referrals);
   const lines = [
     `# SEO and AI-citation visibility scorecard — ${scorecard.baselineId}`,
     '',
@@ -1327,6 +1374,16 @@ export function formatScorecardMarkdown(scorecard) {
     '',
     'Referral segments retain both the major referrer family and landing-page family.',
     'Unavailable aggregates remain unavailable in every slice.',
+    ...(aggregateReferralRows.length
+      ? [
+        '',
+        'Aggregate referral totals are shown by window; missing metrics remain unavailable.',
+        '',
+        '| Aggregate window | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | Activations | API actions | MCP actions |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+        ...aggregateReferralRows,
+      ]
+      : []),
     '',
     '| Referrer family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | Activations | API actions | MCP actions |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',

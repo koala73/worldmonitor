@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+const { trackApiAction } = await import('../src/services/analytics.ts');
 
 test('UMAMI_DOMAINS covers the canonical www host', () => {
   const src = read('src/services/analytics.ts');
@@ -55,6 +56,38 @@ test('API outcome telemetry is bounded to successful key lifecycle actions', () 
     'successful API key revocation no longer contributes to API outcomes');
   assert.ok(!settings.includes('trackApiAction(keyId)'),
     'API telemetry must not include a key identifier');
+});
+
+test('API outcome telemetry emits only the closed key lifecycle buckets at runtime', () => {
+  const calls = [];
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      umami: {
+        track: (event, data) => calls.push({ event, data }),
+      },
+    },
+  });
+
+  try {
+    trackApiAction('key-created');
+    trackApiAction('key-revoked');
+    // The TypeScript signature protects typed callers; this exercises the
+    // runtime boundary where an untyped or stale caller can still arrive.
+    trackApiAction('key-exported');
+
+    assert.deepEqual(calls, [
+      { event: 'api-action', data: { action: 'key-created' } },
+      { event: 'api-action', data: { action: 'key-revoked' } },
+    ]);
+  } finally {
+    if (previousWindow) {
+      Object.defineProperty(globalThis, 'window', previousWindow);
+    } else {
+      delete globalThis.window;
+    }
+  }
 });
 
 test('dashboard checkout entry fires checkout-start', () => {

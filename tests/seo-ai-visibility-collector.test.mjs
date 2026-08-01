@@ -62,6 +62,50 @@ const searchRows = (metrics) => ({
   token: 'must never be copied',
 });
 
+const bingPerformance = ({
+  includeDetailArrays = true,
+  firstCitedUrl = 'https://www.worldmonitor.app/docs/api-reference',
+} = {}) => ({
+  status: 'available',
+  windows: [
+    {
+      label: '28d',
+      startDate: '2026-07-05',
+      endDate: '2026-08-01',
+      totalCitations: 0,
+      averageCitedPages: 0,
+      ...(includeDetailArrays ? {
+        groundingQueries: [],
+        citedPages: firstCitedUrl === null
+          ? []
+          : [{ url: firstCitedUrl, citationCount: 0 }],
+      } : {}),
+    },
+    {
+      label: '90d',
+      startDate: '2026-05-04',
+      endDate: '2026-08-01',
+      totalCitations: 0,
+      averageCitedPages: 0,
+      ...(includeDetailArrays ? {
+        groundingQueries: [],
+        citedPages: [],
+      } : {}),
+    },
+  ],
+});
+
+const completeReferralMetrics = Object.fromEntries([
+  ['sessions', 1],
+  ['dashboardLaunches', 1],
+  ['pricingViews', 1],
+  ['signUps', 1],
+  ['proConversions', 1],
+  ['activations', 1],
+  ['apiActions', 1],
+  ['mcpActions', 1],
+]);
+
 describe('SEO/AI visibility collector', () => {
   it('derives inclusive trailing 28d and 90d windows from the observation date', () => {
     assert.deepEqual(deriveTrailingWindows(observedAt), [
@@ -128,6 +172,75 @@ describe('SEO/AI visibility collector', () => {
     );
   });
 
+  it('detects target-route family collisions without overriding explicit page families', () => {
+    const ambiguousQuerySet = structuredClone(querySet);
+    ambiguousQuerySet.queries[1].targetPage.url = ambiguousQuerySet.queries[0].targetPage.url;
+    const source = searchRows({
+      indexedPages: 1,
+      impressions: 1,
+      clicks: 1,
+      ctr: 1,
+      averagePosition: 1,
+    });
+
+    assert.throws(
+      () => normalizeSearchExport(source, {
+        querySet: ambiguousQuerySet,
+        observedAt,
+        provider: 'googleSearchConsole',
+      }),
+      /maps ambiguously/,
+    );
+
+    const explicit = structuredClone(source);
+    explicit.windows[0].pageRows[0].pageFamily = 'homepage';
+    const normalized = normalizeSearchExport(explicit, {
+      querySet: ambiguousQuerySet,
+      observedAt,
+      provider: 'googleSearchConsole',
+    });
+    assert.equal(normalized.pageFamilyRows[0].pageFamily, 'homepage');
+  });
+
+  it('marks a search export partial when reviewed query or page-family breakdowns are empty', () => {
+    const source = searchRows({
+      indexedPages: 1,
+      impressions: 1,
+      clicks: 1,
+      ctr: 1,
+      averagePosition: 1,
+    });
+    for (const window of source.windows) {
+      window.queryRows = [];
+      window.pageRows = [];
+    }
+
+    const normalized = normalizeSearchExport(source, {
+      querySet,
+      observedAt,
+      provider: 'googleSearchConsole',
+    });
+    assert.equal(normalized.status, 'partial');
+  });
+
+  it('rejects unknown source statuses instead of treating them as available', () => {
+    assert.throws(
+      () => normalizeSearchExport({ status: 'mystery' }, { querySet, observedAt }),
+      /must be available, partial, or unavailable/,
+    );
+    assert.throws(
+      () => normalizeBingAiPerformance({ status: 'mystery' }, { observedAt }),
+      /must be available, partial, or unavailable/,
+    );
+    assert.throws(
+      () => normalizeReferralExport(
+        { status: 'mystery' },
+        { observedAt, classification: template.referrals.classification },
+      ),
+      /must be available, partial, or unavailable/,
+    );
+  });
+
   it('normalizes Bing AI Performance totals, cited pages, and grounding queries', () => {
     const normalized = normalizeBingAiPerformance({
       status: 'available',
@@ -169,6 +282,43 @@ describe('SEO/AI visibility collector', () => {
     ]);
   });
 
+  it('keeps omitted Bing detail arrays partial while preserving explicit empty detail as zero', () => {
+    const omitted = normalizeBingAiPerformance(
+      bingPerformance({ includeDetailArrays: false }),
+      { observedAt },
+    );
+    assert.equal(omitted.status, 'partial');
+    assert.equal(omitted.windows[0].groundingQueries, null);
+    assert.equal(omitted.windows[0].citedPages, null);
+
+    const explicitEmpty = normalizeBingAiPerformance(
+      bingPerformance({ firstCitedUrl: null }),
+      { observedAt },
+    );
+    assert.equal(explicitEmpty.status, 'available');
+    assert.deepEqual(explicitEmpty.windows[0].groundingQueries, []);
+    assert.deepEqual(explicitEmpty.windows[0].citedPages, []);
+  });
+
+  it('rejects cited URL credentials and stores canonical credential-free URLs', () => {
+    const canonical = normalizeBingAiPerformance(
+      bingPerformance({ firstCitedUrl: 'https://WWW.worldmonitor.app/docs/api-reference?view=1' }),
+      { observedAt },
+    );
+    assert.equal(
+      canonical.windows[0].citedPages[0].url,
+      'https://www.worldmonitor.app/docs/api-reference?view=1',
+    );
+
+    assert.throws(
+      () => normalizeBingAiPerformance(
+        bingPerformance({ firstCitedUrl: 'https://operator:secret@www.worldmonitor.app/docs/api-reference' }),
+        { observedAt },
+      ),
+      /must not contain credentials/,
+    );
+  });
+
   it('aggregates only bounded outcome events and keeps absent metrics null', () => {
     const normalized = normalizeReferralExport({
       status: 'available',
@@ -200,6 +350,7 @@ describe('SEO/AI visibility collector', () => {
               referrerFamily: 'chatgpt',
               landingPageFamily: 'developer_mcp',
               event: 'api-action',
+              action: 'key-created',
               count: 0,
             },
             {
@@ -237,6 +388,93 @@ describe('SEO/AI visibility collector', () => {
     assert.equal(JSON.stringify(normalized).includes('must never be copied'), false);
   });
 
+  it('omits referral rows with missing dimensions without inventing direct attribution', () => {
+    const normalized = normalizeReferralExport({
+      status: 'available',
+      windows: [
+        {
+          label: '28d',
+          startDate: '2026-07-05',
+          endDate: '2026-08-01',
+          metrics: completeReferralMetrics,
+          rows: [
+            {
+              landingPageFamily: 'homepage',
+              event: 'session',
+              count: 99,
+            },
+            {
+              referrerFamily: 'chatgpt',
+              event: 'session',
+              count: 98,
+            },
+            {
+              referrerFamily: 'unknown_direct',
+              landingPageFamily: 'homepage',
+              event: 'session',
+              count: 2,
+            },
+          ],
+        },
+        {
+          label: '90d',
+          startDate: '2026-05-04',
+          endDate: '2026-08-01',
+          metrics: completeReferralMetrics,
+          rows: [],
+        },
+      ],
+    }, { observedAt, classification: template.referrals.classification });
+
+    assert.equal(normalized.status, 'partial');
+    assert.deepEqual(normalized.segments.map(({ referrerFamily }) => referrerFamily), ['unknown_direct']);
+    assert.equal(normalized.segments[0].metrics.sessions, 2);
+  });
+
+  it('counts only completed activation aliases and quarantines unknown API actions', () => {
+    const normalized = normalizeReferralExport({
+      status: 'available',
+      windows: [{
+        label: '28d',
+        startDate: '2026-07-05',
+        endDate: '2026-08-01',
+        rows: [
+          {
+            referrerFamily: 'chatgpt',
+            landingPageFamily: 'developer_mcp',
+            event: 'activation',
+            count: 99,
+          },
+          {
+            referrerFamily: 'chatgpt',
+            landingPageFamily: 'developer_mcp',
+            event: 'activation',
+            completion: 'complete',
+            count: 2,
+          },
+          {
+            referrerFamily: 'chatgpt',
+            landingPageFamily: 'developer_mcp',
+            event: 'api-action',
+            action: 'key-revoked',
+            count: 3,
+          },
+          {
+            referrerFamily: 'chatgpt',
+            landingPageFamily: 'developer_mcp',
+            event: 'api-action',
+            action: 'key-deleted',
+            count: 100,
+          },
+        ],
+      }],
+    }, { observedAt, classification: template.referrals.classification });
+
+    assert.equal(normalized.status, 'partial');
+    assert.equal(normalized.windows[0].metrics.activations, 2);
+    assert.equal(normalized.windows[0].metrics.apiActions, 3);
+  });
+
   it('builds a validated dated baseline while leaving omitted manual AI observations empty', () => {
     const sources = {
       googleSearchConsole: searchRows({
@@ -272,6 +510,27 @@ describe('SEO/AI visibility collector', () => {
     assert.equal(JSON.stringify(baseline).includes('operator-only-property-id'), false);
   });
 
+  it('marks omitted AI surface manifests unavailable instead of inheriting template availability', () => {
+    const sources = {
+      googleSearchConsole: { status: 'unavailable', reason: 'No export.' },
+      bingWebmaster: { status: 'unavailable', reason: 'No export.' },
+      referrals: { status: 'unavailable', reason: 'No export.' },
+    };
+    const baseline = collectBaseline({
+      template,
+      querySet,
+      sources,
+      observedAt,
+      repositoryRevision: 'test-revision',
+    });
+
+    assert.deepEqual(
+      baseline.aiSurfaces.map(({ platform, status }) => ({ platform, status })),
+      template.aiSurfaces.map(({ platform }) => ({ platform, status: 'unavailable' })),
+    );
+    assert.equal(baseline.aiObservations.length, 0);
+  });
+
   it('whitelists manual observation fields before writing a baseline', () => {
     const sources = {
       googleSearchConsole: { status: 'unavailable', reason: 'No export.' },
@@ -283,6 +542,12 @@ describe('SEO/AI visibility collector', () => {
         prompt: 'must never be copied',
         userId: 'must never be copied',
       }],
+      opportunities: template.opportunities.map((opportunity) => ({
+        ...opportunity,
+        rawPrompt: 'must never be copied',
+        userId: 'must never be copied',
+        credentials: { token: 'must never be copied' },
+      })),
     };
     const baseline = collectBaseline({
       template,
@@ -294,6 +559,87 @@ describe('SEO/AI visibility collector', () => {
 
     assert.equal(JSON.stringify(baseline).includes('must never be copied'), false);
     assert.equal(baseline.aiObservations[0].queryId, 'q01');
+    assert.deepEqual(
+      Object.keys(baseline.opportunities[0]).sort(),
+      ['evidence', 'experiment', 'priority', 'queryIds', 'successCriteria', 'title'],
+    );
+  });
+
+  it('bounds imported windows, rows, and UTF-8 strings before normalization', () => {
+    const oversizedWindows = Array.from({ length: 17 }, (_, index) => ({
+      label: `${index + 1}d`,
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    }));
+    assert.throws(
+      () => normalizeSearchExport(
+        { status: 'available', windows: oversizedWindows },
+        { querySet, observedAt },
+      ),
+      /windows exceeds the 16-item limit/,
+    );
+
+    const oversizedReferralRows = Array.from({ length: 5_001 }, () => ({
+      referrerFamily: 'chatgpt',
+      landingPageFamily: 'homepage',
+      event: 'session',
+      count: 1,
+    }));
+    assert.throws(
+      () => normalizeReferralExport({
+        status: 'available',
+        windows: [{
+          label: '28d',
+          startDate: '2026-07-05',
+          endDate: '2026-08-01',
+          rows: oversizedReferralRows,
+        }],
+      }, { observedAt, classification: template.referrals.classification }),
+      /rows exceeds the 5000-item limit/,
+    );
+
+    assert.throws(
+      () => normalizeSearchExport(
+        { status: 'unavailable', reason: '😀'.repeat(2_049) },
+        { querySet, observedAt },
+      ),
+      /exceeds the 4096-byte limit/,
+    );
+
+    const oversizedOpportunities = structuredClone(template.opportunities);
+    oversizedOpportunities[0].title = '😀'.repeat(2_049);
+    assert.throws(
+      () => collectBaseline({
+        template,
+        querySet,
+        sources: {
+          googleSearchConsole: { status: 'unavailable', reason: 'No export.' },
+          bingWebmaster: { status: 'unavailable', reason: 'No export.' },
+          referrals: { status: 'unavailable', reason: 'No export.' },
+          opportunities: oversizedOpportunities,
+        },
+        observedAt,
+        repositoryRevision: 'test-revision',
+      }),
+      /opportunities\[0\]\.title exceeds the 4096-byte limit/,
+    );
+  });
+
+  it('fails closed when no repository revision can be resolved', () => {
+    assert.throws(
+      () => collectBaseline({
+        template,
+        querySet,
+        sources: {
+          googleSearchConsole: { status: 'unavailable', reason: 'No export.' },
+          bingWebmaster: { status: 'unavailable', reason: 'No export.' },
+          referrals: { status: 'unavailable', reason: 'No export.' },
+        },
+        observedAt,
+        repositoryRevision: 'unknown-local-revision',
+      }),
+      /local git revision is unavailable/,
+    );
   });
 
   it('reproduces the collector CLI output and its check gate', async () => {
@@ -318,6 +664,31 @@ describe('SEO/AI visibility collector', () => {
       await runCli(args);
       assert.match(readFileSync(outputPath, 'utf8'), /"baselineId": "2026-08-01"/);
       await runCli([...args, '--check']);
+      writeFileSync(outputPath, 'stale output\n');
+      await assert.rejects(
+        runCli([...args, '--check']),
+        /is stale; regenerate it without --check/,
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects oversized CLI inputs before loading the full file', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'seo-visibility-collector-'));
+    const sourcesPath = join(directory, 'oversized-sources.json');
+    writeFileSync(sourcesPath, Buffer.alloc((4 * 1024 * 1024) + 1, 0x20));
+    try {
+      await assert.rejects(
+        runCli([
+          '--queries', 'docs/research/seo-ai-visibility/query-set.json',
+          '--template', 'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
+          '--sources', sourcesPath,
+          '--observed-at', observedAt,
+          '--repository-revision', 'test-revision',
+        ]),
+        /oversized-sources\.json exceeds the 4194304-byte input limit/,
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

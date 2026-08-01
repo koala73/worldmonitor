@@ -11,14 +11,18 @@
  */
 
 import {
+  closeSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   writeFileSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 
 import {
+  AI_PLATFORMS,
   PAGE_FAMILIES,
   BING_AI_METRICS,
   REFERRAL_METRICS,
@@ -33,6 +37,7 @@ import { isMainModule } from './lib/main-module.mjs';
 
 const UTC_DAY_MS = 86_400_000;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
+const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
 const REFERRER_FAMILIES = new Set([
   'chatgpt',
   'perplexity',
@@ -52,15 +57,109 @@ const EVENT_METRICS = Object.freeze({
   'sign-up': 'signUps',
   'checkout-success': 'proConversions',
   'pro-activation-exit': 'activations',
-  activation: 'activations',
-  'api-action': 'apiActions',
-  'api-key-created': 'apiActions',
-  'api-key-revoked': 'apiActions',
   'mcp-connect-success': 'mcpActions',
 });
+const API_ACTIONS = new Set(['key-created', 'key-revoked']);
+
+// These inputs are operator-provided exports. Keep the limits comfortably
+// above the reviewed fixtures while bounding work before normalization,
+// cloning, or serialization.
+const MAX_INPUT_BYTES = 4 * 1024 * 1024;
+const MAX_STRING_BYTES = 4 * 1024;
+const MAX_URL_BYTES = 8 * 1024;
+const MAX_WINDOWS = 16;
+const MAX_ROWS_PER_WINDOW = 5_000;
+const MAX_TOTAL_ROWS = 25_000;
+const MAX_ARRAY_ITEMS = 500;
+const MAX_QUERY_SET_ENTRIES = 30;
+const MAX_REFERENCE_ENTITIES = 20;
+const MAX_AI_OBSERVATIONS = 500;
+const MAX_OPPORTUNITIES = 5;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`[seo-visibility-collector] ${message}`);
+}
+
+function boundedString(value, field, maximumBytes = MAX_STRING_BYTES) {
+  invariant(typeof value === 'string', `${field} must be a string`);
+  invariant(
+    Buffer.byteLength(value, 'utf8') <= maximumBytes,
+    `${field} exceeds the ${maximumBytes}-byte limit`,
+  );
+  return value;
+}
+
+function boundedNonEmptyString(value, field, maximumBytes = MAX_STRING_BYTES) {
+  boundedString(value, field, maximumBytes);
+  invariant(isNonEmptyString(value), `${field} must be a non-empty string`);
+  return value;
+}
+
+function optionalBoundedString(value, field, maximumBytes = MAX_STRING_BYTES) {
+  if (value === undefined || value === null) return null;
+  return boundedString(value, field, maximumBytes);
+}
+
+function boundedArray(value, field, maximumLength = MAX_ARRAY_ITEMS) {
+  invariant(Array.isArray(value), `${field} must be an array`);
+  invariant(
+    value.length <= maximumLength,
+    `${field} exceeds the ${maximumLength}-item limit`,
+  );
+  return value;
+}
+
+function optionalArray(value, field, maximumLength = MAX_ARRAY_ITEMS) {
+  if (value === undefined || value === null) return [];
+  return boundedArray(value, field, maximumLength);
+}
+
+function sourceStatusValue(raw, field) {
+  if (raw?.status === undefined) return 'available';
+  const status = boundedString(raw.status, `${field}.status`, 32);
+  invariant(AVAILABILITY_STATES.has(status), `${field} must be available, partial, or unavailable`);
+  return status;
+}
+
+function sourceReason(value, fallback, field) {
+  return value === undefined || value === null
+    ? fallback
+    : boundedNonEmptyString(value, field);
+}
+
+function assertQuerySetBounds(querySet) {
+  invariant(querySet && typeof querySet === 'object', 'query set is required');
+  boundedNonEmptyString(querySet.querySetId, 'querySet.querySetId');
+  boundedNonEmptyString(querySet.reviewedAt, 'querySet.reviewedAt', 64);
+  const queries = boundedArray(
+    querySet.queries,
+    'querySet.queries',
+    MAX_QUERY_SET_ENTRIES,
+  );
+  for (const [index, query] of queries.entries()) {
+    const label = `querySet.queries[${index}]`;
+    invariant(query && typeof query === 'object', `${label} must be an object`);
+    boundedNonEmptyString(query.id, `${label}.id`);
+    boundedNonEmptyString(query.query, `${label}.query`);
+    boundedNonEmptyString(query.intent, `${label}.intent`);
+    boundedNonEmptyString(query.targetAudience, `${label}.targetAudience`);
+    boundedNonEmptyString(query.conversionGoal, `${label}.conversionGoal`);
+    invariant(query.targetPage && typeof query.targetPage === 'object', `${label}.targetPage is required`);
+    boundedNonEmptyString(query.targetPage.family, `${label}.targetPage.family`);
+    boundedNonEmptyString(query.targetPage.url, `${label}.targetPage.url`, MAX_URL_BYTES);
+    const entities = boundedArray(
+      query.referenceEntities,
+      `${label}.referenceEntities`,
+      MAX_REFERENCE_ENTITIES,
+    );
+    for (const [entityIndex, entity] of entities.entries()) {
+      const entityLabel = `${label}.referenceEntities[${entityIndex}]`;
+      invariant(entity && typeof entity === 'object', `${entityLabel} must be an object`);
+      boundedNonEmptyString(entity.role, `${entityLabel}.role`);
+      boundedNonEmptyString(entity.name, `${entityLabel}.name`);
+      boundedNonEmptyString(entity.url, `${entityLabel}.url`, MAX_URL_BYTES);
+    }
+  }
 }
 
 function isIsoCalendarDate(value) {
@@ -70,10 +169,12 @@ function isIsoCalendarDate(value) {
 }
 
 function assertIsoCalendarDate(value, field) {
+  boundedString(value, field, 64);
   invariant(isIsoCalendarDate(value), `${field} must be an ISO calendar date`);
 }
 
 function assertIsoUtcDateTime(value, field) {
+  boundedString(value, field, 64);
   invariant(
     isNonEmptyString(value)
       && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
@@ -189,14 +290,16 @@ function performanceMetricsAreComplete(metrics) {
 
 function canonicalWindows(rawWindows, observedAt, { requireTrailing = false } = {}) {
   const fallback = new Map(deriveTrailingWindows(observedAt).map((window) => [window.label, window]));
-  const windows = Array.isArray(rawWindows) && rawWindows.length > 0
-    ? rawWindows
+  const suppliedWindows = rawWindows === undefined || rawWindows === null
+    ? null
+    : boundedArray(rawWindows, 'windows', MAX_WINDOWS);
+  const windows = suppliedWindows && suppliedWindows.length > 0
+    ? suppliedWindows
     : [...fallback.values()];
   const labels = new Set();
   const normalized = windows.map((window, index) => {
     invariant(window && typeof window === 'object', `windows[${index}] must be an object`);
-    const label = window.label;
-    invariant(isNonEmptyString(label), `windows[${index}].label is required`);
+    const label = boundedNonEmptyString(window.label, `windows[${index}].label`);
     invariant(!labels.has(label), `duplicate window ${label}`);
     labels.add(label);
     const defaultWindow = fallback.get(label);
@@ -250,6 +353,7 @@ function unavailableBingAiPerformance(observedAt, reason) {
 }
 
 function pageRoute(value, field) {
+  boundedNonEmptyString(value, field, MAX_URL_BYTES);
   let parsed;
   try {
     parsed = new URL(value);
@@ -262,19 +366,26 @@ function pageRoute(value, field) {
 }
 
 function createQueryIndexes(querySet) {
+  assertQuerySetBounds(querySet);
   const queryById = new Map(querySet.queries.map((query) => [query.id, query]));
   const queryByText = new Map(querySet.queries.map((query) => [query.query, query]));
-  const pageFamilyByRoute = new Map();
+  const pageFamiliesByRoute = new Map();
   for (const query of querySet.queries) {
     const route = pageRoute(query.targetPage.url, `${query.id}.targetPage.url`);
-    if (!pageFamilyByRoute.has(route)) pageFamilyByRoute.set(route, query.targetPage.family);
+    const families = pageFamiliesByRoute.get(route) ?? new Set();
+    families.add(query.targetPage.family);
+    pageFamiliesByRoute.set(route, families);
   }
-  return { queryById, queryByText, pageFamilyByRoute };
+  return { queryById, queryByText, pageFamiliesByRoute };
 }
 
 function queryIdForRow(row, { queryById, queryByText }) {
-  const declaredId = row.queryId ?? null;
-  const declaredText = row.query ?? row.queryText ?? null;
+  invariant(row && typeof row === 'object', 'imported query row must be an object');
+  const declaredId = optionalBoundedString(row.queryId, 'queryId');
+  const declaredText = optionalBoundedString(
+    row.query ?? row.queryText,
+    'query',
+  );
   const query = declaredId ? queryById.get(declaredId) : queryByText.get(declaredText);
   invariant(query, 'imported row must reference an exact reviewed query text or queryId');
   if (declaredText !== null) {
@@ -286,24 +397,52 @@ function queryIdForRow(row, { queryById, queryByText }) {
   return query.id;
 }
 
-function normalizePageFamily(row, { pageFamilyByRoute }) {
+function normalizePageFamily(row, { pageFamiliesByRoute }) {
+  invariant(row && typeof row === 'object', 'page-family row must be an object');
   if (isNonEmptyString(row.pageFamily)) {
-    invariant(PAGE_FAMILIES.includes(row.pageFamily), `unknown page family ${row.pageFamily}`);
-    return row.pageFamily;
+    const pageFamily = boundedString(row.pageFamily, 'pageFamily');
+    invariant(PAGE_FAMILIES.includes(pageFamily), `unknown page family ${pageFamily}`);
+    return pageFamily;
   }
-  const page = row.page ?? row.url ?? null;
+  const page = optionalBoundedString(row.page ?? row.url, 'page', MAX_URL_BYTES);
   invariant(isNonEmptyString(page), 'page-family row requires page or pageFamily');
-  const family = pageFamilyByRoute.get(pageRoute(page, 'page'));
-  invariant(family, `page does not map to a reviewed page family: ${page}`);
-  return family;
+  const route = pageRoute(page, 'page');
+  const families = pageFamiliesByRoute.get(route);
+  invariant(families, `page does not map to a reviewed page family: ${page}`);
+  invariant(
+    families.size === 1,
+    `page maps ambiguously to reviewed page families: ${page}`,
+  );
+  return families.values().next().value;
 }
 
-function sourceStatus(raw, windows, queryRows, pageFamilyRows) {
-  if (raw?.status === 'unavailable') return 'unavailable';
-  const requested = raw?.status === 'partial' ? 'partial' : 'available';
+function hasBreakdownCoverage(rows, groupSelector, expectedGroups, windows) {
+  const groupsByWindow = new Map(windows.map(({ label }) => [label, new Set()]));
+  for (const row of rows) {
+    groupsByWindow.get(row.windowLabel)?.add(groupSelector(row));
+  }
+  return [...groupsByWindow.values()].every((groups) => (
+    [...expectedGroups].every((group) => groups.has(group))
+  ));
+}
+
+function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
+  if (requested === 'unavailable') return 'unavailable';
   const complete = windows.every(({ metrics }) => metricsAreComplete(metrics))
     && queryRows.every(({ metrics }) => performanceMetricsAreComplete(metrics))
-    && pageFamilyRows.every(({ metrics }) => metricsAreComplete(metrics));
+    && pageFamilyRows.every(({ metrics }) => metricsAreComplete(metrics))
+    && hasBreakdownCoverage(
+      queryRows,
+      (row) => row.queryId,
+      querySet.queries.map((query) => query.id),
+      windows,
+    )
+    && hasBreakdownCoverage(
+      pageFamilyRows,
+      (row) => row.pageFamily,
+      PAGE_FAMILIES,
+      windows,
+    );
   return requested === 'partial' || !complete ? 'partial' : 'available';
 }
 
@@ -311,17 +450,37 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
   if (!raw || raw.status === 'unavailable') {
     return unavailableSearchSource(
       observedAt,
-      raw?.reason ?? `No supported ${provider} export was supplied.`,
+      sourceReason(
+        raw?.reason,
+        `No supported ${provider} export was supplied.`,
+        `${provider}.reason`,
+      ),
     );
   }
+  assertQuerySetBounds(querySet);
+  const requestedStatus = sourceStatusValue(raw, `${provider} status`);
   const windows = canonicalWindows(raw.windows, observedAt, { requireTrailing: true });
   const queryIndexes = createQueryIndexes(querySet);
   const queryRows = [];
   const pageFamilyRows = [];
   const normalizedWindows = [];
+  let totalRows = 0;
   for (const window of windows) {
     const rawWindow = window.raw;
-    const normalizedQueryRows = (rawWindow.queryRows ?? []).map((row) => {
+    invariant(rawWindow && typeof rawWindow === 'object', `windows.${window.label} must be an object`);
+    const rawQueryRows = optionalArray(
+      rawWindow.queryRows,
+      `windows.${window.label}.queryRows`,
+      MAX_ROWS_PER_WINDOW,
+    );
+    const rawPageRows = optionalArray(
+      rawWindow.pageFamilyRows ?? rawWindow.pageRows,
+      `windows.${window.label}.pageFamilyRows`,
+      MAX_ROWS_PER_WINDOW,
+    );
+    totalRows += rawQueryRows.length + rawPageRows.length;
+    invariant(totalRows <= MAX_TOTAL_ROWS, `search breakdown rows exceed the ${MAX_TOTAL_ROWS}-row limit`);
+    const normalizedQueryRows = rawQueryRows.map((row) => {
       const { indexedPages: _indexedPages, ...metrics } = normalizeSearchMetrics(
         row,
         { includeIndexedPages: false },
@@ -332,7 +491,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
         metrics,
       };
     });
-    const normalizedPageRows = (rawWindow.pageFamilyRows ?? rawWindow.pageRows ?? []).map((row) => ({
+    const normalizedPageRows = rawPageRows.map((row) => ({
       windowLabel: window.label,
       pageFamily: normalizePageFamily(row, queryIndexes),
       metrics: normalizeSearchMetrics(row, { includeIndexedPages: true }),
@@ -349,11 +508,19 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
       metrics,
     });
   }
-  const status = sourceStatus(raw, normalizedWindows, queryRows, pageFamilyRows);
+  const status = sourceStatus(
+    requestedStatus,
+    normalizedWindows,
+    queryRows,
+    pageFamilyRows,
+    querySet,
+  );
   return {
     status,
     property: null,
-    reason: status === 'available' ? null : (raw.reason ?? 'The imported provider data is partial.'),
+    reason: status === 'available'
+      ? null
+      : sourceReason(raw.reason, 'The imported provider data is partial.', `${provider}.reason`),
     windows: normalizedWindows,
     queryRows: status === 'unavailable' ? [] : queryRows,
     pageFamilyRows: status === 'unavailable' ? [] : pageFamilyRows,
@@ -361,6 +528,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
 }
 
 function normalizeBingAiWindow(window) {
+  invariant(window && typeof window === 'object', 'Bing AI window must be an object');
   const totalCitations = finiteNumber(
     window.totalCitations ?? window.citationTotal,
     'totalCitations',
@@ -369,28 +537,78 @@ function normalizeBingAiWindow(window) {
     window.averageCitedPages,
     'averageCitedPages',
   );
-  const groundingQueries = (window.groundingQueries ?? []).map((query, index) => ({
-    phrase: query.phrase ?? query.query ?? query.groundingQuery,
+  const groundingQueriesProvided = Array.isArray(window.groundingQueries);
+  if (
+    window.groundingQueries !== undefined
+    && window.groundingQueries !== null
+  ) {
+    invariant(groundingQueriesProvided, 'groundingQueries must be an array');
+  }
+  const groundingQueries = optionalArray(
+    window.groundingQueries,
+    'groundingQueries',
+    MAX_ROWS_PER_WINDOW,
+  ).map((query, index) => {
+    invariant(query && typeof query === 'object', `groundingQueries[${index}] must be an object`);
+    const phrase = boundedNonEmptyString(
+      query.phrase ?? query.query ?? query.groundingQuery,
+      `groundingQueries[${index}].phrase`,
+    );
+    return {
+      phrase,
     citationCount: finiteNumber(
       query.citationCount ?? query.citations ?? query.count,
       `groundingQueries[${index}].citationCount`,
     ),
-  }));
-  const citedPages = (window.citedPages ?? window.citedUrls ?? []).map((page, index) => {
-    const url = page.url ?? page.page;
-    invariant(isNonEmptyString(url), `citedPages[${index}].url is required`);
+    };
+  });
+  const citedPagesInput = Array.isArray(window.citedPages)
+    ? window.citedPages
+    : window.citedPages === undefined || window.citedPages === null
+      ? window.citedUrls
+      : null;
+  const citedPagesProvided = Array.isArray(citedPagesInput);
+  if (
+    window.citedPages !== undefined
+    && window.citedPages !== null
+  ) {
+    invariant(Array.isArray(window.citedPages), 'citedPages must be an array');
+  }
+  if (
+    window.citedUrls !== undefined
+    && window.citedUrls !== null
+    && window.citedPages === undefined
+  ) {
+    invariant(Array.isArray(window.citedUrls), 'citedUrls must be an array');
+  }
+  const citedPages = optionalArray(
+    citedPagesInput,
+    'citedPages',
+    MAX_ROWS_PER_WINDOW,
+  ).map((page, index) => {
+    invariant(page && typeof page === 'object', `citedPages[${index}] must be an object`);
+    const url = boundedNonEmptyString(
+      page.url ?? page.page,
+      `citedPages[${index}].url`,
+      MAX_URL_BYTES,
+    );
     let parsed;
     try {
       parsed = new URL(url);
     } catch {
       throw new Error(`[seo-visibility-collector] citedPages[${index}].url must be an HTTPS URL`);
     }
+    invariant(parsed.protocol === 'https:', `citedPages[${index}].url must be an HTTPS URL`);
     invariant(
-      parsed.protocol === 'https:' && isWorldMonitorUrl(url),
+      parsed.username === '' && parsed.password === '',
+      `citedPages[${index}].url must not contain credentials`,
+    );
+    invariant(
+      isWorldMonitorUrl(parsed.toString()),
       `citedPages[${index}].url must be a World Monitor HTTPS URL`,
     );
     return {
-      url,
+      url: parsed.toString(),
       citationCount: finiteNumber(
         page.citationCount ?? page.citations ?? page.count,
         `citedPages[${index}].citationCount`,
@@ -399,8 +617,10 @@ function normalizeBingAiWindow(window) {
   });
   return {
     metrics: { totalCitations, averageCitedPages },
-    groundingQueries,
-    citedPages,
+    groundingQueries: groundingQueriesProvided ? groundingQueries : null,
+    citedPages: citedPagesProvided ? citedPages : null,
+    groundingQueriesProvided,
+    citedPagesProvided,
   };
 }
 
@@ -408,24 +628,42 @@ export function normalizeBingAiPerformance(raw, { observedAt }) {
   if (!raw || raw.status === 'unavailable') {
     return unavailableBingAiPerformance(
       observedAt,
-      raw?.reason ?? 'No Bing AI Performance export was supplied.',
+      sourceReason(
+        raw?.reason,
+        'No Bing AI Performance export was supplied.',
+        'bingAiPerformance.reason',
+      ),
     );
   }
+  const requestedStatus = sourceStatusValue(raw, 'Bing AI Performance status');
   const windows = canonicalWindows(raw.windows, observedAt, { requireTrailing: true });
-  const normalizedWindows = windows.map((window) => ({
+  const normalizedWindowsWithPresence = windows.map((window) => ({
     label: window.label,
     startDate: window.startDate,
     endDate: window.endDate,
     ...normalizeBingAiWindow(window.raw),
   }));
-  const complete = normalizedWindows.every(({ metrics }) => (
-    BING_AI_METRICS.every((metric) => Number.isFinite(metrics[metric]))
+  const complete = normalizedWindowsWithPresence.every((window) => (
+    BING_AI_METRICS.every((metric) => Number.isFinite(window.metrics[metric]))
+      && window.groundingQueriesProvided
+      && window.citedPagesProvided
   ));
-  const status = raw.status === 'partial' || !complete ? 'partial' : 'available';
+  const status = requestedStatus === 'partial' || !complete
+    ? 'partial'
+    : 'available';
   return {
     status,
-    reason: status === 'available' ? null : (raw.reason ?? 'The imported Bing AI Performance data is partial.'),
-    windows: normalizedWindows,
+    reason: status === 'available'
+      ? null
+      : sourceReason(raw.reason, 'The imported Bing AI Performance data is partial.', 'bingAiPerformance.reason'),
+    windows: normalizedWindowsWithPresence.map((window) => {
+      const {
+        groundingQueriesProvided: _groundingQueriesProvided,
+        citedPagesProvided: _citedPagesProvided,
+        ...normalizedWindow
+      } = window;
+      return normalizedWindow;
+    }),
   };
 }
 
@@ -434,7 +672,7 @@ function unavailableReferralExport(observedAt, classification, reason) {
     status: 'unavailable',
     property: null,
     reason,
-    classification: structuredClone(classification),
+    classification,
     windows: deriveTrailingWindows(observedAt).map((window) => ({
       ...window,
       metrics: Object.fromEntries(REFERRAL_METRICS.map((metric) => [metric, null])),
@@ -443,28 +681,81 @@ function unavailableReferralExport(observedAt, classification, reason) {
   };
 }
 
+function normalizeReferralClassification(classification) {
+  invariant(
+    classification && typeof classification === 'object',
+    'referral classification is required',
+  );
+  const dimensions = normalizeStringArray(
+    classification.dimensions,
+    'referrals.classification.dimensions',
+  );
+  const families = boundedArray(
+    classification.families,
+    'referrals.classification.families',
+  );
+  return {
+    dimensions,
+    families: families.map((family, index) => {
+      const label = `referrals.classification.families[${index}]`;
+      invariant(family && typeof family === 'object', `${label} must be an object`);
+      return {
+        id: boundedNonEmptyString(family.id, `${label}.id`),
+        label: boundedNonEmptyString(family.label, `${label}.label`),
+        hostSuffixes: normalizeStringArray(family.hostSuffixes, `${label}.hostSuffixes`),
+        utmSources: normalizeStringArray(family.utmSources, `${label}.utmSources`),
+      };
+    }),
+  };
+}
+
 function normalizeReferrerFamily(value) {
-  const family = value ?? 'unknown_direct';
+  const family = boundedNonEmptyString(value, 'referrerFamily');
   invariant(REFERRER_FAMILIES.has(family), `unknown referrer family ${family}`);
   return family;
 }
 
 function normalizeLandingPageFamily(value) {
-  invariant(PAGE_FAMILIES.includes(value), `unknown landing page family ${value}`);
-  return value;
+  const family = boundedNonEmptyString(value, 'landingPageFamily');
+  invariant(PAGE_FAMILIES.includes(family), `unknown landing page family ${family}`);
+  return family;
 }
 
 function eventMetric(row) {
-  const event = row.event ?? row.eventName ?? null;
+  const rawEvent = row.event ?? row.eventName ?? null;
+  const event = optionalBoundedString(rawEvent, 'event');
   if (event === 'pageview') {
     if (row.landingPageFamily === 'dashboard' || row.landingPageFamily === 'homepage') {
-      return 'dashboardLaunches';
+      return { metric: 'dashboardLaunches', quarantine: false };
     }
-    if (row.landingPageFamily === 'pricing') return 'pricingViews';
-    return null;
+    if (row.landingPageFamily === 'pricing') {
+      return { metric: 'pricingViews', quarantine: false };
+    }
+    return { metric: null, quarantine: false };
   }
-  if (event === 'pro-activation-exit' && row.completion !== 'complete') return null;
-  return EVENT_METRICS[event] ?? null;
+  if (event === 'pro-activation-exit' || event === 'activation') {
+    const completion = optionalBoundedString(row.completion, 'completion');
+    return {
+      metric: completion === 'complete' ? 'activations' : null,
+      quarantine: false,
+    };
+  }
+  if (event === 'api-action') {
+    const action = optionalBoundedString(row.action ?? row.apiAction, 'api-action.action');
+    return {
+      metric: action !== null && API_ACTIONS.has(action) ? 'apiActions' : null,
+      quarantine: action === null || !API_ACTIONS.has(action),
+    };
+  }
+  if (event === 'api-key-created' || event === 'api-key-revoked') {
+    const expectedAction = event === 'api-key-created' ? 'key-created' : 'key-revoked';
+    const action = optionalBoundedString(row.action ?? row.apiAction, 'api-action.action');
+    return {
+      metric: action === null || action === expectedAction ? 'apiActions' : null,
+      quarantine: action !== null && action !== expectedAction,
+    };
+  }
+  return { metric: EVENT_METRICS[event] ?? null, quarantine: false };
 }
 
 function eventCount(row, field) {
@@ -485,8 +776,19 @@ function mergeReferralMetric(target, metric, value) {
 }
 
 function normalizeReferralRows(rows, windowLabel) {
+  const inputRows = boundedArray(rows, `windows.${windowLabel}.rows`, MAX_ROWS_PER_WINDOW);
   const segments = new Map();
-  for (const [index, row] of rows.entries()) {
+  let omittedRows = 0;
+  for (const [index, row] of inputRows.entries()) {
+    if (
+      !row
+      || typeof row !== 'object'
+      || !isNonEmptyString(row.referrerFamily)
+      || !isNonEmptyString(row.landingPageFamily)
+    ) {
+      omittedRows += 1;
+      continue;
+    }
     const referrerFamily = normalizeReferrerFamily(row.referrerFamily);
     const landingPageFamily = normalizeLandingPageFamily(row.landingPageFamily);
     const key = `${referrerFamily}:${landingPageFamily}`;
@@ -502,14 +804,21 @@ function normalizeReferralRows(rows, windowLabel) {
         mergeReferralMetric(metrics.metrics, metric, value);
       }
     } else {
-      const metric = eventMetric(row);
+      const { metric, quarantine } = eventMetric(row);
+      if (quarantine) {
+        omittedRows += 1;
+        continue;
+      }
       if (metric) mergeReferralMetric(metrics.metrics, metric, eventCount(row, `rows[${index}]`));
     }
     segments.set(key, metrics);
   }
-  return [...segments.values()].filter(({ metrics }) => (
-    REFERRAL_METRICS.some((metric) => Number.isFinite(metrics[metric]))
-  ));
+  return {
+    segments: [...segments.values()].filter(({ metrics }) => (
+      REFERRAL_METRICS.some((metric) => Number.isFinite(metrics[metric]))
+    )),
+    omittedRows,
+  };
 }
 
 function aggregateReferralSegments(segments) {
@@ -521,11 +830,10 @@ function aggregateReferralSegments(segments) {
   }));
 }
 
-function normalizeStringArray(value, field) {
-  invariant(Array.isArray(value), `${field} must be an array`);
-  return value.map((item, index) => {
-    invariant(isNonEmptyString(item), `${field}[${index}] must be a non-empty string`);
-    return item;
+function normalizeStringArray(value, field, maximumLength = MAX_ARRAY_ITEMS) {
+  const values = boundedArray(value, field, maximumLength);
+  return values.map((item, index) => {
+    return boundedNonEmptyString(item, `${field}[${index}]`);
   });
 }
 
@@ -533,68 +841,116 @@ function normalizeCollectionContext(raw, fallback) {
   const context = raw ?? fallback;
   invariant(context && typeof context === 'object', 'collection context is required');
   return {
-    geography: context.geography,
-    locale: context.locale,
+    geography: boundedNonEmptyString(context.geography, 'collectionContext.geography'),
+    locale: boundedNonEmptyString(context.locale, 'collectionContext.locale'),
     signedInStates: normalizeStringArray(context.signedInStates, 'collectionContext.signedInStates'),
-    device: context.device,
+    device: boundedNonEmptyString(context.device, 'collectionContext.device'),
     limitations: normalizeStringArray(context.limitations, 'collectionContext.limitations'),
   };
 }
 
-function normalizeAiSurfaces(raw, fallback) {
-  const surfaces = raw ?? fallback;
-  invariant(Array.isArray(surfaces), 'AI surface manifest is required');
-  return surfaces.map((surface) => ({
-    platform: surface.platform,
-    status: surface.status,
-    reason: surface.reason ?? null,
-  }));
+function normalizeAiSurfaces(raw) {
+  const surfaces = raw == null
+    ? AI_PLATFORMS.map((platform) => ({
+      platform,
+      status: 'unavailable',
+      reason: 'No current AI surface manifest was supplied.',
+    }))
+    : boundedArray(raw, 'aiSurfaces');
+  return surfaces.map((surface, index) => {
+    const label = `aiSurfaces[${index}]`;
+    invariant(surface && typeof surface === 'object', `${label} must be an object`);
+    const platform = boundedNonEmptyString(surface.platform, `${label}.platform`);
+    const status = boundedNonEmptyString(surface.status, `${label}.status`);
+    invariant(AVAILABILITY_STATES.has(status), `${label}.status must be available, partial, or unavailable`);
+    return {
+      platform,
+      status,
+      reason: optionalBoundedString(surface.reason, `${label}.reason`),
+    };
+  });
 }
 
 function normalizeAiObservations(raw, querySet) {
   if (raw == null) return [];
-  invariant(Array.isArray(raw), 'aiObservations must be an array');
+  const observations = boundedArray(raw, 'aiObservations', MAX_AI_OBSERVATIONS);
+  assertQuerySetBounds(querySet);
   const queryIds = new Set(querySet.queries.map((query) => query.id));
-  return raw.map((observation, index) => {
+  return observations.map((observation, index) => {
     invariant(observation && typeof observation === 'object', `aiObservations[${index}] must be an object`);
-    invariant(queryIds.has(observation.queryId), `aiObservations[${index}].queryId is not reviewed`);
+    const queryId = boundedNonEmptyString(observation.queryId, `aiObservations[${index}].queryId`);
+    invariant(queryIds.has(queryId), `aiObservations[${index}].queryId is not reviewed`);
     // Whitelist the reviewed artifact fields. Raw prompts, account/session ids,
     // and provider payload extensions are intentionally not copied.
     return {
-      queryId: observation.queryId,
-      platform: observation.platform,
-      observedAt: observation.observedAt,
-      geography: observation.geography,
-      locale: observation.locale,
-      signedInState: observation.signedInState,
+      queryId,
+      platform: boundedNonEmptyString(observation.platform, `aiObservations[${index}].platform`),
+      observedAt: boundedNonEmptyString(observation.observedAt, `aiObservations[${index}].observedAt`),
+      geography: boundedNonEmptyString(observation.geography, `aiObservations[${index}].geography`),
+      locale: boundedNonEmptyString(observation.locale, `aiObservations[${index}].locale`),
+      signedInState: boundedNonEmptyString(observation.signedInState, `aiObservations[${index}].signedInState`),
       brandMention: observation.brandMention,
       directCitation: observation.directCitation,
       citedUrls: normalizeStringArray(observation.citedUrls, `aiObservations[${index}].citedUrls`),
       competitorsCited: normalizeStringArray(observation.competitorsCited, `aiObservations[${index}].competitorsCited`),
-      sentiment: observation.sentiment,
-      accuracy: observation.accuracy,
-      summary: observation.summary,
+      sentiment: boundedNonEmptyString(observation.sentiment, `aiObservations[${index}].sentiment`),
+      accuracy: boundedNonEmptyString(observation.accuracy, `aiObservations[${index}].accuracy`),
+      summary: boundedNonEmptyString(observation.summary, `aiObservations[${index}].summary`),
       limitations: normalizeStringArray(observation.limitations, `aiObservations[${index}].limitations`),
     };
   });
 }
 
+function normalizeOpportunities(raw, fallback) {
+  const opportunities = raw == null ? fallback : raw;
+  const entries = boundedArray(opportunities, 'opportunities', MAX_OPPORTUNITIES);
+  return entries.map((opportunity, index) => {
+    const label = `opportunities[${index}]`;
+    invariant(opportunity && typeof opportunity === 'object', `${label} must be an object`);
+    return {
+      priority: opportunity.priority,
+      title: boundedNonEmptyString(opportunity.title, `${label}.title`),
+      evidence: boundedNonEmptyString(opportunity.evidence, `${label}.evidence`),
+      experiment: boundedNonEmptyString(opportunity.experiment, `${label}.experiment`),
+      successCriteria: boundedNonEmptyString(
+        opportunity.successCriteria,
+        `${label}.successCriteria`,
+      ),
+      queryIds: normalizeStringArray(opportunity.queryIds, `${label}.queryIds`, MAX_QUERY_SET_ENTRIES),
+    };
+  });
+}
+
 export function normalizeReferralExport(raw, { observedAt, classification }) {
-  invariant(classification && typeof classification === 'object', 'referral classification is required');
+  const normalizedClassification = normalizeReferralClassification(classification);
   if (!raw || raw.status === 'unavailable') {
     return unavailableReferralExport(
       observedAt,
-      classification,
-      raw?.reason ?? 'No aggregate analytics export was supplied.',
+      normalizedClassification,
+      sourceReason(
+        raw?.reason,
+        'No aggregate analytics export was supplied.',
+        'referrals.reason',
+      ),
     );
   }
+  const requestedStatus = sourceStatusValue(raw, 'referrals status');
   const windows = canonicalWindows(raw.windows, observedAt);
   const segments = [];
+  let omittedRows = 0;
+  let totalRows = 0;
   const normalizedWindows = windows.map((window) => {
-    const windowSegments = normalizeReferralRows(
-      window.raw.rows ?? window.raw.segments ?? [],
-      window.label,
+    invariant(window.raw && typeof window.raw === 'object', `windows.${window.label} must be an object`);
+    const rawRows = optionalArray(
+      window.raw.rows ?? window.raw.segments,
+      `windows.${window.label}.rows`,
+      MAX_ROWS_PER_WINDOW,
     );
+    totalRows += rawRows.length;
+    invariant(totalRows <= MAX_TOTAL_ROWS, `referral rows exceed the ${MAX_TOTAL_ROWS}-row limit`);
+    const normalizedRows = normalizeReferralRows(rawRows, window.label);
+    const windowSegments = normalizedRows.segments;
+    omittedRows += normalizedRows.omittedRows;
     segments.push(...windowSegments);
     const explicitMetrics = Object.fromEntries(REFERRAL_METRICS.map((metric) => [
       metric,
@@ -614,13 +970,17 @@ export function normalizeReferralExport(raw, { observedAt, classification }) {
   });
   const complete = normalizedWindows.every(({ metrics }) => (
     REFERRAL_METRICS.every((metric) => Number.isFinite(metrics[metric]))
-  ));
-  const status = raw.status === 'partial' || !complete ? 'partial' : 'available';
+  )) && omittedRows === 0;
+  const status = requestedStatus === 'partial' || !complete
+    ? 'partial'
+    : 'available';
   return {
     status,
     property: null,
-    reason: status === 'available' ? null : (raw.reason ?? 'The imported analytics data is partial.'),
-    classification: structuredClone(classification),
+    reason: status === 'available'
+      ? null
+      : sourceReason(raw.reason, 'The imported analytics data is partial.', 'referrals.reason'),
+    classification: normalizedClassification,
     windows: normalizedWindows,
     segments,
   };
@@ -630,7 +990,7 @@ function revisionFromGit() {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   } catch {
-    return 'unknown-local-revision';
+    return null;
   }
 }
 
@@ -642,11 +1002,17 @@ export function collectBaseline({
   repositoryRevision = revisionFromGit(),
 }) {
   invariant(template && typeof template === 'object', 'baseline template is required');
-  invariant(querySet && typeof querySet === 'object', 'query set is required');
+  assertQuerySetBounds(querySet);
   invariant(sources && typeof sources === 'object', 'source manifest is required');
   assertIsoUtcDateTime(observedAt, 'observedAt');
+  invariant(
+    repositoryRevision !== null
+      && repositoryRevision !== undefined
+      && repositoryRevision !== 'unknown-local-revision',
+    'repositoryRevision must be supplied when the local git revision is unavailable',
+  );
+  const normalizedRevision = boundedNonEmptyString(repositoryRevision, 'repositoryRevision');
 
-  const baseline = structuredClone(template);
   const googleSearchConsole = normalizeSearchExport(
     sources.googleSearchConsole,
     { querySet, observedAt, provider: 'Google Search Console' },
@@ -662,28 +1028,41 @@ export function collectBaseline({
   );
   const referrals = normalizeReferralExport(sources.referrals, {
     observedAt,
-    classification: template.referrals.classification,
+    classification: template.referrals?.classification,
   });
 
-  baseline.baselineId = observedAt.slice(0, 10);
-  baseline.querySetId = querySet.querySetId;
-  baseline.querySetDigest = computeQuerySetDigest(querySet);
-  baseline.observedAt = observedAt;
-  baseline.repositoryRevision = repositoryRevision;
-  baseline.collectionContext = normalizeCollectionContext(
+  const collectionContext = normalizeCollectionContext(
     sources.collectionContext,
     template.collectionContext,
   );
-  baseline.search = { googleSearchConsole, bingWebmaster };
-  baseline.referrals = referrals;
-  baseline.aiSurfaces = normalizeAiSurfaces(sources.aiSurfaces, template.aiSurfaces);
-  baseline.aiObservations = normalizeAiObservations(sources.aiObservations, querySet);
-  baseline.opportunities = structuredClone(sources.opportunities ?? template.opportunities);
-  if (baseline.aiObservations.length === 0) {
+  const aiSurfaces = normalizeAiSurfaces(sources.aiSurfaces);
+  const aiObservations = normalizeAiObservations(sources.aiObservations, querySet);
+  const opportunities = normalizeOpportunities(sources.opportunities, template.opportunities);
+  const guardrails = normalizeStringArray(template.guardrails, 'template.guardrails');
+  const baseline = {
+    schemaVersion: template.schemaVersion,
+    baselineId: observedAt.slice(0, 10),
+    querySetId: querySet.querySetId,
+    querySetDigest: computeQuerySetDigest(querySet),
+    observedAt,
+    repositoryRevision: normalizedRevision,
+    collectionContext,
+    search: { googleSearchConsole, bingWebmaster },
+    referrals,
+    aiSurfaces,
+    aiObservations,
+    opportunities,
+    guardrails,
+  };
+  if (aiObservations.length === 0) {
     const limitation = 'No manual AI-answer observations were supplied for this collection run.';
-    if (!baseline.collectionContext.limitations.includes(limitation)) {
-      baseline.collectionContext.limitations = [
-        ...baseline.collectionContext.limitations,
+    if (!collectionContext.limitations.includes(limitation)) {
+      invariant(
+        collectionContext.limitations.length < MAX_ARRAY_ITEMS,
+        'collectionContext.limitations exceeds the item limit',
+      );
+      collectionContext.limitations = [
+        ...collectionContext.limitations,
         limitation,
       ];
     }
@@ -694,6 +1073,7 @@ export function collectBaseline({
 }
 
 function parseArgs(args) {
+  boundedArray(args, 'CLI arguments', MAX_ARRAY_ITEMS);
   const options = { check: false };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -707,7 +1087,7 @@ function parseArgs(args) {
       `unknown argument ${argument}`,
     );
     const value = args[index + 1];
-    invariant(isNonEmptyString(value), `${argument} requires a value`);
+    boundedNonEmptyString(value, `${argument} value`, MAX_URL_BYTES);
     options[argument.slice(2).replaceAll('-', '_')] = value;
     index += 1;
   }
@@ -719,7 +1099,15 @@ function parseArgs(args) {
 }
 
 function readJson(path) {
-  return JSON.parse(readFileSync(resolve(path), 'utf8'));
+  const descriptor = openSync(resolve(path), 'r');
+  try {
+    const contents = Buffer.allocUnsafe(MAX_INPUT_BYTES + 1);
+    const bytesRead = readSync(descriptor, contents, 0, contents.length, 0);
+    invariant(bytesRead <= MAX_INPUT_BYTES, `${path} exceeds the ${MAX_INPUT_BYTES}-byte input limit`);
+    return JSON.parse(contents.subarray(0, bytesRead).toString('utf8'));
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 export async function runCli(args) {
