@@ -98,7 +98,6 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'scripts/repack-linux-appimage.sh',
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
-  '.github/workflows/(build-desktop|test-linux-app|test).yml',
 ] as const;
 
 const REQUIRED_DESKTOP_RUST_INPUTS = [
@@ -143,6 +142,37 @@ function workflowStepBlock(workflow: string, stepName: string): string {
   assert.notEqual(startIndex, -1, `workflow must define step ${stepName}`);
   const nextStepIndex = workflow.indexOf('\n      - ', startIndex + marker.length);
   return workflow.slice(startIndex, nextStepIndex === -1 ? workflow.length : nextStepIndex);
+}
+
+function workflowRunScript(stepBlock: string): string {
+  const marker = '\n        run: |\n';
+  const startIndex = stepBlock.indexOf(marker);
+  assert.notEqual(startIndex, -1, 'workflow step must have a block run script');
+  return stepBlock
+    .slice(startIndex + marker.length)
+    .split('\n')
+    .map((line) => line.replace(/^ {10}/, ''))
+    .join('\n');
+}
+
+function runReleasePreflight(stepBlock: string, eventName: string, draft: string, value: string): void {
+  const script = workflowRunScript(stepBlock)
+    .replaceAll('${{ github.event_name }}', eventName)
+    .replaceAll('${{ github.event.inputs.draft }}', draft);
+  const names = [
+    'VITE_CLERK_PUBLISHABLE_KEY',
+    'VITE_WS_RELAY_URL',
+    'VITE_PMTILES_URL_PUBLIC',
+    'CONVEX_URL',
+  ];
+  const env = Object.fromEntries(names.map((name) => [name, value]));
+  execFileSync('bash', ['-e', '-o', 'pipefail', '-c', script], { env, encoding: 'utf8' });
+}
+
+function evaluateDesktopConfigFilter(filter: string, files: string[]): string {
+  const fileArgs = files.map((file) => JSON.stringify(file)).join(' ');
+  const script = `FILES=$(printf '%s\\n' ${fileArgs}); ${filter}; printf '%s' "$DESKTOP_CONFIG"`;
+  return execFileSync('bash', ['-euo', 'pipefail', '-c', script], { encoding: 'utf8' }).trim();
 }
 
 function workflowJobNames(workflow: string, label: string): string[] {
@@ -491,6 +521,20 @@ describe('CI workflow coverage', () => {
         `test.yml desktop_config filter must cover ${input}`,
       );
     }
+    assert.ok(
+      desktopConfigFilter.includes('/^\\.github\\/workflows\\/.*\\.ya?ml$/'),
+      'test.yml desktop_config filter must cover every workflow file for dynamic Tauri inventory',
+    );
+    assert.equal(
+      evaluateDesktopConfigFilter(desktopConfigFilter, ['.github/workflows/nightly.yaml']),
+      '1',
+      'desktop_config must trigger for a newly added workflow file',
+    );
+    assert.equal(
+      evaluateDesktopConfigFilter(desktopConfigFilter, ['src/app.ts']),
+      '0',
+      'desktop_config must not trigger for an unrelated source file',
+    );
     for (const input of REQUIRED_DESKTOP_RUST_INPUTS) {
       assert.ok(
         desktopRustFilter.includes(workflowRegexNeedle(input)),
@@ -531,6 +575,41 @@ describe('CI workflow coverage', () => {
       /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
       'unit job must run the desktop build env parity check',
     );
+    const releasePreflight = workflowStepBlock(desktopBuildWorkflow, 'Release client-env preflight (#5905)');
+    assert.match(releasePreflight, /\[ "\$\{\{ github\.event_name \}\}" = "push" \] \|\|/);
+    assert.match(releasePreflight, /\[ "\$\{\{ github\.event_name \}\}" = "workflow_dispatch" \]/);
+    assert.match(releasePreflight, /\[ "\$\{\{ github\.event\.inputs\.draft \}\}" != "true" \]/);
+    assert.doesNotMatch(releasePreflight, /VITE_VAPID_PUBLIC_KEY/);
+    const canaryPreflight = workflowStepBlock(desktopCanaryWorkflow, 'Client env preflight (#5905)');
+    assert.match(canaryPreflight, /requires non-empty client env/);
+    assert.match(canaryPreflight, /VITE_CLERK_PUBLISHABLE_KEY/);
+    assert.match(canaryPreflight, /VITE_CONVEX_URL/);
+    assert.doesNotMatch(canaryPreflight, /VITE_VAPID_PUBLIC_KEY/);
+    assert.throws(
+      () => runReleasePreflight(releasePreflight, 'push', '', ''),
+      (error) => error.status === 1,
+      'tag pushes must fail when client env secrets are empty',
+    );
+    assert.throws(
+      () => runReleasePreflight(releasePreflight, 'workflow_dispatch', 'false', ''),
+      (error) => error.status === 1,
+      'published manual dispatches must fail when client env secrets are empty',
+    );
+    assert.doesNotThrow(
+      () => runReleasePreflight(releasePreflight, 'workflow_dispatch', 'true', ''),
+      'draft manual dispatches may run with empty client env secrets',
+    );
+    assert.doesNotThrow(
+      () => runReleasePreflight(releasePreflight, 'push', '', 'configured'),
+      'populated tag releases must pass the client env preflight',
+    );
+    for (const variant of ['full', 'tech', 'finance'] as const) {
+      assert.match(
+        packageScripts[`desktop:build:${variant}`] ?? '',
+        /npm run desktop:check-env/,
+        `desktop:build:${variant} must run the local desktop env gate`,
+      );
+    }
     const releasePostProcess = workflowStepBlock(desktopBuildWorkflow, 'Strip GPU libraries from AppImage');
     assert.match(
       releasePostProcess,

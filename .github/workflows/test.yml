@@ -97,7 +97,7 @@ jobs:
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
-            /^\.github\/workflows\/(build-desktop|test-linux-app|test)\.yml$/ { count++ }
+            /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
             END { print count + 0 }
           ')
           echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"

@@ -73,26 +73,27 @@ jobs:
         run: echo "JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Release client-env preflight (#5905)
-        # A tag-push release with empty client env secrets would ship
-        # sign-in/Pro/basemap/relay silently disabled again — the exact
-        # regression #5905 fixed. Hard-fail releases; manual dispatch builds
-        # only warn (draft/test builds may deliberately run before the repo
-        # secrets exist). Key *presence* in the build steps is separately
-        # enforced by scripts/check-desktop-build-env.mjs in PR CI.
+        # A tag-push or published manual release with empty client env secrets
+        # would ship sign-in/Pro/basemap/relay silently disabled again — the
+        # exact regression #5905 fixed. Draft dispatch builds may still run
+        # before the repo secrets exist. Key *presence* in the build steps is
+        # separately enforced by scripts/check-desktop-build-env.mjs in PR CI.
         shell: bash
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         run: |
           MISSING=""
-          for k in VITE_CLERK_PUBLISHABLE_KEY VITE_VAPID_PUBLIC_KEY VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
+          for k in VITE_CLERK_PUBLISHABLE_KEY VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
             [ -n "${!k}" ] || MISSING="$MISSING $k"
           done
           if [ -n "$MISSING" ]; then
-            if [ "${{ github.event_name }}" = "push" ]; then
+            if [ "${{ github.event_name }}" = "push" ] || {
+              [ "${{ github.event_name }}" = "workflow_dispatch" ] &&
+              [ "${{ github.event.inputs.draft }}" != "true" ];
+            }; then
               echo "::error::Release build with empty client env secrets:$MISSING — the shipped app would have sign-in, entitlements, basemap, or relay capabilities silently disabled (#5905). Add the repo secrets before tagging."
               exit 1
             fi
@@ -241,7 +242,6 @@ jobs:
           # Secret-sourced keys render empty until the repo secret exists.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_ENABLE_CYBER_LAYER: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
@@ -276,7 +276,6 @@ jobs:
           # Secret-sourced keys render empty until the repo secret exists.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_ENABLE_CYBER_LAYER: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
@@ -305,7 +304,6 @@ jobs:
           # Secret-sourced keys render empty until the repo secret exists.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_ENABLE_CYBER_LAYER: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
@@ -341,7 +339,6 @@ jobs:
           # Secret-sourced keys render empty until the repo secret exists.
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_ENABLE_CYBER_LAYER: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}

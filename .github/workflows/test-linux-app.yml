@@ -76,6 +76,30 @@ jobs:
           NODE_TARGET: 'x86_64-unknown-linux-gnu'
         run: bash scripts/download-node.sh --target "$NODE_TARGET"
 
+      - name: Client env preflight (#5905)
+        # The canary must not qualify an AppImage built without the client
+        # configuration that release artifacts require.
+        shell: bash
+        env:
+          VITE_VARIANT: full
+          VITE_DESKTOP_RUNTIME: '1'
+          VITE_WS_API_URL: https://worldmonitor.app
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: |
+          MISSING=""
+          for k in VITE_VARIANT VITE_DESKTOP_RUNTIME VITE_WS_API_URL VITE_CLERK_PUBLISHABLE_KEY VITE_CONVEX_URL VITE_ENABLE_CYBER_LAYER VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
+            [ -n "${!k}" ] || MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Desktop canary requires non-empty client env:$MISSING (#5905)"
+            exit 1
+          fi
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
         env:
@@ -88,7 +112,6 @@ jobs:
           VITE_WS_API_URL: https://worldmonitor.app
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_ENABLE_CYBER_LAYER: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}

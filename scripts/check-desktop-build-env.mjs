@@ -11,16 +11,18 @@
  *    disables the capability in every shipped build (sign-in, subscription
  *    Pro, the Cyber Threats layer — the #5905 incident class).
  *
- * 2. Every `import.meta.env.VITE_*` variable the SPA reads is classified
- *    here as REQUIRED or EXCLUDED. A new unclassified var fails this check,
- *    forcing the author to decide — and record — whether desktop builds
- *    need it, instead of silently omitting it the way the #5905 set was.
+ * 2. Every literal `VITE_*` property the SPA reads is classified here as
+ *    REQUIRED or EXCLUDED. A new unclassified var fails this check, forcing
+ *    the author to decide — and record — whether desktop builds need it,
+ *    instead of silently omitting it the way the #5905 set was.
  *
  * Run: node scripts/check-desktop-build-env.mjs [--root <repo-root>]
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
+import { parse as parseYaml } from 'yaml';
 
 import { isMainModule } from './lib/main-module.mjs';
 
@@ -34,7 +36,6 @@ export const REQUIRED_DESKTOP_BUILD_ENV = [
   'VITE_WS_API_URL', //         cloud API origin for desktop fallback
   'VITE_CLERK_PUBLISHABLE_KEY', // sign-in; absent => auth disabled entirely
   'VITE_CONVEX_URL', //         entitlements; the non-VITE CONVEX_URL never reaches the client
-  'VITE_VAPID_PUBLIC_KEY', //   web-push guard testability (push stays Tauri-excluded)
   'VITE_ENABLE_CYBER_LAYER', // Cyber Threats layer; absent => hidden (#5829 half)
   'VITE_WS_RELAY_URL', //       desktop military-flights direct OpenSky path
   'VITE_PMTILES_URL_PUBLIC', // self-hosted basemap on desktop (else OpenFreeMap fallback)
@@ -45,6 +46,7 @@ export const REQUIRED_DESKTOP_BUILD_ENV = [
 export const EXCLUDED_DESKTOP_BUILD_ENV = {
   VITE_ENABLE_IRAN_ATTACKS: 'feature sunset, default-off everywhere (#4982)',
   VITE_ENABLE_AIS: "opt-out flag (only 'false' disables); unset default is enabled — correct on desktop, where AIS is gated by the aisRelay keyring feature instead",
+  VITE_VAPID_PUBLIC_KEY: 'web-push is intentionally unsupported in Tauri; isWebPushSupported() excludes desktop contexts',
   VITE_OPENSKY_RELAY_URL: 'web-seeded runtime secret; desktop uses the OS-keyring path instead',
   VITE_TAURI_API_BASE_URL: 'dev-only override; default is correct in builds',
   VITE_TAURI_REMOTE_API_BASE_URL: 'dev-only override; default is correct in builds',
@@ -63,67 +65,75 @@ export const EXCLUDED_DESKTOP_BUILD_ENV = {
   VITE_E2E: 'test-harness flag, never set in real builds',
 };
 
-// Workflow files containing Tauri build steps, relative to repo root.
-export const DESKTOP_BUILD_WORKFLOWS = [
-  '.github/workflows/build-desktop.yml',
-  '.github/workflows/test-linux-app.yml',
-];
-
-/**
- * Extract every step block using tauri-apps/tauri-action from a workflow
- * source, returning [{ name, envKeys }]. Line-based: a step starts at ANY
- * 6-space `- ` sequence entry (not just `- name:` — a step declared
- * `- uses:` first, or with no name at all, must not silently escape the
- * gate) and ends at the next step or EOF.
- */
-export function extractTauriBuildSteps(workflowSource) {
-  const lines = workflowSource.replace(/\r\n/g, '\n').split('\n');
-  const steps = [];
-  let current = null;
-
-  for (const line of lines) {
-    const stepStart = line.match(/^ {6}- (.*)$/);
-    if (stepStart) {
-      if (current) steps.push(current);
-      // Keep the first line's own `key: value` (e.g. `- uses: ...`) as a
-      // block line, re-indented to match the 8-space continuation lines.
-      current = { lines: [`        ${stepStart[1]}`] };
-      continue;
-    }
-    if (current) current.lines.push(line);
-  }
-  if (current) steps.push(current);
-
-  return steps
-    .filter((s) => s.lines.some((l) => /^\s+uses: tauri-apps\/tauri-action@/.test(l)))
-    .map((s, index) => {
-      const nameLine = s.lines.find((l) => /^ {8}name:/.test(l));
-      const name = nameLine ? nameLine.replace(/^ {8}name:/, '').trim() : `<unnamed tauri step #${index + 1}>`;
-      const envKeys = [];
-      let inEnv = false;
-      for (const l of s.lines) {
-        if (/^ {8}env:\s*$/.test(l)) {
-          inEnv = true;
-          continue;
-        }
-        if (inEnv) {
-          const kv = l.match(/^ {10}([A-Z0-9_]+):/);
-          if (kv) {
-            envKeys.push(kv[1]);
-            continue;
-          }
-          if (!/^\s*#/.test(l) && l.trim() !== '') inEnv = false;
-        }
-      }
-      return { name, envKeys };
-    });
+// Workflow files are discovered rather than hand-listed so a new release or
+// canary workflow cannot silently escape the parity gate.
+export function discoverDesktopBuildWorkflows(rootDir) {
+  const workflowsDir = path.join(rootDir, '.github/workflows');
+  return readdirSync(workflowsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(?:yml|yaml)$/.test(entry.name))
+    .map((entry) => path.join('.github/workflows', entry.name))
+    .filter((workflowPath) => extractTauriBuildSteps(readFileSync(path.join(rootDir, workflowPath), 'utf8')).length > 0);
 }
 
 /**
- * Recursively collect VITE_* vars read via import.meta.env under the
- * client-importable trees: src/ always, plus shared/ when present (it is
- * imported by src/ and would be bundled with it).
+ * Extract every step block using tauri-apps/tauri-action from a workflow
+ * source, returning [{ name, envKeys }]. Structural YAML parsing handles
+ * indentation, multiple jobs, folded values, and uses-first unnamed steps
+ * without silently dropping a valid build leg.
  */
+export function extractTauriBuildSteps(workflowSource) {
+  const workflow = parseYaml(workflowSource);
+  const steps = [];
+  for (const job of Object.values(workflow?.jobs ?? {})) {
+    for (const step of job?.steps ?? []) {
+      if (typeof step?.uses !== 'string' || !step.uses.startsWith('tauri-apps/tauri-action@')) continue;
+      steps.push({
+        name: typeof step.name === 'string' ? step.name : `<unnamed tauri step #${steps.length + 1}>`,
+        envKeys: step.env && typeof step.env === 'object' ? Object.keys(step.env) : [],
+      });
+    }
+  }
+  return steps;
+}
+
+/**
+ * Recursively collect literal VITE_* property reads under the client-
+ * importable trees: src/ always, plus shared/ when present (it is imported by
+ * src/ and would be bundled with it). AST property reads cover direct,
+ * parenthesized/cast, aliased, and bracket access without treating comments
+ * or arbitrary string literals as reads.
+ */
+function collectVitePropertyNames(source, filePath) {
+  const extension = path.extname(filePath);
+  const scriptKind =
+    extension === '.tsx'
+      ? ts.ScriptKind.TSX
+      : extension === '.jsx'
+        ? ts.ScriptKind.JSX
+        : extension === '.js' || extension === '.mjs' || extension === '.cjs'
+          ? ts.ScriptKind.JS
+          : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, scriptKind);
+  const vars = new Set();
+  const add = (value) => {
+    if (/^VITE_[A-Z0-9_]+$/.test(value)) vars.add(value);
+  };
+  const visit = (node) => {
+    if (ts.isPropertyAccessExpression(node)) {
+      add(node.name.text);
+    } else if (
+      ts.isElementAccessExpression(node) &&
+      node.argumentExpression &&
+      ts.isStringLiteral(node.argumentExpression)
+    ) {
+      add(node.argumentExpression.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return vars;
+}
+
 export function collectSpaViteVars(rootDir) {
   const vars = new Set();
   const walk = (dir) => {
@@ -134,48 +144,56 @@ export function collectSpaViteVars(rootDir) {
         walk(full);
       } else if (/\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/.test(entry)) {
         const source = readFileSync(full, 'utf8');
-        // Windowed match: catches direct access plus casts, optional chains,
-        // and bracket access near the env object (`(import.meta.env as X)
-        // .VITE_FOO`, `import.meta.env['VITE_FOO']`) — an access shape must
-        // not be a way to dodge classification (fail closed).
-        for (const m of source.matchAll(/import\.meta\.env[\s\S]{0,40}?(VITE_[A-Z0-9_]+)/g)) {
-          vars.add(m[1]);
-        }
+        for (const variable of collectVitePropertyNames(source, full)) vars.add(variable);
       }
     }
   };
   walk(path.join(rootDir, 'src'));
+  const sharedDir = path.join(rootDir, 'shared');
   try {
-    walk(path.join(rootDir, 'shared'));
+    lstatSync(sharedDir);
   } catch (err) {
-    // Only a genuinely absent shared/ is tolerable (fixture roots, future
-    // restructure). Any other error must not silently shrink the scan —
-    // a fail-open here is the vacuous-guard class this script exists to kill.
-    if (err.code !== 'ENOENT') throw err;
+    if (err.code === 'ENOENT') return [...vars].sort();
+    throw err;
   }
+  walk(sharedDir);
   return [...vars].sort();
 }
 
 export function checkDesktopBuildEnv(rootDir) {
   const errors = [];
 
-  for (const workflowPath of DESKTOP_BUILD_WORKFLOWS) {
+  let workflowPaths = [];
+  try {
+    workflowPaths = discoverDesktopBuildWorkflows(rootDir);
+  } catch (err) {
+    errors.push(`.github/workflows: unable to discover workflow files — ${err.message}`);
+  }
+  if (workflowPaths.length === 0) {
+    errors.push('.github/workflows: no workflow files with tauri-apps/tauri-action steps found — discovery broken or workflow inventory empty');
+  }
+
+  for (const workflowPath of workflowPaths) {
     const source = readFileSync(path.join(rootDir, workflowPath), 'utf8');
     const buildSteps = extractTauriBuildSteps(source);
-    if (buildSteps.length === 0) {
-      errors.push(`${workflowPath}: no tauri-apps/tauri-action steps found — extraction broken or workflow restructured`);
-      continue;
-    }
     for (const step of buildSteps) {
       const missing = REQUIRED_DESKTOP_BUILD_ENV.filter((k) => !step.envKeys.includes(k));
       if (missing.length > 0) {
         errors.push(`${workflowPath} step "${step.name}": missing env ${missing.join(', ')}`);
       }
+      const excluded = [...new Set(step.envKeys.filter((key) => Object.hasOwn(EXCLUDED_DESKTOP_BUILD_ENV, key)))];
+      if (excluded.length > 0) {
+        errors.push(`${workflowPath} step "${step.name}": declares excluded env ${excluded.join(', ')} — remove it from the desktop build`);
+      }
     }
   }
 
   const classified = new Set([...REQUIRED_DESKTOP_BUILD_ENV, ...Object.keys(EXCLUDED_DESKTOP_BUILD_ENV)]);
-  const unclassified = collectSpaViteVars(rootDir).filter((v) => !classified.has(v));
+  const spaVars = collectSpaViteVars(rootDir);
+  if (spaVars.length === 0) {
+    errors.push('src/ and shared/: no VITE_ property reads found — client env scan is empty');
+  }
+  const unclassified = spaVars.filter((v) => !classified.has(v));
   if (unclassified.length > 0) {
     errors.push(
       `unclassified VITE_ vars read by the SPA: ${unclassified.join(', ')} — add each to ` +
