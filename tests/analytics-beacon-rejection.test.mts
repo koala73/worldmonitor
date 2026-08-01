@@ -54,7 +54,9 @@ function nativeTrackerBeacon(type: 'event' | 'identify', data: Record<string, un
   }).then((response) => response.json()).catch(() => undefined);
 }
 
-function collectorResponse(ok: boolean, status: number, body = '{}'): Response {
+const RECEIPT_BODY = JSON.stringify({ cache: 'cache-id', sessionId: 'session-id', visitId: 'visit-id' });
+
+function collectorResponse(ok: boolean, status: number, body = ok ? RECEIPT_BODY : '{}'): Response {
   return {
     ok,
     status,
@@ -154,8 +156,21 @@ function installFakeTimers(): {
   };
 }
 
-async function drainPromiseHandlers(): Promise<void> {
-  for (let index = 0; index < 12; index += 1) await Promise.resolve();
+/**
+ * Drain the microtask queue.
+ *
+ * A fixed tick count is a magic number tuned to the CURRENT await-chain depth
+ * (gate -> queue -> dispatch -> inspectCollectorResponse -> outcome), and it
+ * already had to be raised once. Pass `until` wherever the test depends on an
+ * observable effect: the drain then stops as soon as it holds and FAILS LOUDLY
+ * if it never does, instead of racing silently past the assertion.
+ */
+async function drainPromiseHandlers(until?: () => boolean, label = 'condition'): Promise<void> {
+  for (let index = 0; index < 200; index += 1) {
+    await Promise.resolve();
+    if (until?.()) return;
+  }
+  if (until) throw new Error(`drainPromiseHandlers: ${label} never became true`);
 }
 
 describe('Umami client retry policy (#5715)', () => {
@@ -312,8 +327,9 @@ describe('Umami client retry policy (#5715)', () => {
     let calls = 0;
     window.fetch = (() => {
       calls += 1;
+      // 429 is a pre-commit rejection, so a retry cannot double-count.
       return calls === 1
-        ? Promise.resolve(collectorResponse(false, 503))
+        ? Promise.resolve(collectorResponse(false, 429))
         : Promise.resolve(collectorResponse(true, 200));
     }) as typeof window.fetch;
     (globalThis.window as WinWithUmami).umami = {
@@ -345,6 +361,261 @@ describe('Umami client retry policy (#5715)', () => {
     } finally {
       fakeTimers.restore();
     }
+  });
+
+  it('keeps delivering after another wrapper takes over window.fetch (#5964 deadlock)', async () => {
+    // Production boot order: the collector gate installs at first paint + 3s,
+    // Sentry's deferred init patches window.fetch at 10s. If the gate re-wrapped
+    // on top of that, the second gate would delegate through the first into the
+    // SAME queue while the slot was already held — the outer request awaits an
+    // inner one that can never drain, and every later write is lost forever.
+    let networkCalls = 0;
+    const network = (() => {
+      networkCalls += 1;
+      return Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    window.fetch = network;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    track('checkout-start', { source: 'probe' });
+    await drainPromiseHandlers();
+    assert.equal(networkCalls, 1, 'baseline: the gate delivers the first event');
+
+    // A later wrapper (Sentry breadcrumbs/tracing) takes over and delegates down.
+    const gate = window.fetch;
+    window.fetch = ((i: RequestInfo | URL, x?: RequestInit) => gate(i, x)) as typeof window.fetch;
+
+    track('checkout-success', { source: 'url-return' });
+    await drainPromiseHandlers();
+    assert.equal(networkCalls, 2, 'a write after the foreign wrapper must still reach the network');
+
+    track('checkout-failed', { status: 'declined' });
+    await drainPromiseHandlers();
+    assert.equal(networkCalls, 3, 'the queue must keep draining, not wedge');
+  });
+
+  it('does not retry a conversion on a gateway error that may follow a commit', async () => {
+    const fakeTimers = installFakeTimers();
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(false, 504));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    try {
+      track('checkout-success', { source: 'url-return' });
+      await drainPromiseHandlers();
+      assert.equal(calls, 1);
+      assert.deepEqual(
+        fakeTimers.timers,
+        [],
+        'a 502/504 cannot be distinguished from commit-then-edge-failure, so it must not retry',
+      );
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('still retries an identity write on HTTP 500 (the original #5715 failure)', async () => {
+    const fakeTimers = installFakeTimers();
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(false, 500));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (_event: unknown, data?: unknown) => nativeTrackerBeacon('event', (data ?? {}) as Record<string, unknown>),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    try {
+      identifyUser('user_1', 'pro');
+      await drainPromiseHandlers();
+      assert.equal(calls, 1);
+      // identify is an idempotent latest-snapshot write, so the
+      // duplicate-conversion rationale that blocks event retries does not apply.
+      assert.equal(fakeTimers.timers[0]?.delay, 1_000, 'a 500 identity write must still retry');
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('treats a receiptless 200 as undelivered and keeps the durable marker', async () => {
+    // Umami answers 200 to a bot-filtered write it silently drops. The CI
+    // monitor already refuses that shape; the browser must agree or it clears a
+    // conversion marker for an event that was never stored.
+    const fakeTimers = installFakeTimers();
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(true, 200, '{"beep":"boop"}'));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+    const storage = new Map<string, string>();
+    (globalThis.window as Record<string, unknown>).sessionStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    };
+
+    try {
+      const analytics = await import('../src/services/analytics.ts');
+      analytics.trackCheckoutSuccess('url-return');
+      await drainPromiseHandlers();
+      assert.equal(calls, 1);
+      assert.equal(
+        storage.get('wm-checkout-success-pending'),
+        'url-return',
+        'a 200 without a write receipt must not clear the marker',
+      );
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('clears the durable marker on a P2002 conflict, which commits the event row', async () => {
+    // Umami writes the event in saveEvent() and only then upserts session_data,
+    // so #4183's P2002 means the event committed. Treating it as undelivered
+    // would replay the conversion on every reload for the life of the tab.
+    const fakeTimers = installFakeTimers();
+    window.fetch = (() => Promise.resolve(collectorResponse(false, 500, JSON.stringify({
+      error: { errorObject: { code: 'P2002', meta: { target: ['session_data_pkey'] } } },
+    })))) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+    const storage = new Map<string, string>();
+    (globalThis.window as Record<string, unknown>).sessionStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    };
+
+    try {
+      const analytics = await import('../src/services/analytics.ts');
+      analytics.trackCheckoutSuccess('url-return');
+      await drainPromiseHandlers();
+      assert.equal(
+        storage.has('wm-checkout-success-pending'),
+        false,
+        'a committed event must not replay across boots',
+      );
+      assert.deepEqual(fakeTimers.timers, [], 'and it must not retry in-page either');
+    } finally {
+      fakeTimers.restore();
+    }
+  });
+
+  it('drops a non-critical write before a queued conversion when the queue overflows', async () => {
+    // A never-settling collector keeps the single in-flight slot busy so the
+    // queue fills. None of the three eviction branches had any coverage.
+    const warnings: Array<Record<string, unknown>> = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object') warnings.push(detail as Record<string, unknown>);
+    };
+    window.fetch = (() => new Promise<Response>(() => {})) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    try {
+      // Fill well past UMAMI_COLLECTOR_QUEUE_LIMIT (25) with non-critical events.
+      for (let index = 0; index < 30; index += 1) track('search-open');
+      await drainPromiseHandlers(
+        () => warnings.some((w) => w.failureKind === 'queue-overflow'),
+        'a queued non-critical write is dropped',
+      );
+
+      const before = warnings.length;
+      track('checkout-success', { source: 'url-return' });
+      await drainPromiseHandlers(() => warnings.length > before, 'the conversion displaces a queued write');
+
+      // The conversion itself must not be the one rejected — a critical event
+      // evicts a non-critical rather than being dropped for it.
+      const overflow = warnings.filter((w) => w.failureKind === 'queue-overflow');
+      assert.ok(overflow.length > 0, 'overflow must be reported, not silent');
+      assert.ok(
+        overflow.every((w) => w.requestType === 'event'),
+        'only event writes were enqueued in this test',
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('keeps the /pro marker until every replayed checkout-start is confirmed', async () => {
+    // Writes are serialized now, so only replay #1 is in flight when it lands.
+    // Clearing the marker on that first receipt would drop #2 on a reload.
+    const resolvers: Array<(response: Response) => void> = [];
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return new Promise<Response>((resolve) => resolvers.push(resolve));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+    const storage = new Map<string, string>();
+    storage.set('wm-pro-funnel-pending', JSON.stringify([
+      { event: 'checkout-start', data: { productId: 'p1', surface: 'pro-page', authed: true } },
+      { event: 'checkout-start', data: { productId: 'p2', surface: 'pro-page', authed: true } },
+    ]));
+    (globalThis.window as Record<string, unknown>).sessionStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    };
+
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.replayPendingProFunnelEvents();
+    await drainPromiseHandlers(() => calls === 1, 'the first replay reaches the collector');
+
+    resolvers.shift()!(collectorResponse(true, 200));
+    await drainPromiseHandlers(() => calls === 2, 'the second replay follows the first');
+    assert.equal(
+      storage.has('wm-pro-funnel-pending'),
+      true,
+      'the marker must survive until the whole batch is acknowledged',
+    );
+
+    resolvers.shift()!(collectorResponse(true, 200));
+    await drainPromiseHandlers(
+      () => !storage.has('wm-pro-funnel-pending'),
+      'the marker clears once every replay is confirmed',
+    );
   });
 
   it('cancels a stale retry when a newer identity snapshot is sent', async () => {

@@ -14,13 +14,25 @@
  * deployment status, which was green throughout that outage.
  */
 
+import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { extractCollectorFailureMetadata } from '../shared/collector-failure-metadata.js';
+
+export { extractCollectorFailureMetadata };
 
 const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
 export const ANALYTICS_CANARY_WEBSITE_ID = '373c80a2-1109-42a7-868b-565bcf7bf168';
 const ANALYTICS_CANARY_HOSTNAME = 'analytics-canary.worldmonitor.app';
-const ANALYTICS_CANARY_SESSION_ID = 'worldmonitor-analytics-collector-monitor';
+/**
+ * Generated per run, not hard-coded. The repo is public, so a fixed session key
+ * published alongside the (necessarily unauthenticated) `/api/send` endpoint is
+ * a stable target an outsider can contend with to force false monitor pages.
+ * A fresh UUID keeps the same-session property for THIS run's probes while
+ * giving nobody a key to squat on, and matches the UUID shape Umami expects.
+ */
+const ANALYTICS_CANARY_SESSION_ID = randomUUID();
 
 /**
  * Cloudflare's WAF 403s a bare `curl/*` User-Agent on this host (verified
@@ -37,6 +49,28 @@ const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3_000;
 const WRITE_RECEIPT_FIELDS = Object.freeze(['cache', 'sessionId', 'visitId']);
 
+/**
+ * Write canaries are fired as synchronized BURSTS, not through the liveness
+ * retry helper. Retrying one failing probe on its own would both (a) hide the
+ * failure the moment a lone retry succeeds and (b) destroy the concurrency that
+ * is the entire point of the probe. Every burst re-fires the whole set at once
+ * and every attempt is retained for the rate.
+ */
+const WRITE_CANARY_BURSTS = 3;
+const WRITE_BURST_DELAY_MS = 3_000;
+
+/**
+ * Alert threshold for the attempt-level write failure rate.
+ *
+ * Umami #4183 is unfixed upstream and produced a 4-8% background failure rate
+ * in production, so alerting on any single failure would page on a known,
+ * accepted condition and train everyone to ignore this monitor — the alert
+ * fatigue path back to #5565. This sits above that band so a step change pages
+ * while the known race does not. Tune once a baseline exists in the job logs;
+ * the rate is printed on every run precisely so the baseline is observable.
+ */
+const WRITE_FAILURE_ALERT_RATE = 0.25;
+
 const ANALYTICS_CANARY_PAYLOAD = Object.freeze({
   website: ANALYTICS_CANARY_WEBSITE_ID,
   hostname: ANALYTICS_CANARY_HOSTNAME,
@@ -45,11 +79,23 @@ const ANALYTICS_CANARY_PAYLOAD = Object.freeze({
   referrer: '',
   screen: '1x1',
   language: 'en-US',
-  // Keep the three requests on one session_data key, like a browser page
-  // emitting a pageview, event, and identify during startup. The dedicated
-  // website keeps this exercise outside product funnels.
+  // One session id across the whole burst. The dedicated website keeps this
+  // exercise outside product funnels.
   id: ANALYTICS_CANARY_SESSION_ID,
 });
+
+/**
+ * The data key the contending identify probes write.
+ *
+ * This has to be ONE key shared by at least two concurrent `identify` requests.
+ * Umami routes `type: 'event'` through saveEvent() -> saveEventData(), which
+ * never touches `session_data`; only `type: 'identify'` reaches
+ * saveSessionData(), which is where #4183's `updateMany()` race lives. Probes
+ * that write different keys — or that are events at all — touch disjoint rows
+ * and cannot contend, so a burst of mixed shapes proves only that the collector
+ * accepts concurrent requests, not that the race is absent.
+ */
+const CONTENDED_SESSION_DATA_KEY = 'monitor';
 
 function buildWriteCanaryProbe(name, type, extraPayload = {}) {
   return Object.freeze({
@@ -67,14 +113,22 @@ function buildWriteCanaryProbe(name, type, extraPayload = {}) {
   });
 }
 
+/**
+ * Two identify probes contending on one (session, data key) row reproduce the
+ * #4183 write race; the pageview and named-event probes keep general
+ * write-path coverage (saveEvent / saveEventData) that identify does not give.
+ */
 export const ANALYTICS_WRITE_CANARY_PROBES = Object.freeze([
+  buildWriteCanaryProbe('write-canary-identify-a', 'identify', {
+    data: Object.freeze({ [CONTENDED_SESSION_DATA_KEY]: 'github-actions-a' }),
+  }),
+  buildWriteCanaryProbe('write-canary-identify-b', 'identify', {
+    data: Object.freeze({ [CONTENDED_SESSION_DATA_KEY]: 'github-actions-b' }),
+  }),
   buildWriteCanaryProbe('write-canary-pageview', 'event'),
   buildWriteCanaryProbe('write-canary-event', 'event', {
     name: 'collector-write-canary',
     data: Object.freeze({ source: 'github-actions' }),
-  }),
-  buildWriteCanaryProbe('write-canary-identify', 'identify', {
-    data: Object.freeze({ monitor: 'github-actions' }),
   }),
 ]);
 
@@ -85,6 +139,9 @@ export const COLLECTOR_PROBES = Object.freeze([
     okStatuses: Object.freeze([200]),
     // Proves the app process is alive and serving. The OOM death surfaced
     // here as a Cloudflare 502 after a ~15s origin timeout.
+    // Read the body on failure so a database-shaped error here carries the same
+    // sanitized Prisma identifiers the write canaries report.
+    captureFailureMetadata: true,
   }),
   Object.freeze({
     name: 'tracker-script',
@@ -99,12 +156,13 @@ export const COLLECTOR_PROBES = Object.freeze([
   Object.freeze({
     name: 'ingest-route',
     path: '/api/send',
-    // Keeps the original no-write route-mount check from #5565. The canary
-    // below separately proves that the database-backed write path succeeds.
+    // Keeps the original no-write route-mount check from #5565. The canaries
+    // below separately prove that the database-backed write path succeeds.
     okStatuses: Object.freeze([400, 405]),
+    captureFailureMetadata: true,
   }),
-  // These probes deliberately begin together so the monitor reproduces the
-  // real concurrent startup write pattern instead of validating one request.
+  // Fired as synchronized bursts by runWriteCanaryBursts, NOT through the
+  // per-probe liveness retry — see WRITE_CANARY_BURSTS.
   ...ANALYTICS_WRITE_CANARY_PROBES,
 ]);
 
@@ -120,51 +178,6 @@ export function buildProbeRequest(probe) {
     request.body = JSON.stringify(probe.body);
   }
   return request;
-}
-
-/**
- * Pull only stable database failure identifiers from an Umami error body.
- * Never return the server's message, stack, or request payload: v3.1.0
- * included those details in its 500 response.
- */
-export function extractCollectorFailureMetadata(body) {
-  if (typeof body !== 'string' || body.length === 0) return {};
-
-  let parsed;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return {};
-  }
-
-  let prismaCode;
-  let constraint;
-  const visit = (value, key = '') => {
-    if (value === null || value === undefined || (prismaCode && constraint)) return;
-    if (typeof value === 'string') {
-      if (!prismaCode && key === 'code' && /^P\d{4}$/.test(value)) prismaCode = value;
-      if (!constraint && (key === 'constraint' || key === 'target') && /(?:^|_)pkey$/.test(value)) {
-        constraint = value;
-      }
-      if (!constraint && key === 'message') {
-        constraint = value.match(/\b[\w]+_pkey\b/)?.[0];
-      }
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, key);
-      return;
-    }
-    if (typeof value === 'object') {
-      for (const [childKey, childValue] of Object.entries(value)) visit(childValue, childKey);
-    }
-  };
-  visit(parsed);
-
-  return {
-    ...(prismaCode ? { prismaCode } : {}),
-    ...(constraint ? { constraint } : {}),
-  };
 }
 
 function formatFailureMetadata(body) {
@@ -233,20 +246,23 @@ export function summarizeProbeFailures(probes, resultsByName) {
     .map(({ probe, reason }) => ({ name: probe.name, path: probe.path, reason }));
 }
 
-/** Summarize write-path failures independently from process/route liveness. */
-export function summarizeWriteCanaryResults(probes, resultsByName) {
-  const writeProbes = probes.filter((probe) => probe.writeCanary);
-  const failures = writeProbes
-    .map((probe) => ({
-      name: probe.name,
-      reason: evaluateProbeResult(probe, resultsByName[probe.name]),
-    }))
-    .filter(({ reason }) => reason !== null);
-
+/**
+ * Summarize write-path health over EVERY attempt, not just the surviving one.
+ *
+ * The rate has to be attempt-level or it cannot represent the condition this
+ * monitor exists for. With a per-probe first-success-wins retry, a 4-8%
+ * per-request failure rate reports 0.0% about 99.95% of the time — the monitor
+ * would print a clean bill of health through exactly the incident that reopened
+ * #5715.
+ *
+ * @param {Array<{ name: string, reason: string | null }>} attempts
+ */
+export function summarizeWriteCanaryResults(attempts) {
+  const failures = attempts.filter(({ reason }) => reason !== null);
   return {
-    total: writeProbes.length,
+    total: attempts.length,
     failed: failures.length,
-    failureRate: writeProbes.length === 0 ? 0 : failures.length / writeProbes.length,
+    failureRate: attempts.length === 0 ? 0 : failures.length / attempts.length,
     failures,
   };
 }
@@ -274,52 +290,127 @@ async function runProbe(origin, probe) {
  * Retry before alerting so a single transient blip (deploy restart, edge
  * hiccup) does not page anyone. A sustained failure is what matters: the
  * outage this monitor exists for lasted four days.
+ *
+ * Liveness probes only — write canaries deliberately do NOT come through here.
  */
-async function runProbeWithRetries(origin, probe) {
+async function runProbeWithRetries(origin, probe, runner, sleep) {
   let last;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
-    last = await runProbe(origin, probe);
+    last = await runner(origin, probe);
     if (evaluateProbeResult(probe, last) === null) return last;
-    if (attempt < ATTEMPTS) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    }
+    if (attempt < ATTEMPTS) await sleep(RETRY_DELAY_MS);
   }
   return last;
 }
 
-async function main() {
-  const origin = process.env.ANALYTICS_COLLECTOR_ORIGIN || DEFAULT_COLLECTOR_ORIGIN;
+/**
+ * Fire every write canary at once, repeatedly. Each burst is itself concurrent,
+ * so a retry still exercises session-data contention instead of degrading into
+ * isolated sequential writes.
+ */
+async function runWriteCanaryBursts(origin, probes, runner, sleep) {
+  const attempts = [];
+  const lastByName = {};
+  for (let burst = 1; burst <= WRITE_CANARY_BURSTS; burst += 1) {
+    const results = await Promise.all(probes.map((probe) => runner(origin, probe)));
+    probes.forEach((probe, index) => {
+      const result = results[index];
+      lastByName[probe.name] = result;
+      attempts.push({ name: probe.name, reason: evaluateProbeResult(probe, result) });
+    });
+    if (burst < WRITE_CANARY_BURSTS) await sleep(WRITE_BURST_DELAY_MS);
+  }
+  return { attempts, lastByName };
+}
 
-  const resultsByName = Object.fromEntries(
-    await Promise.all(
-      COLLECTOR_PROBES.map(async (probe) => [
+/**
+ * Run every probe and decide the outcome. Split out of `main()` so the alerting
+ * contract — concurrent canary dispatch, the attempt-level rate, and the exit
+ * decision — is reachable from tests with an injected runner.
+ */
+export async function runCollectorChecks({
+  origin = DEFAULT_COLLECTOR_ORIGIN,
+  runner = runProbe,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const livenessProbes = COLLECTOR_PROBES.filter((probe) => !probe.writeCanary);
+  const writeProbes = COLLECTOR_PROBES.filter((probe) => probe.writeCanary);
+
+  const [livenessEntries, writeRun] = await Promise.all([
+    Promise.all(
+      livenessProbes.map(async (probe) => [
         probe.name,
-        await runProbeWithRetries(origin, probe),
+        await runProbeWithRetries(origin, probe, runner, sleep),
       ]),
     ),
-  );
+    runWriteCanaryBursts(origin, writeProbes, runner, sleep),
+  ]);
 
-  const failures = summarizeProbeFailures(COLLECTOR_PROBES, resultsByName);
-  const writeSummary = summarizeWriteCanaryResults(COLLECTOR_PROBES, resultsByName);
+  const resultsByName = { ...Object.fromEntries(livenessEntries), ...writeRun.lastByName };
+  const livenessFailures = summarizeProbeFailures(livenessProbes, resultsByName);
+  const writeSummary = summarizeWriteCanaryResults(writeRun.attempts);
+
+  // A write path that is entirely down is the #5565 class and pages regardless
+  // of the rate threshold, which exists only to tolerate the known #4183 race.
+  const writePathDead = writeSummary.total > 0 && writeSummary.failed === writeSummary.total;
+  const writeRateBreached = writeSummary.failureRate > WRITE_FAILURE_ALERT_RATE;
+
+  return {
+    origin,
+    resultsByName,
+    livenessFailures,
+    writeSummary,
+    writePathDead,
+    writeRateBreached,
+    alerting: livenessFailures.length > 0 || writePathDead || writeRateBreached,
+  };
+}
+
+function reportCollectorChecks(report) {
+  const { origin, livenessFailures, writeSummary } = report;
   const writeRate = `${(writeSummary.failureRate * 100).toFixed(1)}%`;
   console.log(
-    `Analytics collector write canary: ${writeSummary.failed}/${writeSummary.total} failed (${writeRate}).`,
+    `Analytics collector write canary: ${writeSummary.failed}/${writeSummary.total} attempts failed (${writeRate}) across ${WRITE_CANARY_BURSTS} concurrent bursts.`,
   );
-  if (failures.length === 0) {
+
+  if (!report.alerting) {
     console.log(`Analytics collector healthy at ${origin}: ${COLLECTOR_PROBES.length} probes OK.`);
     return;
   }
 
-  console.error(
-    `Analytics collector alert: ${failures.length}/${COLLECTOR_PROBES.length} probe(s) failing at ${origin} after ${ATTEMPTS} attempts.`,
-  );
-  for (const failure of failures) {
-    console.error(`- ${failure.name} (${failure.path}): ${failure.reason}`);
+  console.error(`Analytics collector alert at ${origin}:`);
+  if (livenessFailures.length > 0) {
+    console.error(`- ${livenessFailures.length} liveness probe(s) failing after ${ATTEMPTS} attempts.`);
+    for (const failure of livenessFailures) {
+      console.error(`  - ${failure.name} (${failure.path}): ${failure.reason}`);
+    }
+    console.error(
+      '  Events are being dropped while this is red. Check the Railway `umami` service — a green deployment status does not mean the process is alive (#5565).',
+    );
   }
-  console.error(
-    'Events are being dropped while this is red. Check the Railway `umami` service — a green deployment status does not mean the process is alive (#5565).',
-  );
-  process.exitCode = 1;
+  if (report.writePathDead) {
+    console.error('- Write path is fully down: every canary attempt failed.');
+  } else if (report.writeRateBreached) {
+    console.error(
+      `- Write failure rate ${writeRate} exceeds the ${(WRITE_FAILURE_ALERT_RATE * 100).toFixed(0)}% threshold (known Umami #4183 baseline is 4-8%).`,
+    );
+  }
+  // Deduplicate by reason so a race that hits every burst reads as one line.
+  const seen = new Set();
+  for (const failure of writeSummary.failures) {
+    const line = `  - ${failure.name}: ${failure.reason}`;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    console.error(line);
+  }
+}
+
+async function main() {
+  const report = await runCollectorChecks({
+    origin: process.env.ANALYTICS_COLLECTOR_ORIGIN || DEFAULT_COLLECTOR_ORIGIN,
+  });
+  reportCollectorChecks(report);
+  if (report.alerting) process.exitCode = 1;
 }
 
 // realpath BOTH sides: through a symlinked checkout Node sets import.meta.url
