@@ -1,12 +1,20 @@
+import {
+  appendContentAttributionToUrl,
+  normalizeContentToken,
+  type ContentDestination,
+} from '../../../shared/content-attribution';
+
 export const BLOG_CONVERSION_EVENT = 'blog-product-cta-click';
 export const BLOG_CONVERSION_SOURCE = 'worldmonitor-blog';
 export const BLOG_CONVERSION_MEDIUM = 'owned-content';
 
-export type BlogProductDestination = 'dashboard' | 'pro';
+export type BlogProductDestination = Exclude<ContentDestination, 'unknown'>;
 
 export const BLOG_PRODUCT_URLS: Record<BlogProductDestination, string> = {
-  dashboard: 'https://www.worldmonitor.app/',
+  dashboard: 'https://www.worldmonitor.app/dashboard',
   pro: 'https://www.worldmonitor.app/pro',
+  api: 'https://www.worldmonitor.app/docs/api-reference',
+  mcp: 'https://www.worldmonitor.app/docs/mcp-quickstart',
 };
 
 /**
@@ -18,12 +26,25 @@ export function normalizeBlogAttributionToken(
   value: string | undefined,
   fallback: string,
 ): string {
-  const normalized = value
-    ?.trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 100);
+  return normalizeContentToken(value, fallback);
+}
 
-  return normalized || fallback;
+/**
+ * Put the same bounded dimensions on the handoff URL as on the Umami click
+ * event. Inbound UTM parameters are added by the static page at click time so
+ * the build remains deterministic and never overwrites an existing campaign.
+ */
+export function buildBlogProductLinkUrl(
+  destination: BlogProductDestination,
+  placement: string,
+  campaign: string | undefined,
+  href?: string,
+): string {
+  return appendContentAttributionToUrl(href ?? BLOG_PRODUCT_URLS[destination], {
+    source: BLOG_CONVERSION_SOURCE,
+    medium: BLOG_CONVERSION_MEDIUM,
+    campaign: normalizeBlogAttributionToken(campaign, 'blog-site'),
+    destination,
+    placement: normalizeBlogAttributionToken(placement, 'product-link'),
+  });
 }

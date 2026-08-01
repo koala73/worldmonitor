@@ -171,10 +171,20 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
   const sourceFromStory = typeof opts.sourceFromStory === 'function' ? opts.sourceFromStory : () => null;
 
   if (!Array.isArray(topStories) || topStories.length === 0) return null;
-  // Editorial gate: same bar the legacy pickBriefCluster enforced.
-  if (!topStories.some(isBriefLeadEligible)) return null;
+  // Editorial gate: same bar the legacy pickBriefCluster enforced. The caller
+  // may pass the already-selected cluster so the synthesis path does not scan
+  // the ranked list a second time.
+  const hasBriefCluster = Object.prototype.hasOwnProperty.call(opts, 'briefCluster')
+    ? opts.briefCluster != null
+    : topStories.some(isBriefLeadEligible);
+  if (!hasBriefCluster) return null;
 
-  const parsed = parseBriefSynthesis(rawText, topStories.length);
+  // The caller may also pass the parser result when it needs to classify a
+  // rejection. Keeping this seam optional preserves the pure public helper's
+  // existing behavior for direct callers and tests.
+  const parsed = Object.prototype.hasOwnProperty.call(opts, 'parsedSynthesis')
+    ? opts.parsedSynthesis
+    : parseBriefSynthesis(rawText, topStories.length);
   if (!parsed) return null;
 
   const groundingStories = topStories.map((story) => ({ headline: story.primaryTitle }));

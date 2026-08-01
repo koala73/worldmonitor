@@ -12,6 +12,7 @@ message GetStockAnalysisHistoryRequest {
   // Maximum number of history snapshots to return per symbol.
   int32 limit_per_symbol = 2 [
     (sebuf.http.query) = { name: "limit_per_symbol" },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 32
   ];

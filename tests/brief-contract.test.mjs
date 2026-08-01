@@ -203,6 +203,17 @@ describe('composeSynthesizedBrief (functional L1 coverage, #4928 review)', () =>
     assert.equal(out.sources[1].url, 'https://b/2');
   });
 
+  it('accepts precomputed eligibility and parser results without reparsing', () => {
+    const parsed = parseBriefSynthesis(GOOD, CORROBORATED.length);
+    const out = composeSynthesizedBrief('not parseable', CORROBORATED, {
+      ...passOpts,
+      briefCluster: CORROBORATED[0],
+      parsedSynthesis: parsed,
+    });
+    assert.ok(out);
+    assert.equal(out.lines.length, CORROBORATED.length);
+  });
+
   it('REGRESSION: a story without a usable link gets a substitute source entry, never shifting [n] mapping', () => {
     const out = composeSynthesizedBrief(GOOD, CORROBORATED, {
       ...passOpts,

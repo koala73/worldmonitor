@@ -98,8 +98,12 @@ import {
 } from './_shared/usage';
 import { timingSafeEqual } from './_shared/internal-auth';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
+import { validateGeneratedRequest } from './request-validator';
 
-export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
+export const serverOptions: ServerOptions = {
+  onError: mapErrorToResponse,
+  validateRequest: validateGeneratedRequest,
+};
 
 /**
  * Internal-MCP request body size cap (256 KB). Internal-MCP fetches

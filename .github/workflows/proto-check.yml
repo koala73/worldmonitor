@@ -6,6 +6,7 @@ on:
       - 'proto/**'
       - 'src/generated/**'
       - 'docs/api/**'
+      - 'scripts/generate-request-validation.mjs'
       - 'Makefile'
       - '.github/workflows/proto-check.yml'
 

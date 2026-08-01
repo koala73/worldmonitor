@@ -10,6 +10,7 @@ import {
   createLlmBudgetError,
   extendExistingTtl,
   isLlmBudgetError,
+  readExistingSeedMeta,
   writeExtraKey,
 } from './_seed-utils.mjs';
 import {
@@ -28,6 +29,7 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
+  parseBriefSynthesis,
   composeSynthesizedBrief,
 } from './_insights-brief.mjs';
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
@@ -91,6 +93,133 @@ const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key ex
                          // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const INSIGHTS_SOURCE_VERSION = 'digest-clustering-v2-importance-diversity';
+const INSIGHTS_MAX_CONSECUTIVE_FAILURES = 100;
+const INSIGHTS_RUN_OUTCOMES = Object.freeze({
+  LKG_PRESERVED: 'lkg_preserved',
+  PUBLISHED: 'published',
+  DEGRADED: 'degraded',
+});
+
+// These codes are intentionally low-cardinality and safe to put in seed-meta,
+// health responses, and logs. Never include prompt or model output text in the
+// rejection diagnostic: the payload may contain sensitive intelligence.
+export const INSIGHTS_SYNTHESIS_FAILURE_CODES = Object.freeze({
+  PARSE: 'INSIGHTS_SYNTHESIS_PARSE',
+  GATE: 'INSIGHTS_SYNTHESIS_GATE',
+  MISSING_CLUSTER: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
+  PROVIDER: 'INSIGHTS_SYNTHESIS_PROVIDER',
+});
+const INSIGHTS_SYNTHESIS_FAILURE_CODE_SET = new Set(Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES));
+const INSIGHTS_RUN_META = Symbol('worldmonitor.insightsRunMeta');
+
+function normalizeInsightsFailureCode(code) {
+  return INSIGHTS_SYNTHESIS_FAILURE_CODE_SET.has(code)
+    ? code
+    : INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+}
+
+function attachInsightsRunMeta(payload, runMeta) {
+  const decorated = { ...(payload || {}) };
+  Object.defineProperty(decorated, INSIGHTS_RUN_META, {
+    value: Object.freeze({ ...(runMeta || {}) }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return decorated;
+}
+
+/**
+ * Attach non-serialized run state to an insights payload. The marker lets the
+ * runSeed validation seam distinguish a true LKG preservation from a fresh
+ * payload without ever writing the marker to Redis.
+ */
+export function decorateInsightsRun(payload, runMeta) {
+  return attachInsightsRunMeta(payload, runMeta);
+}
+
+function insightsRunMeta(payload) {
+  return payload?.[INSIGHTS_RUN_META] || null;
+}
+
+/**
+ * Strip audit-only China coverage while retaining the non-serialized run
+ * marker for validation and afterPublish hooks.
+ */
+export function publishInsightsPayload(data) {
+  const { chinaNewsCoverage: _chinaNewsCoverage, ...payload } = data || {};
+  const runMeta = insightsRunMeta(data);
+  return runMeta ? attachInsightsRunMeta(payload, runMeta) : payload;
+}
+
+export function validateInsightsPayload(data) {
+  if (insightsRunMeta(data)?.outcome === INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED) return false;
+  return declareRecords(data) > 0;
+}
+
+/**
+ * Keep synthesis rejection telemetry bounded and machine-actionable. The
+ * classifier deliberately accepts only stage outcomes, never raw prompt or
+ * provider text, so this value is safe for seed-meta, health, and logs.
+ */
+export function classifyInsightsSynthesisFailure({
+  hasBriefCluster = false,
+  synthesisResult = null,
+  parsedSynthesis = null,
+  composed = null,
+} = {}) {
+  if (composed) return null;
+  if (!hasBriefCluster) return INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER;
+  if (!synthesisResult) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+  if (!parsedSynthesis) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE;
+  return INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE;
+}
+
+export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStatus }) {
+  return synthesisFailureCode ? 'degraded' : legacyStatus;
+}
+
+/**
+ * Build only the diagnostic patch owned by the insights seeder. `fetchedAt`
+ * remains under runSeed's control: on a rejected LKG attempt it is mirrored
+ * from the old canonical envelope, while a successful publish gets `now`.
+ */
+export function buildInsightsFreshnessMetaPatch({
+  previousMeta,
+  outcome,
+  failureCode = null,
+  nowMs = Date.now(),
+  servedGeneratedAt = null,
+} = {}) {
+  const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
+  const now = Number.isFinite(nowMs) && nowMs > 0 ? Math.floor(nowMs) : Date.now();
+  const previousFailures = Number.isInteger(previous.consecutiveFailures) && previous.consecutiveFailures > 0
+    ? previous.consecutiveFailures
+    : 0;
+  const servedAt = typeof servedGeneratedAt === 'string' && servedGeneratedAt.length <= 64
+    ? servedGeneratedAt
+    : (typeof previous.servedGeneratedAt === 'string' ? previous.servedGeneratedAt : null);
+  const normalizedFailureCode = failureCode == null ? null : normalizeInsightsFailureCode(failureCode);
+
+  if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
+    return {
+      lastAttemptAt: now,
+      lastSuccessAt: now,
+      servedGeneratedAt: servedAt,
+      consecutiveFailures: 0,
+      lastSynthesisFailureCode: normalizedFailureCode,
+    };
+  }
+
+  return {
+    lastAttemptAt: now,
+    lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
+    servedGeneratedAt: servedAt,
+    consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
+    lastSynthesisFailureCode: normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+  };
+}
 
 const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here)|first[, ]+(i|we|let)|to summarize (the headlines|the task|this)|my task (is|was|:)|step \d)/i;
 const PROMPT_ECHO = /^(summarize the top story|summarize the key|rules:|here are the rules|the top story is likely)/i;
@@ -502,7 +631,10 @@ async function fetchInsights() {
     const existing = await readExistingInsights();
     if (existing?.topStories?.length) {
       console.log('  Digest unavailable — reusing existing insights (LKG)');
-      return existing;
+      return decorateInsightsRun(existing, {
+        outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
+        failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+      });
     }
     throw new Error('No news digest found in Redis');
   }
@@ -584,21 +716,35 @@ async function fetchInsights() {
   let briefStoryLines = [];
   let worldBriefSources = [];
   let status = 'ok';
+  let synthesisFailureCode = null;
 
-  const synthesisResult = topStories.length > 0
+  const briefCluster = pickBriefCluster(topStories);
+  const hasBriefCluster = briefCluster != null;
+  const synthesisResult = hasBriefCluster
     ? await callLLM(null, {
         systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
         userPrompt: synthesisUserPrompt(topStories),
         maxTokens: 900,
       })
     : null;
+  const parsedSynthesis = synthesisResult
+    ? parseBriefSynthesis(synthesisResult.text, topStories.length)
+    : null;
   const composed = synthesisResult
-    ? composeSynthesizedBrief(synthesisResult.text, topStories, {
+      ? composeSynthesizedBrief(synthesisResult.text, topStories, {
         validatorMode: BRIEF_VALIDATOR_MODE,
         sanitizeTitle,
         sourceFromStory: briefSourceFromStory,
+        briefCluster,
+        parsedSynthesis,
       })
     : null;
+  synthesisFailureCode = classifyInsightsSynthesisFailure({
+    hasBriefCluster,
+    synthesisResult,
+    parsedSynthesis,
+    composed,
+  });
 
   if (composed) {
     worldBrief = composed.lead;
@@ -614,15 +760,22 @@ async function fetchInsights() {
     }
     console.log(`  Brief synthesized (top-${topStories.length}) via ${briefProvider} (${briefModel})`);
   } else {
-    if (synthesisResult) {
-      console.warn('  [brief_synthesis] composer rejected output (parse/gates) — falling back to single-headline brief');
-    }
+    console.warn(
+      `  [brief_synthesis] rejected (${synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER}) — `
+      + 'falling back to single-headline brief',
+    );
     const legacy = await generateLegacySingleHeadlineBrief(topStories);
     worldBrief = legacy.worldBrief;
     briefProvider = legacy.briefProvider;
     briefModel = legacy.briefModel;
     worldBriefSources = legacy.worldBriefSources;
-    status = legacy.status;
+    // A usable L2 headline must not clear an L1 synthesis failure. Keep this
+    // run degraded so an existing LKG remains the freshness anchor and the
+    // bounded failure metadata advances until L1 publishes successfully.
+    status = resolveInsightsFallbackStatus({
+      synthesisFailureCode,
+      legacyStatus: legacy.status,
+    });
   }
 
   const multiSourceCount = clusters.filter(c => (c.sources?.length ?? 0) >= 2 || c.entityCorroboration === true).length;
@@ -711,28 +864,62 @@ async function fetchInsights() {
     const existing = await readExistingInsights();
     if (existing?.status === 'ok') {
       console.log('  LKG preservation: existing payload is "ok", skipping degraded overwrite');
-      return preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage);
+      return decorateInsightsRun(
+        preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage),
+        {
+          outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
+          failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+        },
+      );
     }
   }
 
-  return payload;
-}
-
-function validate(data) {
-  return Array.isArray(data?.topStories) && data.topStories.length >= 1;
+  return decorateInsightsRun(payload, {
+    outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
+    failureCode: synthesisFailureCode,
+  });
 }
 
 export function declareRecords(data) {
   return Array.isArray(data?.topStories) ? data.topStories.length : 0;
 }
 
+async function writeInsightsChinaCoverage(data) {
+  if (!data?.chinaNewsCoverage) {
+    // LKG fallback predates the projection. Keep its timestamp honest: an
+    // extended old projection will become CONTENT_STALE rather than green.
+    await extendExistingTtl([CHINA_COVERAGE_KEY], CACHE_TTL);
+    return;
+  }
+  await writeExtraKey(CHINA_COVERAGE_KEY, data.chinaNewsCoverage, CACHE_TTL);
+}
+
+async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
+  const [resolvedPreviousMeta] = await Promise.all([
+    previousMeta === undefined
+      ? readExistingSeedMeta('news', 'insights')
+      : Promise.resolve(previousMeta),
+    writeInsightsChinaCoverage(data),
+  ]);
+  const runMeta = insightsRunMeta(data);
+  return {
+    freshnessMetaPatch: buildInsightsFreshnessMetaPatch({
+      previousMeta: resolvedPreviousMeta,
+      outcome,
+      failureCode: runMeta?.failureCode,
+      nowMs: Date.now(),
+      servedGeneratedAt: data?.generatedAt,
+    }),
+  };
+}
+
 export { callLLM, __setInsightsLlmTransportForTests };
 
 if (_isDirectRun) {
   runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
-    validateFn: validate,
+    validateFn: validateInsightsPayload,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'digest-clustering-v2-importance-diversity',
+    sourceVersion: INSIGHTS_SOURCE_VERSION,
 
     declareRecords,
     schemaVersion: 1,
@@ -741,15 +928,20 @@ if (_isDirectRun) {
     // retained separately so the China audit can distinguish an unavailable
     // source from a globally outranked one without changing the public payload.
     preserveKeys: [CHINA_COVERAGE_KEY],
-    publishTransform: ({ chinaNewsCoverage: _chinaNewsCoverage, ...payload }) => payload,
+    publishTransform: publishInsightsPayload,
     afterPublish: async (data) => {
-      if (!data?.chinaNewsCoverage) {
-        // LKG fallback predates the projection. Keep its timestamp honest: an
-        // extended old projection will become CONTENT_STALE rather than green.
-        await extendExistingTtl([CHINA_COVERAGE_KEY], CACHE_TTL);
-        return;
-      }
-      await writeExtraKey(CHINA_COVERAGE_KEY, data.chinaNewsCoverage, CACHE_TTL);
+      const runMeta = insightsRunMeta(data);
+      return finalizeInsightsRun(
+        data,
+        runMeta?.outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED
+          ? INSIGHTS_RUN_OUTCOMES.PUBLISHED
+          : INSIGHTS_RUN_OUTCOMES.DEGRADED,
+      );
+    },
+    afterValidationSkip: async (data, context) => {
+      return finalizeInsightsRun(data, INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED, {
+        previousMeta: context.existingSeedMeta,
+      });
     },
   }).catch(async (err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
