@@ -132,7 +132,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
     // Daily Sabah (EN) — Turkey EN path improvement (#5952). English-language,
     // no lang tag, so EN digests include it as a default-on flank source.
-    { name: 'Daily Sabah', url: rss('https://www.dailysabah.com/rss') },
+    { name: 'Daily Sabah', url: rss('https://www.dailysabah.com/rss/home-page') },
     // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
     // Their native RSS feeds are used for both locales: the Google News site
     // queries previously used for EN returned HTTP 200 with no <item> nodes.
@@ -170,7 +170,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'HotNews', url: rss('https://www.hotnews.ro/rss'), lang: 'ro' },
     { name: 'G4Media', url: rss('https://www.g4media.ro/feed/'), lang: 'ro' },
     // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
-    { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss.xml'), lang: 'bg' },
+    { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss/'), lang: 'bg' },
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
@@ -180,8 +180,8 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Baltic states — Eastern flank (#5952). English-language Baltic news
     // services (no lang tag) so EN digests can include them as flank sources.
     { name: 'ERR News', url: rss('https://news.err.ee/rss') },
-    { name: 'LRT English', url: rss('https://www.lrt.lt/en/rss') },
-    { name: 'LSM English', url: rss('https://eng.lsm.lv/feed/') },
+    { name: 'LRT English', url: rss('https://www.lrt.lt/en/news-in-english?rss') },
+    { name: 'LSM English', url: rss('https://eng.lsm.lv/rss/') },
     // Russia & Ukraine — EN default balance rule (#5950):
     // For DEFAULT_ENABLED_SOURCES.europe (EN full-variant path), keep at least:
     //   ≥1 dedicated UA primary (today: Kyiv Independent)
@@ -1115,6 +1115,21 @@ export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
   'NV EN',
 ] as const;
 
+const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
+  'Daily Sabah',
+  'ERR News',
+] as const;
+
+/**
+ * Editorially required EN defaults that must survive the free-tier source cap.
+ * Keep the narrower frontline set above for its one-shot migration contract;
+ * this broader set is only for current cap selection.
+ */
+export const FREE_CAP_PROTECTED_SOURCES = [
+  ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+] as const;
+
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
@@ -1127,7 +1142,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   // default-on; RO/BG/CS feeds stay locale-boosted (lang tags).
   europe: [
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
-    'Daily Sabah', 'ERR News',
+    ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
     ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
     'Ukrainska Pravda EN',
     'NV EN',

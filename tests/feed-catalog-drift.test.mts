@@ -23,6 +23,8 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
+import { selectSourcesUnderCap } from '../src/services/source-cap';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
@@ -39,7 +41,9 @@ interface FeedEntry {
 interface FeedsModule {
   DEFAULT_ENABLED_SOURCES: Record<string, string[]>;
   DEFAULT_ENABLED_INTEL: string[];
+  FREE_CAP_PROTECTED_SOURCES: readonly string[];
   FRONTLINE_EUROPE_PROTECTED_SOURCES: readonly string[];
+  INTEL_SOURCES: FeedEntry[];
   SOURCE_TYPES: Record<string, string>;
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
   FULL_FEEDS?: Record<string, FeedEntry[]>;
@@ -64,6 +68,19 @@ const FRONTLINE_EUROPE = [
   'NV EN',
   'Ukrainska Pravda EN',
 ] as const;
+
+const EASTERN_FLANK_EN_DEFAULTS = ['Daily Sabah', 'ERR News'] as const;
+const EASTERN_FLANK_FEEDS = {
+  Digi24: { url: 'https://www.digi24.ro/rss', lang: 'ro' },
+  HotNews: { url: 'https://www.hotnews.ro/rss', lang: 'ro' },
+  G4Media: { url: 'https://www.g4media.ro/feed/', lang: 'ro' },
+  Dnevnik: { url: 'https://www.dnevnik.bg/rss/', lang: 'bg' },
+  'Seznam Zprávy': { url: 'https://www.seznamzpravy.cz/rss', lang: 'cs' },
+  'ERR News': { url: 'https://news.err.ee/rss' },
+  'LRT English': { url: 'https://www.lrt.lt/en/news-in-english?rss' },
+  'LSM English': { url: 'https://eng.lsm.lv/rss/' },
+  'Daily Sabah': { url: 'https://www.dailysabah.com/rss/home-page' },
+} as const;
 
 let feeds: FeedsModule;
 let serverFeeds: ServerFeedsModule;
@@ -318,6 +335,71 @@ describe('feed catalog drift', () => {
     const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
     for (const name of feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES) {
       assert.ok(europe.includes(name), `${name} must be DEFAULT_ENABLED europe (cap-protected set)`);
+    }
+  });
+
+  it('locks Eastern-flank URL/lang parity and EN/locale selection (#5952)', () => {
+    const clientByName = new Map((feeds.FEEDS.europe ?? []).map((feed) => [feed.name, feed]));
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((feed) => [feed.name, feed]),
+    );
+    const enabled = feeds.getAllDefaultEnabledSources();
+
+    for (const [name, expected] of Object.entries(EASTERN_FLANK_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must exist in the client Europe catalog`);
+      assert.ok(server, `${name} must exist in the server full/Europe catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+
+    for (const name of EASTERN_FLANK_EN_DEFAULTS) {
+      assert.ok(enabled.has(name), `${name} must remain default-on for EN`);
+    }
+    for (const localeOnly of ['Digi24', 'HotNews', 'G4Media', 'Dnevnik', 'Seznam Zprávy'] as const) {
+      assert.ok(!enabled.has(localeOnly), `${localeOnly} must remain locale-boosted, not EN default-on`);
+    }
+
+    const roBoosted = feeds.getLocaleBoostedSources('ro');
+    for (const name of ['Digi24', 'HotNews', 'G4Media'] as const) {
+      assert.ok(roBoosted.has(name), `${name} must be boosted for ro`);
+    }
+    assert.ok(feeds.getLocaleBoostedSources('bg').has('Dnevnik'), 'Dnevnik must be boosted for bg');
+    assert.ok(
+      feeds.getLocaleBoostedSources('cs').has('Seznam Zprávy'),
+      'Seznam Zprávy must be boosted for cs',
+    );
+  });
+
+  it('allows every Eastern-flank publisher through the RSS proxy host policy (#5952)', () => {
+    for (const [name, { url }] of Object.entries(EASTERN_FLANK_FEEDS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+    }
+  });
+
+  it('keeps both Eastern-flank EN defaults under the production free cap (#5952)', () => {
+    assert.deepEqual(
+      [...feeds.FREE_CAP_PROTECTED_SOURCES].sort(),
+      [...FRONTLINE_EUROPE, ...EASTERN_FLANK_EN_DEFAULTS].sort(),
+      'free-cap protected defaults must match the editorially protected sets',
+    );
+
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+
+    for (const name of EASTERN_FLANK_EN_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
     }
   });
 

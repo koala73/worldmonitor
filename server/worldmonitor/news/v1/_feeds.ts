@@ -67,7 +67,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'HotNews', url: 'https://www.hotnews.ro/rss', lang: 'ro' },
       { name: 'G4Media', url: 'https://www.g4media.ro/feed/', lang: 'ro' },
       // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
-      { name: 'Dnevnik', url: 'https://www.dnevnik.bg/rss.xml', lang: 'bg' },
+      { name: 'Dnevnik', url: 'https://www.dnevnik.bg/rss/', lang: 'bg' },
       // Ukraine war frontline for EN digests (#5949). Names must match client
       // DEFAULT_ENABLED_SOURCES.europe. No non-en `lang` tags — buildDigest
       // filters `!f.lang || f.lang === lang`, so lang:pl/ru would never ship to EN.
@@ -98,10 +98,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // Baltic states — Eastern flank (#5952). English-language, no lang tag,
       // so EN digests include them.
       { name: 'ERR News', url: 'https://news.err.ee/rss' },
-      { name: 'LRT English', url: 'https://www.lrt.lt/en/rss' },
-      { name: 'LSM English', url: 'https://eng.lsm.lv/feed/' },
+      { name: 'LRT English', url: 'https://www.lrt.lt/en/news-in-english?rss' },
+      { name: 'LSM English', url: 'https://eng.lsm.lv/rss/' },
       // Daily Sabah (EN) — Turkey EN path improvement (#5952).
-      { name: 'Daily Sabah', url: 'https://www.dailysabah.com/rss' },
+      { name: 'Daily Sabah', url: 'https://www.dailysabah.com/rss/home-page' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
