@@ -1062,6 +1062,7 @@ function renderCountryPage({
       mainEntity: {
         '@type': 'Dataset',
         name: `World Monitor Country Resilience snapshot for ${country.name}`,
+        description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
         datePublished: capturedAt,
         measurementTechnique: methodologyFormula,
       },
