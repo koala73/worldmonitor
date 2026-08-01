@@ -159,7 +159,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "locales": 25,
     "variants": 6,
     "mapLayers": 56,
-    "feedDefinitions": 574,
+    "feedDefinitions": 582,
     "freshnessTrackedSourceGroups": 35
   }
 };
