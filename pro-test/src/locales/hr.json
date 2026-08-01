@@ -314,9 +314,9 @@
   },
   "soonBadge": "Uskoro",
   "meta": {
-    "title": "World Monitor Pro — AI analitičar, osobni obavještajni desk, MCP za Claude i GPT",
-    "description": "Geopolitički AI sloj. Pitajte ga, pretplatite se, gradite na njemu. WM Analyst chat kroz 30+ servisa uživo, AI sažetak dostavljen dnevno, dvaput dnevno ili tjedno putem Slacka, Discorda, Telegrama, e-pošte ili webhooka, custom widget builder (HTML/CSS/JS + AI) i MCP konektori za Claude, GPT i vlastite LLM-ove.",
-    "ogTitle": "World Monitor Pro — geopolitički AI sloj",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "World Monitor Pro dodaje AI analitičara, zakazane izvještaje obavještajnih podataka, prilagođene widgete, tržišna istraživanja i MCP pristup uživo geopolitičkim i financijskim podacima.",
+    "ogTitle": "World Monitor Pro | Geopolitički AI",
     "ogDescription": "Pitajte ga, pretplatite se, gradite na njemu. WM Analyst chat, AI sažetak prema vašem rasporedu (dnevno, dvaput dnevno ili tjedno), custom widget builder i MCP za Claude/GPT — kroz 30+ servisa uživo pod jednim ključem."
   },
   "pricing": {

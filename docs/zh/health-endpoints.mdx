@@ -78,7 +78,7 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 | `NOT_CONFIGURED` | 绿色 | 本部署从未为该可选数据源适配器配置凭据（生产者写入 `sourceState: "unavailable"`，例如未配置 `SAM_GOV_API_KEY` 的全球招标 SAM.gov 适配器）。这不是故障，也不计入问题；添加凭据后的首次运行即转为 `OK` |
 | `STALE_SEED` | 警告 | 数据存在但 `seed-meta` 年龄超过 `maxStaleMin` |
 | `STALE_CONTENT` | 警告 | 种子器新鲜但上游内容停止推进（冻结的订阅源）；计入 `summary.staleContent` |
-| `COVERAGE_PARTIAL` | 警告 | 记录数低于该键声明的 `minRecordCount`（例如 10/13 个咽喉点或 139/174 个 PortWatch 港口活动国家） |
+| `COVERAGE_PARTIAL` | 警告 | 总记录数或必需子组低于该键声明的覆盖率下限（例如 139/174 个 PortWatch 国家，或某个预测市场池为空） |
 | `SEED_ERROR` | 警告 | `seed-meta` 报告上次种子运行的 `status: "error"` |
 | `REDIS_PARTIAL` | 警告 | 该键的 STRLEN/GET 上出现单个每命令 Redis 错误（非完全中断） |
 | `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |
@@ -103,6 +103,11 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 `COVERAGE_PARTIAL` 而非 `OK`；部分运行仍可刷新按国家的
 PortWatch 缓存条目，但规范国家列表和健康的 seed-meta
 信号在完整 174 国覆盖恢复之前不会推进。
+
+`predictionMarkets` 还要求 `geopolitical`、`tech` 和 `finance`
+每个发布池中至少有一个市场。其种子元数据会发布 `poolCounts`；
+计数缺失、格式错误或低于下限时，即使市场总数健康，也会报告
+`COVERAGE_PARTIAL`。
 
 ### 过期阈值（maxStaleMin）
 
@@ -186,6 +191,25 @@ curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?
       "sourceVersion": null,
       "ageMinutes": 5,
       "stale": true
+    },
+    "prediction:markets": {
+      "status": "coverage_partial",
+      "fetchedAt": 1710158100000,
+      "recordCount": 87,
+      "poolCounts": {
+        "geopolitical": 52,
+        "tech": 0,
+        "finance": 35
+      },
+      "minPoolCounts": {
+        "geopolitical": 1,
+        "tech": 1,
+        "finance": 1
+      },
+      "coveragePartial": true,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": false
     }
   }
 }
@@ -193,7 +217,9 @@ curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?
 
 ### 过期逻辑
 
-当种子的年龄超过**配置间隔的 2 倍**时，即被视为过期。这考虑了 cron/中继计时的正常抖动。具有显式 `minRecordCount` 的种子还会报告 `coverage_partial` 和 `stale: true`，直到满足其覆盖率下限。
+当种子的年龄超过**配置间隔的 2 倍**时，即被视为过期。这考虑了 cron/中继计时的正常抖动。低于总量 `minRecordCount` 的种子会报告 `coverage_partial` 和 `stale: true`。低于预测市场 `minPoolCounts` 等子组下限的种子也会报告 `coverage_partial`，但只要生产者心跳仍然新鲜，就保持 `stale: false`，从而区分新鲜度与覆盖率。
+
+**消费者：** 以 `status` 和 `overall` 作为覆盖率的权威信号。不要只依赖 `stale`——池覆盖不足按设计保持 `stale: false`。当任一覆盖率下限失败时，条目还会设置 `coveragePartial: true`，以便只检查布尔字段的客户端仍能看到不足。
 
 | 领域 | 间隔（分钟） | 过期阈值（分钟） |
 |--------|---------------|-------------------|

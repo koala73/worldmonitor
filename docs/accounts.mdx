@@ -21,6 +21,30 @@ Account creation is an interactive browser flow, not an API:
 - **Create an API key** from **Dashboard → Settings → API Keys** once subscribed to API Starter or API Business (`wm_` + 40 hex chars). The full value is shown only once; see [Find or replace your license / API key](/api-keys) for the exact steps and recovery instructions.
 - **Connect an agent via OAuth** instead of a key: MCP clients (Claude Desktop and others) use OAuth 2.1 + PKCE with dynamic client registration — no manual account dance; see [auth.md](https://worldmonitor.app/auth.md) for the self-bootstrapping discovery chain.
 
+## Plan and billing in the dashboard
+
+Signed-in users manage account settings and billing from the same avatar menu:
+
+- **Plan & billing** opens the signed-in billing tab directly.
+- **Settings** opens the general settings tab; the billing tab remains available alongside Panels, Sources, Notifications, API Keys, and eligible MCP-client settings.
+
+The billing tab shows the current plan and the state that matters operationally: renewal date for active subscriptions, payment action for `on_hold`, access-through date for a cancelled subscription, or a resubscribe path after expiry. **Manage Billing** opens the Dodo customer portal for payment methods, invoices, plan changes that Dodo supports, and cancellation.
+
+Users whose premium access comes from an invite, tester key, API key, or another external grant still see an explanation of that state, but no misleading invoice or payment action. An invited team member's billing remains with the plan owner.
+
+## API Business team seats
+
+API Business advertises **five Pro licenses total**: the subscription owner plus up to four teammates. The self-serve **Business Seats** manager is currently implemented for the monthly `api_business` plan. A monthly owner manages the four invite slots from **Avatar → Plan & billing → Business Seats**. The annual `api_business_annual` plan does not expose that self-serve manager yet; contact support for its current included-seat handling.
+
+- The owner's account must use a company email domain; free and disposable domains cannot issue invitations.
+- Invitees must use the same company email domain as the owner.
+- Pending and accepted invitations both count toward the four-seat limit. Pending links expire after 14 days.
+- Accepting an invitation grants the teammate Pro dashboard access for as long as the owner's API Business subscription remains covering.
+- The invitee receives Pro access, not ownership of the API Business subscription or its billing portal. A higher-tier subscription already owned by the invitee remains authoritative.
+- Removing a seat revokes the grant immediately. If the owner cancels, invited access continues only through the owner's paid-through date.
+
+This is the self-serve path for the five licenses included with monthly API Business. Additional seats, cross-domain teams, SSO/RBAC, or centralized workspace administration require an Enterprise agreement.
+
 ## For agents
 
 - You cannot complete browser sign-up on a user's behalf by fetching pages — the flow lives in a client-side Clerk modal. Direct users to [worldmonitor.app/pro](https://worldmonitor.app/pro).
@@ -30,5 +54,6 @@ Account creation is an interactive browser flow, not an API:
 ## Related
 
 - [Plans & Pricing](/pricing)
+- [API Business commerce contract](/api-commerce)
 - [Authentication & Usage](/usage-auth)
 - [Support & Contact](/support)

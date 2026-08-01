@@ -314,9 +314,9 @@
   },
   "soonBadge": "जल्द",
   "meta": {
-    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, Claude और GPT के लिए MCP",
-    "description": "भू-राजनीतिक AI परत। इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। 30+ लाइव सेवाओं पर WM Analyst chat, Slack, Discord, Telegram, ईमेल या webhook पर दैनिक, दिन में दो बार या साप्ताहिक मिलने वाला AI डाइजेस्ट, custom widget builder (HTML/CSS/JS + AI), और Claude, GPT व custom LLMs के लिए MCP connectors.",
-    "ogTitle": "World Monitor Pro — Geopolitical AI Layer",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "World Monitor Pro एक AI विश्लेषक, निर्धारित intelligence डाइजेस्ट, कस्टम विजेट, बाजार अनुसंधान, और लाइव भू-राजनीतिक और वित्तीय डेटा तक MCP एक्सेस जोड़ता है।",
+    "ogTitle": "World Monitor Pro | Geopolitical AI",
     "ogDescription": "इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें। WM Analyst chat, आपके schedule पर AI डाइजेस्ट (दैनिक, दिन में दो बार या साप्ताहिक), custom widget builder, और Claude/GPT के लिए MCP — 30+ लाइव सेवाएँ एक key के तहत।"
   },
   "pricing": {

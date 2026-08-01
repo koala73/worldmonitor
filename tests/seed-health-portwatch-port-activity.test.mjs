@@ -19,6 +19,7 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 const { default: handler } = await import('../api/seed-health.js');
 
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
+const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 
@@ -53,6 +54,15 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
       if (key === PORTWATCH_META_KEY) {
         if (missingPortwatchMeta) return { result: null };
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: portwatchRecordCount }) };
+      }
+      if (key === PREDICTION_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt: Date.now(),
+            recordCount: 38,
+            poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
+          }),
+        };
       }
       if (key === RESILIENCE_INTERVAL_PROBE_KEY) {
         return {

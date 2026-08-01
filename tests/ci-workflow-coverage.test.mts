@@ -98,6 +98,7 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'scripts/repack-linux-appimage.sh',
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
+  'scripts/check-rust-security-floors.mjs',
 ] as const;
 
 const REQUIRED_DESKTOP_RUST_INPUTS = [
@@ -546,6 +547,26 @@ describe('CI workflow coverage', () => {
       /if: needs\.changes\.outputs\.desktop_config == 'true'/,
       'desktop-config job must use the desktop_config change output',
     );
+    // Cargo.lock is the only thing that decides which crate versions ship, and
+    // no other job inspects it (security-audit covers npm lockfiles only), so
+    // dropping this step would let a cargo update silently reintroduce a known
+    // advisory — CVE-2026-42184 / #5518 is the case that motivated it.
+    const floorStep = workflowStepBlock(testWorkflow, 'Rust dependency security floors (#5518)');
+    assert.match(
+      floorStep,
+      /^\s+run: node scripts\/check-rust-security-floors\.mjs\s*$/m,
+      'desktop-config job must run the Rust dependency security-floor check',
+    );
+    // A presence-only assertion would stay green with the step neutered, so
+    // pin that it still fails the job (same guard the AppImage step carries).
+    assert.doesNotMatch(floorStep, /^\s+continue-on-error:/m);
+    const releaseFloorStep = workflowStepBlock(desktopBuildWorkflow, 'Rust dependency security floors (#5518)');
+    assert.match(
+      releaseFloorStep,
+      /^\s+run: node scripts\/check-rust-security-floors\.mjs\s*$/m,
+      'release workflow must verify the security floors of the lockfile it ships',
+    );
+    assert.doesNotMatch(releaseFloorStep, /^\s+continue-on-error:/m);
     assert.match(
       testJobBlock('desktop-rust'),
       /if: needs\.changes\.outputs\.desktop_rust == 'true'/,
@@ -649,6 +670,15 @@ describe('CI workflow coverage', () => {
       desktopCanarySmoke,
       /^\s+if grep -q "SIDECAR_FINAL_STATUS=alive" \/tmp\/display-server\.log 2>\/dev\/null; then\s*$/m,
       'desktop canary must gate success on final sidecar liveness',
+    );
+  });
+
+  it('runs workflow coverage when the release workflow changes', () => {
+    const codeFilter = shellAwkAssignmentBlock('CODE');
+    assert.doesNotMatch(
+      codeFilter,
+      /build-desktop\.yml/,
+      'build-desktop.yml changes must run the unit workflow-coverage assertions',
     );
   });
 

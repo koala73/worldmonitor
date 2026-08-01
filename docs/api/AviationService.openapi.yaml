@@ -246,7 +246,7 @@ paths:
             tags:
                 - AviationService
             summary: ListAirportFlights
-            description: ListAirportFlights retrieves recent flights at a specific airport.
+            description: ListAirportFlights returns recent arrivals and departures with direction and limit filters, source attribution, flight status, carrier details, and update time.
             operationId: ListAirportFlights
             parameters:
                 - name: airport

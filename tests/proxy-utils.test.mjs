@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
@@ -7,8 +8,26 @@ const {
   _readBoundedResponseStream,
   parseProxyConfig,
   parseProxyConfigForAttempt,
+  proxyFetch,
   resolveProxyString,
 } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
+
+function proxyFetchHarness(response, { maxResponseBytes = Infinity } = {}) {
+  let destroyed = 0;
+  return {
+    options: {
+      maxResponseBytes,
+      connectTunnel: async () => ({ socket: {}, destroy: () => { destroyed += 1; } }),
+      requestFn: (_options, onResponse) => {
+        const req = new EventEmitter();
+        req.end = () => queueMicrotask(() => onResponse(response));
+        req.write = () => {};
+        return req;
+      },
+    },
+    destroyed: () => destroyed,
+  };
+}
 
 describe('proxy utilities', () => {
   it('applies standard ports when URL parsing normalizes them away', () => {
@@ -132,5 +151,41 @@ describe('proxy utilities', () => {
       128,
     );
     assert.equal(exactLimit.byteLength, 128);
+  });
+
+  it('preserves redirect Location through proxyFetch and still bounds its body', async () => {
+    const redirectResponse = Readable.from([Buffer.from('redirect')]);
+    redirectResponse.statusCode = 302;
+    redirectResponse.headers = {
+      location: 'https://trusted.example/signed.xml',
+      'content-type': 'text/plain',
+    };
+    const redirectHarness = proxyFetchHarness(redirectResponse, { maxResponseBytes: 64 });
+
+    const redirect = await proxyFetch('https://origin.example/sdn.xml', {
+      host: 'proxy.example', port: 443, auth: 'user:pass', tls: true,
+    }, redirectHarness.options);
+
+    assert.deepEqual(redirect, {
+      ok: false,
+      status: 302,
+      location: 'https://trusted.example/signed.xml',
+      buffer: Buffer.from('redirect'),
+      contentType: 'text/plain',
+    });
+    assert.equal(redirectHarness.destroyed(), 1);
+
+    const oversizedResponse = Readable.from([Buffer.alloc(65)]);
+    oversizedResponse.statusCode = 302;
+    oversizedResponse.headers = { location: 'https://trusted.example/signed.xml' };
+    const oversizedHarness = proxyFetchHarness(oversizedResponse, { maxResponseBytes: 64 });
+
+    await assert.rejects(
+      proxyFetch('https://origin.example/sdn.xml', {
+        host: 'proxy.example', port: 443, auth: 'user:pass', tls: true,
+      }, oversizedHarness.options),
+      (error) => error.code === 'RESPONSE_TOO_LARGE',
+    );
+    assert.equal(oversizedHarness.destroyed(), 1);
   });
 });

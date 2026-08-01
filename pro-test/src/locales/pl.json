@@ -314,9 +314,9 @@
   },
   "soonBadge": "Wkrótce",
   "meta": {
-    "title": "World Monitor Pro — Analityk AI, Osobiste Biuro Inteligencji, MCP dla Claude i GPT",
-    "description": "Geopolityczna warstwa AI. Zadaj pytanie, subskrybuj, rozwijaj. Chat WM Analyst w ponad 30 usługach na żywo, codzienny, dwukrotnie dziennie lub tygodniowy digest AI dostarczany do Slack, Discord, Telegram, Email lub webhook, konstruktor niestandardowych widżetów (HTML/CSS/JS + AI) i łączniki MCP dla Claude, GPT i niestandardowych LLM.",
-    "ogTitle": "World Monitor Pro — Geopolityczna warstwa AI",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "World Monitor Pro dodaje analityka AI, zaplanowane digesty wywiadowcze, niestandardowe widżety, badania rynku oraz dostęp MCP do danych geopolitycznych i finansowych na żywo.",
+    "ogTitle": "World Monitor Pro | Geopolitical AI",
     "ogDescription": "Zadaj pytanie, subskrybuj, rozwijaj. Chat WM Analyst, digest AI według Twojego harmonogramu (codziennie, dwukrotnie dziennie lub tygodniowo), konstruktor niestandardowych widżetów i MCP dla Claude/GPT — w ponad 30 usługach na żywo pod jednym kluczem."
   },
   "pricing": {

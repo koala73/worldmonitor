@@ -48,6 +48,7 @@ describe('production sitemap verifier helpers', () => {
   it('classifies every root, blog, docs, variant, and corpus family', () => {
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/'), 'landing');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/dashboard'), 'dashboard');
+    assert.equal(classifySitemapUrl('https://worldmonitor.app/mcp'), 'mcp');
     assert.equal(classifySitemapUrl('https://tech.worldmonitor.app/dashboard'), 'dashboard-variant');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/pro'), 'product');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/pricing.md'), 'machine-readable');
@@ -81,6 +82,41 @@ describe('production sitemap verifier helpers', () => {
     });
     assert.equal(markdown.canonical, 'https://www.worldmonitor.app/pricing.md');
     assert.equal(markdown.indexable, false);
+  });
+
+  it('accepts the canonical apex MCP URL in the root sitemap inventory', async () => {
+    const mcpUrl = 'https://worldmonitor.app/mcp';
+    const rootSitemap = 'https://www.worldmonitor.app/sitemap.xml';
+    const blogSitemap = 'https://www.worldmonitor.app/blog/sitemap-index.xml';
+    const docsSitemap = 'https://www.worldmonitor.app/docs/sitemap.xml';
+    const responses = new Map([
+      [
+        'https://www.worldmonitor.app/robots.txt',
+        `Sitemap: ${rootSitemap}\nSitemap: ${blogSitemap}\nSitemap: ${docsSitemap}\n`,
+      ],
+      [rootSitemap, `<urlset><url><loc>${mcpUrl}</loc></url></urlset>`],
+      [blogSitemap, '<urlset><url><loc>https://www.worldmonitor.app/blog/</loc></url></urlset>'],
+      [docsSitemap, '<urlset><url><loc>https://www.worldmonitor.app/docs/</loc></url></urlset>'],
+      ['https://www.worldmonitor.app/blog/', '<html><head><link rel="canonical" href="https://www.worldmonitor.app/blog/"></head></html>'],
+      ['https://www.worldmonitor.app/docs/', '<html><head><link rel="canonical" href="https://www.worldmonitor.app/docs/"></head></html>'],
+      [mcpUrl, '# World Monitor MCP'],
+    ]);
+    const fetchImpl = async (url) => {
+      const value = String(url);
+      const isMcp = value === mcpUrl;
+      const isPage = value.endsWith('/') || isMcp;
+      return new Response(responses.get(value), {
+        status: responses.has(value) ? 200 : 404,
+        headers: isMcp
+          ? { 'content-type': 'text/markdown', link: `<${mcpUrl}>; rel="canonical"` }
+          : { 'content-type': isPage ? 'text/html' : 'application/xml' },
+      });
+    };
+
+    const result = await verifyProductionSitemaps({ fetchImpl });
+
+    assert.equal(result.passed, true, result.errors.join('\n'));
+    assert.equal(result.familySummary.mcp.urls, 1);
   });
 
   it('fails when multiple sitemap owners advertise the same canonical URL', async () => {

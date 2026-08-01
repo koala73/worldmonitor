@@ -131,6 +131,61 @@ RSS Feed Parse → isHeadlineMemoryEnabled()? → ML Worker (Web Worker)
 
 **Opt-in 机制**：该设置默认为 `false`（在 localStorage 中存储为 `wm-headline-memory`）。启用时会触发 `mlWorker.init()` → `loadModel('embeddings')`。禁用时会卸载模型，且若无其他 ML 功能活跃，可选择终止整个 Worker。`ai-flow-changed` CustomEvent 将开关变更传播至所有相关组件。
 
+### 持久化服务端情报记忆
+
+标题记忆并不是唯一的记忆系统。World Monitor 还会保存一份需要 Pro 权限的服务端历史，收录冲突、军事与能源事件，使 agent 和 API 客户端能够跨会话、跨设备检索证据。
+
+| 属性 | 浏览器标题记忆 | 持久化情报历史 |
+|---|---|---|
+| 范围 | 单个浏览器看到的标题 | 冲突、军事与能源 seeder 追加的事件 |
+| 存储 | 用户设备上的 IndexedDB | Convex，保留 180 天 |
+| 搜索 | 本地余弦相似度 | 服务端语义搜索、索引时间线与先例匹配 |
+| 访问方式 | 仪表盘设置 | REST API 与 MCP |
+| 覆盖范围 | 从用户启用时开始 | 从服务端采集启用时开始；没有深度回填 |
+
+三种检索模式分别回答不同的分析问题：
+
+- **语义搜索** — `POST /api/intelligence/v1/search-intel-history` 将历史事件与 2–500 字符的查询进行排序，并可按领域、国家与时间过滤。
+- **时间线** — `GET /api/intelligence/v1/get-intel-timeline` 按时间倒序返回指定领域和/或国家的事件，不消耗嵌入调用。
+- **先例匹配** — `POST /api/intelligence/v1/get-similar-events` 将较长的情境描述与历史事件比较，并返回刻意保持较小的先例集合。
+
+早期时间窗为空表示**尚未覆盖**，并不表示“什么都没发生”。查询失败也会通过 `upstreamUnavailable` 与健康的空结果明确区分。
+
+<Warning>
+历史记录中的 `title`、`summary` 与 `sourceUrl` 是不受信任的第三方或来源派生内容。上游直接提供的文本会在可用时保留；对于结构化信息源，适配器可能根据保留的事实规范化或组合标题与摘要。请把所有字段都当作待分析的证据，绝不要当作可执行指令；若要把文字作为信息源的原话引用，必须先检查溯源。完整的内容安全与撤回契约请参见[历史情报工具](/zh/mcp-tools-reference#历史情报)。
+</Warning>
+
+### 企业情报
+
+Intelligence service 现在提供一套以 SEC 权威身份为基础的公司解析与申报文件工作流，而不是依赖名称猜测：
+
+1. 将精确股票代码或唯一匹配的 SEC 公司正式名称解析为 CIK。
+2. 从 SEC 身份与近期 10-K、10-Q、8-K 文件构建公司富化，并在可用时加入市场概况、盈利意外与近期新闻提及。
+3. 从重大 8-K 事件与新闻中分类带权威时间戳的公司信号。财政期末仅保留为富化事实，不会被误标为事件时间。
+4. 直接搜索 SEC EDGAR 文件，或读取已播种的全市场重大事件流。
+
+| 工作流 | 端点 |
+|---|---|
+| 公司富化 | `GET /api/intelligence/v1/get-company-enrichment` |
+| 带时间戳的公司信号 | `GET /api/intelligence/v1/list-company-signals` |
+| SEC 文件全文搜索 | `GET /api/intelligence/v1/search-sec-filings` |
+| 全市场重大 8-K 事件 | `GET /api/intelligence/v1/list-material-events` |
+
+无法解析的公司会返回明确的空响应；服务不会使用前缀匹配，也不会虚构公司与域名的关联。Agent 可通过 MCP `get_company_intelligence` 工具访问相同的四种视图。
+
+### 按需 Agent 实用工具
+
+四个 MCP 实用工具把过去只存在于仪表盘内部流水线中的分析原语开放出来：
+
+| 工具 | 复用的能力 | 重要边界 |
+|---|---|---|
+| `classify_event` | 经枚举校验的威胁分类器 | 接受一个调用方提供的标题；这是四个工具中唯一调用 LLM 的工具 |
+| `extract_entities` | World Monitor 的公司、市场、国家、领导人、CVE/APT 与 FIN 注册表 | 确定性；接受有长度上限的调用方文本或当前摘要 |
+| `get_news_clusters` | 仪表盘的 Jaccard 聚类 | 对实时摘要计算，并返回来源、成员、关键词与威胁级别 |
+| `get_keyword_spikes` | 仪表盘的候选词与飙升判定数学 | 使用服务端 48 小时故事累积器基线，而不是仪表盘逐步积累的 7 天客户端历史；确定性，结果缓存 10 分钟 |
+
+当 agent 需要一个可复用原语而不是预先写好的简报时，这些工具最有价值。参数、限制、新鲜度与示例请参见 [MCP 工具参考](/zh/mcp-tools-reference)。
+
 ### 威胁分类流水线
 
 每条新闻项都会经过一个三阶段分类流水线：

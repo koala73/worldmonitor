@@ -276,7 +276,15 @@ test('skipWhenEmpty preserves the last-good extra key without refreshing its see
 // EMPTY_DATA even though the canonical data was fine. The mirror behavior
 // keeps health honest while preserving STALE_SEED honesty (mirrored
 // fetchedAt is the canonical's ORIGINAL value, not now).
-function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVersion = 'test-v1', contentAge }) {
+function withCanonicalEnvelope({
+  canonicalKey,
+  fetchedAt,
+  recordCount,
+  sourceVersion = 'test-v1',
+  contentAge,
+  existingSeedMeta,
+  seedMetaKey,
+}) {
   const seed = {
     fetchedAt,
     recordCount,
@@ -303,6 +311,11 @@ function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVer
     // Match GET on the canonical key — return the envelope wrapped in {result}.
     if (u.includes(`/get/${encodeURIComponent(canonicalKey)}`) || u.endsWith(`/get/${canonicalKey}`)) {
       return new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 });
+    }
+    // Prior seed-meta (poolCounts etc.) so validate-skip can re-apply diagnostics.
+    if (existingSeedMeta && seedMetaKey
+      && (u.includes(`/get/${encodeURIComponent(seedMetaKey)}`) || u.endsWith(`/get/${seedMetaKey}`))) {
+      return new Response(JSON.stringify({ result: JSON.stringify(existingSeedMeta) }), { status: 200 });
     }
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
@@ -440,4 +453,69 @@ test('Sprint 1: validation failure with canonical envelope BUT no contentAge wri
   assert.ok(!('newestItemAt' in meta), 'newestItemAt absent for legacy seeders');
   assert.ok(!('oldestItemAt' in meta), 'oldestItemAt absent for legacy seeders');
   assert.ok(!('maxContentAgeMin' in meta), 'maxContentAgeMin absent for legacy seeders');
+});
+
+// #5875 review P1: validate-skip rewrites seed-meta as a full SET. Without
+// merging prior afterPublish diagnostics (poolCounts, errorReason, …),
+// fail-closed health surfaces false-alarm after the first healthy publish.
+test('validation skip preserves prior seed-meta diagnostics (poolCounts)', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const RECORD_COUNT = 38;
+  const POOL_COUNTS = { geopolitical: 18, tech: 12, finance: 8 };
+  const SEED_META_KEY = 'seed-meta:test:pool-diag-preserve';
+
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:pool-diag-preserve:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'prediction-markets-v1',
+    seedMetaKey: SEED_META_KEY,
+    existingSeedMeta: {
+      fetchedAt: FROZEN_FETCHED_AT - 60_000,
+      recordCount: RECORD_COUNT,
+      sourceVersion: 'prediction-markets-v1',
+      poolCounts: POOL_COUNTS,
+      status: 'ok',
+    },
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'pool-diag-preserve', 'test:pool-diag-preserve:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('pool-diag-preserve');
+  assert.ok(meta, 'seed-meta must be rewritten on the mirror path');
+  assert.equal(meta.recordCount, RECORD_COUNT, 'canonical recordCount still mirrored');
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT, 'canonical fetchedAt still mirrored');
+  assert.deepEqual(
+    meta.poolCounts,
+    POOL_COUNTS,
+    'prior poolCounts must survive validate-skip so fail-closed health stays honest',
+  );
+  assert.equal(meta.status, 'ok', 'other non-reserved diagnostics are preserved too');
+});
+
+test('validation skip with no prior diagnostics still writes a clean mirror', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:no-prior-diag:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: 50,
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'no-prior-diag', 'test:no-prior-diag:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('no-prior-diag');
+  assert.ok(meta);
+  assert.equal(meta.recordCount, 50);
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT);
+  assert.equal(Object.hasOwn(meta, 'poolCounts'), false);
 });
