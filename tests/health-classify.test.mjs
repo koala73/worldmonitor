@@ -122,6 +122,22 @@ test('classifyKey: repeated insights synthesis rejection warns while the LKG rem
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: one recent insights synthesis failure stays OK within the warning bounds', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 5 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:25:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(entry.consecutiveFailures, 1);
+});
+
 test('classifyKey: an old single insights synthesis failure warns by age', () => {
   const entry = classifyNewsInsights({
     fetchedAt: NOW - 5 * ONE_MIN_MS,

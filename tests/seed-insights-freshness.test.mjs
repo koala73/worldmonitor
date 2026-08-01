@@ -7,6 +7,7 @@ import {
   classifyInsightsSynthesisFailure,
   decorateInsightsRun,
   publishInsightsPayload,
+  resolveInsightsFallbackStatus,
   validateInsightsPayload,
 } from '../scripts/seed-insights.mjs';
 
@@ -105,4 +106,18 @@ test('a newly published payload resets synthesis failures only after publication
   assert.equal(patch.servedGeneratedAt, NEW_GENERATED_AT);
   assert.equal(patch.consecutiveFailures, 0);
   assert.equal(patch.lastSynthesisFailureCode, null);
+});
+
+test('a rejected synthesized brief keeps a successful legacy fallback degraded', () => {
+  assert.equal(
+    resolveInsightsFallbackStatus({
+      synthesisFailureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE,
+      legacyStatus: 'ok',
+    }),
+    'degraded',
+  );
+  assert.equal(
+    resolveInsightsFallbackStatus({ synthesisFailureCode: null, legacyStatus: 'ok' }),
+    'ok',
+  );
 });

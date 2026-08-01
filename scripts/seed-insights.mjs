@@ -176,6 +176,10 @@ export function classifyInsightsSynthesisFailure({
   return INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE;
 }
 
+export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStatus }) {
+  return synthesisFailureCode ? 'degraded' : legacyStatus;
+}
+
 /**
  * Build only the diagnostic patch owned by the insights seeder. `fetchedAt`
  * remains under runSeed's control: on a rejected LKG attempt it is mirrored
@@ -765,7 +769,13 @@ async function fetchInsights() {
     briefProvider = legacy.briefProvider;
     briefModel = legacy.briefModel;
     worldBriefSources = legacy.worldBriefSources;
-    status = legacy.status;
+    // A usable L2 headline must not clear an L1 synthesis failure. Keep this
+    // run degraded so an existing LKG remains the freshness anchor and the
+    // bounded failure metadata advances until L1 publishes successfully.
+    status = resolveInsightsFallbackStatus({
+      synthesisFailureCode,
+      legacyStatus: legacy.status,
+    });
   }
 
   const multiSourceCount = clusters.filter(c => (c.sources?.length ?? 0) >= 2 || c.entityCorroboration === true).length;
@@ -866,9 +876,6 @@ async function fetchInsights() {
 
   return decorateInsightsRun(payload, {
     outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
-    // Keep a successful legacy fallback auditable without treating it as a
-    // failed publication. buildInsightsFreshnessMetaPatch resets the active
-    // failure streak when the fresh fallback is actually published.
     failureCode: synthesisFailureCode,
   });
 }
