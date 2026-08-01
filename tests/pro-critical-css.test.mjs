@@ -194,9 +194,12 @@ describe('pro built HTML critical CSS contract', () => {
     });
   }
 
-  it('/pro uses its existing no-JavaScript fallback without a hidden duplicate', () => {
+  it('/pro seeds a crawlable H1 in #root without duplicating it in the no-JavaScript fallback', () => {
     const html = builtSrc('public/pro/index.html');
-    assert.match(html, /<div id="root"><\/div>\s*<noscript>/);
+    const rootMatch = html.match(/<div id="root">(?<content>[\s\S]*?)<\/div>\s*<noscript>/);
+    assert.ok(rootMatch?.groups, 'the /pro static H1 should be seeded inside #root');
+    assert.equal([...rootMatch.groups.content.matchAll(/<h1\b/g)].length, 1);
+    assert.equal([...stripNoscript(html).matchAll(/<h1\b/g)].length, 1);
     assert.match(html, /World Monitor Pro/);
     assert.doesNotMatch(html, /id="seo-prerender"/);
     assert.doesNotMatch(html, /html\.js #seo-prerender/);

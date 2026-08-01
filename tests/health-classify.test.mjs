@@ -106,6 +106,49 @@ test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PART
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: sector valuation partial/total loss degrades despite 12 price rows', () => {
+  for (const valuationState of [
+    { sourceState: 'partial', valuationRecordCount: 3 },
+    { sourceState: 'error', valuationRecordCount: 0 },
+  ]) {
+    const entry = classifyKey('sectors', BOOTSTRAP_KEYS.sectors, { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS.sectors]: 1234 },
+        metaValues: {
+          'seed-meta:market:sectors': seedMeta({
+            recordCount: 12,
+            sectorRecordCount: 12,
+            expectedValuationRecordCount: 12,
+            ...valuationState,
+          }),
+        },
+      }));
+
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.records, 12, 'price coverage remains visible');
+    assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  }
+});
+
+test('classifyKey: sector valuation recovery returns health to OK', () => {
+  const entry = classifyKey('sectors', BOOTSTRAP_KEYS.sectors, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.sectors]: 1234 },
+      metaValues: {
+        'seed-meta:market:sectors': seedMeta({
+          recordCount: 12,
+          sectorRecordCount: 12,
+          valuationRecordCount: 12,
+          expectedValuationRecordCount: 12,
+          sourceState: 'ok',
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 12);
+});
+
 test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIAL', () => {
   const entry = classifyKey('portwatchPortActivity', STANDALONE_KEYS.portwatchPortActivity, { allowOnDemand: true },
     makeCtx({
@@ -117,6 +160,72 @@ test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIA
   assert.equal(entry.records, 139);
   assert.equal(entry.minRecordCount, 174);
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 38);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: stale prediction snapshot outranks per-pool coverage', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          fetchedAt: NOW - 100 * ONE_MIN_MS,
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+});
+
+test('classifyKey: predictionMarkets requires valid per-pool metadata', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({ recordCount: 38 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+});
+
+test('classifyKey: predictionMarkets is OK when every pool meets its floor', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 20,
+          poolCounts: { geopolitical: 1, tech: 1, finance: 18 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 1, tech: 1, finance: 18 });
 });
 
 test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {

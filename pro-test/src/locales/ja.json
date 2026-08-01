@@ -314,9 +314,9 @@
   },
   "soonBadge": "近日公開",
   "meta": {
-    "title": "World Monitor Pro — AI Analyst、パーソナルインテリジェンスデスク、Claude & GPT用MCP",
-    "description": "地政学的AIレイヤー。質問して、購読して、構築して。WM Analyst チャット（30以上のライブサービス対応）、AI ダイジェスト（毎日、1日2回、または週1回の配信）を Slack、Discord、Telegram、Email、またはウェブフックで受信、カスタムウィジェットビルダー（HTML/CSS/JS + AI）、および Claude、GPT、カスタム LLM 用の MCP コネクタ。",
-    "ogTitle": "World Monitor Pro — 地政学的AIレイヤー",
+    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "description": "World Monitor Pro は AI アナリスト、スケジュール済みインテリジェンスダイジェスト、カスタムウィジェット、市場調査、および地政学的・金融データへのライブアクセス用 MCP を追加します。",
+    "ogTitle": "World Monitor Pro | 地政学的 AI",
     "ogDescription": "質問して、購読して、構築して。WM Analyst チャット、AI ダイジェスト（毎日、1日2回、または週1回のスケジュール配信）、カスタムウィジェットビルダー、および Claude/GPT 用 MCP — 1つのキーで30以上のライブサービスに対応。"
   },
   "pricing": {

@@ -26,6 +26,47 @@ function jsonLdObjects(html) {
     .map(([, raw]) => JSON.parse(raw));
 }
 
+const DATASET_DESCRIPTION_MIN_LENGTH = 50;
+const DATASET_DESCRIPTION_MAX_LENGTH = 5000;
+
+function isJsonLdType(value, expectedType) {
+  const type = value?.['@type'];
+  return type === expectedType || (Array.isArray(type) && type.includes(expectedType));
+}
+
+function collectDatasets(value, datasets = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectDatasets(item, datasets);
+    return datasets;
+  }
+  if (!value || typeof value !== 'object') return datasets;
+
+  if (isJsonLdType(value, 'Dataset')) datasets.push(value);
+  for (const child of Object.values(value)) collectDatasets(child, datasets);
+  return datasets;
+}
+
+function assertDatasetDescriptions(html, route, { requireDataset = false } = {}) {
+  const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+  if (requireDataset) {
+    assert.ok(datasets.length > 0, `${route} must contain a Dataset JSON-LD object`);
+  }
+
+  for (const [index, dataset] of datasets.entries()) {
+    const description = typeof dataset.description === 'string' ? dataset.description.trim() : '';
+    assert.ok(
+      description.length >= DATASET_DESCRIPTION_MIN_LENGTH,
+      `${route} Dataset ${index + 1} description must be at least ${DATASET_DESCRIPTION_MIN_LENGTH} characters`,
+    );
+    assert.ok(
+      description.length <= DATASET_DESCRIPTION_MAX_LENGTH,
+      `${route} Dataset ${index + 1} description must be at most ${DATASET_DESCRIPTION_MAX_LENGTH} characters`,
+    );
+  }
+
+  return datasets;
+}
+
 function decodeHtmlAttribute(value) {
   return value
     .replaceAll('&#39;', "'")
@@ -225,6 +266,28 @@ describe('crawlable corpus generator', () => {
         descriptions.set(description, route);
       }
 
+      // Google requires Dataset descriptions to be 50-5000 characters. Walk
+      // every generated JSON-LD object recursively so this catches both the
+      // country snapshot Dataset and nested datasets such as research report
+      // distributions, not only one representative page.
+      const generatedRoutes = new Set(
+        Object.values(manifest.sections)
+          .filter((section) => !section.generatedBy)
+          .flatMap((section) => [section.index, ...(section.routes ?? [])])
+          .filter(Boolean),
+      );
+      const datasetRequiredRoutes = new Set([
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.research.routes,
+      ]);
+      for (const route of generatedRoutes) {
+        assertDatasetDescriptions(
+          read(outDir, `${route.slice(1)}index.html`),
+          route,
+          { requireDataset: datasetRequiredRoutes.has(route) },
+        );
+      }
+
       for (const path of [
         'countries/index.html',
         'countries/norway/index.html',
@@ -282,7 +345,8 @@ describe('crawlable corpus generator', () => {
       assert.match(liveRiskScript, /payload\.upstreamUnavailable === true/);
 
       const norwayLd = jsonLdObjects(norway);
-      assert.ok(norwayLd.some((entry) => entry['@type'] === 'WebPage' && entry.about?.['@type'] === 'Country' && entry.about?.name === 'Norway'));
+      const norwayWebPage = norwayLd.find((entry) => entry['@type'] === 'WebPage');
+      assert.ok(norwayWebPage?.about?.['@type'] === 'Country' && norwayWebPage.about?.name === 'Norway');
       assert.ok(norwayLd.some((entry) => entry['@type'] === 'BreadcrumbList'));
 
       const chokepointsIndex = read(outDir, 'chokepoints/index.html');

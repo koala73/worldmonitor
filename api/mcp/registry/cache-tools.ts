@@ -219,11 +219,34 @@ function projectChinaMacroForMcp(value: unknown): unknown {
   };
 }
 
+const MARKET_SECTOR_MAX_STALE_MIN = 30;
+
+// `get_market_data` bundles several independently seeded caches. The outer
+// envelope carries aggregate freshness, but sector valuation coverage also
+// needs a field-level freshness bit so a caller filtering to sectors does not
+// mistake an old valuation snapshot for a current one.
+export function applySectorValuationFreshness(
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Record<string, unknown> {
+  const sectors = data.sectors;
+  if (!sectors || typeof sectors !== 'object' || Array.isArray(sectors)) return data;
+  const coverage = (sectors as Record<string, unknown>).valuationCoverage;
+  if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) return data;
+  const fetchedAtValue = (coverage as Record<string, unknown>).fetchedAt;
+  const fetchedAt = typeof fetchedAtValue === 'number' || typeof fetchedAtValue === 'string'
+    ? Number(fetchedAtValue)
+    : Number.NaN;
+  (coverage as Record<string, unknown>).stale = !Number.isFinite(fetchedAt)
+    || (now - fetchedAt) / 60_000 > MARKET_SECTOR_MAX_STALE_MIN;
+  return data;
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -268,6 +291,17 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, changePercent: { type: 'number' } } } },
           valuations: { type: ['object', 'array', 'null'] },
+          valuationCoverage: {
+            type: ['object', 'null'],
+            properties: {
+              valuationCount: { type: 'number' },
+              expectedValuationCount: { type: 'number' },
+              sourceStatus: { type: 'string', enum: ['ok', 'partial', 'degraded'] },
+              source: { type: 'string' },
+              fetchedAt: { type: 'number' },
+              stale: { type: 'boolean' },
+            },
+          },
         },
       },
       'etf-flows': {
@@ -316,6 +350,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       capNested(data, 'sectors', 'sectors', limit);
       capNested(data, 'etf-flows', 'etfs', limit);
+      applySectorValuationFreshness(data);
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
         const map: Record<string, string> = {
@@ -340,6 +375,10 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
+    _freshnessChecks: [
+      { key: 'seed-meta:market:stocks', maxStaleMin: 30 },
+      { key: 'seed-meta:market:sectors', maxStaleMin: MARKET_SECTOR_MAX_STALE_MIN },
+    ],
     // NOTE: `GET /api/market/v1/get-gold-intelligence` is NOT covered here.
     // The audit-time cross-reference matched on the single `market:commodities-bootstrap:v1`
     // key shared between this tool and the gold-intel handler, but the handler also reads 4

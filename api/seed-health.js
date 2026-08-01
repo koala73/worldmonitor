@@ -1,6 +1,11 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import {
+  hasPoolCoverageShortfall,
+  parsePoolCounts,
+  PREDICTION_MARKET_MIN_POOL_COUNTS,
+} from './_pool-coverage.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
@@ -136,7 +141,14 @@ const SEED_DOMAINS = {
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'infrastructure:submarine-cables': { key: 'seed-meta:infrastructure:submarine-cables', intervalMin: 12600 },
-  'prediction:markets':       { key: 'seed-meta:prediction:markets',       intervalMin: 8, minRecordCount: 20 }, // minRecordCount mirrors api/health.js (#5733)
+  'prediction:markets': {
+    key: 'seed-meta:prediction:markets',
+    intervalMin: 8,
+    minRecordCount: 20,
+    // Mirrors api/health.js (#5875). A one-market floor detects an empty pool
+    // without asserting that a naturally quiet category must sustain volume.
+    minPoolCounts: PREDICTION_MARKET_MIN_POOL_COUNTS,
+  },
   'aviation:intl':            { key: 'seed-meta:aviation:intl',            intervalMin: 45 }, // intervalMin*2 = 90min staleness. seed-aviation's freshness gate (AVIATIONSTACK_MIN_REFRESH_MIN, default 55) lets fetchedAt age to ~55+cron between paid fetches; 90min matches the aviation:faa sibling + api/health.js intlDelays maxStaleMin:90. Was 15 (30min) and false-WARNed every cycle once the gate landed.
   'theater-posture':          { key: 'seed-meta:theater-posture',          intervalMin: 8 },
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
@@ -165,6 +177,7 @@ const SEED_DOMAINS = {
   'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
   'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
   'sanctions:pressure':       { key: 'seed-meta:sanctions:pressure',       intervalMin: 360 },
+  'sanctions:entities':       { key: 'seed-meta:sanctions:entities',       intervalMin: 360 },
   'health:air-quality':       { key: 'seed-meta:health:air-quality',       intervalMin: 60 },  // hourly cron (shared seeder writes health + climate keys)
   'economic:grocery-basket':  { key: 'seed-meta:economic:grocery-basket',  intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
@@ -457,13 +470,18 @@ export default async function handler(req) {
       }
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
       if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+      if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
       missingCount++;
       continue;
     }
 
     const ageMs = now - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
-    const coveragePartial = cfg.minRecordCount != null && (recordCount == null || recordCount < cfg.minRecordCount);
+    const poolCounts = parsePoolCounts(meta.poolCounts, cfg.minPoolCounts);
+    const recordCoveragePartial = cfg.minRecordCount != null
+      && (recordCount == null || recordCount < cfg.minRecordCount);
+    const poolCoveragePartial = hasPoolCoverageShortfall(poolCounts, cfg.minPoolCounts);
+    const coveragePartial = recordCoveragePartial || poolCoveragePartial;
     // Source-specific seed projections retain their last-good records while
     // reporting a current upstream failure through sourceState. Treat that as
     // an immediate operator error instead of waiting for the freshness window.
@@ -486,8 +504,16 @@ export default async function handler(req) {
       meta.sourceVersion !== '' &&
       meta.sourceVersion !== cfg.dataProbe.sourceVersion
     );
-    const stale = ageMs > maxStalenessMs || coveragePartial || isError || sourceMismatch || probe?.ok === false;
-    if (stale) staleCount++;
+    // Keep the new pool-coverage verdict distinct from freshness. The legacy
+    // scalar minRecordCount path still contributes to `stale` for wire
+    // compatibility, but an empty pool is fresh data with partial coverage.
+    const freshnessStale = ageMs > maxStalenessMs;
+    const stale = freshnessStale
+      || recordCoveragePartial
+      || isError
+      || sourceMismatch
+      || probe?.ok === false;
+    if (stale || poolCoveragePartial) staleCount++;
 
     seeds[domain] = {
       status: sourceUnavailable
@@ -498,13 +524,13 @@ export default async function handler(req) {
           ? 'source_version_mismatch'
           : probe?.ok === false
             ? probe.status
-            : coveragePartial
-              ? 'coverage_partial'
-              : stale
+            : freshnessStale
               ? 'stale'
-              : sourceBlocked
-                ? 'source_blocked'
-              : 'ok',
+              : coveragePartial
+                ? 'coverage_partial'
+                : sourceBlocked
+                  ? 'source_blocked'
+                  : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: recordCount ?? meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,
@@ -512,6 +538,11 @@ export default async function handler(req) {
       stale,
     };
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+    if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
+    if (poolCounts) seeds[domain].poolCounts = poolCounts;
+    // Explicit coverage flag so consumers that only inspect `stale` still see
+    // pool/aggregate shortfalls (pool shortfall keeps stale:false by design).
+    if (coveragePartial) seeds[domain].coveragePartial = true;
     if (probe) seeds[domain].dataProbe = probe;
     // #5736: without this, `status: "error"` names no cause and an operator has
     // to read raw Redis to learn WHY — which is the log-diving the issue exists

@@ -30,6 +30,7 @@ import {
   hasCategoryTag,
   marketIdentity,
   partitionMarkets,
+  predictionPoolCounts,
   poolIntegrityViolations,
   validateBootstrapPayload,
 } from '../scripts/_prediction-classify.mjs';
@@ -480,6 +481,35 @@ describe('per-pool ranking: relaxation and truncation', () => {
   });
 });
 
+describe('predictionPoolCounts (seed-meta coverage signal)', () => {
+  it('reports the published count for every canonical pool', () => {
+    const pools = buildPools(RAW);
+    assert.deepEqual(predictionPoolCounts(pools), {
+      geopolitical: pools.geopolitical.length,
+      tech: pools.tech.length,
+      finance: pools.finance.length,
+    });
+  });
+
+  it('reports absent or malformed pools as zero so health fails closed', () => {
+    assert.deepEqual(predictionPoolCounts({ geopolitical: [{}], tech: null, finance: 'nope' }), {
+      geopolitical: 1,
+      tech: 0,
+      finance: 0,
+    });
+  });
+
+  it('keys stay aligned with api/_pool-coverage health floors', async () => {
+    // Edge helpers cannot import seeder modules; both lists must name the same
+    // pools or a new category would publish counts health never floors.
+    const { PREDICTION_MARKET_MIN_POOL_COUNTS } = await import('../api/_pool-coverage.js');
+    assert.deepEqual(
+      Object.keys(PREDICTION_MARKET_MIN_POOL_COUNTS).sort(),
+      [...CATEGORIES].sort(),
+    );
+  });
+});
+
 describe('validateBootstrapPayload (the seeder\'s validateFn)', () => {
   const silent = { log: () => {} };
 
@@ -556,6 +586,13 @@ describe('the seeder is wired to the tested pool-building path', () => {
 
   it('uses the shared validateFn instead of an inline population check', () => {
     assert.match(source, /validateFn:\s*validateBootstrapPayload/);
+  });
+
+  it('publishes the tested per-pool counts through seed freshness metadata', () => {
+    assert.match(
+      source,
+      /afterPublish:[\s\S]{0,300}freshnessMetaPatch:[\s\S]{0,200}poolCounts:\s*predictionPoolCounts\(data\)/,
+    );
   });
 });
 

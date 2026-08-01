@@ -21,7 +21,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 | Repo version | 2.10.0 (package.json = tauri.conf.json = Cargo.toml; `npm run version:check` green) | `scripts/sync-desktop-version.mjs` |
 | Newest published desktop release | v2.5.23, built from `e51058e17` (2026-03-01); no `-tech` tag has ever been published | GitHub releases; `gh run list` |
 | Release delta | ~5 months of `main` unreleased; the unified map-layer catalog (`src/config/map-layer-definitions.ts`, #943) postdates the release entirely | `git show e51058e17` — file absent |
-| Shipped-build capability loss | `build-desktop.yml` passes only `VITE_VARIANT`, `VITE_DESKTOP_RUNTIME`, `VITE_WS_API_URL`, `CONVEX_URL`. Missing `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_CONVEX_URL` (the non-`VITE_` value never reaches the client bundle), `VITE_VAPID_PUBLIC_KEY`, `VITE_ENABLE_CYBER_LAYER` → sign-in, subscription entitlements, web push, and the Cyber Threats layer are all silently disabled in every CI-built desktop release | `.github/workflows/build-desktop.yml:206-211`; `src/services/clerk.ts:30-49,233-236`; `src/services/entitlements.ts:96-99`; `src/App.ts:155` |
+| Shipped-build capability loss | **Fixed by #5905**: all Tauri build steps now declare the desktop-required client `VITE_*` set (Clerk/Convex/cyber + relay/basemap parity keys; web-push VAPID remains intentionally excluded on Tauri), a two-way completeness gate (`scripts/check-desktop-build-env.mjs`, `npm run desktop:check-env`) blocks regressions, and tag-push or published manual releases hard-fail on empty client secrets. Capabilities activate once the repo secrets are provisioned (ops step in the #5905 PR). Historical state: only `VITE_VARIANT`, `VITE_DESKTOP_RUNTIME`, `VITE_WS_API_URL`, `CONVEX_URL` were passed — sign-in, subscription entitlements, web push, and the Cyber Threats layer were silently disabled in every CI-built release | `.github/workflows/build-desktop.yml` build-leg env blocks; `scripts/check-desktop-build-env.mjs` |
 | PR CI before #5902 gates | `src-tauri/` (non-sidecar) changes ran **zero** PR CI; `version:check` self-excluded from src-tauri-only diffs; sidecar handler bundling ran only at release time; the inline Rust tests had never run in CI | `test.yml` / `lint-code.yml` change filters |
 | PR CI after #5902 gates | `desktop-config` + `desktop-rust` jobs gate desktop-coupled paths; twice-weekly installed-app canary (`Desktop Canary (Linux)`) asserts launch, sidecar readiness, rendered content | this repo, Test workflow |
 
@@ -30,7 +30,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 | Blocker | Issue | Status |
 | --- | --- | --- |
 | Tauri origin-confusion CVE-2026-42184 (CVSS 8.8): lockfile pins tauri 2.10.3, needs ≥ 2.11.1; `Cargo.toml` carries an unbounded `version = "2"` caret | #5518 | open — release-blocking security finding |
-| Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | open — release-blocking; also the real fix vector for half of #5829 |
+| Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | fix landed (env declared + completeness gate + release preflight); remaining ops step: provision the four new repo secrets, after which release builds hard-fail if they go empty again |
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
 | Desktop readiness/error diagnosability; `src/services/desktop-readiness.ts:64-65` still cites deleted `/api/risk-scores` routes in the Service Status UI; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified | #1942 | open — reassess with this evidence |
@@ -164,6 +164,8 @@ release-candidate checklist:
   (127.0.0.1:46123 probe), or blank render; screenshots/logs always uploaded.
 - Cross-platform artifact builds + smoke remain on release candidates
   (`build-desktop.yml`).
-- Not yet covered (future candidates): build-env completeness check for the
-  `VITE_*` set the SPA requires; a route-table contract test asserting every
-  `server/worldmonitor/` domain has an explicit desktop-path decision.
+- Desktop build-env parity (`scripts/check-desktop-build-env.mjs`): discovers
+  every Tauri workflow, scans syntax-aware `VITE_*` property reads, and runs in
+  both the workflow-change and source-change CI legs; a route-table contract
+  test asserting every `server/worldmonitor/` domain has an explicit
+  desktop-path decision remains a future candidate.

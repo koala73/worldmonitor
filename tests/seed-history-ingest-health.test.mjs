@@ -994,6 +994,8 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
 });
 
 describe('a prolonged relay rejection is visible in /api/seed-health', () => {
+  const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
+
   /**
    * Answer every seed-meta GET with a fresh, healthy record so the assertions
    * below isolate the ingest entries — including the resilience-intervals data
@@ -1018,6 +1020,15 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
               _formula: 'pc',
               methodology: RESILIENCE_INTERVAL_METHODOLOGY,
               computedAt: '2026-06-11T12:00:00.000Z',
+            }),
+          };
+        }
+        if (key === PREDICTION_META_KEY) {
+          return {
+            result: JSON.stringify({
+              fetchedAt: Date.now(),
+              recordCount: 38,
+              poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
             }),
           };
         }

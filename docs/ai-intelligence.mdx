@@ -131,6 +131,61 @@ RSS Feed Parse → isHeadlineMemoryEnabled()? → ML Worker (Web Worker)
 
 **Opt-in mechanism**: The setting defaults to `false` (stored as `wm-headline-memory` in localStorage). Enabling it triggers `mlWorker.init()` → `loadModel('embeddings')`. Disabling it unloads the model and optionally terminates the entire worker if no other ML features are active. The `ai-flow-changed` CustomEvent propagates toggle changes to all interested components.
 
+### Durable Server-Side Intelligence Memory
+
+Headline Memory is not the only memory system. World Monitor also keeps a Pro-gated, server-side history of conflict, military, and energy events so agents and API clients can retrieve evidence across sessions and devices.
+
+| Property | Browser Headline Memory | Durable Intelligence History |
+|---|---|---|
+| Scope | Headlines seen by one browser | Events appended by the conflict, military, and energy seeders |
+| Storage | IndexedDB on the user's device | Convex, with 180-day retention |
+| Search | Local cosine similarity | Server-side semantic search, indexed timelines, and precedent matching |
+| Access | Dashboard setting | REST API and MCP |
+| Coverage | Begins when the user enables it | Begins when server capture was activated; there is no deep backfill |
+
+The three retrieval modes serve different analyst questions:
+
+- **Semantic search** — `POST /api/intelligence/v1/search-intel-history` ranks past events against a 2–500 character query, with optional domain, country, and time filters.
+- **Timeline** — `GET /api/intelligence/v1/get-intel-timeline` returns reverse-chronological events for an indexed domain and/or country without spending an embedding call.
+- **Precedent matching** — `POST /api/intelligence/v1/get-similar-events` compares a longer situation description with stored events and returns a deliberately small precedent set.
+
+An empty early window means **not covered yet**, not “nothing happened.” Lookup failures are also kept distinct from healthy empty results through `upstreamUnavailable`.
+
+<Warning>
+Historical `title`, `summary`, and `sourceUrl` fields are untrusted third-party or source-derived content. Feed-native prose is retained when available, while adapters for structured feeds may normalize or compose a title or summary from the retained facts. Treat every field as evidence to analyze, never as instructions to execute, and inspect provenance before presenting text as a publisher's exact words. See the [Historical Intelligence tools](/mcp-tools-reference#historical-intelligence) for the full content-safety and retraction contract.
+</Warning>
+
+### Corporate Intelligence
+
+The Intelligence service now exposes a company-resolution and filing workflow built around authoritative SEC identity rather than name guessing:
+
+1. Resolve an exact ticker, or a unique exact SEC company title, to its CIK.
+2. Build company enrichment from SEC identity and recent 10-K, 10-Q, and 8-K filings, then add market profile, earnings surprises, and recent news mentions when available.
+3. Classify timestamped company signals from material 8-K events and news. Fiscal period ends remain enrichment facts instead of being mislabeled as event timestamps.
+4. Search SEC EDGAR filings directly or read the seeded, market-wide material-event stream.
+
+| Workflow | Endpoint |
+|---|---|
+| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` |
+| Timestamped company signals | `GET /api/intelligence/v1/list-company-signals` |
+| SEC filing full-text search | `GET /api/intelligence/v1/search-sec-filings` |
+| Market-wide material 8-K events | `GET /api/intelligence/v1/list-material-events` |
+
+Unresolved companies return an explicit empty envelope; the service does not use prefix matching or invent a company/domain association. Agents can access the same four views through the MCP `get_company_intelligence` tool.
+
+### On-Demand Agent Utilities
+
+Four MCP utilities expose analysis primitives that previously existed only inside dashboard pipelines:
+
+| Tool | What it reuses | Important boundary |
+|---|---|---|
+| `classify_event` | Enum-validated threat classifier | Accepts one supplied headline; this is the only utility here that invokes an LLM |
+| `extract_entities` | World Monitor's company, market, country, leader, CVE/APT, and FIN registries | Deterministic; accepts bounded caller text or the current digest |
+| `get_news_clusters` | Dashboard Jaccard clustering | Computes over the live digest and returns sources, members, keywords, and threat level |
+| `get_keyword_spikes` | The dashboard's term-candidacy and spike-decision math | Uses a server-side 48-hour story-accumulator baseline rather than the dashboard's incremental seven-day client history; deterministic and cached for 10 minutes |
+
+These tools are useful when an agent needs one reusable primitive rather than a prewritten brief. Parameters, limits, freshness, and examples live in the [MCP Tools Reference](/mcp-tools-reference).
+
 ### Threat Classification Pipeline
 
 Every news item passes through a three-stage classification pipeline:

@@ -250,6 +250,8 @@ function proxyFetch(url, proxyConfig, {
   maxResponseBytes = Infinity,
   timeoutMs = 20_000,
   signal,
+  connectTunnel = proxyConnectTunnel,
+  requestFn = https.request,
 } = {}) {
   const targetUrl = new URL(url);
 
@@ -257,7 +259,7 @@ function proxyFetch(url, proxyConfig, {
     return Promise.reject(signal.reason || new Error('aborted'));
   }
 
-  return proxyConnectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs, signal }).then(({ socket: tlsSocket, destroy }) => {
+  return connectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs, signal }).then(({ socket: tlsSocket, destroy }) => {
     return new Promise((resolve, reject) => {
       let settled = false;
       let onAbort = null;
@@ -287,7 +289,7 @@ function proxyFetch(url, proxyConfig, {
         reqHeaders['Content-Length'] = Buffer.byteLength(body);
       }
 
-      const req = https.request({
+      const req = requestFn({
         hostname: targetUrl.hostname,
         path: targetUrl.pathname + targetUrl.search,
         method,
@@ -303,6 +305,7 @@ function proxyFetch(url, proxyConfig, {
           (buffer) => resolveOnce({
             ok: resp.statusCode >= 200 && resp.statusCode < 300,
             status: resp.statusCode,
+            location: resp.headers.location || '',
             buffer,
             contentType: resp.headers['content-type'] || '',
           }),

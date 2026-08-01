@@ -2,7 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { collectSectorValuations } from '../scripts/_yahoo-sector-valuations.cjs';
+
 const src = readFileSync('scripts/ais-relay.cjs', 'utf8');
+const valuationFetcherSrc = readFileSync('scripts/_yahoo-sector-valuations.cjs', 'utf8');
 
 const extractFn = (name) => {
   const start = src.indexOf(`function ${name}(`);
@@ -96,67 +99,83 @@ describe('parseSectorValuation', () => {
   });
 });
 
-describe('fetchYahooQuoteSummary (static analysis)', () => {
+describe('authenticated Yahoo quoteSummary integration (static analysis)', () => {
   const fnStart = src.indexOf('function fetchYahooQuoteSummary(');
-  // Window sized to cover the direct-fetch block (headers, timeout, field
-  // extraction). Grown to 2000 when proxy-fallback wiring (settled guard,
-  // curl helper reference) was added — field extraction must stay visible.
-  const fnChunk = src.slice(fnStart, fnStart + 2000);
+  const fnChunk = src.slice(fnStart, fnStart + 300);
 
   it('exists in ais-relay.cjs', () => {
     assert.ok(fnStart > -1, 'fetchYahooQuoteSummary function not found');
   });
 
+  it('delegates to the cached authenticated client', () => {
+    assert.match(fnChunk, /_yahooQuoteSummaryClient\.fetch\(symbol\)/);
+  });
+
+  it('bootstraps both the Yahoo cookie and crumb before quoteSummary', () => {
+    assert.match(valuationFetcherSrc, /https:\/\/fc\.yahoo\.com/);
+    assert.match(valuationFetcherSrc, /\/v1\/test\/getcrumb/);
+    assert.match(valuationFetcherSrc, /v10\/finance\/quoteSummary/);
+  });
+
   it('uses summaryDetail and defaultKeyStatistics modules', () => {
-    assert.match(fnChunk, /summaryDetail/, 'should request summaryDetail module');
-    assert.match(fnChunk, /defaultKeyStatistics/, 'should request defaultKeyStatistics module');
+    assert.match(valuationFetcherSrc, /summaryDetail,defaultKeyStatistics/);
   });
 
-  it('uses v10/finance/quoteSummary endpoint', () => {
-    assert.match(fnChunk, /v10\/finance\/quoteSummary/, 'should call Yahoo quoteSummary v10 API');
-  });
-
-  it('extracts trailingPE, forwardPE, and beta', () => {
-    assert.match(fnChunk, /trailingPE/, 'should extract trailingPE');
-    assert.match(fnChunk, /forwardPE/, 'should extract forwardPE');
-    assert.match(fnChunk, /beta/, 'should extract beta');
-  });
-
-  it('extracts return metrics from defaultKeyStatistics', () => {
-    assert.match(fnChunk, /ytdReturn/, 'should extract ytdReturn');
+  it('extracts PE, beta, and return metrics', () => {
+    for (const field of [
+      'trailingPE',
+      'forwardPE',
+      'beta3Year',
+      'ytdReturn',
+      'threeYearAverageReturn',
+      'fiveYearAverageReturn',
+    ]) {
+      assert.match(valuationFetcherSrc, new RegExp(field));
+    }
   });
 
   it('includes User-Agent header', () => {
-    assert.match(fnChunk, /User-Agent/, 'should include User-Agent for Yahoo requests');
+    assert.match(valuationFetcherSrc, /'User-Agent'/);
   });
 
-  it('has timeout configured', () => {
-    assert.match(fnChunk, /timeout:\s*\d+/, 'should have a timeout set');
+  it('bounds route failures with one refresh and a cooldown', () => {
+    assert.match(valuationFetcherSrc, /attempt < 2/);
+    assert.match(valuationFetcherSrc, /cooldownUntil/);
   });
 });
 
-describe('seedSectorSummary valuation integration (static analysis)', () => {
-  const fnStart = src.indexOf('async function seedSectorSummary()');
-  const fnEnd = src.indexOf('\n// Gulf Quotes');
-  const fnBody = src.slice(fnStart, fnEnd);
+describe('sector valuation collection', () => {
+  it('executes one bounded, paced fetch per symbol and preserves source coverage', async () => {
+    const calls = [];
+    const delays = [];
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'XLF', 'XLE'],
+      fetchValue: async (symbol) => {
+        calls.push(symbol);
+        if (symbol === 'XLF') return null;
+        return {
+          source: symbol === 'XLK'
+            ? 'yahoo_quote_summary_authenticated_direct'
+            : 'yahoo_quote_summary_authenticated_proxy',
+          value: { trailingPE: symbol === 'XLK' ? 25 : 18 },
+        };
+      },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async (ms) => delays.push(ms),
+    });
 
-  it('calls fetchYahooQuoteSummary for each sector', () => {
-    assert.match(fnBody, /fetchYahooQuoteSummary\(s\)/, 'should call fetchYahooQuoteSummary per sector');
-  });
-
-  it('calls parseSectorValuation on raw response', () => {
-    assert.match(fnBody, /parseSectorValuation\(raw\)/, 'should parse raw valuation data');
-  });
-
-  it('includes valuations in payload', () => {
-    assert.match(fnBody, /valuations/, 'payload should include valuations object');
-  });
-
-  it('sleeps between Yahoo requests (rate limit)', () => {
-    assert.match(fnBody, /await sleep\(150\)/, 'should sleep 150ms between Yahoo calls');
-  });
-
-  it('logs valuation count', () => {
-    assert.match(fnBody, /valCount/, 'should log how many valuations were fetched');
+    assert.deepEqual(calls, ['XLK', 'XLF', 'XLE']);
+    assert.deepEqual(delays, [150, 150, 150]);
+    assert.deepEqual(result, {
+      valuations: {
+        XLK: { trailingPE: 25 },
+        XLE: { trailingPE: 18 },
+      },
+      valuationSources: [
+        'yahoo_quote_summary_authenticated_direct',
+        'yahoo_quote_summary_authenticated_proxy',
+      ],
+      valuationCount: 2,
+    });
   });
 });

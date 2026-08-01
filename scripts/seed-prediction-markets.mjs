@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, sleep, runSeed } from './_seed-utils.mjs';
-import { buildBootstrapPools, validateBootstrapPayload } from './_prediction-classify.mjs';
+import {
+  buildBootstrapPools,
+  predictionPoolCounts,
+  validateBootstrapPayload,
+} from './_prediction-classify.mjs';
 import {
   isExcluded, isMemeCandidate, tagRegions, parseYesPrice, selectPricedKalshiMarket,
   shouldInclude, scoreMarket, isExpired,
@@ -209,6 +213,11 @@ await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   validateFn: validateBootstrapPayload,
 
   declareRecords,
+  afterPublish: (data) => ({
+    freshnessMetaPatch: {
+      poolCounts: predictionPoolCounts(data),
+    },
+  }),
   schemaVersion: 1,
   maxStaleMin: 90,
   sourceVersion: 'prediction-markets-v1',

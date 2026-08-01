@@ -28,12 +28,39 @@ describe('IndexNow submission', () => {
     assert.equal(batch.keyLocation, `https://worldmonitor.app/${batch.key}.txt`);
     assert.deepEqual(batch.urls, ['https://worldmonitor.app/mcp']);
     const wwwBatch = indexNow.INDEXNOW_BATCHES.find(({ host }) => host === 'www.worldmonitor.app');
+    assert.ok(
+      wwwBatch.urls.includes('https://www.worldmonitor.app/blog/authors/elie-habib/'),
+      'www batch must submit the canonical Elie Habib author archive',
+    );
     assert.notEqual(batch.key, wwwBatch.key, 'apex and www must use independently verified keys');
     assert.equal(
       readFileSync(new URL(`../public/${batch.key}.txt`, import.meta.url), 'utf8').trim(),
       batch.key,
       'the deployed apex key file must match the configured key',
     );
+  });
+
+  it('keeps IndexNow coverage aligned with the committed root sitemap and blog corpus', () => {
+    const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+      .map((match) => match[1].trim());
+    const wwwSitemapUrls = sitemapUrls.filter((url) => new URL(url).hostname === 'www.worldmonitor.app');
+    const apexSitemapUrls = sitemapUrls.filter((url) => new URL(url).hostname === 'worldmonitor.app');
+    const wwwBatch = indexNow.INDEXNOW_BATCHES.find(({ host }) => host === 'www.worldmonitor.app');
+    const apexBatch = indexNow.INDEXNOW_BATCHES.find(({ host }) => host === 'worldmonitor.app');
+
+    for (const url of wwwSitemapUrls) assert.ok(wwwBatch.urls.includes(url), `${url} must be submitted`);
+    for (const url of apexSitemapUrls) assert.ok(apexBatch.urls.includes(url), `${url} must be submitted`);
+    for (const url of [
+      'https://www.worldmonitor.app/blog/',
+      'https://www.worldmonitor.app/blog/glossary/',
+      'https://www.worldmonitor.app/blog/glossary/ais/',
+      'https://www.worldmonitor.app/blog/authors/elie-habib/',
+    ]) {
+      assert.ok(wwwBatch.urls.includes(url), `${url} must be submitted`);
+    }
+    assert.equal(new Set(wwwBatch.urls).size, wwwBatch.urls.length, 'www batch must not contain duplicates');
+    assert.equal(new Set(apexBatch.urls).size, apexBatch.urls.length, 'apex batch must not contain duplicates');
   });
 
   it('keeps every submitted URL and key location on the declared host', () => {
@@ -134,7 +161,7 @@ describe('IndexNow submission', () => {
     });
   });
 
-  it('submits the apex batch only after a relevant successful production deployment', () => {
+  it('submits each host batch only after a relevant successful production deployment', () => {
     const workflow = readFileSync(
       new URL('../.github/workflows/indexnow-submit.yml', import.meta.url),
       'utf8',
@@ -147,8 +174,16 @@ describe('IndexNow submission', () => {
     assert.match(workflow, /github\.event\.deployment\.creator\.login == 'vercel\[bot\]'/);
     assert.match(workflow, /api\/mcp/);
     assert.match(workflow, /public\/mcp-server\\\.md/);
+    assert.match(workflow, /public\/sitemap\\\.xml/);
+    assert.match(workflow, /scripts\/build-sitemap\\.mjs/);
+    assert.match(workflow, /blog-site\/src\/\.\*/);
+    assert.match(workflow, /api\/mcp\/\.\*/);
     assert.match(workflow, /INDEXNOW_BATCHES\.find/);
     assert.match(workflow, /grep -Fxq "public\/\$\{APEX_KEY_PATH\}"/);
+    assert.match(workflow, /grep -Fxq "public\/\$\{WWW_KEY_PATH\}"/);
+    assert.match(workflow, /submit_apex/);
+    assert.match(workflow, /submit_www/);
     assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host worldmonitor\.app/);
+    assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host www\.worldmonitor\.app/);
   });
 });

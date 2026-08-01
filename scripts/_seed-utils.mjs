@@ -545,6 +545,53 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   );
 }
 
+// Fields the shared seed-meta writer owns. afterPublish freshnessMetaPatch
+// (and any preserve-on-skip merge) may add other diagnostics, but never
+// re-anchor these — they come from the current runSeed outcome only.
+export const FRESHNESS_META_RESERVED_FIELDS = Object.freeze([
+  'fetchedAt',
+  'recordCount',
+  'sourceVersion',
+  'newestItemAt',
+  'oldestItemAt',
+  'maxContentAgeMin',
+]);
+
+/**
+ * Strip reserved freshness fields from an existing seed-meta object so the
+ * remainder can be re-applied as a freshnessMetaPatch. Used when a validation
+ * skip rewrites seed-meta while preserving last-good data — without this,
+ * diagnostics such as prediction poolCounts are wiped and fail-closed health
+ * false-alarms (#5875 review).
+ */
+export function freshnessMetaDiagnosticsPatch(existingMeta) {
+  if (!existingMeta || typeof existingMeta !== 'object' || Array.isArray(existingMeta)) {
+    return null;
+  }
+  const reserved = new Set(FRESHNESS_META_RESERVED_FIELDS);
+  const patch = {};
+  for (const [key, value] of Object.entries(existingMeta)) {
+    if (!reserved.has(key)) patch[key] = value;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/**
+ * Best-effort read of the current seed-meta value for a domain/resource.
+ * Returns the bare meta object, or null when missing / unreadable. Never throws.
+ */
+export async function readExistingSeedMeta(domain, resource) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const metaKey = `seed-meta:${domain}:${resource}`;
+    const value = await redisGet(url, token, metaKey);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 export async function writeFreshnessMetadata(
   domain,
   resource,
@@ -578,14 +625,7 @@ export async function writeFreshnessMetadata(
   if (metaPatch && typeof metaPatch === 'object') {
     // Hooks may add bounded diagnostics, but the shared writer owns freshness
     // and record-count truth. Never let a hook silently re-anchor those fields.
-    const reservedFields = new Set([
-      'fetchedAt',
-      'recordCount',
-      'sourceVersion',
-      'newestItemAt',
-      'oldestItemAt',
-      'maxContentAgeMin',
-    ]);
+    const reservedFields = new Set(FRESHNESS_META_RESERVED_FIELDS);
     for (const [key, value] of Object.entries(metaPatch)) {
       if (!reservedFields.has(key)) meta[key] = value;
     }
@@ -2127,6 +2167,13 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         //   - canonical envelope is malformed / legacy bare shape
         //   - canonical envelope has recordCount <= 0
         const canonicalMeta = await readCanonicalEnvelopeMeta(canonicalKey);
+        // Preserve non-reserved diagnostics (poolCounts, GDELT errorReason, …)
+        // from the previous seed-meta write. The SET below replaces the whole
+        // key; without this merge a validate-skip after a healthy publish wipes
+        // afterPublish patches and fail-closed consumers false-alarm.
+        const preservedDiagnostics = freshnessMetaDiagnosticsPatch(
+          await readExistingSeedMeta(domain, resource),
+        );
         if (canonicalMeta) {
           // Pass-through canonical's contentAge so health doesn't lose the
           // STALE_CONTENT signal exactly when last-good-with-stale-content
@@ -2137,6 +2184,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             ttlSeconds,
             canonicalMeta.fetchedAt,
             canonicalMeta.contentAge,
+            preservedDiagnostics,
           );
           console.log(
             `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
@@ -2145,6 +2193,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             `existing cache TTL extended`,
           );
         } else {
+          // No last-good envelope: quiet-period zero write. Drop prior
+          // diagnostics — they described a different cohort and would lie.
           await writeFreshnessMetadataSafely(domain, resource, 0, opts.sourceVersion, ttlSeconds);
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
