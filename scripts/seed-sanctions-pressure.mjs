@@ -551,6 +551,11 @@ export function declareRecords(data) {
 
 runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   ttlSeconds: CACHE_TTL,
+  // The bounded direct/proxy/signed recovery ladder can spend about 7 minutes
+  // across both serial XML sources. Keep its fetch deadline explicit and the
+  // lock alive longer so a slow recovery cannot leave a second run racing it.
+  lockTtlMs: 600_000,
+  fetchPhaseTimeoutMs: 480_000,
   validateFn: validate,
   sourceVersion: 'ofac-sls-advanced-xml-v1',
   recordCount: (data) => data.totalCount ?? 0,

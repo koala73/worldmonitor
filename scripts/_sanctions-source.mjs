@@ -37,6 +37,14 @@ function nonRetryableError(message) {
   return Object.assign(new Error(message), { nonRetryable: true });
 }
 
+function terminalFetchError(error) {
+  if (error && typeof error === 'object') {
+    error.nonRetryable = true;
+    return error;
+  }
+  return nonRetryableError(String(error));
+}
+
 async function fetchDirectWithRetry(url, {
   fetchFn,
   maxAttempts,
@@ -61,7 +69,7 @@ async function fetchDirectWithRetry(url, {
     } catch (error) {
       lastError = error;
       if (error?.nonRetryable || attempt === maxAttempts) break;
-      await sleepFn(500 * attempt);
+      await sleepFn(Math.max(500 * attempt, error.retryAfterMs ?? 0));
     }
   }
   throw lastError;
@@ -143,18 +151,24 @@ export async function fetchOfacSourceResponse(sourceUrl, {
     directError = error;
   }
 
-  if (!proxyUrl) throw directError;
+  if (!proxyUrl) throw terminalFetchError(directError);
   console.warn(`  OFAC direct fetch failed (${directError?.message || directError}); retrying redirect bootstrap via proxy`);
 
-  const signedUrl = await fetchRedirectViaProxy(sourceUrl, {
-    proxyFetchFn,
-    proxyUrl,
-    sleepFn,
-  });
-  return fetchDirectWithRetry(signedUrl, {
-    fetchFn,
-    maxAttempts: OFAC_DIRECT_MAX_ATTEMPTS,
-    sleepFn,
-    timeoutMs: OFAC_SIGNED_DOWNLOAD_TIMEOUT_MS,
-  });
+  try {
+    const signedUrl = await fetchRedirectViaProxy(sourceUrl, {
+      proxyFetchFn,
+      proxyUrl,
+      sleepFn,
+    });
+    return await fetchDirectWithRetry(signedUrl, {
+      fetchFn,
+      maxAttempts: OFAC_DIRECT_MAX_ATTEMPTS,
+      sleepFn,
+      timeoutMs: OFAC_SIGNED_DOWNLOAD_TIMEOUT_MS,
+    });
+  } catch (error) {
+    // The helper owns the complete bounded recovery ladder. Do not let
+    // runSeed's outer withRetry replay the same direct/proxy sequence.
+    throw terminalFetchError(error);
+  }
 }

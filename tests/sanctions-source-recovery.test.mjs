@@ -125,6 +125,53 @@ describe('OFAC source transport recovery', () => {
     assert.equal(proxyCalls, 0);
   });
 
+  it('honors a capped Retry-After hint when retrying a direct response', async () => {
+    const delays = [];
+    let attempts = 0;
+
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? response(429, 'rate limited', { 'retry-after': '2' })
+          : response(200);
+      },
+      proxyUrl: '',
+      sleepFn: async (delayMs) => { delays.push(delayMs); },
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(attempts, 2);
+    assert.deepEqual(delays, [2000]);
+  });
+
+  it('does not replay the bounded transport ladder through runSeed retry', async () => {
+    let outerAttempts = 0;
+    let directAttempts = 0;
+
+    await assert.rejects(
+      withRetry(
+        () => {
+          outerAttempts += 1;
+          return fetchOfacSourceResponse(SOURCE_URL, {
+            fetchFn: async () => {
+              directAttempts += 1;
+              throw new TypeError('OFAC unavailable');
+            },
+            proxyUrl: '',
+            sleepFn: async () => {},
+          });
+        },
+        3,
+        0,
+      ),
+      (error) => error.nonRetryable === true && /OFAC unavailable/.test(error.message),
+    );
+
+    assert.equal(outerAttempts, 1);
+    assert.equal(directAttempts, 2);
+  });
+
   it('rotates sticky proxy exits when OFAC rejects the first proxy request', async () => {
     const ports = [];
 
