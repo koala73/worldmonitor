@@ -2350,6 +2350,10 @@ async function seedSectorSummary() {
     fetchValue: fetchYahooQuoteSummary,
     parseValue: parseSectorValuation,
     sleepFn: sleep,
+    v7UserAgent: CHROME_UA,
+    v7ResolveProxyString: resolveProxyString,
+    upstashGet,
+    upstashSet,
   });
 
   const valuationCoverage = buildSectorValuationCoverage({

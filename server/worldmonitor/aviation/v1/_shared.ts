@@ -14,7 +14,6 @@ import {
 } from '../../../../src/config/airports';
 import { CHROME_UA } from '../../../_shared/constants';
 import { incrementProviderCounter } from './_counters';
-import type { ProviderCounters } from './_counters';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';

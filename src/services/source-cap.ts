@@ -30,6 +30,27 @@ export interface SourceCapResult {
 }
 
 /**
+ * Reconstruct the persisted disabled set produced by the pre-protected cap
+ * caller. This is used only by one-time migrations to recognize an untouched
+ * legacy cap result; callers must still exact-match the returned set before
+ * changing user storage.
+ */
+export function computeCapDisabledSources(
+  feedsByCategory: FeedsByCategory,
+  intelSources: ReadonlyArray<FeedItem>,
+  defaultDisabled: ReadonlySet<string>,
+  cap: number,
+): Set<string> {
+  const { autoDisabled } = selectSourcesUnderCap(
+    feedsByCategory,
+    intelSources,
+    defaultDisabled,
+    cap,
+  );
+  return new Set([...defaultDisabled, ...autoDisabled]);
+}
+
+/**
  * Detect categories where 100% of sources are in the disabled set — the
  * fingerprint of the pre-2026-05-01 free-tier alphabetical-slice cap bug.
  * Returns the source names that should be re-enabled.

@@ -6,7 +6,10 @@ const { spawn } = require('node:child_process');
 const YAHOO_COOKIE_URL = 'https://fc.yahoo.com';
 const YAHOO_CRUMB_URL = 'https://query1.finance.yahoo.com/v1/test/getcrumb';
 const YAHOO_SUMMARY_BASE_URL = 'https://query1.finance.yahoo.com/v10/finance/quoteSummary';
+const YAHOO_V7_QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
 const YAHOO_SUMMARY_MODULES = 'summaryDetail,defaultKeyStatistics';
+const LAST_GOOD_KEY = 'market:sectors:valuations:last-good';
+const LAST_GOOD_TTL = 7 * 24 * 3600;
 const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_SPACING_MS = 150;
@@ -242,6 +245,89 @@ function validCrumb(body) {
 function rawYahooValue(value) {
   if (value && typeof value === 'object') return value.raw ?? value.fmt ?? null;
   return typeof value === 'number' ? value : null;
+}
+
+// Yahoo v7/finance/quote — different API surface from v10/quoteSummary,
+// shares the query1 host with v8/chart (which works from Railway).
+// Returns trailingPE, forwardPE, beta but NOT return metrics (ytd, 3Y, 5Y).
+function parseV7Quote(body) {
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    return { kind: 'invalid_json', value: null };
+  }
+  const result = data?.quoteResponse?.result?.[0];
+  if (!result) return { kind: 'no_data', value: null };
+  const raw = (v) => typeof v === 'number' && Number.isFinite(v) ? v : null;
+  return {
+    kind: 'success',
+    value: {
+      trailingPE: raw(result.trailingPE),
+      forwardPE: raw(result.forwardPE),
+      beta: raw(result.beta),
+      ytdReturn: null,
+      threeYearReturn: null,
+      fiveYearReturn: null,
+    },
+  };
+}
+
+async function fetchYahooV7QuoteDirect(symbol, { userAgent, timeoutMs = 10_000 } = {}) {
+  const url = `${YAHOO_V7_QUOTE_URL}?symbols=${encodeURIComponent(symbol)}`;
+  try {
+    const response = await requestHttpsText(url, {
+      headers: { 'User-Agent': userAgent || 'Mozilla/5.0' },
+      timeoutMs,
+    });
+    if (response.status !== 200) return { kind: 'failed', value: null };
+    return parseV7Quote(response.body);
+  } catch {
+    return { kind: 'failed', value: null };
+  }
+}
+
+async function fetchYahooV7QuoteProxy(symbol, { userAgent, proxy, timeoutMs = 15_000 } = {}) {
+  if (!proxy) return { kind: 'failed', value: null };
+  const url = `${YAHOO_V7_QUOTE_URL}?symbols=${encodeURIComponent(symbol)}`;
+  try {
+    const response = await requestCurlText(url, {
+      headers: { 'User-Agent': userAgent || 'Mozilla/5.0', Accept: 'application/json' },
+      timeoutMs,
+      proxy,
+    });
+    if (response.status !== 200) return { kind: 'failed', value: null };
+    return parseV7Quote(response.body);
+  } catch {
+    return { kind: 'failed', value: null };
+  }
+}
+
+async function collectV7Valuations(symbols, { userAgent, resolveProxyString, sleepFn = sleep } = {}) {
+  const freshVals = {};
+  for (const s of symbols) {
+    const direct = await fetchYahooV7QuoteDirect(s, { userAgent });
+    if (direct.kind === 'success') freshVals[s] = direct.value;
+    else {
+      const proxy = typeof resolveProxyString === 'function' ? resolveProxyString() : '';
+      const proxied = await fetchYahooV7QuoteProxy(s, { userAgent, proxy });
+      if (proxied.kind === 'success') freshVals[s] = proxied.value;
+    }
+    await sleepFn(DEFAULT_REQUEST_SPACING_MS);
+  }
+  return freshVals;
+}
+
+function mergeReturnMetrics(freshVals, lastGoodValuations) {
+  if (!lastGoodValuations || typeof lastGoodValuations !== 'object') return;
+  for (const s of Object.keys(freshVals)) {
+    const lg = lastGoodValuations[s];
+    if (!lg) continue;
+    const fv = freshVals[s];
+    if (fv.ytdReturn == null && lg.ytdReturn != null) fv.ytdReturn = lg.ytdReturn;
+    if (fv.threeYearReturn == null && lg.threeYearReturn != null) fv.threeYearReturn = lg.threeYearReturn;
+    if (fv.fiveYearReturn == null && lg.fiveYearReturn != null) fv.fiveYearReturn = lg.fiveYearReturn;
+  }
 }
 
 function parseQuoteSummary(body) {
@@ -489,20 +575,57 @@ async function collectSectorValuations({
   fetchValue,
   parseValue,
   sleepFn = sleep,
+  v7UserAgent,
+  v7ResolveProxyString,
+  upstashGet,
+  upstashSet,
 }) {
-  const valuations = {};
   const valuationSources = new Set();
   let valuationCount = 0;
+
+  // Tier 1: v7/finance/quote for P/E and beta
+  const v7Vals = v7UserAgent ? await collectV7Valuations(symbols, {
+    userAgent: v7UserAgent,
+    resolveProxyString: v7ResolveProxyString,
+    sleepFn,
+  }) : {};
+
+  // Tier 2: merge return metrics from last-good cache
+  let lastGood = null;
+  if (Object.keys(v7Vals).length > 0 && typeof upstashGet === 'function') {
+    try {
+      const raw = await upstashGet(LAST_GOOD_KEY);
+      if (raw && typeof raw === 'object' && raw.valuations) lastGood = raw.valuations;
+    } catch {}
+  }
+  if (lastGood) mergeReturnMetrics(v7Vals, lastGood);
+
+  // Tier 3: v10/quoteSummary for symbols v7 didn't cover
   for (const symbol of symbols) {
+    if (v7Vals[symbol]) continue;
     const raw = await fetchValue(symbol);
     const parsed = parseValue(raw);
     if (parsed) {
-      valuations[symbol] = parsed;
+      v7Vals[symbol] = parsed;
       if (raw?.source) valuationSources.add(raw.source);
-      valuationCount++;
     }
     await sleepFn(DEFAULT_REQUEST_SPACING_MS);
   }
+
+  const valuations = {};
+  for (const s of Object.keys(v7Vals)) {
+    valuations[s] = v7Vals[s];
+    valuationCount++;
+  }
+  if (valuationCount > 0 && valuationSources.size === 0) valuationSources.add('yahoo_v7_quote');
+
+  // Persist last-good if we got fresh data
+  if (valuationCount > 0 && typeof upstashSet === 'function') {
+    try {
+      await upstashSet(LAST_GOOD_KEY, { valuations, fetchedAt: Date.now() }, LAST_GOOD_TTL);
+    } catch {}
+  }
+
   return {
     valuations,
     valuationSources: [...valuationSources],
@@ -547,8 +670,15 @@ module.exports = {
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   collectSectorValuations,
+  collectV7Valuations,
+  fetchYahooV7QuoteDirect,
+  fetchYahooV7QuoteProxy,
+  mergeReturnMetrics,
   parseCurlResponse,
+  parseV7Quote,
   parseQuoteSummary,
   requestHttpsText,
   requestCurlText,
+  LAST_GOOD_KEY,
+  LAST_GOOD_TTL,
 };

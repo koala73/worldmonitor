@@ -237,6 +237,66 @@ test('validate-skip path reports rejection when only part of the preservation co
   }
 });
 
+test('validate-skip hook diagnostics merge without re-anchoring canonical freshness', async () => {
+  const originalFetchForHook = globalThis.fetch;
+  const metaSets = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const decodedUrl = decodeURIComponent(u);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (decodedUrl.includes('/get/test:hook-diagnostics:v1')) {
+      return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    }
+    if (decodedUrl.includes('/get/seed-meta:test:hook-diagnostics')) {
+      return jsonResponse({ result: JSON.stringify({
+        fetchedAt: CANONICAL_ENVELOPE._seed.fetchedAt,
+        recordCount: CANONICAL_ENVELOPE._seed.recordCount,
+        sourceVersion: 'test-v1',
+        lastAttemptAt: CANONICAL_ENVELOPE._seed.fetchedAt,
+      }) });
+    }
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    if (Array.isArray(body) && body[0] === 'SET' && body[1] === 'seed-meta:test:hook-diagnostics') {
+      metaSets.push(JSON.parse(body[2]));
+    }
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'hook-diagnostics', 'test:hook-diagnostics:v1',
+        async () => ({ items: [] }),
+        {
+          validateFn: () => false,
+          ttlSeconds: 3600,
+          declareRecords: () => 1,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterValidationSkip: async () => ({
+            freshnessMetaPatch: {
+              lastAttemptAt: CANONICAL_ENVELOPE._seed.fetchedAt + 60_000,
+              status: 'error',
+              fetchedAt: 0,
+              recordCount: 999,
+            },
+          }),
+        }),
+    );
+
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(metaSets.length, 1);
+    assert.equal(metaSets[0].lastAttemptAt, CANONICAL_ENVELOPE._seed.fetchedAt + 60_000);
+    assert.equal(metaSets[0].status, 'error');
+    assert.equal(metaSets[0].fetchedAt, CANONICAL_ENVELOPE._seed.fetchedAt);
+    assert.equal(metaSets[0].recordCount, CANONICAL_ENVELOPE._seed.recordCount);
+  } finally {
+    globalThis.fetch = originalFetchForHook;
+  }
+});
+
 test('publish-success path: seed-meta write exhausting retries degrades to exit 0, not FATAL', async () => {
   const { exitCode, threw } = await runWithExitTrap(() =>
     runSeed('test', 'meta-degrade-pub', 'test:meta-degrade-pub:v1',

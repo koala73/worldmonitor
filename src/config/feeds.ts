@@ -130,10 +130,20 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
     { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
-    // Polish (PL)
-    { name: 'TVN24', url: rss('https://tvn24.pl/swiat.xml'), lang: 'pl' },
+    // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
+    // Their native RSS feeds are used for both locales: the Google News site
+    // queries previously used for EN returned HTTP 200 with no <item> nodes.
+    // No `lang` tag so isFeedInLanguage / server digests do not drop them for EN.
+    // Polsat News stays PL-only (locale-boosted, not EN default-on).
+    { name: 'TVN24', url: {
+      en: rss('https://tvn24.pl/swiat.xml'),
+      pl: rss('https://tvn24.pl/swiat.xml'),
+    } },
     { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
-    { name: 'Rzeczpospolita', url: rss('https://www.rp.pl/rss_main'), lang: 'pl' },
+    { name: 'Rzeczpospolita', url: {
+      en: rss('https://www.rp.pl/rss_main'),
+      pl: rss('https://www.rp.pl/rss_main'),
+    } },
     // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
     // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
     // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
@@ -156,13 +166,22 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
-    // Russia & Ukraine (independent sources)
+    // Russia & Ukraine
+    // Independent / exile / UA outlets (Meduza, Novaya Gazeta Europe, Kyiv Independent,
+    // Moscow Times) are eligible for DEFAULT_ENABLED_SOURCES.europe.
+    // TASS / RT / RT Russia stay cataloged for opt-in only — state propaganda
+    // (SOURCE_PROPAGANDA_RISK high, stateAffiliated: Russia); never default-on.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
-    { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
+    // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
+    { name: 'Meduza', url: {
+      en: rss('https://meduza.io/rss/en/all'),
+      ru: rss('https://meduza.io/rss/all'),
+    } },
     { name: 'Novaya Gazeta Europe', url: rss('https://novayagazeta.eu/feed/rss'), lang: 'ru' },
     { name: 'TASS', url: rss('https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'RT', url: rss('https://www.rt.com/rss/') },
     { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
+    // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Moscow Times', url: rss('https://www.themoscowtimes.com/rss/news') },
   ],
@@ -1016,10 +1035,26 @@ export function getFeedProvenanceState(sourceName: string): SourceProvenanceStat
 }
 
 // Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
+export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+] as const;
+
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
-  europe: ['France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight'],
+  // Europe defaults include Ukraine war frontline coverage for EN users (#5949):
+  // Kyiv Independent (UA), TVN24 + Rzeczpospolita (PL — not all three PL to limit noise),
+  // Meduza + Moscow Times (independent RU). TASS/RT stay off (state propaganda).
+  // HU/EL locale packs remain locale-boosted only, not EN default-on.
+  europe: [
+    'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
+    ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  ],
+
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
   africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis'],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
@@ -1068,6 +1103,18 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
   for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) all.add(f.name);
   for (const f of INTEL_SOURCES) all.add(f.name);
   return [...all].filter(name => !enabled.has(name));
+}
+
+/**
+ * The v3 source-reduction migration's pre-#5949 disabled set. This is used
+ * only for a conservative one-time frontline migration: an exact match means
+ * the profile still has the old untouched defaults, while any extra or
+ * missing entry is treated as a user-customized preference and left alone.
+ */
+export function computeLegacyDefaultDisabledSources(): string[] {
+  const disabled = new Set(computeDefaultDisabledSources());
+  for (const name of FRONTLINE_EUROPE_PROTECTED_SOURCES) disabled.add(name);
+  return [...disabled];
 }
 
 export function getTotalFeedCount(): number {

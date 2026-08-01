@@ -60,6 +60,16 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Index.hr', url: 'https://www.index.hr/rss', lang: 'hr' },
       { name: 'Jutarnji list', url: 'https://www.jutarnji.hr/feed', lang: 'hr' },
       { name: 'Balkan Insight', url: 'https://balkaninsight.com/feed/' },
+      // Ukraine war frontline for EN digests (#5949). Names must match client
+      // DEFAULT_ENABLED_SOURCES.europe. No non-en `lang` tags — buildDigest
+      // filters `!f.lang || f.lang === lang`, so lang:pl/ru would never ship to EN.
+      { name: 'Kyiv Independent', url: gn('site:kyivindependent.com when:3d') },
+      // Google News returned HTTP 200 with no items for these site queries;
+      // use the outlets' live native RSS feeds for the EN digest path too.
+      { name: 'TVN24', url: 'https://tvn24.pl/swiat.xml' },
+      { name: 'Rzeczpospolita', url: 'https://www.rp.pl/rss_main' },
+      { name: 'Meduza', url: 'https://meduza.io/rss/en/all' },
+      { name: 'Moscow Times', url: 'https://www.themoscowtimes.com/rss/news' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

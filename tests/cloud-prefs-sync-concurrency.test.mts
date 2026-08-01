@@ -11,12 +11,22 @@ const root = resolve(import.meta.dirname, '..');
 const stubs: Record<string, string> = {
   '@/services/runtime': 'export const isDesktopRuntime = () => false;',
   '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
-  '@/config/feeds': 'export const FEEDS = {};',
+  '@/config/feeds': [
+    'export const FEEDS = {};',
+    'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
+    'export const INTEL_SOURCES = [];',
+    'export const computeDefaultDisabledSources = () => [];',
+    'export const computeLegacyDefaultDisabledSources = () => [];',
+  ].join('\n'),
+  '@/config/panels': 'export const FREE_MAX_SOURCES = 80;',
   '@/utils/dom-utils': [
     'export const trustedHtml = (value) => value;',
     'export const setTrustedHtml = (element, value) => { element.innerHTML = value; };',
   ].join('\n'),
-  '@/services/source-cap': 'export const findFullyDisabledCategories = () => [];',
+  '@/services/source-cap': [
+    'export const computeCapDisabledSources = () => [];',
+    'export const findFullyDisabledCategories = () => [];',
+  ].join('\n'),
 };
 
 interface HarnessResult {

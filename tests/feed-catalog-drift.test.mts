@@ -28,15 +28,42 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
 const outfile = join(tempDir, 'feeds-bundle.mjs');
+const serverOutfile = join(tempDir, 'server-feeds-bundle.mjs');
+
+interface FeedEntry {
+  name: string;
+  lang?: string;
+  url: string | Record<string, string>;
+}
 
 interface FeedsModule {
+  DEFAULT_ENABLED_SOURCES: Record<string, string[]>;
   DEFAULT_ENABLED_INTEL: string[];
   SOURCE_TYPES: Record<string, string>;
+  SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
+  FULL_FEEDS?: Record<string, FeedEntry[]>;
+  FEEDS: Record<string, FeedEntry[]>;
   getAllDefaultEnabledSources: () => Set<string>;
+  getLocaleBoostedSources: (locale: string) => Set<string>;
+  computeDefaultDisabledSources: (locale?: string) => string[];
   listConfiguredFeedNames: () => string[];
 }
 
+interface ServerFeedsModule {
+  VARIANT_FEEDS: Record<string, Record<string, FeedEntry[]>>;
+}
+
+/** Sources #5949 ships as EN-default frontline Europe coverage. */
+const FRONTLINE_EUROPE = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+] as const;
+
 let feeds: FeedsModule;
+let serverFeeds: ServerFeedsModule;
 
 before(async () => {
   mkdirSync(tempDir, { recursive: true });
@@ -79,6 +106,18 @@ before(async () => {
   });
   writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
   feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`) as FeedsModule;
+
+  const serverResult = await build({
+    entryPoints: [join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    write: false,
+    absWorkingDir: repoRoot,
+  });
+  writeFileSync(serverOutfile, serverResult.outputFiles[0].text, 'utf8');
+  serverFeeds = await import(`${pathToFileURL(serverOutfile).href}?t=${Date.now()}`) as ServerFeedsModule;
 });
 
 after(() => {
@@ -120,5 +159,119 @@ describe('feed catalog drift', () => {
     const shared = readFileSync(join(repoRoot, 'shared/source-tiers.json'), 'utf8');
     const scripts = readFileSync(join(repoRoot, 'scripts/shared/source-tiers.json'), 'utf8');
     assert.equal(scripts, shared, 'scripts/shared/source-tiers.json drifted from shared/source-tiers.json');
+  });
+
+  // Issue #5949 — EN full-variant defaults under-cover the Ukraine war.
+  // Kyiv Independent, PL frontline, and independent RU were cataloged but
+  // off-by-default, so users only saw Western wire/EU framing.
+  it('default-enables exact Ukraine/Poland/independent-Russia frontline set for EN (#5949)', () => {
+    const europe = feeds.DEFAULT_ENABLED_SOURCES.europe ?? [];
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+
+    for (const name of FRONTLINE_EUROPE) {
+      assert.ok(europe.includes(name), `${name} must be listed in DEFAULT_ENABLED_SOURCES.europe`);
+      assert.ok(enabled.has(name), `${name} must be in getAllDefaultEnabledSources()`);
+      assert.ok(
+        !disabledEn.has(name),
+        `${name} must not appear in computeDefaultDisabledSources('en')`,
+      );
+    }
+
+    // State propaganda stays cataloged but off-by-default.
+    for (const stateMedia of ['TASS', 'RT', 'RT Russia'] as const) {
+      assert.ok(
+        !enabled.has(stateMedia),
+        `${stateMedia} must remain off-by-default (state propaganda; catalog-only)`,
+      );
+      assert.ok(disabledEn.has(stateMedia), `${stateMedia} must be in EN disabled defaults`);
+    }
+
+    // Intel: Bellingcat stays on (already default-enabled).
+    assert.ok(
+      feeds.DEFAULT_ENABLED_INTEL.includes('Bellingcat'),
+      'Bellingcat must remain default-enabled in intel',
+    );
+  });
+
+  it('frontline Europe sources are EN-reachable (no exclusive non-en lang) (#5949)', () => {
+    // buildDigest filters `!f.lang || f.lang === lang`. A default-on source
+    // with only lang:'pl'/'ru' never contributes to EN digests.
+    const byName = new Map<string, FeedEntry>();
+    for (const feed of feeds.FEEDS.europe ?? []) byName.set(feed.name, feed);
+
+    for (const name of FRONTLINE_EUROPE) {
+      const feed = byName.get(name);
+      assert.ok(feed, `${name} must exist in FEEDS.europe catalog`);
+      assert.ok(
+        !feed.lang || feed.lang === 'en',
+        `${name} must not be gated to a non-en lang (got lang=${feed.lang ?? 'none'}); ` +
+          'use multi-URL without lang, or an English-only URL, so EN digests include it',
+      );
+      // Multi-URL sources must expose an `en` key for EN fetch resolution.
+      if (typeof feed.url === 'object' && feed.url !== null) {
+        assert.ok(
+          typeof feed.url.en === 'string' && feed.url.en.length > 0,
+          `${name} multi-URL entry must include a non-empty en URL`,
+        );
+      }
+    }
+
+    const expectedEnUrls: Record<string, string> = {
+      TVN24: 'https://tvn24.pl/swiat.xml',
+      Rzeczpospolita: 'https://www.rp.pl/rss_main',
+    };
+    for (const [name, url] of Object.entries(expectedEnUrls)) {
+      const feed = byName.get(name);
+      assert.equal(
+        typeof feed?.url === 'object' ? feed.url.en : undefined,
+        url,
+        `${name} EN must use the verified native RSS fallback`,
+      );
+    }
+  });
+
+  it('server VARIANT_FEEDS.full.europe catalogs the same frontline names (#5949)', () => {
+    // Digest path is the product path for full/EN europe. Import the server
+    // catalog so this assertion exercises the executable data structure rather
+    // than passing because a source name appears in a comment or string.
+    const europe = serverFeeds.VARIANT_FEEDS.full?.europe ?? [];
+    const byName = new Map(europe.map((feed) => [feed.name, feed]));
+    const expectedUrls: Record<string, string> = {
+      'Kyiv Independent': 'https://news.google.com/rss/search?q=site%3Akyivindependent.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en',
+      TVN24: 'https://tvn24.pl/swiat.xml',
+      Rzeczpospolita: 'https://www.rp.pl/rss_main',
+      Meduza: 'https://meduza.io/rss/en/all',
+      'Moscow Times': 'https://www.themoscowtimes.com/rss/news',
+    };
+    for (const name of FRONTLINE_EUROPE) {
+      const feed = byName.get(name);
+      assert.ok(feed, `server VARIANT_FEEDS.full.europe must include "${name}" for EN digests`);
+      assert.equal(feed?.url, expectedUrls[name], `server EN URL drifted for "${name}"`);
+      assert.ok(!feed?.lang, `server entry for "${name}" must not set a non-en lang`);
+    }
+  });
+
+  it('does not default-enable Hungary/Greece locale packs for EN (#5949)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    // These stay locale-boosted (lang: hu / el), not EN default-on.
+    for (const localeOnly of ['Telex', 'Index.hu', 'Kathimerini', 'Naftemporiki'] as const) {
+      assert.ok(
+        !enabled.has(localeOnly),
+        `${localeOnly} must stay locale-boosted, not EN default-on`,
+      );
+    }
+    // Sanity: hu/el locale boost still works so the packs are not dead.
+    assert.ok(feeds.getLocaleBoostedSources('hu').has('Telex'));
+    assert.ok(feeds.getLocaleBoostedSources('el').has('Kathimerini'));
+  });
+
+  it('SOURCE_PROPAGANDA_RISK still high-labels Russian state media (#5949)', () => {
+    for (const name of ['TASS', 'RT', 'RT Russia'] as const) {
+      const profile = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(profile, `${name} must remain in SOURCE_PROPAGANDA_RISK`);
+      assert.equal(profile.risk, 'high', `${name} must remain high-risk`);
+      assert.equal(profile.stateAffiliated, 'Russia');
+    }
   });
 });
