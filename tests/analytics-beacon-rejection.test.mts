@@ -833,9 +833,22 @@ describe('bot-filtered collector writes (#5964 alert-noise regression)', () => {
     assert.equal(isAlertWorthyCollectorFailure(bot, { writes: 500, failures: 500 }), false);
   });
 
-  it('still alerts on an unexplained receiptless 200', () => {
+  it('gates an unexplained receiptless 200 behind the aggregate floors', () => {
+    // 2026-08-01 (WORLDMONITOR-Y3): receiptless-200 reports arrived at ~16/hour
+    // from diverse real browsers while the Umami DB was ingesting 15-23k
+    // events/hour and every probe shape returned a full receipt. From inside
+    // one page, privacy middleware faking a 200 — or a body that cannot be
+    // read — is indistinguishable from a discarding collector: the same
+    // epistemics as a blocked request, so it gets the same aggregate gate.
     const plain = { kind: 'missing-receipt' as const, status: 200 };
-    assert.equal(isAlertWorthyCollectorFailure(plain, { writes: 1, failures: 1 }), true);
+    assert.equal(isAlertWorthyCollectorFailure(plain, { writes: 1, failures: 1 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(plain, { writes: 100, failures: 20 }), false);
+    assert.equal(isAlertWorthyCollectorFailure(plain, { writes: 5, failures: 5 }), true);
+    assert.equal(
+      isAlertWorthyCollectorFailure(plain, { writes: 5, failures: 5, noiseReported: true }),
+      false,
+      'shares the once-per-window cap with the other environment kinds',
+    );
   });
 });
 
@@ -963,6 +976,15 @@ describe('collector alert policy still fires when the collector is dead', () => 
 
   it('alerts on a sustained total network failure once the floor is crossed', () => {
     assert.equal(isAlertWorthyCollectorFailure({ kind: 'network' }, { writes: 5, failures: 5 }), true);
+  });
+
+  it('alerts on a collector that discards every write once the floor is crossed', () => {
+    // The other way an outage can look green: Umami up and answering 200 but
+    // storing nothing (a deleted website row, an isbot update swallowing real
+    // browsers). Each affected page crosses the floor and reports once per
+    // window, so the cross-user step change stays visible in the aggregate.
+    const plain = { kind: 'missing-receipt' as const, status: 200 };
+    assert.equal(isAlertWorthyCollectorFailure(plain, { writes: 10, failures: 10 }), true);
   });
 
   it('cannot be muted by a non-2xx body that mimics the bot sentinel', async () => {

@@ -267,12 +267,20 @@ export function isRetryableIdentityFailure(failure: CollectorFailure): boolean {
  *
  * A blocked request (uBlock/Brave/Pi-hole all block `abacus.`) and a dead
  * collector are indistinguishable from inside one browser: both fail 100% of
- * writes. Nothing computed on this page can separate them, so the outage signal
- * is the AGGREGATE volume of these events across users, not any single one —
- * which is exactly why each page is allowed at most one per health window
- * below. Alerting on every occurrence buries the step change in the baseline.
+ * writes. The same holds for a non-bot-filtered receiptless 200: privacy
+ * middleware that answers a faked 200 for a tracker endpoint, and a response
+ * whose body cannot be read, both look exactly like a collector that accepted
+ * and discarded the write. Verified in production 2026-08-01 (WORLDMONITOR-Y3):
+ * receiptless-200 reports arrived at ~16/hour from diverse real browsers while
+ * the Umami DB was ingesting 15-23k events/hour and every probe shape returned
+ * a full receipt. Nothing computed on this page can separate them, so the
+ * outage signal is the AGGREGATE volume of these events across users, not any
+ * single one — which is exactly why each page is allowed at most one per health
+ * window below. Alerting on every occurrence buries the step change in the
+ * baseline. (A bot-filtered 200 never reaches this set — it is suppressed
+ * outright before the gate.)
  */
-const ENVIRONMENT_NOISE_KINDS = new Set<CollectorFailure['kind']>(['network', 'timeout']);
+const ENVIRONMENT_NOISE_KINDS = new Set<CollectorFailure['kind']>(['network', 'timeout', 'missing-receipt']);
 
 /**
  * Minimum writes in the health window before an environment failure can alert.
@@ -324,8 +332,8 @@ export function isAlertWorthyCollectorFailure(
     if (window.writes < ENVIRONMENT_NOISE_MIN_WRITES) return false;
     return window.failures / window.writes >= ENVIRONMENT_NOISE_MIN_FAILURE_RATE;
   }
-  // Everything left is actionable: a non-2xx from the origin, an unexplained
-  // receiptless 200, or a queue-overflow drop that is our own bug.
+  // Everything left is actionable: a non-2xx from the origin, or a
+  // queue-overflow drop that is our own bug.
   return true;
 }
 
