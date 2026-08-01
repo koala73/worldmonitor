@@ -22,6 +22,11 @@ import {
   resetCollectorTransportForTesting,
   type CollectorOutcome,
 } from './analytics-collector-transport';
+import {
+  getContentAttributionAnalyticsFields,
+  getContentAttributionForAnalytics,
+  withContentAttribution,
+} from '../../shared/content-attribution';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_COLLECTOR_ENDPOINT = new URL('/api/send', UMAMI_SCRIPT_SRC).href;
@@ -139,6 +144,10 @@ const EVENTS = {
   'checkout-start': true,
   'checkout-success': true,
   'checkout-failed': true,
+  'content-handoff': true,
+  // API outcome telemetry — closed-vocabulary key lifecycle actions only;
+  // never include key names, ids, prompts, or request/user data.
+  'api-action': true,
   // Premium entitlement health — a client that believes it is Pro received a
   // server-side denial. This is trend telemetry, never an authorization signal.
   'entitlement-desync': true,
@@ -465,9 +474,17 @@ function loadUmamiScript(): void {
 
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
 export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
-  if (!sendUmamiCall({ kind: 'track', event, data })) {
-    queueUmamiCall({ kind: 'track', event, data });
+  const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
+  if (!sendUmamiCall({ kind: 'track', event, data: enrichedData })) {
+    queueUmamiCall({ kind: 'track', event, data: enrichedData });
   }
+}
+
+/** Fire once for a freshly captured content landing, not on every reload. */
+export function trackContentHandoff(): void {
+  const attribution = getContentAttributionForAnalytics();
+  if (!attribution) return;
+  track('content-handoff', getContentAttributionAnalyticsFields(attribution));
 }
 
 export function initAnalytics(): void {
@@ -1006,6 +1023,15 @@ export function trackCheckoutFailed(rawStatus: string): void {
   const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
   rememberPendingConversion('checkout-failed', { status });
   track('checkout-failed', { status });
+}
+
+const API_ACTIONS = ['key-created', 'key-revoked'] as const;
+export type ApiActionName = (typeof API_ACTIONS)[number];
+
+/** Track a successful, bounded API product action without leaking key data. */
+export function trackApiAction(action: ApiActionName): void {
+  if (!API_ACTIONS.includes(action)) return;
+  track('api-action', { action });
 }
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { track } from '@/services/analytics';
+import { track, trackApiAction } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
@@ -1484,6 +1484,7 @@ export class UnifiedSettings {
     try {
       const result = await createApiKey(name);
       if (!this.isAccountRequestCurrent(request)) return;
+      trackApiAction('key-created');
       this.newlyCreatedKey = result.key;
       input.value = '';
       this.showCreatedBanner(result.key);
@@ -1515,6 +1516,7 @@ export class UnifiedSettings {
     try {
       await revokeApiKey(keyId);
       if (!this.isAccountRequestCurrent(request)) return;
+      trackApiAction('key-revoked');
       await this.loadApiKeys();
     } catch (err) {
       if (!this.isAccountRequestCurrent(request)) return;
