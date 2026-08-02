@@ -787,13 +787,20 @@ describe('feed catalog drift', () => {
     assert.ok(states.length > 1, 'default-only and at least one cap path must be recognized');
     assert.equal(new Set(canonical).size, states.length, 'equivalent release paths must be deduplicated');
     assert.ok(canonical.includes(preRolloutDefault), 'the untouched pre-#5976 default state must be recognized');
+    for (const name of [...feeds.CANADA_EN_DEFAULT_SOURCES, ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES]) {
+      assert.equal(
+        preRolloutDefault.includes(name),
+        false,
+        `${name} must stay out of pre-#5960 fingerprints`,
+      );
+    }
     for (const target of targets) {
       assert.deepEqual([...target.defaultNames].sort(), [...RECONCILED_ROLLOUT_DEFAULTS].sort());
       assert.deepEqual([...target.optInNames].sort(), [...RECONCILED_ROLLOUT_OPT_INS].sort());
     }
   });
 
-  it('migrates dormant schema-1/2 EN rows from before #5949 through schema 5', () => {
+  it('migrates dormant schema-1/2 EN rows from before #5949 through schema 6', () => {
     const preFrontlineDefault = new Set(
       feeds.computePreRegionalFeedRolloutDefaultDisabledSources('en'),
     );
@@ -829,12 +836,13 @@ describe('feed catalog drift', () => {
         legacyDisabledStates: regionalRollout.buildPreStrategicDefaultDisabledStates(80),
       },
       regionalRollout: { targets },
+      canadaArctic: { optInSources: feeds.CANADA_ARCTIC_OPT_IN_SOURCES },
     });
     for (const fromVersion of [1, 2]) {
       const blob = {
         'worldmonitor-disabled-feeds': JSON.stringify([...preFrontlineDefault]),
       };
-      const migrated = applyMigrationChain(blob, fromVersion, 5, migrations);
+      const migrated = applyMigrationChain(blob, fromVersion, 6, migrations);
       const disabled = new Set(
         JSON.parse(migrated['worldmonitor-disabled-feeds'] as string) as string[],
       );
@@ -850,6 +858,12 @@ describe('feed catalog drift', () => {
         assert.ok(
           disabled.has(name),
           `schema ${fromVersion}: ${name} must be disabled after the full chain`,
+        );
+      }
+      for (const name of feeds.CANADA_ARCTIC_OPT_IN_SOURCES) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the Canada pack migration`,
         );
       }
     }

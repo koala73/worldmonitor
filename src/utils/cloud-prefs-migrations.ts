@@ -8,8 +8,8 @@
  * the TARGET schema version (so MIGRATIONS[N] runs when going from N-1 → N).
  */
 
-import { findFullyDisabledCategories, type FeedsByCategory } from '@/services/source-cap';
 import type { RegionalFeedRolloutMigrationTarget } from '@/services/regional-feed-rollout';
+import { findFullyDisabledCategories, type FeedsByCategory } from '@/services/source-cap';
 
 /**
  * Apply all migrations from `fromVersion + 1` up through `toVersion`
@@ -37,8 +37,10 @@ export interface MigrationChainResult {
 
 /**
  * Apply a migration chain while allowing a caller to fail closed before a
- * particular step. The returned version is the last migration that actually
- * ran, so a blocked step remains retryable on the next sync.
+ * particular step. The returned version is the last contiguous migration that
+ * actually ran, so a blocked step remains retryable on the next sync. A caller
+ * may continue into later independent migrations while keeping the blocked
+ * step retryable by passing `continueAfterBlockedMigration`.
  */
 export function applyMigrationChainWithSchemaVersion(
   data: Record<string, unknown>,
@@ -46,13 +48,21 @@ export function applyMigrationChainWithSchemaVersion(
   toVersion: number,
   migrations: Record<number, (data: Record<string, unknown>) => Record<string, unknown>>,
   shouldStopBefore?: (version: number, data: Record<string, unknown>) => boolean,
+  continueAfterBlockedMigration = false,
 ): MigrationChainResult {
   let result = data;
   let schemaVersion = fromVersion;
+  let blocked = false;
   for (let v = fromVersion + 1; v <= toVersion; v++) {
-    if (shouldStopBefore?.(v, result)) break;
+    if (shouldStopBefore?.(v, result)) {
+      if (continueAfterBlockedMigration) {
+        blocked = true;
+        continue;
+      }
+      break;
+    }
     result = migrations[v]?.(result) ?? result;
-    schemaVersion = v;
+    if (!blocked) schemaVersion = v;
   }
   return { data: result, schemaVersion };
 }
@@ -178,6 +188,9 @@ export interface CloudPrefsMigrationOptions {
   regionalRollout?: {
     targets?: ReadonlyArray<RegionalFeedRolloutMigrationTarget>;
   };
+  canadaArctic?: {
+    optInSources?: ReadonlyArray<string>;
+  };
 }
 
 export function buildMigrations(
@@ -187,6 +200,7 @@ export function buildMigrations(
   const frontline = options.frontline ?? {};
   const strategic = options.strategic ?? {};
   const regionalRollout = options.regionalRollout ?? {};
+  const canadaArctic = options.canadaArctic ?? {};
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
     3: (data) => migrateFrontlineEuropeDefaultsV3(
@@ -206,6 +220,7 @@ export function buildMigrations(
       data,
       regionalRollout.targets ?? [],
     ),
+    6: (data) => migrateCanadaArcticOptInsV6(data, canadaArctic.optInSources ?? []),
   };
 }
 
@@ -445,4 +460,41 @@ export function migrateRegionalFeedRolloutDefaultsV5(
     `[prefs] schema-5 migration: reconciled ${target.defaultNames.size} rollout default(s) and ${target.optInNames.size} opt-in source(s) for an untouched profile`,
   );
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(reconciled) };
+}
+
+/**
+ * Schema-6 migration for the Canada + Arctic/Nordic pack (#5960).
+ *
+ * The new companion feeds are catalog opt-ins. Because persisted source
+ * preferences are a denylist, a non-empty returning profile must explicitly
+ * receive those names or the catalog addition silently enables them. Empty or
+ * malformed states are left untouched because they do not prove an untouched
+ * returner fingerprint.
+ */
+export function migrateCanadaArcticOptInsV6(
+  data: Record<string, unknown>,
+  optInSources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || parsed.length === 0
+    || parsed.some((name) => typeof name !== 'string')
+  ) return data;
+
+  const existing = new Set(parsed);
+  const updated = [...parsed];
+  for (const name of optInSources) {
+    if (!existing.has(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-6 migration: disabled ${updated.length - parsed.length} Canada/Arctic opt-in source(s)`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
 }

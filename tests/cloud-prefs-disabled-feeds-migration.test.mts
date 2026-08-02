@@ -6,6 +6,7 @@ import {
   migrateFrontlineEuropeDefaultsV3,
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
+  migrateCanadaArcticOptInsV6,
   applyMigrationChain,
   applyMigrationChainWithSchemaVersion,
   buildMigrations,
@@ -17,6 +18,15 @@ const FRONTLINE = ['Kyiv Independent', 'TVN24', 'Rzeczpospolita', 'Meduza', 'Mos
 const STRATEGIC = ['Polsat News', 'MIIT (China)'] as const;
 const REGIONAL_DEFAULTS = ['Civil.ge', 'Focus Taiwan'] as const;
 const REGIONAL_OPT_INS = ['JAMnews', 'Taipei Times'] as const;
+const CANADA_ARCTIC_OPT_INS = [
+  'Globe and Mail',
+  'Global News',
+  'Yle News',
+  'NRK',
+  'Aftenposten',
+  'DR Nyheder',
+  'Arctic Today',
+] as const;
 
 describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', () => {
   // The poisoned-state shape that triggered this migration: free-tier v1
@@ -336,7 +346,10 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
     );
     assert.equal(isRegionalFeedRolloutMigrationAmbiguous(blob, targets), true);
 
-    const migrations = buildMigrations({}, { regionalRollout: { targets } });
+    const migrations = buildMigrations({}, {
+      regionalRollout: { targets },
+      canadaArctic: { optInSources: CANADA_ARCTIC_OPT_INS },
+    });
     const applied = applyMigrationChainWithSchemaVersion(
       blob,
       4,
@@ -348,6 +361,27 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
     );
     assert.equal(applied.schemaVersion, 4, 'ambiguous rows must remain retryable at schema 4');
     assert.equal(applied.data, blob);
+
+    const independentlyApplied = applyMigrationChainWithSchemaVersion(
+      blob,
+      4,
+      6,
+      migrations,
+      (version, data) => (
+        version === 5 && isRegionalFeedRolloutMigrationAmbiguous(data, targets)
+      ),
+      true,
+    );
+    assert.equal(
+      independentlyApplied.schemaVersion,
+      4,
+      'independent later migrations must not mark the blocked schema-5 step complete',
+    );
+    assert.deepEqual(
+      JSON.parse(independentlyApplied.data['worldmonitor-disabled-feeds'] as string),
+      [...ambiguousLegacy, ...CANADA_ARCTIC_OPT_INS],
+      'schema 6 must still protect opt-ins while schema 5 remains retryable',
+    );
   });
 
   it('rejects malformed, duplicate, and non-string disabled sets instead of guessing intent', () => {
@@ -364,6 +398,37 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
         ),
         blob,
       );
+    }
+  });
+});
+
+describe('cloud-prefs schema-6 migration: Canada/Arctic opt-in boundary', () => {
+  it('adds each companion source once while preserving the existing order', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(['user-choice', 'Globe and Mail']),
+      'worldmonitor-panels': '{"keep":true}',
+    };
+    const result = migrateCanadaArcticOptInsV6(blob, CANADA_ARCTIC_OPT_INS);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', 'Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'],
+    );
+    assert.equal(result['worldmonitor-panels'], '{"keep":true}');
+    assert.equal(
+      migrateCanadaArcticOptInsV6(result, CANADA_ARCTIC_OPT_INS),
+      result,
+      'a completed migration must be idempotent and preserve object identity',
+    );
+  });
+
+  it('leaves empty, malformed, and non-string states untouched', () => {
+    for (const raw of [
+      '[]',
+      'not-json',
+      JSON.stringify(['user-choice', 42]),
+    ]) {
+      const blob = { 'worldmonitor-disabled-feeds': raw };
+      assert.equal(migrateCanadaArcticOptInsV6(blob, CANADA_ARCTIC_OPT_INS), blob);
     }
   });
 });
@@ -466,6 +531,17 @@ describe('applyMigrationChain', () => {
     assert.deepEqual(
       new Set(JSON.parse(result['worldmonitor-disabled-feeds'] as string)),
       new Set(['old-opt-in', ...REGIONAL_OPT_INS]),
+    );
+  });
+
+  it('integrates the Canada/Arctic opt-in migration as schema 6', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = applyMigrationChain(blob, 5, 6, buildMigrations({}, {
+      canadaArctic: { optInSources: CANADA_ARCTIC_OPT_INS },
+    }));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', ...CANADA_ARCTIC_OPT_INS],
     );
   });
 });

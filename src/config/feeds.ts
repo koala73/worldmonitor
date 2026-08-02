@@ -1207,6 +1207,27 @@ export const REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES = [
   'Ethiopia Insight', 'Dabanga Sudan', 'Citi Newsroom',
 ] as const;
 
+/** Canada pack (#5960) — EN default-on for North America keyCountry CA. */
+export const CANADA_EN_DEFAULT_SOURCES = [
+  'CBC News',
+] as const;
+
+/**
+ * Catalog opt-in sources from the Canada + Arctic/Nordic pack (#5960).
+ * Persisted denylist profiles must insert these on first boot after the pack
+ * lands — otherwise newly cataloged names are implicitly enabled for every
+ * returner (denylist semantics). CBC stays out so default-on can enable it.
+ */
+export const CANADA_ARCTIC_OPT_IN_SOURCES = [
+  'Globe and Mail',
+  'Global News',
+  'Yle News',
+  'NRK',
+  'Aftenposten',
+  'DR Nyheder',
+  'Arctic Today',
+] as const;
+
 /** Chronological feed introductions used to reconstruct untouched cap states. */
 export const REGIONAL_FEED_ROLLOUT_STAGES = [
   {
@@ -1245,27 +1266,20 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
       ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
     ],
   },
-] as const;
-
-/** Canada pack (#5960) — EN default-on for North America keyCountry CA. */
-export const CANADA_EN_DEFAULT_SOURCES = [
-  'CBC News',
-] as const;
-
-/**
- * Catalog opt-in sources from the Canada + Arctic/Nordic pack (#5960).
- * Persisted denylist profiles must insert these on first boot after the pack
- * lands — otherwise newly cataloged names are implicitly enabled for every
- * returner (denylist semantics). CBC stays out so default-on can enable it.
- */
-export const CANADA_ARCTIC_OPT_IN_SOURCES = [
-  'Globe and Mail',
-  'Global News',
-  'Yle News',
-  'NRK',
-  'Aftenposten',
-  'DR Nyheder',
-  'Arctic Today',
+  {
+    // #5960 is newer than the schema-5 regional wave. Keeping its names in a
+    // final chronological stage removes them from every pre-pack fingerprint
+    // while still allowing current-cap states to be reconstructed after it.
+    introducedNames: [
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CANADA_ARCTIC_OPT_IN_SOURCES,
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+    ],
+  },
 ] as const;
 
 /**

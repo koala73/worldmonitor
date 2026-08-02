@@ -12,6 +12,7 @@ const stubs: Record<string, string> = {
   '@/services/runtime': 'export const isDesktopRuntime = () => false;',
   '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
   '@/config/feeds': [
+    "export const CANADA_ARCTIC_OPT_IN_SOURCES = ['Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'];",
     'export const FEEDS = {};',
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
@@ -400,8 +401,8 @@ describe('cloud preference write serialization', () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
     });
 
-    assert.equal(result.localSchemaVersion, 5);
-    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [5, 5]);
+    assert.equal(result.localSchemaVersion, 6);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [6, 6]);
   });
 
   it('preserves edits made for a new account while its sign-in waits in the queue', async () => {

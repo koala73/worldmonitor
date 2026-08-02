@@ -162,6 +162,19 @@ describe('geographic coverage health (#5957)', () => {
     assert.deepEqual(violations, [], 'known EN reachability gaps must be allowlisted');
   });
 
+  it('recognizes Canada coverage from the #5960 source pack', () => {
+    const rows = computeGeoCoverage(inputs);
+    const canada = rows.find((row) => row.iso2 === 'CA');
+    assert.ok(canada, 'CA must remain a keyCountry coverage row');
+    assert.deepEqual(new Set(canada.catalogSources), new Set(['CBC News', 'Globe and Mail', 'Global News']));
+    assert.deepEqual(canada.defaultOnSources, ['CBC News']);
+    assert.equal(canada.allowlistReason, null, 'Canada must no longer be allowlisted as uncovered');
+
+    const { violations } = evaluateGeoCoverage(rows);
+    assert.equal(canada.status, 'OK');
+    assert.equal(violations.some((violation) => violation.startsWith('CA:')), false);
+  });
+
   it('every keyCountry has a default-on local source or a documented exception', () => {
     const rows = computeGeoCoverage(inputs);
     const { violations } = evaluateGeoCoverage(rows);

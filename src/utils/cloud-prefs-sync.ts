@@ -18,6 +18,7 @@ import { getClerkToken } from '@/services/clerk';
 import {
   computeLegacyDefaultDisabledSources,
   computePreStrategicDefaultDisabledSources,
+  CANADA_ARCTIC_OPT_IN_SOURCES,
   FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getStrategicDefaultSources,
@@ -73,7 +74,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 5;
+const CURRENT_PREFS_SCHEMA_VERSION = 6;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -103,6 +104,8 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // default/cap blob. The same exact-set guard preserves customized preferences.
 // Schema 5 (#5975/#5976/#5977/#5980): reconcile regional rollout defaults and
 // opt-ins only for exact untouched default/cap states across known locales.
+// Schema 6 (#5960): add the Canada/Arctic companion opt-ins to non-empty
+// denylist profiles without depending on the ambiguous schema-5 decision.
 let _migrations: ReturnType<typeof buildMigrations> | null = null;
 let _regionalRolloutTargets: ReturnType<typeof buildRegionalFeedRolloutMigrationTargets> | null = null;
 
@@ -134,6 +137,9 @@ function getMigrations(): ReturnType<typeof buildMigrations> {
     },
     regionalRollout: {
       targets: getRegionalRolloutTargets(),
+    },
+    canadaArctic: {
+      optInSources: CANADA_ARCTIC_OPT_IN_SOURCES,
     },
   });
   return _migrations;
@@ -302,6 +308,7 @@ function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): vo
 interface AppliedMigrations {
   data: Record<string, unknown>;
   schemaVersion: number;
+  dataChanged: boolean;
 }
 
 function applyMigrationsWithSchemaVersion(
@@ -309,9 +316,9 @@ function applyMigrationsWithSchemaVersion(
   fromVersion: number,
 ): AppliedMigrations {
   if (fromVersion >= CURRENT_PREFS_SCHEMA_VERSION) {
-    return { data, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION };
+    return { data, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION, dataChanged: false };
   }
-  return applyMigrationChainWithSchemaVersion(
+  const migrated = applyMigrationChainWithSchemaVersion(
     data,
     fromVersion,
     CURRENT_PREFS_SCHEMA_VERSION,
@@ -320,7 +327,13 @@ function applyMigrationsWithSchemaVersion(
       version === 5
       && isRegionalFeedRolloutMigrationAmbiguous(migrationData, getRegionalRolloutTargets())
     ),
+    true,
   );
+  // Schema 5 intentionally fails closed when a locale-less fingerprint has
+  // conflicting outcomes. Schema 6 is an independent additive boundary fix:
+  // it still runs so cloud hydration cannot overwrite the local opt-in
+  // migration while schema 5 remains retryable at its prior version.
+  return { ...migrated, dataChanged: migrated.data !== data };
 }
 
 function getLocalSchemaVersion(): number {
@@ -587,7 +600,7 @@ export function onSignIn(userId: string, variant: string): Promise<void> {
 
         const cloudSchemaVersion = cloud.schemaVersion ?? 1;
         const migrated = applyMigrationsWithSchemaVersion(cloud.data, cloudSchemaVersion);
-        const migrationChanged = migrated.schemaVersion > cloudSchemaVersion;
+        const migrationChanged = migrated.schemaVersion > cloudSchemaVersion || migrated.dataChanged;
         // Cloud is ahead, but the user may have un-uploaded local edits — e.g.
         // onSignIn re-fired by a 503 retry after the user changed a pref. Merge
         // those dirty keys over the cloud blob instead of clobbering them.

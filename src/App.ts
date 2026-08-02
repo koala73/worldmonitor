@@ -149,6 +149,7 @@ import {
   migrateFrontlineEuropeDefaultsV3,
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
+  migrateCanadaArcticOptInsV6,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1051,13 +1052,18 @@ export class App {
       const canadaArcticKey = 'worldmonitor-canada-arctic-optin-v1';
       if (!localStorage.getItem(canadaArcticKey)) {
         const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
-        if (current.length > 0) {
-          const before = new Set(current);
-          const updated = [...current];
-          for (const name of CANADA_ARCTIC_OPT_IN_SOURCES) {
-            if (!before.has(name)) updated.push(name);
-          }
-          if (updated.length !== current.length) {
+        const migrated = migrateCanadaArcticOptInsV6({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CANADA_ARCTIC_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
             saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
             console.log(
               `[App] Canada/Arctic opt-in (#5960): disabled ${updated.length - current.length} newly cataloged source(s)`,
