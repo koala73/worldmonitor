@@ -299,6 +299,57 @@ describe('decision-critical cold-fetch priority', () => {
   });
 });
 
+// Three constants claim equality with sources they cannot import: the seeder is
+// a Railway script, api/health.js is an Edge function limited to api/_*.js, and
+// the corridor adapter is server-side TypeScript. Comments asserting "this
+// mirrors X" are exactly the kind of claim that rots silently — the same class
+// as the parity-audit gap this PR already closed for the group manifest.
+describe('content-freshness constant parity', () => {
+  const read = (relativePath) =>
+    readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+
+  it('uses the budget the China corridor adapter actually enforces', () => {
+    const adapter = read('server/worldmonitor/supply-chain/v1/china-corridor-source-adapters.ts');
+    const budgets = [
+      ...adapter.matchAll(/contentFreshness\(observedAt,\s*([\d\s*]+),\s*assessedAt\)/g),
+    ]
+      // eslint-disable-next-line no-eval -- bounded to a digit/asterisk literal
+      .map(([, expression]) => Number(expression.replace(/\s/g, '').split('*')
+        .reduce((product, term) => product * Number(term), 1)));
+
+    assert.ok(
+      budgets.includes(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES),
+      `no corridor port budget equals ${PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES}; found ${JSON.stringify(budgets)}`,
+    );
+  });
+
+  it('declares exactly the countries the corridor control towers read', () => {
+    const towers = read('server/worldmonitor/supply-chain/v1/get-china-corridor-control-towers.ts');
+    const prefix = 'supply_chain:portwatch-ports:v1:';
+    const consumed = [
+      ...towers.matchAll(new RegExp(`'${prefix.replace(/[:.]/g, '\\$&')}([A-Z]{2})'`, 'g')),
+    ].map(([, iso2]) => iso2).sort();
+
+    assert.deepEqual(
+      [...PORTWATCH_DECISION_CRITICAL_COUNTRIES].sort(),
+      [...new Set(consumed)],
+      'the seeder reserves refresh slots for a different set than the adapter consumes',
+    );
+  });
+
+  it('agrees with the scope health pins in its own config', () => {
+    assert.deepEqual(
+      [...SEED_META.portwatchPortActivity.requireContentFreshness.countries].sort(),
+      [...PORTWATCH_DECISION_CRITICAL_COUNTRIES].sort(),
+    );
+    assert.equal(
+      SEED_META.portwatchPortActivity.requireContentFreshness.budgetMinutes,
+      PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+      'health would gate on a different budget than the seeder measures against',
+    );
+  });
+});
+
 describe('content-freshness activation marker', () => {
   const src = readFileSync(
     new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url),
