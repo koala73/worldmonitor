@@ -494,6 +494,20 @@ describe('China activity nowcast fail-closed contract (#6060)', () => {
               })),
             };
           }
+          if (item.family === 'trade') {
+            // #6066 (landed as #6074) taught the adapter to read a published
+            // CCFI period change and added one to the shared fixture. The
+            // 2026-08-02 audit predates that: CCFI published a level only, so
+            // freight was excluded. Strip the change back out here — otherwise
+            // this test silently stops reproducing the incident it is named for.
+            return {
+              ...item,
+              sourceSignals: item.sourceSignals.map((source) => {
+                const { periodChangePct: _dropped, ...levelOnly } = source.metrics;
+                return { ...source, metrics: levelOnly };
+              }),
+            };
+          }
           if (item.family === 'power_energy') {
             return {
               ...item,
@@ -650,12 +664,19 @@ describe('China activity nowcast fail-closed contract (#6060)', () => {
       false,
       'a fresh PortWatch observation is no longer a missing input',
     );
-    // Freight, energy and corridor remain structurally unpublished — recovery
-    // for those is tracked in their own blocking issues, and the nowcast must
-    // never manufacture them to reach three.
+    // Energy and corridor remain structurally unpublished — recovery for those
+    // is tracked in #6067 and #6068, and the nowcast must never manufacture
+    // them to reach three. Freight is no longer on that list: #6066 (landed as
+    // #6074) made the adapter read a published CCFI period change, so the
+    // shared fixture now supplies a real directional freight move.
     assert.deepEqual(
       response.missingInputs.map((input) => input.family),
-      ['freight', 'energy', 'corridor'],
+      ['energy', 'corridor'],
+    );
+    assert.equal(
+      response.contributions.find((item) => item.seriesId === 'ccfi_freight_rate_change')?.included,
+      true,
+      'freight recovered via #6066 and must stay a real contribution',
     );
   });
 });
