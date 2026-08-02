@@ -4,6 +4,7 @@
 import { isBriefLeadEligible } from './_clustering.mjs';
 import {
   validateNoHallucinatedProperNouns,
+  validateNoHallucinatedFacts,
   checkLeadGrounding,
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
@@ -72,7 +73,7 @@ Rules:
 - "lines": exactly one entry per numbered story, in order. Each "text" is ONE sentence under 30 words restating that story, ending with its citation [n].
 - Use ONLY facts present in the numbered story text. Do not add names, places, dates, numbers, or context that are not explicitly there.
 - Do not invent proper nouns (people, organizations, countries) that are not in the story text.
-- Never merge facts from different stories into one claim; the lead may JUXTAPOSE stories but each claim keeps its own [n].
+- Two numbered stories can describe the SAME event in different words. A lead claim may combine them, but it MUST carry the citation of EVERY story it drew from — write [3][7], not just [3]. Any name, place, or number you take from a story you did not cite counts as invented.
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.`;
 }
 
@@ -230,7 +231,8 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
     if (cited.length === 0) return null;
     const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
     const sentenceValidation = validateNoHallucinatedProperNouns(sentence, scopedGround);
-    if (!sentenceValidation.ok && validatorMode === 'enforce') return null;
+    const factValidation = validateNoHallucinatedFacts(sentence, scopedGround);
+    if ((!sentenceValidation.ok || !factValidation.ok) && validatorMode === 'enforce') return null;
   }
   if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) return null;
 
