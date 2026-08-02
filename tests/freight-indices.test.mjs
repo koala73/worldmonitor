@@ -420,13 +420,17 @@ const PROTO_FIELD_RE = /^\s*(?:optional\s+|repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+
 const PROTO_FIELD_NUMBER_RE = /=\s*\d+\s*(?:\[[^\]]*\])?\s*[;[]/g;
 
 function declaredFields(messageName, protoPath = PROTO_PATH) {
-  const src = readFileSync(resolve(root, protoPath), 'utf-8');
+  const raw = readFileSync(resolve(root, protoPath), 'utf-8');
+  // Strip BOTH comment forms from the WHOLE SOURCE before locating the message.
+  // Stripping only `//`, or stripping after extraction, both let commented-out
+  // proto text keep counting as declared: a block-commented field survived, and
+  // a block-commented `message ShippingIndex { ... }` preceding a live one got
+  // selected instead of the real message — the gate would then certify fields
+  // the proto does not declare.
+  const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const block = src.match(new RegExp(`message ${messageName} \\{\\n([\\s\\S]*?)\\n\\}`))?.[1];
   assert.ok(block, `message ${messageName} not found in ${protoPath}`);
-  // Strip BOTH comment forms. Stripping only `//` let a block-commented field
-  // (`/* optional string x = 10; */`) keep counting as declared — the gate would
-  // then certify a field the proto no longer declares.
-  const withoutComments = block.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const withoutComments = block;
   const fields = [...withoutComments.matchAll(PROTO_FIELD_RE)].map(m => snakeToCamel(m[1]));
   // Every field-number occurrence in the block must have been understood. A
   // field written in a form the field regex misses would silently shrink the
@@ -590,6 +594,14 @@ describe('ShippingIndex public contract gate (#6078)', () => {
     const elements = block.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//'));
     assert.deepEqual(elements, FETCH_ALL_INDEX_ELEMENTS,
       'fetchAll() changed what feeds `allIndices`. Add a fixture for the new producer to producedIndices() above, then update FETCH_ALL_INDEX_ELEMENTS — otherwise its entries reach the public payload without this gate ever inspecting them.');
+
+    // Composing the array is not the only way to add an entry: appending or
+    // reassigning after composition reaches the payload identically, and the
+    // element pin above cannot see it. Reproduced as a live evasion, so pin it.
+    for (const mutation of [/allIndices\s*\.\s*push\s*\(/, /mergedIndices\s*\.\s*push\s*\(/, /mergedIndices\s*\[[^\]]*\]\s*=/]) {
+      assert.ok(!mutation.test(seedSrc),
+        `The seeder mutates the composed index list (${mutation}) after fetchAll() builds it. Entries added that way bypass this gate — route them through a producer, or extend the gate to cover the mutation.`);
+    }
   });
 
   it('publishes no envelope field GetShippingRatesResponse does not declare', () => {

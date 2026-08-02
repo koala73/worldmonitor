@@ -118,6 +118,38 @@ describe('get-shipping-rates response contract (#6078)', () => {
     assert.equal(entry.priorPeriodDate, '2026-03-06');
   });
 
+  it('never serves a prior-period date without the level it dates', async () => {
+    // The seeder takes the publisher's `lastDate` independently of whether
+    // `lastContent` parsed as a number, so a dated envelope with an unusable
+    // prior level yields a date describing a level that was never published —
+    // contradicting prior_period_date's declared meaning.
+    seedRedisWith({
+      indices: [index({ periodChangePct: null, periodChangeBasis: null, priorPeriodValue: null })],
+      fetchedAt: '2026-03-13T00:00:00Z',
+      upstreamUnavailable: false,
+    });
+
+    const wire = JSON.parse(JSON.stringify(await getShippingRates({} as never, {} as never)));
+    const entry = wire.indices[0];
+    assert.ok(!('priorPeriodValue' in entry));
+    assert.ok(!('priorPeriodDate' in entry),
+      `priorPeriodDate survived as ${JSON.stringify(entry.priorPeriodDate)} with no priorPeriodValue to date`);
+  });
+
+  it('keeps the pair when the prior level is a real zero', async () => {
+    // 0 is a published level, not a missing one — the pairing rule must key on
+    // absence, not falsiness, or a genuine zero prior loses its date.
+    seedRedisWith({
+      indices: [index({ priorPeriodValue: 0, priorPeriodDate: '2026-03-06' })],
+      fetchedAt: '2026-03-13T00:00:00Z',
+      upstreamUnavailable: false,
+    });
+
+    const entry = JSON.parse(JSON.stringify(await getShippingRates({} as never, {} as never))).indices[0];
+    assert.equal(entry.priorPeriodValue, 0);
+    assert.equal(entry.priorPeriodDate, '2026-03-06');
+  });
+
   it('keeps a published zero move rather than dropping it as missing', async () => {
     // 0 is falsy; a `||`-based normalizer would erase a real unchanged period
     // and make it indistinguishable from "no comparable prior" — the exact

@@ -19380,13 +19380,30 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "indices":
-                                    - "changePct": 1.5
-                                      "currentValue": 1.5
+                                    - "changePct": 1.69
+                                      "currentValue": 1072.16
                                       "history":
                                           - "date": "2026-01-15"
-                                            "value": 1.5
-                                      "indexId": "example-id"
-                                      "name": "WorldMonitor Analyst"
+                                            "value": 1072.16
+                                      "indexId": "CCFI"
+                                      "name": "CCFI - China Container Freight"
+                                      "periodChangeBasis": "publisher_reported"
+                                      "periodChangePct": 1.69
+                                      "previousValue": 1054.38
+                                      "priorPeriodDate": "2026-01-08"
+                                      "priorPeriodValue": 1054.38
+                                      "spikeAlert": false
+                                      "unit": "index"
+                                    - "changePct": 0
+                                      "currentValue": 1972
+                                      "history":
+                                          - "date": "2026-01-15"
+                                            "value": 1972
+                                      "indexId": "BDI"
+                                      "name": "BDI - Baltic Dry Index"
+                                      "previousValue": 1972
+                                      "spikeAlert": false
+                                      "unit": "index"
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_supply_chain_v1_GetShippingRatesResponse'
@@ -40400,8 +40417,9 @@ components:
                          which would render identically to a real unchanged period. Fails CLOSED:
                          present only when the publisher reported its own percentage or a
                          comparable prior-period level. A single index level never becomes a
-                         change. Absent and null mean the same thing to a client; the endpoint
-                         normalizes to absent.
+                         change. The endpoint normalizes a missing reading to ABSENT (canonical
+                         ProtoJSON: serializers omit, parsers treat null as unset) — a plain JSON
+                         client can still tell absent from null, so read absence, not null.
                 periodChangeBasis:
                     type: string
                     description: |-

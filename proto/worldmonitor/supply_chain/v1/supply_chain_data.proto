@@ -27,8 +27,9 @@ message ShippingIndex {
   // which would render identically to a real unchanged period. Fails CLOSED:
   // present only when the publisher reported its own percentage or a
   // comparable prior-period level. A single index level never becomes a
-  // change. Absent and null mean the same thing to a client; the endpoint
-  // normalizes to absent.
+  // change. The endpoint normalizes a missing reading to ABSENT (canonical
+  // ProtoJSON: serializers omit, parsers treat null as unset) — a plain JSON
+  // client can still tell absent from null, so read absence, not null.
   optional double period_change_pct = 9;
   // Provenance of period_change_pct: "publisher_reported" when the exchange
   // published the percentage itself, or "derived_from_prior_period_level"

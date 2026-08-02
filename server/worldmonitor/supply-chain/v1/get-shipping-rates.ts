@@ -22,12 +22,19 @@ function nullToUndefined<T>(value: T | null | undefined): T | undefined {
 }
 
 function normalizeIndex(index: ShippingIndex): ShippingIndex {
+  const priorPeriodValue = nullToUndefined(index.priorPeriodValue);
   return {
     ...index,
     periodChangePct: nullToUndefined(index.periodChangePct),
     periodChangeBasis: nullToUndefined(index.periodChangeBasis),
-    priorPeriodValue: nullToUndefined(index.priorPeriodValue),
-    priorPeriodDate: nullToUndefined(index.priorPeriodDate),
+    priorPeriodValue,
+    // prior_period_date is declared as the date OF prior_period_value, so it
+    // must not outlive it. The seeder accepts the publisher's `lastDate`
+    // independently of whether `lastContent` was a usable number, so a dated
+    // envelope with an unusable prior level yields a date describing a level
+    // that was never published. #6077 tightens this seeder-side; enforcing it
+    // here keeps the served response self-consistent either way.
+    priorPeriodDate: priorPeriodValue === undefined ? undefined : nullToUndefined(index.priorPeriodDate),
   };
 }
 
