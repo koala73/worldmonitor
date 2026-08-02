@@ -3663,11 +3663,13 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Decision-grade period-over-period move in percent (#6066). Optional so it
-                         serializes as JSON null rather than collapsing to 0, which would render
-                         identically to a real unchanged period. Fails CLOSED: only present when
-                         the publisher reported its own percentage or a comparable prior-period
-                         level. A single index level never becomes a change.
+                        Decision-grade period-over-period move in percent (#6066). Optional so a
+                         missing reading is ABSENT from the response rather than collapsing to 0,
+                         which would render identically to a real unchanged period. Fails CLOSED:
+                         present only when the publisher reported its own percentage or a
+                         comparable prior-period level. A single index level never becomes a
+                         change. Absent and null mean the same thing to a client; the endpoint
+                         normalizes to absent.
                 periodChangeBasis:
                     type: string
                     description: |-
@@ -3683,7 +3685,10 @@ components:
                          measured against. Absent when the publisher shipped no comparable prior.
                 priorPeriodDate:
                     type: string
-                    description: Observation date (YYYY-MM-DD) of prior_period_value, as published.
+                    description: |-
+                        Observation date (YYYY-MM-DD) of prior_period_value, as published. Absent
+                         whenever prior_period_value is absent, or when the publisher dated the
+                         level only implicitly.
         ShippingRatePoint:
             type: object
             properties:

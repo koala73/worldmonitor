@@ -243,12 +243,23 @@ const BDI_INDEX_MAP = [
 // file drifts silently from production, which is exactly how the payload grew
 // four fields `ShippingIndex` never declared (#6066/#6074).
 export function parseBdiIndices(html) {
-  // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026")
+  // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026").
+  //
+  // `new Date("March 13, 2026")` yields LOCAL midnight, so toISOString() shifts
+  // it back a day everywhere east of UTC — the heading date and the fallback
+  // below (which is UTC) would disagree by a day depending on where the seeder
+  // runs. Re-read the parsed calendar components as UTC so the stamp is the date
+  // the article states, in every timezone. This feeds accumulateHistory's
+  // dedup key and supplyChainContentMeta's content-age, both of which are
+  // date-keyed, so an off-by-one silently re-dates history points.
   const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
   let articleDate = new Date().toISOString().slice(0, 10);
   if (dateMatch) {
     const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
-    if (!Number.isNaN(parsed.getTime())) articleDate = parsed.toISOString().slice(0, 10);
+    if (!Number.isNaN(parsed.getTime())) {
+      articleDate = new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()))
+        .toISOString().slice(0, 10);
+    }
   }
 
   const indices = [];

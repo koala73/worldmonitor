@@ -22,11 +22,13 @@ message ShippingIndex {
   string unit = 6;
   repeated ShippingRatePoint history = 7;
   bool spike_alert = 8;
-  // Decision-grade period-over-period move in percent (#6066). Optional so it
-  // serializes as JSON null rather than collapsing to 0, which would render
-  // identically to a real unchanged period. Fails CLOSED: only present when
-  // the publisher reported its own percentage or a comparable prior-period
-  // level. A single index level never becomes a change.
+  // Decision-grade period-over-period move in percent (#6066). Optional so a
+  // missing reading is ABSENT from the response rather than collapsing to 0,
+  // which would render identically to a real unchanged period. Fails CLOSED:
+  // present only when the publisher reported its own percentage or a
+  // comparable prior-period level. A single index level never becomes a
+  // change. Absent and null mean the same thing to a client; the endpoint
+  // normalizes to absent.
   optional double period_change_pct = 9;
   // Provenance of period_change_pct: "publisher_reported" when the exchange
   // published the percentage itself, or "derived_from_prior_period_level"
@@ -36,7 +38,9 @@ message ShippingIndex {
   // The publisher's own prior-period index level that period_change_pct was
   // measured against. Absent when the publisher shipped no comparable prior.
   optional double prior_period_value = 11;
-  // Observation date (YYYY-MM-DD) of prior_period_value, as published.
+  // Observation date (YYYY-MM-DD) of prior_period_value, as published. Absent
+  // whenever prior_period_value is absent, or when the publisher dated the
+  // level only implicitly.
   optional string prior_period_date = 12;
 }
 

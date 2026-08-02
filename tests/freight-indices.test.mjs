@@ -15,13 +15,15 @@ import {
   accumulateHistory,
   SHIPPING_SERIES,
 } from '../scripts/seed-supply-chain-trade.mjs';
+// Shared with the sebuf query-param contract gate so both read proto field names
+// by the same rule.
+import { snakeToCamel } from '../scripts/lib/sebuf-query-param-contract.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const seedSrc = readFileSync(resolve(root, 'scripts/seed-supply-chain-trade.mjs'), 'utf-8');
 
-const parseBDIFromHtml = parseBdiIndices;
 const parseSSEResponse = parseSseIndexResponse;
 
 // ─── SSE (SCFI/CCFI) parser tests with fixture data ───
@@ -186,7 +188,7 @@ const BDI_HTML_PARTIAL = `
 
 describe('BDI parser (functional)', () => {
   it('parses all 5 indices with correct values from "increased" article', () => {
-    const indices = parseBDIFromHtml(BDI_HTML_INCREASED);
+    const indices = parseBdiIndices(BDI_HTML_INCREASED);
     assert.equal(indices.length, 5);
 
     const bdi = indices.find(i => i.indexId === 'BDI');
@@ -213,7 +215,7 @@ describe('BDI parser (functional)', () => {
   });
 
   it('parses "unchanged" phrasing with fallback (no delta)', () => {
-    const indices = parseBDIFromHtml(BDI_HTML_UNCHANGED);
+    const indices = parseBdiIndices(BDI_HTML_UNCHANGED);
     assert.equal(indices.length, 1);
     assert.equal(indices[0].indexId, 'BDI');
     assert.equal(indices[0].currentValue, 1926);
@@ -222,15 +224,78 @@ describe('BDI parser (functional)', () => {
   });
 
   it('degrades gracefully with partial HTML (only BDI composite)', () => {
-    const indices = parseBDIFromHtml(BDI_HTML_PARTIAL);
+    const indices = parseBdiIndices(BDI_HTML_PARTIAL);
     assert.equal(indices.length, 1, 'Should parse only BDI when sub-indices are missing');
     assert.equal(indices[0].indexId, 'BDI');
     assert.equal(indices[0].currentValue, 2000);
   });
 
   it('returns empty for garbage HTML', () => {
-    const indices = parseBDIFromHtml('<p>No shipping data here.</p>');
+    const indices = parseBdiIndices('<p>No shipping data here.</p>');
     assert.equal(indices.length, 0);
+  });
+
+  it('stamps the article date from the heading, falling back to today', () => {
+    // _observationDate is what accumulateHistory dedupes history points on, so a
+    // silent fallback to today would append a fresh point every cycle and make a
+    // frozen index look like it is still moving.
+    const dated = parseBdiIndices(`<h1>Baltic Dry Index 13-March-2026</h1>${BDI_HTML_PARTIAL}`);
+    assert.equal(dated[0]._observationDate, '2026-03-13');
+
+    const abbreviated = parseBdiIndices(`<h1>Baltic Dry Index 13-Mar-2026</h1>${BDI_HTML_PARTIAL}`);
+    assert.equal(abbreviated[0]._observationDate, '2026-03-13', 'abbreviated month names must parse too');
+
+    const today = new Date().toISOString().slice(0, 10);
+    assert.equal(parseBdiIndices(BDI_HTML_PARTIAL)[0]._observationDate, today,
+      'an undated article falls back to today');
+
+    const unparseable = parseBdiIndices(`<h1>Baltic Dry Index 13-Smarch-2026</h1>${BDI_HTML_PARTIAL}`);
+    assert.equal(unparseable[0]._observationDate, today,
+      'an unparseable heading date falls back to today rather than yielding Invalid Date');
+  });
+});
+
+// ─── FRED parser tests (functional) ───
+
+describe('FRED parser (functional)', () => {
+  const cfg = { seriesId: 'PCU483111483111', name: 'Deep Sea Freight Producer Price Index', unit: 'index' };
+  const obs = (...values) => ({ observations: values.map(([date, value]) => ({ date, value })) });
+
+  it('builds an index from the newest two observations, oldest-first', () => {
+    // FRED is queried sort_order=desc, so the parser reverses into chronological
+    // order; current/previous are the LAST two entries after that reversal.
+    const index = parseFredShippingIndex(cfg, obs(['2026-03-01', '110'], ['2026-02-01', '100']));
+    assert.equal(index.indexId, 'PCU483111483111');
+    assert.equal(index.currentValue, 110);
+    assert.equal(index.previousValue, 100);
+    assert.ok(Math.abs(index.changePct - 10) < 1e-9, `got ${index.changePct}`);
+    assert.deepEqual(index.history.map(h => h.date), ['2026-02-01', '2026-03-01']);
+  });
+
+  it('drops the "." missing-value sentinel FRED uses for gaps', () => {
+    const index = parseFredShippingIndex(cfg, obs(['2026-03-01', '110'], ['2026-02-01', '.'], ['2026-01-01', '100']));
+    assert.deepEqual(index.history.map(h => h.value), [100, 110]);
+    assert.equal(index.previousValue, 100, 'the sentinel row must not become the prior level');
+  });
+
+  it('falls back to current for previousValue on a single-observation series', () => {
+    const index = parseFredShippingIndex(cfg, obs(['2026-03-01', '110']));
+    assert.equal(index.currentValue, 110);
+    assert.equal(index.previousValue, 110);
+    assert.equal(index.changePct, 0, 'no prior means no move, not a divide-by-zero');
+  });
+
+  it('returns null when no observation is usable', () => {
+    assert.equal(parseFredShippingIndex(cfg, obs(['2026-03-01', '.'])), null);
+    assert.equal(parseFredShippingIndex(cfg, { observations: [] }), null);
+    assert.equal(parseFredShippingIndex(cfg, {}), null);
+    assert.equal(parseFredShippingIndex(cfg, null), null);
+  });
+
+  it('reports no move when the prior level is zero rather than dividing by it', () => {
+    const index = parseFredShippingIndex(cfg, obs(['2026-03-01', '110'], ['2026-02-01', '0']));
+    assert.equal(index.changePct, 0);
+    assert.ok(Number.isFinite(index.changePct));
   });
 });
 
@@ -327,32 +392,47 @@ describe('History accumulation (functional)', () => {
 // the payload without growing the proto and this reds.
 
 const PROTO_PATH = 'proto/worldmonitor/supply_chain/v1/supply_chain_data.proto';
+const SHIPPING_PROTO_PATHS = {
+  response: 'proto/worldmonitor/supply_chain/v1/get_shipping_rates.proto',
+};
 const GENERATED_SERVER_PATH = 'src/generated/server/worldmonitor/supply_chain/v1/service_server.ts';
 
 // Keys the seeder uses for its own bookkeeping and MUST delete before publish.
 // Anything listed here is asserted below to be (a) genuinely emitted by some
 // producer and (b) genuinely gone from the published entry — an allowlist that
 // silently covered a leaking field would make this whole gate vacuous.
+// Both strips-internal-keys tests iterate this list, so an empty list would make
+// them pass with zero assertions executed — a vacuous guard for the exact leak
+// they exist to catch. Pin it non-empty at module load.
 const INTERNAL_SEEDER_KEYS = ['_observationDate'];
+assert.ok(INTERNAL_SEEDER_KEYS.length > 0,
+  'INTERNAL_SEEDER_KEYS is empty — the strips-internal-keys tests would pass vacuously');
 
-function snakeToCamel(name) {
-  return name.replace(/_([a-z0-9])/g, (_m, c) => c.toUpperCase());
-}
+// Field declarations, tolerating an options bracket (`[deprecated = true]`) —
+// the same message already carries `repeated DirectionalDwt directional_dwt = 13
+// [deprecated = true];`, so options are a live form here, not a hypothetical.
+const PROTO_FIELD_RE = /^\s*(?:optional\s+|repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+\s*(?:\[[^\]]*\])?\s*;/gm;
+// Deliberately LOOSER than PROTO_FIELD_RE: it must match every form the field
+// regex matches AND the forms it misses, or it cannot detect a parse failure.
+// Counting with the same `=\s*\d+\s*;` shape the field regex requires made this
+// pin blind to exactly the case it existed for — an options-carrying field drops
+// out of both counts and they agree at the wrong number.
+const PROTO_FIELD_NUMBER_RE = /=\s*\d+\s*(?:\[[^\]]*\])?\s*[;[]/g;
 
-function declaredShippingIndexFields() {
-  const src = readFileSync(resolve(root, PROTO_PATH), 'utf-8');
-  const block = src.match(/message ShippingIndex \{\n([\s\S]*?)\n\}/)?.[1];
-  assert.ok(block, `message ShippingIndex not found in ${PROTO_PATH}`);
+function declaredFields(messageName, protoPath = PROTO_PATH) {
+  const src = readFileSync(resolve(root, protoPath), 'utf-8');
+  const block = src.match(new RegExp(`message ${messageName} \\{\\n([\\s\\S]*?)\\n\\}`))?.[1];
+  assert.ok(block, `message ${messageName} not found in ${protoPath}`);
   const withoutComments = block.replace(/\/\/[^\n]*/g, '');
-  const fields = [...withoutComments.matchAll(/^\s*(?:optional\s+|repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+\s*;/gm)]
-    .map(m => snakeToCamel(m[1]));
-  // Every `= N;` line in the block must have been understood. A field written in
-  // a form this regex misses would silently shrink the declared set, and the
-  // gate would then red on a field that IS declared — loud, but for the wrong
-  // reason. Pin the count so the parse failure is reported as itself.
-  const fieldNumberLines = (withoutComments.match(/=\s*\d+\s*;/g) ?? []).length;
-  assert.equal(fields.length, fieldNumberLines,
-    `Parsed ${fields.length} of ${fieldNumberLines} ShippingIndex fields — update the proto field regex`);
+  const fields = [...withoutComments.matchAll(PROTO_FIELD_RE)].map(m => snakeToCamel(m[1]));
+  // Every field-number occurrence in the block must have been understood. A
+  // field written in a form the field regex misses would silently shrink the
+  // declared set, and the gate would then red on a field that IS declared —
+  // loud, but for the wrong reason. Pin the count so the parse failure is
+  // reported as itself.
+  const fieldNumbers = (withoutComments.match(PROTO_FIELD_NUMBER_RE) ?? []).length;
+  assert.equal(fields.length, fieldNumbers,
+    `Parsed ${fields.length} of ${fieldNumbers} ${messageName} fields — update PROTO_FIELD_RE`);
   return new Set(fields);
 }
 
@@ -363,6 +443,35 @@ function undeclaredKeys(entry, declared) {
   return Object.keys(entry).filter(key => !declared.has(key));
 }
 
+// Same CCFI envelope as CCFI_FIXTURE but with the publisher's own `percentage`
+// omitted, so parseSseIndexResponse takes the `derived_from_prior_period_level`
+// branch instead of `publisher_reported`.
+const CCFI_DERIVED_FIXTURE = {
+  data: {
+    currentDate: '2026-03-13',
+    lastDate: '2026-03-06',
+    lineDataList: [
+      {
+        properties: { lineName_EN: 'Composite Index' },
+        currentContent: 1072.16,
+        lastContent: 1054.38,
+        dataItemTypeName: 'CCFI_T',
+      },
+    ],
+  },
+};
+
+// A bare level with no comparable prior — parseSseIndexResponse's fail-closed
+// path, where all four decision fields go null.
+const CCFI_NO_PRIOR_FIXTURE = {
+  data: {
+    currentDate: '2026-03-13',
+    lineDataList: [
+      { properties: { lineName_EN: 'Composite Index' }, currentContent: 900, dataItemTypeName: 'CCFI_T' },
+    ],
+  },
+};
+
 const FRED_FIXTURE = {
   observations: [
     { date: '2026-03-01', value: '118.4' },
@@ -372,23 +481,52 @@ const FRED_FIXTURE = {
   ],
 };
 
+// The spread sources `fetchAll()` merges into `allIndices` — i.e. every producer
+// whose entries reach the published payload. `producedIndices()` below mirrors
+// this list by hand, so pin it: a 5th producer added to fetchAll() without a
+// matching fixture here would contribute entries the gate never inspects, and
+// the gate would stay green while that producer drifted. That is the same
+// hand-mirrored-copy failure this whole file exists to avoid, one level up.
+const FETCH_ALL_INDEX_SOURCES = ['sh?.indices || []', 'scfiResult', 'ccfiResult', 'bdiResult'];
+
 // Every producer that contributes entries to `allIndices` in fetchAll().
 function producedIndices() {
   const fred = SHIPPING_SERIES
     .map(cfg => parseFredShippingIndex(cfg, FRED_FIXTURE))
     .filter(Boolean);
   const sse = [
+    // All three SSE branches: SCFI/CCFI carry the publisher's own `percentage`
+    // (publisher_reported), CCFI_DERIVED_FIXTURE omits it so the change is
+    // derived from the prior level, and CCFI_NO_PRIOR_FIXTURE ships a bare
+    // level so the decision fields fail closed. The gate can only see fields a
+    // fixture materializes, so a field emitted on one branch alone must still
+    // meet a fixture that takes it.
     ...parseSseIndexResponse(SCFI_FIXTURE, 'SCFI', 'SCFI_T', 'SCFI - Shanghai Container Freight', 'index'),
     ...parseSseIndexResponse(CCFI_FIXTURE, 'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index'),
+    ...parseSseIndexResponse(CCFI_DERIVED_FIXTURE, 'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index'),
+    ...parseSseIndexResponse(CCFI_NO_PRIOR_FIXTURE, 'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index'),
   ];
-  const bdi = parseBdiIndices(BDI_HTML_INCREASED);
-  assert.ok(fred.length > 0 && sse.length > 0 && bdi.length > 0,
-    `Fixtures stopped producing entries (FRED ${fred.length}, SSE ${sse.length}, BDI ${bdi.length}) — the gate would pass over an empty set`);
+  // Every BDI article shape: full (delta-bearing), unchanged (no delta match),
+  // and partial (only the composite parses).
+  const bdi = [
+    ...parseBdiIndices(BDI_HTML_INCREASED),
+    ...parseBdiIndices(BDI_HTML_UNCHANGED),
+    ...parseBdiIndices(BDI_HTML_PARTIAL),
+  ];
+  // Per-producer counts, not just "non-empty": a fixture that silently stops
+  // yielding 4 of its 5 BDI indices would still clear a >0 check while shrinking
+  // what the gate actually inspects.
+  assert.deepEqual(
+    { fred: fred.length, sse: sse.length, bdi: bdi.length },
+    { fred: 2, sse: 4, bdi: 7 },
+    'Fixture yield changed — the gate now inspects a different set than it was calibrated against; update these counts deliberately',
+  );
   return [...fred, ...sse, ...bdi];
 }
 
 describe('ShippingIndex public contract gate (#6078)', () => {
-  const declared = declaredShippingIndexFields();
+  const declared = declaredFields('ShippingIndex');
+  const declaredPoint = declaredFields('ShippingRatePoint');
 
   it('declares the four CCFI period-change fields #6074 introduced', () => {
     for (const field of ['periodChangePct', 'periodChangeBasis', 'priorPeriodValue', 'priorPeriodDate']) {
@@ -417,9 +555,68 @@ describe('ShippingIndex public contract gate (#6078)', () => {
       for (const entry of published) {
         assert.deepEqual(undeclaredKeys(entry, declared), [],
           `${entry.indexId} publishes undeclared field(s); declare them in ${PROTO_PATH} and run \`make generate\`, or strip them before publish`);
+        // `history` entries are the other message this endpoint serves, one
+        // array deep. They reach the published blob without passing through any
+        // producer — accumulateHistory both builds new points and copies old
+        // ones forward from the previous payload — so the top-level check alone
+        // leaves ShippingRatePoint with no drift guard at all.
+        for (const point of entry.history ?? []) {
+          assert.deepEqual(undeclaredKeys(point, declaredPoint), [],
+            `${entry.indexId} publishes a history point with undeclared field(s); declare them on ShippingRatePoint in ${PROTO_PATH}`);
+        }
       }
     });
   }
+
+  it('inspects every producer fetchAll() merges into the published payload', () => {
+    // Fails CLOSED: if the `allIndices` block cannot be located, the spread list
+    // cannot be compared and the gate's coverage claim is unverifiable.
+    const block = seedSrc.match(/const allIndices = \[\n([\s\S]*?)\n\s*\];/)?.[1];
+    assert.ok(block, 'Could not locate the `const allIndices = [...]` block in the seeder — update this guard');
+    const sources = [...block.matchAll(/\.\.\.\(?([^,\n)]+)\)?,/g)].map(m => m[1].trim());
+    assert.deepEqual(sources, FETCH_ALL_INDEX_SOURCES,
+      'fetchAll() changed which producers feed `allIndices`. Add a fixture for the new producer to producedIndices() above, then update FETCH_ALL_INDEX_SOURCES — otherwise its entries reach the public payload without this gate ever inspecting them.');
+  });
+
+  it('publishes no envelope field GetShippingRatesResponse does not declare', () => {
+    // The gate above guards entries of `indices`; this guards the object that
+    // carries them. `get-shipping-rates` casts the whole cached blob to
+    // GetShippingRatesResponse with no field stripping — the identical
+    // mechanism that produced #6078, one level up. A diagnostic added to
+    // fetchAll's return (`degraded`, `sourcesOk`, …) would ship undeclared.
+    const declaredEnvelope = declaredFields('GetShippingRatesResponse', SHIPPING_PROTO_PATHS.response);
+    const returns = [...seedSrc.matchAll(/\{ indices: [^,]+, fetchedAt: [^,]+, upstreamUnavailable: \w+ \}/g)];
+    assert.ok(returns.length >= 2,
+      'Could not locate fetchAll()\'s payload return literals — update this guard');
+    for (const literal of returns.map(m => m[0])) {
+      const keys = [...literal.matchAll(/(\w+):/g)].map(m => m[1]);
+      assert.deepEqual([...keys].sort(), [...declaredEnvelope].sort(),
+        `fetchAll() returns envelope keys that GetShippingRatesResponse does not declare (or omits declared ones): ${literal}`);
+    }
+  });
+
+  it('covers both period-change bases, not just the publisher-reported one', () => {
+    // A field added on only one branch of parseSseIndexResponse would otherwise
+    // slip past a gate whose fixtures all take the other branch.
+    const bases = new Set(producedIndices().map(e => e.periodChangeBasis));
+    assert.ok(bases.has('publisher_reported'), `missing publisher_reported branch; saw ${[...bases]}`);
+    assert.ok(bases.has('derived_from_prior_period_level'), `missing derived branch; saw ${[...bases]}`);
+  });
+
+  it('treats FRED entries carrying no period-change fields as a deliberate boundary', () => {
+    // FRED publishes an index level with no publisher-reported period change, so
+    // parseFredShippingIndex emits none of the four. Pin that as intentional —
+    // otherwise a future regression that drops the fields from the SSE producer
+    // reads as "matches FRED" rather than as a defect.
+    const fred = SHIPPING_SERIES.map(cfg => parseFredShippingIndex(cfg, FRED_FIXTURE)).filter(Boolean);
+    assert.ok(fred.length > 0);
+    for (const entry of fred) {
+      for (const field of ['periodChangePct', 'periodChangeBasis', 'priorPeriodValue', 'priorPeriodDate']) {
+        assert.ok(!(field in entry), `FRED entry ${entry.indexId} unexpectedly carries ${field}`);
+      }
+      assert.deepEqual(undeclaredKeys(entry, declared), []);
+    }
+  });
 
   it('actually exercises the period-change fields it is guarding', () => {
     // Without this, a fixture change that stopped emitting the four fields would
