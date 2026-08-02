@@ -4,11 +4,12 @@ import {
   resolveCorridorForPoint,
   type ChinaCorridorSignalFamily,
 } from '../../../../shared/china-logistics-corridors';
-import type {
-  ChinaCorridorSourceBundle,
-  CorridorFamilySource,
-  CorridorSourceSignal,
-  CorridorTimePrecision,
+import {
+  CHINA_ENERGY_DEMAND_METRIC_KEYS,
+  type ChinaCorridorSourceBundle,
+  type CorridorFamilySource,
+  type CorridorSourceSignal,
+  type CorridorTimePrecision,
 } from '../../../../shared/china-corridor-control-towers';
 
 type UnknownRecord = Record<string, unknown>;
@@ -494,6 +495,59 @@ function latestEnergySourceObservation(
       : latest, null);
 }
 
+// The reviewed comparison the nowcast consumes. Monthly oil-product demand is
+// strongly seasonal, so only a same-month year-over-year move is an activity
+// direction. Pinned independently of the Railway seeder that writes it — the
+// two runtimes share no code, and `tests/china-energy-demand-change-parity`
+// asserts the literals stay equal.
+const ENERGY_DEMAND_CHANGE_BASIS = 'year_over_year';
+const ENERGY_DEMAND_CHANGE_LOOKBACK_MONTHS = 12;
+
+function observationMonthIndex(value: unknown): number | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(stringValue(value) ?? '');
+  return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : null;
+}
+
+/**
+ * Project a published demand change onto signal metrics, all or nothing.
+ *
+ * The spine key is an untrusted cache payload, so the change is re-validated
+ * here as a unit: a partially readable change publishes no metric at all,
+ * rather than a period end a consumer could pair with some other number. The
+ * basis is checked against the arithmetic as well as the label, so a seasonal
+ * comparison cannot cross the cache wearing a year-over-year name.
+ */
+function energyDemandChangeMetrics(
+  value: unknown,
+): [string, string | number | boolean | null][] {
+  const change = record(value);
+  const percentChange = numberValue(change?.percentChange);
+  const observationPeriod = observationMonthIndex(change?.observationPeriod);
+  const priorObservationPeriod = observationMonthIndex(change?.priorObservationPeriod);
+  const periodEnd = isoTimestamp(stringValue(change?.periodEnd));
+  const priorPeriodEnd = isoTimestamp(stringValue(change?.priorPeriodEnd));
+  if (
+    percentChange === null
+    || change?.basis !== ENERGY_DEMAND_CHANGE_BASIS
+    || observationPeriod === null
+    || priorObservationPeriod === null
+    || observationPeriod - priorObservationPeriod !== ENERGY_DEMAND_CHANGE_LOOKBACK_MONTHS
+    || periodEnd === null
+    || priorPeriodEnd === null
+    || Date.parse(priorPeriodEnd) >= Date.parse(periodEnd)
+  ) return [];
+  return [
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.percent, percentChange],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.basis, ENERGY_DEMAND_CHANGE_BASIS],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.unit, stringValue(change?.unit)],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.currentMonth, stringValue(change?.observationPeriod)],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.priorMonth, stringValue(change?.priorObservationPeriod)],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.changePeriodEnd, periodEnd],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.changePriorPeriodEnd, priorPeriodEnd],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.productCount, numberValue(change?.productCount)],
+  ];
+}
+
 function adaptEnergy(
   snapshots: ChinaCorridorRawSnapshots,
   assessedAt: string,
@@ -522,6 +576,9 @@ function adaptEnergy(
   const observedAt = sourceObservation?.timestamp ?? isoTimestamp(payload.updatedAt);
   const observationPrecision = sourceObservation?.precision ?? (observedAt ? 'instant' : 'unknown');
   const coverage = record(payload.coverage);
+  // The observed demand change carries its own period end so a consumer never
+  // has to date it from the family's latest source timestamp.
+  const demandChangeMetrics = energyDemandChangeMetrics(payload.demandChange);
   return family('china-energy-spine', [sourceSignal({
     id: `signal:energy-spine:CN:${observedAt ?? 'timestamp-unknown'}`,
     family: 'power_energy',
@@ -547,6 +604,13 @@ function adaptEnergy(
       ['hasJodiGas', booleanValue(coverage?.hasJodiGas)],
       ['hasIeaStocks', booleanValue(coverage?.hasIeaStocks)],
       ['hasEmber', booleanValue(coverage?.hasEmber)],
+      // Published whether or not a change exists, so a consumer can tell a
+      // not-yet-due period from a due-but-unpublished one.
+      [
+        CHINA_ENERGY_DEMAND_METRIC_KEYS.periodEnd,
+        isoTimestamp(stringValue(payload.demandPeriodEnd)),
+      ],
+      ...demandChangeMetrics,
     ]),
   })], 'China energy spine is missing or stale.');
 }

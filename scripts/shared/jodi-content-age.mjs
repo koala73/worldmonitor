@@ -1,3 +1,5 @@
+import { monthIndex } from './jodi-demand-change.mjs';
+
 export const MAX_JODI_CONTENT_AGE_MONTHS = 6;
 
 function readPath(value, path) {
@@ -18,12 +20,6 @@ export function hasFiniteMeasurementAtPaths(value, paths) {
   });
 }
 
-function parseMonthIndex(dataMonth) {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(dataMonth ?? '');
-  if (!match) return null;
-  return Number(match[1]) * 12 + Number(match[2]) - 1;
-}
-
 /**
  * Validate China presence, source month, and usable measurements independently
  * of the seeder fetch timestamp. Zero is a valid measurement.
@@ -34,7 +30,7 @@ export function assessChinaJodiCoverage(records, now, hasMeasurements) {
     return { ok: false, reason: 'china-missing', dataMonth: null, ageMonths: null };
   }
 
-  const sourceMonth = parseMonthIndex(china.dataMonth);
+  const sourceMonth = monthIndex(china.dataMonth);
   const currentMonth = now instanceof Date && Number.isFinite(now.getTime())
     ? now.getUTCFullYear() * 12 + now.getUTCMonth()
     : null;

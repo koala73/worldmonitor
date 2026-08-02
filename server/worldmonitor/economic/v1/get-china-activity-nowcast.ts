@@ -13,9 +13,10 @@ import {
   type ChinaActivityOfficialObservation,
   type ChinaActivityProxyObservation,
 } from '../../../../shared/china-activity-nowcast';
-import type {
-  ChinaCorridorControlTowerResponse,
-  CorridorSourceSignal,
+import {
+  CHINA_ENERGY_DEMAND_METRIC_KEYS,
+  type ChinaCorridorControlTowerResponse,
+  type CorridorSourceSignal,
 } from '../../../../shared/china-corridor-control-towers';
 import { chinaMacroObservationDateMs } from '../../../../shared/china-macro-contract.js';
 import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
@@ -131,7 +132,16 @@ function uniqueSignals(
   return [...byId.values()];
 }
 
-function aggregateTimes(signals: readonly CorridorSourceSignal[], evaluatedAt: string) {
+interface ObservationTimes {
+  observedAt: string;
+  releasedAt: string;
+  retrievedAt: string;
+}
+
+function aggregateTimes(
+  signals: readonly CorridorSourceSignal[],
+  evaluatedAt: string,
+): ObservationTimes {
   const latest = (values: Array<string | null>) => {
     const sorted = values
     .map(timestamp)
@@ -171,8 +181,9 @@ function corridorObservation(input: {
   signals: CorridorSourceSignal[];
   value: number | null;
   provenance?: UnknownRecord;
+  times?: ObservationTimes;
 }): ChinaActivityProxyObservation {
-  const times = aggregateTimes(input.signals, input.evaluatedAt);
+  const times = input.times ?? aggregateTimes(input.signals, input.evaluatedAt);
   const stale = input.signals.some((signal) =>
     signal.availability === 'stale'
     || signal.transportFreshness === 'stale'
@@ -188,6 +199,126 @@ function corridorObservation(input: {
     structuralBreak: false,
     provenance: input.provenance ?? corridorProvenance(input.signals),
   };
+}
+
+function metricString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+// The reviewed comparison, pinned independently of the Railway seeder that
+// writes it (the runtimes share no code). `tests/china-energy-demand-change-
+// parity.test.mts` asserts the literals stay equal across the boundary.
+const ENERGY_DEMAND_CHANGE_BASIS = 'year_over_year';
+
+interface PublishedEnergyDemandChange {
+  percentChange: number;
+  basis: string;
+  unit: string | null;
+  observationPeriod: string;
+  priorObservationPeriod: string | null;
+  priorPeriodEnd: string | null;
+  productCount: number | null;
+  signalId: string;
+  times: ObservationTimes;
+}
+
+/**
+ * Read an explicitly published directional demand change off the reviewed
+ * energy condition.
+ *
+ * Every part of the change must be present: a finite percentage, the basis it
+ * was computed on, its own period end, and a period label. Source-availability
+ * coverage booleans carry none of those, so they can never satisfy this and can
+ * never become a zero or a neutral contribution.
+ */
+function publishedEnergyDemandChange(
+  signals: readonly CorridorSourceSignal[],
+  evaluatedAt: string,
+): PublishedEnergyDemandChange | null {
+  const evaluatedAtMs = Date.parse(evaluatedAt);
+  const keys = CHINA_ENERGY_DEMAND_METRIC_KEYS;
+  for (const signal of signals) {
+    const percentChange = finiteNumber(signal.metrics[keys.percent]);
+    const observationPeriod = metricString(signal.metrics[keys.currentMonth]);
+    const periodEnd = timestamp(metricString(signal.metrics[keys.changePeriodEnd]));
+    // Pin the reviewed basis here too: the corridor payload crosses a cache
+    // this runtime does not own, and a seasonal comparison must not be read as
+    // an activity direction just because it arrived in the right field.
+    if (
+      percentChange === null
+      || signal.metrics[keys.basis] !== ENERGY_DEMAND_CHANGE_BASIS
+      || observationPeriod === null
+      || periodEnd === null
+    ) continue;
+    const times = energyObservationTimes(signal, periodEnd, evaluatedAtMs);
+    if (times === null) continue;
+    return {
+      percentChange,
+      basis: ENERGY_DEMAND_CHANGE_BASIS,
+      unit: metricString(signal.metrics[keys.unit]),
+      observationPeriod,
+      priorObservationPeriod: metricString(signal.metrics[keys.priorMonth]),
+      priorPeriodEnd: timestamp(metricString(signal.metrics[keys.changePriorPeriodEnd])),
+      productCount: finiteNumber(signal.metrics[keys.productCount]),
+      signalId: signal.id,
+      times,
+    };
+  }
+  return null;
+}
+
+/**
+ * Times for the "no change published" observation, anchored to the period the
+ * demand series covers rather than the family's latest coverage timestamp.
+ *
+ * Without this the registry's 30-day publication lag would be measured against
+ * an unrelated clock, so a series that published nothing at all would be
+ * reported as `lag_not_elapsed` ("not due yet") whenever any energy source
+ * happened to be fresh. Anchored here, both exclusion reasons are true:
+ * `lag_not_elapsed` means this month's change is genuinely not due, and
+ * `missing_directional_value` means it was due and was not published.
+ */
+function unpublishedEnergyDemandTimes(
+  signals: readonly CorridorSourceSignal[],
+  evaluatedAt: string,
+): ObservationTimes | null {
+  const evaluatedAtMs = Date.parse(evaluatedAt);
+  for (const signal of signals) {
+    const periodEnd = timestamp(
+      metricString(signal.metrics[CHINA_ENERGY_DEMAND_METRIC_KEYS.periodEnd]),
+    );
+    if (periodEnd === null) continue;
+    const times = energyObservationTimes(signal, periodEnd, evaluatedAtMs);
+    if (times !== null) return times;
+  }
+  return null;
+}
+
+/**
+ * Anchor an energy observation to a period end, keeping the release and
+ * retrieval envelope coherent.
+ *
+ * A snapshot with no retrieval timestamp is not dated "retrieved now" — that
+ * would manufacture freshness the source never claimed — so it yields no times
+ * and the caller falls back to refusing the value.
+ */
+function energyObservationTimes(
+  signal: CorridorSourceSignal,
+  periodEnd: string,
+  evaluatedAtMs: number,
+): ObservationTimes | null {
+  const retrievedAt = timestamp(signal.retrievalTime);
+  if (retrievedAt === null) return null;
+  const releasedAt = timestamp(signal.releaseTime) ?? retrievedAt;
+  // An observation cannot be released before the period it measures ended, nor
+  // retrieved before release, nor retrieved after the evaluation instant.
+  return (
+    Date.parse(periodEnd) <= Date.parse(releasedAt)
+    && Date.parse(releasedAt) <= Date.parse(retrievedAt)
+    && Date.parse(retrievedAt) <= evaluatedAtMs
+  )
+    ? { observedAt: periodEnd, releasedAt, retrievedAt }
+    : null;
 }
 
 function corridorProxyObservations(
@@ -277,17 +408,35 @@ function corridorProxyObservations(
   }
 
   const energySignals = uniqueSignals(corridors, 'power_energy');
-  if (energySignals.length > 0) {
+  const energyChange = publishedEnergyDemandChange(energySignals, evaluatedAt);
+  // Both branches are dated by the demand series' OWN period, so the registry's
+  // publication-lag rule is measured against the right clock whether or not a
+  // change was published. With no demand period at all there is no observation
+  // of this series to make — borrowing the family's coverage clock would report
+  // a pending lag for a value that was never going to arrive.
+  const energyTimes = energyChange?.times
+    ?? unpublishedEnergyDemandTimes(energySignals, evaluatedAt);
+  if (energySignals.length > 0 && energyTimes !== null) {
     observations.push(corridorObservation({
       evaluatedAt,
       seriesId: 'china_energy_demand_change',
-      observationId: `energy-demand-change:${corridors.generatedAt}`,
+      observationId: `energy-demand-change:${energyChange?.observationPeriod ?? corridors.generatedAt}`,
       signals: energySignals,
       // Coverage flags prove data presence, not direction.
-      value: null,
-      provenance: corridorProvenance(energySignals, {
-        exclusion: 'directional_demand_change_not_published',
-      }),
+      value: energyChange?.percentChange ?? null,
+      times: energyTimes,
+      provenance: corridorProvenance(energySignals, energyChange === null
+        ? { exclusion: 'directional_demand_change_not_published' }
+        : {
+          demandChangeBasis: energyChange.basis,
+          demandChangeUnit: energyChange.unit,
+          observationPeriod: energyChange.observationPeriod,
+          priorObservationPeriod: energyChange.priorObservationPeriod,
+          periodEnd: energyChange.times.observedAt,
+          priorPeriodEnd: energyChange.priorPeriodEnd,
+          productCount: energyChange.productCount,
+          directionalSignalId: energyChange.signalId,
+        }),
     }));
   }
 

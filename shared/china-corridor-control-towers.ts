@@ -92,6 +92,28 @@ export interface CorridorSourceSignal {
   metrics: Record<string, string | number | boolean | null>;
 }
 
+/**
+ * Metric keys the `power_energy` condition uses to publish China's observed
+ * oil-product demand change (#6067).
+ *
+ * `metrics` is an untyped string-keyed map, so a rename on either side of the
+ * producer/consumer seam would compile, pass both files' own unit tests, and
+ * silently disable the `china_energy_demand_change` proxy in production with no
+ * crash or alert. Naming the keys once removes that failure mode.
+ */
+export const CHINA_ENERGY_DEMAND_METRIC_KEYS = Object.freeze({
+  /** Period end of the demand series, published whether or not a change exists. */
+  periodEnd: 'demandPeriodEnd',
+  percent: 'demandChangePercent',
+  basis: 'demandChangeBasis',
+  unit: 'demandChangeUnit',
+  currentMonth: 'demandChangeCurrentMonth',
+  priorMonth: 'demandChangePriorMonth',
+  changePeriodEnd: 'demandChangePeriodEnd',
+  changePriorPeriodEnd: 'demandChangePriorPeriodEnd',
+  productCount: 'demandChangeProductCount',
+} as const);
+
 export interface CorridorFamilySource {
   providerId: string;
   reason?: string;

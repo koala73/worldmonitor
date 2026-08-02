@@ -10,6 +10,7 @@ import {
   resolveChinaActivityNowcastSnapshot,
 } from '../server/worldmonitor/economic/v1/get-china-activity-nowcast';
 import {
+  evaluateChinaActivityNowcast,
   parseChinaActivityNowcastWirePayload,
   type ChinaActivityComparisonState,
 } from '../shared/china-activity-nowcast';
@@ -128,7 +129,61 @@ function condition(
   };
 }
 
-function corridorSnapshot(): ChinaCorridorControlTowerResponse {
+// The energy family's own coverage clock (latest source observation across the
+// spine) is deliberately unrelated to the demand series' period, so fixtures
+// keep the two independent.
+const ENERGY_COVERAGE_OBSERVATION_TIME = '2026-07-01T00:00:00.000Z';
+
+function energySignal(
+  metrics: CorridorSourceSignal['metrics'],
+  observationTime: string = ENERGY_COVERAGE_OBSERVATION_TIME,
+): CorridorSourceSignal {
+  return {
+    ...signal('energy', 'power_energy', metrics),
+    observationTime,
+    observationTimePrecision: 'month',
+  };
+}
+
+/** `undefined` in `overrides` omits that metric entirely. */
+function publishedDemandChangeMetrics(
+  overrides: Record<string, string | number | boolean | null | undefined> = {},
+): CorridorSourceSignal['metrics'] {
+  const merged: Record<string, string | number | boolean | null | undefined> = {
+    hasJodiOil: true,
+    hasEmber: true,
+    demandPeriodEnd: '2026-04-30T23:59:59.999Z',
+    demandChangePercent: 3.4,
+    demandChangeBasis: 'year_over_year',
+    demandChangeCurrentMonth: '2026-04',
+    demandChangePriorMonth: '2025-04',
+    demandChangePeriodEnd: '2026-04-30T23:59:59.999Z',
+    demandChangePriorPeriodEnd: '2025-04-30T23:59:59.999Z',
+    demandChangeProductCount: 4,
+    ...overrides,
+  };
+  return Object.fromEntries(
+    Object.entries(merged).filter(([, value]) => value !== undefined),
+  ) as CorridorSourceSignal['metrics'];
+}
+
+/**
+ * Coverage booleans plus the demand series' published period end — the shape
+ * the spine emits when the month is due but no change was observed for it.
+ */
+function coverageOnlyMetrics(
+  overrides: CorridorSourceSignal['metrics'] = {},
+): CorridorSourceSignal['metrics'] {
+  return {
+    hasJodiOil: true,
+    demandPeriodEnd: '2026-04-30T23:59:59.999Z',
+    ...overrides,
+  };
+}
+
+function corridorSnapshot(
+  energy: CorridorSourceSignal = energySignal(publishedDemandChangeMetrics()),
+): ChinaCorridorControlTowerResponse {
   return {
     generatedAt: EVALUATED_AT,
     corridors: [{
@@ -161,12 +216,32 @@ function corridorSnapshot(): ChinaCorridorControlTowerResponse {
             selectorId: 'supply_chain:shipping:v2:CCFI',
           },
         ]),
-        condition('power_energy', [
-          signal('energy', 'power_energy', { hasJodiOil: true }),
-        ]),
+        condition('power_energy', [energy]),
       ],
     }],
   };
+}
+
+function energyInputs(corridors: ChinaCorridorControlTowerResponse) {
+  return buildChinaActivityNowcastInputs({
+    evaluatedAt: EVALUATED_AT,
+    macro: macroSnapshot() as never,
+    corridors,
+    marketValues: marketValues(),
+  });
+}
+
+/** The observation as emitted by the adapter, before the evaluator filters it. */
+function energyObservation(corridors: ChinaCorridorControlTowerResponse) {
+  return energyInputs(corridors).proxyObservations
+    .find((item) => item.seriesId === 'china_energy_demand_change');
+}
+
+function energyContribution(corridors: ChinaCorridorControlTowerResponse) {
+  return evaluateChinaActivityNowcast({
+    evaluatedAt: EVALUATED_AT,
+    ...energyInputs(corridors),
+  }).contributions.find((item) => item.seriesId === 'china_energy_demand_change');
 }
 
 function marketValues() {
@@ -210,6 +285,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
         'portwatch_tanker_calls_trend',
         'aviation_hub_disruption_balance',
         'ccfi_freight_rate_change',
+        'china_energy_demand_change',
         'china_input_commodity_change',
         'sse_composite_week_change',
       ],
@@ -228,13 +304,259 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       periodChangeBasis: 'publisher_reported',
     });
     assert.equal(
-      inputs.proxyObservations.find((item) => item.seriesId === 'china_energy_demand_change')?.value,
-      null,
-    );
-    assert.equal(
       inputs.proxyObservations.find((item) => item.seriesId === 'corridor_activity_breadth_change')?.value,
       null,
     );
+  });
+
+  it('publishes the observed energy-demand change and keeps coverage-only signals excluded (#6067)', () => {
+    const published = energyContribution(
+      corridorSnapshot(energySignal(publishedDemandChangeMetrics())),
+    );
+    assert.equal(published?.included, true);
+    assert.equal(published?.rawValue, 3.4);
+    assert.equal(published?.transformedValue, 3.4);
+    assert.equal(published?.direction, 'strengthening');
+    assert.equal(published?.exclusionReason, null);
+    // The change carries its own period end, not the spine's latest source time.
+    assert.equal(published?.observedAt, '2026-04-30T23:59:59.999Z');
+    assert.equal(published?.alignedAt, '2026-05-30T23:59:59.999Z');
+    const provenance = published?.provenance as Record<string, unknown>;
+    assert.equal(provenance.demandChangeBasis, 'year_over_year');
+    assert.equal(provenance.periodEnd, '2026-04-30T23:59:59.999Z');
+    assert.equal(provenance.priorPeriodEnd, '2025-04-30T23:59:59.999Z');
+    assert.equal(provenance.observationPeriod, '2026-04');
+    assert.equal(provenance.priorObservationPeriod, '2025-04');
+    assert.equal(provenance.exclusion, undefined);
+
+    const weakening = energyContribution(corridorSnapshot(energySignal(
+      publishedDemandChangeMetrics({ demandChangePercent: -2.1 }),
+    )));
+    assert.equal(weakening?.included, true);
+    assert.equal(weakening?.direction, 'weakening');
+
+    const coverageOnly = energyContribution(corridorSnapshot(
+      energySignal(coverageOnlyMetrics({ hasMix: true, hasJodiGas: true, hasEmber: true })),
+    ));
+    assert.equal(coverageOnly?.included, false);
+    assert.equal(coverageOnly?.rawValue, null);
+    assert.equal(coverageOnly?.exclusionReason, 'missing_directional_value');
+    assert.equal(
+      (coverageOnly?.provenance as Record<string, unknown>).exclusion,
+      'directional_demand_change_not_published',
+    );
+  });
+
+  it('keeps lag_not_elapsed and missing_directional_value distinguishable (#6067)', () => {
+    // Both reasons must be true statements about the DEMAND SERIES, so both are
+    // measured against its own period end. The family's coverage clock is
+    // deliberately varied in the opposite direction throughout this test: if
+    // the reason ever tracked coverage instead, these assertions invert.
+    const coverageOnly = (demandPeriodEnd: string, coverageObservedAt: string) =>
+      energyContribution(corridorSnapshot(energySignal(
+        { hasJodiOil: true, demandPeriodEnd },
+        coverageObservedAt,
+      )));
+
+    // The demand month ended 5 days ago: its change is genuinely not due yet.
+    // Stale coverage must not turn that into a claim the value was withheld.
+    assert.equal(
+      coverageOnly('2026-07-20T23:59:59.999Z', '2026-01-01T00:00:00.000Z')?.exclusionReason,
+      'lag_not_elapsed',
+    );
+
+    // The demand month ended ~3 months ago: it is due, and nothing was
+    // published. Fresh coverage must not excuse that as a pending lag.
+    assert.equal(
+      coverageOnly('2026-04-30T23:59:59.999Z', '2026-07-24T00:00:00.000Z')?.exclusionReason,
+      'missing_directional_value',
+    );
+
+    // The exact boundary: 30 days and one millisecond after the period end is
+    // elapsed; exactly 30 days is not.
+    assert.equal(
+      coverageOnly('2026-06-25T11:59:59.999Z', ENERGY_COVERAGE_OBSERVATION_TIME)?.exclusionReason,
+      'missing_directional_value',
+    );
+    assert.equal(
+      coverageOnly('2026-06-25T12:00:00.001Z', ENERGY_COVERAGE_OBSERVATION_TIME)?.exclusionReason,
+      'lag_not_elapsed',
+    );
+
+    // A published change whose own period end is inside the lag window is still
+    // a lag exclusion — publishing a value must not skip the lag rule.
+    const publishedInLagWindow = energyContribution(corridorSnapshot(energySignal(
+      publishedDemandChangeMetrics({
+        demandChangeCurrentMonth: '2026-06',
+        demandChangePriorMonth: '2025-06',
+        demandChangePeriodEnd: '2026-06-30T23:59:59.999Z',
+        demandChangePriorPeriodEnd: '2025-06-30T23:59:59.999Z',
+      }),
+      '2026-04-01T00:00:00.000Z',
+    )));
+    assert.equal(publishedInLagWindow?.rawValue, 3.4);
+    assert.equal(publishedInLagWindow?.exclusionReason, 'lag_not_elapsed');
+  });
+
+  it('never turns an energy coverage boolean into a contribution (#6067)', () => {
+    // Each case is chosen so that dropping the guard under test WOULD produce
+    // an included, directional contribution — an inert case proves nothing.
+    const mutations: Array<{
+      label: string;
+      signal: CorridorSourceSignal;
+      reason?: string;
+    }> = [
+      { label: 'coverage true', signal: energySignal(coverageOnlyMetrics()) },
+      { label: 'coverage false', signal: energySignal(coverageOnlyMetrics({ hasJodiOil: false })) },
+      {
+        label: 'every coverage flag',
+        signal: energySignal(coverageOnlyMetrics({
+          hasMix: true, hasJodiGas: true, hasIeaStocks: true, hasEmber: true,
+        })),
+      },
+      // Truthy non-boolean coverage shapes must not be read as a change either.
+      { label: 'numeric coverage', signal: energySignal(coverageOnlyMetrics({ hasJodiOil: 1 })) },
+      { label: 'string coverage', signal: energySignal(coverageOnlyMetrics({ hasJodiOil: 'true' })) },
+      { label: 'negative coverage', signal: energySignal(coverageOnlyMetrics({ hasEmber: -1 })) },
+      // A partially published change is not a published change. Each of these
+      // would otherwise land inside the comparison window and be included.
+      {
+        label: 'percentage without a period end',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangePeriodEnd: undefined,
+        })),
+      },
+      {
+        label: 'percentage without a basis',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangeBasis: undefined,
+        })),
+      },
+      {
+        label: 'percentage without a period label',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangeCurrentMonth: undefined,
+        })),
+      },
+      {
+        label: 'period end without a percentage',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangePercent: undefined,
+        })),
+      },
+      {
+        label: 'non-numeric percentage',
+        signal: energySignal(publishedDemandChangeMetrics({ demandChangePercent: 'up' })),
+      },
+      {
+        label: 'unparseable period end',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangePeriodEnd: 'not-a-timestamp',
+        })),
+      },
+      {
+        // An epoch number is not the published period-end contract; accepting
+        // one would let an unrelated numeric metric date the observation.
+        label: 'epoch-number period end',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangePeriodEnd: Date.parse('2026-04-30T23:59:59.999Z'),
+        })),
+      },
+      {
+        // The signal envelope is coherent, but the change claims a period that
+        // ended after the snapshot was retrieved — it cannot have existed yet.
+        // The family must still report the missing direction rather than
+        // disappearing behind an incoherently dated observation.
+        label: 'period end after retrieval',
+        signal: {
+          ...energySignal(publishedDemandChangeMetrics({
+            demandChangeCurrentMonth: '2026-06',
+            demandChangePriorMonth: '2025-06',
+            demandChangePeriodEnd: '2026-06-30T23:59:59.999Z',
+            demandChangePriorPeriodEnd: '2025-06-30T23:59:59.999Z',
+          }), '2026-05-01T00:00:00.000Z'),
+          releaseTime: '2026-05-15T00:00:00.000Z',
+          retrievalTime: '2026-05-15T00:00:00.000Z',
+        },
+        reason: 'missing_directional_value',
+      },
+      {
+        // Released after retrieval is an incoherent envelope.
+        label: 'released after retrieval',
+        signal: {
+          ...energySignal(publishedDemandChangeMetrics()),
+          releaseTime: '2026-07-25T10:20:00.000Z',
+          retrievalTime: '2026-07-25T10:15:00.000Z',
+        },
+      },
+      {
+        // Retrieved after the evaluation instant would be a look-ahead.
+        label: 'retrieved after evaluation',
+        signal: {
+          ...energySignal(publishedDemandChangeMetrics()),
+          releaseTime: '2026-07-26T10:10:00.000Z',
+          retrievalTime: '2026-07-26T10:15:00.000Z',
+        },
+      },
+      {
+        // An undated snapshot must not be read as "retrieved now" — that would
+        // manufacture freshness the source never claimed.
+        label: 'no retrieval timestamp',
+        signal: {
+          ...energySignal(publishedDemandChangeMetrics()),
+          releaseTime: null,
+          retrievalTime: null,
+        },
+      },
+      {
+        // A seasonal comparison wearing the reviewed name is not the reviewed
+        // comparison.
+        label: 'non-reviewed basis',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangeBasis: 'month_over_month',
+        })),
+      },
+    ];
+
+    for (const { label, signal: energy, reason } of mutations) {
+      const corridors = corridorSnapshot(energy);
+      // Assert on the ADAPTER's own output, not only the evaluated
+      // contribution: several of these shapes are also caught by the
+      // evaluator's generic timestamp filter, so a contribution-only assertion
+      // would pass even with the adapter's guard deleted.
+      // Refusal takes one of two truthful shapes: an observation carrying an
+      // explicit "not published" provenance, or — when the envelope is too
+      // incoherent to date at all — no observation of this series.
+      const observation = energyObservation(corridors);
+      assert.equal(
+        observation === undefined || observation.value === null,
+        true,
+        `${label} must not be published as a value by the adapter`,
+      );
+      if (observation !== undefined) {
+        assert.equal(
+          (observation.provenance as Record<string, unknown>).exclusion,
+          'directional_demand_change_not_published',
+          `${label} must be published as an explicit refusal`,
+        );
+      }
+
+      const contribution = energyContribution(corridors);
+      assert.equal(
+        contribution?.included,
+        false,
+        `${label} must not become a contribution`,
+      );
+      assert.equal(contribution?.rawValue, null, `${label} must not become a value`);
+      assert.equal(contribution?.direction, null, `${label} must not become a direction`);
+      if (reason !== undefined) {
+        assert.equal(
+          contribution?.exclusionReason,
+          reason,
+          `${label} must be reported as ${reason}`,
+        );
+      }
+    }
   });
 
   it('reads market inputs in one raw batch and produces an inspectable agreement response', async () => {
@@ -253,13 +575,26 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       raw: true,
     }]);
     assert.equal(response.state, 'agreement');
-    assert.equal(response.confidence.eligibleFamilies, 5);
+    // Neither freight (#6066) nor energy (#6067) is structurally missing any
+    // more; only the corridor breadth change still has no comparable prior.
+    assert.equal(response.confidence.eligibleFamilies, 6);
     assert.equal(response.historicalEvaluation.available, false);
     assert.match(response.historicalEvaluation.reason, /historical proxy ledger/i);
-    // Freight is no longer structurally missing: it is included whenever the
-    // Shanghai Shipping Exchange contract publishes a period change (#6066).
     assert.deepEqual(
       response.missingInputs.map((item) => item.family),
+      ['corridor'],
+    );
+
+    // Withholding the change puts energy back among the missing families —
+    // the restoration is driven by the published value, not by the fixture.
+    const coverageOnly = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => corridorSnapshot(energySignal(coverageOnlyMetrics())),
+      readMarketBatch: async () => marketValues(),
+    });
+    assert.equal(coverageOnly.confidence.eligibleFamilies, 5);
+    assert.deepEqual(
+      coverageOnly.missingInputs.map((item) => item.family),
       ['energy', 'corridor'],
     );
     assert.equal(

@@ -150,6 +150,103 @@ describe('China corridor source adapters (#5578)', () => {
     assert.equal(monthly?.contentFreshness, 'current');
   });
 
+  it('exposes the observed energy-demand change with its own period end (#6067)', () => {
+    const published = buildChinaCorridorSourceBundle({
+      energySpine: {
+        updatedAt: '2026-07-25T06:00:00.000Z',
+        sources: { mixYear: 2024, jodiOilMonth: '2026-04' },
+        coverage: { hasMix: true, hasJodiOil: true, hasDemandChange: true },
+        demandChange: {
+          basis: 'year_over_year',
+          observationPeriod: '2026-04',
+          priorObservationPeriod: '2025-04',
+          periodEnd: '2026-04-30T23:59:59.999Z',
+          priorPeriodEnd: '2025-04-30T23:59:59.999Z',
+          unit: 'kbd',
+          productCount: 4,
+          percentChange: 3.4,
+        },
+      },
+      energySpineMeta: FRESH_META,
+    }, ASSESSED_AT).families.power_energy.signals[0];
+
+    assert.equal(published?.metrics.demandChangePercent, 3.4);
+    assert.equal(published?.metrics.demandChangeBasis, 'year_over_year');
+    assert.equal(published?.metrics.demandChangeUnit, 'kbd');
+    assert.equal(published?.metrics.demandChangeCurrentMonth, '2026-04');
+    assert.equal(published?.metrics.demandChangePriorMonth, '2025-04');
+    assert.equal(published?.metrics.demandChangePeriodEnd, '2026-04-30T23:59:59.999Z');
+    assert.equal(published?.metrics.demandChangePriorPeriodEnd, '2025-04-30T23:59:59.999Z');
+    assert.equal(published?.metrics.demandChangeProductCount, 4);
+    assert.equal(published?.publisher.id, 'publisher:worldmonitor-energy-spine');
+    assert.equal(published?.retrievalTime, '2026-07-25T11:30:00.000Z');
+  });
+
+  it('omits every demand-change metric when the change is absent or malformed (#6067)', () => {
+    const spine = (demandChange: unknown) => buildChinaCorridorSourceBundle({
+      energySpine: {
+        updatedAt: '2026-07-25T06:00:00.000Z',
+        sources: { jodiOilMonth: '2026-04' },
+        coverage: { hasMix: true, hasJodiOil: true, hasJodiGas: true, hasEmber: true },
+        demandChange,
+      },
+      energySpineMeta: FRESH_META,
+    }, ASSESSED_AT).families.power_energy.signals[0];
+
+    const published = {
+      basis: 'year_over_year',
+      observationPeriod: '2026-04',
+      priorObservationPeriod: '2025-04',
+      periodEnd: '2026-04-30T23:59:59.999Z',
+      priorPeriodEnd: '2025-04-30T23:59:59.999Z',
+      unit: 'kbd',
+      productCount: 4,
+      percentChange: 3.4,
+    };
+
+    for (const demandChange of [
+      undefined,
+      null,
+      'year_over_year',
+      { ...published, percentChange: '3.4' },
+      { ...published, percentChange: null },
+      { ...published, basis: undefined },
+      { ...published, observationPeriod: undefined },
+      { ...published, periodEnd: 'not-a-timestamp' },
+      { ...published, priorPeriodEnd: undefined },
+      // An epoch number is not the published period-end contract.
+      { ...published, periodEnd: Date.parse('2026-04-30T23:59:59.999Z') },
+      { ...published, priorPeriodEnd: Date.parse('2025-04-30T23:59:59.999Z') },
+      // A prior period at or after the current one is not a comparison.
+      { ...published, priorPeriodEnd: '2026-05-31T23:59:59.999Z' },
+      { ...published, priorPeriodEnd: published.periodEnd },
+      // A seasonal comparison wearing the reviewed name is not the reviewed
+      // comparison, whatever the label says.
+      { ...published, basis: 'month_over_month' },
+      { ...published, basis: 'YEAR_OVER_YEAR' },
+      // ...and the label must agree with the arithmetic: the periods have to be
+      // exactly twelve months apart.
+      {
+        ...published,
+        priorObservationPeriod: '2026-03',
+        priorPeriodEnd: '2026-03-31T23:59:59.999Z',
+      },
+      {
+        ...published,
+        priorObservationPeriod: '2024-04',
+        priorPeriodEnd: '2024-04-30T23:59:59.999Z',
+      },
+      { ...published, priorObservationPeriod: '2025-13' },
+    ]) {
+      const signal = spine(demandChange);
+      // Coverage booleans survive; nothing directional is invented from them.
+      assert.equal(signal?.metrics.hasJodiOil, true);
+      assert.equal(signal?.metrics.demandChangePercent, undefined);
+      assert.equal(signal?.metrics.demandChangePeriodEnd, undefined);
+      assert.equal(signal?.metrics.demandChangeBasis, undefined);
+    }
+  });
+
   it('omits synthetic Comtrade YoY and CCFI change fields', () => {
     const bundle = buildChinaCorridorSourceBundle({
       comtrade: {
