@@ -46,6 +46,12 @@ function dataEntries(doc, fileLabel) {
 async function bundleFeedsModule(repoRoot) {
   const tempDir = mkdtempSync(join(tmpdir(), 'geo-coverage-health-'));
   const outfile = join(tempDir, 'feeds-bundle.mjs');
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    rmSync(tempDir, { recursive: true, force: true });
+  };
   // Stub the @/utils barrel so we don't drag proxy → i18n → import.meta.glob.
   // feeds.ts only needs rssProxyUrl, and identity is fine for name registries.
   const stubUtilsPlugin = {
@@ -61,37 +67,50 @@ async function bundleFeedsModule(repoRoot) {
       }));
     },
   };
-  await build({
-    entryPoints: [join(repoRoot, 'src/config/feeds.ts')],
-    bundle: true,
-    format: 'esm',
-    platform: 'neutral',
-    target: 'es2022',
-    write: false,
-    absWorkingDir: repoRoot,
-    alias: { '@': join(repoRoot, 'src') },
-    plugins: [stubUtilsPlugin],
-    define: {
-      'import.meta.env': JSON.stringify({
-        DEV: false,
-        PROD: true,
-        SSR: false,
-        MODE: 'test',
-        BASE_URL: '/',
-        VITE_VARIANT: 'full',
-        VITE_RSS_DIRECT_TO_RELAY: 'false',
-      }),
-    },
-  }).then((result) => {
+  try {
+    const result = await build({
+      entryPoints: [join(repoRoot, 'src/config/feeds.ts')],
+      bundle: true,
+      format: 'esm',
+      platform: 'neutral',
+      target: 'es2022',
+      write: false,
+      absWorkingDir: repoRoot,
+      alias: { '@': join(repoRoot, 'src') },
+      plugins: [stubUtilsPlugin],
+      define: {
+        'import.meta.env': JSON.stringify({
+          DEV: false,
+          PROD: true,
+          SSR: false,
+          MODE: 'test',
+          BASE_URL: '/',
+          VITE_VARIANT: 'full',
+          VITE_RSS_DIRECT_TO_RELAY: 'false',
+        }),
+      },
+    });
     writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
-  });
-  const feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
-  return {
-    feeds,
-    cleanup() {
-      rmSync(tempDir, { recursive: true, force: true });
-    },
-  };
+    const feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+    return { feeds, cleanup };
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
+/** Return the default-enabled catalog sources that are reachable for EN. */
+export function getEnglishDefaultEnabledSources(feeds) {
+  const defaultEnabled = feeds.getAllDefaultEnabledSources();
+  const allFeeds = [
+    ...Object.values(feeds.FULL_FEEDS).flat(),
+    ...feeds.INTEL_SOURCES,
+  ];
+  return new Set(
+    allFeeds
+      .filter((feed) => defaultEnabled.has(feed.name) && (!feed.lang || feed.lang === 'en'))
+      .map((feed) => feed.name),
+  );
 }
 
 /**
@@ -99,14 +118,13 @@ async function bundleFeedsModule(repoRoot) {
  * @param {string} [repoRoot]
  */
 export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT) {
-  const [{ REGIONS }, sourceGeographyDoc, policy, iso2ToRegion, { feeds, cleanup }] =
-    await Promise.all([
-      import(pathToFileURL(join(repoRoot, 'shared/geography.js')).href),
-      readJson(join(repoRoot, 'shared/source-geography.json')),
-      readJson(join(repoRoot, 'shared/geo-coverage-policy.json')),
-      readJson(join(repoRoot, 'shared/iso2-to-region.json')),
-      bundleFeedsModule(repoRoot),
-    ]);
+  const [{ REGIONS }, sourceGeographyDoc, policy, iso2ToRegion] = await Promise.all([
+    import(pathToFileURL(join(repoRoot, 'shared/geography.js')).href),
+    readJson(join(repoRoot, 'shared/source-geography.json')),
+    readJson(join(repoRoot, 'shared/geo-coverage-policy.json')),
+    readJson(join(repoRoot, 'shared/iso2-to-region.json')),
+  ]);
+  const { feeds, cleanup } = await bundleFeedsModule(repoRoot);
 
   // Deduped keyCountries → owning display regions ('global' repeats strategic
   // countries and is not itself a coverage area, so it is not listed as an owner).
@@ -135,7 +153,7 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT) {
     ...Object.values(feeds.FULL_FEEDS).flat().map((f) => f.name),
     ...feeds.INTEL_SOURCES.map((f) => f.name),
   ]);
-  const defaultEnabled = feeds.getAllDefaultEnabledSources();
+  const defaultEnabled = getEnglishDefaultEnabledSources(feeds);
   const validIso2 = new Set([...Object.keys(iso2ToRegion), ...byIso.keys()]);
 
   return {
@@ -168,6 +186,25 @@ export function validateSourceGeography({ sourceGeography, catalogNames, validIs
     for (const iso2 of countries) {
       if (!validIso2.has(iso2)) {
         problems.push(`source-geography.json: "${name}" tags unknown ISO2 "${iso2}"`);
+      }
+    }
+  }
+  return problems;
+}
+
+/** Structural integrity of policy keys against the deduped keyCountry set. */
+export function validateGeoCoveragePolicy({ policy, keyCountries }) {
+  const known = new Set(keyCountries.map(({ iso2 }) => iso2));
+  const problems = [];
+  for (const [section, values] of [
+    ['floors', policy.floors ?? {}],
+    ['zeroDefaultOnAllowlist', policy.zeroDefaultOnAllowlist ?? {}],
+  ]) {
+    for (const iso2 of Object.keys(values)) {
+      if (!known.has(iso2)) {
+        problems.push(
+          `geo-coverage-policy.json: ${section} key "${iso2}" is not a keyCountry in shared/geography.js`,
+        );
       }
     }
   }

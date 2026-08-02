@@ -14,6 +14,7 @@ import {
   evaluateGeoCoverage,
   formatGeoCoverageHuman,
   loadGeoCoverageInputs,
+  validateGeoCoveragePolicy,
   validateSourceGeography,
 } from './geo-coverage-health.mjs';
 
@@ -22,9 +23,10 @@ const asJson = process.argv.includes('--json');
 const inputs = await loadGeoCoverageInputs();
 try {
   const mapProblems = validateSourceGeography(inputs);
+  const policyProblems = validateGeoCoveragePolicy(inputs);
   const rows = computeGeoCoverage(inputs);
   const { violations } = evaluateGeoCoverage(rows);
-  const allViolations = [...mapProblems, ...violations];
+  const allViolations = [...mapProblems, ...policyProblems, ...violations];
 
   if (asJson) {
     process.stdout.write(JSON.stringify({
@@ -34,8 +36,9 @@ try {
       rows,
     }, null, 2) + '\n');
   } else {
-    for (const problem of mapProblems) {
-      process.stdout.write(`MAP PROBLEM: ${problem}\n`);
+    for (const problem of mapProblems) process.stdout.write(`MAP PROBLEM: ${problem}\n`);
+    for (const problem of policyProblems) {
+      process.stdout.write(`POLICY PROBLEM: ${problem}\n`);
     }
     process.stdout.write(formatGeoCoverageHuman({
       rows,
@@ -46,7 +49,7 @@ try {
       policy: inputs.policy,
     }) + '\n');
   }
-  process.exit(allViolations.length > 0 ? 1 : 0);
+  process.exitCode = allViolations.length > 0 ? 1 : 0;
 } finally {
   inputs.cleanup();
 }

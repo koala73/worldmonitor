@@ -20,12 +20,15 @@
     "PK": 1
   },
   "zeroDefaultOnAllowlist": {
+    "AR": "Clarin / Infobae Americas are es locale-gated; no EN default-on local source.",
     "GB": "By design: covered via global-remit UK outlets (BBC World, Guardian World); no UK-domestic feed in catalog.",
     "EG": "No Egypt-dedicated source in catalog; covered via MENA wires.",
     "IQ": "Catalog has Rudaw (Kurdistan Region of Iraq); not EN default-on.",
     "KR": "Yonhap News / Chosun Ilbo are ko locale-boosted only; no EN default-on local.",
     "AU": "ABC News Australia / Guardian Australia in catalog; not EN default-on.",
+    "CD": "Actualite.cd / Radio Okapi are fr locale-gated; no EN default-on local source.",
     "ID": "Jakarta Post in catalog; not EN default-on.",
+    "IT": "ANSA / Corriere della Sera / Repubblica are it locale-gated; no EN default-on local source.",
     "BD": "No Bangladesh-dedicated source in catalog.",
     "LK": "No Sri Lanka-dedicated source in catalog.",
     "AF": "No Afghanistan-dedicated source in catalog.",
@@ -36,6 +39,7 @@
     "VE": "No Venezuela-dedicated source in catalog.",
     "PE": "No Peru-dedicated source in catalog.",
     "KE": "No Kenya-dedicated source in catalog; covered via Africa wires.",
+    "SA": "Arab News / Asharq Business are not EN default-on; Asharq News is ar locale-gated.",
     "ET": "The Reporter Ethiopia in catalog; not EN default-on."
   }
 }
