@@ -754,36 +754,9 @@ const ON_DEMAND_KEYS = new Set([
   // #scoreEnergy). Do NOT add these labels back to ON_DEMAND_KEYS
   // without revisiting that plan.
   'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
-  'fxYoy', // TRANSITIONAL (PR #3071): seed-fx-yoy Railway cron deployed manually after merge —
-           // gate as on-demand so a deploy-order race or first-cron-run failure doesn't
-           // fire a CRIT health alarm. Remove from this set after ~7 days of clean
-           // production cron runs (verify via `seed-meta:economic:fx-yoy.fetchedAt`).
-  'hyperliquidFlow', // TRANSITIONAL: seed-hyperliquid-flow runs inside seed-bundle-market-backup on
-                     // Railway; gate as on-demand so initial deploy-order race or first cold-start
-                     // snapshot doesn't CRIT. Remove after ~7 days of clean production cron runs.
-  'chokepointFlowsRelayHeartbeat', // TRANSITIONAL (PR #3133): ais-relay.cjs writes this on the
-                                   // first successful child exit after a deploy. Vercel deploys
-                                   // api/health.js instantly, but Railway rebuild + 6h initial
-                                   // loop interval means the key is absent for up to ~6h post-merge.
-                                   // Gate as on-demand so the deploy window doesn't CRIT. Remove
-                                   // after ~7 days of clean production runs (verify via
-                                   // `relay:heartbeat:chokepoint-flows.fetchedAt`).
-  'climateNewsRelayHeartbeat',     // TRANSITIONAL (PR #3133): same deploy-order rationale.
-                                   // 30min initial loop, so window is shorter but still present.
-                                   // Remove after ~7 days alongside the chokepoint-flows entry.
-  'digestNotifications',           // TRANSITIONAL (PR #4253): seed-digest-notifications.mjs writes
-                                   // `digest:last-run` on the first cron run after deploy. Vercel
-                                   // can publish this health registry before Railway's 30min cron
-                                   // ticks, so gate only the first absent-key window as WARN. Remove
-                                   // after ~7 days of clean `seed-meta:digest:last-run` writes.
-  'eiaPetroleum',                  // TRANSITIONAL: gold-standard migration of /api/eia/petroleum
-                                   // from live Vercel fetch to Redis-reader (seed-bundle-energy-sources
-                                   // daily cron). SEED_META entry above enforces 72h staleness — this
-                                   // ON_DEMAND gate only softens the absent-on-deploy case (Vercel
-                                   // deploys instantly; Railway EIA_API_KEY + first daily tick ~24h
-                                   // behind). STALE_SEED still fires if data goes stale after first seed.
-                                   // Remove from this set after ~7 days of clean cron runs so
-                                   // never-provisioned Railway promotes EMPTY_ON_DEMAND → EMPTY (CRIT).
+  // #6070 retired six expired deployment-order bridges after live producer
+  // verification. Future temporary softening needs an activation marker or an
+  // enforced wall-clock expiry; a prose-only removal reminder is not a control.
   // #5736 deployment-order bridge, activation-gated like chinaCoverage: Vercel
   // ships this registry the moment the PR merges, but the record only exists
   // after the collector's next Railway tick (up to 6h for energy/intelligence).

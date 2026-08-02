@@ -23,6 +23,7 @@ const {
   BOOTSTRAP_KEYS,
   STANDALONE_KEYS,
   SEED_META,
+  ON_DEMAND_KEYS,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -755,14 +756,34 @@ test('classifyKey: digestNotifications heartbeat goes stale when the cron stops'
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
-test('classifyKey: digestNotifications missing before first cron run is transitional warn', () => {
-  const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
-    makeCtx({}));
+test('classifyKey: expired transitional producers fail closed when missing or empty', () => {
+  const graduatedNames = [
+    'fxYoy',
+    'hyperliquidFlow',
+    'chokepointFlowsRelayHeartbeat',
+    'climateNewsRelayHeartbeat',
+    'eiaPetroleum',
+    'digestNotifications',
+  ];
 
-  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
-  assert.equal(entry.records, 0);
-  assert.equal(entry.maxStaleMin, 90);
-  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  for (const name of graduatedNames) {
+    const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+    const seedCfg = SEED_META[name];
+    assert.ok(dataKey, `${name}: data key remains registered`);
+    assert.ok(seedCfg, `${name}: freshness metadata remains registered`);
+    assert.equal(ON_DEMAND_KEYS.has(name), false, `${name}: expired softening must be retired`);
+
+    const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({}));
+    assert.equal(missing.status, 'EMPTY', `${name}: a vanished producer output is critical`);
+    assert.equal(STATUS_COUNTS[missing.status], 'crit');
+
+    const empty = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+      strens: { [dataKey]: 128 },
+      metaValues: { [seedCfg.key]: seedMeta({ recordCount: 0 }) },
+    }));
+    assert.equal(empty.status, 'EMPTY_DATA', `${name}: zero records are critical`);
+    assert.equal(STATUS_COUNTS[empty.status], 'crit');
+  }
 });
 
 test('classifyKey: suppressed retailer-spread (present key, 0 records) while fresh → OK, not EMPTY_DATA', () => {
