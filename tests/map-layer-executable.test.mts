@@ -18,6 +18,8 @@ import { test, describe } from 'node:test';
 import {
   LAYER_REGISTRY,
   isLayerExecutable,
+  isLayerEntitled,
+  sanitizeLockedLayers,
 } from '../src/config/map-layer-definitions';
 
 describe('LAYER_REGISTRY — deckGLOnly flag', () => {
@@ -108,6 +110,69 @@ describe('isLayerExecutable — renderer gate', () => {
     // Typo or stale key -> must not accidentally pass the gate.
     // @ts-expect-error — intentionally passing a key outside the union
     assert.equal(isLayerExecutable('nonexistentLayer', 'flat', true), false);
+  });
+});
+
+// #6045 — premium entitlement gate for CMD+K / programmatic layer enable.
+// DeckGLMap disables the checkbox for premium === 'locked' only; enhanced
+// layers stay toggleable with a PRO badge. isLayerEntitled must match that
+// contract so CMD+K cannot enable locked layers for free users (and cannot
+// leave a stuck checked+disabled control).
+describe('isLayerEntitled — premium locked gate', () => {
+  test('resilienceScore requires premium (locked)', () => {
+    assert.equal(LAYER_REGISTRY.resilienceScore.premium, 'locked');
+    assert.equal(isLayerEntitled('resilienceScore', false), false,
+      'free users must not be entitled to resilienceScore');
+    assert.equal(isLayerEntitled('resilienceScore', true), true,
+      'premium users must be entitled to resilienceScore');
+  });
+
+  test('enhanced layers remain entitled without premium', () => {
+    // ciiChoropleth is premium:'enhanced' on desktop — free users can still
+    // toggle it (PRO badge only). Gating it would regress free-tier CII.
+    // On web where premium is undefined the same assertion holds.
+    assert.equal(isLayerEntitled('ciiChoropleth', false), true,
+      'enhanced/free layers stay entitled for free users');
+    assert.equal(isLayerEntitled('ciiChoropleth', true), true);
+  });
+
+  test('non-premium layers are always entitled', () => {
+    assert.equal(LAYER_REGISTRY.conflicts.premium, undefined);
+    assert.equal(isLayerEntitled('conflicts', false), true);
+    assert.equal(isLayerEntitled('pipelines', false), true);
+  });
+
+  test('unknown layer key returns false', () => {
+    // @ts-expect-error — intentionally passing a key outside the union
+    assert.equal(isLayerEntitled('nonexistentLayer', true), false);
+  });
+});
+
+describe('sanitizeLockedLayers — free-user stuck-state heal', () => {
+  test('clears locked layers when unentitled, leaves others alone', () => {
+    const input = {
+      resilienceScore: true,
+      ciiChoropleth: true,
+      conflicts: true,
+      pipelines: false,
+    } as unknown as import('../src/types').MapLayers;
+    const out = sanitizeLockedLayers(input, false);
+    assert.equal(out.resilienceScore, false, 'locked layer forced off');
+    assert.equal(out.ciiChoropleth, true, 'enhanced/free layer preserved');
+    assert.equal(out.conflicts, true);
+    assert.equal(out.pipelines, false);
+    // Input not mutated
+    assert.equal(input.resilienceScore, true);
+  });
+
+  test('is a no-op when entitled', () => {
+    const input = {
+      resilienceScore: true,
+      conflicts: true,
+    } as unknown as import('../src/types').MapLayers;
+    const out = sanitizeLockedLayers(input, true);
+    assert.equal(out.resilienceScore, true);
+    assert.equal(out.conflicts, true);
   });
 });
 

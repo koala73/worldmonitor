@@ -459,7 +459,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       };
     `],
     ['@/services/i18n', 'export function t(key) { return key; }'],
-    ['@/services/widget-store', 'export function deleteWidget(){} export function getWidget(){ return null; } export function saveWidget(){} export function isProUser(){ return true; }'],
+    ['@/services/widget-store', 'export function deleteWidget(){} export function getWidget(){ return null; } export function saveWidget(){} export function isProUser(){ return true; } export function isProTierResolved(){ return true; }'],
     ['@/services/mcp-store', 'export function deleteMcpPanel(){} export function getMcpPanel(){ return null; } export function saveMcpPanel(){}'],
     ['@/services/runtime', 'export function isDesktopRuntime(){ return false; }'],
     ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; }'],

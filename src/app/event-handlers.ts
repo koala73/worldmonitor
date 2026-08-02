@@ -7,7 +7,9 @@ import type {
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
+import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { sanitizeLockedLayers } from '@/config/map-layer-definitions';
 import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
@@ -973,9 +975,15 @@ export class EventHandlerManager implements AppModule {
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
     const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
-    return this.filterMissionLayersForAvailableServices(
+    let filtered = this.filterMissionLayersForAvailableServices(
       filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
     );
+    // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
+    // Free users must not persist or apply locked layers through this path.
+    if (isProTierResolved() && !hasPremiumAccess()) {
+      filtered = sanitizeLockedLayers(filtered, false);
+    }
+    return filtered;
   }
 
   private filterMissionLayersForAvailableServices(layers: MapLayers): MapLayers {

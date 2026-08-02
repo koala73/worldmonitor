@@ -395,6 +395,49 @@ export function isLayerExecutable(
   return true;
 }
 
+/**
+ * Whether the user may enable a layer given their premium status.
+ *
+ * Matches DeckGLMap's layer-picker contract:
+ *   - `premium: 'locked'` → disabled checkbox for free users (must not enable)
+ *   - `premium: 'enhanced'` → PRO badge only; free users can still toggle
+ *   - no premium flag → free for everyone
+ *
+ * Used by CMD+K (`search-manager`) and programmatic enable paths so free
+ * users cannot force a locked layer on (which left a stuck checked+disabled
+ * checkbox and could mutual-exclude a free layer — #6045).
+ */
+export function isLayerEntitled(
+  layerKey: keyof MapLayers,
+  hasPremium: boolean,
+): boolean {
+  const def = LAYER_REGISTRY[layerKey];
+  if (!def) return false;
+  if (def.premium === 'locked' && !hasPremium) return false;
+  return true;
+}
+
+/**
+ * Force locked premium layers off when the user is not entitled.
+ * Heals stuck localStorage/state left by pre-#6045 CMD+K activation.
+ * Does not mutate the input object.
+ */
+export function sanitizeLockedLayers(
+  layers: MapLayers,
+  hasPremium: boolean,
+): MapLayers {
+  if (hasPremium) return layers;
+  let changed = false;
+  const sanitized = { ...layers };
+  for (const key of Object.keys(sanitized) as Array<keyof MapLayers>) {
+    if (sanitized[key] && LAYER_REGISTRY[key]?.premium === 'locked') {
+      sanitized[key] = false;
+      changed = true;
+    }
+  }
+  return changed ? sanitized : layers;
+}
+
 export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   aviation: ['flights'],
   flight: ['flights'],

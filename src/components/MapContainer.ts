@@ -6,6 +6,8 @@
  */
 import { isMobileDevice } from '@/utils';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { isLayerEntitled, sanitizeLockedLayers } from '@/config/map-layer-definitions';
+import { isProTierResolved } from '@/services/widget-store';
 import type { MapComponent } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
@@ -806,7 +808,12 @@ export class MapContainer {
   }
 
   public setLayers(layers: MapLayers): void {
-    const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
+    // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.
+    let sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    if (isProTierResolved() && !hasPremiumAccess(getAuthState())) {
+      sanitized = sanitizeLockedLayers(sanitized, false);
+    }
     this.initialState = { ...this.initialState, layers: sanitized };
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
@@ -1296,6 +1303,8 @@ export class MapContainer {
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
     if (layer === 'resilienceScore' && !this.useDeckGL) return;
+    // #6045 — don't stamp initialState or enable locked premium layers for free users.
+    if (!isLayerEntitled(layer, hasPremiumAccess(getAuthState()))) return;
     this.initialState = {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },

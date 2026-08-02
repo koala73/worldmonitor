@@ -118,8 +118,11 @@ import {
   bindLayerSearch,
   getLayerExplanation,
   hasCuratedLayerExplanation,
+  isLayerEntitled,
+  sanitizeLockedLayers,
   type MapVariant,
 } from '@/config/map-layer-definitions';
+import { isProTierResolved } from '@/services/widget-store';
 import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
@@ -6053,9 +6056,16 @@ export class DeckGLMap {
   }
 
   public setLayers(layers: MapLayers): void {
+    // #6045 — strip locked premium layers for settled free users before
+    // checkbox force-sync (prevents checked+disabled stuck state from any
+    // bulk path: mission presets, layers:all, URL, cloud prefs).
+    let next = layers;
+    if (isProTierResolved() && !hasPremiumAccess(getAuthState())) {
+      next = sanitizeLockedLayers(layers, false);
+    }
     const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
-    this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
+    this.state.layers = normalizeExclusiveChoropleths(next, this.state.layers);
     if (!this.state.layers.military) this.clearFlightTrails();
     this.manageAircraftTimer(this.state.layers.flights);
     if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
@@ -7192,6 +7202,10 @@ export class DeckGLMap {
 
   // Enable layer programmatically
   public enableLayer(layer: keyof MapLayers): void {
+    // Defense in depth for CMD+K / agent / deep-link paths: locked premium
+    // layers stay off for free users (#6045). search-manager also gates
+    // before calling here; this catches any remaining enableLayer callers.
+    if (!isLayerEntitled(layer, hasPremiumAccess(getAuthState()))) return;
     if (!this.state.layers[layer]) {
       if (layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
         this.state.layers.ciiChoropleth = false;

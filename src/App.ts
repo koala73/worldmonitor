@@ -18,7 +18,7 @@ import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
-import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
+import { sanitizeLayersForVariant, sanitizeLockedLayers } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import {
@@ -32,7 +32,7 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser, loadWidgets } from '@/services/widget-store';
+import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -321,13 +321,23 @@ export class App {
     }
 
     if (keySet.has(STORAGE_KEYS.mapLayers) && !this.state.initialUrlState?.layers) {
-      const nextLayers = normalizeExclusiveChoropleths(
+      let nextLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
           loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, this.state.mapLayers),
           SITE_VARIANT as MapVariant,
         ),
         this.state.mapLayers,
       );
+      // #6045 — clear locked premium layers once free-tier is settled.
+      // Skip while entitlement is still resolving so Pro users don't lose
+      // resilienceScore during the Clerk/Convex boot window.
+      if (isProTierResolved() && !hasPremiumAccess()) {
+        const healed = sanitizeLockedLayers(nextLayers, false);
+        if (healed !== nextLayers) {
+          nextLayers = healed;
+          saveToStorage(STORAGE_KEYS.mapLayers, nextLayers);
+        }
+      }
       if (!CYBER_LAYER_ENABLED) nextLayers.cyberThreats = false;
       this.state.mapLayers = nextLayers;
       this.state.map?.setLayers(nextLayers);
@@ -762,6 +772,16 @@ export class App {
           currentVariant as MapVariant,
         ), null,
       );
+      // #6045 — heal stuck locked layers from pre-gate localStorage once free
+      // tier is settled. Do not run while Pro status is still resolving.
+      // Persist immediately so dirty storage doesn't reintroduce the layer.
+      if (isProTierResolved() && !hasPremiumAccess()) {
+        const healed = sanitizeLockedLayers(mapLayers, false);
+        if (healed !== mapLayers) {
+          mapLayers = healed;
+          saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
+        }
+      }
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         DEFAULT_PANELS
@@ -955,6 +975,14 @@ export class App {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant), null,
       );
+      // #6045 — URL layer deep-links also cannot force locked layers on for free users.
+      if (isProTierResolved() && !hasPremiumAccess()) {
+        const healed = sanitizeLockedLayers(mapLayers, false);
+        if (healed !== mapLayers) {
+          mapLayers = healed;
+          saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
+        }
+      }
       initialUrlState.layers = mapLayers;
     }
     if (!CYBER_LAYER_ENABLED) {
@@ -1619,6 +1647,18 @@ export class App {
         // Pro data must not remain visible or available from the client cache
         // after sign-out, expiry, or downgrade.
         void this.dataLoader.clearGlobalTenders();
+      }
+      // #6045 — when free-tier is settled, strip locked layers from map state
+      // (heals stuck checked+disabled checkbox from pre-gate CMD+K, and clears
+      // layers on Pro→free downgrade). Skipped while entitlement is still
+      // resolving so Pro users keep resilienceScore across the boot window.
+      if (!nowPremium && isProTierResolved()) {
+        const healed = sanitizeLockedLayers(this.state.mapLayers, false);
+        if (healed !== this.state.mapLayers) {
+          this.state.mapLayers = healed;
+          saveToStorage(STORAGE_KEYS.mapLayers, healed);
+          this.state.map?.setLayers(healed);
+        }
       }
       _prevHadPremium = nowPremium;
     };
