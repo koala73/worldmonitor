@@ -18,6 +18,7 @@ import {
   parseArgs,
   readReplayListPaged,
   renderMarkdownSummary,
+  SNAPSHOT_TTL_SECONDS,
 } from '../scripts/replay-digest-cooldown.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -467,32 +468,41 @@ describe('parseArgs', () => {
 // `res.ok` was true and `body.result` was undefined — the harness read it
 // as an empty list and exited 2 with "no records returned. Verify
 // DIGEST_DEDUP_REPLAY_LOG=1", pointing the operator at the wrong cause.
+/** Fake Upstash that serves `total` entries and records every URL hit. */
+function mockUpstash(total) {
+  const urls = [];
+  const lrangeUrls = [];
+  const requests = [];
+  const pipelines = [];
+  const dels = [];
+  return {
+    urls,
+    lrangeUrls,
+    requests,
+    pipelines,
+    dels,
+    impl: async (url, init) => {
+      urls.push(url);
+      requests.push({ url, init });
+      if (url.endsWith('/pipeline')) {
+        pipelines.push(JSON.parse(init.body));
+        return { ok: true, status: 200, json: async () => ([{ result: 1 }, { result: 1 }]) };
+      }
+      if (url.includes('/del/')) {
+        dels.push(decodeURIComponent(url.split('/del/')[1]));
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      lrangeUrls.push(url);
+      const [, start, stop] = url.match(/\/lrange\/[^/]+\/(-?\d+)\/(-?\d+)$/).map(Number);
+      const from = start;
+      const to = Math.min(stop, total - 1);
+      const result = [];
+      for (let i = from; i <= to; i++) result.push(JSON.stringify({ storyHash: `h-${i}` }));
+      return { ok: true, status: 200, json: async () => ({ result }) };
+    },
+  };
+}
 describe('readReplayListPaged', () => {
-  /** Fake Upstash that serves `total` entries and records every URL hit. */
-  function mockUpstash(total) {
-    const urls = [];
-    const lrangeUrls = [];
-    const requests = [];
-    return {
-      urls,
-      lrangeUrls,
-      requests,
-      impl: async (url, init) => {
-        urls.push(url);
-        requests.push({ url, init });
-        if (url.includes('/copy/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
-        if (url.includes('/expire/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
-        if (url.includes('/del/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
-        lrangeUrls.push(url);
-        const [, start, stop] = url.match(/\/lrange\/[^/]+\/(-?\d+)\/(-?\d+)$/).map(Number);
-        const from = start;
-        const to = Math.min(stop, total - 1);
-        const result = [];
-        for (let i = from; i <= to; i++) result.push(JSON.stringify({ storyHash: `h-${i}` }));
-        return { ok: true, status: 200, json: async () => ({ result }) };
-      },
-    };
-  }
 
   it('never issues an unbounded 0/-1 range', async () => {
     const up = mockUpstash(2_500);
@@ -545,12 +555,12 @@ describe('readReplayListPaged', () => {
     let live = [...original];
     let snapshot = null;
     const impl = async (url) => {
-      if (url.includes('/copy/')) {
+      if (url.endsWith('/pipeline')) {
         snapshot = [...live];
         live = [...live.slice(2), JSON.stringify({ storyHash: 'h-new-0' }), JSON.stringify({ storyHash: 'h-new-1' })];
-        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+        return { ok: true, status: 200, json: async () => ([{ result: 1 }, { result: 1 }]) };
       }
-      if (url.includes('/expire/') || url.includes('/del/')) {
+      if (url.includes('/del/')) {
         return { ok: true, status: 200, json: async () => ({ result: 1 }) };
       }
       const parts = url.split('/');
@@ -575,13 +585,21 @@ describe('readReplayListPaged', () => {
   // The load-bearing one: an HTTP 200 carrying a per-command error must
   // NOT be read as "this day had no records".
   it('throws on an HTTP-200 per-command Upstash error instead of returning []', async () => {
-    const impl = async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        error: 'ERR max request size exceeded. Limit: 52428800 bytes, Actual: 144028523 bytes',
-      }),
-    });
+    const impl = async (url) => {
+      // The snapshot succeeds; the rejection lands on the page read, which is
+      // where an oversized result actually surfaces.
+      if (url.endsWith('/pipeline')) {
+        return { ok: true, status: 200, json: async () => ([{ result: 1 }, { result: 1 }]) };
+      }
+      if (url.includes('/del/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          error: 'ERR max request size exceeded. Limit: 52428800 bytes, Actual: 144028523 bytes',
+        }),
+      };
+    };
     await assert.rejects(
       () => readReplayListPaged('https://u', 't', 'k', { fetchImpl: impl }),
       /max request size exceeded/,
@@ -595,6 +613,95 @@ describe('readReplayListPaged', () => {
       () => readReplayListPaged('https://u', 't', 'k', { fetchImpl: impl }),
       /HTTP 500/,
     );
+  });
+});
+
+// F1/F2/F3 — the snapshot's lifecycle is the entire safety story for reading a
+// COPY instead of the live key, and none of it was asserted: deleting the
+// `finally` cleanup, or the EXPIRE, left the whole suite green. A leaked
+// snapshot is up to ~31MB at the current cap (~154MB for keys written under
+// the old one), and without a TTL it never expires.
+describe('readReplayListPaged — snapshot lifecycle', () => {
+  it('creates the snapshot and its TTL in ONE pipeline, with REPLACE', async () => {
+    const up = mockUpstash(1);
+    await readReplayListPaged('https://u', 't', 'k', {
+      fetchImpl: up.impl, pageSize: 1_000, snapshotKey: 'snap-1',
+    });
+    assert.equal(up.pipelines.length, 1, 'snapshot must cost exactly one request');
+    const [copyCmd, expireCmd] = up.pipelines[0];
+    // Two round trips would leave a window where the snapshot exists with no
+    // TTL; a SIGKILL there orphans it permanently, since `finally` never runs.
+    assert.deepEqual(copyCmd, ['COPY', 'k', 'snap-1', 'REPLACE']);
+    assert.deepEqual(expireCmd, ['EXPIRE', 'snap-1', String(SNAPSHOT_TTL_SECONDS)]);
+    assert.ok(SNAPSHOT_TTL_SECONDS > 0, 'a zero/absent TTL is the leak this guards');
+  });
+
+  it('deletes the snapshot after a successful read', async () => {
+    const up = mockUpstash(2_500);
+    await readReplayListPaged('https://u', 't', 'k', {
+      fetchImpl: up.impl, pageSize: 1_000, snapshotKey: 'snap-2',
+    });
+    assert.deepEqual(up.dels, ['snap-2'], 'snapshot must be reaped, not left to the TTL');
+  });
+
+  it('deletes the snapshot even when paging throws mid-read', async () => {
+    const dels = [];
+    let pages = 0;
+    const impl = async (url) => {
+      if (url.endsWith('/pipeline')) {
+        return { ok: true, status: 200, json: async () => ([{ result: 1 }, { result: 1 }]) };
+      }
+      if (url.includes('/del/')) {
+        dels.push(decodeURIComponent(url.split('/del/')[1]));
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      pages += 1;
+      if (pages === 2) return { ok: false, status: 500, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ result: Array(1_000).fill('{}') }) };
+    };
+    await assert.rejects(
+      () => readReplayListPaged('https://u', 't', 'k', {
+        fetchImpl: impl, pageSize: 1_000, snapshotKey: 'snap-3',
+      }),
+      /HTTP 500/,
+    );
+    assert.deepEqual(dels, ['snap-3'], 'a mid-read failure must still reap the snapshot');
+  });
+
+  it('treats COPY result 0 as a genuinely empty day and creates no cleanup debt', async () => {
+    const dels = [];
+    const impl = async (url) => {
+      if (url.endsWith('/pipeline')) {
+        // With REPLACE, 0 can only mean the source key is gone.
+        return { ok: true, status: 200, json: async () => ([{ result: 0 }, { result: 0 }]) };
+      }
+      if (url.includes('/del/')) { dels.push(url); return { ok: true, status: 200, json: async () => ({ result: 1 }) }; }
+      throw new Error('must not page a snapshot that was never created: ' + url);
+    };
+    const out = await readReplayListPaged('https://u', 't', 'k', {
+      fetchImpl: impl, snapshotKey: 'snap-4',
+    });
+    assert.deepEqual(out, []);
+    assert.deepEqual(dels, [], 'nothing was created, so nothing is deleted');
+  });
+
+  it('throws (and reaps) when the copy lands but its TTL does not', async () => {
+    const dels = [];
+    const impl = async (url) => {
+      if (url.endsWith('/pipeline')) {
+        return { ok: true, status: 200, json: async () => ([{ result: 1 }, { result: 0 }]) };
+      }
+      if (url.includes('/del/')) {
+        dels.push(decodeURIComponent(url.split('/del/')[1]));
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      throw new Error('must not page a snapshot with no TTL: ' + url);
+    };
+    await assert.rejects(
+      () => readReplayListPaged('https://u', 't', 'k', { fetchImpl: impl, snapshotKey: 'snap-5' }),
+      /EXPIRE snap-5 rejected/,
+    );
+    assert.deepEqual(dels, ['snap-5'], 'an untethered snapshot must be deleted, not paged');
   });
 });
 
@@ -622,21 +729,21 @@ describe('fetchRecords mixed-success path', () => {
     const goodKey = 'digest:replay-log:v1:full:en:high:2026-08-02';
     const goodRecord = { storyHash: 'good', ruleId: 'full:en:high', tsMs: Date.UTC(2026, 7, 2, 12) };
     const warnings = [];
-    const impl = async (url) => {
+    const impl = async (url, init) => {
       if (url.includes('/scan/')) {
         return { ok: true, status: 200, json: async () => ({ result: ['0', [failedKey, goodKey]] }) };
       }
-      if (url.includes('/copy/')) {
-        if (decodeURIComponent(url).includes(failedKey)) {
+      if (url.endsWith('/pipeline')) {
+        if (JSON.parse(init.body)[0][1] === failedKey) {
           return {
             ok: true,
             status: 200,
-            json: async () => ({ error: 'ERR max request size exceeded' }),
+            json: async () => ([{ error: 'ERR max request size exceeded' }, { result: 0 }]),
           };
         }
-        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+        return { ok: true, status: 200, json: async () => ([{ result: 1 }, { result: 1 }]) };
       }
-      if (url.includes('/expire/') || url.includes('/del/')) {
+      if (url.includes('/del/')) {
         return { ok: true, status: 200, json: async () => ({ result: 1 }) };
       }
       if (url.includes('/lrange/')) {

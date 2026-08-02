@@ -52,7 +52,10 @@ const REPLAY_KEY_PREFIX = 'digest:replay-log:v1';
 const SCAN_PAGE_SIZE = 200;
 const REPLAY_REST_USER_AGENT = 'worldmonitor-digest/1.0';
 const REPLAY_REQUEST_TIMEOUT_MS = 10_000;
-const SNAPSHOT_TTL_SECONDS = 15 * 60;
+// Exported so the tests assert the real value instead of re-hardcoding it —
+// a TTL that silently drifts to 0 or a day is exactly the regression the
+// snapshot-lifecycle tests exist to catch.
+export const SNAPSHOT_TTL_SECONDS = 15 * 60;
 
 function replayRequestInit(token) {
   return {
@@ -507,6 +510,12 @@ Output:
  *     `body.result` is undefined, so the pre-2026-08-02 reader scored it
  *     as an empty list and the harness exited 2 blaming the feature flag.
  *
+ * Paging reads an atomic COPY of the day list rather than the live key, so a
+ * concurrent RPUSH/LTRIM cannot shift indices mid-read and duplicate or drop
+ * entries. The snapshot's whole lifecycle — created with a TTL in one
+ * pipeline, deleted in `finally` — is asserted by the tests; see
+ * SNAPSHOT_TTL_SECONDS.
+ *
  * @param {string} url                       Upstash REST base URL
  * @param {string} token                     Upstash REST token
  * @param {string} key                       replay-log day key
@@ -532,33 +541,58 @@ export async function readReplayListPaged(url, token, key, opts = {}) {
   /** @type {string[]} */
   const out = [];
   try {
-    const copyRes = await fetchImpl(
-      `${url}/copy/${encodeURIComponent(key)}/${encodeURIComponent(snapshotKey)}`,
-      replayRequestInit(token),
-    );
-    if (!copyRes.ok) {
-      throw new Error(`COPY ${key} -> ${snapshotKey} failed: HTTP ${copyRes.status}`);
+    // COPY and EXPIRE go out as ONE pipeline request, deliberately.
+    //
+    // Issued as two round trips, a process death between them leaves the
+    // snapshot alive with NO TTL — and the `finally` cleanup below does not
+    // run on SIGKILL, so that orphan (up to ~31MB at the current cap, and up
+    // to ~154MB for keys written under the old one) never expires. Pipelining
+    // means the server applies the TTL in the same execution as the copy, so
+    // the snapshot is never untethered regardless of what happens to us.
+    //
+    // REPLACE matters for the *diagnosis*, not for collisions: without it
+    // COPY answers 0 for BOTH "source missing" and "destination exists",
+    // and mapping that to an empty list is precisely the miss-vs-failure
+    // collapse this harness exists to avoid. With REPLACE, a 0 can only
+    // mean the source key is gone (verified against production 2026-08-02:
+    // missing source pipelines to [{result:0},{result:0}] and creates
+    // nothing), which is a genuine empty day.
+    const snapshotRes = await fetchImpl(`${url}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': REPLAY_REST_USER_AGENT,
+      },
+      body: JSON.stringify([
+        ['COPY', key, snapshotKey, 'REPLACE'],
+        ['EXPIRE', snapshotKey, String(SNAPSHOT_TTL_SECONDS)],
+      ]),
+      signal: AbortSignal.timeout(REPLAY_REQUEST_TIMEOUT_MS),
+    });
+    if (!snapshotRes.ok) {
+      throw new Error(`Snapshot of ${key} failed: HTTP ${snapshotRes.status}`);
     }
-    const copyBody = await copyRes.json();
-    if (copyBody?.error) {
-      throw new Error(`COPY ${key} -> ${snapshotKey} rejected by Upstash: ${copyBody.error}`);
+    const snapshotBody = await snapshotRes.json();
+    if (!Array.isArray(snapshotBody) || snapshotBody.length !== 2) {
+      throw new Error(`Snapshot of ${key} returned an unexpected pipeline shape`);
     }
-    if (copyBody?.result === 0 || copyBody?.result === '0') return out;
-    if (copyBody?.result !== 1 && copyBody?.result !== '1') {
+    const [copyCell, expireCell] = snapshotBody;
+    if (copyCell?.error) {
+      throw new Error(`COPY ${key} -> ${snapshotKey} rejected by Upstash: ${copyCell.error}`);
+    }
+    // Source key is gone (expired between SCAN and here) — a real empty day.
+    // Nothing was created, so no cleanup is owed.
+    if (copyCell?.result === 0 || copyCell?.result === '0') return out;
+    if (copyCell?.result !== 1 && copyCell?.result !== '1') {
       throw new Error(`COPY ${key} -> ${snapshotKey} returned an unexpected result`);
     }
     snapshotCreated = true;
 
-    const expireRes = await fetchImpl(
-      `${url}/expire/${encodeURIComponent(snapshotKey)}/${SNAPSHOT_TTL_SECONDS}`,
-      replayRequestInit(token),
-    );
-    if (!expireRes.ok) {
-      throw new Error(`EXPIRE ${snapshotKey} failed: HTTP ${expireRes.status}`);
-    }
-    const expireBody = await expireRes.json();
-    if (expireBody?.error || (expireBody?.result !== 1 && expireBody?.result !== '1')) {
-      throw new Error(`EXPIRE ${snapshotKey} rejected by Upstash: ${expireBody?.error ?? 'unexpected result'}`);
+    // The copy landed, so a failed EXPIRE means an untethered snapshot. Throw
+    // and let `finally` delete it rather than paging a key nothing will reap.
+    if (expireCell?.error || (expireCell?.result !== 1 && expireCell?.result !== '1')) {
+      throw new Error(`EXPIRE ${snapshotKey} rejected by Upstash: ${expireCell?.error ?? 'unexpected result'}`);
     }
 
     let start = 0;
