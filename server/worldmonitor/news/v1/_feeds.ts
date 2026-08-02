@@ -81,11 +81,18 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // from EN digests; strategic defaults explicitly bypass that filter.
       { name: 'Kyiv Independent', url: gn('site:kyivindependent.com when:3d') },
       // Ukraine depth pack (#5951) — local institutional + independent sources
+      // (server keeps EN URLs; client multi-URL adds uk variants for UI locale).
       { name: 'Ukrinform', url: gn('site:ukrinform.net when:3d') },
       { name: 'Suspilne', url: gn('site:suspilne.media when:2d') },
       { name: 'Ukrainska Pravda EN', url: gn('site:euromaidanpress.com when:2d') },
       { name: 'NV EN', url: gn('site:english.nv.ua when:2d') },
       { name: 'Hromadske EN', url: gn('site:hromadske.ua when:3d') },
+      // Ukrainian (uk) native pack for uk digests (#5959)
+      { name: 'Ukrainska Pravda', url: gnLocale('site:pravda.com.ua when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Hromadske', url: gnLocale('site:hromadske.ua when:3d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Bihus.Info', url: gnLocale('site:bihus.info when:7d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Slidstvo.Info', url: gnLocale('site:slidstvo.info when:7d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'ZN.UA', url: gnLocale('site:zn.ua when:3d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
       // Google News returned HTTP 200 with no items for these site queries;
       // use the outlets' live native RSS feeds for the EN digest path too.
       { name: 'TVN24', url: 'https://tvn24.pl/swiat.xml' },

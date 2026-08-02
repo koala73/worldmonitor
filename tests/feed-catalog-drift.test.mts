@@ -540,9 +540,31 @@ describe('feed catalog drift', () => {
         `${localeOnly} must stay locale-boosted, not EN default-on`,
       );
     }
-    // Sanity: hu/el locale boost still works so the packs are not dead.
+    // Sanity: hu/el/uk locale boost still works so the packs are not dead.
     assert.ok(feeds.getLocaleBoostedSources('hu').has('Telex'));
     assert.ok(feeds.getLocaleBoostedSources('el').has('Kathimerini'));
+  });
+
+  it('boosts Ukrainian native feeds for uk locale without EN default-on (#5959)', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const boosted = feeds.getLocaleBoostedSources('uk');
+    // Multi-URL depth-pack names boost via url key.
+    for (const name of ['Ukrinform', 'Suspilne'] as const) {
+      assert.ok(boosted.has(name), `${name} multi-URL uk key must locale-boost`);
+    }
+    // Pure lang:uk pack — boost for uk UI, not EN default-on.
+    for (const name of [
+      'Ukrainska Pravda',
+      'Hromadske',
+      'Bihus.Info',
+      'Slidstvo.Info',
+      'ZN.UA',
+    ] as const) {
+      assert.ok(boosted.has(name), `${name} must be uk locale-boosted`);
+      assert.ok(!enabled.has(name), `${name} must stay locale-boosted, not EN default-on`);
+    }
+    // EN path still has the English editions, not the native-only names as defaults.
+    assert.ok(enabled.has('Ukrainska Pravda EN') || !enabled.has('Ukrainska Pravda'));
   });
 
   it('SOURCE_PROPAGANDA_RISK still high-labels Russian state media (#5949)', () => {

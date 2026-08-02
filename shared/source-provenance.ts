@@ -39,9 +39,11 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'NHK World': 'mainstream', 'Nikkei Asia': 'market',
   // Independent RU exile / UA English primary (default-eligible under #5950 balance rule)
   'Meduza': 'mainstream', 'Moscow Times': 'mainstream', 'Kyiv Independent': 'mainstream',
-  // Ukraine depth pack (#5951)
+  // Ukraine depth pack (#5951) + uk native pack (#5959)
   'Ukrinform': 'wire', 'Suspilne': 'mainstream',
   'Ukrainska Pravda EN': 'mainstream', 'NV EN': 'mainstream', 'Hromadske EN': 'mainstream', 'ISW': 'intel',
+  'Ukrainska Pravda': 'mainstream', 'Hromadske': 'mainstream',
+  'Bihus.Info': 'intel', 'Slidstvo.Info': 'intel', 'ZN.UA': 'mainstream',
 
   // Mainstream outlets
   'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
@@ -263,6 +265,12 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Ukrainska Pravda EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Independent Ukrainian outlet, high-signal English edition' },
   'NV EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'New Voice of Ukraine English edition, independent' },
   'Hromadske EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian independent public broadcaster (English)' },
+  // Ukrainian native outlets (#5959) — locale-boosted for uk UI
+  'Ukrainska Pravda': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Independent Ukrainian outlet, Ukrainian-language edition' },
+  'Hromadske': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian independent public broadcaster (Ukrainian)' },
+  'Bihus.Info': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian investigative anti-corruption outlet' },
+  'Slidstvo.Info': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian investigative journalism project (Radio Free Europe partnership)' },
+  'ZN.UA': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Dzerkalo Tyzhnia — Ukrainian weekly analytical newspaper' },
   'ISW': { risk: 'low', note: 'Institute for the Study of War, nonpartisan research nonprofit, daily frontline assessments' },
   'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent English-language Russian outlet, critical of Kremlin' },
   // Independent RU exile press — not state media; eligible for EN defaults (#5950)

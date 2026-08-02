@@ -203,12 +203,27 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
     // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    // Ukraine depth pack (#5951) — local institutional + independent sources
-    { name: 'Ukrinform', url: rss('https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Suspilne', url: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    // Ukraine depth pack (#5951) — local institutional + independent sources.
+    // Ukrinform / Suspilne are multi-URL so EN digests keep the English edition
+    // while `uk` UI users get UA-language Google News (locale boost via url key).
+    { name: 'Ukrinform', url: {
+      en: rss('https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en'),
+      uk: rss('https://news.google.com/rss/search?q=site:ukrinform.ua+when:3d&hl=uk&gl=UA&ceid=UA:uk'),
+    } },
+    { name: 'Suspilne', url: {
+      en: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=en-US&gl=US&ceid=US:en'),
+      uk: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=uk&gl=UA&ceid=UA:uk'),
+    } },
     { name: 'Ukrainska Pravda EN', url: rss('https://news.google.com/rss/search?q=site:euromaidanpress.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'NV EN', url: rss('https://news.google.com/rss/search?q=site:english.nv.ua+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Hromadske EN', url: rss('https://news.google.com/rss/search?q=site:hromadske.ua+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Ukrainian (uk) — native-language pack for uk locale (#5959).
+    // Locale-gated like Telex (hu) / Digi24 (ro): not EN default-on.
+    { name: 'Ukrainska Pravda', url: rss('https://news.google.com/rss/search?q=site:pravda.com.ua+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Hromadske', url: rss('https://news.google.com/rss/search?q=site:hromadske.ua+when:3d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Bihus.Info', url: rss('https://news.google.com/rss/search?q=site:bihus.info+when:7d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Slidstvo.Info', url: rss('https://news.google.com/rss/search?q=site:slidstvo.info+when:7d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'ZN.UA', url: rss('https://news.google.com/rss/search?q=site:zn.ua+when:3d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
     { name: 'Moscow Times', url: rss('https://www.themoscowtimes.com/rss/news') },
     // Caucasus (#5953) — secondary Russian periphery / BRI hinterland
     { name: 'Civil.ge', url: rss('https://civil.ge/feed/') },
