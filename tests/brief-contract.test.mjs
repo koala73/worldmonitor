@@ -17,6 +17,7 @@ import {
   checkLeadGrounding,
   leadGroundsAgainstStory,
   extractAnchorTokens,
+  validateNoHallucinatedFacts,
 } from '../shared/brief-llm-core.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -142,6 +143,39 @@ describe('grounding spine port (#4921)', () => {
     const core = await import('../shared/brief-llm-core.js');
     assert.equal(lib.checkLeadGrounding, core.checkLeadGrounding, 'must be the SAME function object');
     assert.equal(lib.leadGroundsAgainstStory, core.leadGroundsAgainstStory);
+  });
+});
+
+describe('citation-scoped numeric and date grounding (#6030)', () => {
+  it('matches digit and word forms but rejects an uncited numeric fact', () => {
+    assert.equal(
+      validateNoHallucinatedFacts('Nine people were killed.', 'Nine killed in strikes on Kyiv.').ok,
+      true,
+    );
+    assert.equal(
+      validateNoHallucinatedFacts('9 people were killed.', 'Nine killed in strikes on Kyiv.').ok,
+      true,
+    );
+    assert.equal(
+      validateNoHallucinatedFacts('Nine people were killed.', 'Russia hit the Ukrainian capital.').ok,
+      false,
+      'a numeric fact from an uncited sibling must fail even when proper nouns do not expose it',
+    );
+  });
+
+  it('accepts equivalent date formats but rejects a different date', () => {
+    assert.equal(
+      validateNoHallucinatedFacts('The event occurred on August 1, 2026.', 'The event occurred on Aug. 1, 2026.').ok,
+      true,
+    );
+    assert.equal(
+      validateNoHallucinatedFacts('The event occurred on August 2, 2026.', 'The event occurred on Aug. 1, 2026.').ok,
+      false,
+    );
+  });
+
+  it('does not treat citation markers as numeric facts', () => {
+    assert.equal(validateNoHallucinatedFacts('A claim is supported here [3].', 'A claim is supported here.').ok, true);
   });
 });
 
@@ -431,6 +465,16 @@ describe('fragmented-cluster leads (#6001)', () => {
     // absent from story 3 ("Ukrainian capital") and present only in story 7.
     const out = compose(`Russia struck Kyiv with missiles and drones, killing at least 9 [3]. ${DOHA}`);
     assert.equal(out, null, 'a fact drawn from an uncited sibling must not ship');
+  });
+
+  it('rejects a sibling-only numeric fact when proper nouns are grounded', () => {
+    const out = compose(`Russia struck the Ukrainian capital, killing nine [3]. ${DOHA}`);
+    assert.equal(out, null, 'a casualty count drawn from an uncited sibling must not ship');
+  });
+
+  it('accepts a sibling numeric fact once both fragments are cited', () => {
+    const out = compose(`Russia struck the Ukrainian capital, killing nine [3][7]. ${DOHA}`);
+    assert.ok(out, 'citing the story that supplies the number must satisfy the fact gate');
   });
 
   it('accepts the SAME claim once it cites both fragments', () => {

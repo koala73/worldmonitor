@@ -4,6 +4,7 @@
 import { isBriefLeadEligible } from './_clustering.mjs';
 import {
   validateNoHallucinatedProperNouns,
+  validateNoHallucinatedFacts,
   checkLeadGrounding,
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
@@ -230,7 +231,8 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
     if (cited.length === 0) return null;
     const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
     const sentenceValidation = validateNoHallucinatedProperNouns(sentence, scopedGround);
-    if (!sentenceValidation.ok && validatorMode === 'enforce') return null;
+    const factValidation = validateNoHallucinatedFacts(sentence, scopedGround);
+    if ((!sentenceValidation.ok || !factValidation.ok) && validatorMode === 'enforce') return null;
   }
   if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) return null;
 
