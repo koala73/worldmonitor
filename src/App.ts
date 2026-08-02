@@ -2093,12 +2093,12 @@ export class App {
       return this.restoreProGatedCustomWidgets(cloudSyncVersion);
     }
 
-    // Pro/free is NOT knowable yet on a normal page load. initAuthState()
+    // Pro/free is NOT knowable yet on an auth-enabled page load. initAuthState()
     // deliberately does not await Clerk (2.98 MB, loaded on requestIdleCallback
     // with a 4 s timeout) and the Convex entitlement snapshot lands later
-    // still, so getAuthState() is `{ user: null, isPending: true }` here on
-    // every boot — a signed-in Pro user is indistinguishable from an anonymous
-    // one at this point.
+    // still, so getAuthState() is `{ user: null, isPending: true }` here — a
+    // signed-in Pro user is indistinguishable from an anonymous one at this
+    // point. Builds without Clerk settle anonymous synchronously instead.
     //
     // That matters because the clamp below is a PERSISTED write and
     // enforceFreePanelLimit disables every cw-* custom widget on the free
@@ -2111,9 +2111,9 @@ export class App {
     //
     // Deferring is free: firePremiumLoaders() re-runs this on the Clerk auth
     // event and on every Convex entitlement snapshot. The fallback timer
-    // covers the one case where neither ever arrives — Clerk's script fails
-    // to load or VITE_CLERK_PUBLISHABLE_KEY is unset, where isPending stays
-    // true forever and the free-tier caps would otherwise never be enforced.
+    // covers the one case where neither ever arrives — a configured Clerk
+    // script fails to load and isPending stays true, so the free-tier caps
+    // would otherwise never be enforced.
     //
     // The same blindness recurs after Clerk settles: the auth callback runs
     // firePremiumLoaders() before initEntitlementSubscription() rebinds, so
