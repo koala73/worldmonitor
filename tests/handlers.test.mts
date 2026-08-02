@@ -41,7 +41,7 @@ import type { USNIFleetReport } from '../src/generated/server/worldmonitor/milit
 // News domain helpers
 // ---------------------------------------------------------------------------
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
-import { buildArticlePrompts, hashString } from '../server/worldmonitor/news/v1/_shared.ts';
+import { buildArticlePrompts, hashString, selectUniqueHeadlinePairs } from '../server/worldmonitor/news/v1/_shared.ts';
 
 // ---------------------------------------------------------------------------
 // Infrastructure / cable health helpers
@@ -490,6 +490,45 @@ describe('buildArticlePrompts', () => {
     assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n    Context: only first'));
     // Second headline with no paired body → no Context line under it.
     assert.ok(result.userPrompt.includes('2. SpaceX launch delayed'));
+  });
+});
+
+describe('selectUniqueHeadlinePairs', () => {
+  it('deduplicates before applying the five-headline prompt limit', () => {
+    const pairs = [
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Alpha', b: '' },
+      { h: 'Beta', b: '' },
+    ];
+
+    assert.deepEqual(
+      selectUniqueHeadlinePairs(pairs).map((pair) => pair.h),
+      ['Alpha', 'Beta'],
+    );
+  });
+
+  it('keeps the first body for a headline and stops after five unique pairs', () => {
+    const pairs = [
+      { h: 'Alpha', b: 'first alpha body' },
+      { h: 'Alpha', b: 'later alpha body' },
+      { h: '', b: 'empty headline body' },
+      { h: 'Beta', b: 'beta body' },
+      { h: 'Charlie', b: 'charlie body' },
+      { h: 'Delta', b: 'delta body' },
+      { h: 'Echo', b: 'echo body' },
+      { h: 'Foxtrot', b: 'must be outside the prompt window' },
+    ];
+
+    assert.deepEqual(selectUniqueHeadlinePairs(pairs), [
+      { h: 'Alpha', b: 'first alpha body' },
+      { h: 'Beta', b: 'beta body' },
+      { h: 'Charlie', b: 'charlie body' },
+      { h: 'Delta', b: 'delta body' },
+      { h: 'Echo', b: 'echo body' },
+    ]);
   });
 });
 

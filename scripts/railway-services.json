@@ -358,6 +358,7 @@
       "scripts/seed-cross-strait-activity.mjs",
       "scripts/seed-regional-snapshots.mjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/correlation-runtime-mode.js",
       "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",

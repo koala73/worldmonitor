@@ -140,6 +140,9 @@ export function buildMigrations(
   legacyDefaultDisabled: ReadonlySet<string> = new Set(),
   frontlineNames: ReadonlySet<string> = new Set(),
   legacyCapDisabled: ReadonlySet<string> = new Set(),
+  legacyStrategicDefaultDisabled: ReadonlySet<string> = new Set(),
+  strategicDefaultNames: ReadonlySet<string> = new Set(),
+  legacyStrategicCapDisabled: ReadonlySet<string> = new Set(),
 ): Record<number, (data: Record<string, unknown>) => Record<string, unknown>> {
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
@@ -148,6 +151,12 @@ export function buildMigrations(
       legacyDefaultDisabled,
       frontlineNames,
       legacyCapDisabled,
+    ),
+    4: (data) => migrateStrategicDefaultsV4(
+      data,
+      legacyStrategicDefaultDisabled,
+      strategicDefaultNames,
+      legacyStrategicCapDisabled,
     ),
   };
 }
@@ -253,6 +262,45 @@ export function migrateFrontlineEuropeDefaultsV3(
 
   console.log(
     `[prefs] schema-3 migration: re-enabled ${parsed.length - cleaned.length} frontline source(s) from an untouched legacy default/cap state`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
+}
+
+/**
+ * Schema-4 migration for PR #6000.
+ *
+ * Before strategic defaults were canonical, the ten tagged feeds were present
+ * in the untouched source-reduction disabled set. Only an exact match to that
+ * old default or cap result is safe to rewrite: any extra or missing entry
+ * means the user customized source preferences, so leave the blob alone.
+ */
+export function migrateStrategicDefaultsV4(
+  data: Record<string, unknown>,
+  legacyDefaultDisabled: ReadonlySet<string>,
+  strategicDefaultNames: ReadonlySet<string>,
+  legacyCapDisabled: ReadonlySet<string> = new Set(),
+): Record<string, unknown> {
+  if (
+    (legacyDefaultDisabled.size === 0 && legacyCapDisabled.size === 0)
+    || strategicDefaultNames.size === 0
+  ) return data;
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || (!hasExactStringSet(parsed, legacyDefaultDisabled) && !hasExactStringSet(parsed, legacyCapDisabled))
+  ) return data;
+
+  const cleaned = parsed.filter(
+    (name) => typeof name !== 'string' || !strategicDefaultNames.has(name),
+  );
+  if (cleaned.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-4 migration: re-enabled ${parsed.length - cleaned.length} strategic default source(s) from an untouched legacy default/cap state`,
   );
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
 }

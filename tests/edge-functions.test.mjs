@@ -54,6 +54,7 @@ describe('scripts/shared/ stays in sync with shared/', () => {
   const explicitMirroredFiles = new Set([
     'brief-llm-core.js',
     'brief-llm-core.d.ts',
+    'correlation-runtime-mode.js',
     // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
     // by the audit script under scripts/. Must stay byte-identical.
     'url-classifier.js',

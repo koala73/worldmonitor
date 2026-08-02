@@ -37,6 +37,16 @@ describe('isFeedInLanguage', () => {
   it('drops a feed declared for another language', () => {
     assert.equal(isFeedInLanguage(feed('Tagesschau', 'de'), 'en'), false);
   });
+
+  it('keeps a strategic feed declared for another language', () => {
+    const strategic = {
+      name: 'Polsat News',
+      url: 'https://example.test/polsat-news',
+      lang: 'pl',
+      strategicDefault: true,
+    } satisfies Feed;
+    assert.equal(isFeedInLanguage(strategic, 'en'), true);
+  });
 });
 
 describe('filterFeedsByLanguage', () => {
@@ -60,6 +70,19 @@ describe('filterFeedsByLanguage', () => {
 
   it('returns empty when every feed belongs to another language', () => {
     assert.deepEqual(filterFeedsByLanguage([feed('Tagesschau', 'de'), feed('Bild', 'de')], 'en'), []);
+  });
+
+  it('retains strategic feeds alongside universal feeds for a mismatched language', () => {
+    const strategic = {
+      name: 'Yonhap News',
+      url: 'https://example.test/yonhap-news',
+      lang: 'ko',
+      strategicDefault: true,
+    } satisfies Feed;
+    assert.deepEqual(
+      filterFeedsByLanguage([feed('Reuters'), strategic, feed('Tagesschau', 'de')], 'en').map(f => f.name),
+      ['Reuters', 'Yonhap News'],
+    );
   });
 });
 

@@ -545,8 +545,20 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // trampoline variant is WORLDMONITOR-TZ: a wallet extension's
       // `injected/hook.js` wraps `window.fetch` and the leaked rejection frame
       // surfaces as `Object.apply`, not `window.fetch`.
+      // Sentry renders a frame reached through an aliased property as
+      // `<name> [<annotation>]` — an extension that stashes the original fetch
+      // under its own property surfaces as `window.fetch [<annotation>]`. The
+      // anchored match below needs the bare name, so strip one trailing
+      // bracketed annotation first; the meaningful identity is the name BEFORE
+      // the bracket, so a frame merely stored under a fetch-ish alias still
+      // fails the match (WORLDMONITOR-Y8, same Adjust extension as SG above).
+      // NB: deliberately written without spelling out the annotation keyword —
+      // the beforeSend unit-test harness strips `<keyword> <word>` sequences to
+      // drop TypeScript assertions and would mangle a regex that contained it
+      // (same harness trap as the Floot gate above).
+      const bareFrameFunction = (fn: string) => fn.replace(/\s*\[[^\]]*\]$/, '');
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(f.function ?? ''))) {
+          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(bareFrameFunction(f.function ?? '')))) {
         return null;
       }
       // Bare `Failed to fetch` surfacing through the DebugBear RUM collector's
