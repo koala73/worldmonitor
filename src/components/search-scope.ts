@@ -95,3 +95,39 @@ export function resultMatchesSearchScope(scope: SearchScope, type: string): bool
       return false;
   }
 }
+
+/** Pre-deck empty-state tip keys shown on the All Intel channel (order is display order). */
+export const ALL_CHANNEL_TIP_KEYS = [
+  'commands.tips.map',
+  'commands.tips.panel',
+  'commands.tips.brief',
+  'commands.tips.layers',
+  'commands.tips.time',
+  'commands.tips.settings',
+  'commands.tips.flight',
+] as const;
+
+/**
+ * Mobile idle chip command ids. All Intel restores the pre-deck mix
+ * (up to 6 `country:*` then up to 4 view/actions); other scopes stay channel-scoped.
+ */
+export function idleChipCommandIds(
+  scope: SearchScope,
+  commands: readonly { id: string; category: SearchCommandCategory }[],
+): string[] {
+  if (scope === 'all') {
+    const country = commands
+      .filter((c) => c.id.startsWith('country:'))
+      .slice(0, 6)
+      .map((c) => c.id);
+    const actions = commands
+      .filter((c) => c.category === 'actions' || c.category === 'view')
+      .slice(0, 4)
+      .map((c) => c.id);
+    return [...country, ...actions];
+  }
+  return commands
+    .filter((c) => commandMatchesSearchScope(scope, c.category))
+    .slice(0, 6)
+    .map((c) => c.id);
+}

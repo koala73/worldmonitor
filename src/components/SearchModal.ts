@@ -6,8 +6,10 @@ import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
+  ALL_CHANNEL_TIP_KEYS,
   SEARCH_SCOPES,
   commandMatchesSearchScope,
+  idleChipCommandIds,
   panelCommandTargetId,
   resolveIdleSelectionTerm,
   resultMatchesSearchScope,
@@ -696,32 +698,50 @@ export class SearchModal {
   private renderEmpty(): void {
     if (!this.resultsList) return;
 
+    // All-channel tips are driven by ALL_CHANNEL_TIP_KEYS (pre-deck inventory).
+    // Channel scopes keep a narrower, task-focused set.
+    const hasFlight = this.sources.some((source) => source.type === 'flight');
+    const tipMeta: Record<string, { icon: string }> = {
+      'commands.tips.map': { icon: '\u2316' },
+      'commands.tips.panel': { icon: '\u25A6' },
+      'commands.tips.brief': { icon: '\u25C9' },
+      'commands.tips.layers': { icon: '\u26A1' },
+      'commands.tips.time': { icon: '\u23F1\uFE0F' },
+      'commands.tips.settings': { icon: '\u2699\uFE0F' },
+      'commands.tips.flight': { icon: '\u2708\uFE0F' },
+    };
+    const toTip = (key: string) => ({
+      icon: tipMeta[key]?.icon ?? '\u2022',
+      key,
+      exampleKey: `${key}Example`,
+    });
+    const flightTip = hasFlight ? [toTip('commands.tips.flight')] : [];
+    const allChannelTips = ALL_CHANNEL_TIP_KEYS
+      .filter((key) => key !== 'commands.tips.flight' || hasFlight)
+      .map((key) => toTip(key));
     const allTips: Record<SearchScope, { icon: string; key: string; exampleKey: string }[]> = {
-      all: [
-        { icon: '\u2316', key: 'commands.tips.map', exampleKey: 'commands.tips.mapExample' },
-        { icon: '\u25A6', key: 'commands.tips.panel', exampleKey: 'commands.tips.panelExample' },
-        { icon: '\u25C9', key: 'commands.tips.brief', exampleKey: 'commands.tips.briefExample' },
-        { icon: '\u26A1', key: 'commands.tips.layers', exampleKey: 'commands.tips.layersExample' },
-      ],
+      all: allChannelTips,
       signals: [
-        { icon: '\u25C9', key: 'commands.tips.brief', exampleKey: 'commands.tips.briefExample' },
-        ...(this.sources.some((source) => source.type === 'flight')
-          ? [{ icon: '\u2708\uFE0F', key: 'commands.tips.flight', exampleKey: 'commands.tips.flightExample' }]
-          : []),
+        toTip('commands.tips.brief'),
+        ...flightTip,
       ],
       map: [
-        { icon: '\u2316', key: 'commands.tips.map', exampleKey: 'commands.tips.mapExample' },
+        toTip('commands.tips.map'),
         { icon: '\u25C8', key: 'commands.tips.layers', exampleKey: 'commands.tips.layersExample' },
       ],
       panels: [
-        { icon: '\u25A6', key: 'commands.tips.panel', exampleKey: 'commands.tips.panelExample' },
+        toTip('commands.tips.panel'),
       ],
       actions: [
-        { icon: '\u23F1\uFE0F', key: 'commands.tips.time', exampleKey: 'commands.tips.timeExample' },
-        { icon: '\u2699\uFE0F', key: 'commands.tips.settings', exampleKey: 'commands.tips.settingsExample' },
+        toTip('commands.tips.time'),
+        toTip('commands.tips.settings'),
       ],
     };
-    const tips = allTips[this.activeScope].slice(0, this.isMobile ? 2 : 4);
+    // All shows the full pre-deck pool (up to 7 with flight). Scoped channels stay compact.
+    const tipLimit = this.activeScope === 'all'
+      ? (this.isMobile ? 3 : 7)
+      : (this.isMobile ? 2 : 4);
+    const tips = allTips[this.activeScope].slice(0, tipLimit);
     this.quickLaunchExamples = tips.map((tip) => t(tip.exampleKey));
 
     let html = `
@@ -1006,13 +1026,16 @@ export class SearchModal {
       return;
     }
 
-    const chips: { label: string; value: string }[] = [];
     const commands = getAllCommands();
-    const scopedCommands = commands.filter((command) => commandMatchesSearchScope(this.activeScope, command.category));
-    for (const cmd of scopedCommands.slice(0, 6)) {
-      const label = resolveCommandLabel(cmd);
-      chips.push({ label, value: label.toLowerCase() });
-    }
+    const byId = new Map(commands.map((cmd) => [cmd.id, cmd]));
+    // All Intel restores the pre-deck country-first + view/actions mix; other
+    // channels stay scoped via idleChipCommandIds.
+    const chips = idleChipCommandIds(this.activeScope, commands).flatMap((id) => {
+      const cmd = byId.get(id);
+      if (!cmd) return [];
+      const label = cmd.id.startsWith('country:') ? cmd.label : resolveCommandLabel(cmd);
+      return [{ label, value: label.toLowerCase() }];
+    });
 
     setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`

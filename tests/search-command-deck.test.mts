@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ALL_CHANNEL_TIP_KEYS,
   SEARCH_SCOPES,
   commandMatchesSearchScope,
+  idleChipCommandIds,
   panelCommandTargetId,
   resolveIdleSelectionTerm,
   resultMatchesSearchScope,
@@ -87,5 +89,62 @@ describe('intelligence command deck pure helpers', () => {
     assert.equal(resultMatchesSearchScope('map', 'flight'), true);
     assert.equal(resultMatchesSearchScope('panels', 'flight'), false);
     assert.equal(resultMatchesSearchScope('actions', 'flight'), false);
+  });
+
+  it('keeps the pre-deck All-channel empty tip inventory', () => {
+    assert.deepEqual([...ALL_CHANNEL_TIP_KEYS], [
+      'commands.tips.map',
+      'commands.tips.panel',
+      'commands.tips.brief',
+      'commands.tips.layers',
+      'commands.tips.time',
+      'commands.tips.settings',
+      'commands.tips.flight',
+    ]);
+  });
+
+  it('restores country-first + view/actions mobile chips on All Intel', () => {
+    const commands = [
+      { id: 'panel:news', category: 'panels' as const },
+      { id: 'country:us', category: 'country' as const },
+      { id: 'country:cn', category: 'country' as const },
+      { id: 'country:ru', category: 'country' as const },
+      { id: 'country:ir', category: 'country' as const },
+      { id: 'country:ua', category: 'country' as const },
+      { id: 'country:il', category: 'country' as const },
+      { id: 'country:tw', category: 'country' as const },
+      { id: 'country:extra', category: 'country' as const },
+      { id: 'view:dark', category: 'view' as const },
+      { id: 'actions:settings', category: 'actions' as const },
+      { id: 'actions:export', category: 'actions' as const },
+      { id: 'actions:share', category: 'actions' as const },
+      { id: 'actions:help', category: 'actions' as const },
+      { id: 'actions:overflow', category: 'actions' as const },
+      { id: 'layers:ais', category: 'layers' as const },
+    ];
+
+    // Pre-deck: up to 6 country:* then up to 4 of (view|actions) in list order.
+    assert.deepEqual(idleChipCommandIds('all', commands), [
+      'country:us',
+      'country:cn',
+      'country:ru',
+      'country:ir',
+      'country:ua',
+      'country:il',
+      'view:dark',
+      'actions:settings',
+      'actions:export',
+      'actions:share',
+    ]);
+    // Non-All channels stay exclusive (no country bleed into panels).
+    assert.deepEqual(idleChipCommandIds('panels', commands), ['panel:news']);
+    assert.deepEqual(idleChipCommandIds('actions', commands), [
+      'view:dark',
+      'actions:settings',
+      'actions:export',
+      'actions:share',
+      'actions:help',
+      'actions:overflow',
+    ]);
   });
 });
