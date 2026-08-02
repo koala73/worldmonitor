@@ -30,6 +30,33 @@ export function applyMigrationChain(
   return result;
 }
 
+export interface MigrationChainResult {
+  data: Record<string, unknown>;
+  schemaVersion: number;
+}
+
+/**
+ * Apply a migration chain while allowing a caller to fail closed before a
+ * particular step. The returned version is the last migration that actually
+ * ran, so a blocked step remains retryable on the next sync.
+ */
+export function applyMigrationChainWithSchemaVersion(
+  data: Record<string, unknown>,
+  fromVersion: number,
+  toVersion: number,
+  migrations: Record<number, (data: Record<string, unknown>) => Record<string, unknown>>,
+  shouldStopBefore?: (version: number, data: Record<string, unknown>) => boolean,
+): MigrationChainResult {
+  let result = data;
+  let schemaVersion = fromVersion;
+  for (let v = fromVersion + 1; v <= toVersion; v++) {
+    if (shouldStopBefore?.(v, result)) break;
+    result = migrations[v]?.(result) ?? result;
+    schemaVersion = v;
+  }
+  return { data: result, schemaVersion };
+}
+
 /**
  * Conflict-resolution merge for cloud-prefs sync.
  *
@@ -331,6 +358,56 @@ export function migrateStrategicDefaultsV4(
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
 }
 
+interface RegionalFeedRolloutMigrationAnalysis {
+  matchingTargets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>;
+  candidates: string[][];
+  candidateKeys: Set<string>;
+}
+
+function analyzeRegionalFeedRolloutMigration(
+  data: Record<string, unknown>,
+  targets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>,
+): RegionalFeedRolloutMigrationAnalysis | null {
+  if (targets.length === 0) return null;
+
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return null;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(parsed)) return null;
+
+  const matchingTargets = targets.filter(
+    (target) => hasExactStringSet(parsed, target.legacyDisabled),
+  );
+  if (matchingTargets.length === 0) return null;
+
+  const candidates = matchingTargets.map((target) => {
+    const cleaned = parsed.filter(
+      (name): name is string => typeof name === 'string' && !target.defaultNames.has(name),
+    );
+    return [...new Set([...cleaned, ...target.optInNames])];
+  });
+  const candidateKeys = new Set(
+    candidates.map((candidate) => JSON.stringify([...candidate].sort())),
+  );
+  return { matchingTargets, candidates, candidateKeys };
+}
+
+/**
+ * Whether schema 5 cannot safely infer the locale behind a cloud row.
+ * Callers use this before advancing the row's schema marker; the migration
+ * itself remains a pure data transform and continues to return the original
+ * blob for ambiguous fingerprints.
+ */
+export function isRegionalFeedRolloutMigrationAmbiguous(
+  data: Record<string, unknown>,
+  targets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>,
+): boolean {
+  const analysis = analyzeRegionalFeedRolloutMigration(data, targets);
+  return analysis !== null && analysis.candidateKeys.size !== 1;
+}
+
 /**
  * Schema-5 migration for the #5975/#5976/#5977/#5980 regional feed wave,
  * including exact dormant-profile fingerprints from the immediately preceding
@@ -352,38 +429,18 @@ export function migrateRegionalFeedRolloutDefaultsV5(
   data: Record<string, unknown>,
   targets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>,
 ): Record<string, unknown> {
-  if (targets.length === 0) return data;
-
-  const raw = data['worldmonitor-disabled-feeds'];
-  if (typeof raw !== 'string') return data;
-
-  let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch { return data; }
-  if (!Array.isArray(parsed)) return data;
-
-  const matchingTargets = targets.filter(
-    (target) => hasExactStringSet(parsed, target.legacyDisabled),
-  );
-  if (matchingTargets.length === 0) return data;
-
-  const candidates = matchingTargets.map((target) => {
-    const cleaned = parsed.filter(
-      (name): name is string => typeof name === 'string' && !target.defaultNames.has(name),
-    );
-    return [...new Set([...cleaned, ...target.optInNames])];
-  });
-  const candidateKeys = new Set(
-    candidates.map((candidate) => JSON.stringify([...candidate].sort())),
-  );
+  const analysis = analyzeRegionalFeedRolloutMigration(data, targets);
+  if (!analysis) return data;
   // The cloud row does not record the locale that produced its denylist. If
   // multiple locales share a fingerprint but require different outcomes,
   // preserve the row rather than guessing and overwriting user intent.
-  if (candidateKeys.size !== 1) return data;
+  if (analysis.candidateKeys.size !== 1) return data;
 
-  const reconciled = candidates[0]!;
+  const raw = data['worldmonitor-disabled-feeds'] as string;
+  const reconciled = analysis.candidates[0]!;
   if (JSON.stringify(reconciled) === raw) return data;
 
-  const target = matchingTargets[0]!;
+  const target = analysis.matchingTargets[0]!;
   console.log(
     `[prefs] schema-5 migration: reconciled ${target.defaultNames.size} rollout default(s) and ${target.optInNames.size} opt-in source(s) for an untouched profile`,
   );

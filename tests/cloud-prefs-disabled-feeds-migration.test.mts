@@ -7,7 +7,9 @@ import {
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
   applyMigrationChain,
+  applyMigrationChainWithSchemaVersion,
   buildMigrations,
+  isRegionalFeedRolloutMigrationAmbiguous,
 } from '../src/utils/cloud-prefs-migrations';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
@@ -332,6 +334,20 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
       blob,
       'the migration must fail closed instead of guessing the cloud row locale',
     );
+    assert.equal(isRegionalFeedRolloutMigrationAmbiguous(blob, targets), true);
+
+    const migrations = buildMigrations({}, { regionalRollout: { targets } });
+    const applied = applyMigrationChainWithSchemaVersion(
+      blob,
+      4,
+      5,
+      migrations,
+      (version, data) => (
+        version === 5 && isRegionalFeedRolloutMigrationAmbiguous(data, targets)
+      ),
+    );
+    assert.equal(applied.schemaVersion, 4, 'ambiguous rows must remain retryable at schema 4');
+    assert.equal(applied.data, blob);
   });
 
   it('rejects malformed, duplicate, and non-string disabled sets instead of guessing intent', () => {

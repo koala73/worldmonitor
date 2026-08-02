@@ -30,8 +30,9 @@ import {
   buildRegionalFeedRolloutMigrationTargets,
 } from '@/services/regional-feed-rollout';
 import {
-  applyMigrationChain,
+  applyMigrationChainWithSchemaVersion,
   buildMigrations,
+  isRegionalFeedRolloutMigrationAmbiguous,
   mergeCloudWithLocalDirty,
   parsePersistedDirtyKeys,
   settledDirtyKeys,
@@ -103,6 +104,12 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // Schema 5 (#5975/#5976/#5977/#5980): reconcile regional rollout defaults and
 // opt-ins only for exact untouched default/cap states across known locales.
 let _migrations: ReturnType<typeof buildMigrations> | null = null;
+let _regionalRolloutTargets: ReturnType<typeof buildRegionalFeedRolloutMigrationTargets> | null = null;
+
+function getRegionalRolloutTargets(): ReturnType<typeof buildRegionalFeedRolloutMigrationTargets> {
+  _regionalRolloutTargets ??= buildRegionalFeedRolloutMigrationTargets(FREE_MAX_SOURCES);
+  return _regionalRolloutTargets;
+}
 
 function getMigrations(): ReturnType<typeof buildMigrations> {
   if (_migrations) return _migrations;
@@ -126,7 +133,7 @@ function getMigrations(): ReturnType<typeof buildMigrations> {
       legacyDisabledStates: buildPreStrategicDefaultDisabledStates(FREE_MAX_SOURCES),
     },
     regionalRollout: {
-      targets: buildRegionalFeedRolloutMigrationTargets(FREE_MAX_SOURCES),
+      targets: getRegionalRolloutTargets(),
     },
   });
   return _migrations;
@@ -292,12 +299,28 @@ function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): vo
   dispatchCloudPrefsApplied(changedKeys, syncVersion);
 }
 
-function applyMigrations(
+interface AppliedMigrations {
+  data: Record<string, unknown>;
+  schemaVersion: number;
+}
+
+function applyMigrationsWithSchemaVersion(
   data: Record<string, unknown>,
   fromVersion: number,
-): Record<string, unknown> {
-  if (fromVersion >= CURRENT_PREFS_SCHEMA_VERSION) return data;
-  return applyMigrationChain(data, fromVersion, CURRENT_PREFS_SCHEMA_VERSION, getMigrations());
+): AppliedMigrations {
+  if (fromVersion >= CURRENT_PREFS_SCHEMA_VERSION) {
+    return { data, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION };
+  }
+  return applyMigrationChainWithSchemaVersion(
+    data,
+    fromVersion,
+    CURRENT_PREFS_SCHEMA_VERSION,
+    getMigrations(),
+    (version, migrationData) => (
+      version === 5
+      && isRegionalFeedRolloutMigrationAmbiguous(migrationData, getRegionalRolloutTargets())
+    ),
+  );
 }
 
 function getLocalSchemaVersion(): number {
@@ -312,25 +335,35 @@ function setLocalSchemaVersion(v: number): void {
 }
 
 /**
- * Ensure the local blob is migrated to CURRENT_PREFS_SCHEMA_VERSION before
- * upload. Idempotent — when local schema is already current, returns the
- * existing blob unchanged. Otherwise runs pending migrations, writes the
- * cleaned data back to localStorage, and bumps the local schema marker.
+ * Migrate the local blob as far as it can be safely migrated before upload.
+ * Idempotent — when local schema is already current, returns the existing
+ * blob unchanged. Otherwise runs pending migrations, writes any cleaned data
+ * back to localStorage, and records the effective schema reached. An
+ * ambiguous migration deliberately leaves that marker at the prior schema so
+ * the row remains eligible for a later retry.
  *
- * Must be called before EVERY post path: onSignIn else-branch (when local
- * is at-or-ahead of cloud), uploadNow normal path, uploadNow conflict
- * retry. Otherwise the post would stamp CURRENT_PREFS_SCHEMA_VERSION onto
- * unmigrated local data, "upgrading" the cloud row to the new schema with
- * stale poisoning — the failure mode flagged in PR #3524 review.
+ * Must be called before EVERY post path: sign-in reconciliation, sign-out,
+ * uploadNow, conflict retry, and unload flush. Otherwise the post could stamp
+ * CURRENT_PREFS_SCHEMA_VERSION onto unmigrated local data, "upgrading" the
+ * cloud row to the new schema with stale poisoning — the failure mode flagged
+ * in PR #3524 review.
  */
-function migrateLocalBlobIfNeeded(): Record<string, string> {
+interface PreparedCloudBlob {
+  data: Record<string, string>;
+  schemaVersion: number;
+}
+
+function migrateLocalBlobIfNeeded(): PreparedCloudBlob {
   const localSchema = getLocalSchemaVersion();
   const blob = buildCloudBlob();
-  if (localSchema >= CURRENT_PREFS_SCHEMA_VERSION) return blob;
-  const migrated = applyMigrations(blob, localSchema) as Record<string, string>;
-  if (migrated !== blob) applyCloudBlob(migrated);
-  setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
-  return migrated;
+  if (localSchema >= CURRENT_PREFS_SCHEMA_VERSION) {
+    return { data: blob, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION };
+  }
+  const migrated = applyMigrationsWithSchemaVersion(blob, localSchema);
+  const migratedData = migrated.data as Record<string, string>;
+  if (migratedData !== blob) applyCloudBlob(migratedData);
+  setLocalSchemaVersion(migrated.schemaVersion);
+  return { data: migratedData, schemaVersion: migrated.schemaVersion };
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -444,6 +477,7 @@ async function postCloudPrefs(
   variant: string,
   data: Record<string, string>,
   expectedSyncVersion: number,
+  schemaVersion: number = CURRENT_PREFS_SCHEMA_VERSION,
 ): Promise<{ syncVersion: number } | { conflict: true; actualSyncVersion?: number }> {
   let res: Response;
   try {
@@ -453,7 +487,7 @@ async function postCloudPrefs(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ variant, data, expectedSyncVersion, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION }),
+      body: JSON.stringify({ variant, data, expectedSyncVersion, schemaVersion }),
       signal: AbortSignal.timeout(CLOUD_PREFS_REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
@@ -494,12 +528,12 @@ async function resolveConflictWithMerge(token: string, variant: string, callerGe
     setState('error');
     return false;
   }
-  const migratedCloud = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
-  const merged = mergeCloudWithLocalDirty(migratedCloud, buildCloudBlob(), _dirtyKeys);
+  const migratedCloud = applyMigrationsWithSchemaVersion(fresh.data, fresh.schemaVersion ?? 1);
+  const merged = mergeCloudWithLocalDirty(migratedCloud.data, buildCloudBlob(), _dirtyKeys);
   applyCloudBlob(merged, fresh.syncVersion);
   setSyncVersion(fresh.syncVersion);
-  setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
-  const retry = await postCloudPrefs(token, variant, merged, fresh.syncVersion);
+  setLocalSchemaVersion(migratedCloud.schemaVersion);
+  const retry = await postCloudPrefs(token, variant, merged, fresh.syncVersion, migratedCloud.schemaVersion);
   if (_authGeneration !== callerGeneration) return false;
   if ('conflict' in retry) {
     setState('conflict');
@@ -551,21 +585,21 @@ export function onSignIn(userId: string, variant: string): Promise<void> {
         const isFirstEverSync = getSyncVersion() === 0;
         const prevBlobJson = isFirstEverSync ? JSON.stringify(buildCloudBlob()) : null;
 
-        const migrated = applyMigrations(cloud.data, cloud.schemaVersion ?? 1);
-        const migrationChanged = (cloud.schemaVersion ?? 1) < CURRENT_PREFS_SCHEMA_VERSION;
+        const cloudSchemaVersion = cloud.schemaVersion ?? 1;
+        const migrated = applyMigrationsWithSchemaVersion(cloud.data, cloudSchemaVersion);
+        const migrationChanged = migrated.schemaVersion > cloudSchemaVersion;
         // Cloud is ahead, but the user may have un-uploaded local edits — e.g.
         // onSignIn re-fired by a 503 retry after the user changed a pref. Merge
         // those dirty keys over the cloud blob instead of clobbering them.
         const hasDirty = _dirtyKeys.size > 0;
         const toApply = hasDirty
-          ? mergeCloudWithLocalDirty(migrated, buildCloudBlob(), _dirtyKeys)
-          : migrated;
+          ? mergeCloudWithLocalDirty(migrated.data, buildCloudBlob(), _dirtyKeys)
+          : migrated.data;
         applyCloudBlob(toApply, cloud.syncVersion);
         setSyncVersion(cloud.syncVersion);
-        // After applyCloudBlob, local data IS at CURRENT schema (applyMigrations
-        // ran every step from cloud.schemaVersion to CURRENT). Mark it so the
-        // post paths don't redundantly re-run migrations on already-clean data.
-        setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
+        // An ambiguous schema-5 fingerprint deliberately stops at schema 4,
+        // so the same row remains eligible for a future disambiguated retry.
+        setLocalSchemaVersion(migrated.schemaVersion);
         // Force an upload when the cloud row's schemaVersion is behind (so it
         // catches up — otherwise the migration re-runs every load) OR when we
         // merged in local dirty keys the cloud row doesn't have yet.
@@ -584,8 +618,14 @@ export function onSignIn(userId: string, variant: string): Promise<void> {
         // to a poisoned cloud row would skip Branch A's inbound migration on
         // subsequent sign-ins and post the bad blob back at schema 2,
         // cementing the poisoning at the new schema).
-        const blob = migrateLocalBlobIfNeeded();
-        const result = await postCloudPrefs(token, variant, blob, getSyncVersion());
+        const prepared = migrateLocalBlobIfNeeded();
+        const result = await postCloudPrefs(
+          token,
+          variant,
+          prepared.data,
+          getSyncVersion(),
+          prepared.schemaVersion,
+        );
         if (_authGeneration !== myGeneration) return;
 
         if ('conflict' in result) {
@@ -595,7 +635,7 @@ export function onSignIn(userId: string, variant: string): Promise<void> {
           await resolveConflictWithMerge(token, variant, myGeneration);
         } else {
           setSyncVersion(result.syncVersion);
-          clearSettledDirtyKeys(blob);
+          clearSettledDirtyKeys(prepared.data);
           Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
           setState('synced');
         }
@@ -648,14 +688,14 @@ export function onSignOut(): void {
     // or a normal upload is already running. Dirty keys remain persisted and
     // the active operation / next sign-in remains the recovery path.
     if (!_syncOperations.busy) {
-      const blob = buildCloudBlob();
+      const prepared = migrateLocalBlobIfNeeded();
       const token = _cachedToken;
       void _syncOperations.run(async () => {
         await fetch('/api/user-prefs', {
           method: 'POST',
           keepalive: true,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: CURRENT_PREFS_SCHEMA_VERSION }),
+          body: JSON.stringify({ variant: _currentVariant, data: prepared.data, expectedSyncVersion: getSyncVersion(), schemaVersion: prepared.schemaVersion }),
           signal: AbortSignal.timeout(CLOUD_PREFS_REQUEST_TIMEOUT_MS),
         });
       }).catch(() => { /* best-effort on sign-out */ });
@@ -708,8 +748,15 @@ async function performUploadNow(variant: string): Promise<'completed' | 'retry-d
 
     setState('syncing');
 
-    const postedBlob = migrateLocalBlobIfNeeded();
-    const result = await postCloudPrefs(token, variant, postedBlob, getSyncVersion());
+    const prepared = migrateLocalBlobIfNeeded();
+    const postedBlob = prepared.data;
+    const result = await postCloudPrefs(
+      token,
+      variant,
+      postedBlob,
+      getSyncVersion(),
+      prepared.schemaVersion,
+    );
     if (_authGeneration !== myGeneration) return 'stopped';
 
     if ('conflict' in result) {
@@ -882,9 +929,10 @@ export function install(variant: string): void {
     // Same defensive migration as the synchronous post paths — never stamp
     // CURRENT_PREFS_SCHEMA_VERSION onto unmigrated local data, even on
     // best-effort unload flush.
-    const blob = migrateLocalBlobIfNeeded();
+    const prepared = migrateLocalBlobIfNeeded();
+    const blob = prepared.data;
     const myGeneration = _authGeneration;
-    const payload = JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: CURRENT_PREFS_SCHEMA_VERSION });
+    const payload = JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: prepared.schemaVersion });
     void _syncOperations.run(async () => {
       await fetch('/api/user-prefs', {
         method: 'POST',
