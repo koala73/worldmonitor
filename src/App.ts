@@ -88,10 +88,12 @@ import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 import {
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
+  computePreStrategicDefaultDisabledSources,
   FEEDS,
   FREE_CAP_PROTECTED_SOURCES,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getLocaleBoostedSources,
+  getStrategicDefaultSources,
   getTotalFeedCount,
   INTEL_SOURCES,
 } from '@/config/feeds';
@@ -139,7 +141,10 @@ import {
   onSignOut as cloudPrefsSignOut,
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
-import { migrateFrontlineEuropeDefaultsV3 } from '@/utils/cloud-prefs-migrations';
+import {
+  migrateFrontlineEuropeDefaultsV3,
+  migrateStrategicDefaultsV4,
+} from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
   getConvexApi,
@@ -984,6 +989,35 @@ export class App {
           );
         }
         localStorage.setItem(frontlineKey, 'done');
+      }
+      // #6000 — re-enable strategic defaults for profiles created before the
+      // flag became part of the canonical default set. An exact-set guard is
+      // required: a customized disabledFeeds set is user intent and must not
+      // be rewritten by a startup migration.
+      const strategicKey = 'worldmonitor-strategic-defaults-enable-v1';
+      if (!localStorage.getItem(strategicKey)) {
+        const legacyStrategicDefaults = new Set(computePreStrategicDefaultDisabledSources());
+        const legacyStrategicCap = computeCapDisabledSources(
+          FEEDS,
+          INTEL_SOURCES,
+          legacyStrategicDefaults,
+          FREE_MAX_SOURCES,
+        );
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateStrategicDefaultsV4(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          legacyStrategicDefaults,
+          getStrategicDefaultSources(),
+          legacyStrategicCap,
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (updated.length !== current.length) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log(
+            `[App] Strategic defaults enable (#6000): re-enabled ${current.length - updated.length} source(s)`,
+          );
+        }
+        localStorage.setItem(strategicKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
@@ -2138,11 +2172,14 @@ export class App {
       let explicitLocale = '';
       try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
       const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
-      // Locale-boosted sources (non-en) + editorially protected EN defaults.
+      // Strategic defaults + locale-boosted sources (non-en) + editorially
+      // protected EN defaults. User-disabled names remain excluded by the cap
+      // helper, so strategic protection does not override explicit intent.
       // Without frontline protection, free EN users lose Kyiv Independent / Meduza /
       // Moscow Times to round-robin late-in-europe-bucket ordering; without the
       // Eastern-flank additions, Daily Sabah / ERR News are also stripped (#5952).
       const protectedNames = new Set<string>(FREE_CAP_PROTECTED_SOURCES);
+      for (const name of getStrategicDefaultSources()) protectedNames.add(name);
       if (userLang !== 'en') {
         for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
       }

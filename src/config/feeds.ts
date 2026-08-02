@@ -1131,6 +1131,26 @@ export const FREE_CAP_PROTECTED_SOURCES = [
 ] as const;
 
 /**
+ * Sources that are default-enabled for every UI language.
+ *
+ * This is derived from the feed declarations so a strategic source cannot be
+ * added to the client reachability path without also entering the canonical
+ * default-enabled set and the free-tier protection path.
+ */
+export function getStrategicDefaultSources(): Set<string> {
+  const strategic = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) {
+    for (const feed of feeds) {
+      if (feed.strategicDefault) strategic.add(feed.name);
+    }
+  }
+  for (const feed of INTEL_SOURCES) {
+    if (feed.strategicDefault) strategic.add(feed.name);
+  }
+  return strategic;
+}
+
+/**
  * Default sources enabled for every user on first boot.
  *
  * Two separate concepts control whether a feed is visible to a user:
@@ -1145,9 +1165,8 @@ export const FREE_CAP_PROTECTED_SOURCES = [
  * of active wars, frontline NATO states, and Tier-1 Indo-Pacific flashpoints
  * that every intel audience should see (e.g. Asahi Shimbun for Japan, Yonhap
  * for Korea, Jeune Afrique for the Sahel). They are declared on the feed
- * config itself, not in DEFAULT_ENABLED_SOURCES, so the enablement travels
- * with the feed definition and is visible to the locale-boost/fetch-language
- * pipeline automatically.
+ * config itself and collected by `getStrategicDefaultSources()` so the
+ * bootstrap, cap, and fetch-language paths share one source of truth.
  *
  * A feed can be both locale-boosted AND a strategic default (e.g. a Polish
  * source is boosted for PL users and strategic-default for every locale).
@@ -1200,25 +1219,26 @@ export function getAllDefaultEnabledSources(): Set<string> {
   const s = new Set<string>();
   for (const names of Object.values(DEFAULT_ENABLED_SOURCES)) names.forEach(n => s.add(n));
   DEFAULT_ENABLED_INTEL.forEach(n => s.add(n));
+  for (const name of getStrategicDefaultSources()) s.add(name);
   return s;
 }
 
 /**
  * Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key).
  *
- * Strategic default feeds (tagged `strategicDefault: true`) are always boosted
- * regardless of locale — they carry local-depth coverage of active wars,
- * frontline NATO states, and Tier-1 Indo-Pacific flashpoints that every
- * user should see.
+ * Strategic defaults are handled by `getAllDefaultEnabledSources()` and are
+ * therefore not locale boosts. Keeping the concepts separate prevents an
+ * English locale lookup from implicitly enabling every ordinary multi-URL feed
+ * that happens to expose an `en` URL.
  */
 export function getLocaleBoostedSources(locale: string): Set<string> {
   const lang = (locale.split('-')[0] ?? 'en').toLowerCase();
   const boosted = new Set<string>();
+  if (lang === 'en') return boosted;
   const allFeeds = [...Object.values(FULL_FEEDS).flat(), ...INTEL_SOURCES];
   for (const f of allFeeds) {
     if (f.lang === lang) boosted.add(f.name);
     if (typeof f.url === 'object' && lang in f.url) boosted.add(f.name);
-    if (f.strategicDefault) boosted.add(f.name);
   }
   return boosted;
 }
@@ -1235,13 +1255,24 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
 }
 
 /**
+ * Reconstruct the source-reduction defaults from before strategic defaults
+ * became part of the canonical default-enabled set. This is used only by the
+ * exact-set migrations that repair profiles created before PR #6000.
+ */
+export function computePreStrategicDefaultDisabledSources(): string[] {
+  const disabled = new Set(computeDefaultDisabledSources());
+  for (const name of getStrategicDefaultSources()) disabled.add(name);
+  return [...disabled];
+}
+
+/**
  * The v3 source-reduction migration's pre-#5949 disabled set. This is used
  * only for a conservative one-time frontline migration: an exact match means
  * the profile still has the old untouched defaults, while any extra or
  * missing entry is treated as a user-customized preference and left alone.
  */
 export function computeLegacyDefaultDisabledSources(): string[] {
-  const disabled = new Set(computeDefaultDisabledSources());
+  const disabled = new Set(computePreStrategicDefaultDisabledSources());
   for (const name of FRONTLINE_EUROPE_PROTECTED_SOURCES) disabled.add(name);
   return [...disabled];
 }
