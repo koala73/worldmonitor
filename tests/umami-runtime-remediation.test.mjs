@@ -84,6 +84,70 @@ describe('Umami runtime remediation (#6024)', () => {
     assert.doesNotMatch(addedSource, /sessionData\.create/);
   });
 
+  it('bounds pool acquisition so a saturated pool fails fast instead of queueing forever', () => {
+    const patch = read('docker/umami/v320-compat.patch');
+    const addedSource = patch
+      .split('\n')
+      .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+      .map((line) => line.slice(1))
+      .join('\n');
+
+    // pg.Pool defaults connectionTimeoutMillis to 0, and pg-pool treats 0 as
+    // "queue the caller with no timer at all" — the #6053 indefinite hang. Every
+    // adapter must therefore carry the bound, not just the one we happened to hit.
+    const adapters = [...addedSource.matchAll(/new PrismaPg\(([\s\S]*?)\)\s*;/g)];
+
+    assert.equal(adapters.length, 2, 'expected the base and replica adapters to be patched');
+    for (const adapter of adapters) {
+      assert.ok(
+        adapter[1].includes('...getPoolOptions()'),
+        `PrismaPg pool built without a bounded acquisition timeout: ${adapter[0]}`,
+      );
+    }
+
+    // Execute the helper we actually ship rather than pattern-matching its text.
+    const declaration = addedSource.indexOf('const DEFAULT_POOL_CONNECT_TIMEOUT_MS');
+    const bodyEnd = addedSource.indexOf('\n}', addedSource.indexOf('function getPoolOptions()')) + 2;
+
+    assert.ok(declaration >= 0 && bodyEnd > declaration, 'getPoolOptions() missing from the patch');
+
+    const getPoolOptions = new Function(
+      `${addedSource.slice(declaration, bodyEnd)}\nreturn getPoolOptions;`,
+    )();
+    const previous = process.env.DATABASE_CONNECT_TIMEOUT_MS;
+
+    try {
+      delete process.env.DATABASE_CONNECT_TIMEOUT_MS;
+      assert.equal(getPoolOptions().connectionTimeoutMillis, 10000);
+
+      process.env.DATABASE_CONNECT_TIMEOUT_MS = '2500';
+      assert.equal(getPoolOptions().connectionTimeoutMillis, 2500);
+
+      for (const invalid of ['0', '-1', 'abc', '']) {
+        process.env.DATABASE_CONNECT_TIMEOUT_MS = invalid;
+        assert.equal(
+          getPoolOptions().connectionTimeoutMillis,
+          10000,
+          `${JSON.stringify(invalid)} must fall back to the bounded default, never 0 (unbounded)`,
+        );
+      }
+    } finally {
+      if (previous === undefined) {
+        delete process.env.DATABASE_CONNECT_TIMEOUT_MS;
+      } else {
+        process.env.DATABASE_CONNECT_TIMEOUT_MS = previous;
+      }
+    }
+  });
+
+  it('fails the image build when a PrismaPg pool loses its acquisition bound', () => {
+    const dockerfile = read('Dockerfile.umami');
+
+    assert.match(dockerfile, /new PrismaPg\\\(\(\[\\s\\S\]\*\?\)\\\)\\s\*;/);
+    assert.match(dockerfile, /\.\.\.getPoolOptions\(\)/);
+    assert.match(dockerfile, /connectionTimeoutMillis to 0 and queue callers forever/);
+  });
+
   it('deduplicates deterministically before creating the composite unique index', () => {
     const migration = read('docker/umami/21_update_session_data/migration.sql');
 

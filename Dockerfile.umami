@@ -85,6 +85,17 @@ RUN git init \
     const match = source.match(/writeRawQuery\(\s*`([\s\S]*?)`\s*,/); \
     if (!match || normalizeSql(match[1]) !== normalizeSql(fixture)) throw new Error("session-data upsert fixture does not match the applied source"); \
   ' \
+  && node --input-type=module -e '\
+    import { readFileSync } from "node:fs"; \
+    const lib = readFileSync("src/lib/prisma.ts", "utf8"); \
+    const adapters = [...lib.matchAll(/new PrismaPg\(([\s\S]*?)\)\s*;/g)]; \
+    if (adapters.length < 2) throw new Error("expected the base and replica PrismaPg adapters in src/lib/prisma.ts"); \
+    for (const adapter of adapters) { \
+      if (!adapter[1].includes("...getPoolOptions()")) { \
+        throw new Error("a PrismaPg pool is built without getPoolOptions(); pg.Pool would default connectionTimeoutMillis to 0 and queue callers forever"); \
+      } \
+    } \
+  ' \
   && mkdir -p prisma/migrations/21_update_session_data \
   && cp /tmp/21_update_session_data.sql prisma/migrations/21_update_session_data/migration.sql
 

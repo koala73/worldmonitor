@@ -1,5 +1,5 @@
 diff --git a/src/lib/prisma.ts b/src/lib/prisma.ts
-index 6cdb33c..89c418b 100644
+index 6cdb33c..d6bee46 100644
 --- a/src/lib/prisma.ts
 +++ b/src/lib/prisma.ts
 @@ -439,6 +439,37 @@ async function rawQuery(sql: string, data: Record<string, any>, name?: string):
@@ -40,7 +40,51 @@ index 6cdb33c..89c418b 100644
  async function pagedQuery<T>(model: string, criteria: T, filters?: QueryFilters) {
    const { page = 1, pageSize, orderBy, sortDescending = false, search } = filters || {};
    const size = +pageSize || DEFAULT_PAGE_SIZE;
-@@ -613,4 +644,5 @@ export default {
+@@ -540,6 +571,22 @@ function getSchema() {
+   return connectionUrl.searchParams.get('schema');
+ }
+ 
++// v3.2.0 operational hardening. PrismaPg forwards this options object to pg.Pool,
++// whose connectionTimeoutMillis defaults to 0, and pg-pool treats 0 as "queue the
++// caller with no timer at all". A saturated pool therefore parks callers forever
++// instead of failing them, which is how a slow database turned collector requests
++// into indefinite hangs rather than prompt errors (worldmonitor #6053). Bounding
++// the acquisition wait turns pool exhaustion back into a fast, visible failure.
++const DEFAULT_POOL_CONNECT_TIMEOUT_MS = 10000;
++
++function getPoolOptions() {
++  const configured = Number(process.env.DATABASE_CONNECT_TIMEOUT_MS);
++  const connectionTimeoutMillis =
++    Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_POOL_CONNECT_TIMEOUT_MS;
++
++  return { connectionTimeoutMillis };
++}
++
+ function getClient() {
+   const url = process.env.DATABASE_URL;
+   const replicaUrl = process.env.DATABASE_REPLICA_URL;
+@@ -551,7 +598,7 @@ function getClient() {
+ 
+   const schema = getSchema();
+ 
+-  const baseAdapter = new PrismaPg({ connectionString: url }, { schema });
++  const baseAdapter = new PrismaPg({ connectionString: url, ...getPoolOptions() }, { schema });
+ 
+   const baseClient = new PrismaClient({
+     adapter: baseAdapter,
+@@ -569,7 +616,10 @@ function getClient() {
+     return baseClient;
+   }
+ 
+-  const replicaAdapter = new PrismaPg({ connectionString: replicaUrl }, { schema });
++  const replicaAdapter = new PrismaPg(
++    { connectionString: replicaUrl, ...getPoolOptions() },
++    { schema },
++  );
+ 
+   const replicaClient = new PrismaClient({
+     adapter: replicaAdapter,
+@@ -613,4 +663,5 @@ export default {
    pagedRawQuery,
    parseFilters,
    rawQuery,
