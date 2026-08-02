@@ -29,6 +29,108 @@ export interface SourceCapResult {
   autoDisabled: Set<string>;
 }
 
+export interface SourceCapRolloutStage {
+  /** Source names that first became configured in this release stage. */
+  introducedNames: ReadonlySet<string>;
+  /** Cumulative cap-protected names at this release stage. */
+  protectedNames: ReadonlySet<string>;
+}
+
+export function canonicalStringSet(values: ReadonlySet<string>): string {
+  return JSON.stringify([...values].sort());
+}
+
+function filterFeedsToAvailable(
+  feedsByCategory: FeedsByCategory,
+  intelSources: ReadonlyArray<FeedItem>,
+  availableNames: ReadonlySet<string>,
+): { feeds: FeedsByCategory; intel: FeedItem[] } {
+  const feeds: FeedsByCategory = {};
+  for (const [category, entries] of Object.entries(feedsByCategory)) {
+    if (!entries) {
+      feeds[category] = entries;
+      continue;
+    }
+    feeds[category] = entries.filter((entry) => availableNames.has(entry.name));
+  }
+  return {
+    feeds,
+    intel: intelSources.filter((entry) => availableNames.has(entry.name)),
+  };
+}
+
+/**
+ * Enumerate exact untouched disabled-set shapes that can result while a group
+ * of feed releases rolls out over time.
+ *
+ * Existing profiles may load every intermediate release, skip some releases,
+ * or stay Pro (and therefore skip the free cap entirely). Each stage branches
+ * the recognized states into "did not persist a cap result" and "did persist
+ * this stage's cap result". Exact set de-duplication keeps the result bounded.
+ * A preference migration can then match one of these states without guessing
+ * whether an arbitrary entry was a user choice.
+ */
+export function computeRolloutLegacyDisabledStates(
+  feedsByCategory: FeedsByCategory,
+  intelSources: ReadonlyArray<FeedItem>,
+  initialDisabled: ReadonlySet<string>,
+  cap: number,
+  baselineProtectedNames: ReadonlySet<string>,
+  stages: ReadonlyArray<SourceCapRolloutStage>,
+): Set<string>[] {
+  const allConfiguredNames = new Set<string>();
+  for (const entries of Object.values(feedsByCategory)) {
+    for (const entry of entries ?? []) allConfiguredNames.add(entry.name);
+  }
+  for (const entry of intelSources) allConfiguredNames.add(entry.name);
+
+  const allIntroducedNames = new Set<string>();
+  for (const stage of stages) {
+    for (const name of stage.introducedNames) {
+      if (allIntroducedNames.has(name)) {
+        throw new Error(`Source "${name}" is introduced by more than one rollout stage`);
+      }
+      allIntroducedNames.add(name);
+    }
+  }
+
+  const availableNames = new Set(
+    [...allConfiguredNames].filter((name) => !allIntroducedNames.has(name)),
+  );
+  const states = new Map<string, Set<string>>();
+  const remember = (state: ReadonlySet<string>) => {
+    const copy = new Set(state);
+    states.set(canonicalStringSet(copy), copy);
+  };
+  const applyCap = (
+    state: ReadonlySet<string>,
+    protectedNames: ReadonlySet<string>,
+    catalog: ReturnType<typeof filterFeedsToAvailable>,
+  ): Set<string> => {
+    const { autoDisabled } = selectSourcesUnderCap(
+      catalog.feeds,
+      catalog.intel,
+      state,
+      cap,
+      protectedNames,
+    );
+    return new Set([...state, ...autoDisabled]);
+  };
+
+  remember(initialDisabled);
+  const baselineCatalog = filterFeedsToAvailable(feedsByCategory, intelSources, availableNames);
+  remember(applyCap(initialDisabled, baselineProtectedNames, baselineCatalog));
+
+  for (const stage of stages) {
+    for (const name of stage.introducedNames) availableNames.add(name);
+    const catalog = filterFeedsToAvailable(feedsByCategory, intelSources, availableNames);
+    const priorStates = [...states.values()];
+    for (const state of priorStates) remember(applyCap(state, stage.protectedNames, catalog));
+  }
+
+  return [...states.values()];
+}
+
 /**
  * Reconstruct the persisted disabled set produced by the pre-protected cap
  * caller. This is used only by one-time migrations to recognize an untouched

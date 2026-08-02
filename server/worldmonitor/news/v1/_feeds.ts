@@ -101,7 +101,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Armenpress', url: gn('site:armenpress.am when:3d') },
       // Belarus / Moldova (#5953)
       { name: 'Zerkalo', url: gn('site:zerkalo.io when:2d') },
-      { name: 'NewsMaker', url: 'https://newsmaker.md/en/feed/' },
+      // NewsMaker removed its English feed; retain the live Russian feed only
+      // for Russian-language digests instead of serving a 404 to EN.
+      { name: 'NewsMaker', url: 'https://newsmaker.md/feed', lang: 'ru' },
       { name: 'Ziarul de Gardă', url: 'https://www.zdg.md/feed/', lang: 'ro' },
       // Baltic states — Eastern flank (#5952). English-language, no lang tag,
       // so EN digests include them.
@@ -233,21 +235,21 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'NDTV India', url: 'https://feeds.feedburner.com/ndtvkhabar-latest', lang: 'hi' },
       { name: 'Amar Ujala', url: 'https://www.amarujala.com/rss/national.xml', lang: 'hi' },
 // Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
-      { name: 'Eurasianet', url: 'https://eurasianet.org/feed/' },
+      { name: 'Eurasianet', url: 'https://eurasianet.org/rss' },
       { name: 'RFE/RL Central Asia', url: gn('site:rferl.org Central+Asia when:3d') },
       { name: 'The Astana Times', url: 'https://astanatimes.com/feed/' },
       { name: 'The Times of Central Asia', url: 'https://timesca.com/feed/' },
       // Taiwan (#5954)
-      { name: 'Focus Taiwan', url: 'https://focustaiwan.tw/search/simple/all/1/rss' },
-      { name: 'Taipei Times', url: 'https://www.taipeitimes.com/feeds/front.xml' },
-      { name: 'Taiwan News', url: 'https://www.taiwannews.com.tw/rss' },
+      { name: 'Focus Taiwan', url: gn('site:focustaiwan.tw when:3d') },
+      { name: 'Taipei Times', url: gn('site:taipeitimes.com when:3d') },
+      { name: 'Taiwan News', url: gn('site:taiwannews.com.tw when:3d') },
       // Pakistan (#5954)
       { name: 'Dawn', url: 'https://www.dawn.com/feeds/home/' },
       { name: 'Geo News', url: gn('site:geo.tv when:2d') },
       // SE Asia security (#5954)
-      { name: 'Jakarta Post', url: 'https://www.thejakartapost.com/rss/news.xml' },
+      { name: 'Jakarta Post', url: gn('site:thejakartapost.com when:3d') },
       { name: 'Rappler', url: 'https://www.rappler.com/feed/' },
-      { name: 'The Star (Malaysia)', url: 'https://www.thestar.com.my/rss/editors-pick' },
+      { name: 'The Star (Malaysia)', url: gn('site:thestar.com.my when:3d') },
       { name: 'Irrawaddy', url: 'https://www.irrawaddy.com/feed/' },
     ],
     energy: [

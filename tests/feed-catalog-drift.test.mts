@@ -24,13 +24,20 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
-import { selectSourcesUnderCap } from '../src/services/source-cap';
+import { computeCapDisabledSources, selectSourcesUnderCap } from '../src/services/source-cap';
+import {
+  applyMigrationChain,
+  buildMigrations,
+  migrateRegionalFeedRolloutDefaultsV5,
+  migrateStrategicDefaultsV4,
+} from '../src/utils/cloud-prefs-migrations';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-feed-catalog-drift-test');
 const outfile = join(tempDir, 'feeds-bundle.mjs');
 const serverOutfile = join(tempDir, 'server-feeds-bundle.mjs');
+const rolloutOutfile = join(tempDir, 'regional-rollout-bundle.mjs');
 
 interface FeedEntry {
   name: string;
@@ -44,6 +51,8 @@ interface FeedsModule {
   DEFAULT_ENABLED_INTEL: string[];
   FREE_CAP_PROTECTED_SOURCES: readonly string[];
   FRONTLINE_EUROPE_PROTECTED_SOURCES: readonly string[];
+  REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES: readonly string[];
+  REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES: readonly string[];
   INTEL_SOURCES: FeedEntry[];
   SOURCE_TYPES: Record<string, string>;
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
@@ -53,6 +62,9 @@ interface FeedsModule {
   getStrategicDefaultSources: () => Set<string>;
   getLocaleBoostedSources: (locale: string) => Set<string>;
   computeDefaultDisabledSources: (locale?: string) => string[];
+  computePreStrategicDefaultDisabledSources: (locale?: string) => string[];
+  computeLegacyDefaultDisabledSources: () => string[];
+  computePreRegionalFeedRolloutDefaultDisabledSources: (locale?: string) => string[];
   listConfiguredFeedNames: () => string[];
 }
 
@@ -62,6 +74,21 @@ interface ServerFeedsModule {
     feed: Pick<FeedEntry, 'lang' | 'strategicDefault'>,
     language: string,
   ) => boolean;
+}
+
+interface RegionalRolloutModule {
+  buildPreStrategicDefaultDisabledStates: (
+    cap: number,
+    locale?: string,
+  ) => Array<ReadonlySet<string>>;
+  buildRegionalFeedRolloutMigrationTargets: (
+    cap: number,
+    locale?: string,
+  ) => Array<{
+    legacyDisabled: ReadonlySet<string>;
+    defaultNames: ReadonlySet<string>;
+    optInNames: ReadonlySet<string>;
+  }>;
 }
 
 /** Sources #5949/#5950 ship as EN-default frontline Europe coverage (cap-protected). */
@@ -115,8 +142,103 @@ const AFRICA_DEPTH_FEEDS = {
   'RFI Afrique': { url: 'https://www.rfi.fr/en/africa/rss' },
 } as const;
 
+const REGIONAL_ROLLOUT_DEFAULTS = [
+  'Daily Sabah',
+  'ERR News',
+  'Civil.ge',
+  'OC Media',
+  'Eurasianet',
+  'The Astana Times',
+  'Focus Taiwan',
+  'Dawn',
+  'Rappler',
+  'Hiiraan Online',
+  'RFI Afrique',
+] as const;
+
+const REGIONAL_ROLLOUT_OPT_INS = [
+  'Seznam Zprávy',
+  'Digi24',
+  'HotNews',
+  'G4Media',
+  'Dnevnik',
+  'LRT English',
+  'LSM English',
+  'JAMnews',
+  'Azertag',
+  'Armenpress',
+  'Zerkalo',
+  'NewsMaker',
+  'Ziarul de Gardă',
+  'Radio Tamazuj',
+  'The Reporter Ethiopia',
+  'Actualite.cd',
+  'Radio Okapi',
+  'MyJoyOnline',
+  'Le Quotidien',
+  'RFE/RL Central Asia',
+  'The Times of Central Asia',
+  'Taipei Times',
+  'Taiwan News',
+  'Geo News',
+  'Jakarta Post',
+  'The Star (Malaysia)',
+  'Irrawaddy',
+  'Ethiopia Insight',
+  'Dabanga Sudan',
+  'Citi Newsroom',
+] as const;
+
+const INITIAL_FRONTLINE_DEFAULTS = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+] as const;
+
+const UKRAINE_DEPTH_DEFAULTS = ['Ukrainska Pravda EN', 'NV EN', 'ISW'] as const;
+const UKRAINE_DEPTH_OPT_INS = ['Ukrinform', 'Suspilne', 'Hromadske EN'] as const;
+const UKRAINE_DEPTH_NAMES = [...UKRAINE_DEPTH_DEFAULTS, ...UKRAINE_DEPTH_OPT_INS] as const;
+const RECONCILED_ROLLOUT_DEFAULTS = [
+  ...FRONTLINE_EUROPE,
+  'ISW',
+  ...REGIONAL_ROLLOUT_DEFAULTS,
+  ...STRATEGIC_DEFAULTS,
+] as const;
+const RECONCILED_ROLLOUT_OPT_INS = [
+  ...UKRAINE_DEPTH_OPT_INS,
+  ...REGIONAL_ROLLOUT_OPT_INS,
+] as const;
+
+const REPAIRED_REGIONAL_FEEDS = {
+  'Civil.ge': { url: 'https://civil.ge/feed/' },
+  'OC Media': { url: 'https://oc-media.org/feed/' },
+  JAMnews: { url: 'https://jam-news.net/feed/' },
+  NewsMaker: { url: 'https://newsmaker.md/feed', lang: 'ru' },
+  'Ziarul de Gardă': { url: 'https://www.zdg.md/feed/', lang: 'ro' },
+  Eurasianet: { url: 'https://eurasianet.org/rss' },
+  'The Astana Times': { url: 'https://astanatimes.com/feed/' },
+  'The Times of Central Asia': { url: 'https://timesca.com/feed/' },
+  'Focus Taiwan': { url: 'https://news.google.com/rss/search?q=site%3Afocustaiwan.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'Taipei Times': { url: 'https://news.google.com/rss/search?q=site%3Ataipeitimes.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'Taiwan News': { url: 'https://news.google.com/rss/search?q=site%3Ataiwannews.com.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'Jakarta Post': { url: 'https://news.google.com/rss/search?q=site%3Athejakartapost.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+  'The Star (Malaysia)': { url: 'https://news.google.com/rss/search?q=site%3Athestar.com.my%20when%3A3d&hl=en-US&gl=US&ceid=US:en' },
+} as const;
+
+const UNUSED_REGIONAL_PUBLISHER_HOSTS = [
+  'focustaiwan.tw',
+  'www.taipeitimes.com',
+  'www.taiwannews.com.tw',
+  'www.geo.tv',
+  'www.thejakartapost.com',
+  'www.thestar.com.my',
+] as const;
+
 let feeds: FeedsModule;
 let serverFeeds: ServerFeedsModule;
+let regionalRollout: RegionalRolloutModule;
 
 before(async () => {
   mkdirSync(tempDir, { recursive: true });
@@ -171,6 +293,33 @@ before(async () => {
   });
   writeFileSync(serverOutfile, serverResult.outputFiles[0].text, 'utf8');
   serverFeeds = await import(`${pathToFileURL(serverOutfile).href}?t=${Date.now()}`) as ServerFeedsModule;
+
+  const rolloutResult = await build({
+    entryPoints: [join(repoRoot, 'src/services/regional-feed-rollout.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    write: false,
+    absWorkingDir: repoRoot,
+    alias: { '@': join(repoRoot, 'src') },
+    plugins: [stubUtilsPlugin as never],
+    define: {
+      'import.meta.env': JSON.stringify({
+        DEV: false,
+        PROD: true,
+        SSR: false,
+        MODE: 'test',
+        BASE_URL: '/',
+        VITE_VARIANT: 'full',
+        VITE_RSS_DIRECT_TO_RELAY: 'false',
+      }),
+    },
+  });
+  writeFileSync(rolloutOutfile, rolloutResult.outputFiles[0].text, 'utf8');
+  regionalRollout = await import(
+    `${pathToFileURL(rolloutOutfile).href}?t=${Date.now()}`
+  ) as RegionalRolloutModule;
 });
 
 after(() => {
@@ -219,6 +368,54 @@ describe('feed catalog drift', () => {
       assert.ok(!disabledEn.has(name), `${name} must not be disabled for EN first boot`);
       assert.equal(server?.lang, client?.lang, `${name} server/client language tags must match`);
     }
+  });
+
+  it('reconstructs the exact pre-strategic default fingerprint', () => {
+    const legacyDisabled = new Set(feeds.computePreStrategicDefaultDisabledSources('en'));
+
+    assert.equal(
+      legacyDisabled.has('Jeune Afrique'),
+      false,
+      'a source that was already an explicit default before #6000 must remain enabled',
+    );
+    for (const name of STRATEGIC_DEFAULTS) {
+      if (name === 'Jeune Afrique') continue;
+      assert.ok(
+        legacyDisabled.has(name),
+        `${name} must be disabled in the untouched EN fingerprint from before #6000`,
+      );
+    }
+  });
+
+  it('migrates exact non-English pre-strategic default and cap states', () => {
+    const plStates = regionalRollout.buildPreStrategicDefaultDisabledStates(80, 'pl');
+    assert.ok(plStates.length > 0);
+    for (const state of plStates) {
+      assert.equal(state.has('Polsat News'), false, 'Polsat was already enabled by the PL locale');
+    }
+
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...plStates[0]!]),
+    };
+    const migrated = migrateStrategicDefaultsV4(
+      blob,
+      new Set(),
+      feeds.getStrategicDefaultSources(),
+      new Set(),
+      plStates,
+    );
+    const disabled = new Set(
+      JSON.parse(migrated['worldmonitor-disabled-feeds'] as string) as string[],
+    );
+    for (const name of STRATEGIC_DEFAULTS) {
+      assert.equal(disabled.has(name), false, `${name} must be enabled for the migrated PL profile`);
+    }
+
+    const ruStates = regionalRollout.buildPreStrategicDefaultDisabledStates(80, 'ru');
+    assert.ok(
+      ruStates.every((state) => state.has('NewsMaker')),
+      'NewsMaker must not be backdated into the pre-repair RU locale fingerprint',
+    );
   });
 
   it('keeps strategic reachability separate from English locale boosting', () => {
@@ -482,7 +679,7 @@ describe('feed catalog drift', () => {
   it('keeps both Eastern-flank EN defaults under the production free cap (#5952)', () => {
     assert.deepEqual(
       [...feeds.FREE_CAP_PROTECTED_SOURCES].sort(),
-      [...FRONTLINE_EUROPE, ...EASTERN_FLANK_EN_DEFAULTS, ...AFRICA_DEPTH_EN_DEFAULTS].sort(),
+      [...FRONTLINE_EUROPE, ...REGIONAL_ROLLOUT_DEFAULTS].sort(),
       'free-cap protected defaults must match the editorially protected sets',
     );
 
@@ -544,6 +741,209 @@ describe('feed catalog drift', () => {
     for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
       assert.ok(keep.has(name), `${name} must survive the free source cap`);
       assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('locks the repaired #5953/#5954 URLs and language reachability across client and digest catalogs', () => {
+    const clientByName = new Map(
+      [...(feeds.FEEDS.europe ?? []), ...(feeds.FEEDS.asia ?? [])]
+        .map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      [
+        ...(serverFeeds.VARIANT_FEEDS.full?.europe ?? []),
+        ...(serverFeeds.VARIANT_FEEDS.full?.asia ?? []),
+      ].map((feed) => [feed.name, feed]),
+    );
+
+    for (const [name, expected] of Object.entries(REPAIRED_REGIONAL_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must remain in the client regional catalog`);
+      assert.ok(server, `${name} must remain in the server regional catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+  });
+
+  it('keeps regional rollout defaults and opt-ins disjoint and truthful for fresh profiles', () => {
+    assert.deepEqual(
+      [...feeds.REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES].sort(),
+      [...REGIONAL_ROLLOUT_DEFAULTS].sort(),
+    );
+    assert.deepEqual(
+      [...feeds.REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES].sort(),
+      [...REGIONAL_ROLLOUT_OPT_INS].sort(),
+    );
+
+    const defaults = feeds.getAllDefaultEnabledSources();
+    const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of REGIONAL_ROLLOUT_DEFAULTS) {
+      assert.ok(defaults.has(name), `${name} must remain an explicit EN default`);
+      assert.ok(!disabled.has(name), `${name} must not be disabled for a fresh EN profile`);
+    }
+    for (const name of REGIONAL_ROLLOUT_OPT_INS) {
+      assert.ok(!defaults.has(name), `${name} must remain opt-in for EN`);
+      assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
+    }
+  });
+
+  it('reconstructs unique exact EN preference states across skipped/intermediate releases', () => {
+    const targets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80, 'en');
+    const states = targets.map((target) => target.legacyDisabled);
+    const canonical = states.map((state) => JSON.stringify([...state].sort()));
+    const preRolloutDefault = JSON.stringify(
+      [...feeds.computePreRegionalFeedRolloutDefaultDisabledSources('en')].sort(),
+    );
+
+    assert.ok(states.length > 1, 'default-only and at least one cap path must be recognized');
+    assert.equal(new Set(canonical).size, states.length, 'equivalent release paths must be deduplicated');
+    assert.ok(canonical.includes(preRolloutDefault), 'the untouched pre-#5976 default state must be recognized');
+    for (const target of targets) {
+      assert.deepEqual([...target.defaultNames].sort(), [...RECONCILED_ROLLOUT_DEFAULTS].sort());
+      assert.deepEqual([...target.optInNames].sort(), [...RECONCILED_ROLLOUT_OPT_INS].sort());
+    }
+  });
+
+  it('migrates dormant schema-1/2 EN rows from before #5949 through schema 5', () => {
+    const preFrontlineDefault = new Set(
+      feeds.computePreRegionalFeedRolloutDefaultDisabledSources('en'),
+    );
+    for (const name of UKRAINE_DEPTH_NAMES) preFrontlineDefault.delete(name);
+    for (const name of INITIAL_FRONTLINE_DEFAULTS) preFrontlineDefault.add(name);
+
+    const targets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80, 'en');
+    assert.ok(
+      targets.some((target) => (
+        target.legacyDisabled.size === preFrontlineDefault.size
+        && [...preFrontlineDefault].every((name) => target.legacyDisabled.has(name))
+      )),
+      'the frozen pre-frontline fingerprint must not drift with later catalog additions',
+    );
+
+    const legacyPreStrategicDefault = new Set(
+      feeds.computePreStrategicDefaultDisabledSources(),
+    );
+    const legacyPreStrategicCap = computeCapDisabledSources(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      legacyPreStrategicDefault,
+      80,
+    );
+    const migrations = buildMigrations(feeds.FEEDS, {
+      frontline: {
+        legacyDefaultDisabled: new Set(feeds.computeLegacyDefaultDisabledSources()),
+        names: new Set(feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES),
+        legacyCapDisabled: legacyPreStrategicCap,
+      },
+      strategic: {
+        names: feeds.getStrategicDefaultSources(),
+        legacyDisabledStates: regionalRollout.buildPreStrategicDefaultDisabledStates(80),
+      },
+      regionalRollout: { targets },
+    });
+    for (const fromVersion of [1, 2]) {
+      const blob = {
+        'worldmonitor-disabled-feeds': JSON.stringify([...preFrontlineDefault]),
+      };
+      const migrated = applyMigrationChain(blob, fromVersion, 5, migrations);
+      const disabled = new Set(
+        JSON.parse(migrated['worldmonitor-disabled-feeds'] as string) as string[],
+      );
+
+      for (const name of RECONCILED_ROLLOUT_DEFAULTS) {
+        assert.equal(
+          disabled.has(name),
+          false,
+          `schema ${fromVersion}: ${name} must be enabled after the full chain`,
+        );
+      }
+      for (const name of RECONCILED_ROLLOUT_OPT_INS) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the full chain`,
+        );
+      }
+    }
+  });
+
+  it('promotes locale-matched rollout sources without changing unrelated opt-ins', () => {
+    const ruTargets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80, 'ru');
+    assert.ok(ruTargets.length > 0, 'the RU migration must reconstruct at least one exact state');
+    for (const target of ruTargets) {
+      assert.ok(target.defaultNames.has('NewsMaker'), 'NewsMaker is a RU locale default');
+      assert.equal(target.optInNames.has('NewsMaker'), false, 'NewsMaker cannot also be an RU opt-in');
+      assert.ok(target.optInNames.has('JAMnews'), 'unrelated regional sources remain opt-in');
+    }
+  });
+
+  it('fails closed for locale-less cloud fingerprints with conflicting policies', () => {
+    const targets = regionalRollout.buildRegionalFeedRolloutMigrationTargets(80);
+    const targetsByLegacyState = new Map<string, typeof targets>();
+
+    for (const target of targets) {
+      const legacyKey = JSON.stringify([...target.legacyDisabled].sort());
+      const matching = targetsByLegacyState.get(legacyKey) ?? [];
+      matching.push(target);
+      targetsByLegacyState.set(legacyKey, matching);
+    }
+
+    let ambiguousFingerprints = 0;
+    for (const matching of targetsByLegacyState.values()) {
+      const policies = new Set(matching.map((target) => JSON.stringify({
+        defaults: [...target.defaultNames].sort(),
+        optIns: [...target.optInNames].sort(),
+      })));
+      if (policies.size < 2) continue;
+      ambiguousFingerprints += 1;
+      const blob = {
+        'worldmonitor-disabled-feeds': JSON.stringify([...matching[0]!.legacyDisabled]),
+      };
+      assert.equal(
+        migrateRegionalFeedRolloutDefaultsV5(blob, targets),
+        blob,
+        'a cloud row without locale metadata must remain untouched when policies disagree',
+      );
+    }
+
+    assert.ok(ambiguousFingerprints > 0, 'the production targets must exercise the ambiguity guard');
+    assert.ok(
+      targets.some((target) => target.defaultNames.has('NewsMaker')),
+      'all-locale cloud reconstruction must include the RU NewsMaker policy',
+    );
+  });
+
+  it('keeps every regional rollout default under the production free cap', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const protectedNames = new Set(feeds.FREE_CAP_PROTECTED_SOURCES);
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      protectedNames,
+    );
+
+    for (const name of REGIONAL_ROLLOUT_DEFAULTS) {
+      assert.ok(protectedNames.has(name), `${name} must be explicitly protected from the free cap`);
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('allowlists only direct regional feed hosts, not publisher names inside Google News queries', () => {
+    for (const [name, expected] of Object.entries(REPAIRED_REGIONAL_FEEDS)) {
+      const hostname = new URL(expected.url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} direct host ${hostname} must be RSS-allowlisted`);
+    }
+    for (const hostname of UNUSED_REGIONAL_PUBLISHER_HOSTS) {
+      assert.equal(
+        isAllowedDomain(hostname),
+        false,
+        `${hostname} is not fetched directly and must not expand the RSS proxy allowlist`,
+      );
     }
   });
 

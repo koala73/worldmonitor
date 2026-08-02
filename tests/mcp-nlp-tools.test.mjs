@@ -35,7 +35,7 @@ const digestResponse = {
     politics: {
       items: [
         { source: 'Reuters', title: 'Iran closes Strait of Hormuz to all tanker traffic', link: 'https://n/1', publishedAt: 1785405600000, isAlert: true, threat: { level: 'THREAT_LEVEL_CRITICAL', category: 'conflict', confidence: 0.9, source: 'llm' } },
-        { source: 'AP', title: 'Iran closes Strait of Hormuz, tanker traffic halted', link: 'https://n/2', publishedAt: 1785405900000, isAlert: false, threat: { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' } },
+        { source: 'AP News', title: 'Iran closes Strait of Hormuz, tanker traffic halted', link: 'https://n/2', publishedAt: 1785405900000, isAlert: false, threat: { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' } },
       ],
     },
     tech: {
@@ -219,6 +219,14 @@ describe('#5697 NLP MCP tools', () => {
       byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('intel'),
       'get_news_clusters category enum must include intel',
     );
+    const clusterSchema = byName.get('get_news_clusters')?.outputSchema.properties.clusters.items;
+    assert.ok(clusterSchema.required.includes('primarySourceProvenance'));
+    assert.ok(clusterSchema.required.includes('sourceProvenance'));
+    assert.equal(clusterSchema.properties.primarySourceProvenance.type, 'object');
+    assert.equal(clusterSchema.properties.sourceProvenance.type, 'array');
+    assert.equal(clusterSchema.properties.sourceProvenance.items.properties.source.type, 'string');
+    assert.equal(clusterSchema.properties.sourceProvenance.items.properties.risk.type, 'string');
+    assert.equal(clusterSchema.properties.sourceProvenance.items.properties.stateAffiliated.type, 'string');
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
     assert.deepEqual(classifyOutput.properties.classification.required,
@@ -484,11 +492,75 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(result.totalClusters, 2);
       const hormuz = result.clusters.find((c) => c.memberCount === 2);
       assert.ok(hormuz, 'the two Hormuz headlines must form one cluster');
-      assert.deepEqual(new Set(hormuz.sources), new Set(['Reuters', 'AP']));
+      assert.deepEqual(new Set(hormuz.sources), new Set(['Reuters', 'AP News']));
+      assert.equal(hormuz.primarySourceProvenance.riskReviewed, true);
+      assert.equal(hormuz.primarySourceProvenance.typeReviewed, true);
+      assert.deepEqual(
+        new Set(hormuz.sourceProvenance.map((source) => source.source)),
+        new Set(['Reuters', 'AP News']),
+      );
       assert.ok(hormuz.topKeywords.includes('hormuz'));
       assert.equal(hormuz.threatLevel, 'critical');
       assert.equal(hormuz.isAlert, true);
       assert.ok(hormuz.firstSeen.endsWith('Z') && hormuz.lastUpdated.endsWith('Z'));
+    });
+
+    it('surfaces state affiliation and fail-closed review state for every projected source', async () => {
+      await withDigestCategories({
+        asia: {
+          items: [
+            { source: 'The Astana Times', title: 'Kazakhstan expands regional rail corridor', link: 'https://n/astana', publishedAt: 1785405600000 },
+            { source: 'Unreviewed Local Desk', title: 'Kazakhstan regional rail corridor expands', link: 'https://n/local', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'asia' });
+        const cluster = result.clusters[0];
+        const provenanceBySource = new Map(
+          cluster.sourceProvenance.map((entry) => [entry.source, entry]),
+        );
+        assert.equal(provenanceBySource.get('The Astana Times').stateAffiliated, 'Kazakhstan');
+        assert.equal(provenanceBySource.get('The Astana Times').riskReviewed, true);
+        assert.equal(provenanceBySource.get('Unreviewed Local Desk').risk, 'unknown');
+        assert.equal(provenanceBySource.get('Unreviewed Local Desk').riskReviewed, false);
+        assert.equal(provenanceBySource.get('Unreviewed Local Desk').typeReviewed, false);
+      });
+    });
+
+    it('stays inside the dispatcher budget at the maximum provenance-rich shape', async () => {
+      const sources = Array.from(
+        { length: 8 },
+        (_, sourceIndex) => `source${sourceIndex}-${'s'.repeat(5_000)}`,
+      );
+      const items = Array.from({ length: 25 }, (_, clusterIndex) => (
+        sources.map((source, sourceIndex) => ({
+          source,
+          title: `theater${clusterIndex} region${clusterIndex} corridor${clusterIndex} ${`topic${clusterIndex}`.repeat(1_000)}`,
+          link: `https://example.test/story/${clusterIndex}/${sourceIndex}/${'x'.repeat(5_000)}`,
+          publishedAt: 1785405600000 + clusterIndex * 1000 + sourceIndex,
+        }))
+      )).flat();
+
+      await withDigestCategories({ politics: { items } }, async () => {
+        const { result } = await callTool('get_news_clusters', { limit: 25 });
+        assert.equal(result._budget_exceeded, undefined, JSON.stringify(result));
+        assert.equal(result.clusters.length, 25);
+        assert.ok(
+          Buffer.byteLength(JSON.stringify(result), 'utf8') <= 262144,
+          'the supported max shape must fit the declared 256 KiB budget',
+        );
+        assert.ok(
+          result.clusters.every((cluster) => cluster.sourceProvenance.length === 8),
+          'the fixture must actually exercise all eight provenance slots',
+        );
+        for (const cluster of result.clusters) {
+          assert.ok(Buffer.byteLength(cluster.title, 'utf8') <= 512);
+          assert.ok(Buffer.byteLength(cluster.link, 'utf8') <= 2_048);
+          for (const source of cluster.sources) {
+            assert.ok(Buffer.byteLength(source, 'utf8') <= 160);
+          }
+        }
+      });
     });
 
     it('applies min_sources and limit filters', async () => {

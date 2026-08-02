@@ -29,6 +29,10 @@ const stubs: Record<string, string> = {
     'export const computeCapDisabledSources = () => [];',
     'export const findFullyDisabledCategories = () => [];',
   ].join('\n'),
+  '@/services/regional-feed-rollout': [
+    'export const buildPreStrategicDefaultDisabledStates = () => [];',
+    'export const buildRegionalFeedRolloutMigrationTargets = () => [];',
+  ].join('\n'),
 };
 
 interface HarnessResult {

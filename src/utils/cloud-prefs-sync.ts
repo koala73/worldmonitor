@@ -26,6 +26,10 @@ import {
 import { FREE_MAX_SOURCES } from '@/config/panels';
 import { computeCapDisabledSources } from '@/services/source-cap';
 import {
+  buildPreStrategicDefaultDisabledStates,
+  buildRegionalFeedRolloutMigrationTargets,
+} from '@/services/regional-feed-rollout';
+import {
   applyMigrationChain,
   buildMigrations,
   mergeCloudWithLocalDirty,
@@ -68,7 +72,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 4;
+const CURRENT_PREFS_SCHEMA_VERSION = 5;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -96,22 +100,37 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // and prevents a stale cloud row from re-poisoning a local migration.
 // Schema 4 (#6000): re-enable strategic defaults from an untouched pre-flag
 // default/cap blob. The same exact-set guard preserves customized preferences.
-const LEGACY_PRE_STRATEGIC_DEFAULT_DISABLED = new Set(computePreStrategicDefaultDisabledSources());
-const LEGACY_PRE_STRATEGIC_CAP_DISABLED = computeCapDisabledSources(
-  FEEDS,
-  INTEL_SOURCES,
-  LEGACY_PRE_STRATEGIC_DEFAULT_DISABLED,
-  FREE_MAX_SOURCES,
-);
-const MIGRATIONS = buildMigrations(
-  FEEDS,
-  new Set(computeLegacyDefaultDisabledSources()),
-  new Set(FRONTLINE_EUROPE_PROTECTED_SOURCES),
-  LEGACY_PRE_STRATEGIC_CAP_DISABLED,
-  LEGACY_PRE_STRATEGIC_DEFAULT_DISABLED,
-  getStrategicDefaultSources(),
-  LEGACY_PRE_STRATEGIC_CAP_DISABLED,
-);
+// Schema 5 (#5975/#5976/#5977/#5980): reconcile regional rollout defaults and
+// opt-ins only for exact untouched default/cap states across known locales.
+let _migrations: ReturnType<typeof buildMigrations> | null = null;
+
+function getMigrations(): ReturnType<typeof buildMigrations> {
+  if (_migrations) return _migrations;
+  const legacyPreStrategicDefaultDisabled = new Set(
+    computePreStrategicDefaultDisabledSources(),
+  );
+  const legacyPreStrategicCapDisabled = computeCapDisabledSources(
+    FEEDS,
+    INTEL_SOURCES,
+    legacyPreStrategicDefaultDisabled,
+    FREE_MAX_SOURCES,
+  );
+  _migrations = buildMigrations(FEEDS, {
+    frontline: {
+      legacyDefaultDisabled: new Set(computeLegacyDefaultDisabledSources()),
+      names: new Set(FRONTLINE_EUROPE_PROTECTED_SOURCES),
+      legacyCapDisabled: legacyPreStrategicCapDisabled,
+    },
+    strategic: {
+      names: getStrategicDefaultSources(),
+      legacyDisabledStates: buildPreStrategicDefaultDisabledStates(FREE_MAX_SOURCES),
+    },
+    regionalRollout: {
+      targets: buildRegionalFeedRolloutMigrationTargets(FREE_MAX_SOURCES),
+    },
+  });
+  return _migrations;
+}
 
 type SyncState = 'synced' | 'pending' | 'syncing' | 'conflict' | 'offline' | 'signed-out' | 'error';
 
@@ -277,7 +296,8 @@ function applyMigrations(
   data: Record<string, unknown>,
   fromVersion: number,
 ): Record<string, unknown> {
-  return applyMigrationChain(data, fromVersion, CURRENT_PREFS_SCHEMA_VERSION, MIGRATIONS);
+  if (fromVersion >= CURRENT_PREFS_SCHEMA_VERSION) return data;
+  return applyMigrationChain(data, fromVersion, CURRENT_PREFS_SCHEMA_VERSION, getMigrations());
 }
 
 function getLocalSchemaVersion(): number {
