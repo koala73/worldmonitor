@@ -87,7 +87,7 @@ export function deriveWtoSeverityStatus(value) {
 
 // ─── Shipping Rates (FRED) ───
 
-const SHIPPING_SERIES = [
+export const SHIPPING_SERIES = [
   { seriesId: 'PCU483111483111', name: 'Deep Sea Freight Producer Price Index', unit: 'index', frequency: 'm' },
   { seriesId: 'TSIFRGHT', name: 'Freight Transportation Services Index', unit: 'index', frequency: 'm' },
 ];
@@ -101,6 +101,24 @@ function detectSpike(history) {
   const stdDev = Math.sqrt(variance);
   if (stdDev === 0) return false;
   return values[values.length - 1] > mean + 2 * stdDev;
+}
+
+// Build one shipping-index entry from a FRED `series/observations` envelope, or
+// null when the series carries no usable observation. Exported for the same
+// reason as `parseBdiIndices` — the #6078 contract gate must diff the real
+// published shape, not a re-implementation of it.
+export function parseFredShippingIndex(cfg, data) {
+  const observations = (data?.observations || [])
+    .map(o => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
+    .filter(Boolean).reverse();
+  if (observations.length === 0) return null;
+  const current = observations[observations.length - 1].value;
+  const previous = observations.length > 1 ? observations[observations.length - 2].value : current;
+  const changePct = previous !== 0 ? ((current - previous) / previous) * 100 : 0;
+  return {
+    indexId: cfg.seriesId, name: cfg.name, currentValue: current, previousValue: previous,
+    changePct, unit: cfg.unit, history: observations, spikeAlert: detectSpike(observations),
+  };
 }
 
 async function fetchShippingRates() {
@@ -119,17 +137,9 @@ async function fetchShippingRates() {
         return null;
       });
       if (!data) continue;
-      const observations = (data.observations || [])
-        .map(o => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
-        .filter(Boolean).reverse();
-      if (observations.length === 0) continue;
-      const current = observations[observations.length - 1].value;
-      const previous = observations.length > 1 ? observations[observations.length - 2].value : current;
-      const changePct = previous !== 0 ? ((current - previous) / previous) * 100 : 0;
-      indices.push({
-        indexId: cfg.seriesId, name: cfg.name, currentValue: current, previousValue: previous,
-        changePct, unit: cfg.unit, history: observations, spikeAlert: detectSpike(observations),
-      });
+      const index = parseFredShippingIndex(cfg, data);
+      if (!index) continue;
+      indices.push(index);
       await sleep(200);
     } catch (e) {
       console.warn(`  FRED ${cfg.seriesId}: ${e.message}`);
@@ -228,6 +238,53 @@ const BDI_INDEX_MAP = [
   { label: 'Handysize', id: 'BHSI', name: 'BHSI - Baltic Handysize Index' },
 ];
 
+// Parse the HandyBulk article body into shipping-index entries. Exported so the
+// #6078 contract gate exercises the REAL producer — a mirrored copy in the test
+// file drifts silently from production, which is exactly how the payload grew
+// four fields `ShippingIndex` never declared (#6066/#6074).
+export function parseBdiIndices(html) {
+  // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026")
+  const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
+  let articleDate = new Date().toISOString().slice(0, 10);
+  if (dateMatch) {
+    const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
+    if (!Number.isNaN(parsed.getTime())) articleDate = parsed.toISOString().slice(0, 10);
+  }
+
+  const indices = [];
+  for (const cfg of BDI_INDEX_MAP) {
+    const patterns = [
+      new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
+      new RegExp(`${cfg.id}[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
+      new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?([\\d,]+)\\s*points`, 'i'),
+    ];
+    let currentValue = null;
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
+    }
+    if (currentValue == null || !Number.isFinite(currentValue)) continue;
+
+    let changePct = 0;
+    let previousValue = currentValue;
+    const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
+    const deltaMatch = html.match(deltaRe);
+    if (deltaMatch) {
+      const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
+      const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
+      const signedDelta = isNeg ? -delta : delta;
+      previousValue = currentValue - signedDelta;
+      changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
+    }
+
+    indices.push({
+      indexId: cfg.id, name: cfg.name, currentValue, previousValue,
+      changePct, unit: 'index', history: [], spikeAlert: false, _observationDate: articleDate,
+    });
+  }
+  return indices;
+}
+
 async function fetchBDI() {
   try {
     const resp = await fetch('https://www.handybulk.com/baltic-dry-index/', {
@@ -244,45 +301,7 @@ async function fetchBDI() {
     const html = await resp.text();
     if (html.length > 1_000_000) { console.warn('  BDI: body too large'); return []; }
 
-    // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026")
-    const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
-    let articleDate = new Date().toISOString().slice(0, 10);
-    if (dateMatch) {
-      const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
-      if (!Number.isNaN(parsed.getTime())) articleDate = parsed.toISOString().slice(0, 10);
-    }
-
-    const indices = [];
-    for (const cfg of BDI_INDEX_MAP) {
-      const patterns = [
-        new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
-        new RegExp(`${cfg.id}[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
-        new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?([\\d,]+)\\s*points`, 'i'),
-      ];
-      let currentValue = null;
-      for (const re of patterns) {
-        const m = html.match(re);
-        if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
-      }
-      if (currentValue == null || !Number.isFinite(currentValue)) continue;
-
-      let changePct = 0;
-      let previousValue = currentValue;
-      const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
-      const deltaMatch = html.match(deltaRe);
-      if (deltaMatch) {
-        const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
-        const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
-        const signedDelta = isNeg ? -delta : delta;
-        previousValue = currentValue - signedDelta;
-        changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
-      }
-
-      indices.push({
-        indexId: cfg.id, name: cfg.name, currentValue, previousValue,
-        changePct, unit: 'index', history: [], spikeAlert: false, _observationDate: articleDate,
-      });
-    }
+    const indices = parseBdiIndices(html);
     console.log(`  BDI: ${indices.length} indices parsed`);
     return indices;
   } catch (e) {
@@ -293,7 +312,7 @@ async function fetchBDI() {
 
 // ─── History accumulation (inline in canonical payload) ───
 
-function accumulateHistory(newIndices, previousPayload) {
+export function accumulateHistory(newIndices, previousPayload) {
   if (!previousPayload?.indices?.length) {
     for (const idx of newIndices) delete idx._observationDate;
     return newIndices;

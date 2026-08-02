@@ -4,64 +4,24 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseSseIndexResponse } from '../scripts/seed-supply-chain-trade.mjs';
+// Every parser under test is the REAL exported seeder function, never a
+// re-implementation or a `new Function`-eval'd copy of the source: a mirror
+// drifts silently from production (#6066), and the #6078 contract gate below is
+// only worth anything if it diffs what the seeder actually publishes.
+import {
+  parseSseIndexResponse,
+  parseBdiIndices,
+  parseFredShippingIndex,
+  accumulateHistory,
+  SHIPPING_SERIES,
+} from '../scripts/seed-supply-chain-trade.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const seedSrc = readFileSync(resolve(root, 'scripts/seed-supply-chain-trade.mjs'), 'utf-8');
 
-// ─── Extract parsers from seed source for functional testing ───
-// We eval the relevant functions in isolation so we can feed them test data.
-
-// Extract and eval accumulateHistory (multiline, ends at closing brace at col 0)
-const accHistBlock = seedSrc.match(/function accumulateHistory\([\s\S]+?\n\}/)?.[0];
-const accumulateHistory = new Function(`return ${accHistBlock}`)();
-
-// Extract BDI parser logic into a testable function
-// (regex patterns + parsing loop from fetchBDI)
-function parseBDIFromHtml(html) {
-  const BDI_INDEX_MAP = [
-    { label: 'Dry', id: 'BDI', name: 'BDI - Baltic Dry Index' },
-    { label: 'Capesize', id: 'BCI', name: 'BCI - Baltic Capesize Index' },
-    { label: 'Panamax', id: 'BPI', name: 'BPI - Baltic Panamax Index' },
-    { label: 'Supramax', id: 'BSI', name: 'BSI - Baltic Supramax Index' },
-    { label: 'Handysize', id: 'BHSI', name: 'BHSI - Baltic Handysize Index' },
-  ];
-  const indices = [];
-  for (const cfg of BDI_INDEX_MAP) {
-    const patterns = [
-      new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
-      new RegExp(`${cfg.id}[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
-      new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?([\\d,]+)\\s*points`, 'i'),
-    ];
-    let currentValue = null;
-    for (const re of patterns) {
-      const m = html.match(re);
-      if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
-    }
-    if (currentValue == null || !Number.isFinite(currentValue)) continue;
-    let changePct = 0;
-    let previousValue = currentValue;
-    const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
-    const deltaMatch = html.match(deltaRe);
-    if (deltaMatch) {
-      const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
-      const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
-      const signedDelta = isNeg ? -delta : delta;
-      previousValue = currentValue - signedDelta;
-      changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
-    }
-    indices.push({
-      indexId: cfg.id, name: cfg.name, currentValue, previousValue,
-      changePct, unit: 'index', history: [], spikeAlert: false,
-    });
-  }
-  return indices;
-}
-
-// The SSE parser is the REAL exported seeder function, not a re-implementation —
-// a mirrored copy drifts silently from production (#6066).
+const parseBDIFromHtml = parseBdiIndices;
 const parseSSEResponse = parseSseIndexResponse;
 
 // ─── SSE (SCFI/CCFI) parser tests with fixture data ───
@@ -349,6 +309,172 @@ describe('History accumulation (functional)', () => {
     // BDI has no previous history, should get today's date appended
     assert.equal(result[0].history.length, 1);
     assert.equal(result[0].history[0].value, 2000);
+  });
+});
+
+// ─── Public contract gate: published payload vs `message ShippingIndex` (#6078) ───
+//
+// #6074 grew every `supply_chain:shipping:v2` entry by four fields while
+// `message ShippingIndex` still declared eight. `get-shipping-rates` casts that
+// Redis blob straight to `GetShippingRatesResponse` and returns it with no field
+// stripping, so `/api/supply-chain/v1/get-shipping-rates` served four properties
+// the public contract never declared — and nothing failed, because the schema
+// sets no `additionalProperties: false`.
+//
+// This gate closes that loop from BOTH ends: the declared set is read from the
+// proto (the contract source of truth) and the emitted set is produced by the
+// real seeder functions, run through the real publish-time history merge. Grow
+// the payload without growing the proto and this reds.
+
+const PROTO_PATH = 'proto/worldmonitor/supply_chain/v1/supply_chain_data.proto';
+const GENERATED_SERVER_PATH = 'src/generated/server/worldmonitor/supply_chain/v1/service_server.ts';
+
+// Keys the seeder uses for its own bookkeeping and MUST delete before publish.
+// Anything listed here is asserted below to be (a) genuinely emitted by some
+// producer and (b) genuinely gone from the published entry — an allowlist that
+// silently covered a leaking field would make this whole gate vacuous.
+const INTERNAL_SEEDER_KEYS = ['_observationDate'];
+
+function snakeToCamel(name) {
+  return name.replace(/_([a-z0-9])/g, (_m, c) => c.toUpperCase());
+}
+
+function declaredShippingIndexFields() {
+  const src = readFileSync(resolve(root, PROTO_PATH), 'utf-8');
+  const block = src.match(/message ShippingIndex \{\n([\s\S]*?)\n\}/)?.[1];
+  assert.ok(block, `message ShippingIndex not found in ${PROTO_PATH}`);
+  const withoutComments = block.replace(/\/\/[^\n]*/g, '');
+  const fields = [...withoutComments.matchAll(/^\s*(?:optional\s+|repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+\s*;/gm)]
+    .map(m => snakeToCamel(m[1]));
+  // Every `= N;` line in the block must have been understood. A field written in
+  // a form this regex misses would silently shrink the declared set, and the
+  // gate would then red on a field that IS declared — loud, but for the wrong
+  // reason. Pin the count so the parse failure is reported as itself.
+  const fieldNumberLines = (withoutComments.match(/=\s*\d+\s*;/g) ?? []).length;
+  assert.equal(fields.length, fieldNumberLines,
+    `Parsed ${fields.length} of ${fieldNumberLines} ShippingIndex fields — update the proto field regex`);
+  return new Set(fields);
+}
+
+// The pure predicate the gate turns on, extracted so it can be attacked
+// directly: a check that only ever runs against conforming input proves nothing
+// about what it does with a violation.
+function undeclaredKeys(entry, declared) {
+  return Object.keys(entry).filter(key => !declared.has(key));
+}
+
+const FRED_FIXTURE = {
+  observations: [
+    { date: '2026-03-01', value: '118.4' },
+    { date: '2026-02-01', value: '115.2' },
+    { date: '2026-01-01', value: '.' },
+    { date: '2025-12-01', value: '112.0' },
+  ],
+};
+
+// Every producer that contributes entries to `allIndices` in fetchAll().
+function producedIndices() {
+  const fred = SHIPPING_SERIES
+    .map(cfg => parseFredShippingIndex(cfg, FRED_FIXTURE))
+    .filter(Boolean);
+  const sse = [
+    ...parseSseIndexResponse(SCFI_FIXTURE, 'SCFI', 'SCFI_T', 'SCFI - Shanghai Container Freight', 'index'),
+    ...parseSseIndexResponse(CCFI_FIXTURE, 'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index'),
+  ];
+  const bdi = parseBdiIndices(BDI_HTML_INCREASED);
+  assert.ok(fred.length > 0 && sse.length > 0 && bdi.length > 0,
+    `Fixtures stopped producing entries (FRED ${fred.length}, SSE ${sse.length}, BDI ${bdi.length}) — the gate would pass over an empty set`);
+  return [...fred, ...sse, ...bdi];
+}
+
+describe('ShippingIndex public contract gate (#6078)', () => {
+  const declared = declaredShippingIndexFields();
+
+  it('declares the four CCFI period-change fields #6074 introduced', () => {
+    for (const field of ['periodChangePct', 'periodChangeBasis', 'priorPeriodValue', 'priorPeriodDate']) {
+      assert.ok(declared.has(field), `${field} is served by get-shipping-rates but not declared in ${PROTO_PATH}`);
+    }
+  });
+
+  it('keeps the generated server interface in step with the proto', () => {
+    const genSrc = readFileSync(resolve(root, GENERATED_SERVER_PATH), 'utf-8');
+    const block = genSrc.match(/export interface ShippingIndex \{\n([\s\S]*?)\n\}/)?.[1];
+    assert.ok(block, `export interface ShippingIndex not found in ${GENERATED_SERVER_PATH}`);
+    const generated = [...block.matchAll(/^\s*(\w+)\??:/gm)].map(m => m[1]);
+    assert.deepEqual(generated.sort(), [...declared].sort(),
+      'src/generated is stale — run `make generate` after editing the proto');
+  });
+
+  // The real assertion: what the seeder publishes, keyed against what the proto
+  // declares. `accumulateHistory` is the last transform before atomicPublish, so
+  // its output IS the blob get-shipping-rates hands to clients verbatim.
+  for (const [label, previousPayload] of [
+    ['first run (no previous payload)', null],
+    ['steady state (merging prior history)', { indices: [{ indexId: 'BDI', history: [{ date: '2026-03-12', value: 1900 }] }] }],
+  ]) {
+    it(`publishes no field ShippingIndex does not declare — ${label}`, () => {
+      const published = accumulateHistory(producedIndices(), previousPayload);
+      for (const entry of published) {
+        assert.deepEqual(undeclaredKeys(entry, declared), [],
+          `${entry.indexId} publishes undeclared field(s); declare them in ${PROTO_PATH} and run \`make generate\`, or strip them before publish`);
+      }
+    });
+  }
+
+  it('actually exercises the period-change fields it is guarding', () => {
+    // Without this, a fixture change that stopped emitting the four fields would
+    // leave the gate green while guarding nothing.
+    const published = accumulateHistory(producedIndices(), null);
+    const carriers = published.filter(e => 'periodChangePct' in e);
+    assert.ok(carriers.length > 0, 'No produced entry carries periodChangePct — the gate is guarding an empty shape');
+    for (const field of ['periodChangeBasis', 'priorPeriodValue', 'priorPeriodDate']) {
+      assert.ok(carriers.every(e => field in e), `Produced SSE entries no longer carry ${field}`);
+    }
+  });
+
+  it('strips every internal bookkeeping key before publish', () => {
+    const produced = producedIndices();
+    for (const key of INTERNAL_SEEDER_KEYS) {
+      assert.ok(produced.some(e => key in e),
+        `${key} is allowlisted as internal but no producer emits it — drop it from INTERNAL_SEEDER_KEYS`);
+      assert.ok(!declared.has(key), `${key} is allowlisted as internal but the proto declares it`);
+    }
+    for (const previousPayload of [null, { indices: [{ indexId: 'BDI', history: [] }] }]) {
+      for (const entry of accumulateHistory(producedIndices(), previousPayload)) {
+        for (const key of INTERNAL_SEEDER_KEYS) {
+          assert.ok(!(key in entry), `${key} survived into the published ${entry.indexId} entry`);
+        }
+      }
+    }
+  });
+
+  it('strips internal keys on the already-has-history branch too', () => {
+    // accumulateHistory strips in two places: the accumulate path (SSE/BDI ship
+    // `history: []`) and the early-continue path for entries that arrive with
+    // their own history (FRED). Today no producer emits history AND an internal
+    // key at once, so the fixtures above never reach the second strip — drop it
+    // and they all still pass. Drive that branch directly: the day a producer
+    // gains history, the internal key must still not reach the public payload.
+    const probes = INTERNAL_SEEDER_KEYS.map((key, i) => ({
+      indexId: `PROBE_${i}`, currentValue: 1,
+      history: [{ date: '2026-03-13', value: 1 }],
+      [key]: '2026-03-13',
+    }));
+    const previousPayload = { indices: probes.map(p => ({ indexId: p.indexId, history: [{ date: '2026-03-12', value: 1 }] })) };
+    const published = accumulateHistory(probes, previousPayload);
+    assert.equal(published.length, INTERNAL_SEEDER_KEYS.length);
+    for (const entry of published) {
+      assert.ok(entry.history.length > 0, 'probe must take the already-has-history branch');
+      for (const key of INTERNAL_SEEDER_KEYS) {
+        assert.ok(!(key in entry), `${key} survived the already-has-history branch of accumulateHistory`);
+      }
+    }
+  });
+
+  it('reports an undeclared field rather than shrugging at it', () => {
+    const entry = accumulateHistory(producedIndices(), null)[0];
+    assert.deepEqual(undeclaredKeys({ ...entry, freightRateOutlook: 'bullish' }, declared), ['freightRateOutlook']);
+    assert.deepEqual(undeclaredKeys(entry, declared), []);
   });
 });
 

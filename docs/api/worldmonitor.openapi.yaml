@@ -40372,9 +40372,17 @@ components:
                 previousValue:
                     type: number
                     format: double
+                    description: |-
+                        Legacy display field. For the Shanghai Shipping Exchange indices (SCFI,
+                         CCFI) this DELIBERATELY falls back to the current level when the exchange
+                         published no comparable prior, so it cannot distinguish "unchanged week"
+                         from "no prior at all". Use prior_period_value for decision work.
                 changePct:
                     type: number
                     format: double
+                    description: |-
+                        Legacy display field with the same fail-OPEN fallback as previous_value
+                         (a flat 0 when no prior exists). Use period_change_pct for decision work.
                 unit:
                     type: string
                 history:
@@ -40383,6 +40391,31 @@ components:
                         $ref: '#/components/schemas/worldmonitor_supply_chain_v1_ShippingRatePoint'
                 spikeAlert:
                     type: boolean
+                periodChangePct:
+                    type: number
+                    format: double
+                    description: |-
+                        Decision-grade period-over-period move in percent (#6066). Optional so it
+                         serializes as JSON null rather than collapsing to 0, which would render
+                         identically to a real unchanged period. Fails CLOSED: only present when
+                         the publisher reported its own percentage or a comparable prior-period
+                         level. A single index level never becomes a change.
+                periodChangeBasis:
+                    type: string
+                    description: |-
+                        Provenance of period_change_pct: "publisher_reported" when the exchange
+                         published the percentage itself, or "derived_from_prior_period_level"
+                         when it was computed from prior_period_value. Absent whenever
+                         period_change_pct is absent.
+                priorPeriodValue:
+                    type: number
+                    format: double
+                    description: |-
+                        The publisher's own prior-period index level that period_change_pct was
+                         measured against. Absent when the publisher shipped no comparable prior.
+                priorPeriodDate:
+                    type: string
+                    description: Observation date (YYYY-MM-DD) of prior_period_value, as published.
         worldmonitor_supply_chain_v1_ShippingRatePoint:
             type: object
             properties:

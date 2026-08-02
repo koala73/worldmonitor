@@ -19,6 +19,10 @@ export interface ShippingIndex {
   unit: string;
   history: ShippingRatePoint[];
   spikeAlert: boolean;
+  periodChangePct?: number;
+  periodChangeBasis?: string;
+  priorPeriodValue?: number;
+  priorPeriodDate?: string;
 }
 
 export interface ShippingRatePoint {
