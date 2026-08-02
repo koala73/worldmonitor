@@ -168,3 +168,43 @@ describe('duplicate-composition stability (#4914)', () => {
     );
   });
 });
+
+describe('cache-key collisions (#5969 review)', () => {
+  it('a headline containing the join delimiter cannot collide with a different window', () => {
+    // No sanitizer strips '|', so a bare join made ['A|B','C'] and
+    // ['A','B|C'] flatten to the same string — two different story sets, one
+    // key, either servable to the other.
+    assert.notEqual(
+      buildSummaryCacheKey(['Alpha|Bravo', 'Charlie'], 'brief', 'US', 'full', 'en'),
+      buildSummaryCacheKey(['Alpha', 'Bravo|Charlie'], 'brief', 'US', 'full', 'en'),
+      'delimiter-ambiguous headline sets must not share a cache key',
+    );
+  });
+
+  it('translate keys the one headline it actually translates, not the whole window', () => {
+    // The translate prompt interpolates headlines[0] only. Hashing the sorted
+    // window made the key order-insensitive while the prompt is order-
+    // sensitive, so a hit could return the other headline's translation.
+    assert.notEqual(
+      buildSummaryCacheKey(['Alpha', 'Beta'], 'translate', '', 'fr', 'en'),
+      buildSummaryCacheKey(['Beta', 'Alpha'], 'translate', '', 'fr', 'en'),
+      'reordering translate headlines changes what is translated and must change the key',
+    );
+    assert.equal(
+      buildSummaryCacheKey(['Alpha', 'Beta'], 'translate', '', 'fr', 'en'),
+      buildSummaryCacheKey(['Alpha', 'Zulu', 'Yankee'], 'translate', '', 'fr', 'en'),
+      'trailing headlines are never translated and must not fragment translate identity',
+    );
+  });
+
+  it('stays order-invariant at or below the selection cap', () => {
+    // Every current caller passes <= MAX_SUMMARY_HEADLINES; this is the
+    // property their cache-hit rate depends on. Dropping the trailing sort in
+    // buildSummaryCacheKey would silently break it.
+    assert.equal(
+      buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en'),
+      buildSummaryCacheKey([...HEADLINES].reverse(), 'brief', 'US', 'full', 'en'),
+      'reordering a within-cap headline set must not change the key',
+    );
+  });
+});

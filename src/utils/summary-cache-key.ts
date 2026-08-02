@@ -115,17 +115,26 @@ export function buildSummaryCacheKey(
   // stable across repeat requests for the same story set, or it will miss.
   // Headline-only comparison: selectUniqueHeadlinePairs guarantees unique
   // `h` in its output, so a body tie-break could never execute.
-  const topPairs = selectUniqueHeadlinePairs(pairs).sort((a, b) => {
+  // `selected` keeps request order — translate mode keys off its first entry,
+  // mirroring the prompt, which interpolates only headlines[0].
+  const selected = selectUniqueHeadlinePairs(pairs);
+  const topPairs = [...selected].sort((a, b) => {
     if (a.h < b.h) return -1;
     if (a.h > b.h) return 1;
     return 0;
   });
-  const sortedHeadlines = topPairs.map(p => p.h).join('|');
+  // Length-prefix each field before joining. A bare '|' join is ambiguous
+  // because no sanitizer strips '|' from headlines: ['A|B','C'] and
+  // ['A','B|C'] both flatten to 'A|B|C', so two genuinely different story
+  // windows minted one key and either could be served the other's summary.
+  const sortedHeadlines = topPairs.map(p => `${p.h.length}:${p.h}`).join('|');
 
   const anyBody = topPairs.some(p => p.b.length > 0);
   // `:bd` (body-digest) rather than `:b` so a future string-match against the
   // key doesn't collide with the literal `:brief:` mode segment.
-  const bodiesHash = anyBody ? ':bd' + hashString(topPairs.map(p => p.b).join('|')) : '';
+  const bodiesHash = anyBody
+    ? ':bd' + hashString(topPairs.map(p => `${p.b.length}:${p.b}`).join('|'))
+    : '';
 
   const geoHash = canon.geoContext ? ':g' + hashString(canon.geoContext) : '';
   const hash = hashString(`${mode}:${sortedHeadlines}`);
@@ -137,8 +146,17 @@ export function buildSummaryCacheKey(
     // translate mode only uses headlines[0]; bodies are never interpolated.
     // Skip the bodies segment so translate cache identity is not shifted
     // by unrelated upstream RSS-description changes.
+    //
+    // Key on that single headline only, in REQUEST order. Hashing the whole
+    // sorted window made the key order-insensitive while the prompt is
+    // order-sensitive, so ['Alpha','Beta'] and ['Beta','Alpha'] shared one key
+    // but asked for different translations — a hit could return the other
+    // headline's text. Keying the exact input also stops unrelated trailing
+    // headlines from fragmenting identity for the same translation.
+    const firstHeadline = selected[0]?.h ?? '';
+    const translateHash = hashString(`${mode}:${firstHeadline.length}:${firstHeadline}`);
     const targetLang = normalizedVariant || normalizedLang;
-    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${hash}${geoHash}${fwHash}`;
+    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${translateHash}${geoHash}${fwHash}`;
   }
 
   return `summary:${CACHE_VERSION}:${mode}:${normalizedVariant}:${normalizedLang}:${hash}${geoHash}${bodiesHash}${fwHash}`;
