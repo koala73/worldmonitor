@@ -116,58 +116,73 @@ export function getEnglishDefaultEnabledSources(feeds) {
 /**
  * Load every input the audit needs.
  * @param {string} [repoRoot]
+ * @param {{ sourceGeographyPath?: string, policyPath?: string }} [paths]
+ *   Optional path overrides (used by CLI failure-path tests via env).
  */
-export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT) {
+export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths = {}) {
+  const sourceGeographyPath = paths.sourceGeographyPath
+    ?? process.env.GEO_COVERAGE_SOURCE_GEOGRAPHY_PATH
+    ?? join(repoRoot, 'shared/source-geography.json');
+  const policyPath = paths.policyPath
+    ?? process.env.GEO_COVERAGE_POLICY_PATH
+    ?? join(repoRoot, 'shared/geo-coverage-policy.json');
+
   const [{ REGIONS }, sourceGeographyDoc, policy, iso2ToRegion] = await Promise.all([
     import(pathToFileURL(join(repoRoot, 'shared/geography.js')).href),
-    readJson(join(repoRoot, 'shared/source-geography.json')),
-    readJson(join(repoRoot, 'shared/geo-coverage-policy.json')),
+    readJson(sourceGeographyPath),
+    readJson(policyPath),
     readJson(join(repoRoot, 'shared/iso2-to-region.json')),
   ]);
   const { feeds, cleanup } = await bundleFeedsModule(repoRoot);
 
-  // Deduped keyCountries → owning display regions ('global' repeats strategic
-  // countries and is not itself a coverage area, so it is not listed as an owner).
-  /** @type {Map<string, string[]>} */
-  const byIso = new Map();
-  for (const region of REGIONS) {
-    if (region.id === 'global') continue;
-    for (const iso2 of region.keyCountries) {
-      const owners = byIso.get(iso2) ?? [];
-      owners.push(region.id);
-      byIso.set(iso2, owners);
-    }
-  }
-  const keyCountries = [...byIso.entries()].map(([iso2, regions]) => ({ iso2, regions }));
-
-  const sourceGeography = new Map(
-    dataEntries(sourceGeographyDoc, 'source-geography.json').map(([name, countries]) => {
-      if (!Array.isArray(countries) || countries.length === 0) {
-        throw new Error(`source-geography.json: "${name}" must map to a non-empty ISO2 array`);
+  try {
+    // Deduped keyCountries → owning display regions ('global' repeats strategic
+    // countries and is not itself a coverage area, so it is not listed as an owner).
+    /** @type {Map<string, string[]>} */
+    const byIso = new Map();
+    for (const region of REGIONS) {
+      if (region.id === 'global') continue;
+      for (const iso2 of region.keyCountries) {
+        const owners = byIso.get(iso2) ?? [];
+        owners.push(region.id);
+        byIso.set(iso2, owners);
       }
-      return [name, countries];
-    }),
-  );
+    }
+    const keyCountries = [...byIso.entries()].map(([iso2, regions]) => ({ iso2, regions }));
 
-  const catalogNames = new Set([
-    ...Object.values(feeds.FULL_FEEDS).flat().map((f) => f.name),
-    ...feeds.INTEL_SOURCES.map((f) => f.name),
-  ]);
-  const defaultEnabled = getEnglishDefaultEnabledSources(feeds);
-  const validIso2 = new Set([...Object.keys(iso2ToRegion), ...byIso.keys()]);
+    const sourceGeography = new Map(
+      dataEntries(sourceGeographyDoc, 'source-geography.json').map(([name, countries]) => {
+        if (!Array.isArray(countries) || countries.length === 0) {
+          throw new Error(`source-geography.json: "${name}" must map to a non-empty ISO2 array`);
+        }
+        return [name, countries];
+      }),
+    );
 
-  return {
-    keyCountries,
-    regions: REGIONS.filter((r) => r.id !== 'global'),
-    sourceGeography,
-    policy,
-    catalogNames,
-    defaultEnabled,
-    validIso2,
-    catalogSize: catalogNames.size,
-    defaultEnabledSize: defaultEnabled.size,
-    cleanup,
-  };
+    const catalogNames = new Set([
+      ...Object.values(feeds.FULL_FEEDS).flat().map((f) => f.name),
+      ...feeds.INTEL_SOURCES.map((f) => f.name),
+    ]);
+    const defaultEnabled = getEnglishDefaultEnabledSources(feeds);
+    const validIso2 = new Set([...Object.keys(iso2ToRegion), ...byIso.keys()]);
+
+    return {
+      keyCountries,
+      regions: REGIONS.filter((r) => r.id !== 'global'),
+      sourceGeography,
+      policy,
+      catalogNames,
+      defaultEnabled,
+      validIso2,
+      catalogSize: catalogNames.size,
+      defaultEnabledSize: defaultEnabled.size,
+      cleanup,
+    };
+  } catch (error) {
+    // Bundle succeeded but post-bundle work threw — still free the temp dir.
+    cleanup();
+    throw error;
+  }
 }
 
 /**
@@ -181,6 +196,11 @@ export function validateSourceGeography({ sourceGeography, catalogNames, validIs
       problems.push(
         `source-geography.json: "${name}" is not a configured feed source ` +
         '(rename in src/config/feeds.ts or fix the map)',
+      );
+    }
+    if (new Set(countries).size !== countries.length) {
+      problems.push(
+        `source-geography.json: "${name}" lists duplicate ISO2 codes — each country must appear once`,
       );
     }
     for (const iso2 of countries) {
@@ -216,24 +236,29 @@ export function validateGeoCoveragePolicy({ policy, keyCountries }) {
  * Row: { iso2, regions, catalogSources, defaultOnSources, floor, allowlistReason }
  */
 export function computeGeoCoverage({ keyCountries, sourceGeography, defaultEnabled, policy }) {
+  // iso2 → Set<source name> so a source counts at most once per country even if
+  // the curated map accidentally lists the same ISO2 twice (floor gaming).
+  /** @type {Map<string, Set<string>>} */
   const localByIso = new Map();
   for (const [name, countries] of sourceGeography) {
-    for (const iso2 of countries) {
-      const names = localByIso.get(iso2) ?? [];
-      names.push(name);
+    for (const iso2 of new Set(countries)) {
+      const names = localByIso.get(iso2) ?? new Set();
+      names.add(name);
       localByIso.set(iso2, names);
     }
   }
+  const floors = policy.floors ?? {};
+  const allowlist = policy.zeroDefaultOnAllowlist ?? {};
   return keyCountries.map(({ iso2, regions }) => {
-    const catalogSources = (localByIso.get(iso2) ?? []).sort((a, b) => a.localeCompare(b));
+    const catalogSources = [...(localByIso.get(iso2) ?? [])].sort((a, b) => a.localeCompare(b));
     const defaultOnSources = catalogSources.filter((name) => defaultEnabled.has(name));
     return {
       iso2,
       regions,
       catalogSources,
       defaultOnSources,
-      floor: policy.floors[iso2] ?? 0,
-      allowlistReason: policy.zeroDefaultOnAllowlist[iso2] ?? null,
+      floor: floors[iso2] ?? 0,
+      allowlistReason: allowlist[iso2] ?? null,
     };
   });
 }
