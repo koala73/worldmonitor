@@ -17,6 +17,7 @@ jobs:
       code: ${{ steps.diff.outputs.code }}
       digest: ${{ steps.diff.outputs.digest }}
       validation: ${{ steps.diff.outputs.validation }}
+      umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
@@ -29,6 +30,7 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
+            echo "umami=true" >> "$GITHUB_OUTPUT"
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
             echo "desktop_config=true" >> "$GITHUB_OUTPUT"
             echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
@@ -74,6 +76,19 @@ jobs:
             END { print count + 0 }
           ')
           echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Umami's database race cannot be covered by the normal no-Docker
+          # unit suite. Run a real PostgreSQL gate only when its managed image,
+          # migration, patch, focused tests, or this workflow changes.
+          UMAMI=$(echo "$FILES" | awk '
+            /^Dockerfile\.umami$/ { count++ }
+            /^Dockerfile\.umami-retention$/ { count++ }
+            /^docker\/umami\// { count++ }
+            /^scripts\/umami-retention\.sql$/ { count++ }
+            /^tests\/umami-(runtime-remediation\.test|postgres-integration)\.mjs$/ { count++ }
+            /^\.github\/workflows\/test\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "umami=$( [ "$UMAMI" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # Consumer-prices-core has its own lockfile and Vitest suite, so run
           # it whenever package code, tests, or its CI definition changes.
           CONSUMER_PRICES=$(echo "$FILES" | awk '
@@ -219,6 +234,43 @@ jobs:
           cache-dependency-path: consumer-prices-core/package-lock.json
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
+
+  umami-postgres:
+    needs: changes
+    if: needs.changes.outputs.umami == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: umami_integration
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=umami_integration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Build managed Umami images
+        run: |
+          docker build --file Dockerfile.umami --tag worldmonitor/umami:ci .
+          docker build --file Dockerfile.umami-retention --tag worldmonitor/umami-retention:ci .
+      - name: Exercise Umami migration and concurrent upserts
+        env:
+          UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
+        run: node tests/umami-postgres-integration.mjs
 
   sidecar:
     needs: changes

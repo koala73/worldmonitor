@@ -380,6 +380,14 @@ describe('registry shape validation', () => {
     );
   });
 
+  it('rejects an unknown lifecycle instead of silently auditing it', () => {
+    const typo = [{ ...managedRegistry[0], lifecycle: 'planed' }];
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, typo),
+      /unknown lifecycle "planed"; expected active or planned/,
+    );
+  });
+
   it('rejects a non-array watchPatterns instead of comparing it clean', () => {
     // sortedUniqueStrings() collapses a non-array to [], which compares equal to
     // a whole-repo filter — and the closure contract test skips the same entry
@@ -409,6 +417,71 @@ describe('registry shape validation', () => {
       () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], requiredEnv: ['lower_case'] }]),
       /invalid requiredEnv name/,
     );
+  });
+});
+
+describe('planned Railway service lifecycle', () => {
+  const planned = {
+    service: 'umami-retention',
+    deployMode: 'dockerfile',
+    lifecycle: 'planned',
+    requiredEnv: ['PGHOST'],
+    watchPatterns: ['scripts/umami-retention.sql', 'Dockerfile.umami-retention'],
+    cronSchedule: '7,22,37,52 * * * *',
+  };
+
+  it('does not report an intentionally absent planned service', () => {
+    assert.deepEqual(
+      auditRailwayServiceConfig({ services: {} }, new Map(), [planned]),
+      [],
+    );
+    assert.deepEqual(managedRailwayServices([planned]), []);
+  });
+
+  it('starts auditing the service after an explicit activation transition', () => {
+    const active = { ...planned, lifecycle: 'active' };
+    const drift = auditRailwayServiceConfig({ services: {} }, new Map(), [active]);
+
+    assert.equal(drift.length, 1);
+    assert.equal(drift[0].service, 'umami-retention');
+    assert.equal(drift[0].missingService, true);
+    assert.throws(
+      () => buildRailwayServiceConfigPatch(drift),
+      /umami-retention.*not present in Railway production/,
+    );
+  });
+
+  it('never reconciles a planned cron even when the live service already exists', () => {
+    const active = { ...managedRegistry[0], service: 'seed-example' };
+    const liveRetention = service({
+      cronSchedule: '0 * * * *',
+      watchPatterns: ['scripts/**'],
+      variables: { PGHOST: 'db.internal' },
+    });
+    liveRetention.source.rootDirectory = '';
+    const drift = auditRailwayServiceConfig(
+      {
+        services: {
+          'svc-example': service({
+            cronSchedule: '0 * * * *',
+            watchPatterns: active.watchPatterns,
+          }),
+          'svc-retention': liveRetention,
+        },
+      },
+      new Map([
+        ['seed-example', 'svc-example'],
+        ['umami-retention', 'svc-retention'],
+      ]),
+      [active, planned],
+    );
+
+    assert.deepEqual(drift.map((entry) => entry.service), ['seed-example']);
+    assert.deepEqual(buildRailwayServiceConfigPatch(drift), {
+      services: {
+        'svc-example': { deploy: { cronSchedule: active.cronSchedule } },
+      },
+    });
   });
 });
 
@@ -653,6 +726,40 @@ describe('critical ingestion Railway registry contract', () => {
   // closure never verified.
   const closureManaged = managedRailwayServices(registry)
     .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
+
+  it('audit-manages the always-on Umami collector with whole-repository rebuilds', () => {
+    const collector = registry.find((entry) => entry.service === 'umami');
+    assert.ok(collector, 'umami must be registered');
+    assert.deepEqual(
+      collector.watchPatterns,
+      [],
+      'empty watch paths intentionally rebuild Umami for any repository change',
+    );
+    assert.ok(
+      managedRailwayServices(registry).includes(collector),
+      'Umami must participate in the live operational-config audit',
+    );
+
+    const liveCollector = service({
+      cronSchedule: null,
+      watchPatterns: [],
+      variables: { DATABASE_URL: 'postgres://configured' },
+    });
+    const drift = auditRailwayServiceConfig(
+      { services: { 'svc-umami': liveCollector } },
+      new Map([['umami', 'svc-umami']]),
+      [collector],
+    );
+    assert.deepEqual(drift, [{
+      service: 'umami',
+      serviceId: 'svc-umami',
+      missingService: false,
+      watchPatterns: null,
+      cronSchedule: null,
+      rootDirectory: { actual: 'scripts', expected: '' },
+      missingRequiredEnv: ['APP_SECRET'],
+    }]);
+  });
 
   it('every cron pin names a service that is registry-managed', () => {
     const managedNames = new Set(closureManaged.map((entry) => entry.service));

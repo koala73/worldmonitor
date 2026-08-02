@@ -74,6 +74,11 @@ export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
 // reported "audit passed".
 function assertRegistryEntry(entry) {
   const name = entry?.service ?? JSON.stringify(entry);
+  if (hasOwn(entry, 'lifecycle') && !['active', 'planned'].includes(entry.lifecycle)) {
+    throw new Error(
+      `${name} declares unknown lifecycle ${JSON.stringify(entry.lifecycle)}; expected active or planned`,
+    );
+  }
   if (hasOwn(entry, 'deployMode') && !hasOwn(ROOT_DIRECTORY_BY_DEPLOY_MODE, entry.deployMode)) {
     throw new Error(
       `${name} declares unknown deployMode ${JSON.stringify(entry.deployMode)}; expected one of ${Object.keys(ROOT_DIRECTORY_BY_DEPLOY_MODE).join(', ')}`,
@@ -114,9 +119,17 @@ export function managedRailwayServices(registry) {
     throw new Error('Railway service registry must be an array');
   }
   registry.forEach(assertRegistryEntry);
+  // Planned entries remain in the registry so Dockerfile/source coverage and
+  // field validation run before provisioning. They must not participate in a
+  // live audit or --apply until an explicit lifecycle activation; otherwise a
+  // scheduled audit fails on the intentionally absent service and an apply can
+  // install its cron before its deployment gates have passed.
   return registry.filter(
-    (entry) => hasOwn(entry, 'watchPatterns')
-      || (hasOwn(entry, 'cronSchedule') && entry.cronSchedule !== null),
+    (entry) => entry.lifecycle !== 'planned'
+      && (
+        hasOwn(entry, 'watchPatterns')
+        || (hasOwn(entry, 'cronSchedule') && entry.cronSchedule !== null)
+      ),
   );
 }
 
@@ -180,6 +193,12 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
   const managedServiceIds = new Set(
     managed.map((entry) => serviceIdFor(serviceIdsByName, entry.service)).filter(Boolean),
   );
+  const plannedServiceIds = new Set(
+    registry
+      .filter((entry) => entry.lifecycle === 'planned')
+      .map((entry) => serviceIdFor(serviceIdsByName, entry.service))
+      .filter(Boolean),
+  );
   const nameByServiceId = new Map(
     (serviceIdsByName instanceof Map
       ? [...serviceIdsByName]
@@ -192,7 +211,9 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
   // watch filter on any other seeder — the "merged is not ran" failure — passes
   // silently while the summary line still reads "audit passed".
   const unmanagedDrift = Object.entries(services)
-    .filter(([serviceId, service]) => !managedServiceIds.has(serviceId) && isSeederService(service))
+    .filter(([serviceId, service]) => !managedServiceIds.has(serviceId)
+      && !plannedServiceIds.has(serviceId)
+      && isSeederService(service))
     .flatMap(([serviceId, service]) => {
       const watchPatterns = unmanagedWatchPatternDrift(service);
       if (!watchPatterns) return [];
