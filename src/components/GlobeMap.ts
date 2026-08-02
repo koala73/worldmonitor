@@ -34,7 +34,9 @@ import {
 } from '@/config/map-layer-definitions';
 import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { guardOrbitControlsPointerTracking } from '@/utils/orbit-controls-pointer-guard';
-import { getSecretState } from '@/services/runtime-config';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -489,6 +491,8 @@ export class GlobeMap {
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
   private unsubscribeVisualPreset: (() => void) | null = null;
+  private _unsubscribeAuthState: (() => void) | null = null;
+  private _unsubscribeEntitlement: (() => void) | null = null;
   private savedDefaultMaterial: any = null;
   private controls: GlobeControlsLike | null = null;
   private renderPaused = false;
@@ -1942,7 +1946,6 @@ export class GlobeMap {
 
   private createLayerToggles(): void {
     const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'globe');
-    const _wmKey = getSecretState('WORLDMONITOR_API_KEY').present;
     const layers = layerDefs.map(def => ({
       key: def.key,
       label: resolveLayerLabel(def, t),
@@ -1962,8 +1965,8 @@ export class GlobeMap {
       <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
       <div class="toggle-list" style="max-height:32vh;overflow-y:auto;scrollbar-width:thin;">
         ${layers.map(({ key, label, icon, premium }) => {
-          const isLocked = premium === 'locked' && !_wmKey;
-          const isEnhanced = premium === 'enhanced' && !_wmKey;
+          const isLocked = premium === 'locked' && !hasPremiumAccess(getAuthState());
+          const isEnhanced = premium === 'enhanced' && !hasPremiumAccess(getAuthState());
           const explainLabel = escapeHtml(`Explain ${label} layer`);
           const hasExplanation = hasCuratedLayerExplanation(key);
           return `
@@ -2009,6 +2012,28 @@ export class GlobeMap {
         if (layer) this.showLayerExplanation(layer);
       });
     });
+
+    // Unlock premium layers when Pro status resolves. See DeckGLMap.ts:5480
+    // for the full rationale — both subscribeAuthState and onEntitlementChange
+    // are needed because Convex entitlement transitions don't fire the former.
+    const unlockIfPro = (): void => {
+      if (!hasPremiumAccess(getAuthState())) return;
+      el.querySelectorAll('.layer-toggle-locked').forEach(label => {
+        label.classList.remove('layer-toggle-locked');
+        const input = label.querySelector('input') as HTMLInputElement | null;
+        if (input) input.disabled = false;
+        const labelSpan = label.querySelector('.toggle-label');
+        if (labelSpan) labelSpan.textContent = labelSpan.textContent!.replace(' \uD83D\uDD12', '');
+      });
+      queueMicrotask(() => {
+        this._unsubscribeAuthState?.();
+        this._unsubscribeAuthState = null;
+        this._unsubscribeEntitlement?.();
+        this._unsubscribeEntitlement = null;
+      });
+    };
+    this._unsubscribeAuthState = subscribeAuthState(() => unlockIfPro());
+    this._unsubscribeEntitlement = onEntitlementChange(() => unlockIfPro());
 
     // ── Webcam marker-mode sub-toggle ────────────────────────────────────────
     const webcamToggleEl = el.querySelector('.layer-toggle[data-layer="webcams"]') as HTMLElement | null;
@@ -3863,6 +3888,10 @@ export class GlobeMap {
     this.unsubscribeGlobeTexture = null;
     this.unsubscribeVisualPreset?.();
     this.unsubscribeVisualPreset = null;
+    this._unsubscribeAuthState?.();
+    this._unsubscribeAuthState = null;
+    this._unsubscribeEntitlement?.();
+    this._unsubscribeEntitlement = null;
     // Stop attributing INP events to a globe that is no longer mounted (#5368).
     setGlobeMarkerLoad(null);
     if (this.visibilityHandler) {
