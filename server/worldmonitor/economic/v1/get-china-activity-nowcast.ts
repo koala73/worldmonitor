@@ -21,6 +21,14 @@ import { chinaMacroObservationDateMs } from '../../../../shared/china-macro-cont
 import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
 import { CHINA_ACTIVITY_NOWCAST_KEY } from '../../../_shared/cache-keys';
 import { resolveChinaCorridorSnapshot } from '../../supply-chain/v1/get-china-corridor-control-towers';
+import {
+  compareChinaCorridorDirectionalSnapshots,
+  createChinaCorridorDirectionalSnapshot,
+  persistChinaCorridorDirectionalSnapshot,
+  readChinaCorridorDirectionalHistory,
+  selectPriorChinaCorridorDirectionalSnapshot,
+  type ChinaCorridorDirectionalSnapshot,
+} from './china-corridor-breadth-history';
 import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 
 export const CHINA_ACTIVITY_NOWCAST_CACHE_KEY =
@@ -43,6 +51,10 @@ export interface ChinaActivityNowcastDependencies {
   getMacro: () => Promise<GetChinaMacroSnapshotResponse>;
   getCorridors: () => Promise<ChinaCorridorControlTowerResponse>;
   readMarketBatch: ChinaActivityNowcastMarketBatchReader;
+  readCorridorHistory?: () => Promise<ChinaCorridorDirectionalSnapshot[]>;
+  persistCorridorSnapshot?: (
+    current: ChinaCorridorDirectionalSnapshot,
+  ) => Promise<boolean>;
 }
 
 export type ChinaActivityNowcastCache = (
@@ -193,6 +205,8 @@ function corridorObservation(input: {
 function corridorProxyObservations(
   corridors: ChinaCorridorControlTowerResponse,
   evaluatedAt: string,
+  priorCorridorSnapshot: ChinaCorridorDirectionalSnapshot | null,
+  corridorHistoryReadFailed: boolean,
 ): ChinaActivityProxyObservation[] {
   if (corridors.corridors.length === 0) return [];
   const observations: ChinaActivityProxyObservation[] = [];
@@ -291,23 +305,49 @@ function corridorProxyObservations(
     }));
   }
 
+  const currentCorridorSnapshot = createChinaCorridorDirectionalSnapshot(corridors);
+  const breadth = currentCorridorSnapshot === null
+    ? {
+      value: null,
+      priorValue: null,
+      exclusion: 'directional_observations_not_available' as const,
+    }
+    : corridorHistoryReadFailed
+      ? {
+        value: null,
+        priorValue: null,
+        exclusion: 'corridor_history_read_failed' as const,
+      }
+    : compareChinaCorridorDirectionalSnapshots(
+      currentCorridorSnapshot,
+      priorCorridorSnapshot,
+    );
   observations.push({
     seriesId: 'corridor_activity_breadth_change',
     observationId: `corridor-breadth-change:${corridors.generatedAt}`,
     observedAt: corridors.generatedAt,
     releasedAt: corridors.generatedAt,
     retrievedAt: corridors.generatedAt,
-    // One snapshot has no comparable prior. Availability breadth must not be
-    // flattened into an activity change.
-    value: null,
-    priorValue: null,
+    value: breadth.value,
+    priorValue: breadth.priorValue,
     available: true,
     stale: false,
     structuralBreak: false,
     provenance: {
-      corridorIds: corridors.corridors.map((corridor) => corridor.id),
+      corridorIds: currentCorridorSnapshot?.corridorIds
+        ?? corridors.corridors.map((corridor) => corridor.id).sort(),
+      familyKeys: currentCorridorSnapshot?.familyKeys ?? [],
       generatedAt: corridors.generatedAt,
-      exclusion: 'comparable_prior_snapshot_not_available',
+      ...(priorCorridorSnapshot === null ? {} : {
+        priorGeneratedAt: priorCorridorSnapshot.generatedAt,
+      }),
+      directionalFamilies: currentCorridorSnapshot?.directionalFamilies ?? [],
+      priorDirectionalFamilies: priorCorridorSnapshot?.directionalFamilies ?? [],
+      directionalFamilyCount: currentCorridorSnapshot?.directionalFamilies.length ?? 0,
+      priorDirectionalFamilyCount: priorCorridorSnapshot?.directionalFamilies.length ?? 0,
+      ...(breadth.exclusion === null
+        ? { aggregation: 'directional_family_count_change' }
+        : { exclusion: breadth.exclusion }),
     },
   });
   return observations;
@@ -379,6 +419,8 @@ export function buildChinaActivityNowcastInputs(input: {
   macro: GetChinaMacroSnapshotResponse;
   corridors: ChinaCorridorControlTowerResponse;
   marketValues: Map<string, unknown>;
+  priorCorridorSnapshot?: ChinaCorridorDirectionalSnapshot | null;
+  corridorHistoryReadFailed?: boolean;
 }): {
   officialObservations: ChinaActivityOfficialObservation[];
   proxyObservations: ChinaActivityProxyObservation[];
@@ -386,7 +428,12 @@ export function buildChinaActivityNowcastInputs(input: {
   return {
     officialObservations: officialObservations(input.macro),
     proxyObservations: [
-      ...corridorProxyObservations(input.corridors, input.evaluatedAt),
+      ...corridorProxyObservations(
+        input.corridors,
+        input.evaluatedAt,
+        input.priorCorridorSnapshot ?? null,
+        input.corridorHistoryReadFailed ?? false,
+      ),
       ...marketProxyObservations(input.marketValues),
     ],
   };
@@ -417,31 +464,62 @@ export async function composeChinaActivityNowcastSnapshot(
   evaluatedAt: string,
   dependencies: ChinaActivityNowcastDependencies,
 ): Promise<ChinaActivityNowcastResponse> {
-  const [macroResult, corridorsResult, marketResult] = await Promise.allSettled([
+  const [macroResult, corridorsResult, marketResult, corridorHistoryResult] =
+    await Promise.allSettled([
     dependencies.getMacro(),
     dependencies.getCorridors(),
     dependencies.readMarketBatch(
       Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
       true,
     ),
+    dependencies.readCorridorHistory?.() ?? Promise.resolve([]),
   ]);
+  const corridors = corridorsResult.status === 'fulfilled'
+    ? corridorsResult.value
+    : unavailableCorridors(evaluatedAt);
+  const corridorHistory = corridorHistoryResult.status === 'fulfilled'
+    ? corridorHistoryResult.value
+    : [];
+  const currentCorridorSnapshot = createChinaCorridorDirectionalSnapshot(corridors);
+  const priorCorridorSnapshot = currentCorridorSnapshot === null
+    ? null
+    : selectPriorChinaCorridorDirectionalSnapshot(
+      currentCorridorSnapshot,
+      corridorHistory,
+    );
   const inputs = buildChinaActivityNowcastInputs({
     evaluatedAt,
     macro: macroResult.status === 'fulfilled'
       ? macroResult.value
       : unavailableMacro(evaluatedAt),
-    corridors: corridorsResult.status === 'fulfilled'
-      ? corridorsResult.value
-      : unavailableCorridors(evaluatedAt),
+    corridors,
     marketValues: marketResult.status === 'fulfilled'
       ? marketResult.value
       : new Map(),
+    priorCorridorSnapshot,
+    corridorHistoryReadFailed: corridorHistoryResult.status === 'rejected',
   });
-  return evaluateChinaActivityNowcast({
+  const response = evaluateChinaActivityNowcast({
     evaluatedAt,
     officialObservations: inputs.officialObservations,
     proxyObservations: inputs.proxyObservations,
   });
+  if (
+    currentCorridorSnapshot !== null
+    && corridorHistoryResult.status === 'fulfilled'
+    && dependencies.persistCorridorSnapshot
+  ) {
+    try {
+      await dependencies.persistCorridorSnapshot(
+        currentCorridorSnapshot,
+      );
+    } catch {
+      // Persistence is evidence for the next run. A write failure must keep the
+      // current response fail-closed, not turn an otherwise valid nowcast into
+      // an upstream outage.
+    }
+  }
+  return response;
 }
 
 const defaultDependencies = (
@@ -451,6 +529,8 @@ const defaultDependencies = (
   getMacro: () => getChinaMacroSnapshot(ctx, {}),
   getCorridors: () => resolveChinaCorridorSnapshot(evaluatedAt),
   readMarketBatch: getCachedJsonBatch,
+  readCorridorHistory: readChinaCorridorDirectionalHistory,
+  persistCorridorSnapshot: persistChinaCorridorDirectionalSnapshot,
 });
 
 const defaultCache: ChinaActivityNowcastCache =
