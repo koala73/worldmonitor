@@ -2,6 +2,7 @@ import {
   computePreRegionalFeedRolloutDefaultDisabledSources,
   computePreStrategicDefaultDisabledSources,
   FEEDS,
+  FREE_CAP_PROTECTED_SOURCES,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getLanguageMatchedSources,
   getStrategicDefaultSources,
@@ -26,10 +27,7 @@ const REGIONAL_FEED_ROLLOUT_NAMES = new Set(
   REGIONAL_FEED_ROLLOUT_STAGES.flatMap((stage) => [...stage.introducedNames]),
 );
 const STRATEGIC_DEFAULT_SOURCES = getStrategicDefaultSources();
-const PRE_STRATEGIC_FREE_CAP_PROTECTED_SOURCES = new Set<string>(
-  REGIONAL_FEED_ROLLOUT_STAGES[REGIONAL_FEED_ROLLOUT_STAGES.length - 1]?.protectedNames
-    ?? FRONTLINE_EUROPE_PROTECTED_SOURCES,
-);
+const PRE_STRATEGIC_FREE_CAP_PROTECTED_SOURCES = new Set(FREE_CAP_PROTECTED_SOURCES);
 
 // Frozen chronology immediately before the regional wave. These names cannot
 // be derived from today's defaults: doing so makes an exact migration

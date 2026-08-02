@@ -563,6 +563,46 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
+    it('truncates multi-byte UTF-8 strings correctly at byte boundaries', async () => {
+      // 2-byte UTF-8 character: 'ñ' (U+00F1) = 2 bytes
+      // 3-byte UTF-8 character: '本' (U+672C) = 3 bytes
+      // 4-byte UTF-8 character: '𒀀' (U+12000) = 4 bytes
+      const multiByteSources = Array.from(
+        { length: 8 },
+        (_, sourceIndex) => `src${sourceIndex}-${'ñ'.repeat(26)}${'本'.repeat(17)}${'𒀀'.repeat(13)}`,
+      );
+      const items = [{
+        source: multiByteSources[0],
+        title: `Alert: ${'ñ'.repeat(85)}${'本'.repeat(57)}${'𒀀'.repeat(43)}`,
+        link: `https://example.test/${'ñ'.repeat(340)}/${'本'.repeat(227)}/${'𒀀'.repeat(170)}`,
+        publishedAt: 1785405600000,
+      }];
+
+      await withDigestCategories({ politics: { items } }, async () => {
+        const { result } = await callTool('get_news_clusters', { limit: 1 });
+        assert.equal(result.clusters.length, 1);
+        const cluster = result.clusters[0];
+        // Every field must be truncated to fit its byte budget without splitting
+        // a multi-byte character. The truncation function must not produce
+        // replacement characters or partially-encoded code points.
+        assert.ok(Buffer.byteLength(cluster.title, 'utf8') <= 512,
+          `title must be ≤512 UTF-8 bytes, got ${Buffer.byteLength(cluster.title, 'utf8')}`);
+        assert.ok(Buffer.byteLength(cluster.link, 'utf8') <= 2_048,
+          `link must be ≤2048 UTF-8 bytes, got ${Buffer.byteLength(cluster.link, 'utf8')}`);
+        for (const source of cluster.sources) {
+          assert.ok(Buffer.byteLength(source, 'utf8') <= 160,
+            `source must be ≤160 UTF-8 bytes, got ${Buffer.byteLength(source, 'utf8')}`);
+        }
+        // Verify no partial multi-byte sequences survived truncation
+        const decoder = new TextDecoder('utf8', { fatal: true });
+        decoder.decode(new TextEncoder().encode(cluster.title));
+        decoder.decode(new TextEncoder().encode(cluster.link));
+        for (const source of cluster.sources) {
+          decoder.decode(new TextEncoder().encode(source));
+        }
+      });
+    });
+
     it('applies min_sources and limit filters', async () => {
       const { result } = await callTool('get_news_clusters', { min_sources: 2, limit: 1 });
       assert.equal(result.clusters.length, 1);

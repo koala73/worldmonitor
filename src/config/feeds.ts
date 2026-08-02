@@ -1362,12 +1362,25 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
 }
 
 /**
+ * Sources that were removed from DEFAULT_ENABLED_SOURCES during the regional
+ * feed rollout reconciliation (PR #6031). They were historically default-on
+ * and must remain in the reconstructed pre-strategic fingerprint so exact-set
+ * migration matching finds them in the enabled (not disabled) set.
+ */
+const PRE_ROLLOUT_RECONCILIATION_DEFAULTS = [
+  'Ukrainska Pravda EN',
+  'NV EN',
+  'NewsMaker',
+] as const;
+
+/**
  * Reconstruct the source-reduction defaults from before strategic defaults
  * became part of the canonical default-enabled set. This is used only by the
  * exact-set migrations that repair profiles created before PR #6000.
  */
 export function computePreStrategicDefaultDisabledSources(locale?: string): string[] {
   const enabled = getExplicitDefaultEnabledSources();
+  for (const name of PRE_ROLLOUT_RECONCILIATION_DEFAULTS) enabled.add(name);
   if (locale) {
     for (const name of getLanguageMatchedSources(locale)) enabled.add(name);
   }
