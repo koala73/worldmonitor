@@ -3373,29 +3373,29 @@
     "tabNameAria": "Název karty"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Balíčky pokrytí",
+    "applied": "Balíček {{preset}} použit: povoleno {{count}} zdrojů",
+    "alreadyApplied": "Balíček {{preset}} je již použit",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Válka na Ukrajině",
+      "description": "Povolit hlavní ukrajinská média, nezávislý ruský tisk a zdroje pro hodnocení fronty"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Indo-pacifický region / Tchaj-wan",
+      "description": "Povolit bezpečnostní zdroje z Tchaj-wanu, Pákistánu a jihovýchodní Asie"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel a západní Afrika",
+      "description": "Povolit místní zdroje ze Sahelu, Nigérie a západní Afriky"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Kavkaz a Střední Asie",
+      "description": "Povolit regionální zdroje z Jižního Kavkazu a Střední Asie"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Ohniska napětí na Blízkém východě",
+      "description": "Povolit zdroje z Íránu, Izraele, oblasti Perského zálivu a kurdských regionů"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Balíček {{preset}} není s aktuálními panely dostupný"
   }
 }

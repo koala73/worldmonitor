@@ -3355,29 +3355,29 @@
     "tabNameAria": "Nom de l'onglet"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Packs de couverture",
+    "applied": "Pack {{preset}} appliqué : {{count}} sources activées",
+    "alreadyApplied": "Le pack {{preset}} est déjà appliqué",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Guerre en Ukraine",
+      "description": "Activer les médias ukrainiens de référence, la presse russe indépendante et les sources d'évaluation du front"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Indo-Pacifique / Taïwan",
+      "description": "Activer les sources de sécurité de Taïwan, du Pakistan et de l'Asie du Sud-Est"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel et Afrique de l'Ouest",
+      "description": "Activer les sources locales du Sahel, du Nigeria et de l'Afrique de l'Ouest"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Caucase et Asie centrale",
+      "description": "Activer les sources régionales du Caucase du Sud et de l'Asie centrale"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Foyers de tension au Moyen-Orient",
+      "description": "Activer les sources sur l'Iran, Israël, le Golfe et les régions kurdes"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Le pack {{preset}} n'est pas disponible avec vos panneaux actuels"
   }
 }

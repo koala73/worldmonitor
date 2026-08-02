@@ -3355,29 +3355,29 @@
     "tabNameAria": "Numele filei"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Preseturi de acoperire",
+    "applied": "Presetul {{preset}} a fost aplicat: {{count}} surse activate",
+    "alreadyApplied": "Presetul {{preset}} este deja aplicat",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Războiul din Ucraina",
+      "description": "Activează principalele publicații ucrainene, presa rusă independentă și sursele de evaluare a frontului"
     },
     "indoPacific": {
       "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "description": "Activează sursele de securitate pentru Taiwan, Pakistan și Asia de Sud-Est"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel și Africa de Vest",
+      "description": "Activează sursele locale din Sahel, Nigeria și Africa de Vest"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Caucaz și Asia Centrală",
+      "description": "Activează sursele regionale din Caucazul de Sud și Asia Centrală"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Puncte fierbinți în Orientul Mijlociu",
+      "description": "Activează sursele despre Iran, Israel, Golf și regiunile kurde"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Presetul {{preset}} nu este disponibil cu panourile actuale"
   }
 }

@@ -3355,29 +3355,29 @@
     "tabNameAria": "Nome scheda"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Preset di copertura",
+    "applied": "Preset {{preset}} applicato: {{count}} fonti attivate",
+    "alreadyApplied": "Il preset {{preset}} è già applicato",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Guerra in Ucraina",
+      "description": "Attiva i principali media ucraini, la stampa russa indipendente e le fonti di valutazione del fronte"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Indo-Pacifico / Taiwan",
+      "description": "Attiva le fonti di sicurezza su Taiwan, Pakistan e Sud-est asiatico"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel e Africa occidentale",
+      "description": "Attiva le fonti locali del Sahel, della Nigeria e dell'Africa occidentale"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Caucaso e Asia centrale",
+      "description": "Attiva le fonti regionali del Caucaso meridionale e dell'Asia centrale"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Focolai di tensione in Medio Oriente",
+      "description": "Attiva le fonti su Iran, Israele, Golfo e regioni curde"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Il preset {{preset}} non è disponibile con i pannelli attuali"
   }
 }

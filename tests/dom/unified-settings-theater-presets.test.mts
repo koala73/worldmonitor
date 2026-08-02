@@ -17,7 +17,7 @@
  * Harness mirrors unified-settings-account-handoff.test.mts: same module
  * mocks, same stub-config shape, same overlay activation flow.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
@@ -31,7 +31,14 @@ const session: AuthSession = {
 
 const entitlementState: EntitlementState = {
   planKey: 'pro',
-  features: { tier: 1 },
+  features: {
+    tier: 1,
+    apiAccess: true,
+    apiRateLimit: 10_000,
+    maxDashboards: 10,
+    prioritySupport: true,
+    exportFormats: ['json'],
+  },
   validUntil: Date.now() + 86_400_000,
 };
 
@@ -166,7 +173,7 @@ const ALL_SOURCES = [...PRESET_SOURCES, UNRELATED_SOURCE];
 const INITIALLY_DISABLED = ['Kyiv Independent', 'Meduza', 'ISW'];
 
 let disabledSources: Set<string>;
-let setSourcesEnabled: ReturnType<typeof vi.fn>;
+let setSourcesEnabled: Mock<(names: string[], enabled: boolean) => void>;
 let config: UnifiedSettingsConfig;
 let settings: InstanceType<typeof UnifiedSettings>;
 let internal: SettingsInternals;
@@ -201,7 +208,7 @@ beforeEach(() => {
   disabledSources = new Set(INITIALLY_DISABLED);
   // Default apply semantics: enabling removes names from the disabled set,
   // mirroring the real config's worldmonitor-disabled-feeds persistence.
-  setSourcesEnabled = vi.fn((names: string[], enabled: boolean) => {
+  setSourcesEnabled = vi.fn<(names: string[], enabled: boolean) => void>((names, enabled) => {
     for (const name of names) {
       if (enabled) disabledSources.delete(name);
       else disabledSources.add(name);

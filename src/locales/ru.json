@@ -3373,29 +3373,29 @@
     "tabNameAria": "Название вкладки"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Пакеты покрытия",
+    "applied": "Пакет {{preset}} применён: включено источников — {{count}}",
+    "alreadyApplied": "Пакет {{preset}} уже применён",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Война в Украине",
+      "description": "Включить основные украинские СМИ, независимую российскую прессу и источники оценки ситуации на фронте"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Индо-Тихоокеанский регион / Тайвань",
+      "description": "Включить источники по безопасности Тайваня, Пакистана и Юго-Восточной Азии"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Сахель и Западная Африка",
+      "description": "Включить местные источники из Сахеля, Нигерии и Западной Африки"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Кавказ и Центральная Азия",
+      "description": "Включить региональные источники Южного Кавказа и Центральной Азии"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Очаги напряжённости на Ближнем Востоке",
+      "description": "Включить источники по Ирану, Израилю, странам Залива и курдским регионам"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Пакет {{preset}} недоступен при текущем наборе панелей"
   }
 }

@@ -3337,29 +3337,29 @@
     "tabNameAria": "Tên tab"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Gói phủ khu vực",
+    "applied": "Đã áp dụng gói {{preset}}: đã bật {{count}} nguồn",
+    "alreadyApplied": "Gói {{preset}} đã được áp dụng",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Chiến tranh Ukraine",
+      "description": "Bật các hãng tin chính của Ukraine, báo chí Nga độc lập và nguồn đánh giá tiền tuyến"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Ấn Độ Dương - Thái Bình Dương / Đài Loan",
+      "description": "Bật các nguồn an ninh về Đài Loan, Pakistan và Đông Nam Á"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel và Tây Phi",
+      "description": "Bật các nguồn địa phương từ Sahel, Nigeria và Tây Phi"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Caucasus và Trung Á",
+      "description": "Bật các nguồn khu vực từ Nam Caucasus và Trung Á"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Điểm nóng Trung Đông",
+      "description": "Bật các nguồn về Iran, Israel, Vùng Vịnh và các khu vực người Kurd"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Gói {{preset}} không khả dụng với các bảng hiện tại"
   }
 }

@@ -3337,29 +3337,29 @@
     "tabNameAria": "Fül neve"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Lefedettségi csomagok",
+    "applied": "A(z) {{preset}} csomag alkalmazva: {{count}} forrás engedélyezve",
+    "alreadyApplied": "A(z) {{preset}} csomag már alkalmazva van",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Ukrajnai háború",
+      "description": "Ukrán elsődleges híroldalak, független orosz sajtó és frontértékelési források engedélyezése"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Indo-csendes-óceáni térség / Tajvan",
+      "description": "Tajvani, pakisztáni és délkelet-ázsiai biztonsági források engedélyezése"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Száhel-övezet és Nyugat-Afrika",
+      "description": "A Száhel-övezetből, Nigériából és Nyugat-Afrikából származó helyi források engedélyezése"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Kaukázus és Közép-Ázsia",
+      "description": "A Dél-Kaukázusból és Közép-Ázsiából származó regionális források engedélyezése"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Közel-keleti gócpontok",
+      "description": "Iránnal, Izraellel, az Öböllel és a kurd régiókkal kapcsolatos források engedélyezése"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "A(z) {{preset}} csomag a jelenlegi panelekkel nem érhető el"
   }
 }

@@ -3337,29 +3337,29 @@
     "tabNameAria": "タブ名"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "カバレッジプリセット",
+    "applied": "{{preset}}プリセットを適用しました: {{count}}件のソースを有効化",
+    "alreadyApplied": "{{preset}}プリセットはすでに適用されています",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "ウクライナ戦争",
+      "description": "ウクライナの主要メディア、独立系ロシア報道、前線評価ソースを有効にします"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "インド太平洋 / 台湾",
+      "description": "台湾、パキスタン、東南アジアの安全保障ソースを有効にします"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "サヘル・西アフリカ",
+      "description": "サヘル、ナイジェリア、西アフリカの現地ソースを有効にします"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "コーカサス・中央アジア",
+      "description": "南コーカサスと中央アジアの地域ソースを有効にします"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "中東の緊張地域",
+      "description": "イラン、イスラエル、湾岸、クルド地域のソースを有効にします"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "{{preset}}プリセットは現在のパネルでは利用できません"
   }
 }

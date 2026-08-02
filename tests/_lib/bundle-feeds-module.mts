@@ -17,7 +17,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { build } from 'esbuild';
+import { build, type Plugin, type PluginBuild } from 'esbuild';
 
 export interface BundleFeedsModuleOptions {
   /** Absolute repo root; used as absWorkingDir and for the `@` → src alias. */
@@ -37,9 +37,9 @@ export async function bundleFeedsModule<T>(opts: BundleFeedsModuleOptions): Prom
   const outfile = join(tempDir, opts.outfileName ?? 'feeds-bundle.mjs');
   mkdirSync(tempDir, { recursive: true });
 
-  const stubUtilsPlugin = {
+  const stubUtilsPlugin: Plugin = {
     name: 'stub-utils-barrel',
-    setup(buildApi: { onResolve: Function; onLoad: Function }) {
+    setup(buildApi: PluginBuild) {
       buildApi.onResolve({ filter: /^@\/utils$/ }, () => ({
         path: 'stub-utils',
         namespace: 'stub',
@@ -60,7 +60,7 @@ export async function bundleFeedsModule<T>(opts: BundleFeedsModuleOptions): Prom
     write: false,
     absWorkingDir: repoRoot,
     alias: { '@': join(repoRoot, 'src') },
-    plugins: [stubUtilsPlugin as never],
+    plugins: [stubUtilsPlugin],
     define: {
       'import.meta.env': JSON.stringify({
         DEV: false,

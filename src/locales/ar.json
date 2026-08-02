@@ -3409,29 +3409,29 @@
     "tabNameAria": "اسم علامة التبويب"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "مجموعات التغطية",
+    "applied": "تم تطبيق مجموعة {{preset}}: تمكين {{count}} من المصادر",
+    "alreadyApplied": "تم تطبيق مجموعة {{preset}} بالفعل",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "حرب أوكرانيا",
+      "description": "تمكين المصادر الأوكرانية الأساسية والصحافة الروسية المستقلة ومصادر تقييم الجبهة"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "المحيطان الهندي والهادئ / تايوان",
+      "description": "تمكين مصادر الأمن في تايوان وباكستان وجنوب شرق آسيا"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "الساحل وغرب أفريقيا",
+      "description": "تمكين المصادر المحلية في الساحل ونيجيريا وغرب أفريقيا"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "القوقاز وآسيا الوسطى",
+      "description": "تمكين المصادر الإقليمية في جنوب القوقاز وآسيا الوسطى"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "بؤر التوتر في الشرق الأوسط",
+      "description": "تمكين مصادر إيران وإسرائيل والخليج والمنطقة الكردية"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "مجموعة {{preset}} غير متاحة مع لوحاتك الحالية"
   }
 }

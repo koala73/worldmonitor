@@ -106,10 +106,19 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
       { name: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+      // Theater coverage preset (#5956) - English regional sources.
+      { name: 'Al Arabiya', url: gn('site:english.alarabiya.net when:2d') },
       { name: 'Guardian ME', url: 'https://www.theguardian.com/world/middleeast/rss' },
-      { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
       { name: 'BBC Persian', url: 'https://feeds.bbci.co.uk/persian/rss.xml', lang: 'fa' },
+      { name: 'Iran International', url: gn('site:iranintl.com when:2d') },
+      { name: 'Haaretz', url: gn('site:haaretz.com when:7d') },
+      { name: 'Jerusalem Post', url: 'https://www.jpost.com/rss/rssfeedsheadlines.aspx' },
+      { name: 'Ynetnews', url: 'https://www.ynetnews.com/Integration/StoryRss3089.xml' },
+      { name: 'Arab News', url: gn('site:arabnews.com when:7d') },
       { name: 'The National', url: 'https://www.thenationalnews.com/arc/outboundfeeds/rss/?outputType=xml' },
+      { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
+      { name: 'Asharq Business', url: 'https://asharqbusiness.com/rss.xml' },
+      { name: 'Rudaw', url: gn('site:rudaw.net when:7d') },
     ],
     tech: [
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
@@ -169,10 +178,17 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     africa: [
       { name: 'BBC Africa', url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
+      // Theater coverage preset (#5956) - Sahel and West Africa sources.
+      { name: 'Africa News', url: gn('(Africa OR Nigeria OR Kenya OR "South Africa" OR Ethiopia) when:2d') },
+      { name: 'Sahel Crisis', url: gn('(Sahel OR Mali OR Niger OR "Burkina Faso" OR Wagner) when:3d') },
       { name: 'News24', url: 'https://feeds.news24.com/articles/news24/TopStories/rss' },
       { name: 'Africanews', url: 'https://www.africanews.com/feed/' },
       { name: 'Jeune Afrique', url: 'https://www.jeuneafrique.com/feed/', lang: 'fr' },
       { name: 'Premium Times', url: 'https://www.premiumtimesng.com/feed' },
+      { name: 'Vanguard Nigeria', url: 'https://www.vanguardngr.com/feed/' },
+      { name: 'Channels TV', url: 'https://www.channelstv.com/feed/' },
+      { name: 'Daily Trust', url: 'https://dailytrust.com/feed/' },
+      { name: 'ThisDay', url: 'https://www.thisdaylive.com/feed' },
       // Horn of Africa
       { name: 'Radio Tamazuj', url: 'https://www.radiotamazuj.org/en/feed' },
       { name: 'The Reporter Ethiopia', url: 'https://www.thereporterethiopia.com/feed/' },
@@ -195,6 +211,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     asia: [
       { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
       { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
+      // Theater coverage preset (#5956) - Indo-Pacific sources.
+      { name: 'Reuters Asia', url: gn('site:reuters.com (China OR Japan OR Taiwan OR Korea) when:3d') },
+      { name: 'Japan Today', url: 'https://japantoday.com/feed/atom' },
       { name: 'Nikkei Asia', url: gn('site:asia.nikkei.com when:3d') },
       { name: 'CNA', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
       { name: 'NDTV', url: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
@@ -226,6 +245,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Rappler', url: 'https://www.rappler.com/feed/' },
       { name: 'The Star (Malaysia)', url: 'https://www.thestar.com.my/rss/editors-pick' },
       { name: 'Irrawaddy', url: 'https://www.irrawaddy.com/feed/' },
+      { name: 'Island Times (Palau)', url: 'https://islandtimes.org/feed/' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

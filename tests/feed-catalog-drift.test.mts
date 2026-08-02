@@ -26,6 +26,7 @@ import { build } from 'esbuild';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
 import { selectSourcesUnderCap } from '../src/services/source-cap';
+import { THEATER_PRESETS } from '../src/config/theater-presets';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
@@ -50,6 +51,7 @@ interface FeedsModule {
   FEEDS: Record<string, FeedEntry[]>;
   getAllDefaultEnabledSources: () => Set<string>;
   getLocaleBoostedSources: (locale: string) => Set<string>;
+  getSourcePanelId: (sourceName: string) => string;
   computeDefaultDisabledSources: (locale?: string) => string[];
   listConfiguredFeedNames: () => string[];
 }
@@ -233,6 +235,26 @@ describe('feed catalog drift', () => {
       assert.equal(feed?.url, expectedUrls[name], `server EN URL drifted for "${name}"`);
       assert.ok(!feed?.lang, `server entry for "${name}" must not set a non-en lang`);
     }
+  });
+
+  it('server full digest catalogs every theater preset source in its client panel (#5956)', () => {
+    const missing: string[] = [];
+    for (const preset of THEATER_PRESETS) {
+      for (const sourceName of preset.sourceNames) {
+        const category = feeds.getSourcePanelId(sourceName);
+        const serverCategory = serverFeeds.VARIANT_FEEDS.full?.[category] ?? [];
+        if (!serverCategory.some((feed) => feed.name === sourceName)) {
+          missing.push(`${preset.id}/${category}: ${sourceName}`);
+        }
+      }
+    }
+
+    assert.deepEqual(
+      missing,
+      [],
+      'every theater preset source must be served by the matching full-variant digest category: ' +
+        missing.join(', '),
+    );
   });
 
   it('does not default-enable Hungary/Greece locale packs for EN (#5949)', () => {

@@ -3337,29 +3337,29 @@
     "tabNameAria": "Tabbladnaam"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
+    "label": "Dekkingspresets",
+    "applied": "Preset {{preset}} toegepast: {{count}} bronnen ingeschakeld",
+    "alreadyApplied": "Preset {{preset}} is al toegepast",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Oorlog in Oekraïne",
+      "description": "Oekraïense hoofdmedia, onafhankelijke Russische pers en bronnen voor frontbeoordeling inschakelen"
     },
     "indoPacific": {
       "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "description": "Veiligheidsbronnen over Taiwan, Pakistan en Zuidoost-Azië inschakelen"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel en West-Afrika",
+      "description": "Lokale bronnen uit de Sahel, Nigeria en West-Afrika inschakelen"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Kaukasus en Centraal-Azië",
+      "description": "Regionale bronnen uit de Zuidelijke Kaukasus en Centraal-Azië inschakelen"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Spanningshaarden in het Midden-Oosten",
+      "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
     },
-    "unavailable": "{{preset}} preset is not available with your current panels"
+    "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
   }
 }
