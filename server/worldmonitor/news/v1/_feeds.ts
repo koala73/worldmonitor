@@ -2,6 +2,14 @@ export interface ServerFeed {
   name: string;
   url: string;
   lang?: string;
+  strategicDefault?: boolean;
+}
+
+export function isServerFeedReachableForLanguage(
+  feed: Pick<ServerFeed, 'lang' | 'strategicDefault'>,
+  language: string,
+): boolean {
+  return !feed.lang || feed.lang === language || !!feed.strategicDefault;
 }
 
 const gn = (q: string) =>
@@ -69,8 +77,8 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
       { name: 'Dnevnik', url: 'https://www.dnevnik.bg/rss/', lang: 'bg' },
       // Ukraine war frontline for EN digests (#5949). Names must match client
-      // DEFAULT_ENABLED_SOURCES.europe. No non-en `lang` tags — buildDigest
-      // filters `!f.lang || f.lang === lang`, so lang:pl/ru would never ship to EN.
+      // DEFAULT_ENABLED_SOURCES.europe. Ordinary non-en `lang` tags are filtered
+      // from EN digests; strategic defaults explicitly bypass that filter.
       { name: 'Kyiv Independent', url: gn('site:kyivindependent.com when:3d') },
       // Ukraine depth pack (#5951) — local institutional + independent sources
       { name: 'Ukrinform', url: gn('site:ukrinform.net when:3d') },
@@ -102,6 +110,11 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'LSM English', url: 'https://eng.lsm.lv/rss/' },
       // Daily Sabah (EN) — Turkey EN path improvement (#5952).
       { name: 'Daily Sabah', url: 'https://www.dailysabah.com/rss/home-page' },
+      // Strategic local-depth sources (#6000) — reachable in every digest
+      // language and protected from client-side source filtering.
+      { name: 'Hurriyet', url: 'https://www.hurriyet.com.tr/rss/anasayfa', lang: 'tr', strategicDefault: true },
+      { name: 'Polsat News', url: 'https://www.polsatnews.pl/rss/wszystkie.xml', lang: 'pl', strategicDefault: true },
+      { name: 'Kathimerini', url: gnLocale('site:kathimerini.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el', strategicDefault: true },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
@@ -183,7 +196,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Sahel Crisis', url: gn('(Sahel OR Mali OR Niger OR "Burkina Faso" OR Wagner) when:3d') },
       { name: 'News24', url: 'https://feeds.news24.com/articles/news24/TopStories/rss' },
       { name: 'Africanews', url: 'https://www.africanews.com/feed/' },
-      { name: 'Jeune Afrique', url: 'https://www.jeuneafrique.com/feed/', lang: 'fr' },
+      { name: 'Jeune Afrique', url: 'https://www.jeuneafrique.com/feed/', lang: 'fr', strategicDefault: true },
       { name: 'Premium Times', url: 'https://www.premiumtimesng.com/feed' },
       { name: 'Vanguard Nigeria', url: 'https://www.vanguardngr.com/feed/' },
       { name: 'Channels TV', url: 'https://www.channelstv.com/feed/' },
@@ -192,12 +205,18 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // Horn of Africa
       { name: 'Radio Tamazuj', url: 'https://www.radiotamazuj.org/en/feed' },
       { name: 'The Reporter Ethiopia', url: 'https://www.thereporterethiopia.com/feed/' },
+      { name: 'Ethiopia Insight', url: 'https://www.ethiopia-insight.com/feed/' },
+      { name: 'Dabanga Sudan', url: 'https://www.dabangasudan.org/en/feed' },
+      { name: 'Hiiraan Online', url: gn('site:hiiraan.com when:7d') },
       // DRC / Great Lakes
       { name: 'Actualite.cd', url: 'https://actualite.cd/feed', lang: 'fr' },
-      { name: 'Radio Okapi', url: 'https://www.radiookapi.net/feed', lang: 'fr' },
-      // West Africa (non-Nigeria)
+      { name: 'Radio Okapi', url: 'https://www.radiookapi.net/rss.xml', lang: 'fr' },
+      // West Africa beyond Nigeria
       { name: 'MyJoyOnline', url: 'https://www.myjoyonline.com/feed/' },
+      { name: 'Citi Newsroom', url: gn('site:citinewsroom.com when:7d') },
       { name: 'Le Quotidien', url: 'https://lequotidien.sn/feed/', lang: 'fr' },
+      // Pan-African
+      { name: 'RFI Afrique', url: 'https://www.rfi.fr/en/africa/rss' },
     ],
     latam: [
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
@@ -221,8 +240,12 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'The Hindu', url: 'https://www.thehindu.com/feeder/default.rss' },
       { name: 'Asia News', url: gn('site:asianews.it when:3d') },
       { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d') },
-      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
-      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
+      { name: 'Asahi Shimbun', url: 'https://www.asahi.com/rss/asahi/newsheadlines.rdf', lang: 'ja', strategicDefault: true },
+      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true },
+      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true },
+      { name: 'Bangkok Post', url: gn('site:bangkokpost.com when:1d'), lang: 'th', strategicDefault: true },
+      { name: 'VnExpress', url: 'https://vnexpress.net/rss/tin-moi-nhat.rss', lang: 'vi', strategicDefault: true },
+      { name: 'Yonhap News', url: 'https://www.yonhapnewstv.co.kr/browse/feed/', lang: 'ko', strategicDefault: true },
       // Hindi (HI) — mainstream national coverage boosted for Hindi locale users
       { name: 'BBC Hindi', url: 'https://feeds.bbci.co.uk/hindi/rss.xml', lang: 'hi' },
       { name: 'Aaj Tak', url: 'https://www.aajtak.in/rssfeeds/?id=home', lang: 'hi' },

@@ -53,7 +53,9 @@ export function getSourcePanelId(sourceName: string): string {
   return _sourcePanelMap.get(sourceName) ?? 'politics';
 }
 
-const FULL_FEEDS: Record<string, Feed[]> = {
+// Exported for the geographic coverage audit (scripts/geo-coverage-health.mjs,
+// #5957) — the full-variant news catalog is the reference set the audit counts.
+export const FULL_FEEDS: Record<string, Feed[]> = {
   politics: [
     { name: 'BBC World', url: rss('https://feeds.bbci.co.uk/news/world/rss.xml') },
     { name: 'Guardian World', url: rss('https://www.theguardian.com/world/rss') },
@@ -129,7 +131,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Turkish (TR)
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
-    { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
+    { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr', strategicDefault: true },
     // Daily Sabah (EN) — Turkey EN path improvement (#5952). English-language,
     // no lang tag, so EN digests include it as a default-on flank source.
     { name: 'Daily Sabah', url: rss('https://www.dailysabah.com/rss/home-page') },
@@ -137,12 +139,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Their native RSS feeds are used for both locales: the Google News site
     // queries previously used for EN returned HTTP 200 with no <item> nodes.
     // No `lang` tag so isFeedInLanguage / server digests do not drop them for EN.
-    // Polsat News stays PL-only (locale-boosted, not EN default-on).
+    // Polsat News — strategic default via `strategicDefault: true` (#5958).
     { name: 'TVN24', url: {
       en: rss('https://tvn24.pl/swiat.xml'),
       pl: rss('https://tvn24.pl/swiat.xml'),
     } },
-    { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
+    { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl', strategicDefault: true },
     { name: 'Rzeczpospolita', url: {
       en: rss('https://www.rp.pl/rss_main'),
       pl: rss('https://www.rp.pl/rss_main'),
@@ -172,7 +174,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
     { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss/'), lang: 'bg' },
     // Greek (EL)
-    { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el', strategicDefault: true },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
@@ -314,7 +316,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Sahel Crisis', url: rss('https://news.google.com/rss/search?q=(Sahel+OR+Mali+OR+Niger+OR+"Burkina+Faso"+OR+Wagner)+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'News24', url: rss('https://feeds.news24.com/articles/news24/TopStories/rss') },
     { name: 'BBC Africa', url: rss('https://feeds.bbci.co.uk/news/world/africa/rss.xml') },
-    { name: 'Jeune Afrique', url: rss('https://www.jeuneafrique.com/feed/'), lang: 'fr' },
+    { name: 'Jeune Afrique', url: rss('https://www.jeuneafrique.com/feed/'), lang: 'fr', strategicDefault: true },
     { name: 'Africanews', url: { en: rss('https://www.africanews.com/feed/rss'), fr: rss('https://fr.africanews.com/feed/rss') } },
     { name: 'BBC Afrique', url: rss('https://www.bbc.com/afrique/index.xml'), lang: 'fr' },
     // Nigeria
@@ -326,12 +328,18 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // Horn of Africa
     { name: 'Radio Tamazuj', url: rss('https://www.radiotamazuj.org/en/feed') },
     { name: 'The Reporter Ethiopia', url: rss('https://www.thereporterethiopia.com/feed/') },
+    { name: 'Ethiopia Insight', url: rss('https://www.ethiopia-insight.com/feed/') },
+    { name: 'Dabanga Sudan', url: rss('https://www.dabangasudan.org/en/feed') },
+    { name: 'Hiiraan Online', url: rss('https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     // DRC / Great Lakes
     { name: 'Actualite.cd', url: rss('https://actualite.cd/feed'), lang: 'fr' },
-    { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/feed'), lang: 'fr' },
-    // West Africa (non-Nigeria)
+    { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/rss.xml'), lang: 'fr' },
+    // West Africa beyond Nigeria
     { name: 'MyJoyOnline', url: rss('https://www.myjoyonline.com/feed/') },
+    { name: 'Citi Newsroom', url: rss('https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Le Quotidien', url: rss('https://lequotidien.sn/feed/'), lang: 'fr' },
+    // Pan-African
+    { name: 'RFI Afrique', url: rss('https://www.rfi.fr/en/africa/rss') },
   ],
   latam: [
     { name: 'Latin America', url: rss('https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -365,7 +373,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Xinhua', url: rss('https://news.google.com/rss/search?q=site:xinhuanet.com+OR+Xinhua+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Japan Today', url: rss('https://japantoday.com/feed/atom') },
     { name: 'Nikkei Asia', url: rss('https://news.google.com/rss/search?q=site:asia.nikkei.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Asahi Shimbun', url: rss('https://www.asahi.com/rss/asahi/newsheadlines.rdf'), lang: 'ja' },
+    { name: 'Asahi Shimbun', url: rss('https://www.asahi.com/rss/asahi/newsheadlines.rdf'), lang: 'ja', strategicDefault: true },
     { name: 'The Hindu', url: rss('https://www.thehindu.com/news/national/feeder/default.rss'), lang: 'en' },
     { name: 'Indian Express', url: rss('https://indianexpress.com/section/india/feed/') },
     { name: 'NDTV', url: rss('https://feeds.feedburner.com/ndtvnews-top-stories') },
@@ -376,16 +384,16 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'NDTV India', url: rss('https://feeds.feedburner.com/ndtvkhabar-latest'), lang: 'hi' },
     { name: 'Amar Ujala', url: rss('https://www.amarujala.com/rss/national.xml'), lang: 'hi' },
     { name: 'CNA', url: rss('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml') },
-    { name: 'MIIT (China)', url: rss('https://news.google.com/rss/search?q=site:miit.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
-    { name: 'MOFCOM (China)', url: rss('https://news.google.com/rss/search?q=site:mofcom.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
+    { name: 'MIIT (China)', url: rss('https://news.google.com/rss/search?q=site:miit.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh', strategicDefault: true },
+    { name: 'MOFCOM (China)', url: rss('https://news.google.com/rss/search?q=site:mofcom.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh', strategicDefault: true },
     // Thailand
-    { name: 'Bangkok Post', url: rss('https://news.google.com/rss/search?q=site:bangkokpost.com+when:1d&hl=en-US&gl=US&ceid=US:en'), lang: 'th' },
+    { name: 'Bangkok Post', url: rss('https://news.google.com/rss/search?q=site:bangkokpost.com+when:1d&hl=en-US&gl=US&ceid=US:en'), lang: 'th', strategicDefault: true },
     { name: 'Thai PBS', url: rss('https://news.google.com/rss/search?q=Thai+PBS+World+news&hl=en&gl=US&ceid=US:en'), lang: 'th' },
     // Vietnam
-    { name: 'VnExpress', url: rss('https://vnexpress.net/rss/tin-moi-nhat.rss'), lang: 'vi' },
+    { name: 'VnExpress', url: rss('https://vnexpress.net/rss/tin-moi-nhat.rss'), lang: 'vi', strategicDefault: true },
     { name: 'Tuoi Tre News', url: rss('https://tuoitrenews.vn/rss'), lang: 'vi' },
     // Korea
-    { name: 'Yonhap News', url: rss('https://www.yonhapnewstv.co.kr/browse/feed/'), lang: 'ko' },
+    { name: 'Yonhap News', url: rss('https://www.yonhapnewstv.co.kr/browse/feed/'), lang: 'ko', strategicDefault: true },
     { name: 'Chosun Ilbo', url: rss('https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml'), lang: 'ko' },
     // Australia
     { name: 'ABC News Australia', url: rss('https://www.abc.net.au/news/feed/2942460/rss.xml') },
@@ -1120,6 +1128,11 @@ const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
   'ERR News',
 ] as const;
 
+const AFRICA_DEPTH_EN_DEFAULT_SOURCES = [
+  'Hiiraan Online',
+  'RFI Afrique',
+] as const;
+
 /**
  * Editorially required EN defaults that must survive the free-tier source cap.
  * Keep the narrower frontline set above for its one-shot migration contract;
@@ -1128,8 +1141,52 @@ const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
 export const FREE_CAP_PROTECTED_SOURCES = [
   ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
   ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+  ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
 ] as const;
 
+/**
+ * Sources that are default-enabled for every UI language.
+ *
+ * This is derived from the feed declarations so a strategic source cannot be
+ * added to the client reachability path without also entering the canonical
+ * default-enabled set and the free-tier protection path.
+ */
+export function getStrategicDefaultSources(): Set<string> {
+  const strategic = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) {
+    for (const feed of feeds) {
+      if (feed.strategicDefault) strategic.add(feed.name);
+    }
+  }
+  for (const feed of INTEL_SOURCES) {
+    if (feed.strategicDefault) strategic.add(feed.name);
+  }
+  return strategic;
+}
+
+/**
+ * Default sources enabled for every user on first boot.
+ *
+ * Two separate concepts control whether a feed is visible to a user:
+ *
+ * **Locale boost** — feeds tagged with `lang: <code>` are auto-enabled for
+ * users whose UI language matches that code (e.g. Hungarian users see Telex).
+ * This is the `getLocaleBoostedSources()` mechanism. It only fires for non-EN
+ * locales — English is the baseline, not "boosted".
+ *
+ * **Strategic defaults** — feeds tagged `strategicDefault: true` are always
+ * default-enabled regardless of UI language. These carry local-depth coverage
+ * of active wars, frontline NATO states, and Tier-1 Indo-Pacific flashpoints
+ * that every intel audience should see (e.g. Asahi Shimbun for Japan, Yonhap
+ * for Korea, Jeune Afrique for the Sahel). They are declared on the feed
+ * config itself and collected by `getStrategicDefaultSources()` so the
+ * bootstrap, cap, and fetch-language paths share one source of truth.
+ *
+ * A feed can be both locale-boosted AND a strategic default (e.g. a Polish
+ * source is boosted for PL users and strategic-default for every locale).
+ * The `strategicDefault` flag also makes the feed bypass `filterFeedsByLanguage`
+ * so it is fetched regardless of the user's UI language.
+ */
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
@@ -1151,7 +1208,11 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
-  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis', 'Radio Tamazuj', 'Actualite.cd'],
+  africa: [
+    'BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News',
+    'Premium Times', 'Channels TV', 'Sahel Crisis',
+    ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+  ],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
 asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
     'Eurasianet', 'The Astana Times',
@@ -1176,10 +1237,18 @@ export function getAllDefaultEnabledSources(): Set<string> {
   const s = new Set<string>();
   for (const names of Object.values(DEFAULT_ENABLED_SOURCES)) names.forEach(n => s.add(n));
   DEFAULT_ENABLED_INTEL.forEach(n => s.add(n));
+  for (const name of getStrategicDefaultSources()) s.add(name);
   return s;
 }
 
-/** Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key). */
+/**
+ * Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key).
+ *
+ * Strategic defaults are handled by `getAllDefaultEnabledSources()` and are
+ * therefore not locale boosts. Keeping the concepts separate prevents an
+ * English locale lookup from implicitly enabling every ordinary multi-URL feed
+ * that happens to expose an `en` URL.
+ */
 export function getLocaleBoostedSources(locale: string): Set<string> {
   const lang = (locale.split('-')[0] ?? 'en').toLowerCase();
   const boosted = new Set<string>();
@@ -1204,13 +1273,24 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
 }
 
 /**
+ * Reconstruct the source-reduction defaults from before strategic defaults
+ * became part of the canonical default-enabled set. This is used only by the
+ * exact-set migrations that repair profiles created before PR #6000.
+ */
+export function computePreStrategicDefaultDisabledSources(): string[] {
+  const disabled = new Set(computeDefaultDisabledSources());
+  for (const name of getStrategicDefaultSources()) disabled.add(name);
+  return [...disabled];
+}
+
+/**
  * The v3 source-reduction migration's pre-#5949 disabled set. This is used
  * only for a conservative one-time frontline migration: an exact match means
  * the profile still has the old untouched defaults, while any extra or
  * missing entry is treated as a user-customized preference and left alone.
  */
 export function computeLegacyDefaultDisabledSources(): string[] {
-  const disabled = new Set(computeDefaultDisabledSources());
+  const disabled = new Set(computePreStrategicDefaultDisabledSources());
   for (const name of FRONTLINE_EUROPE_PROTECTED_SOURCES) disabled.add(name);
   return [...disabled];
 }

@@ -16,7 +16,9 @@ const stubs: Record<string, string> = {
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
     'export const computeDefaultDisabledSources = () => [];',
+    'export const computePreStrategicDefaultDisabledSources = () => [];',
     'export const computeLegacyDefaultDisabledSources = () => [];',
+    'export const getStrategicDefaultSources = () => new Set();',
   ].join('\n'),
   '@/config/panels': 'export const FREE_MAX_SOURCES = 80;',
   '@/utils/dom-utils': [

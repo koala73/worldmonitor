@@ -181,6 +181,23 @@ export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStat
 }
 
 /**
+ * #5947: how many corroborated (brief-eligible) clusters the corpus held on
+ * this run. Bounded and numeric so it is safe for seed-meta/health/logs, and
+ * it is the field that separates the two very different worlds behind a
+ * MISSING_CLUSTER rejection: 0 means the corpus genuinely had nothing to lead
+ * with (legitimately degraded), while >0 means selection failed to surface a
+ * cluster that existed — the production incident this issue tracked. Absent
+ * stats normalize to null, never 0, so a telemetry failure cannot impersonate
+ * a bare corpus.
+ */
+const INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS = 1000;
+
+function normalizeBriefEligibleClusters(value) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
+  return Math.min(INSIGHTS_MAX_BRIEF_ELIGIBLE_CLUSTERS, value);
+}
+
+/**
  * Build only the diagnostic patch owned by the insights seeder. `fetchedAt`
  * remains under runSeed's control: on a rejected LKG attempt it is mirrored
  * from the old canonical envelope, while a successful publish gets `now`.
@@ -191,6 +208,7 @@ export function buildInsightsFreshnessMetaPatch({
   failureCode = null,
   nowMs = Date.now(),
   servedGeneratedAt = null,
+  briefEligibleClusters = null,
 } = {}) {
   const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
   const now = Number.isFinite(nowMs) && nowMs > 0 ? Math.floor(nowMs) : Date.now();
@@ -201,6 +219,7 @@ export function buildInsightsFreshnessMetaPatch({
     ? servedGeneratedAt
     : (typeof previous.servedGeneratedAt === 'string' ? previous.servedGeneratedAt : null);
   const normalizedFailureCode = failureCode == null ? null : normalizeInsightsFailureCode(failureCode);
+  const eligibleClusters = normalizeBriefEligibleClusters(briefEligibleClusters);
 
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
@@ -209,6 +228,7 @@ export function buildInsightsFreshnessMetaPatch({
       servedGeneratedAt: servedAt,
       consecutiveFailures: 0,
       lastSynthesisFailureCode: normalizedFailureCode,
+      briefEligibleClusters: eligibleClusters,
     };
   }
 
@@ -218,6 +238,7 @@ export function buildInsightsFreshnessMetaPatch({
     servedGeneratedAt: servedAt,
     consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
     lastSynthesisFailureCode: normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    briefEligibleClusters: eligibleClusters,
   };
 }
 
@@ -278,7 +299,7 @@ function briefSourceFromStory(story) {
  * flow (L2 of the fallback chain). Corroboration-gated via
  * pickBriefCluster; enforce/shadow semantics unchanged.
  */
-async function generateLegacySingleHeadlineBrief(topStories) {
+async function generateLegacySingleHeadlineBrief(topStories, { callBudgetMs } = {}) {
   const briefCluster = pickBriefCluster(topStories);
   const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
   const worldBriefSources = briefCluster ? [briefSourceFromStory(briefCluster)].filter(Boolean) : [];
@@ -288,7 +309,7 @@ async function generateLegacySingleHeadlineBrief(topStories) {
     return { worldBrief: '', briefProvider: '', briefModel: '', worldBriefSources, status: 'degraded' };
   }
 
-  const llmResult = await callLLM(topHeadline);
+  const llmResult = await callLLM(topHeadline, Number.isFinite(callBudgetMs) ? { callBudgetMs } : {});
   if (!llmResult) {
     console.warn('  No LLM available — publishing degraded (stories without brief)');
     return { worldBrief: '', briefProvider: '', briefModel: '', worldBriefSources, status: 'degraded' };
@@ -384,8 +405,10 @@ const LLM_PROVIDERS = [
   },
 ];
 
-// Bounded retry for the brief LLM call. seed-insights holds a 120s seed lock
-// and makes one callLLM per run, so cap total LLM time well under it: honor a
+// Bounded retry for the brief LLM call. seed-insights holds a 120s seed lock,
+// and since #6001 a run may walk the whole provider chain for L1 and then make
+// a second callLLM for the L2 fallback — so the budget below is threaded as a
+// RUN-level remainder (see fetchInsights) rather than spent twice. Honor a
 // provider's Retry-After (429/503) instead of dropping straight to the next
 // provider, but never sleep/fetch past the remaining call budget.
 const INSIGHTS_LLM_MAX_RETRIES = 2;
@@ -425,6 +448,25 @@ async function callLLM(headline, options = {}) {
   const events = [];
   let attemptIndex = 0;
 
+  // #6001: the chain used to fall through on TRANSPORT failures only. A model
+  // that reliably returns well-formed text the brief composer then rejects on
+  // its editorial gates would strand the run on `degraded` forever without
+  // ever trying a fallback model that passes — measured against a live digest,
+  // the primary composed 2/6 while the fallback composed 6/6, yet only the
+  // primary was ever asked. `accept` lets the caller veto a response and keep
+  // the chain moving. When every provider is vetoed we return the LAST
+  // response rather than null, so the caller still classifies the failure by
+  // its real stage (parse/gate) instead of mislabelling it a provider outage.
+  // Keep the FIRST rejection, not the last: the caller classifies the failure
+  // stage from this response, and the primary model's stage is the actionable
+  // one. A candidate whose acceptor THREW is held separately and only used if
+  // nothing was cleanly rejected — handing back text the caller's own gate
+  // chokes on would just move the fault downstream.
+  const accept = typeof options.accept === 'function' ? options.accept : null;
+  let firstRejected = null;
+  let firstFaulted = null;
+  const rejectedResult = () => firstRejected ?? firstFaulted;
+
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
@@ -435,7 +477,7 @@ async function callLLM(headline, options = {}) {
     const record = (ok, extra = {}) => {
       events.push(buildLlmCallEvent({
         provider: provider.name, model, stage: 'seed-insights', ok,
-        durationMs: Date.now() - t0, promptChars, maxTokens: 300,
+        durationMs: Date.now() - t0, promptChars, maxTokens,
         fallbackIndex: attemptIndex++,
         ...extra,
       }));
@@ -491,9 +533,32 @@ async function callLLM(headline, options = {}) {
         continue;
       }
 
+      const candidate = { text, model: json.model || model, provider: provider.name };
+
+      if (accept) {
+        let accepted = null;
+        let faulted = false;
+        try {
+          accepted = accept(text);
+        } catch (acceptErr) {
+          // A faulty acceptor must never mark unvalidated output as good.
+          faulted = true;
+          console.warn(`  ${provider.name}: output acceptor threw (${acceptErr.message})`);
+        }
+        if (!accepted) {
+          if (!faulted) console.warn(`  ${provider.name}: output rejected by caller gates`);
+          // `validate_reject` is the shared vocabulary from server/_shared/usage.ts,
+          // so these unify with the Vercel-side llm_call stream in one query.
+          record(false, { ...usage, model: json.model || model, reason: 'validate_reject' });
+          if (faulted) { if (!firstFaulted) firstFaulted = candidate; }
+          else if (!firstRejected) firstRejected = candidate;
+          continue;
+        }
+      }
+
       record(true, { ...usage, model: json.model || model });
       void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
-      return { text, model: json.model || model, provider: provider.name };
+      return candidate;
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
       const httpMatch = /HTTP (\d{3})/.exec(err.message || '');
@@ -506,13 +571,13 @@ async function callLLM(headline, options = {}) {
       // Budget spent — give up rather than burning the next provider's timeout.
       if (isLlmBudgetError(err)) {
         void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
-        return null;
+        return rejectedResult();
       }
     }
   }
 
   void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
-  return null;
+  return rejectedResult();
 }
 
 function categorizeStory(title) {
@@ -720,25 +785,66 @@ async function fetchInsights() {
 
   const briefCluster = pickBriefCluster(topStories);
   const hasBriefCluster = briefCluster != null;
+  // #5947: a MISSING_CLUSTER rejection is only legitimate when the corpus had
+  // nothing corroborated to lead with. Log the corpus count (and whether the
+  // reservation had to fire) so a recurrence is diagnosable from the run log
+  // and seed-meta alone.
+  // Do NOT default to 0 here: 0 is the meaningful value "the corpus had nothing
+  // corroborated to lead with". Substituting it for absent stats would make a
+  // telemetry failure read exactly like a benign bare-corpus run.
+  const briefEligibleClusters = typeof selectionStats.briefEligibleConsidered === 'number'
+    ? selectionStats.briefEligibleConsidered
+    : null;
+  if (selectionStats.briefEligiblePromoted) {
+    console.log(
+      `  Brief lead reserved: promoted a corroborated cluster into top-${topStories.length} ` +
+        `(${briefEligibleClusters ?? 'unknown'} eligible in corpus, source=${briefCluster?.primarySource ?? 'unknown'})`,
+    );
+  } else if (!hasBriefCluster) {
+    console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters ?? 'unknown'})`);
+  }
+  // #6001: one definition of "is this synthesis publishable", used BOTH as the
+  // provider-acceptance gate and for the final result, so the chain can never
+  // accept output the composer would later reject. Pure and cheap, so running
+  // it once more below costs nothing and keeps failure classification exact.
+  // Fault-tolerant on purpose: this runs once per provider AND once more for
+  // the final result. An uncaught throw here escapes fetchInsights into
+  // runSeed's withRetry, which would re-run the whole digest read and LLM
+  // chain up to four times until the seed lock expires. Failing to null
+  // classifies as GATE, keeps the LKG fail-safe, and stays visible in the log.
+  const composeFromText = (text) => {
+    try {
+      return composeSynthesizedBrief(text, topStories, {
+        validatorMode: BRIEF_VALIDATOR_MODE,
+        sanitizeTitle,
+        sourceFromStory: briefSourceFromStory,
+        briefCluster,
+        parsedSynthesis: parseBriefSynthesis(text, topStories.length),
+      });
+    } catch (err) {
+      console.warn(`  [brief_synthesis] composer threw (${err.message}) — treating as rejected`);
+      return null;
+    }
+  };
+
+  // #6001: L1 may now walk the whole provider chain, and L2 below makes a
+  // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
+  // otherwise two full 60s budgets could outlast the 120s seed lock.
+  const llmRunStartedAtMs = Date.now();
   const synthesisResult = hasBriefCluster
     ? await callLLM(null, {
         systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
         userPrompt: synthesisUserPrompt(topStories),
         maxTokens: 900,
+        // A model whose output trips the editorial gates must not strand the
+        // run — keep the chain moving to one that passes.
+        accept: composeFromText,
       })
     : null;
   const parsedSynthesis = synthesisResult
     ? parseBriefSynthesis(synthesisResult.text, topStories.length)
     : null;
-  const composed = synthesisResult
-      ? composeSynthesizedBrief(synthesisResult.text, topStories, {
-        validatorMode: BRIEF_VALIDATOR_MODE,
-        sanitizeTitle,
-        sourceFromStory: briefSourceFromStory,
-        briefCluster,
-        parsedSynthesis,
-      })
-    : null;
+  const composed = synthesisResult ? composeFromText(synthesisResult.text) : null;
   synthesisFailureCode = classifyInsightsSynthesisFailure({
     hasBriefCluster,
     synthesisResult,
@@ -764,7 +870,9 @@ async function fetchInsights() {
       `  [brief_synthesis] rejected (${synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER}) — `
       + 'falling back to single-headline brief',
     );
-    const legacy = await generateLegacySingleHeadlineBrief(topStories);
+    const legacy = await generateLegacySingleHeadlineBrief(topStories, {
+      callBudgetMs: Math.max(0, INSIGHTS_LLM_CALL_BUDGET_MS - (Date.now() - llmRunStartedAtMs)),
+    });
     worldBrief = legacy.worldBrief;
     briefProvider = legacy.briefProvider;
     briefModel = legacy.briefModel;
@@ -869,6 +977,7 @@ async function fetchInsights() {
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+          briefEligibleClusters,
         },
       );
     }
@@ -877,6 +986,7 @@ async function fetchInsights() {
   return decorateInsightsRun(payload, {
     outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
     failureCode: synthesisFailureCode,
+    briefEligibleClusters,
   });
 }
 
@@ -894,6 +1004,24 @@ async function writeInsightsChinaCoverage(data) {
   await writeExtraKey(CHINA_COVERAGE_KEY, data.chinaNewsCoverage, CACHE_TTL);
 }
 
+/**
+ * Project a decorated run's non-serialized metadata onto the freshness-patch
+ * inputs. Exported so the run-meta -> seed-meta seam is unit-testable without
+ * Redis I/O: a source-text guard over finalizeInsightsRun would still pass
+ * with the wiring cut, so the mapping lives here as a pure function instead.
+ */
+export function insightsFreshnessPatchArgs(data, outcome, previousMeta, nowMs = Date.now()) {
+  const runMeta = insightsRunMeta(data);
+  return {
+    previousMeta,
+    outcome,
+    failureCode: runMeta?.failureCode,
+    nowMs,
+    servedGeneratedAt: data?.generatedAt,
+    briefEligibleClusters: runMeta?.briefEligibleClusters ?? null,
+  };
+}
+
 async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
   const [resolvedPreviousMeta] = await Promise.all([
     previousMeta === undefined
@@ -901,15 +1029,10 @@ async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
       : Promise.resolve(previousMeta),
     writeInsightsChinaCoverage(data),
   ]);
-  const runMeta = insightsRunMeta(data);
   return {
-    freshnessMetaPatch: buildInsightsFreshnessMetaPatch({
-      previousMeta: resolvedPreviousMeta,
-      outcome,
-      failureCode: runMeta?.failureCode,
-      nowMs: Date.now(),
-      servedGeneratedAt: data?.generatedAt,
-    }),
+    freshnessMetaPatch: buildInsightsFreshnessMetaPatch(
+      insightsFreshnessPatchArgs(data, outcome, resolvedPreviousMeta, Date.now()),
+    ),
   };
 }
 
