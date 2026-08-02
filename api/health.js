@@ -672,9 +672,12 @@ const SEED_META = {
 // list synchronized with consumer-prices-core/configs/retailers/*.yaml. AE keeps
 // its historical public health name; the other markets use explicit suffixes.
 const CONSUMER_PRICE_HEALTH_MARKETS = Object.freeze(['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']);
+const consumerPriceCoverageHealthName = (market) => (
+  market === 'ae' ? 'consumerPricesCoverage' : `consumerPricesCoverage${market.toUpperCase()}`
+);
 for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
   if (market === 'ae') continue;
-  const name = `consumerPricesCoverage${market.toUpperCase()}`;
+  const name = consumerPriceCoverageHealthName(market);
   BOOTSTRAP_KEYS[name] = `consumer-prices:coverage:${market}`;
   SEED_META[name] = {
     key: `seed-meta:consumer-prices:coverage:${market}`,
@@ -816,6 +819,64 @@ const ACTIVATION_MARKERS = {
   intelHistoryIngestMilitaryCrossStrait: 'seed-activated:intel-history:military:cross-strait-activity',
   intelHistoryIngestEnergyIntelligence: 'seed-activated:intel-history:energy:intelligence',
 };
+
+// #6059 — consumer-price coverage rollout handshake.
+//
+// The coverage schema ships to Vercel the moment the PR merges, but the keys it
+// reads can only exist after consumer-prices-core's next daily
+// scrape(02:00)→aggregate(02:15)→publish(02:30 UTC) window. #6022 merged at
+// 2026-08-02 10:55 UTC — after that day's window — so all eight markets read
+// EMPTY (crit) and global health went UNHEALTHY for ~15h while the underlying
+// consumer-price data was fine. This is the deployment-order bridge for that.
+//
+// Two independent gates, both required, so the softened state can never become
+// permanent and can never come back once a market has published:
+//
+//   1. ACTIVATION (one-way, durable). consumer-prices-core/src/jobs/publish.ts
+//      SETs the marker below — no TTL — only after it writes a coverage
+//      snapshot that actually attempted pages for that market. Once the marker
+//      exists the market is strict forever: absent/empty/stale/below-threshold
+//      coverage classifies exactly as it would without this block.
+//   2. DEADLINE (bounded). Softening also stops at a wall-clock timestamp
+//      compiled into this file, whether or not the producer ever ran. A missed
+//      or failed first tick therefore escalates to EMPTY (crit) on its own.
+//
+// The marker key carries the schema version, so a future coverage-schema change
+// bumps `v1` and gets its own separately-reviewed rollout window instead of
+// inheriting activation earned by the old shape.
+const CONSUMER_PRICE_COVERAGE_SCHEMA_VERSION = 1;
+const consumerPriceCoverageActivationKey = (market) => (
+  `seed-activated:consumer-prices:coverage:v${CONSUMER_PRICE_COVERAGE_SCHEMA_VERSION}:${market}`
+);
+
+// Per-market and deliberately not a shared constant: adding a ninth market
+// later must open a fresh, separately-reviewed window for THAT market only.
+// A single shared deadline would silently re-soften the eight that already
+// shipped if one of their activation markers had failed to write.
+//
+// 06:00Z is 3.5h after the publish job starts — one complete scrape/aggregate/
+// publish window plus slack, and still ~20h before the following tick, so a
+// missed first run cannot hide behind the window for a second day.
+const CONSUMER_PRICE_COVERAGE_ROLLOUT_UNTIL = Object.freeze({
+  ae: '2026-08-03T06:00:00Z',
+  au: '2026-08-03T06:00:00Z',
+  br: '2026-08-03T06:00:00Z',
+  gb: '2026-08-03T06:00:00Z',
+  in: '2026-08-03T06:00:00Z',
+  sa: '2026-08-03T06:00:00Z',
+  sg: '2026-08-03T06:00:00Z',
+  us: '2026-08-03T06:00:00Z',
+});
+
+// name -> epoch ms after which ROLLOUT_PENDING softening is no longer offered.
+// Absent name = no rollout window; the key is strict from the first sweep.
+const ROLLOUT_PENDING_UNTIL_MS = {};
+for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
+  const name = consumerPriceCoverageHealthName(market);
+  ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
+  const until = Date.parse(CONSUMER_PRICE_COVERAGE_ROLLOUT_UNTIL[market] ?? '');
+  if (Number.isFinite(until)) ROLLOUT_PENDING_UNTIL_MS[name] = until;
+}
 
 const EMPTY_DATA_OK_KEYS = new Set([
   'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
@@ -1134,6 +1195,14 @@ function classifyKey(name, redisKey, opts, ctx) {
   const seedCfg = SEED_META[name];
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && !(ctx.activatedNames && ctx.activatedNames.has(name));
+  // #6059 rollout bridge — see ROLLOUT_PENDING_UNTIL_MS. Unlike ON_DEMAND this
+  // needs no per-registry opt-in (`allowOnDemand`): the window is bounded by a
+  // compiled deadline and revoked by a durable marker, so it cannot rot into a
+  // silent permanent exemption the way a registry-wide soften could.
+  const rolloutPendingUntil = ROLLOUT_PENDING_UNTIL_MS[name];
+  const isRolloutPending = rolloutPendingUntil != null
+    && now < rolloutPendingUntil
+    && !(ctx.activatedNames && ctx.activatedNames.has(name));
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
 
@@ -1188,6 +1257,13 @@ function classifyKey(name, redisKey, opts, ctx) {
     else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && seedStale !== true) status = 'EMPTY';
     else if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
+    // Deliberately the ONLY branch rollout softening touches: an absent data
+    // key is the one state that "the producer has not run since this schema
+    // deployed" actually explains. Once the key exists the producer HAS run,
+    // and every downstream verdict (EMPTY_DATA, COVERAGE_DEGRADED,
+    // COVERAGE_PARTIAL, STALE_SEED) describes what it produced — softening any
+    // of those would hide a real first-run failure behind the rollout window.
+    else if (isRolloutPending) status = 'ROLLOUT_PENDING';
     else status = 'EMPTY';
   } else if (records === 0) {
     // hasData is true in this branch, so cascade can never apply (isCascadeCovered
@@ -1244,6 +1320,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
   // ON_DEMAND_KEYS policy block above exists to prevent).
   if (isOnDemand) entry.onDemand = true;
+  // Publish the deadline with the state so the softening is auditable from the
+  // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
+  // exactly when this key stops being excused without reading api/health.js.
+  if (status === 'ROLLOUT_PENDING') entry.rolloutPendingUntil = new Date(rolloutPendingUntil).toISOString();
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
@@ -1300,6 +1380,12 @@ const STATUS_COUNTS = {
   // (both bucket to 'warn' — overall status is `degraded`, not `critical`).
   // 2026-05-04 health-readiness plan, Sprint 1.
   STALE_CONTENT: 'warn',
+  // Bounded deploy-before-cron window (#6059): the schema is live but its
+  // producer has not reached its first scheduled run yet. Warn — NOT ok — so
+  // the interim state is visible and flips `overall` to WARNING; and NOT
+  // subtracted from realWarnCount the way EMPTY_ON_DEMAND is, because unlike
+  // an unrequested RPC cache this one is on a clock and must be watched.
+  ROLLOUT_PENDING: 'warn',
   CHINA_DEGRADED: 'warn',
   CHINA_UNAVAILABLE: 'crit',
   EMPTY: 'crit',
@@ -1761,7 +1847,7 @@ export default async function handler(req, ctx) {
 
   const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activatedNames, now };
   const checks = {};
-  const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, crit: 0 };
+  const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0 };
   let totalChecks = 0;
 
   const sources = [
@@ -1784,6 +1870,10 @@ export default async function handler(req, ctx) {
       // `warn`; this sub-count surfaces it explicitly so operators can tell a
       // frozen feed apart from an ordinary stale-seeder warn at a glance.
       if (entry.status === 'STALE_CONTENT') counts.staleContent++;
+      // Also a SUBSET of `warn` (it stays inside realWarnCount). Surfaced so an
+      // operator can tell "eight keys awaiting their first producer tick" from
+      // eight independently broken seeders without walking every check entry.
+      if (entry.status === 'ROLLOUT_PENDING') counts.rolloutPending++;
     }
   }
 
@@ -1855,6 +1945,11 @@ export default async function handler(req, ctx) {
       // data — issue #3845). Surfaced so a frozen feed is visible without
       // walking every check entry.
       staleContent: counts.staleContent,
+      // `rolloutPending` is a SUBSET of `warn` (#6059) — a newly deployed
+      // schema whose producer has not reached its first scheduled run yet.
+      // Bounded: each entry carries a `rolloutPendingUntil` deadline, after
+      // which it becomes EMPTY (crit).
+      rolloutPending: counts.rolloutPending,
       crit: critCount,
     },
     checkedAt: new Date(now).toISOString(),
@@ -1913,6 +2008,10 @@ export const __testing__ = {
   healthResponseBody,
   collectFailureLogProblems,
   ACTIVATION_MARKERS,
+  ROLLOUT_PENDING_UNTIL_MS,
+  CONSUMER_PRICE_HEALTH_MARKETS,
+  consumerPriceCoverageActivationKey,
+  consumerPriceCoverageHealthName,
   STATUS_COUNTS,
   // List-typed data keys + the command builder that measures them with LLEN
   // instead of STRLEN (tests/health-list-data-keys.test.mjs).

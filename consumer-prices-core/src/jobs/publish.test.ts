@@ -89,3 +89,62 @@ describe('consumer-price coverage publication', () => {
     expect(writes.some((command) => command[0] === 'SET' && command[1] === 'consumer-prices:coverage:ae')).toBe(true);
   });
 });
+
+// #6059 — WorldMonitor health softens the deploy-before-cron gap to a bounded
+// ROLLOUT_PENDING warn and revokes that softening permanently the instant this
+// marker appears. Writing it too eagerly re-arms the false critical; writing it
+// with a TTL lets an activated market read as pending-activation again.
+describe('coverage schema activation marker', () => {
+  const ACTIVATION_KEY = 'seed-activated:consumer-prices:coverage:v1:ae';
+  const activationWrites = () =>
+    commands().filter((command) => command[0] === 'SET' && command[1] === ACTIVATION_KEY);
+
+  it('SETs a durable versioned marker after publishing real coverage', async () => {
+    await publishAll();
+
+    const writes = activationWrites();
+    expect(writes).toHaveLength(1);
+    const [, , value, ...rest] = writes[0];
+    expect(rest).toEqual([]); // no EX — must outlive the 7d seed-meta TTL
+    expect(JSON.parse(value)).toMatchObject({
+      schemaVersion: 1,
+      marketCode: 'ae',
+      attemptedPages: 12,
+    });
+  });
+
+  it('orders the marker after the coverage snapshot it attests to', async () => {
+    await publishAll();
+
+    const sequence = commands().map((command) => command[1]);
+    expect(sequence.indexOf(ACTIVATION_KEY)).toBeGreaterThan(
+      sequence.indexOf('consumer-prices:coverage:ae'),
+    );
+  });
+
+  it('withholds the marker when the market has never attempted a page', async () => {
+    mockBuildCoverageSnapshot.mockResolvedValue({ ...coverage, attemptedPages: 0, completedPages: 0, completionRatio: null });
+    await publishAll();
+
+    expect(activationWrites()).toHaveLength(0);
+    expect(commands().some((command) => command[1] === 'consumer-prices:coverage:ae')).toBe(true);
+  });
+
+  it('withholds the marker when the coverage snapshot could not be built', async () => {
+    mockBuildCoverageSnapshot.mockRejectedValueOnce(new Error('coverage query unavailable'));
+    await publishAll();
+
+    expect(activationWrites()).toHaveLength(0);
+  });
+
+  it('keeps publishing the rest of the market when the marker write fails', async () => {
+    mockFetch.mockImplementation(async (_url: string, init: { body: string }) => {
+      const command = JSON.parse(init.body);
+      if (command[1] === ACTIVATION_KEY) return { ok: false, status: 500 };
+      return { ok: true, status: 200 };
+    });
+
+    await expect(publishAll()).resolves.toBeUndefined();
+    expect(commands().some((command) => command[1] === 'consumer-prices:overview:ae')).toBe(true);
+  });
+});

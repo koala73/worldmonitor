@@ -10,6 +10,45 @@
 
 export const MIN_MARKET_COMPLETION_RATIO = 0.5;
 
+/**
+ * Coverage-schema activation handshake (#6059).
+ *
+ * WorldMonitor's Edge health registry (api/health.js) ships the moment a PR
+ * merges, but these coverage keys only exist after the next daily
+ * scrape→aggregate→publish window. Health softens that gap to a bounded
+ * `ROLLOUT_PENDING` warn and revokes the softening permanently the instant this
+ * marker appears, so the marker is a ONE-WAY, DURABLE (no TTL) claim: "market
+ * <code> has published real coverage under schema v<N> at least once."
+ *
+ * Keep `COVERAGE_ACTIVATION_SCHEMA_VERSION` and the key shape in lockstep with:
+ *   - api/health.js  (`consumerPriceCoverageActivationKey`)
+ *   - scripts/seed-consumer-prices.mjs  (manual fallback publisher)
+ * tests/consumer-prices-coverage-rollout.test.mjs pins all three together.
+ */
+export const COVERAGE_ACTIVATION_SCHEMA_VERSION = 1;
+
+export function coverageActivationKey(marketCode: string): string {
+  return `seed-activated:consumer-prices:coverage:v${COVERAGE_ACTIVATION_SCHEMA_VERSION}:${marketCode}`;
+}
+
+/**
+ * True only when the snapshot is REAL per-market coverage — at least one active
+ * retailer and at least one page actually attempted for this market.
+ *
+ * Deliberately not satisfied by a truthful-but-empty snapshot (no retailers, or
+ * retailers configured but zero runs recorded): publishing "nothing has ever
+ * been scraped here" proves the publisher ran, not that the market's coverage
+ * pipeline works, and activation is irreversible. A `degraded` snapshot with
+ * attempted pages DOES activate — it is a real, correct coverage report of a
+ * failing scrape, and health must be strict about that market from then on.
+ */
+export function isActivatingCoverage(
+  snapshot: Pick<MarketCoverageSnapshot, 'attemptedPages' | 'retailers'> | null | undefined,
+): boolean {
+  if (!snapshot || !Array.isArray(snapshot.retailers) || snapshot.retailers.length === 0) return false;
+  return Number(snapshot.attemptedPages) > 0;
+}
+
 export type RetailerCoverageStatus = 'healthy' | 'partial' | 'failed' | 'unknown';
 export type MarketCoverageStatus = 'healthy' | 'partial' | 'degraded' | 'unknown';
 

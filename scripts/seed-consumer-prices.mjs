@@ -17,6 +17,7 @@
  */
 
 import { loadEnvFile, CHROME_UA, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { pathToFileURL } from 'node:url';
 
 loadEnvFile(import.meta.url);
@@ -104,6 +105,27 @@ export function emptyCoverage(market) {
   };
 }
 
+// #6059 activation handshake — MIRROR of
+// consumer-prices-core/src/ops/coverage.ts. This script is the manual fallback
+// publisher for the same coverage key, so it must earn (and be able to earn)
+// activation on exactly the same evidence as publish.ts; a fallback run that
+// republished real coverage while leaving health softened would be a lie in the
+// other direction. consumer-prices-core is a standalone package, so the logic
+// is duplicated rather than imported — the same reason publish.ts inlines the
+// seed envelope. tests/consumer-prices-coverage-rollout.test.mjs runs BOTH
+// implementations over one case table and pins the key shape against
+// api/health.js, so the three cannot drift.
+export const COVERAGE_ACTIVATION_SCHEMA_VERSION = 1;
+
+export function coverageActivationKey(market) {
+  return `seed-activated:consumer-prices:coverage:v${COVERAGE_ACTIVATION_SCHEMA_VERSION}:${market}`;
+}
+
+export function isActivatingCoverage(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.retailers) || snapshot.retailers.length === 0) return false;
+  return Number(snapshot.attemptedPages) > 0;
+}
+
 export function coverageForSeedMeta(data) {
   if (!Array.isArray(data?.retailers) || !('completedPages' in data)) return undefined;
   return {
@@ -116,6 +138,39 @@ export function coverageForSeedMeta(data) {
   };
 }
 
+/**
+ * SET the durable, versioned activation marker (#6059) once this fallback run
+ * has published real coverage for the market. No TTL, mirroring publish.ts:
+ * activation is a one-way claim, and health revokes its bounded
+ * ROLLOUT_PENDING softening the instant the key exists.
+ *
+ * Never throws: the coverage snapshot is already published at this point, and
+ * a marker write failure only leaves health softened until its compiled
+ * deadline — the next run retries.
+ */
+export async function writeCoverageActivationMarker(market, coverage, deps = {}) {
+  const creds = (deps.getCreds ?? getOptionalUpstashCreds)();
+  if (!creds) return false;
+  if (!isActivatingCoverage(coverage)) return false;
+  const command = deps.command ?? upstashCommand;
+  try {
+    await command(creds, [
+      'SET',
+      coverageActivationKey(market),
+      JSON.stringify({
+        schemaVersion: COVERAGE_ACTIVATION_SCHEMA_VERSION,
+        marketCode: market,
+        activatedAt: Date.now(),
+        attemptedPages: Number(coverage.attemptedPages) || 0,
+      }),
+    ]);
+    return true;
+  } catch (err) {
+    console.error(`  [consumer-prices] activation marker failed for ${market}: ${err.message}`);
+    return false;
+  }
+}
+
 async function run() {
   console.log(`[consumer-prices] seeding market=${MARKET} basket=${BASKET}`);
 
@@ -126,6 +181,7 @@ async function run() {
   const TTL_SERIES     = 3600;  // 60 min
   const TTL_CATEGORIES = 1800;  // 30 min
   const TTL_COVERAGE   = 1800;  // 30 min
+  const COVERAGE_KEY = `consumer-prices:coverage:${MARKET}`;
 
   // Fetch all snapshots in parallel
   const [overview, movers30d, movers7d, spread, freshness, series30d, series7d, series90d,
@@ -212,7 +268,7 @@ async function run() {
       metaKey: `seed-meta:consumer-prices:categories:${MARKET}:90d`,
     },
     {
-      key: `consumer-prices:coverage:${MARKET}`,
+      key: COVERAGE_KEY,
       data: coverage ?? emptyCoverage(MARKET),
       ttl: TTL_COVERAGE,
       metaKey: `seed-meta:consumer-prices:coverage:${MARKET}`,
@@ -220,6 +276,7 @@ async function run() {
   ];
 
   let failed = 0;
+  let coveragePublished = false;
   for (const { key, data, ttl, metaKey } of writes) {
     try {
       let recordCount;
@@ -237,12 +294,15 @@ async function run() {
       }
       const coverage = coverageForSeedMeta(data);
       await writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey, undefined, coverage);
+      if (key === COVERAGE_KEY) coveragePublished = true;
       console.log(`  [consumer-prices] wrote ${key} (${recordCount} records)`);
     } catch (err) {
       console.error(`  [consumer-prices] failed ${key}: ${err.message}`);
       failed++;
     }
   }
+
+  await writeCoverageActivationMarker(MARKET, coveragePublished ? coverage : null);
 
   console.log(`[consumer-prices] done. ${writes.length - failed}/${writes.length} keys written.`);
   process.exit(failed > 0 ? 1 : 0);
