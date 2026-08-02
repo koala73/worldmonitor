@@ -1,7 +1,7 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-storage';
 import { getAuthState } from '@/services/auth-state';
-import { isEntitled } from '@/services/entitlements';
+import { isEntitled, getEntitlementState } from '@/services/entitlements';
 import {
   clearLegacyKeyStorage,
   migrateLegacyKeysToHttpOnlySession,
@@ -227,6 +227,33 @@ export function isProUser(): boolean {
     getAuthState().user?.role === 'pro' ||
     isEntitled()
   );
+}
+
+/**
+ * Whether `isProUser()` is answering from settled signals rather than from
+ * "nothing has loaded yet".
+ *
+ * A false from isProUser() is ambiguous on a normal page load: Clerk is not
+ * awaited, and for a signed-in user the Convex entitlement snapshot lands later
+ * still, so a paying subscriber reads as free for the first seconds. Callers
+ * that PERSIST a free-tier decision (the boot clamp, the dashboard-tab
+ * snapshot heal) must wait for this before writing, or they overwrite a Pro
+ * user's layout on every load.
+ *
+ * A true from isProUser() is always definitive — no signal that says "Pro"
+ * needs confirmation.
+ *
+ * Mirrors `shouldDeferFreeTierEnforcement` in config/panels.ts, which App uses
+ * for the same decision plus its grace-timer backstop. The rule is stated twice
+ * rather than shared because importing config from services would close a
+ * config <-> services import cycle; keep the two in sync.
+ */
+export function isProTierResolved(): boolean {
+  if (isProUser()) return true;
+  const session = getAuthState();
+  if (session.isPending) return false;
+  // Anonymous is a settled answer; a signed-in user still needs the snapshot.
+  return session.user === null || getEntitlementState() !== null;
 }
 
 export function getProWidgetKey(): string {

@@ -372,6 +372,7 @@ Runs before every `git push`:
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
 | `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
+| `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
@@ -384,6 +385,14 @@ Runs before every `git push`:
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
+
+The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
+upstream v3.2.0 release and applies the reviewed session-data upsert fix.
+The separate `umami-retention` cron uses `Dockerfile.umami-retention` and the
+bounded SQL contract. The old collector is drained to zero before the patched
+image runs its schema migration as a monitored one-off; schema verification,
+patched-runtime write acceptance, and retention are independent operational
+gates.
 
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 

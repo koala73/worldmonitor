@@ -262,7 +262,7 @@
     },
     {
       "name": "get_news_clusters",
-      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. \"commodities\"). Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM."
+      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. \"commodities\"). Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, and time span. Deterministic — no LLM."
     },
     {
       "name": "get_keyword_spikes",

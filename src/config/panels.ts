@@ -1253,13 +1253,15 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
  * truth for the count limit so App boot, the settings/search add paths, and
  * the dashboard-tab add/switch/load paths all enforce the SAME ceiling.
  *
- * Returns a NEW map; the input is never mutated. Pro users get the same
- * panel eligibility, but still receive a copied map. For free users: cw-*
+ * Returns a NEW map; the input is never mutated. For free users: cw-*
  * custom-widget panels are a pro
  * feature and are always disabled. The map is free baseline infrastructure
  * and never consumes a capped panel slot. Among the remaining enabled panels
  * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
  * key tiebreak — identical ordering to App.enforceFreeTierLimits).
+ *
+ * Pro users get the same panel eligibility, plus the inverse of the cw-* gate:
+ * widgets this helper previously hid are restored (see restoreProGatedPanels).
  *
  * `isPro` is passed in (rather than read here) to keep this a pure config
  * helper with no service-state dependency, matching isPanelEntitled above.
@@ -1268,17 +1270,19 @@ export function enforceFreePanelLimit(
   panelSettings: Record<string, PanelConfig>,
   isPro: boolean,
 ): Record<string, PanelConfig> {
+  if (isPro) return restoreProGatedPanels(panelSettings);
+
   const next: Record<string, PanelConfig> = {};
   for (const [key, config] of Object.entries(panelSettings)) {
     next[key] = { ...config };
   }
 
-  if (isPro) return next;
-
   // cw-* custom widgets are pro-only — never enabled on the free tier.
+  // Stamp `proGated` so restoreProGatedPanels can tell this apart from a
+  // widget the user hid themselves and put it back when they go Pro.
   for (const key of Object.keys(next)) {
     if (key.startsWith('cw-') && next[key]?.enabled) {
-      next[key] = { ...next[key]!, enabled: false };
+      next[key] = { ...next[key]!, enabled: false, proGated: true };
     }
   }
 
@@ -1292,6 +1296,63 @@ export function enforceFreePanelLimit(
   }
 
   return next;
+}
+
+/**
+ * Inverse of the cw-* half of `enforceFreePanelLimit`: re-enable the custom
+ * widgets that the free-tier gate hid, and clear the marker.
+ *
+ * Without this the gate is a one-way door. `enforceFreePanelLimit` writes
+ * straight into STORAGE_KEYS.panels, so once a widget is disabled nothing
+ * ever turns it back on — a user who upgrades to Pro (or whose Pro session
+ * simply resolved late, see App.enforceFreeTierLimits) would find their
+ * widgets permanently missing from the dashboard even though the specs are
+ * still in wm-custom-widgets.
+ *
+ * Only panels carrying `proGated` are touched, so a widget the user hid
+ * deliberately via the settings toggle stays hidden.
+ */
+export function restoreProGatedPanels(
+  panelSettings: Record<string, PanelConfig>,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    if (config.proGated) {
+      const { proGated: _proGated, ...rest } = config;
+      next[key] = { ...rest, enabled: true };
+    } else {
+      next[key] = { ...config };
+    }
+  }
+  return next;
+}
+
+/**
+ * True while the session's tier is still unknowable, so the persisted
+ * free-tier clamp must not run yet. Two windows qualify:
+ *
+ * - Clerk hasn't settled (`authPending`) — a signed-in Pro user is
+ *   indistinguishable from an anonymous one.
+ * - Clerk settled on a signed-in user but the Convex entitlement snapshot
+ *   hasn't arrived (`hasUser && !entitlementLoaded`) — isEntitled() is
+ *   deterministically false until the snapshot lands, so a Convex-only Pro
+ *   subscriber would be clamped as free.
+ *
+ * `deadlineExceeded` is the AUTH_SETTLE_GRACE_MS backstop: once the grace
+ * timer fires, enforcement proceeds with whatever tier signals exist, so a
+ * snapshot that never arrives cannot defer the caps forever.
+ *
+ * Pure on plain booleans (no service imports) to keep this a config helper,
+ * matching isPanelEntitled above.
+ */
+export function shouldDeferFreeTierEnforcement(
+  authPending: boolean,
+  hasUser: boolean,
+  entitlementLoaded: boolean,
+  deadlineExceeded: boolean,
+): boolean {
+  if (deadlineExceeded) return false;
+  return authPending || (hasUser && !entitlementLoaded);
 }
 
 // ============================================

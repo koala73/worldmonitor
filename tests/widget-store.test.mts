@@ -67,7 +67,10 @@ async function loadWidgetStore(): Promise<WidgetStore> {
     `],
     ['widget-sanitizer-stub', `export function sanitizeWidgetHtml(html) { return 'sanitized:' + String(html); }`],
     ['auth-state-stub', `export function getAuthState() { return { user: { role: 'pro' } }; }`],
-    ['entitlements-stub', `export function isEntitled() { return true; }`],
+    ['entitlements-stub', `
+      export function isEntitled() { return true; }
+      export function getEntitlementState() { return { planKey: 'pro' }; }
+    `],
     ['browser-key-session-stub', `
       export function clearLegacyKeyStorage() {}
       export function migrateLegacyKeysToHttpOnlySession() { return Promise.resolve(); }

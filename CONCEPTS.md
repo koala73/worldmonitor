@@ -18,7 +18,13 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 ### Seed-Owned Key
 
-A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key.
+A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key, Read Outcome.
+
+### Read Outcome
+
+The three-way result a cache read is obliged to report — **hit**, **miss**, or **failure** — as against the two-way present/absent that a bare returned value can express. The distinction exists because it is observable only at the read itself: a helper that answers the same empty value for "the key genuinely holds nothing" and "the read did not complete" has destroyed the difference at its only observation point, and every caller downstream then decides on a fabricated fact.
+
+What makes the collapse expensive is that the two outcomes license opposite actions. A miss is a legitimate empty state — serve the computed fallback, render the empty panel, treat the day as having no records. A failure is an outage, and the correct response is almost always to abstain: skip the tick rather than publish a partial, keep the last good value rather than replace it with nothing, report the read as incomplete rather than as a finding. Collapsing them converts an outage into a confident empty answer, which then propagates as though it were data. Two properties of the cache store's REST interface make this easy to get wrong. A transport-level success status is not evidence the command ran — the store can answer a success status whose body carries a per-command error — so a reader that checks only the status and then reads the result field silently reclassifies every such rejection as a miss. And because the rejection is per command, one command in a batch can fail while its siblings succeed, so an outcome must be tracked per command rather than inferred once for the whole batch. See also: Seed-Owned Key, One-Shot Hydration.
 
 ### Source Tag
 
@@ -51,6 +57,20 @@ An Alert Rule's optional country restriction. Empty means unscoped — every eve
 ### Event Attribution
 
 The country identity a notification publisher attaches to an event at publish time, normalized to ISO-3166 alpha-2 through the shared country-name map. Attribution is the publisher's job, not the dispatcher's: a publisher that knows the country must attach it, because a missing or unresolvable attribution is indistinguishable downstream from a genuinely global event. A name-normalization miss that silently omits the attribution converts "lookup failed" into "field never existed" — the failure mode that lets scoped delivery leak. See also: Country Scope.
+
+## Product Analytics Collection
+
+### Write Receipt
+
+The body the analytics collector returns for a write it actually stored, carrying the session and visit identifiers it minted for that write. The receipt — not the status code — is the delivery proof: the collector answers a success status to writes it accepts and then discards, so treating a 2xx as stored is what lets a dropped conversion look delivered. A response that carries a success status but no receipt is undelivered, and whether it is worth reporting depends on *why* the receipt is missing. See also: Bot-Filtered Write, Environment Noise.
+
+### Bot-Filtered Write
+
+A write the collector deliberately discarded because it judged the client non-human, acknowledged with a success status and a fixed sentinel body instead of a Write Receipt. It is a real delivery failure — nothing was stored, so retry policy and any durable conversion marker must treat it exactly as they treat any other missing receipt — but it is not an incident, so it must never raise an alert. That split is the load-bearing part: the distinction belongs in the *alerting* decision, never in the *delivery* classification, because collapsing them turns a silenced alert into a silenced retry. First-party crawlers and headless browsers hitting production pages land in this class, so any browser-side alarm sees the project's own monitoring traffic unless it excludes it. See also: Write Receipt, Environment Noise.
+
+### Environment Noise
+
+The class of collector failures produced by the client's own environment — a blocked request, an unanswered one — rather than by the collector. Locally indistinguishable from a total outage, because a blocked client and a dead collector both fail every write on that page; nothing computable in one browser separates them. The consequence is that the outage signal is the aggregate volume of these reports across users, not any single report, so the reporting policy gates them behind both a minimum sample and a minimum failure rate within a rolling window and admits at most one per page per window. Without the per-page bound, one heavily-blocked session outproduces the incident the gate exists to expose. Failures the origin answered — any non-success status — are outside this class and always reportable, which is what keeps a dead origin loud. See also: Write Receipt, Bot-Filtered Write, Vacuous Guard.
 
 ## Company Attribution
 
@@ -87,6 +107,16 @@ An element that browser and RUM layout-shift attribution names because its *posi
 ### Shift Mover
 
 The element that *causes* a layout shift by changing its own footprint — growing, shrinking, materializing (insertion), or disappearing (removal). Movers are not reported by shift-attribution APIs; naming one requires diffing element geometry across the shift itself (a cached top/height baseline compared at shift delivery). The victim/mover distinction is load-bearing for all layout-stability work in this project: two shipped fixes aimed at victims had null field effect before mover instrumentation named the true mechanism. See also: Shift Victim, Deferred-Shell Contract.
+
+## Payments Provider Calls
+
+### Retry Ownership
+
+The invariant that exactly one layer owns retry policy for any external provider call — every other layer in the chain (vendor SDK internals, edge gateway, client transport) is either pinned to zero retries or restricted to failure classes the owning layer never retries. Vendor SDKs commonly ship default internal retries that honor a provider's advertised wait verbatim, so a retry layer added above an unpinned SDK silently multiplies raw request volume and turns the owner's attempt counts and wall-clock deadlines into fiction — the owning layer can only bound what it can see. Ownership is asserted by construction (retries pinned off when the client is built, each attempt individually time-bounded) and guarded by a contract test, never by convention. See also: Rate-Limit Outcome.
+
+### Rate-Limit Outcome
+
+The typed value a provider-rate-limited operation returns *instead of throwing*, so every downstream surface renders a deliberate retry state — an HTTP 429 with a retry hint at the service boundary, a structured error code on the public API — rather than collapsing the limit into a generic failure. The outcome only exists after the owning retry layer has exhausted its bounded attempts; a raw rate-limit error escaping before that point is a defect, not an outcome. See also: Retry Ownership.
 
 ## Test & Guard Verification
 

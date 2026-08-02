@@ -99,48 +99,6 @@ function conditionHtml(condition: ChinaCorridorCondition): string {
     </article>`;
 }
 
-function injectStyles(): void {
-  if (document.getElementById('china-corridor-panel-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'china-corridor-panel-styles';
-  style.textContent = `
-    .china-corridor-panel { display: grid; gap: 12px; min-width: 0; }
-    .china-corridor-compare { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; }
-    .china-corridor-compare button { min-height: 64px; text-align: left; padding: 8px; color: var(--text); background: color-mix(in srgb,var(--panel-bg) 80%,transparent); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-    .china-corridor-compare button[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-    .china-corridor-compare strong,.china-corridor-compare small { display: block; }
-    .china-corridor-compare small { margin-top: 4px; color: var(--text-dim); }
-    .china-corridor-filters { display: flex; flex-wrap: wrap; gap: 6px; }
-    .china-corridor-filters button { min-height: 36px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-dim); cursor: pointer; }
-    .china-corridor-filters button[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: color-mix(in srgb,var(--accent) 14%,transparent); }
-    .china-corridor-detail__heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-    .china-corridor-detail__heading h3 { margin: 0; font-size: 14px; }
-    .china-corridor-description { margin: 4px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.45; }
-    .china-corridor-conditions { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 8px; margin-top: 10px; }
-    .china-corridor-condition { min-width: 0; padding: 9px; border: 1px solid var(--border); border-radius: 6px; }
-    .china-corridor-condition header { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-    .china-corridor-condition h4 { margin: 0; font-size: 12px; }
-    .china-corridor-status { font: 700 9px/1 var(--font-mono); letter-spacing: .05em; text-transform: uppercase; }
-    .china-corridor-status--available { color: #39c77a; }
-    .china-corridor-status--partial,.china-corridor-status--stale { color: #e5a742; }
-    .china-corridor-status--unavailable { color: var(--text-dim); }
-    .china-corridor-provider { margin-top: 5px; color: var(--text-dim); font-size: 9px; overflow-wrap: anywhere; }
-    .china-corridor-sources { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 7px; }
-    .china-corridor-source { padding-top: 7px; border-top: 1px solid var(--border); }
-    .china-corridor-source__summary { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
-    .china-corridor-source__meta { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 5px; color: var(--text-dim); font-size: 9px; overflow-wrap: anywhere; }
-    .china-corridor-source__meta a { color: var(--accent); }
-    .china-corridor-missing { margin: 8px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
-    .china-corridor-renderer-hint { margin: 8px 0 0; color: var(--warning); font-size: 11px; line-height: 1.4; }
-    @media (max-width: 520px) {
-      .china-corridor-compare { grid-template-columns: 1fr 1fr; }
-      .china-corridor-conditions { grid-template-columns: 1fr; }
-      .china-corridor-detail__heading { display: block; }
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 export class ChinaCorridorPanel extends Panel {
   private response: ChinaCorridorControlTowerResponse = { generatedAt: '', corridors: [] };
   private selectedId: ChinaLogisticsCorridorId | null = null;
@@ -156,7 +114,6 @@ export class ChinaCorridorPanel extends Panel {
       defaultRowSpan: 2,
       infoTooltip: 'Transparent control towers for four reviewed China logistics corridors. Each condition retains its own source, time, availability, and freshness; no aggregate risk score is produced.',
     });
-    injectStyles();
     this.content.addEventListener('click', (event) => this.handleClick(event));
     this.content.addEventListener('keydown', (event) => this.handleKeydown(event));
   }
@@ -251,7 +208,7 @@ export class ChinaCorridorPanel extends Panel {
       </button>`;
     }).join('');
     const filters = CHINA_CORRIDOR_SIGNAL_FAMILIES.map((family) =>
-      `<button type="button" data-family-filter="${family}" aria-pressed="${this.selectedFamilies.has(family)}">${escapeHtml(FAMILY_LABELS[family])}</button>`,
+      `<button type="button" class="panel-tab china-corridor-filter${this.selectedFamilies.has(family) ? ' active' : ''}" data-family-filter="${family}" aria-pressed="${this.selectedFamilies.has(family)}">${escapeHtml(FAMILY_LABELS[family])}</button>`,
     ).join('');
     const conditions = selected.conditions
       .filter((condition) => this.selectedFamilies.has(condition.family))
@@ -261,7 +218,7 @@ export class ChinaCorridorPanel extends Panel {
     this.setSafeContent(unsafeRawHtml(`
       <div class="china-corridor-panel">
         <div class="china-corridor-compare" role="tablist" aria-label="Compare China logistics corridors">${compare}</div>
-        <div class="china-corridor-filters" role="group" aria-label="Signal-family filters">${filters}</div>
+        <div class="panel-tabs china-corridor-filters" role="group" aria-label="Signal-family filters">${filters}</div>
         <section id="china-corridor-tabpanel" role="tabpanel" aria-labelledby="china-corridor-tab-${selected.id}">
           <div class="china-corridor-detail__heading">
             <div>

@@ -23,6 +23,8 @@ import {
   calculateActivityBaselines,
   constrainCrossStraitActivitySnapshotSize,
   fetchCrossStraitActivitySnapshot,
+  japanIndexCoverage,
+  japanIndexPresence,
   parseJapanModIndex,
   parseTaiwanMndDetail,
   parseTaiwanMndList,
@@ -31,14 +33,21 @@ import {
 } from '../scripts/cross-strait-activity/adapters.mjs';
 import {
   CROSS_STRAIT_ACTIVITY_MAX_CONTENT_AGE_MIN,
+  CROSS_STRAIT_ACTIVITY_JAPAN_SOURCE_HEALTH_KEY,
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityContentMeta,
+  fetchCrossStraitActivitySeedSnapshot,
 } from '../scripts/seed-cross-strait-activity.mjs';
 import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary';
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity');
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
 const retrievedAt = '2026-07-25T08:30:00.000Z';
+const usableJapanEnglishIndex = `
+  <dl>
+    <dd><a href="../pdf/2026/p20260724_05e.pdf">Chinese and Russian Military Activities</a></dd>
+  </dl>
+`;
 
 function crossStraitFixtureFetch(
   japanResponse: () => Response | Promise<Response>,
@@ -46,6 +55,29 @@ function crossStraitFixtureFetch(
   return async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes('mod.go.jp')) return japanResponse();
+    if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
+    return new Response(fixture('mnd-detail.html'));
+  };
+}
+
+/**
+ * Models the measured 2026-08-01 Japan MOD surface: the Japanese Joint Staff
+ * homepage answers 200 while every English index path answers the Cloudflare
+ * challenge. `requested` accumulates every URL so a test can assert the request
+ * budget and that no linked PDF was ever fetched.
+ */
+function japanMinistryFetch(requested: string[]) {
+  return async (input: string | URL | Request) => {
+    const url = String(input);
+    requested.push(url);
+    if (url === 'https://www.mod.go.jp/js/') {
+      return new Response(fixture('jmod-homepage.html'));
+    }
+    if (url.includes('mod.go.jp')) {
+      return new Response('<html><head><title>Just a moment...</title></head></html>', {
+        status: 403,
+      });
+    }
     if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
     return new Response(fixture('mnd-detail.html'));
   };
@@ -122,11 +154,26 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const jmod = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
     assert.equal(jmod.launchStatus, 'launched_reviewed_only');
     assert.equal(jmod.preflight.environment, 'railway-production');
-    assert.equal(jmod.preflight.checkedAt, '2026-07-26');
-    assert.equal(jmod.preflight.reachable, false);
-    assert.equal(jmod.preflight.observedIndexStatus, 403);
+    assert.equal(jmod.preflight.checkedAt, '2026-08-01');
+    assert.equal(jmod.preflight.reachable, true);
+    assert.equal(jmod.preflight.observedIndexStatus, 200);
+    // The English press index stays blocked; that is why discovery moved to the
+    // Japanese homepage rather than to another egress for the same URL (#5904).
+    assert.equal(jmod.preflight.observedEnglishIndexStatus, 403);
+    assert.equal(jmod.indexUrl, 'https://www.mod.go.jp/js/');
+    assert.equal(jmod.shadowIndexUrl, 'https://www.mod.go.jp/js/press/index-en.html');
+    assert.equal(jmod.transportMode, 'japanese_homepage_candidate_discovery');
+    assert.equal(
+      jmod.companionResolution,
+      'english_index_blocked_no_derivable_companion',
+    );
     assert.equal(jmod.documentAdmission, 'manual_review_required');
+    // Discovery moving onto a page whose every news item links a PDF must not
+    // turn into a runtime PDF fetcher; the budget is the thing that stops it.
     assert.equal(jmod.runtimePdfRequestsPerRun, 0);
+    assert.equal(jmod.maxRequestsPerRun, 2);
+    assert.equal(jmod.maxShadowIndexProbesPerRun, 1);
+    assert.equal(jmod.shadowIndexProbeIntervalMs, 24 * 60 * 60 * 1_000);
     // The control tunnel exists to tell a target-scoped proxy policy apart from
     // a proxy-wide outage, so it must target a host we already contract with —
     // and never Japan MOD, whose refusal is the thing under test.
@@ -180,7 +227,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
   it('decodes malformed numeric HTML entities without crashing the source parser', () => {
     const rows = parseJapanModIndex(`
-      <a href="/js/pdf/2026/p20260724_05e.pdf">
+      <a href="/js/pdf/2026/p20260730_01.pdf">
         Invalid scalar &#1114112; and surrogate &#55296;
       </a>
     `);
@@ -189,15 +236,18 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(rows[0].title, 'Invalid scalar � and surrogate �');
   });
 
-  it('strips hostile unmatched HTML tag prefixes in linear time', () => {
+  it('strips hostile unmatched HTML tag prefixes in linear time and bounds the title', () => {
     const hostileTitle = '<'.repeat(64 * 1024);
     const startedAt = performance.now();
     const rows = parseJapanModIndex(`
-      <a href="/js/pdf/2026/p20260724_05e.pdf">${hostileTitle}</a>
+      <a href="/js/pdf/2026/p20260730_01.pdf">${hostileTitle}</a>
     `);
     const elapsedMs = performance.now() - startedAt;
 
-    assert.equal(rows[0].title, hostileTitle);
+    // A candidate title is persisted, so an unbounded publisher (or attacker)
+    // string must be truncated before it reaches the snapshot, not merely
+    // decoded quickly.
+    assert.equal(rows[0].title, '<'.repeat(200));
     assert.ok(elapsedMs < 1_500, `expected bounded linear decode, took ${Math.round(elapsedMs)}ms`);
   });
 
@@ -556,26 +606,31 @@ describe('quantified cross-Strait activity (#5575)', () => {
   });
 
   it('scans repeated unterminated list anchors in linear time and recovers at valid anchors', () => {
-    const japanPrefix = '<a href="/js/pdf/2026/unterminated.pdf">x'.repeat(1_500);
+    // The decoy uses a canonical release path so it is rejected for being
+    // unterminated, not for failing the path pattern.
+    const japanPrefix = '<a href="/js/pdf/2026/p20260103_01.pdf">x'.repeat(1_500);
     const mndPrefix = '<a href="/en/News/PLAAct/99999"><h5 class="date">2026.07.25'.repeat(1_000);
     const startedAt = performance.now();
-    const japanRows = parseJapanModIndex(`${japanPrefix}${fixture('jmod-index.html')}`);
+    const japanRows = parseJapanModIndex(`${japanPrefix}${fixture('jmod-homepage.html')}`);
     const mndRows = parseTaiwanMndList(`${mndPrefix}${fixture('mnd-list.html')}`);
     const elapsedMs = performance.now() - startedAt;
 
-    assert.equal(japanRows.length, 3);
-    assert.ok(japanRows.every((row) => !row.sourceUrl.endsWith('/unterminated.pdf')));
+    assert.equal(japanRows.length, 9);
+    assert.ok(japanRows.every((row) => !row.sourceUrl.endsWith('/p20260103_01.pdf')));
     assert.equal(mndRows.length, 3);
     assert.ok(mndRows.every((row) => !row.sourceUrl.endsWith('/99999')));
     assert.ok(elapsedMs < 1_500, `expected bounded linear anchor scan, took ${Math.round(elapsedMs)}ms`);
   });
 
   it('keeps source offsets stable and reads only an exact quoted href attribute', () => {
+    // Both decoys are canonical-shaped release URLs, so this test still fails if
+    // attribute scoping regresses — a non-matching decoy would be dropped by the
+    // path pattern and pass for the wrong reason.
     const japanRows = parseJapanModIndex(`
       <!-- publisher's archived anchor should stay ignored -->
-      <div data-note="<a href='/js/pdf/2026/quoted-decoy.pdf'>decoy</a>"></div>
-      İ<a data-note="location.href='/js/pdf/2026/decoy.pdf'"
-        href="/js/pdf/2026/p20260724_05e.pdf">Reviewed document</a>
+      <div data-note="<a href='/js/pdf/2026/p20260101_01.pdf'>decoy</a>"></div>
+      İ<a data-note="location.href='/js/pdf/2026/p20260102_01.pdf'"
+        href="/js/pdf/2026/p20260730_01.pdf">Reviewed document</a>
     `);
     const mndRows = parseTaiwanMndList(`
       <!-- publisher's archived anchor should stay ignored -->
@@ -585,7 +640,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     `);
 
     assert.deepEqual(japanRows.map((row) => row.sourceUrl), [
-      'https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf',
+      'https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf',
     ]);
     assert.deepEqual(mndRows, [{
       publicationDay: '2026-07-25',
@@ -596,9 +651,9 @@ describe('quantified cross-Strait activity (#5575)', () => {
   it('ignores anchors inside template content for both official source indexes', () => {
     const japanRows = parseJapanModIndex(`
       <template>
-        <a href="/js/pdf/2026/template-decoy.pdf">Template decoy</a>
+        <a href="/js/pdf/2026/p20260101_01.pdf">Template decoy</a>
       </template>
-      <a href="/js/pdf/2026/p20260724_05e.pdf">Reviewed document</a>
+      <a href="/js/pdf/2026/p20260730_01.pdf">Reviewed document</a>
     `);
     const mndRows = parseTaiwanMndList(`
       <template>
@@ -608,7 +663,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     `);
 
     assert.deepEqual(japanRows.map((row) => row.sourceUrl), [
-      'https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf',
+      'https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf',
     ]);
     assert.deepEqual(mndRows, [{
       publicationDay: '2026-07-25',
@@ -619,11 +674,11 @@ describe('quantified cross-Strait activity (#5575)', () => {
   it('skips a malformed Japan MOD document URL without aborting later rows', () => {
     const rows = parseJapanModIndex(`
       <a href="https://[invalid].pdf">Malformed document URL</a>
-      <a href="/js/pdf/2026/p20260724_05e.pdf">Reviewed document</a>
+      <a href="/js/pdf/2026/p20260730_01.pdf">Reviewed document</a>
     `);
 
     assert.deepEqual(rows.map((row) => row.sourceUrl), [
-      'https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf',
+      'https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf',
     ]);
   });
 
@@ -783,7 +838,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const snapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: async (input: string | URL | Request) => {
         called = true;
-        if (String(input).includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+        if (String(input).includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
         return new Response(fixture('mnd-list.html'));
       },
       previousSnapshot: null,
@@ -986,8 +1041,15 @@ describe('quantified cross-Strait activity (#5575)', () => {
   });
 
   it('admits only reviewed Japan MOD documents and keeps PLAN, RFN, and aircraft counts separate', () => {
-    const discovered = parseJapanModIndex(fixture('jmod-index.html'));
-    assert.equal(discovered.length, 3);
+    const discovered = parseJapanModIndex(fixture('jmod-homepage.html'));
+    assert.equal(discovered.length, 9);
+    // Discovery finds nine official releases and admits none of them: the two
+    // reviewed rows are a hand-reviewed set that discovery never grows.
+    assert.equal(
+      discovered.some((row) => REVIEWED_JAPAN_MOD_OBSERVATIONS
+        .some((reviewed) => reviewed.sourceUrl === row.sourceUrl)),
+      false,
+    );
     assert.deepEqual(
       REVIEWED_JAPAN_MOD_OBSERVATIONS.map((row) => row.sourceUrl),
       [
@@ -1033,7 +1095,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
         return new Response(fixture('mnd-detail.html'), { headers: { 'Content-Type': 'text/html' } });
       }
       if (url.includes('mod.go.jp')) {
-        return new Response(fixture('jmod-index.html'), { headers: { 'Content-Type': 'text/html' } });
+        return new Response(fixture('jmod-homepage.html'), { headers: { 'Content-Type': 'text/html' } });
       }
       throw new Error(`unexpected fetch ${url}`);
     };
@@ -1079,7 +1141,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       proxyRequestFn: async () => {
         proxyCalls += 1;
         return {
-          buffer: Buffer.from(fixture('jmod-index.html')),
+          buffer: Buffer.from(fixture('jmod-homepage.html')),
           status: 200,
           contentType: 'text/html',
         };
@@ -1120,7 +1182,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       proxyRequestFn: async (url, proxyConfig, options) => {
         proxyCalls.push({ url: String(url), proxyConfig, options });
         return {
-          buffer: Buffer.from(fixture('jmod-index.html')),
+          buffer: Buffer.from(fixture('jmod-homepage.html')),
           status: 200,
           contentType: 'text/html',
         };
@@ -1159,7 +1221,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
   it('retains last-good Japan MOD data and records both failures when the proxy also fails', async () => {
     const previousSnapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
-        () => new Response(fixture('jmod-index.html')),
+        () => new Response(fixture('jmod-homepage.html')),
       ),
       now: Date.parse(retrievedAt),
       previousSnapshot: null,
@@ -1254,7 +1316,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
   it('keeps a proxy CONNECT 403 degraded when no control tunnel can corroborate it', async () => {
     const previousSnapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
-        () => new Response(fixture('jmod-index.html')),
+        () => new Response(fixture('jmod-homepage.html')),
       ),
       now: Date.parse(retrievedAt),
       previousSnapshot: null,
@@ -1533,7 +1595,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     ].join('');
     const previousSnapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
-        () => new Response(fixture('jmod-index.html')),
+        () => new Response(fixture('jmod-homepage.html')),
       ),
       now: Date.parse(retrievedAt),
       previousSnapshot: null,
@@ -1579,6 +1641,14 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(japan?.requestCount, 2);
     assert.equal(japan?.lastSuccessAt, retrievedAt);
     assert.deepEqual(japan?.errorCodes, ['HTTP_403']);
+    // Candidates stay pinned to the retained lastSuccessAt they were discovered
+    // by. A blocked run neither discovers a new one nor re-dates an old one, so
+    // a retained candidate can never be mistaken for evidence of a fresh fetch.
+    const previousJapanSource = previousSnapshot.sources
+      .find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(previousJapanSource?.candidates?.length, 9);
+    assert.deepEqual(japan?.candidates, previousJapanSource?.candidates);
+    assert.equal(japan?.transportMode, 'japanese_homepage_candidate_discovery');
     assert.deepEqual(japan?.proxyFailureDetail, {
       stage: 'response',
       httpStatus: 403,
@@ -1606,6 +1676,474 @@ describe('quantified cross-Strait activity (#5575)', () => {
     );
     assert.doesNotMatch(JSON.stringify(japan), /proxy-user|proxy-secret/);
     assert.doesNotMatch(JSON.stringify(japan), /cHJveHktdXNlcjpwcm94eS1zZWNyZXQ=/);
+  });
+
+  it('recovers Japan MOD through the Japanese homepage and ties candidates to that fetch', async () => {
+    const requested: string[] = [];
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch(requested),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'fresh');
+    assert.equal(japan?.transportPath, 'direct');
+    assert.equal(japan?.transportMode, 'japanese_homepage_candidate_discovery');
+    assert.equal(japan?.requestCount, 1);
+    assert.equal(japan?.lastSuccessAt, retrievedAt);
+    assert.equal(japan?.unreviewedCandidateCount, 9);
+
+    const discoveryRequests = requested.filter((url) => url === 'https://www.mod.go.jp/js/');
+    assert.equal(discoveryRequests.length, 1, 'discovery spends exactly one source request');
+    assert.equal(
+      requested.includes(CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.indexUrl),
+      true,
+    );
+
+    // The candidate an operator reviews must carry the publisher's own date,
+    // title, and canonical URL, so an admitted row can be traced to this fetch.
+    assert.deepEqual(
+      japan?.candidates?.find(
+        (row: { documentId: string }) => row.documentId === 'p20260730_01',
+      ),
+      {
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf',
+        documentId: 'p20260730_01',
+        publicationDay: '2026-07-30',
+        title: '中国海軍艦艇の動向について（レンハイ、ジャンカイⅡ／沖縄本島－宮古島間北西進）',
+      },
+    );
+    assert.equal(isCrossStraitActivitySnapshot(snapshot), true);
+  });
+
+  it('enforces finite source-health and index refinement contracts at the client boundary', async () => {
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch([]),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    assert.equal(isCrossStraitActivitySnapshot(snapshot), true);
+
+    const invalidTransport = structuredClone(snapshot) as unknown as {
+      sources: Array<{ id: string; transportMode?: unknown }>;
+    };
+    const invalidTransportSource = invalidTransport.sources.find(
+      (source: { id: string }) => source.id === 'japan-mod',
+    );
+    assert.ok(invalidTransportSource);
+    invalidTransportSource.transportMode = 'arbitrary-mode';
+    assert.equal(isCrossStraitActivitySnapshot(invalidTransport), false);
+
+    const invalidCompanion = structuredClone(snapshot) as unknown as {
+      sources: Array<{ id: string; companionResolution?: unknown }>;
+    };
+    const invalidCompanionSource = invalidCompanion.sources.find(
+      (source: { id: string }) => source.id === 'japan-mod',
+    );
+    assert.ok(invalidCompanionSource);
+    invalidCompanionSource.companionResolution = 'arbitrary-resolution';
+    assert.equal(isCrossStraitActivitySnapshot(invalidCompanion), false);
+
+    const invalidCoverage = structuredClone(snapshot) as unknown as {
+      observations: Array<{ sourceId: string; indexCoverage?: unknown }>;
+    };
+    const invalidCoverageRow = invalidCoverage.observations.find(
+      (row: { sourceId: string }) => row.sourceId === 'japan-mod',
+    );
+    assert.ok(invalidCoverageRow);
+    invalidCoverageRow.indexCoverage = 'arbitrary-coverage';
+    assert.equal(isCrossStraitActivitySnapshot(invalidCoverage), false);
+  });
+
+  it('keeps the run inside its request budget and never downloads a linked PDF', async () => {
+    const requested: string[] = [];
+    await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch(requested),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+
+    const japanRequests = requested.filter((url) => url.includes('mod.go.jp'));
+    // Discovery now reads a page whose every news row links a PDF; the budget is
+    // what keeps that from turning into a runtime document fetcher.
+    assert.equal(
+      japanRequests.some((url) => url.endsWith('.pdf')),
+      false,
+      'no linked PDF may be fetched at runtime',
+    );
+    assert.equal(
+      japanRequests.filter((url) => url === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.indexUrl).length,
+      1,
+    );
+    assert.ok(
+      japanRequests.length
+        <= CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxRequestsPerRun
+          + CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxShadowIndexProbesPerRun,
+    );
+  });
+
+  it('never surfaces an English-series document URL for a Japanese release', () => {
+    // #5904 proposed deriving the English companion by inserting `e` before
+    // `.pdf`. Measured on 2026-08-01 the English series carries its own counter:
+    // p20260730_01e.pdf is a Russian-aircraft release while the Japanese
+    // p20260730_01.pdf is a Chinese-Navy one, and the real counterpart is
+    // p20260730_03e.pdf. Discovery must therefore never emit an English URL,
+    // even when the publisher links one on the same page.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li><a href="/js/pdf/2026/p20260730_01.pdf">
+          <time datetime="2026-07-30">2026年07月30日</time>
+          <h5>中国海軍艦艇の動向について</h5></a></li>
+        <li><a href="/js/pdf/2026/p20260730_01e.pdf">
+          <time datetime="2026-07-30">2026年07月30日</time>
+          <h5>Event Summary/Russian Military Activities</h5></a></li>
+        <li><a href="/js/pdf/2026/p20260730_03e.pdf">
+          <time datetime="2026-07-30">2026年07月30日</time>
+          <h5>Event Summary/Chinese Military Activities</h5></a></li>
+        <li><a href="/js/pdf/2023/OB.pdf">退職された皆様へ</a></li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => row.sourceUrl), [
+      'https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf',
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /_\d{2}e\.pdf/);
+    assert.equal(
+      CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.companionResolution,
+      'english_index_blocked_no_derivable_companion',
+    );
+  });
+
+  it('reports a reviewed English document as uncovered rather than withdrawn', async () => {
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch([]),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+
+    const japanRows = snapshot.observations
+      .filter((row: { sourceId: string }) => row.sourceId === 'japan-mod');
+    assert.equal(japanRows.length, REVIEWED_JAPAN_MOD_OBSERVATIONS.length);
+    // The Japanese homepage lists only the Japanese release series, so it is no
+    // evidence at all about a reviewed English document. The schema-v1 wire
+    // field stays in the old enum; the refinement carries the coverage fact.
+    assert.ok(
+      japanRows.every(
+        (row: { indexPresence?: string; indexCoverage?: string }) => (
+          row.indexPresence === 'unknown'
+          && row.indexCoverage === 'not_covered_by_current_index'
+        ),
+      ),
+    );
+    assert.equal(
+      isCrossStraitActivitySnapshot(snapshot),
+      true,
+      'schema-v1 clients must accept the refined coverage field without the new enum value',
+    );
+
+  });
+
+  it('records the blocked English index as a daily diagnostic that cannot move source state', async () => {
+    const requested: string[] = [];
+    const shadowUrl = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.shadowIndexUrl;
+    const first = await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch(requested),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+
+    const firstJapan = first.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.deepEqual(firstJapan?.shadowIndexProbe, {
+      url: shadowUrl,
+      checkedAt: retrievedAt,
+      status: 'blocked',
+      httpStatus: 403,
+      errorCode: 'HTTP_403',
+    });
+    assert.equal(requested.filter((url) => url === shadowUrl).length, 1);
+    // The diagnostic must be invisible to every field that decides health.
+    assert.equal(firstJapan?.transportStatus, 'fresh');
+    assert.equal(firstJapan?.requestCount, 1, 'a diagnostic is not a source request');
+    assert.deepEqual(firstJapan?.errorCodes, []);
+    assert.equal(firstJapan?.blockedReason, undefined);
+    assert.equal(firstJapan?.lastSuccessAt, retrievedAt);
+
+    // Three hours later — inside the interval — the probe must not spend another
+    // request, and must carry its previous result forward unchanged.
+    const withinInterval: string[] = [];
+    const second = await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch(withinInterval),
+      now: Date.parse(retrievedAt) + 3 * 60 * 60 * 1_000,
+      previousSnapshot: first,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const secondJapan = second.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(withinInterval.filter((url) => url === shadowUrl).length, 0);
+    assert.deepEqual(secondJapan?.shadowIndexProbe, firstJapan?.shadowIndexProbe);
+
+    // Past the interval it runs again, and a reopened index is what an operator
+    // needs to see to restore English provenance.
+    const afterInterval: string[] = [];
+    const reopenedAt = Date.parse(retrievedAt) + 25 * 60 * 60 * 1_000;
+    const third = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        afterInterval.push(url);
+        if (url === shadowUrl) return new Response(usableJapanEnglishIndex);
+        return japanMinistryFetch([])(input);
+      },
+      now: reopenedAt,
+      previousSnapshot: second,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const thirdJapan = third.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(afterInterval.filter((url) => url === shadowUrl).length, 1);
+    assert.deepEqual(thirdJapan?.shadowIndexProbe, {
+      url: shadowUrl,
+      checkedAt: new Date(reopenedAt).toISOString(),
+      status: 'reachable',
+      httpStatus: 200,
+      errorCode: null,
+    });
+  });
+
+  it('records a non-200 successful HTTP response instead of calling the English index reachable', async () => {
+    const shadowUrl = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.shadowIndexUrl;
+    const baseFetch = japanMinistryFetch([]);
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input) === shadowUrl) {
+          return new Response(usableJapanEnglishIndex, { status: 206 });
+        }
+        return baseFetch(input, init);
+      },
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+
+    assert.deepEqual(
+      snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod')?.shadowIndexProbe,
+      {
+        url: shadowUrl,
+        checkedAt: retrievedAt,
+        status: 'error',
+        httpStatus: 206,
+        errorCode: 'JMOD_ENGLISH_INDEX_NON_200',
+      },
+    );
+  });
+
+  it('records an unusable 200 English-index body instead of calling it reachable', async () => {
+    const shadowUrl = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.shadowIndexUrl;
+    const baseFetch = japanMinistryFetch([]);
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input) === shadowUrl) {
+          return new Response('<html><head><title>Relocated</title></head><body>no index</body></html>');
+        }
+        return baseFetch(input, init);
+      },
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+
+    assert.deepEqual(
+      snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod')?.shadowIndexProbe,
+      {
+        url: shadowUrl,
+        checkedAt: retrievedAt,
+        status: 'error',
+        httpStatus: 200,
+        errorCode: 'JMOD_ENGLISH_INDEX_UNUSABLE',
+      },
+    );
+  });
+
+  it('never probes the English index on a failed run and never lets it fail a recovered one', async () => {
+    const shadowUrl = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.shadowIndexUrl;
+    const blockedRequests: string[] = [];
+    const blocked = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        blockedRequests.push(url);
+        if (url.includes('mod.go.jp')) return new Response('Forbidden', { status: 403 });
+        if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
+        return new Response(fixture('mnd-detail.html'));
+      },
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const blockedJapan = blocked.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    // A run that could not reach the homepage has no budget to spend telling us
+    // the already-known-blocked index is still blocked.
+    assert.equal(blockedRequests.filter((url) => url === shadowUrl).length, 0);
+    assert.equal(blockedJapan?.shadowIndexProbe, undefined);
+    assert.equal(blockedJapan?.transportStatus, 'error');
+
+    // Same rule for the other failure shape: a 200 that yields no allowlisted
+    // release is a discovery failure, not a success the diagnostic may follow.
+    const emptyRequests: string[] = [];
+    const empty = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        emptyRequests.push(url);
+        if (url.includes('mod.go.jp')) return new Response('<html><body>relocated</body></html>');
+        if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
+        return new Response(fixture('mnd-detail.html'));
+      },
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const emptyJapan = empty.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.deepEqual(emptyJapan?.errorCodes, ['JMOD_INDEX_EMPTY']);
+    assert.equal(emptyRequests.filter((url) => url === shadowUrl).length, 0);
+    assert.equal(emptyJapan?.shadowIndexProbe, undefined);
+
+    // A failed run must not reset the interval gate: if it did, the daily
+    // diagnostic would silently become a per-run request during an outage.
+    const seeded = await fetchCrossStraitActivitySnapshot({
+      fetchFn: japanMinistryFetch([]),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const outage = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response('Forbidden', { status: 403 });
+        if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
+        return new Response(fixture('mnd-detail.html'));
+      },
+      now: Date.parse(retrievedAt) + 3 * 60 * 60 * 1_000,
+      previousSnapshot: seeded,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const outageJapan = outage.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    const seededJapan = seeded.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.deepEqual(outageJapan?.shadowIndexProbe, seededJapan?.shadowIndexProbe);
+
+    // A diagnostic that throws must not turn a recovered run back into a failure.
+    const recovered = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === shadowUrl) throw new Error('probe exploded');
+        return japanMinistryFetch([])(input);
+      },
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const recoveredJapan = recovered.sources
+      .find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(recoveredJapan?.transportStatus, 'fresh');
+    assert.equal(recoveredJapan?.lastSuccessAt, retrievedAt);
+    assert.deepEqual(recoveredJapan?.errorCodes, []);
+    assert.equal(recoveredJapan?.shadowIndexProbe?.status, 'error');
+  });
+
+  it('retains the source-health cursor when an invalid MND tick rejects the archive', async () => {
+    const firstAt = Date.parse(retrievedAt);
+    const first = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.indexUrl) {
+          return new Response(fixture('jmod-homepage.html'));
+        }
+        if (url.includes('mod.go.jp')) return new Response('Forbidden', { status: 403 });
+        return new Response('<html><body>invalid MND list</body></html>');
+      },
+      now: firstAt,
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const firstJapan = first.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(validateCrossStraitActivitySnapshot(first), false);
+    assert.equal(firstJapan?.transportStatus, 'fresh');
+    assert.ok((firstJapan?.candidates?.length ?? 0) > 0);
+    assert.ok(firstJapan?.shadowIndexProbe);
+
+    const readKeys: string[] = [];
+    const second = await fetchCrossStraitActivitySeedSnapshot({
+      readSnapshot: async (key: string) => {
+        readKeys.push(key);
+        return key === CROSS_STRAIT_ACTIVITY_KEY ? null : firstJapan;
+      },
+      fetchSnapshot: ({ previousSnapshot, previousSourceHealth }) => fetchCrossStraitActivitySnapshot({
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response('Forbidden', { status: 403 });
+          return new Response('<html><body>invalid MND list</body></html>');
+        },
+        now: firstAt + 3 * 60 * 60 * 1_000,
+        previousSnapshot,
+        previousSourceHealth,
+        sleepFn: async () => {},
+        proxyUrl: '',
+      }),
+      writeHealth: async () => {},
+    });
+    assert.deepEqual(readKeys, [
+      CROSS_STRAIT_ACTIVITY_KEY,
+      CROSS_STRAIT_ACTIVITY_JAPAN_SOURCE_HEALTH_KEY,
+    ]);
+    const secondJapan = second.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(secondJapan?.transportStatus, 'error');
+    assert.equal(secondJapan?.lastSuccessAt, firstJapan?.lastSuccessAt);
+    assert.deepEqual(secondJapan?.candidates, firstJapan?.candidates);
+    assert.equal(secondJapan?.unreviewedCandidateCount, firstJapan?.unreviewedCandidateCount);
+    assert.deepEqual(secondJapan?.shadowIndexProbe, firstJapan?.shadowIndexProbe);
+  });
+
+  it('separates the three index-presence claims by whether the index covers the series', () => {
+    const discovered = new Set(['https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf']);
+
+    // Listed by the index we actually read.
+    assert.equal(
+      japanIndexPresence('https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf', discovered),
+      'present',
+    );
+    // Same series, absent from the current page: the publisher aged it off, so
+    // "not observed" is a real observation.
+    assert.equal(
+      japanIndexPresence('https://www.mod.go.jp/js/pdf/2026/p20260728_01.pdf', discovered),
+      'not_observed_in_current_index',
+    );
+    // A different series entirely; this index never enumerates it.
+    assert.equal(
+      japanIndexPresence('https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf', discovered),
+      'unknown',
+    );
+    assert.equal(
+      japanIndexCoverage('https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf', discovered),
+      'not_covered_by_current_index',
+    );
+    assert.equal(japanIndexPresence('not a url', discovered), 'unknown');
+    assert.equal(japanIndexCoverage('not a url', discovered), 'not_covered_by_current_index');
   });
 
   it('does not classify mixed direct failures and proxy 403 as a two-path block', async () => {
@@ -1714,7 +2252,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
         proxyRequestFn: async () => {
           proxyCalls += 1;
           return {
-            buffer: Buffer.from(fixture('jmod-index.html')),
+            buffer: Buffer.from(fixture('jmod-homepage.html')),
             status: 200,
             contentType: 'text/html',
           };
@@ -1732,7 +2270,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
   it('rejects an oversized Japan MOD proxy response and preserves last-good state', async () => {
     const previousSnapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn: crossStraitFixtureFetch(
-        () => new Response(fixture('jmod-index.html')),
+        () => new Response(fixture('jmod-homepage.html')),
       ),
       now: Date.parse(retrievedAt),
       previousSnapshot: null,
@@ -1787,7 +2325,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const fetchFn = async (input: string | URL | Request) => {
       calls.push(String(input));
       clock += 20_000;
-      if (String(input).includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (String(input).includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       return new Response(fixture('mnd-list.html'));
     };
     const snapshot = await fetchCrossStraitActivitySnapshot({
@@ -1808,7 +2346,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       if (url.includes('plaactlist')) return new Response(list);
       return new Response(fixture('mnd-detail.html'));
     };
@@ -1837,7 +2375,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const detailCalls: string[] = [];
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       if (url.includes('plaactlist')) return new Response(list);
       detailCalls.push(url);
       return new Response(fixture('mnd-detail.html'));
@@ -1861,7 +2399,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const detailCalls: string[] = [];
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       if (url.endsWith('/plaactlist')) return new Response(pageOne);
       if (url.endsWith('/plaactlist/2')) return new Response(pageTwo);
       detailCalls.push(url);
@@ -1894,7 +2432,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const detailCalls: string[] = [];
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       if (url.includes('plaactlist')) return new Response(fixture('mnd-list.html'));
       detailCalls.push(url);
       return new Response(fixture('mnd-detail.html'));
@@ -1926,7 +2464,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     });
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       if (url.includes('plaactlist')) return new Response(fixture('mnd-list.html'));
       if (url.endsWith('/99999')) return new Response(fixture('mnd-detail-corrected.html'));
       return new Response(fixture('mnd-detail.html'));
@@ -1981,7 +2519,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     );
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
       if (url.includes('plaactlist')) return new Response(fixture('mnd-list.html'));
       if (url.endsWith('/87151')) return new Response(movedWindow);
       return new Response(fixture('mnd-detail.html'));
@@ -2027,7 +2565,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       if (url.includes('mnd.gov.tw')) {
         return new Response(fixture('mnd-detail.html'));
       }
-      return new Response(fixture('jmod-index.html'));
+      return new Response(fixture('jmod-homepage.html'));
     };
     const snapshot = await fetchCrossStraitActivitySnapshot({
       fetchFn,

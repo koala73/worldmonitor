@@ -145,6 +145,29 @@ describe('agent bus applier', () => {
     );
   });
 
+  it('allows free enhanced layers and clears stale locked layers', () => {
+    const ctx = makeCtx();
+    ctx.mapLayers.resilienceScore = true;
+    const layerChanges: Array<[keyof MapLayers, boolean, 'programmatic']> = [];
+    const result = applyAgentBusAction(ctx, {
+      type: 'set_layers',
+      layers: { ciiChoropleth: true, resilienceScore: false },
+    }, {
+      ...entitled,
+      applyLayerChange: (layer, enabled, source) => { layerChanges.push([layer, enabled, source]); },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(ctx.mapLayers.ciiChoropleth, true,
+      'enhanced layers remain available to free users');
+    assert.equal(ctx.mapLayers.resilienceScore, false,
+      'free users must be able to clear stale locked state');
+    assert.deepEqual(layerChanges, [
+      ['ciiChoropleth', true, 'programmatic'],
+      ['resilienceScore', false, 'programmatic'],
+    ]);
+  });
+
   it('denies layer updates when the normal layer-change side effects are unavailable', () => {
     const ctx = makeCtx();
     const result = applyAgentBusAction(ctx, {

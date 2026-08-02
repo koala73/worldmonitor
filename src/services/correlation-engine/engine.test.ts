@@ -41,6 +41,28 @@ afterEach(() => {
 });
 
 describe('CorrelationEngine performance warning', () => {
+  it('retains the selected runtime mode at the strategy handoff boundary', async () => {
+    const engine = createEngine();
+
+    await engine.run({} as Parameters<CorrelationEngine['run']>[0], 'exact');
+    expect(engine.getRuntimeMode()).toBe('exact');
+
+    await engine.run({} as Parameters<CorrelationEngine['run']>[0], 'fuzzy');
+    expect(engine.getRuntimeMode()).toBe('fuzzy');
+  });
+
+  it('reports that it computed so callers can skip publishing a skipped run', async () => {
+    const engine = createEngine();
+
+    // run() is synchronous end to end today, so the `this.running` re-entrancy
+    // guard is not reachable from outside and is deliberately NOT asserted here
+    // -- a concurrency test would pass for the wrong reason. This pins only the
+    // contract the caller depends on: a run that computed reports true.
+    await expect(
+      engine.run({} as Parameters<CorrelationEngine['run']>[0], 'legacy'),
+    ).resolves.toBe(true);
+  });
+
   it('does not warn for an isolated cold-start breach', async () => {
     vi.spyOn(performance, 'now')
       .mockReturnValueOnce(0)

@@ -1,6 +1,12 @@
 {
   "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
   "layerDefinitions": 56,
+  "lockedLayerDefinitions": 1,
+  "lockedLayerKeys": [
+    "resilienceScore"
+  ],
+  "tier1Countries": 31,
+  "rankableUniverseCountries": 196,
   "variantLayers": {
     "full": 37,
     "tech": 13,
@@ -10,9 +16,9 @@
     "energy": 18
   },
   "variantCount": 6,
-  "componentTopLevelTsFiles": 179,
-  "serviceTopLevelEntries": 218,
-  "apiEndpointEntries": 89,
+  "componentTopLevelTsFiles": 180,
+  "serviceTopLevelEntries": 221,
+  "apiEndpointEntries": 91,
   "panelClasses": 107,
   "protoFiles": 290,
   "protoServices": 35,
@@ -43,10 +49,11 @@
     "sv",
     "th",
     "tr",
+    "uk",
     "vi",
     "zh"
   ],
-  "locales": 25,
+  "locales": 26,
   "workflows": [
     "analytics-collector-monitor.yml",
     "build-desktop.yml",
@@ -72,12 +79,13 @@
     "seed-freshness-monitor.yml",
     "test-linux-app.yml",
     "test.yml",
-    "typecheck.yml"
+    "typecheck.yml",
+    "umami-storage-monitor.yml"
   ],
-  "workflowCount": 25,
+  "workflowCount": 26,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 568,
+  "feedDefinitions": 628,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,

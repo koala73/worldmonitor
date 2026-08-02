@@ -23,6 +23,7 @@ import {
 } from '../../../shared/keyword-spike-core.js';
 import { clusterNewsCore, protoThreatLevelToLabel, topClusterKeywords } from '../../../shared/news-clustering-core.js';
 import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
+import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk } from '../billing-denial';
 import { argStr } from '../filters';
@@ -46,6 +47,11 @@ const CLASSIFY_SEVERITIES = [
 const EXTRACT_TEXT_MAX_CHARS = 2048; // issue #5697's 2 KB arbitrary-text cap
 const NLP_DIGEST_TIMEOUT_MS = 6_000;
 const NLP_UA = 'worldmonitor-mcp-edge/1.0';
+const NLP_DIGEST_SOURCE_MAX_BYTES = 160;
+const NLP_DIGEST_TITLE_MAX_BYTES = 512;
+const NLP_DIGEST_LINK_MAX_BYTES = 2_048;
+const NLP_DIGEST_METADATA_MAX_BYTES = 64;
+const NLP_DIGEST_NOTE_MAX_BYTES = 2_048;
 const KEYWORD_SPIKE_BASELINE_MS = 48 * 60 * 60 * 1000; // digest:accumulator retention
 const KEYWORD_SPIKE_CACHE_TTL_S = 600;
 const KEYWORD_SPIKE_MAX_STORIES = 800;
@@ -65,6 +71,35 @@ const FULL_DIGEST_CATEGORY_DESC =
   'Restrict to one full-digest category: ' +
   FULL_DIGEST_CATEGORIES.join(', ') +
   '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
+
+const SOURCE_PROVENANCE_REQUIRED = [
+  'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed',
+];
+const SOURCE_PROVENANCE_PROPERTIES = {
+  risk: { type: 'string' }, type: { type: 'string' },
+  riskDeclared: { type: 'boolean' }, typeDeclared: { type: 'boolean' },
+  riskReviewed: { type: 'boolean' }, typeReviewed: { type: 'boolean' },
+  stateAffiliated: { type: 'string' }, note: { type: 'string' },
+};
+
+function nlpTruncateUtf8(value: string, maxBytes: number): string {
+  let bytes = 0;
+  let end = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    const characterBytes = codePoint <= 0x7f
+      ? 1
+      : codePoint <= 0x7ff
+        ? 2
+        : codePoint <= 0xffff
+          ? 3
+          : 4;
+    if (bytes + characterBytes > maxBytes) break;
+    bytes += characterBytes;
+    end += character.length;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
 
 function nlpClampInt(value: unknown, min: number, max: number, fallback: number): number {
   return Number.isInteger(value)
@@ -150,7 +185,10 @@ async function fetchNlpDigestItems(
     const listed = availableCategories.length > 0
       ? availableCategories.join(', ')
       : FULL_DIGEST_CATEGORIES.join(', ');
-    note = `Unknown digest category "${category}". Available: ${listed}.`;
+    note = nlpTruncateUtf8(
+      `Unknown digest category "${category}". Available: ${listed}.`,
+      NLP_DIGEST_NOTE_MAX_BYTES,
+    );
   }
 
   for (const group of groups) {
@@ -159,16 +197,22 @@ async function fetchNlpDigestItems(
       const key = raw.link || `${raw.source}|${raw.title}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const source = nlpTruncateUtf8(raw.source, NLP_DIGEST_SOURCE_MAX_BYTES);
+      const title = nlpTruncateUtf8(raw.title, NLP_DIGEST_TITLE_MAX_BYTES);
+      const link = nlpTruncateUtf8(raw.link ?? '', NLP_DIGEST_LINK_MAX_BYTES);
       items.push({
-        source: raw.source,
-        title: raw.title,
-        link: raw.link ?? '',
+        source,
+        title,
+        link,
         pubDate: new Date(Number(raw.publishedAt) || 0),
         isAlert: raw.isAlert === true,
         tier: 3,
         threat: raw.threat ? {
           level: protoThreatLevelToLabel(raw.threat.level),
-          category: (raw.threat.category ?? 'general') as NonNullable<NewsItemCore['threat']>['category'],
+          category: nlpTruncateUtf8(
+            raw.threat.category ?? 'general',
+            NLP_DIGEST_METADATA_MAX_BYTES,
+          ) as NonNullable<NewsItemCore['threat']>['category'],
           confidence: typeof raw.threat.confidence === 'number' ? raw.threat.confidence : 0.5,
           source: raw.threat.source === 'ml' || raw.threat.source === 'llm' ? raw.threat.source : 'keyword',
         } : undefined,
@@ -177,7 +221,7 @@ async function fetchNlpDigestItems(
   }
   return {
     items,
-    generatedAt: body.generatedAt ?? '',
+    generatedAt: nlpTruncateUtf8(body.generatedAt ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
     category: category || null,
     ...(note ? { note } : {}),
   };
@@ -393,8 +437,11 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_news_clusters',
-    _outputBudgetBytes: 32768,
-    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. "commodities"). Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM.',
+    // At limit=25, each cluster can carry eight fail-closed provenance
+    // records plus a separate primary record. Keep the dispatcher budget
+    // aligned with that supported maximum instead of rejecting valid output.
+    _outputBudgetBytes: 262144,
+    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. "commodities"). Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, and time span. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -414,18 +461,39 @@ export const NLP_TOOLS: ToolDef[] = [
       properties: {
         clusters: {
           type: 'array',
-          items: { type: 'object', properties: {
-            id: { type: 'string' },
-            title: { type: 'string', description: 'Primary headline. Server-side primary selection is recency-based: digest items carry no per-source tier.' },
-            primarySource: { type: 'string' }, link: { type: 'string' },
-            memberCount: { type: 'number', description: 'Headlines in this cluster (one outlet can contribute several).' },
-            distinctSourceCount: { type: 'number', description: 'Distinct outlets covering the cluster — the corroboration signal min_sources filters on.' },
-            sources: { type: 'array', items: { type: 'string' }, description: 'Distinct source names (up to 8).' },
-            topKeywords: { type: 'array', items: { type: 'string' } },
-            isAlert: { type: 'boolean' },
-            threatLevel: { type: 'string' }, threatCategory: { type: 'string' },
-            firstSeen: { type: 'string' }, lastUpdated: { type: 'string' },
-          } },
+          items: {
+            type: 'object',
+            required: ['primarySourceProvenance', 'sourceProvenance'],
+            properties: {
+              id: { type: 'string' },
+              title: { type: 'string', description: 'Primary headline. Server-side primary selection is recency-based: digest items carry no per-source tier.' },
+              primarySource: { type: 'string' }, link: { type: 'string' },
+              primarySourceProvenance: {
+                type: 'object',
+                required: SOURCE_PROVENANCE_REQUIRED,
+                properties: SOURCE_PROVENANCE_PROPERTIES,
+              },
+              memberCount: { type: 'number', description: 'Headlines in this cluster (one outlet can contribute several).' },
+              distinctSourceCount: { type: 'number', description: 'Distinct outlets covering the cluster — the corroboration signal min_sources filters on.' },
+              sources: { type: 'array', items: { type: 'string' }, description: 'Distinct source names (up to 8).' },
+              sourceProvenance: {
+                type: 'array',
+                description: 'Fail-closed provenance for each source returned in `sources`, including state affiliation when declared.',
+                items: {
+                  type: 'object',
+                  required: ['source', ...SOURCE_PROVENANCE_REQUIRED],
+                  properties: {
+                    source: { type: 'string' },
+                    ...SOURCE_PROVENANCE_PROPERTIES,
+                  },
+                },
+              },
+              topKeywords: { type: 'array', items: { type: 'string' } },
+              isAlert: { type: 'boolean' },
+              threatLevel: { type: 'string' }, threatCategory: { type: 'string' },
+              firstSeen: { type: 'string' }, lastUpdated: { type: 'string' },
+            },
+          },
         },
         totalClusters: { type: 'number', description: 'Cluster count before limit/min_sources filtering.' },
         headlineCount: { type: 'number' },
@@ -441,18 +509,34 @@ export const NLP_TOOLS: ToolDef[] = [
       const category = argStr(params.category);
       const digest = await fetchNlpDigestItems(base, context, category);
       const clusters = clusterNewsCore(digest.items, () => 3);
-      const projected = clusters.map(cluster => {
-        const sources = [...new Set(cluster.allItems.map(item => item.source))];
+      const selectedClusters = clusters
+        .map(cluster => ({
+          cluster,
+          sources: [...new Set(cluster.allItems.map(item => item.source))],
+        }))
+        .filter(({ sources }) => sources.length >= minSources)
+        .slice(0, limit);
+      const projected = selectedClusters.map(({ cluster, sources }) => {
+        const projectedSources = sources.slice(0, 8);
+        const provenanceBySource = new Map(
+          [...new Set([cluster.primarySource, ...projectedSources])]
+            .map(source => [source, getSourceProvenanceState(source)] as const),
+        );
         return {
           id: cluster.id,
           title: cluster.primaryTitle,
           primarySource: cluster.primarySource,
+          primarySourceProvenance: provenanceBySource.get(cluster.primarySource)!,
           link: cluster.primaryLink,
           memberCount: cluster.sourceCount,
           // Corroboration is distinct outlets, not headline count — one outlet
           // can file several near-identical headlines into the same cluster.
           distinctSourceCount: sources.length,
-          sources: sources.slice(0, 8),
+          sources: projectedSources,
+          sourceProvenance: projectedSources.map((source) => ({
+            source,
+            ...provenanceBySource.get(source)!,
+          })),
           topKeywords: topClusterKeywords(cluster, 5),
           isAlert: cluster.isAlert,
           threatLevel: cluster.threat?.level ?? 'info',
@@ -462,9 +546,7 @@ export const NLP_TOOLS: ToolDef[] = [
         };
       });
       return {
-        clusters: projected
-          .filter(cluster => cluster.distinctSourceCount >= minSources)
-          .slice(0, limit),
+        clusters: projected,
         totalClusters: clusters.length,
         headlineCount: digest.items.length,
         generatedAt: digest.generatedAt,

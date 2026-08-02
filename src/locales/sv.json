@@ -1279,7 +1279,8 @@
       "newsSignals": "{{news}} nyheter • {{signals}} signaler",
       "provenanceTitle": "Täckningshärkomst: hur många inmatade historier och unika källor denna kortfattade sammanfattning valdes från",
       "compiledFrom": "Kompilerat från {{stories}} berättelser från {{sources}} källor",
-      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal"
+      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
@@ -3335,5 +3336,31 @@
     "deleteTab": "Ta bort flik",
     "deleteTabAria": "Ta bort flik {{name}}",
     "tabNameAria": "Fliknamn"
+  },
+  "theaterPresets": {
+    "label": "Täckningspaket",
+    "applied": "Paketet {{preset}} har tillämpats: {{count}} källor aktiverade",
+    "alreadyApplied": "Paketet {{preset}} har redan tillämpats",
+    "ukraineWar": {
+      "label": "Kriget i Ukraina",
+      "description": "Aktivera ukrainska huvudmedier, oberoende rysk press och källor för frontbedömning"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Aktivera säkerhetskällor från Taiwan, Pakistan och Sydostasien"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel och Västafrika",
+      "description": "Aktivera lokala källor från Sahel, Nigeria och Västafrika"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus och Centralasien",
+      "description": "Aktivera regionala källor från södra Kaukasus och Centralasien"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spänningshärdar i Mellanöstern",
+      "description": "Aktivera källor om Iran, Israel, Gulfen och kurdiska regioner"
+    },
+    "unavailable": "Paketet {{preset}} är inte tillgängligt med dina nuvarande paneler"
   }
 }

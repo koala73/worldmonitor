@@ -117,7 +117,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 | Live video streams | 8 |
 | Data layers on map | 56 layer types |
 | Countries monitored | 200+ |
-| Languages supported | 24 (including RTL) |
+| Languages supported | 26 (including RTL) |
 | Military bases mapped | 220+ |
 | AI datacenters mapped | 111 |
 | Stock exchanges mapped | 29 |

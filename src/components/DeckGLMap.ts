@@ -118,8 +118,12 @@ import {
   bindLayerSearch,
   getLayerExplanation,
   hasCuratedLayerExplanation,
+  isLayerEntitled,
+  isLayerToggleAllowed,
+  sanitizeLockedLayers,
   type MapVariant,
 } from '@/config/map-layer-definitions';
+import { isProTierResolved } from '@/services/widget-store';
 import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
@@ -5477,37 +5481,63 @@ export class DeckGLMap {
 
     this.container.appendChild(toggles);
 
-    // Unlock premium layers when Pro status resolves. Pro can come from EITHER:
-    //   1. Clerk role === 'pro' (subscribeAuthState fires on Clerk changes)
-    //   2. Convex entitlement tier >= 1 (onEntitlementChange fires on Convex changes)
-    // Subscribing to BOTH covers Dodo subscribers whose Pro flag arrives via
-    // Convex (NOT via Clerk role). User-reported on energy.worldmonitor.app:
-    // "Pro Monthly" in settings UI but Resilience layer still showed the lock
-    // because subscribeAuthState alone never fires on Convex transitions.
-    //
-    // Whichever signal resolves Pro first does the unlock; the other becomes
-    // a no-op (early-return when not Pro; no-op .remove on already-removed
-    // class). queueMicrotask defers self-unsubscribe so both _unsubscribe*
-    // assignments complete before the unsubscribe runs. Greptile P2 fix:
-    // single helper instead of duplicated callback bodies.
-    const unlockIfPro = (): void => {
-      if (!hasPremiumAccess(getAuthState())) return;
-      toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
-        label.classList.remove('layer-toggle-locked');
-        const input = label.querySelector('input') as HTMLInputElement | null;
-        if (input) input.disabled = false;
-        const labelSpan = label.querySelector('.toggle-label');
-        if (labelSpan) labelSpan.textContent = labelSpan.textContent!.replace(' \uD83D\uDD12', '');
+    const lockedLayerControls = layerConfig
+      .filter(({ premium }) => premium === 'locked')
+      .map(({ key, label }) => {
+        const control = toggles.querySelector(`.layer-toggle[data-layer="${key}"]`);
+        return {
+          key,
+          label,
+          control,
+          input: control?.querySelector('input') as HTMLInputElement | null,
+          labelSpan: control?.querySelector('.toggle-label') as HTMLElement | null,
+        };
       });
-      queueMicrotask(() => {
-        this._unsubscribeAuthState?.();
-        this._unsubscribeAuthState = null;
-        this._unsubscribeEntitlement?.();
-        this._unsubscribeEntitlement = null;
-      });
+    let lastPremiumUnlocked: boolean | null = null;
+    let lastSettledFree: boolean | null = null;
+
+    // Reconcile premium controls whenever either entitlement signal changes.
+    // Pro can come from Clerk role or the Convex entitlement snapshot, and
+    // both subscriptions must remain live: a user can later downgrade or sign
+    // out after unlocking a layer. The initial pending state stays visually
+    // locked, but it must not be persisted as free until the tier settles (or
+    // App's bounded fallback explicitly heals it).
+    const syncPremiumLayerControls = (): void => {
+      const premiumUnlocked = hasPremiumAccess(getAuthState());
+      const settledFree = isProTierResolved() && !premiumUnlocked;
+      if (premiumUnlocked === lastPremiumUnlocked && settledFree === lastSettledFree) return;
+      lastPremiumUnlocked = premiumUnlocked;
+      lastSettledFree = settledFree;
+      let stateChanged = false;
+
+      for (const { key, label: layerLabel, control, input, labelSpan } of lockedLayerControls) {
+        if (!control) continue;
+        const locked = !premiumUnlocked;
+        control.classList.toggle('layer-toggle-locked', locked);
+        if (input) {
+          input.disabled = locked;
+          if (settledFree && this.state.layers[key]) {
+            this.state.layers[key] = false;
+            input.checked = false;
+            this.setLayerReady(key, false);
+            this.onLayerChange?.(key, false, 'programmatic');
+            stateChanged = true;
+          }
+        }
+
+        if (labelSpan) {
+          labelSpan.textContent = locked ? `${layerLabel} 🔒` : layerLabel;
+        }
+      }
+
+      if (stateChanged) {
+        this.render();
+        this.updateLegend();
+        this.enforceLayerLimit();
+      }
     };
-    this._unsubscribeAuthState = subscribeAuthState(() => unlockIfPro());
-    this._unsubscribeEntitlement = onEntitlementChange(() => unlockIfPro());
+    this._unsubscribeAuthState = subscribeAuthState(syncPremiumLayerControls);
+    this._unsubscribeEntitlement = onEntitlementChange(syncPremiumLayerControls);
 
     // Bind toggle events
     toggles.querySelectorAll('.layer-toggle input').forEach(input => {
@@ -5515,6 +5545,10 @@ export class DeckGLMap {
         const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
         if (layer) {
           const enabled = (input as HTMLInputElement).checked;
+          if (!isLayerToggleAllowed(layer, this.state.layers[layer], hasPremiumAccess(getAuthState()))) {
+            (input as HTMLInputElement).checked = Boolean(this.state.layers[layer]);
+            return;
+          }
           const prevRadar = this.state.layers.weather;
           const prevCyber = this.state.layers.cyberThreats;
           if (enabled && (layer === 'resilienceScore' || layer === 'ciiChoropleth')) {
@@ -6053,9 +6087,16 @@ export class DeckGLMap {
   }
 
   public setLayers(layers: MapLayers): void {
+    // #6045 — strip locked premium layers for settled free users before
+    // checkbox force-sync (prevents checked+disabled stuck state from any
+    // bulk path: mission presets, layers:all, URL, cloud prefs).
+    let next = layers;
+    if (isProTierResolved() && !hasPremiumAccess(getAuthState())) {
+      next = sanitizeLockedLayers(layers, false);
+    }
     const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
-    this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
+    this.state.layers = normalizeExclusiveChoropleths(next, this.state.layers);
     if (!this.state.layers.military) this.clearFlightTrails();
     this.manageAircraftTimer(this.state.layers.flights);
     if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
@@ -7192,6 +7233,10 @@ export class DeckGLMap {
 
   // Enable layer programmatically
   public enableLayer(layer: keyof MapLayers): void {
+    // Defense in depth for CMD+K / agent / deep-link paths: locked premium
+    // layers stay off for free users (#6045). search-manager also gates
+    // before calling here; this catches any remaining enableLayer callers.
+    if (!isLayerEntitled(layer, hasPremiumAccess(getAuthState()))) return;
     if (!this.state.layers[layer]) {
       if (layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
         this.state.layers.ciiChoropleth = false;
@@ -7224,6 +7269,7 @@ export class DeckGLMap {
     const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
     const nextEnabled = !this.state.layers[layer];
+    if (!isLayerToggleAllowed(layer, this.state.layers[layer], hasPremiumAccess(getAuthState()))) return;
     if (nextEnabled && layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
       this.state.layers.ciiChoropleth = false;
       const ciiToggle = this.container.querySelector(`.layer-toggle[data-layer="ciiChoropleth"] input`) as HTMLInputElement | null;

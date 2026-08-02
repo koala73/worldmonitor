@@ -29,16 +29,15 @@ import {
 } from "./subscriptionHelpers";
 
 // ---------------------------------------------------------------------------
-// Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
+// Billing REST SDK client
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a direct DodoPayments REST SDK client.
+ * Returns the direct DodoPayments REST SDK client owned by this billing module.
  *
- * This uses the "dodopayments" npm package (REST SDK) for API calls
- * such as customer portal creation and plan changes. It is distinct from
- * the @dodopayments/convex component SDK in lib/dodo.ts, which handles
- * checkout and webhook verification.
+ * This client handles billing, customer portal, and subscription operations.
+ * lib/dodo.ts independently owns direct REST checkout-session creation;
+ * webhook verification lives in payments/webhookHandlers.ts.
  *
  * Canonical env var: DODO_API_KEY.
  */

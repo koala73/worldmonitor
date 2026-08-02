@@ -43,11 +43,38 @@
  */
 
 import process from 'node:process';
+import { randomUUID } from 'node:crypto';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
+import { REPLAY_WINDOW_DAYS } from './lib/brief-replay-constants.mjs';
 
-const DEFAULT_REPLAY_DAYS = 14;
+export const DEFAULT_REPLAY_DAYS = REPLAY_WINDOW_DAYS;
 const REPLAY_KEY_PREFIX = 'digest:replay-log:v1';
 const SCAN_PAGE_SIZE = 200;
+const REPLAY_REST_USER_AGENT = 'worldmonitor-digest/1.0';
+const REPLAY_REQUEST_TIMEOUT_MS = 10_000;
+// Exported so the tests assert the real value instead of re-hardcoding it —
+// a TTL that silently drifts to 0 or a day is exactly the regression the
+// snapshot-lifecycle tests exist to catch.
+export const SNAPSHOT_TTL_SECONDS = 15 * 60;
+
+function replayRequestInit(token) {
+  return {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'User-Agent': REPLAY_REST_USER_AGENT,
+    },
+    signal: AbortSignal.timeout(REPLAY_REQUEST_TIMEOUT_MS),
+  };
+}
+
+/**
+ * Entries per LRANGE page. Upstash's max-request-size limit counts a
+ * SINGLE command's result, so `LRANGE key 0 -1` on a full day list was
+ * rejected outright once the lists grew past 50MiB. Matches the page
+ * size already used by the sibling harnesses (sweep-topic-thresholds.mjs,
+ * brief-quality-report.mjs) — ~1.5MB per page at observed entry sizes.
+ */
+const LRANGE_PAGE_SIZE = 1_000;
 
 // ── Pure aggregation (test-exercised) ───────────────────────────────
 
@@ -471,21 +498,164 @@ Output:
 `.trim();
 
 /**
- * Live-Redis fetch path. SCANs all replay-log keys, ranges each list,
+ * Read one replay-log day list in bounded pages.
+ *
+ * Replaces `LRANGE key 0 -1`, which Upstash rejects once a day list
+ * exceeds the 50MiB per-command limit. Two failure modes are collapsed
+ * into one throw so neither can be mistaken for "this day had no data":
+ *
+ *   - non-2xx (transport / auth)
+ *   - HTTP 200 carrying a per-command `error` field, which is how the
+ *     max-request-size rejection actually arrives. `res.ok` is true and
+ *     `body.result` is undefined, so the pre-2026-08-02 reader scored it
+ *     as an empty list and the harness exited 2 blaming the feature flag.
+ *
+ * Paging reads an atomic COPY of the day list rather than the live key, so a
+ * concurrent RPUSH/LTRIM cannot shift indices mid-read and duplicate or drop
+ * entries. The snapshot's whole lifecycle — created with a TTL in one
+ * pipeline, deleted in `finally` — is asserted by the tests; see
+ * SNAPSHOT_TTL_SECONDS.
+ *
+ * @param {string} url                       Upstash REST base URL
+ * @param {string} token                     Upstash REST token
+ * @param {string} key                       replay-log day key
+ * @param {object} [opts]
+ * @param {typeof fetch} [opts.fetchImpl]    injectable for tests
+ * @param {number} [opts.pageSize]           entries per request
+ * @param {string} [opts.snapshotKey]        deterministic key for tests
+ * @param {(...args: unknown[]) => void} [opts.warn] cleanup warning sink
+ * @returns {Promise<string[]>}              raw JSON strings, list order
+ */
+export async function readReplayListPaged(url, token, key, opts = {}) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const pageSize = opts.pageSize ?? LRANGE_PAGE_SIZE;
+  const warn = opts.warn ?? ((...args) => console.warn(...args));
+  // A non-positive page size makes `stop` land on -1, i.e. the exact
+  // unbounded `LRANGE key 0 -1` this function exists to avoid — and the
+  // short-page check could never terminate. Fail loudly instead.
+  if (!Number.isInteger(pageSize) || pageSize < 1) {
+    throw new TypeError(`readReplayListPaged: pageSize must be a positive integer, got ${pageSize}`);
+  }
+  const snapshotKey = opts.snapshotKey ?? `${key}:read-snapshot:${randomUUID()}`;
+  let snapshotCreated = false;
+  /** @type {string[]} */
+  const out = [];
+  try {
+    // COPY and EXPIRE go out as ONE pipeline request, deliberately.
+    //
+    // Issued as two round trips, a process death between them leaves the
+    // snapshot alive with NO TTL — and the `finally` cleanup below does not
+    // run on SIGKILL, so that orphan (up to ~31MB at the current cap, and up
+    // to ~154MB for keys written under the old one) never expires. Pipelining
+    // means the server applies the TTL in the same execution as the copy, so
+    // the snapshot is never untethered regardless of what happens to us.
+    //
+    // REPLACE matters for the *diagnosis*, not for collisions: without it
+    // COPY answers 0 for BOTH "source missing" and "destination exists",
+    // and mapping that to an empty list is precisely the miss-vs-failure
+    // collapse this harness exists to avoid. With REPLACE, a 0 can only
+    // mean the source key is gone (verified against production 2026-08-02:
+    // missing source pipelines to [{result:0},{result:0}] and creates
+    // nothing), which is a genuine empty day.
+    const snapshotRes = await fetchImpl(`${url}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': REPLAY_REST_USER_AGENT,
+      },
+      body: JSON.stringify([
+        ['COPY', key, snapshotKey, 'REPLACE'],
+        ['EXPIRE', snapshotKey, String(SNAPSHOT_TTL_SECONDS)],
+      ]),
+      signal: AbortSignal.timeout(REPLAY_REQUEST_TIMEOUT_MS),
+    });
+    if (!snapshotRes.ok) {
+      throw new Error(`Snapshot of ${key} failed: HTTP ${snapshotRes.status}`);
+    }
+    const snapshotBody = await snapshotRes.json();
+    if (!Array.isArray(snapshotBody) || snapshotBody.length !== 2) {
+      throw new Error(`Snapshot of ${key} returned an unexpected pipeline shape`);
+    }
+    const [copyCell, expireCell] = snapshotBody;
+    if (copyCell?.error) {
+      throw new Error(`COPY ${key} -> ${snapshotKey} rejected by Upstash: ${copyCell.error}`);
+    }
+    // Source key is gone (expired between SCAN and here) — a real empty day.
+    // Nothing was created, so no cleanup is owed.
+    if (copyCell?.result === 0 || copyCell?.result === '0') return out;
+    if (copyCell?.result !== 1 && copyCell?.result !== '1') {
+      throw new Error(`COPY ${key} -> ${snapshotKey} returned an unexpected result`);
+    }
+    snapshotCreated = true;
+
+    // The copy landed, so a failed EXPIRE means an untethered snapshot. Throw
+    // and let `finally` delete it rather than paging a key nothing will reap.
+    if (expireCell?.error || (expireCell?.result !== 1 && expireCell?.result !== '1')) {
+      throw new Error(`EXPIRE ${snapshotKey} rejected by Upstash: ${expireCell?.error ?? 'unexpected result'}`);
+    }
+
+    let start = 0;
+    for (;;) {
+      const stop = start + pageSize - 1;
+      const res = await fetchImpl(`${url}/lrange/${encodeURIComponent(snapshotKey)}/${start}/${stop}`, {
+        ...replayRequestInit(token),
+      });
+      if (!res.ok) {
+        throw new Error(`LRANGE ${snapshotKey} [${start}..${stop}] failed: HTTP ${res.status}`);
+      }
+      const body = await res.json();
+      if (body?.error) {
+        throw new Error(`LRANGE ${snapshotKey} [${start}..${stop}] rejected by Upstash: ${body.error}`);
+      }
+      const items = Array.isArray(body?.result) ? body.result : [];
+      out.push(...items);
+      // A short page is the end of the snapshot. An exact-multiple list
+      // costs one extra empty page, which is cheaper than an LLEN round-trip.
+      if (items.length < pageSize) return out;
+      start += pageSize;
+    }
+  } finally {
+    if (snapshotCreated) {
+      try {
+        const deleteRes = await fetchImpl(
+          `${url}/del/${encodeURIComponent(snapshotKey)}`,
+          replayRequestInit(token),
+        );
+        if (!deleteRes.ok) {
+          warn(`[replay] failed to delete read snapshot ${snapshotKey}: HTTP ${deleteRes.status}`);
+        } else {
+          const deleteBody = await deleteRes.json();
+          if (deleteBody?.error) {
+            warn(`[replay] failed to delete read snapshot ${snapshotKey}: ${deleteBody.error}`);
+          }
+        }
+      } catch (err) {
+        warn(`[replay] failed to delete read snapshot ${snapshotKey}: ${err?.message ?? err}`);
+      }
+    }
+  }
+}
+
+/**
+ * Live-Redis fetch path. SCANs all replay-log keys, pages each list,
  * deserialises records, returns the flat record array. Bounded by
  * --days; defaults to 14.
  *
  * @param {object} args  — output of parseArgs
  * @returns {Promise<ReplayRecord[]>}
  */
-async function fetchRecords(args) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+export async function fetchRecords(args, opts = {}) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const url = opts.url ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = opts.token ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+  const warn = opts.warn ?? ((...args) => console.warn(...args));
+  const nowMs = opts.nowMs ?? Date.now();
   if (!url || !token) {
     throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set');
   }
 
-  const cutoffMs = Date.now() - args.days * 24 * 60 * 60 * 1000;
+  const cutoffMs = nowMs - args.days * 24 * 60 * 60 * 1000;
   const matchPattern = args.rule
     ? `${REPLAY_KEY_PREFIX}:${args.rule}:*`
     : `${REPLAY_KEY_PREFIX}:*`;
@@ -494,13 +664,16 @@ async function fetchRecords(args) {
   const allKeys = [];
   let cursor = '0';
   do {
-    const scanRes = await fetch(`${url}/scan/${cursor}/match/${encodeURIComponent(matchPattern)}/count/${SCAN_PAGE_SIZE}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const scanRes = await fetchImpl(`${url}/scan/${cursor}/match/${encodeURIComponent(matchPattern)}/count/${SCAN_PAGE_SIZE}`, {
+      ...replayRequestInit(token),
     });
     if (!scanRes.ok) {
       throw new Error(`SCAN failed: ${scanRes.status} ${scanRes.statusText}`);
     }
     const body = await scanRes.json();
+    if (body?.error) {
+      throw new Error(`SCAN rejected by Upstash: ${body.error}`);
+    }
     const result = Array.isArray(body?.result) ? body.result : null;
     if (!result || result.length < 2) break;
     cursor = String(result[0]);
@@ -524,24 +697,38 @@ async function fetchRecords(args) {
 
   /** @type {ReplayRecord[]} */
   const records = [];
+  let failedKeys = 0;
   for (const key of eligibleKeys) {
-    const rangeRes = await fetch(`${url}/lrange/${encodeURIComponent(key)}/0/-1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!rangeRes.ok) {
-      console.warn(`[replay] LRANGE failed for ${key}: ${rangeRes.status}; continuing`);
+    /** @type {string[]} */
+    let list;
+    try {
+      list = await readReplayListPaged(url, token, key, { fetchImpl, warn });
+    } catch (err) {
+      // Keep the legacy per-key skip so one bad day doesn't abort a run,
+      // but the message now carries the real reason (previously an
+      // oversized-result rejection arrived as HTTP 200 and was silently
+      // read as an empty day).
+      failedKeys++;
+      warn(`[replay] ${err?.message ?? err}; continuing`);
       continue;
     }
-    const body = await rangeRes.json();
-    const list = Array.isArray(body?.result) ? body.result : [];
     for (const item of list) {
       try {
         const parsed = JSON.parse(item);
         records.push(parsed);
       } catch (err) {
-        console.warn(`[replay] failed to parse record in ${key}: ${err?.message ?? err}`);
+        warn(`[replay] failed to parse record in ${key}: ${err?.message ?? err}`);
       }
     }
+  }
+  if (failedKeys > 0) {
+    // Without this the caller's "no records returned. Verify
+    // DIGEST_DEDUP_REPLAY_LOG=1" message blames the flag for what is
+    // actually a read failure.
+    warn(
+      `[replay] ${failedKeys} of ${eligibleKeys.length} day keys failed to read — `
+      + 'coverage below is incomplete and NOT evidence the flag was off',
+    );
   }
   return records;
 }

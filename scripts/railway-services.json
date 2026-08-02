@@ -1,5 +1,38 @@
 [
   {
+    "entry": "Dockerfile.umami",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.umami",
+    "service": "umami",
+    "requiredEnv": [
+      "APP_SECRET",
+      "DATABASE_URL"
+    ],
+    "watchPatterns": [],
+    "cronSchedule": null,
+    "documentedAt": "docs/analytics-collector-operations.md#patched-runtime-image"
+  },
+  {
+    "entry": "scripts/umami-retention.sql",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.umami-retention",
+    "service": "umami-retention",
+    "lifecycle": "planned",
+    "requiredEnv": [
+      "PGHOST",
+      "PGPORT",
+      "PGDATABASE",
+      "PGUSER",
+      "PGPASSWORD"
+    ],
+    "watchPatterns": [
+      "scripts/umami-retention.sql",
+      "Dockerfile.umami-retention"
+    ],
+    "cronSchedule": "7,22,37,52 * * * *",
+    "documentedAt": "docs/analytics-collector-operations.md#retention-runner"
+  },
+  {
     "entry": "scripts/seed-digest-notifications.mjs",
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.digest-notifications",
@@ -358,6 +391,7 @@
       "scripts/seed-cross-strait-activity.mjs",
       "scripts/seed-regional-snapshots.mjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/correlation-runtime-mode.js",
       "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",

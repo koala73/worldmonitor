@@ -1676,7 +1676,8 @@
       "sources_many": "{{count}} fonti",
       "provenanceTitle": "Provenienza della copertura: quante storie acquisite e quante fonti distinte sono state utilizzate per selezionare questo briefing",
       "compiledFrom": "Compilato da {{stories}} storie provenienti da {{sources}} fonti",
-      "briefFreshness": "Generato {{minutes}}m fa · fonte più recente {{hours}}h fa"
+      "briefFreshness": "Generato {{minutes}}m fa · fonte più recente {{hours}}h fa",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Dati ETF temporaneamente non disponibili",
@@ -3353,5 +3354,31 @@
     "deleteTab": "Elimina scheda",
     "deleteTabAria": "Elimina scheda {{name}}",
     "tabNameAria": "Nome scheda"
+  },
+  "theaterPresets": {
+    "label": "Preset di copertura",
+    "applied": "Preset {{preset}} applicato: {{count}} fonti attivate",
+    "alreadyApplied": "Il preset {{preset}} è già applicato",
+    "ukraineWar": {
+      "label": "Guerra in Ucraina",
+      "description": "Attiva i principali media ucraini, la stampa russa indipendente e le fonti di valutazione del fronte"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacifico / Taiwan",
+      "description": "Attiva le fonti di sicurezza su Taiwan, Pakistan e Sud-est asiatico"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel e Africa occidentale",
+      "description": "Attiva le fonti locali del Sahel, della Nigeria e dell'Africa occidentale"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucaso e Asia centrale",
+      "description": "Attiva le fonti regionali del Caucaso meridionale e dell'Asia centrale"
+    },
+    "middleEastFlashpoints": {
+      "label": "Focolai di tensione in Medio Oriente",
+      "description": "Attiva le fonti su Iran, Israele, Golfo e regioni curde"
+    },
+    "unavailable": "Il preset {{preset}} non è disponibile con i pannelli attuali"
   }
 }

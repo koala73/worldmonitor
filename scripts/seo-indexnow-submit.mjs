@@ -16,7 +16,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const INDEXNOW_KEY = 'a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b';
+// Keys must be genuinely random (`openssl rand -hex 16`). The previous value
+// (a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b) is permanently rejected by Bing with
+// 403 UserForbiddedToAccessSite even though the key file served fine — never
+// reuse it (#6055).
+export const INDEXNOW_KEY = 'f25eec9ff48713a38c0a66a7f0628d46';
 const APEX_INDEXNOW_KEY = '315df476ff0a007d587f6a7455aa3e4e';
 const BLOG_DIR = new URL('../blog-site/src/content/blog/', import.meta.url);
 const BLOG_AUTHORS_DIR = new URL('../blog-site/src/pages/authors/', import.meta.url);

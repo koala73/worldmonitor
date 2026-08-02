@@ -12,7 +12,12 @@ import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runR
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
-import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
+import {
+  isServerFeedReachableForLanguage,
+  VARIANT_FEEDS,
+  INTEL_SOURCES,
+  type ServerFeed,
+} from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -1288,14 +1293,14 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const allEntries: Array<{ category: string; feed: ServerFeed }> = [];
 
     for (const [category, feeds] of Object.entries(feedsByCategory)) {
-      const filtered = feeds.filter(f => !f.lang || f.lang === lang);
+      const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
       for (const feed of filtered) {
         allEntries.push({ category, feed });
       }
     }
 
     if (variant === 'full') {
-      const filteredIntel = INTEL_SOURCES.filter(f => !f.lang || f.lang === lang);
+      const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
       for (const feed of filteredIntel) {
         allEntries.push({ category: 'intel', feed });
       }

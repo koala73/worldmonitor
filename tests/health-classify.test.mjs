@@ -44,6 +44,15 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {} } 
 }
 
 const seedMeta = (over = {}) => JSON.stringify({ fetchedAt: NOW - ONE_MIN_MS, recordCount: 5, ...over });
+const classifyNewsInsights = (over = {}) => classifyKey(
+  'newsInsights',
+  BOOTSTRAP_KEYS.newsInsights,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [BOOTSTRAP_KEYS.newsInsights]: 4096 },
+    metaValues: { [SEED_META.newsInsights.key]: seedMeta(over) },
+  }),
+);
 
 // Mirror of the handler's overall-status computation (api/health.js ~850-859).
 // The handler computes this inline; these tests exercise the LOCAL replica —
@@ -82,6 +91,91 @@ test('classifyKey: fresh seed + data → OK', () => {
   assert.equal(entry.status, 'OK');
 });
 
+test('classifyKey: consumer-price coverage below the declared completion floor degrades', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: { completedPages: 4, failedPages: 8, completionRatio: 0.3333, rejectedCount: 2 },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: consumer-price coverage at the floor remains healthy', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: { completedPages: 6, failedPages: 6, completionRatio: 0.5, rejectedCount: 0 },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'OK');
+});
+
+test('classifyKey: consumer-price coverage requires diagnostics and exposes retailer rejection state', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: {
+          status: 'partial',
+          completedPages: 8,
+          failedPages: 2,
+          completionRatio: 0.8,
+          rejectedCount: 3,
+          retailers: [{
+            slug: 'retailer-a',
+            name: 'Retailer A',
+            coverageStatus: 'failed',
+            pagesAttempted: 2,
+            pagesSucceeded: 0,
+            failedPages: 2,
+            rejectedCount: 1,
+            completionRatio: 0,
+          }],
+        },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.coverage.status, 'partial');
+  assert.equal(entry.coverage.rejectedCount, 3);
+  assert.equal(entry.coverage.retailers[0].coverageStatus, 'failed');
+});
+
+test('classifyKey: missing consumer-price coverage metadata fails closed', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: { [SEED_META.consumerPricesCoverage.key]: seedMeta({ recordCount: 4 }) },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(entry.coverage, null);
+});
+
+test('health registers every currently enabled consumer-price market coverage key', () => {
+  for (const market of ['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']) {
+    const name = market === 'ae' ? 'consumerPricesCoverage' : `consumerPricesCoverage${market.toUpperCase()}`;
+    assert.equal(BOOTSTRAP_KEYS[name], `consumer-prices:coverage:${market}`);
+    assert.equal(SEED_META[name].key, `seed-meta:consumer-prices:coverage:${market}`);
+    assert.equal(SEED_META[name].requireCoverage, true);
+  }
+});
+
 test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still present', () => {
   const entry = classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false },
     makeCtx({
@@ -91,6 +185,109 @@ test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still pres
     }));
   assert.equal(entry.status, 'STALE_SEED');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: repeated insights synthesis rejection warns while the LKG remains present', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 45 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+    consecutiveFailures: 2,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.records, 8);
+  assert.equal(entry.consecutiveFailures, 2);
+  assert.equal(entry.lastSynthesisFailureCode, 'INSIGHTS_SYNTHESIS_PARSE');
+  assert.equal(entry.servedGeneratedAt, '2026-08-01T06:30:39.268Z');
+  assert.equal(entry.lastSuccessAt, NOW - 45 * ONE_MIN_MS);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: one recent insights synthesis failure stays OK within the warning bounds', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 5 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:25:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(entry.consecutiveFailures, 1);
+});
+
+test('classifyKey: an old single insights synthesis failure warns by age', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 25 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 10 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.synthesisFailureAgeMin, 25);
+});
+
+test('classifyKey: a fresh successful insights publication clears synthesis warning state', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - ONE_MIN_MS,
+    lastSuccessAt: NOW - ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:30:39.268Z',
+    consecutiveFailures: 0,
+    lastSynthesisFailureCode: null,
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.consecutiveFailures, 0);
+  assert.equal(entry.servedGeneratedAt, '2026-08-01T08:30:39.268Z');
+});
+
+test('classifyKey: no-LKG synthesis failure warns even on the first attempted publication', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - ONE_MIN_MS,
+    lastSuccessAt: null,
+    servedGeneratedAt: '2026-08-01T08:30:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.consecutiveFailures, 1);
+  assert.equal(entry.lastSuccessAt, null);
+});
+
+test('compact health problem projection retains insights synthesis diagnostics', () => {
+  const snapshot = {
+    status: 'WARNING',
+    summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+    checkedAt: '2026-08-01T08:31:00.000Z',
+    checks: {
+      newsInsights: {
+        status: 'SEED_ERROR',
+        records: 8,
+        maxStaleMin: 30,
+        consecutiveFailures: 2,
+        lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+        servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+      },
+    },
+  };
+
+  assert.deepEqual(healthResponseBody(snapshot, true).problems.newsInsights, snapshot.checks.newsInsights);
 });
 
 test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PARTIAL', () => {

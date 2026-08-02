@@ -209,7 +209,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 | 工具 | 描述 |
 |------|-------------|
-| `get_market_data` | 股票报价、商品价格（含黄金 GC=F）、加密货币、外汇、板块表现、ETF 资金流、海湾市场。 |
+| `get_market_data` | 股票报价、商品价格（含黄金 GC=F）、加密货币、外汇、板块表现及估值覆盖、ETF 资金流、海湾市场。板块覆盖将写入年龄与完整度分开，并提供有界的 unavailable/last-good/direct-proxy 诊断。 |
 | `get_economic_data` | Fed Funds、经济日历、燃料价格、ECB 外汇、欧盟收益率曲线、财报、COT、能源库存、BIS DSR + 房价。 |
 | `get_country_macro` | 每个国家一份的 IMF WEO 数据包：通胀、经常账户、人均 GDP、失业率、储蓄-投资缺口（约 210 个国家）。 |
 | `get_eu_housing_cycle` | Eurostat 年度房价指数（prc_hpi_a），每个欧盟成员国 + EA20/EU27 的 10 年迷你图。 |
@@ -420,7 +420,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 | 资源 URI | 支撑数据 |
 |--------------|--------------|
-| `worldmonitor://seed-meta/freshness` | 仅市场数据 bootstrap 的新鲜度信封：`cached_at` 和 `stale`。一个用于检测卡住的 seeder 的廉价健康探针 —— 无需认证，不计配额。 |
+| `worldmonitor://seed-meta/freshness` | 仅股票市场数据 bootstrap 的写入年龄：`seed-meta:market:stocks` 的 `cached_at` 与 `stale`。**不**证明板块估值完整度 —— 请用 `get_market_data` 的 `valuationCoverage`（`sourceStatus`、unavailable/last-good/diagnostics）。廉价 seeder 健康探针 —— 无需认证，不计配额。 |
 
 `resources/templates/list` —— 参数化的 URI 模板。替换占位符，然后 `resources/read` 具体的 URI（需要认证；消耗 Pro 每日配额的方式与等价的 `tools/call` 对称）：
 

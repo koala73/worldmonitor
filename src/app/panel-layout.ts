@@ -38,10 +38,15 @@ import {
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
-import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
+import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
+import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
 import type { CustomWidgetSpec } from '@/services/widget-store';
+import {
+  panelGateStateChanged,
+  sweepLegacyDisabledCustomWidgets,
+} from '@/app/free-tier-gate';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { createEntitlementReloadController } from '@/services/entitlement-reload-controller';
 import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange } from '@/services/billing';
@@ -162,6 +167,7 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
  * ever moves below the pass without being listed here.
  */
 const LATE_REGISTERED_PANEL_KEYS = new Set(['live-news']);
+const CW_PRO_GATE_TAB_RECOVERY_KEY = 'worldmonitor-cw-pro-gate-tab-recovery-v1';
 
 const DASHBOARD_REFERENCE_LINKS = [
   { label: 'Countries', path: '/countries/' },
@@ -337,6 +343,7 @@ export interface PanelLayoutManagerCallbacks {
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
   applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 interface DeferredPanelMount {
@@ -461,6 +468,11 @@ export class PanelLayoutManager implements AppModule {
     // in the same tab — on BOTH the checkout-return and ordinary branches —
     // so this replay is unconditional (no-op when nothing is pending).
     replayPendingProFunnelEvents();
+
+    // Dashboard checkout-start / checkout-failed have the same exposure: both
+    // are followed by a navigation (the Dodo redirect) that outlives any
+    // in-page retry, so their durable markers replay here too.
+    replayPendingConversionEvents();
 
     // Always register the payment-failure-banner listener — onSubscriptionChange
     // is an in-memory listener registry, doesn't open any network connection,
@@ -1135,23 +1147,14 @@ export class PanelLayoutManager implements AppModule {
       };
       state = { activeTabId: initial.id, tabs: [initial] };
       saveTabsState(state);
-    } else {
-      // Clamp stored snapshots to the current free-tier cap so a workspace
-      // saved while Pro (or persisted before the cap existed) can't re-enable
-      // an over-cap layout when the user later switches to it. applyTabPanelState
-      // re-clamps on apply too; this keeps the persisted store self-healing.
-      const pro = isProUser();
-      let healedSnapshots = false;
-      for (const tab of state.tabs) {
-        const clamped = enforceFreePanelLimit(tab.panelSettings, pro);
-        if (this.panelSettingsEnabledStateChanged(tab.panelSettings, clamped)) {
-          healedSnapshots = true;
-        }
-        tab.panelSettings = clamped;
-      }
-      if (healedSnapshots) saveTabsState(state);
     }
     this.tabsState = state;
+    // Clamp stored snapshots to the current free-tier cap so a workspace saved
+    // while Pro (or persisted before the cap existed) can't re-enable an
+    // over-cap layout when the user later switches to it. Skips itself while
+    // the tier is unresolved; the App-owned fallback counts as a settled free
+    // answer and also re-runs this method for tabs not yet opened.
+    this.healStoredTabSnapshots();
 
     this.panelTabBar = new PanelTabBar(() => this.tabsState!, {
       onSelect: (id) => this.switchToTab(id),
@@ -1163,15 +1166,68 @@ export class PanelLayoutManager implements AppModule {
     this.updateTabCapLock();
   }
 
+  /**
+   * Reconcile every stored tab snapshot against the current entitlement.
+   *
+   * Persisting a free-tier clamp while the tier is still unknown is the same
+   * bug App.enforceFreeTierLimits defers around: a Pro user's custom widgets
+   * would be written out of their saved workspaces on every load. Bail out
+   * until the answer is real or the bounded free fallback fires; App calls
+   * this again from the auth and entitlement callbacks, and
+   * applyTabPanelState re-clamps on switch.
+   */
+  public healStoredTabSnapshots(): void {
+    const state = this.tabsState;
+    if (!state || !this.isProTierResolvedOrFallback()) return;
+
+    const pro = isProUser();
+    let healedSnapshots = pro ? this.restoreLegacyCustomWidgetTabs(state) : false;
+    for (const tab of state.tabs) {
+      const clamped = enforceFreePanelLimit(tab.panelSettings, pro);
+      if (this.panelSettingsEnabledStateChanged(tab.panelSettings, clamped)) {
+        healedSnapshots = true;
+      }
+      tab.panelSettings = clamped;
+    }
+    if (healedSnapshots) saveTabsState(state);
+  }
+
+  private isProTierResolvedOrFallback(): boolean {
+    return isProTierResolved() || this.callbacks.isFreeTierFallbackActive?.() === true;
+  }
+
+  /**
+   * Repair pre-`proGated` widget damage in saved tabs once per browser.
+   *
+   * App's global recovery can run before panel tabs initialize, so tabs own a
+   * separate marker. The same ambiguity applies here: markerless disabled
+   * widgets may be deliberate hides, which is why this sweep is bounded to one
+   * migration pass rather than being re-run on every entitlement refresh.
+   */
+  private restoreLegacyCustomWidgetTabs(state: TabsState): boolean {
+    try {
+      if (localStorage.getItem(CW_PRO_GATE_TAB_RECOVERY_KEY)) return false;
+
+      const ownedWidgetIds = new Set(loadWidgets().map((widget) => widget.id));
+      let changed = false;
+      for (const tab of state.tabs) {
+        const restored = sweepLegacyDisabledCustomWidgets(tab.panelSettings, ownedWidgetIds);
+        if (panelGateStateChanged(tab.panelSettings, restored)) changed = true;
+        tab.panelSettings = restored;
+      }
+      localStorage.setItem(CW_PRO_GATE_TAB_RECOVERY_KEY, 'done');
+      return changed;
+    } catch {
+      // Persistence-only migration; blocked storage leaves the tab usable.
+      return false;
+    }
+  }
+
   private panelSettingsEnabledStateChanged(
     before: Record<string, PanelConfig>,
     after: Record<string, PanelConfig>,
   ): boolean {
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-    for (const key of keys) {
-      if (before[key]?.enabled !== after[key]?.enabled) return true;
-    }
-    return false;
+    return panelGateStateChanged(before, after);
   }
 
   /** Capture the live panel state (settings + order) for a tab snapshot. */
@@ -1258,7 +1314,13 @@ export class PanelLayoutManager implements AppModule {
     const tab: PanelTab = {
       id: generateTabId(),
       name: t('dashboardTabs.newTabName'),
-      panelSettings: enforceFreePanelLimit(defaults.panelSettings, isProUser()),
+      // Same unresolved-tier caveat as applyTabPanelState: clamping a new tab
+      // before the entitlement is known bakes a free-tier layout into a Pro
+      // user's workspace, and the count clamp carries no marker to undo. Once
+      // the bounded fallback fires, the tier is settled enough to clamp.
+      panelSettings: this.isProTierResolvedOrFallback()
+        ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
+        : defaults.panelSettings,
       panelOrder: defaults.panelOrder,
       bottomSet: [],
     };
@@ -1340,7 +1402,16 @@ export class PanelLayoutManager implements AppModule {
     // panel selection into STORAGE_KEYS.panels, so clamping here means no tab
     // operation (add / switch / delete-fallback) can ever persist an over-cap
     // workspace, regardless of how the snapshot was produced.
-    const capped = enforceFreePanelLimit(next, isProUser());
+    //
+    // Unless the tier isn't known yet and the bounded fallback has not fired —
+    // a tab click can land inside the same unresolved-session window the boot
+    // clamp defers around. Skipping the clamp leaves an over-cap workspace
+    // live for at most that window; App re-runs enforcement (and
+    // healStoredTabSnapshots) when the entitlement resolves or the fallback
+    // settles the account as free.
+    const capped = this.isProTierResolvedOrFallback()
+      ? enforceFreePanelLimit(next, isProUser())
+      : next;
 
     this.ctx.panelSettings = capped;
     saveToStorage(STORAGE_KEYS.panels, capped);
@@ -2642,7 +2713,9 @@ export class PanelLayoutManager implements AppModule {
       view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
       layers: this.ctx.mapLayers,
       timeRange: '7d',
-    }, preferGlobe);
+    }, preferGlobe, {
+      isFreeTierFallbackActive: this.callbacks.isFreeTierFallbackActive,
+    });
 
     const eagerSupplyChainPanel = this.ctx.panels['supply-chain'] as SupplyChainPanel | undefined;
     if (eagerSupplyChainPanel) {
@@ -2792,6 +2865,19 @@ export class PanelLayoutManager implements AppModule {
       if (normalized.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
         normalized = { ...normalized, resilienceScore: false };
       }
+      // MapContainer also sanitizes at the renderer boundary, but update the
+      // context and persisted URL preference with the effective state first.
+      // Otherwise a settled-free user can have the locked layer stripped from
+      // the renderer while ctx.mapLayers/localStorage retain the stale `true`
+      // value and a later preference/URL reapplication resurrects it (#6045).
+      if (shouldSanitizeLockedLayers(
+        hasPremiumAccess(getAuthState()),
+        isProTierResolved(),
+        this.callbacks.isFreeTierFallbackActive?.() === true,
+      )) {
+        normalized = sanitizeLockedLayers(normalized, false);
+      }
+      this.ctx.initialUrlState.layers = normalized;
       this.ctx.mapLayers = normalized;
       saveToStorage(STORAGE_KEYS.mapLayers, normalized);
       this.ctx.map.setLayers(normalized);

@@ -946,10 +946,11 @@ export function extraKeyPayloadBytes(key, data, envelopeMeta) {
   return Buffer.byteLength(serializeExtraKeyValue(key, data, envelopeMeta), 'utf8');
 }
 
-export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds) {
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
   const { url, token } = getRedisCredentials();
   const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
+  if (coverage) meta.coverage = coverage;
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
@@ -964,9 +965,9 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   return true;
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
   await writeExtraKey(key, data, ttl);
-  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
+  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds, coverage);
 }
 
 // Detailed counterpart to extendExistingTtl. Results stay aligned to the input
@@ -2131,9 +2132,19 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       // Some rejected snapshots carry failure evidence that must survive even
       // when there is no complete last-good cohort to preserve. Keep this hook
       // in the publish phase so its persistence cannot make withRetry(fetchFn)
-      // repeat upstream source requests.
+      // repeat upstream source requests. A hook may return
+      // `{ freshnessMetaPatch }`; reserved freshness fields are stripped before
+      // the shared writer applies the patch.
+      let validationSkipResult = null;
+      let validationSkipMetaRead = false;
+      let validationSkipExistingMeta = null;
       if (!strictFailure && afterValidationSkip) {
-        await afterValidationSkip(data, validationSkipContext);
+        validationSkipExistingMeta = await readExistingSeedMeta(domain, resource);
+        validationSkipMetaRead = true;
+        validationSkipResult = await afterValidationSkip(data, {
+          ...validationSkipContext,
+          existingSeedMeta: validationSkipExistingMeta,
+        });
       }
       if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
@@ -2171,9 +2182,14 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         // from the previous seed-meta write. The SET below replaces the whole
         // key; without this merge a validate-skip after a healthy publish wipes
         // afterPublish patches and fail-closed consumers false-alarm.
-        const preservedDiagnostics = freshnessMetaDiagnosticsPatch(
-          await readExistingSeedMeta(domain, resource),
-        );
+        const preservedDiagnostics = {
+          ...(freshnessMetaDiagnosticsPatch(
+            validationSkipMetaRead
+              ? validationSkipExistingMeta
+              : await readExistingSeedMeta(domain, resource),
+          ) || {}),
+          ...(freshnessMetaDiagnosticsPatch(validationSkipResult?.freshnessMetaPatch) || {}),
+        };
         if (canonicalMeta) {
           // Pass-through canonical's contentAge so health doesn't lose the
           // STALE_CONTENT signal exactly when last-good-with-stale-content
@@ -2184,7 +2200,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             ttlSeconds,
             canonicalMeta.fetchedAt,
             canonicalMeta.contentAge,
-            preservedDiagnostics,
+            Object.keys(preservedDiagnostics).length > 0 ? preservedDiagnostics : null,
           );
           console.log(
             `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +

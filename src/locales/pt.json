@@ -1280,7 +1280,8 @@
       "sources_many": "{{count}} fontes",
       "provenanceTitle": "Proveniência de cobertura: quantas histórias ingeridas e fontes distintas foram selecionadas para este resumo",
       "compiledFrom": "Compilado de {{stories}} histórias em {{sources}} fontes",
-      "briefFreshness": "Gerado há {{minutes}}m · fonte mais recente com {{hours}}h"
+      "briefFreshness": "Gerado há {{minutes}}m · fonte mais recente com {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Atividade do Tech Hub</strong><br>Mostra os hubs de tecnologia com mais atividade de notícias.<br><br><em>Níveis de atividade:</em><br>• <span style=\"color: {{highColor}}\">Alto</span> — Notícias de última hora ou pontuação acima de 50<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Pontuação 20-49<br>• <span style=\"color: {{lowColor}}\">Baixo</span> — Pontuação abaixo de 20<br><br>Clique em um hub para ampliar sua localização."
@@ -3353,5 +3354,31 @@
     "deleteTab": "Eliminar separador",
     "deleteTabAria": "Eliminar separador {{name}}",
     "tabNameAria": "Nome do separador"
+  },
+  "theaterPresets": {
+    "label": "Predefinições de cobertura",
+    "applied": "Predefinição {{preset}} aplicada: {{count}} fontes ativadas",
+    "alreadyApplied": "A predefinição {{preset}} já foi aplicada",
+    "ukraineWar": {
+      "label": "Guerra na Ucrânia",
+      "description": "Ativar os principais meios ucranianos, a imprensa russa independente e fontes de avaliação da frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwan",
+      "description": "Ativar fontes de segurança de Taiwan, Paquistão e Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel e África Ocidental",
+      "description": "Ativar fontes locais do Sahel, Nigéria e África Ocidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso e Ásia Central",
+      "description": "Ativar fontes regionais do Cáucaso do Sul e da Ásia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Pontos de tensão no Oriente Médio",
+      "description": "Ativar fontes sobre Irã, Israel, Golfo e regiões curdas"
+    },
+    "unavailable": "A predefinição {{preset}} não está disponível com os painéis atuais"
   }
 }
