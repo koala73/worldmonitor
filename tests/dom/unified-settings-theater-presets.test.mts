@@ -300,4 +300,24 @@ describe('UnifiedSettings theater coverage presets', () => {
     expect(toastText()).toBeNull();
     expect(disabledSources).toEqual(new Set(INITIALLY_DISABLED));
   });
+
+  it('(e) a chip click with no resolvable sources at apply time shows unavailable toast', () => {
+    config.getAllSourceNames = () => [UNRELATED_SOURCE];
+
+    chip(PRESET_ID).click();
+
+    expect(setSourcesEnabled).not.toHaveBeenCalled();
+    expect(toastText()).toBe(
+      tt('theaterPresets.unavailable', { preset: presetLabel() }),
+    );
+  });
+
+  it('(f) no presets row renders when zero presets resolve', () => {
+    config.getAllSourceNames = () => [UNRELATED_SOURCE];
+    internal.render(false);
+
+    const chips = internal.overlay.querySelectorAll('.unified-settings-preset-chip');
+    expect(chips.length).toBe(0);
+    expect(internal.overlay.querySelector('#usCoveragePresets')).toBeNull();
+  });
 });
