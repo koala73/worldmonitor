@@ -857,25 +857,34 @@ const consumerPriceCoverageActivationKey = (market) => (
 // 06:00Z is 3.5h after the publish job starts — one complete scrape/aggregate/
 // publish window plus slack, and still ~20h before the following tick, so a
 // missed first run cannot hide behind the window for a second day.
-const CONSUMER_PRICE_COVERAGE_ROLLOUT_UNTIL = Object.freeze({
-  ae: '2026-08-03T06:00:00Z',
-  au: '2026-08-03T06:00:00Z',
-  br: '2026-08-03T06:00:00Z',
-  gb: '2026-08-03T06:00:00Z',
-  in: '2026-08-03T06:00:00Z',
-  sa: '2026-08-03T06:00:00Z',
-  sg: '2026-08-03T06:00:00Z',
-  us: '2026-08-03T06:00:00Z',
+// `from` is the deploy that introduced the market's coverage schema; `until` is
+// when its softening stops. Both are recorded so the "one complete daily window"
+// bound is checkable per market forever — anchoring the check to a single
+// historical deploy constant instead would make a ninth market added months from
+// now unable to declare a valid window at all.
+const CONSUMER_PRICE_COVERAGE_ROLLOUT = Object.freeze({
+  ae: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  au: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  br: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  gb: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  in: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  sa: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  sg: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
+  us: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
 });
 
 // name -> epoch ms after which ROLLOUT_PENDING softening is no longer offered.
 // Absent name = no rollout window; the key is strict from the first sweep.
 const ROLLOUT_PENDING_UNTIL_MS = {};
+const ROLLOUT_PENDING_FROM_MS = {};
 for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
   const name = consumerPriceCoverageHealthName(market);
   ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
-  const until = Date.parse(CONSUMER_PRICE_COVERAGE_ROLLOUT_UNTIL[market] ?? '');
+  const window = CONSUMER_PRICE_COVERAGE_ROLLOUT[market];
+  const until = Date.parse(window?.until ?? '');
+  const from = Date.parse(window?.from ?? '');
   if (Number.isFinite(until)) ROLLOUT_PENDING_UNTIL_MS[name] = until;
+  if (Number.isFinite(from)) ROLLOUT_PENDING_FROM_MS[name] = from;
 }
 
 const EMPTY_DATA_OK_KEYS = new Set([
@@ -1324,6 +1333,15 @@ function classifyKey(name, redisKey, opts, ctx) {
   // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
   // exactly when this key stops being excused without reading api/health.js.
   if (status === 'ROLLOUT_PENDING') entry.rolloutPendingUntil = new Date(rolloutPendingUntil).toISOString();
+  // Activation is emitted for EVERY status on a rollout-registered key, not just
+  // the pending one — `rolloutPendingUntil` exists precisely when the market has
+  // NOT activated, so on its own it can never answer "which markets have gone
+  // live?". Without this, auditing rollout progress (or telling
+  // "activated-then-broke" apart from "never ran") means EXISTS-probing Redis by
+  // hand. ctx.activatedNames already holds the answer at classify time.
+  if (rolloutPendingUntil != null) {
+    entry.activated = Boolean(ctx.activatedNames && ctx.activatedNames.has(name));
+  }
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
@@ -1541,6 +1559,35 @@ async function releaseHealthVerdictRefreshLock(lockToken) {
 // treated as a problem, matching the summary's `STATUS_COUNTS[s] ?? 'warn'`.
 function isProblemStatus(status) {
   return STATUS_COUNTS[status] !== 'ok';
+}
+
+/**
+ * Bucket counts -> the endpoint's overall verdict.
+ *
+ * Extracted from the handler so it is reachable from tests. It used to be inline
+ * arithmetic that only a replica in the test file asserted, which meant the
+ * load-bearing severity claims — that EMPTY_ON_DEMAND is excused and that
+ * ROLLOUT_PENDING is NOT — were pinned against a copy rather than against this
+ * code. Subtracting a new bucket here would have kept every test green.
+ *
+ * `onDemandWarn` is the ONLY bucket subtracted: an on-demand key nobody has
+ * requested yet is warn-level for visibility and must not flip the verdict.
+ * ROLLOUT_PENDING deliberately stays inside `realWarnCount` (#6059) — it is on a
+ * clock, and its escalation to crit is the deadline, not operator attention.
+ */
+function computeOverallStatus(counts, totalChecks) {
+  const realWarnCount = counts.warn - counts.onDemandWarn;
+  const critCount = counts.crit;
+
+  let overall;
+  if (critCount === 0 && realWarnCount === 0) overall = 'HEALTHY';
+  else if (critCount === 0) overall = 'WARNING';
+  // Degraded threshold scales with registry size so adding keys doesn't
+  // silently raise the page-out bar. ~3% of total keys (was hardcoded 3).
+  else if (critCount / totalChecks <= 0.03) overall = 'DEGRADED';
+  else overall = 'UNHEALTHY';
+
+  return { overall, realWarnCount, critCount };
 }
 
 // Failure-log / ?history=1 problem set. Distinct from the compact `problems` map
@@ -1877,18 +1924,7 @@ export default async function handler(req, ctx) {
     }
   }
 
-  // On-demand keys that simply haven't been requested yet should not flip
-  // overall to WARNING — they're warn-level only for visibility.
-  const realWarnCount = counts.warn - counts.onDemandWarn;
-  const critCount = counts.crit;
-
-  let overall;
-  if (critCount === 0 && realWarnCount === 0) overall = 'HEALTHY';
-  else if (critCount === 0) overall = 'WARNING';
-  // Degraded threshold scales with registry size so adding keys doesn't
-  // silently raise the page-out bar. ~3% of total keys (was hardcoded 3).
-  else if (critCount / totalChecks <= 0.03) overall = 'DEGRADED';
-  else overall = 'UNHEALTHY';
+  const { overall, realWarnCount, critCount } = computeOverallStatus(counts, totalChecks);
 
   if (overall !== 'HEALTHY') {
     // problemKeys includes seedAgeMin for the snapshot (useful for post-mortem),
@@ -2009,6 +2045,8 @@ export const __testing__ = {
   collectFailureLogProblems,
   ACTIVATION_MARKERS,
   ROLLOUT_PENDING_UNTIL_MS,
+  ROLLOUT_PENDING_FROM_MS,
+  computeOverallStatus,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,

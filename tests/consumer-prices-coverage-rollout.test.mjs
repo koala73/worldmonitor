@@ -17,6 +17,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import {
@@ -25,23 +26,19 @@ import {
   isActivatingCoverage as coreIsActivatingCoverage,
   summarizeMarketCoverage,
 } from '../consumer-prices-core/src/ops/coverage.ts';
-import {
-  COVERAGE_ACTIVATION_SCHEMA_VERSION as FALLBACK_SCHEMA_VERSION,
-  coverageActivationKey as fallbackCoverageActivationKey,
-  isActivatingCoverage as fallbackIsActivatingCoverage,
-  emptyCoverage,
-  writeCoverageActivationMarker,
-} from '../scripts/seed-consumer-prices.mjs';
+import { emptyCoverage } from '../scripts/seed-consumer-prices.mjs';
 import { isRolloutPendingProblem, findOperationalProblems } from '../scripts/check-seed-freshness.mjs';
 
 const {
   classifyKey,
   healthResponseBody,
+  computeOverallStatus,
   STATUS_COUNTS,
   BOOTSTRAP_KEYS,
   SEED_META,
   ACTIVATION_MARKERS,
   ROLLOUT_PENDING_UNTIL_MS,
+  ROLLOUT_PENDING_FROM_MS,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,
@@ -86,17 +83,15 @@ function classifyCoverage(name, { now, activated = [], strens = {}, metaValues =
   }));
 }
 
-// Mirror of the handler's overall-status computation (api/health.js). Kept local
-// on purpose: the point of these assertions is the SEVERITY of the interim
-// state, and ROLLOUT_PENDING is deliberately NOT subtracted from realWarnCount
-// the way EMPTY_ON_DEMAND is.
-function computeOverall({ crit, warn, onDemandWarn = 0, total }) {
-  const realWarn = warn - onDemandWarn;
-  if (crit === 0 && realWarn === 0) return 'HEALTHY';
-  if (crit === 0) return 'WARNING';
-  if (crit / total <= 0.03) return 'DEGRADED';
-  return 'UNHEALTHY';
-}
+// The REAL handler arithmetic, not a replica. A test-local mirror would assert
+// this change's central safety claim (ROLLOUT_PENDING stays inside realWarnCount,
+// so eight softened keys still flip `overall` to WARNING rather than vanishing
+// into HEALTHY) against a copy — adding `- counts.rolloutPending` in the handler
+// would leave every such test green.
+const computeOverall = ({ crit, warn, onDemandWarn = 0, rolloutPending = 0, total }) => computeOverallStatus(
+  { ok: 0, warn, onDemandWarn, staleContent: 0, rolloutPending, crit },
+  total,
+).overall;
 
 // ── Registry contract ───────────────────────────────────────────────────────
 
@@ -113,16 +108,98 @@ test('every consumer-price market has a durable activation marker registered', (
 });
 
 test('every consumer-price market carries a bounded rollout deadline within one daily window', () => {
+  // Measured against each market's OWN declared rollout start, not a single
+  // historical constant: a ninth market added months from now must still be able
+  // to declare a valid window, and pinning the bound to the 2026-08-02 deploy
+  // would have made every future window fail this check the day it was written.
   for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
     const name = consumerPriceCoverageHealthName(market);
     const until = ROLLOUT_PENDING_UNTIL_MS[name];
+    const from = ROLLOUT_PENDING_FROM_MS[name];
     assert.ok(Number.isFinite(until), `${name} must declare a rollout deadline`);
-    assert.ok(until > DEPLOYED_AT, `${name} deadline must be after the schema deployed`);
+    assert.ok(Number.isFinite(from), `${name} must declare when its rollout window opened`);
+    assert.ok(until > from, `${name} deadline must be after its rollout start`);
     assert.ok(
-      until - DEPLOYED_AT <= ONE_DAY_MS,
-      `${name} deadline is ${Math.round((until - DEPLOYED_AT) / 3_600_000)}h after deploy — the interim state must expire within ONE complete daily scrape/aggregate/publish window`,
+      until - from <= ONE_DAY_MS,
+      `${name} window is ${Math.round((until - from) / 3_600_000)}h wide — the interim state must expire within ONE complete daily scrape/aggregate/publish window`,
     );
   }
+});
+
+test('a market added long after this rollout can still declare a valid window', () => {
+  // Regression guard for the shape of the bug above: the invariant must be a
+  // WINDOW LENGTH, not a distance from 2026-08-02, or the two registry tests
+  // together make a future market impossible to add correctly (set-equality
+  // forces it to have a deadline; a deploy-anchored bound forces that deadline
+  // to already be expired).
+  const future = { from: Date.parse('2027-03-01T12:00:00Z'), until: Date.parse('2027-03-02T06:00:00Z') };
+  assert.ok(future.until - future.from <= ONE_DAY_MS, 'an 18h window a year from now is valid');
+  assert.ok(
+    future.until - DEPLOYED_AT > ONE_DAY_MS,
+    'and it would have FAILED the old deploy-anchored bound — that is the bug this guards',
+  );
+});
+
+// This repo has a measured 0-for-6 record on comment-based "remove me later"
+// reminders in this exact file: every TRANSITIONAL entry in ON_DEMAND_KEYS
+// (fxYoy, hyperliquidFlow, the two relay heartbeats, eiaPetroleum,
+// digestNotifications) says "remove after ~7 days of clean production cron runs"
+// and every one is still there 52-110 days on. A prose reminder is a wish, not a
+// control. So the expiry is enforced the same way scripts/seed-freshness-baseline.json
+// enforces its own: an `expiresAt` that HARD-FAILS once it passes
+// (scripts/check-seed-freshness.mjs -> "the accepted-problem baseline expired on
+// ${expiresAt}").
+//
+// The grace period is not politeness — issue #6059's own acceptance criteria
+// require production observation across two advancing scheduled runs AFTER
+// activation, so a test that reddened the moment the window shut would fire in
+// the middle of the acceptance gate it exists to protect.
+//
+// NOTE what this forces: prune the EXPIRED per-market entries, not the mechanism.
+// The handshake is reusable by design (the schema version lives in the marker
+// key so a future coverage shape opens its own window); it is the dead config
+// that must go.
+const PRUNE_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
+const rottedDeadlines = (registry, now, graceMs = PRUNE_GRACE_MS) => Object.entries(registry)
+  .filter(([, until]) => now > until + graceMs)
+  .map(([name]) => name)
+  .sort();
+
+// The live assertion below cannot fail today — that is the whole point of an
+// "assert now, fail later" gate, and it is also how such a gate rots into a test
+// that never had teeth. So the predicate itself is pinned here against an
+// injected clock (mirroring how tests/seed-freshness-monitor.test.mjs pins the
+// baseline's own expiry with at('2026-08-26') / at('2026-08-28')), and only then
+// applied to the real registry.
+test('the prune predicate fires exactly one grace period after a deadline closes', () => {
+  const registry = { alpha: Date.parse('2026-08-03T06:00:00Z') };
+  const closed = registry.alpha;
+
+  assert.deepEqual(rottedDeadlines(registry, closed - 1), [], 'still inside the window');
+  assert.deepEqual(rottedDeadlines(registry, closed + 1), [], 'window shut, grace period running');
+  assert.deepEqual(rottedDeadlines(registry, closed + PRUNE_GRACE_MS), [], 'grace boundary is exclusive');
+  assert.deepEqual(rottedDeadlines(registry, closed + PRUNE_GRACE_MS + 1), ['alpha'], 'grace elapsed -> prune');
+  assert.deepEqual(
+    rottedDeadlines({ alpha: closed, beta: closed + 30 * 24 * 60 * 60 * 1000 }, closed + PRUNE_GRACE_MS + 1),
+    ['alpha'],
+    'prunes only the rotted entries, never a market whose window is still open',
+  );
+});
+
+test('expired rollout deadlines must be pruned from the registry', () => {
+  const rotted = rottedDeadlines(ROLLOUT_PENDING_UNTIL_MS, Date.now());
+
+  assert.deepEqual(
+    rotted,
+    [],
+    'These rollout windows closed more than 14 days ago and are now dead config. '
+    + 'Delete their entries from CONSUMER_PRICE_COVERAGE_ROLLOUT_UNTIL in api/health.js. '
+    + 'If that empties the map, also remove ROLLOUT_PENDING_UNTIL_MS, the ROLLOUT_PENDING '
+    + 'branch in classifyKey, its STATUS_COUNTS entry and summary.rolloutPending counter, '
+    + 'isRolloutPendingProblem in scripts/check-seed-freshness.mjs, the ROLLOUT_PENDING rows '
+    + 'in docs/health-endpoints.mdx + docs/zh/health-endpoints.mdx, and this test file. '
+    + `Stale: ${rotted.join(', ')}`,
+  );
 });
 
 test('the rollout registry covers ONLY the consumer-price coverage keys', () => {
@@ -134,12 +211,11 @@ test('the rollout registry covers ONLY the consumer-price coverage keys', () => 
   );
 });
 
-test('activation key shape is identical across health, publisher, and manual fallback', () => {
-  assert.equal(CORE_SCHEMA_VERSION, FALLBACK_SCHEMA_VERSION);
+test('activation key shape is identical across the health reader and the publisher', () => {
+  assert.equal(CORE_SCHEMA_VERSION, 1);
   for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
     const fromHealth = consumerPriceCoverageActivationKey(market);
     assert.equal(fromHealth, coreCoverageActivationKey(market));
-    assert.equal(fromHealth, fallbackCoverageActivationKey(market));
     assert.equal(fromHealth, ACTIVATION_MARKERS[consumerPriceCoverageHealthName(market)]);
     assert.match(
       fromHealth,
@@ -163,6 +239,48 @@ test('deploy-before-cron: absent coverage key inside the window is ROLLOUT_PENDI
   );
 });
 
+test('activation state is readable from the payload in every status, not just while pending', () => {
+  // `rolloutPendingUntil` exists exactly when the market has NOT activated, so on
+  // its own it can never answer "which markets have gone live?". Without a field
+  // that survives activation, auditing rollout progress means EXISTS-probing
+  // Redis by hand.
+  const pending = classifyCoverage(US, { now: BEFORE_DEADLINE });
+  assert.equal(pending.activated, false);
+
+  const activatedButBroken = classifyCoverage(US, { now: BEFORE_DEADLINE, activated: [US] });
+  assert.equal(activatedButBroken.status, 'EMPTY');
+  assert.equal(
+    activatedButBroken.activated,
+    true,
+    'an operator must be able to tell "activated then broke" from "never ran" without reading Redis',
+  );
+
+  const healthy = classifyCoverage(AE, {
+    now: BEFORE_DEADLINE,
+    activated: [AE],
+    strens: { [BOOTSTRAP_KEYS[AE]]: 4096 },
+    metaValues: {
+      [SEED_META[AE].key]: {
+        fetchedAt: BEFORE_DEADLINE - 60_000,
+        recordCount: 11,
+        coverage: { status: 'healthy', completedPages: 12, failedPages: 0, completionRatio: 1, rejectedCount: 0, retailers: [] },
+      },
+    },
+  });
+  assert.equal(healthy.status, 'OK');
+  assert.equal(healthy.activated, true, 'survives into the healthy steady state');
+});
+
+test('activation state is NOT emitted for keys outside the rollout registry', () => {
+  const entry = classifyKey(
+    'consumerPricesOverview',
+    BOOTSTRAP_KEYS.consumerPricesOverview,
+    { allowOnDemand: false },
+    makeCtx({ now: BEFORE_DEADLINE }),
+  );
+  assert.equal(entry.activated, undefined, 'the field is scoped to rollout-registered keys');
+});
+
 test('deploy-before-cron: all eight markets pending drives WARNING, never UNHEALTHY', () => {
   let warn = 0;
   let crit = 0;
@@ -178,9 +296,26 @@ test('deploy-before-cron: all eight markets pending drives WARNING, never UNHEAL
   // 253 checks / 8 crit was the observed production incident: 8/253 = 3.2% > 3%.
   assert.equal(computeOverall({ crit: 8, warn: 0, total: 253 }), 'UNHEALTHY', 'the bug being fixed');
   assert.equal(
-    computeOverall({ crit: 0, warn: 8, total: 253 }),
+    computeOverall({ crit: 0, warn: 8, rolloutPending: 8, total: 253 }),
     'WARNING',
     'the interim state must be explicit (WARNING), not silently OK and not UNHEALTHY',
+  );
+});
+
+test('ROLLOUT_PENDING is NOT excused from the verdict the way EMPTY_ON_DEMAND is', () => {
+  // The asymmetry is the whole severity design: an unrequested on-demand key is
+  // excused because nothing is on a clock; a rollout key is not, because its
+  // escalation to crit IS a clock and a verdict of HEALTHY would mean nobody
+  // looks at it before the deadline fires.
+  assert.equal(
+    computeOverall({ crit: 0, warn: 8, onDemandWarn: 8, total: 253 }),
+    'HEALTHY',
+    'on-demand warns are subtracted from realWarnCount',
+  );
+  assert.equal(
+    computeOverall({ crit: 0, warn: 8, rolloutPending: 8, total: 253 }),
+    'WARNING',
+    'rollout warns are NOT subtracted — softening the verdict too would hide the window entirely',
   );
 });
 
@@ -311,7 +446,7 @@ test('rollout softening never reaches an unregistered key: an absent sibling is 
   assert.equal(entry.status, 'EMPTY', 'only the coverage keys opted into the bounded window');
 });
 
-// ── Producer activation predicate (core + manual fallback must agree) ───────
+// ── Producer activation predicate ───────────────────────────────────────────
 
 const coverageOf = (retailers) => summarizeMarketCoverage('us', '1754000000000', retailers);
 
@@ -341,12 +476,20 @@ const ACTIVATION_CASES = [
   { name: 'the upstream-unavailable placeholder does NOT activate', snapshot: emptyCoverage('us'), expected: false },
   { name: 'null does NOT activate', snapshot: null, expected: false },
   { name: 'undefined does NOT activate', snapshot: undefined, expected: false },
+  // Raw shapes: summarizeMarketCoverage normalizes through nonNegativeInt, so the
+  // cases above can never exercise a malformed attemptedPages. The predicate must
+  // still fail closed on one, since a future caller could hand it an unnormalized
+  // payload (e.g. straight off an HTTP body).
+  { name: 'a negative attemptedPages does NOT activate', snapshot: { retailers: [{}], attemptedPages: -5 }, expected: false },
+  { name: 'a NaN attemptedPages does NOT activate', snapshot: { retailers: [{}], attemptedPages: Number.NaN }, expected: false },
+  { name: 'a missing attemptedPages does NOT activate', snapshot: { retailers: [{}] }, expected: false },
+  { name: 'a non-array retailers does NOT activate', snapshot: { retailers: 'nope', attemptedPages: 9 }, expected: false },
+  { name: 'a numeric-string attemptedPages activates (Number coerces)', snapshot: { retailers: [{}], attemptedPages: '9' }, expected: true },
 ];
 
 for (const { name, snapshot, expected } of ACTIVATION_CASES) {
   test(`activation predicate: ${name}`, () => {
-    assert.equal(coreIsActivatingCoverage(snapshot), expected, 'consumer-prices-core');
-    assert.equal(fallbackIsActivatingCoverage(snapshot), expected, 'manual fallback must agree');
+    assert.equal(coreIsActivatingCoverage(snapshot), expected);
   });
 }
 
@@ -364,62 +507,20 @@ test('activation is withheld from the degenerate snapshot health would otherwise
 
 // ── Manual fallback publisher ───────────────────────────────────────────────
 
-test('manual fallback writes a durable, versioned marker after publishing real coverage', async () => {
-  const sent = [];
-  const wrote = await writeCoverageActivationMarker(
-    'ae',
-    coverageOf([
-      { slug: 'r-a', name: 'A', lastRunAt: null, runStatus: 'completed', pagesAttempted: 4, pagesSucceeded: 4, errorsCount: 0, rejectedCount: 0 },
-    ]),
-    { getCreds: () => ({ restUrl: 'https://redis.test', token: 't' }), command: (_c, cmd) => { sent.push(cmd); } },
-  );
+test('the manual fallback never writes an activation marker', () => {
+  // It publishes the coverage key with a 30-minute TTL (TTL_COVERAGE) because it
+  // is a stopgap for a broken publish.ts. Activation is permanent, so claiming it
+  // off a 30-minute artifact would strand the market in an unrecoverable EMPTY
+  // (crit) once the data expired but the marker did not — fixable only by
+  // hand-deleting the Redis key. This test is the guard on that asymmetry.
+  const src = readFileSync(new URL('../scripts/seed-consumer-prices.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /seed-activated/, 'the fallback must not construct an activation key');
+  assert.doesNotMatch(src, /_upstash-rest/, 'and must not reach for the raw Redis command helper to write one');
 
-  assert.equal(wrote, true);
-  assert.equal(sent.length, 1);
-  const [verb, key, value, ...rest] = sent[0];
-  assert.equal(verb, 'SET');
-  assert.equal(key, consumerPriceCoverageActivationKey('ae'));
-  assert.deepEqual(rest, [], 'NO TTL — the marker must outlive the 7d seed-meta TTL to stay one-way');
-  const payload = JSON.parse(value);
-  assert.equal(payload.schemaVersion, FALLBACK_SCHEMA_VERSION);
-  assert.equal(payload.marketCode, 'ae');
-  assert.equal(payload.attemptedPages, 4);
-});
-
-test('manual fallback withholds the marker when the coverage write failed', async () => {
-  const sent = [];
-  // run() passes null when the coverage key write threw, so a failed publish
-  // can never activate the market off the snapshot it fetched but never stored.
-  const wrote = await writeCoverageActivationMarker('ae', null, {
-    getCreds: () => ({ restUrl: 'https://redis.test', token: 't' }),
-    command: (_c, cmd) => { sent.push(cmd); },
-  });
-  assert.equal(wrote, false);
-  assert.deepEqual(sent, []);
-});
-
-test('manual fallback withholds the marker for the upstream-unavailable placeholder', async () => {
-  const sent = [];
-  const wrote = await writeCoverageActivationMarker('ae', emptyCoverage('ae'), {
-    getCreds: () => ({ restUrl: 'https://redis.test', token: 't' }),
-    command: (_c, cmd) => { sent.push(cmd); },
-  });
-  assert.equal(wrote, false);
-  assert.deepEqual(sent, [], 'a placeholder written because upstream was down must never claim activation');
-});
-
-test('manual fallback swallows a marker-write failure instead of failing the run', async () => {
-  const wrote = await writeCoverageActivationMarker(
-    'ae',
-    coverageOf([
-      { slug: 'r-a', name: 'A', lastRunAt: null, runStatus: 'completed', pagesAttempted: 4, pagesSucceeded: 4, errorsCount: 0, rejectedCount: 0 },
-    ]),
-    {
-      getCreds: () => ({ restUrl: 'https://redis.test', token: 't' }),
-      command: () => { throw new Error('Upstash HTTP 500'); },
-    },
-  );
-  assert.equal(wrote, false, 'coverage already published; the deadline still bounds the window');
+  // The behavioural half: the short TTL that makes activation unsafe is real, and
+  // it is an order of magnitude below the publisher's durable 26h key.
+  assert.match(src, /const TTL_COVERAGE\s*=\s*1800;/, 'coverage key stays short-lived here');
+  assert.ok(1800 * 4 < 93600, 'publish.ts writes 93600s (26h); the fallback is nowhere near durable');
 });
 
 // ── Freshness monitor gate ──────────────────────────────────────────────────
