@@ -102,6 +102,10 @@ export function buildPreStrategicDefaultDisabledStates(
   for (const language of locales) {
     const localeProtected = legacyLocaleProtectedNames(language);
     const defaultDisabled = new Set(baseDisabled);
+    // NewsMaker was briefly an unscoped default before the repair changed it
+    // to a native `lang: ru` feed. The old app therefore could not have
+    // produced a locale-boosted RU state with NewsMaker enabled.
+    if (language === 'ru') defaultDisabled.add('NewsMaker');
     for (const name of localeProtected) defaultDisabled.delete(name);
 
     const protectedNames = new Set([
