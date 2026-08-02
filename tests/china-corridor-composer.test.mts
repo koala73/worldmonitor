@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
-import { validateChinaCorridorProvenanceForSurface } from '../shared/china-corridor-control-towers.ts';
+import {
+  parseChinaCorridorWirePayload,
+  validateChinaCorridorProvenanceForSurface,
+} from '../shared/china-corridor-control-towers.ts';
 import {
   composeChinaCorridorControlTowers,
   type ChinaCorridorSourceBundle,
@@ -282,6 +285,26 @@ describe('China corridor control-tower composition (#5578)', () => {
     assert.equal(corroboration?.status === 'known' ? corroboration.value.state : null, 'single_source');
     assert.equal(corroboration?.status === 'known' ? corroboration.value.sourceSignalIds.length : 0, 1);
     assert.equal(condition?.sourceSignals.length, 2);
+  });
+
+  it('keeps same-publisher multi-record payloads valid at the UI boundary', () => {
+    const bundle = sourceBundle();
+    bundle.families.port.signals.push(
+      signal({
+        id: 'signal:portwatch:ningbo-zhoushan',
+        family: 'port',
+        selectorId: 'port2027',
+      }),
+    );
+
+    const response = composeChinaCorridorControlTowers(bundle);
+    const parsed = parseChinaCorridorWirePayload(JSON.stringify(response));
+    const condition = parsed.corridors
+      .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+      ?.conditions.find((item) => item.family === 'port');
+
+    assert.equal(condition?.sourceSignals.length, 2);
+    assert.equal(condition?.availability, 'available');
   });
 
   it('preserves the selected source observation precision in composed provenance', () => {

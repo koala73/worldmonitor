@@ -409,14 +409,28 @@ function provenanceBindingMatches(
   const expectedInputIds = signals
     .filter((signal) => signal.availability !== 'unavailable')
     .map((signal) => signal.id);
-  for (const dimension of ['corroboration', 'derivation'] as const) {
-    const claim = record(claims[dimension]);
-    if (claim?.status !== 'known') continue;
-    const claimValue = record(claim.value);
-    const inputIds = dimension === 'corroboration'
-      ? claimValue?.sourceSignalIds
-      : claimValue?.inputSignalIds;
-    if (!sameStringSet(inputIds, expectedInputIds)) return false;
+  const expectedInputIdSet = new Set(expectedInputIds);
+  const corroboration = record(claims.corroboration);
+  if (corroboration?.status === 'known') {
+    const sourceSignalIds = record(corroboration.value)?.sourceSignalIds;
+    if (
+      !Array.isArray(sourceSignalIds)
+      || sourceSignalIds.length === 0
+      || !sourceSignalIds.every((id) =>
+        typeof id === 'string' && expectedInputIdSet.has(id))
+    ) {
+      return false;
+    }
+  }
+  const derivation = record(claims.derivation);
+  if (
+    derivation?.status === 'known'
+    && !sameStringSet(
+      record(derivation.value)?.inputSignalIds,
+      expectedInputIds,
+    )
+  ) {
+    return false;
   }
   return true;
 }
