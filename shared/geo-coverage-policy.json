@@ -39,6 +39,7 @@
     "VE": "No Venezuela-dedicated source in catalog.",
     "PE": "No Peru-dedicated source in catalog.",
     "KE": "No Kenya-dedicated source in catalog; covered via Africa wires.",
+    "SD": "Africa depth pack catalogs Dabanga Sudan, but no Sudan-local source is EN default-on after Radio Tamazuj was removed from the default set.",
     "SA": "Arab News / Asharq Business are not EN default-on; Asharq News is ar locale-gated.",
     "ET": "The Reporter Ethiopia in catalog; not EN default-on."
   }

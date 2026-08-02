@@ -103,15 +103,15 @@ describe('geographic coverage health (#5957)', () => {
   it('counts only EN-reachable default-on local sources', () => {
     const rows = computeGeoCoverage(inputs);
     const byIso = new Map(rows.map((row) => [row.iso2, row]));
-    for (const iso2 of ['AR', 'CD']) {
+    for (const iso2 of ['AR', 'CD', 'SD']) {
       const row = byIso.get(iso2);
       assert.ok(row, `${iso2} must remain a keyCountry coverage row`);
       assert.deepEqual(row.defaultOnSources, [], `${iso2} has no EN-reachable default-on local source`);
-      assert.equal(row.allowlistReason !== null, true, `${iso2} must document its locale-gated gap`);
+      assert.equal(row.allowlistReason !== null, true, `${iso2} must document its EN reachability gap`);
     }
 
     const { violations } = evaluateGeoCoverage(rows);
-    assert.deepEqual(violations, [], 'known locale-gated gaps must be allowlisted');
+    assert.deepEqual(violations, [], 'known EN reachability gaps must be allowlisted');
   });
 
   it('every keyCountry has a default-on local source or a documented exception', () => {
