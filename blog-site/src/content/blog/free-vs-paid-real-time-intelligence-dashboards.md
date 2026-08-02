@@ -22,7 +22,7 @@ More than most buyers expect. Using [World Monitor's free tier](https://www.worl
 - **Country briefs and instability scores** for situational context worldwide
 - **Maritime chokepoint monitoring** (Hormuz, Suez, Malacca, Bab el-Mandeb) and undersea cable status
 - **Cascade analysis, hotspots, breaking-alert pipeline, and watchlists**
-- Coverage in [25 languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
+- Coverage in [26 languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
 
 The catch, and it is a fair one: free-tier refresh cadence is typically **5–15 minutes** rather than seconds, and the workflow layer — analyst chat, scheduled digests, API access, team features — sits behind paid plans.
 

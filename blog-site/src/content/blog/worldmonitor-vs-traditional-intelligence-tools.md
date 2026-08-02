@@ -164,16 +164,16 @@ Every scoring algorithm is auditable. Every data source is documented. Every API
 
 The AGPL-3.0 license ensures that improvements to the core platform benefit everyone. Forks must also be open source. The commons stays common.
 
-## 25 Languages, Global Access
+## 26 Languages, Global Access
 
-Intelligence shouldn't be English-only. World Monitor supports **25 languages** with:
+Intelligence shouldn't be English-only. World Monitor supports **26 languages** with:
 
 - Fully localized interface including RTL for Arabic
 - Language-specific RSS feeds
 - AI analysis in your preferred language
 - Native character support for CJK languages
 
-This means analysts worldwide can use the tool in their working language, not just as a translation layer over English sources. Read the full breakdown in [World Monitor in 25 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+This means analysts worldwide can use the tool in their working language, not just as a translation layer over English sources. Read the full breakdown in [World Monitor in 26 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 
 ## Frequently Asked Questions
 
