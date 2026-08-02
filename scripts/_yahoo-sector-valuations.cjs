@@ -14,6 +14,7 @@ const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_SPACING_MS = 150;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const DEFAULT_SECTOR_VALUATION_BUDGET_MS = 60_000;
 const CURL_PROCESS_GRACE_MS = 5_000;
 
 function sleep(ms) {
@@ -243,33 +244,61 @@ function validCrumb(body) {
 }
 
 function rawYahooValue(value) {
-  if (value && typeof value === 'object') return value.raw ?? value.fmt ?? null;
-  return typeof value === 'number' ? value : null;
+  const candidate = value && typeof value === 'object'
+    ? value.raw ?? value.fmt
+    : value;
+  if (typeof candidate === 'number') return Number.isFinite(candidate) ? candidate : null;
+  if (typeof candidate === 'string' && candidate.trim() !== '') {
+    const numeric = Number(candidate);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+  return null;
 }
 
 // Yahoo v7/finance/quote — different API surface from v10/quoteSummary,
 // shares the query1 host with v8/chart (which works from Railway).
 // Returns trailingPE, forwardPE, beta but NOT return metrics (ytd, 3Y, 5Y).
-function parseV7Quote(body) {
+function parseV7Quote(body, expectedSymbol = null) {
   let data;
   try {
     data = JSON.parse(body);
   } catch {
     return { kind: 'invalid_json', value: null };
   }
-  const result = data?.quoteResponse?.result?.[0];
-  if (!result) return { kind: 'no_data', value: null };
+  const quoteResponse = data?.quoteResponse;
+  if (quoteResponse?.error) {
+    return { kind: 'upstream_error', value: null, failure: 'quote_response_error' };
+  }
+  const results = quoteResponse?.result;
+  if (!Array.isArray(results) || results.length === 0) return { kind: 'no_data', value: null };
+  if (results.length !== 1) return { kind: 'ambiguous_result', value: null, failure: 'multiple_quote_results' };
+  const result = results[0];
+  if (expectedSymbol) {
+    const returnedSymbol = typeof result?.symbol === 'string' ? result.symbol : '';
+    if (!returnedSymbol) {
+      return { kind: 'identity_mismatch', value: null, failure: 'quote_symbol_missing' };
+    }
+    if (returnedSymbol.toUpperCase() !== String(expectedSymbol).toUpperCase()) {
+      return { kind: 'identity_mismatch', value: null, failure: 'quote_symbol_mismatch' };
+    }
+  }
   const raw = (v) => typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const value = {
+    trailingPE: raw(result.trailingPE),
+    forwardPE: raw(result.forwardPE),
+    beta: raw(result.beta),
+    ytdReturn: null,
+    threeYearReturn: null,
+    fiveYearReturn: null,
+  };
+  const missingFields = ['trailingPE', 'forwardPE'].filter((field) => value[field] === null);
+  if (missingFields.length === 2) {
+    return { kind: 'missing_fields', value, missingFields };
+  }
   return {
     kind: 'success',
-    value: {
-      trailingPE: raw(result.trailingPE),
-      forwardPE: raw(result.forwardPE),
-      beta: raw(result.beta),
-      ytdReturn: null,
-      threeYearReturn: null,
-      fiveYearReturn: null,
-    },
+    value,
+    ...(missingFields.length > 0 ? { missingFields } : {}),
   };
 }
 
@@ -281,7 +310,7 @@ async function fetchYahooV7QuoteDirect(symbol, { userAgent, timeoutMs = 10_000 }
       timeoutMs,
     });
     if (response.status !== 200) return { kind: 'failed', value: null };
-    return parseV7Quote(response.body);
+    return parseV7Quote(response.body, symbol);
   } catch {
     return { kind: 'failed', value: null };
   }
@@ -297,61 +326,144 @@ async function fetchYahooV7QuoteProxy(symbol, { userAgent, proxy, timeoutMs = 15
       proxy,
     });
     if (response.status !== 200) return { kind: 'failed', value: null };
-    return parseV7Quote(response.body);
+    return parseV7Quote(response.body, symbol);
   } catch {
     return { kind: 'failed', value: null };
   }
 }
 
-async function collectV7Valuations(symbols, { userAgent, resolveProxyString, sleepFn = sleep } = {}) {
+async function collectV7Valuations(
+  symbols,
+  { userAgent, resolveProxyString, sleepFn = sleep, client, deadlineAt = null, now = Date.now } = {},
+) {
   const freshVals = {};
+  const diagnostics = [];
+  const valuationSources = new Set();
   for (const s of symbols) {
-    const direct = await fetchYahooV7QuoteDirect(s, { userAgent });
-    if (direct.kind === 'success') freshVals[s] = direct.value;
-    else {
-      const proxy = typeof resolveProxyString === 'function' ? resolveProxyString() : '';
-      const proxied = await fetchYahooV7QuoteProxy(s, { userAgent, proxy });
-      if (proxied.kind === 'success') freshVals[s] = proxied.value;
+    let result;
+    if (deadlineAt != null && now() >= deadlineAt) {
+      result = {
+        kind: 'deadline_exceeded',
+        value: null,
+        diagnostics: [{ route: 'v7Quote', attempts: 0, responseClass: 'deadline_exceeded', failure: 'valuation_budget_exceeded' }],
+      };
+    } else if (client?.fetchV7Detailed) {
+      result = await client.fetchV7Detailed(s, { deadlineAt });
+    } else {
+      const direct = await fetchYahooV7QuoteDirect(s, { userAgent });
+      const routeDiagnostics = [{
+        route: 'v7Quote',
+        transport: 'direct',
+        attempts: 1,
+        responseClass: direct.kind,
+      }];
+      if (direct.kind === 'success') {
+        result = { ...direct, diagnostics: routeDiagnostics };
+      } else {
+        const proxy = typeof resolveProxyString === 'function' ? resolveProxyString() : '';
+        const proxied = await fetchYahooV7QuoteProxy(s, { userAgent, proxy });
+        routeDiagnostics.push({
+          route: 'v7Quote',
+          transport: 'proxy',
+          attempts: 1,
+          responseClass: proxied.kind,
+        });
+        result = { ...proxied, diagnostics: routeDiagnostics };
+      }
     }
-    await sleepFn(DEFAULT_REQUEST_SPACING_MS);
+    diagnostics.push({ symbol: s, outcomes: result?.diagnostics || [] });
+    if (result?.kind === 'success') {
+      freshVals[s] = result.value;
+      if (result.value?.source) valuationSources.add(result.value.source);
+    }
+    const remainingMs = deadlineAt == null ? DEFAULT_REQUEST_SPACING_MS : Math.max(0, deadlineAt - now());
+    if (remainingMs > 0) await sleepFn(Math.min(DEFAULT_REQUEST_SPACING_MS, remainingMs));
   }
-  return freshVals;
+  return { valuations: freshVals, diagnostics, valuationSources: [...valuationSources] };
 }
 
 function mergeReturnMetrics(freshVals, lastGoodValuations) {
-  if (!lastGoodValuations || typeof lastGoodValuations !== 'object') return;
+  if (!lastGoodValuations || typeof lastGoodValuations !== 'object') return [];
+  const usedSymbols = [];
   for (const s of Object.keys(freshVals)) {
     const lg = lastGoodValuations[s];
     if (!lg) continue;
     const fv = freshVals[s];
-    if (fv.ytdReturn == null && lg.ytdReturn != null) fv.ytdReturn = lg.ytdReturn;
-    if (fv.threeYearReturn == null && lg.threeYearReturn != null) fv.threeYearReturn = lg.threeYearReturn;
-    if (fv.fiveYearReturn == null && lg.fiveYearReturn != null) fv.fiveYearReturn = lg.fiveYearReturn;
+    let used = false;
+    if (fv.ytdReturn == null && lg.ytdReturn != null) {
+      fv.ytdReturn = lg.ytdReturn;
+      used = true;
+    }
+    if (fv.threeYearReturn == null && lg.threeYearReturn != null) {
+      fv.threeYearReturn = lg.threeYearReturn;
+      used = true;
+    }
+    if (fv.fiveYearReturn == null && lg.fiveYearReturn != null) {
+      fv.fiveYearReturn = lg.fiveYearReturn;
+      used = true;
+    }
+    if (used) usedSymbols.push(s);
   }
+  return usedSymbols;
 }
 
-function parseQuoteSummary(body) {
+function parseQuoteSummary(body, expectedSymbol = null) {
   let data;
   try {
     data = JSON.parse(body);
   } catch {
     return { kind: 'invalid_json', value: null };
   }
-  const result = data?.quoteSummary?.result?.[0];
-  if (!result) return { kind: 'no_data', value: null };
+  const results = data?.quoteSummary?.result;
+  if (!Array.isArray(results) || results.length === 0) return { kind: 'no_data', value: null };
+  if (results.length !== 1) {
+    return { kind: 'ambiguous_result', value: null, failure: 'multiple_quote_summary_results' };
+  }
+  const result = results[0];
+  if (expectedSymbol) {
+    const returnedSymbol = typeof result?.symbol === 'string'
+      ? result.symbol
+      : (typeof result?.price?.symbol === 'string' ? result.price.symbol : '');
+    if (!returnedSymbol) {
+      return { kind: 'identity_mismatch', value: null, failure: 'quote_symbol_missing' };
+    }
+    if (returnedSymbol.toUpperCase() !== String(expectedSymbol).toUpperCase()) {
+      return { kind: 'identity_mismatch', value: null, failure: 'quote_symbol_mismatch' };
+    }
+  }
   const summaryDetail = result.summaryDetail || {};
   const keyStatistics = result.defaultKeyStatistics || {};
+  const value = {
+    trailingPE: rawYahooValue(summaryDetail.trailingPE),
+    forwardPE: rawYahooValue(summaryDetail.forwardPE),
+    beta: rawYahooValue(summaryDetail.beta) ?? rawYahooValue(keyStatistics.beta3Year),
+    ytdReturn: rawYahooValue(keyStatistics.ytdReturn),
+    threeYearReturn: rawYahooValue(keyStatistics.threeYearAverageReturn),
+    fiveYearReturn: rawYahooValue(keyStatistics.fiveYearAverageReturn),
+  };
+  const missingFields = ['trailingPE', 'forwardPE'].filter((field) => value[field] === null);
+  if (missingFields.length === 2) return { kind: 'missing_fields', value, missingFields };
   return {
     kind: 'success',
-    value: {
-      trailingPE: rawYahooValue(summaryDetail.trailingPE),
-      forwardPE: rawYahooValue(summaryDetail.forwardPE),
-      beta: rawYahooValue(summaryDetail.beta) ?? rawYahooValue(keyStatistics.beta3Year),
-      ytdReturn: rawYahooValue(keyStatistics.ytdReturn),
-      threeYearReturn: rawYahooValue(keyStatistics.threeYearAverageReturn),
-      fiveYearReturn: rawYahooValue(keyStatistics.fiveYearAverageReturn),
-    },
+    value,
+    ...(missingFields.length > 0 ? { missingFields } : {}),
   };
+}
+
+/** Parse kinds that are symbol-local (not evidence the route/session is dead). */
+function isNonDurableParseKind(kind) {
+  return kind === 'no_data'
+    || kind === 'missing_fields'
+    || kind === 'identity_mismatch'
+    || kind === 'ambiguous_result'
+    || kind === 'invalid_json'
+    || kind === 'upstream_error';
+}
+
+function boundedFailure(value, fallback = 'request failed') {
+  const compact = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!compact) return fallback;
+  return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
 }
 
 function responseFailure(response) {
@@ -359,8 +471,9 @@ function responseFailure(response) {
   try {
     const parsed = JSON.parse(response.body);
     const description = parsed?.finance?.error?.description
-      || parsed?.quoteSummary?.error?.description;
-    if (description) return `HTTP ${response.status} ${description}`;
+      || parsed?.quoteSummary?.error?.description
+      || parsed?.quoteResponse?.error?.description;
+    if (description) return `HTTP ${response.status} ${boundedFailure(description)}`;
   } catch {}
   return `HTTP ${response.status || 0}`;
 }
@@ -373,7 +486,7 @@ function transportFailure(error, transport) {
       : null;
     return code ? `proxy request failed (${code})` : 'proxy request failed';
   }
-  return error?.message || error?.name || 'request failed';
+  return boundedFailure(error?.message || error?.name);
 }
 
 class YahooQuoteSummaryClient {
@@ -399,28 +512,66 @@ class YahooQuoteSummaryClient {
     this.requestSpacingMs = requestSpacingMs;
     this.sleep = sleepFn;
     this.logger = logger;
+    // Transport-level session only (cookie+crumb). Route cooldowns live in routeStates.
     this.states = {
-      direct: { session: null, sessionPromise: null, cooldownUntil: 0 },
-      proxy: { session: null, sessionPromise: null, cooldownUntil: 0 },
+      direct: { session: null, sessionPromise: null },
+      proxy: { session: null, sessionPromise: null },
     };
+    this.routeStates = new Map();
   }
 
-  async _request(transport, url, headers, proxy) {
+  async _request(transport, url, headers, proxy, { timeoutMs, deadlineAt = null } = {}) {
     const request = transport === 'direct' ? this.directRequest : this.proxyRequest;
-    if (this.requestSpacingMs > 0) await this.sleep(this.requestSpacingMs);
+    let remainingMs = null;
+    if (deadlineAt != null) {
+      remainingMs = deadlineAt - this.now();
+      if (remainingMs <= 0) {
+        const err = new Error('valuation_budget_exceeded');
+        err.code = 'DEADLINE_EXCEEDED';
+        throw err;
+      }
+    }
+    if (this.requestSpacingMs > 0) {
+      const sleepMs = remainingMs == null
+        ? this.requestSpacingMs
+        : Math.min(this.requestSpacingMs, remainingMs);
+      if (sleepMs > 0) await this.sleep(sleepMs);
+      if (deadlineAt != null) {
+        remainingMs = deadlineAt - this.now();
+        if (remainingMs <= 0) {
+          const err = new Error('valuation_budget_exceeded');
+          err.code = 'DEADLINE_EXCEEDED';
+          throw err;
+        }
+        timeoutMs = Number.isFinite(timeoutMs)
+          ? Math.min(timeoutMs, remainingMs)
+          : remainingMs;
+      }
+    }
+    const defaultTimeoutMs = transport === 'direct' ? 12_000 : 15_000;
+    const boundedTimeoutMs = Number.isFinite(timeoutMs)
+      ? Math.max(1, Math.min(defaultTimeoutMs, timeoutMs))
+      : defaultTimeoutMs;
     return request(url, {
       headers: {
         'User-Agent': this.userAgent,
         Accept: 'application/json',
         ...headers,
       },
-      timeoutMs: transport === 'direct' ? 12_000 : 15_000,
+      timeoutMs: boundedTimeoutMs,
       proxy,
     });
   }
 
-  async _bootstrapSession(transport, proxy) {
-    const cookieResponse = await this._request(transport, YAHOO_COOKIE_URL, {}, proxy);
+  async _bootstrapSession(transport, proxy, { deadlineAt = null } = {}) {
+    const timeoutMs = deadlineAt == null ? undefined : Math.max(1, deadlineAt - this.now());
+    const cookieResponse = await this._request(
+      transport,
+      YAHOO_COOKIE_URL,
+      {},
+      proxy,
+      { timeoutMs, deadlineAt },
+    );
     const cookie = cookieHeaderFromResponse(cookieResponse);
     if (!cookie) throw new Error(`cookie bootstrap HTTP ${cookieResponse?.status || 0}`);
 
@@ -429,6 +580,10 @@ class YahooQuoteSummaryClient {
       YAHOO_CRUMB_URL,
       { Cookie: cookie, Accept: 'text/plain,*/*' },
       proxy,
+      {
+        timeoutMs: deadlineAt == null ? undefined : Math.max(1, deadlineAt - this.now()),
+        deadlineAt,
+      },
     );
     const crumb = crumbResponse?.status === 200 ? validCrumb(crumbResponse.body) : null;
     if (!crumb) throw new Error(`crumb bootstrap HTTP ${crumbResponse?.status || 0}`);
@@ -436,7 +591,7 @@ class YahooQuoteSummaryClient {
     return { cookie, crumb, fetchedAt: this.now() };
   }
 
-  async _getSession(transport, proxy, forceRefresh = false) {
+  async _getSession(transport, proxy, forceRefresh = false, { deadlineAt = null } = {}) {
     const state = this.states[transport];
     if (forceRefresh) state.session = null;
     if (
@@ -445,7 +600,7 @@ class YahooQuoteSummaryClient {
     ) return state.session;
     if (state.sessionPromise) return state.sessionPromise;
 
-    state.sessionPromise = this._bootstrapSession(transport, proxy);
+    state.sessionPromise = this._bootstrapSession(transport, proxy, { deadlineAt });
     try {
       state.session = await state.sessionPromise;
       return state.session;
@@ -454,70 +609,226 @@ class YahooQuoteSummaryClient {
     }
   }
 
-  async _fetchVia(transport, symbol, proxy = '') {
-    const state = this.states[transport];
-    if (this.now() < state.cooldownUntil) return { kind: 'cooldown', value: null };
+  _getRouteState(route, transport) {
+    const key = `${route}:${transport}`;
+    let state = this.routeStates.get(key);
+    if (!state) {
+      state = { cooldownUntil: 0 };
+      this.routeStates.set(key, state);
+    }
+    return state;
+  }
+
+  async _fetchVia(
+    route,
+    transport,
+    symbol,
+    proxy,
+    { buildUrl, parseResponse, source, deadlineAt = null },
+  ) {
+    if (deadlineAt != null && this.now() >= deadlineAt) {
+      return this._deadlineExceeded(route, transport);
+    }
+    const routeState = this._getRouteState(route, transport);
+    if (this.now() < routeState.cooldownUntil) {
+      return {
+        kind: 'cooldown',
+        value: null,
+        diagnostic: {
+          route,
+          transport,
+          attempts: 0,
+          responseClass: 'cooldown',
+        },
+      };
+    }
 
     let lastFailure = 'unknown';
+    let lastDiagnostic = {
+      route,
+      transport,
+      attempts: 0,
+      responseClass: 'unknown',
+    };
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const session = await this._getSession(transport, proxy, attempt > 0);
-        const query = new URLSearchParams({
-          modules: YAHOO_SUMMARY_MODULES,
-          crumb: session.crumb,
-        });
+        const session = await this._getSession(transport, proxy, attempt > 0, { deadlineAt });
+        if (deadlineAt != null && this.now() >= deadlineAt) {
+          return this._deadlineExceeded(route, transport);
+        }
         const response = await this._request(
           transport,
-          `${YAHOO_SUMMARY_BASE_URL}/${encodeURIComponent(symbol)}?${query}`,
+          buildUrl(symbol, session.crumb),
           { Cookie: session.cookie },
           proxy,
+          {
+            timeoutMs: deadlineAt == null ? undefined : deadlineAt - this.now(),
+            deadlineAt,
+          },
         );
+        const diagnostic = {
+          route,
+          transport,
+          attempts: attempt + 1,
+          status: response.status,
+          responseClass: response.status === 200 ? 'http_200' : `http_${response.status || 0}`,
+        };
         if (response.status === 401 && attempt === 0) {
           lastFailure = responseFailure(response);
+          lastDiagnostic = diagnostic;
           continue;
         }
         if (response.status !== 200) {
           lastFailure = responseFailure(response);
+          lastDiagnostic = diagnostic;
           break;
         }
 
-        const parsed = parseQuoteSummary(response.body);
+        const parsed = parseResponse(response.body, symbol);
+        diagnostic.responseClass = parsed.kind;
+        if (parsed.missingFields?.length) diagnostic.missingFields = parsed.missingFields;
+        if (parsed.failure) diagnostic.failure = boundedFailure(parsed.failure);
         if (parsed.kind === 'success') {
-          state.cooldownUntil = 0;
+          routeState.cooldownUntil = 0;
           return {
             kind: 'success',
             value: {
               ...parsed.value,
-              source: `yahoo_quote_summary_authenticated_${transport}`,
+              source,
             },
+            diagnostic,
           };
         }
-        if (parsed.kind === 'no_data') return parsed;
-        lastFailure = parsed.kind;
+        // Symbol-local / parse-local outcomes must not cool the route or wipe the
+        // shared cookie session — a bad payload for one ticker is not route death.
+        if (isNonDurableParseKind(parsed.kind)) {
+          return { ...parsed, diagnostic };
+        }
+        lastFailure = parsed.failure || parsed.kind;
+        lastDiagnostic = diagnostic;
         break;
       } catch (error) {
+        if (
+          error?.code === 'DEADLINE_EXCEEDED'
+          || (deadlineAt != null && this.now() >= deadlineAt)
+        ) {
+          return this._deadlineExceeded(route, transport);
+        }
         lastFailure = transportFailure(error, transport);
+        lastDiagnostic = {
+          route,
+          transport,
+          attempts: attempt + 1,
+          responseClass: 'transport_error',
+        };
         break;
       }
     }
 
-    state.session = null;
-    state.cooldownUntil = this.now() + this.cooldownMs;
+    // Budget already spent: report deadline, do not arm a multi-minute cooldown.
+    if (deadlineAt != null && this.now() >= deadlineAt) {
+      return this._deadlineExceeded(route, transport);
+    }
+
+    const authInvalidating = lastDiagnostic.status === 401;
+    // Shared transport session (cookie+crumb) is only invalidated on auth failure.
+    // Parse/5xx/timeout leave the session reusable by sibling routes under budget.
+    if (authInvalidating) {
+      this.states[transport].session = null;
+    }
+
+    // Durable route health failure: cool this route:transport only.
+    routeState.cooldownUntil = this.now() + this.cooldownMs;
     this.logger.warn(
-      `[Sector] Yahoo authenticated ${transport} route unavailable (${lastFailure}); cooldown ${Math.round(this.cooldownMs / 60_000)}min`,
-      { transport, failure: lastFailure },
+      `[Sector] Yahoo authenticated ${transport} ${route} route unavailable (${lastFailure}); cooldown ${Math.round(this.cooldownMs / 60_000)}min`,
+      { transport, route, failure: lastFailure },
     );
-    return { kind: 'failed', value: null };
+    return {
+      kind: 'failed',
+      value: null,
+      diagnostic: {
+        ...lastDiagnostic,
+        responseClass: lastDiagnostic.responseClass || 'failed',
+        failure: lastFailure,
+      },
+    };
+  }
+
+  _deadlineExceeded(route, transport) {
+    return {
+      kind: 'deadline_exceeded',
+      value: null,
+      diagnostic: {
+        route,
+        transport,
+        attempts: 0,
+        responseClass: 'deadline_exceeded',
+        failure: 'valuation_budget_exceeded',
+      },
+    };
+  }
+
+  async _fetchRoute(route, symbol, { buildUrl, parseResponse, source, deadlineAt = null }) {
+    const diagnostics = [];
+    const direct = await this._fetchVia(
+      route,
+      'direct',
+      symbol,
+      '',
+      { buildUrl, parseResponse, source: `${source}_direct`, deadlineAt },
+    );
+    diagnostics.push(direct.diagnostic);
+    if (direct.kind === 'success') return { ...direct, diagnostics };
+
+    const proxy = this.resolveProxyString();
+    if (!proxy) return { ...direct, diagnostics };
+    const proxied = await this._fetchVia(
+      route,
+      'proxy',
+      symbol,
+      proxy,
+      { buildUrl, parseResponse, source: `${source}_proxy`, deadlineAt },
+    );
+    diagnostics.push(proxied.diagnostic);
+    if (proxied.kind === 'success') return { ...proxied, diagnostics };
+    return { ...proxied, diagnostics };
+  }
+
+  async fetchDetailed(symbol, { deadlineAt = null } = {}) {
+    return this._fetchRoute('quoteSummary', symbol, {
+      buildUrl: (ticker, crumb) => {
+        const query = new URLSearchParams({
+          modules: YAHOO_SUMMARY_MODULES,
+          crumb,
+        });
+        return `${YAHOO_SUMMARY_BASE_URL}/${encodeURIComponent(ticker)}?${query}`;
+      },
+      parseResponse: parseQuoteSummary,
+      source: 'yahoo_quote_summary_authenticated',
+      deadlineAt,
+    });
   }
 
   async fetch(symbol) {
-    const direct = await this._fetchVia('direct', symbol);
-    if (direct.kind === 'success' || direct.kind === 'no_data') return direct.value;
+    const result = await this.fetchDetailed(symbol);
+    return result.kind === 'success' ? result.value : null;
+  }
 
-    const proxy = this.resolveProxyString();
-    if (!proxy) return null;
-    const proxied = await this._fetchVia('proxy', symbol, proxy);
-    return proxied.kind === 'success' ? proxied.value : null;
+  async fetchV7Detailed(symbol, { deadlineAt = null } = {}) {
+    return this._fetchRoute('v7Quote', symbol, {
+      buildUrl: (ticker, crumb) => {
+        const query = new URLSearchParams({ symbols: ticker, crumb });
+        return `${YAHOO_V7_QUOTE_URL}?${query}`;
+      },
+      parseResponse: parseV7Quote,
+      source: 'yahoo_v7_quote_authenticated',
+      deadlineAt,
+    });
+  }
+
+  async fetchV7(symbol) {
+    const result = await this.fetchV7Detailed(symbol);
+    return result.kind === 'success' ? result.value : null;
   }
 }
 
@@ -526,6 +837,10 @@ function buildSectorValuationCoverage({
   expectedCount,
   fetchedAt,
   sources,
+  unavailableSymbols = [],
+  valuationDiagnostics = [],
+  lastGoodFetchedAt = null,
+  lastGoodMetricsUsed = [],
 }) {
   const count = Number.isFinite(valuationCount) ? Math.max(0, valuationCount) : 0;
   const expected = Number.isFinite(expectedCount) ? Math.max(0, expectedCount) : 0;
@@ -533,6 +848,21 @@ function buildSectorValuationCoverage({
   const source = orderedSources.length > 0
     ? orderedSources.join('+')
     : 'yahoo_quote_summary_authenticated';
+  const unavailable = [...new Set(unavailableSymbols.filter(Boolean))].sort();
+  const diagnostics = valuationDiagnostics.filter(Boolean);
+  const lastGood = lastGoodFetchedAt && lastGoodMetricsUsed.length > 0
+    ? {
+      fetchedAt: lastGoodFetchedAt,
+      stale: true,
+      symbols: [...new Set(lastGoodMetricsUsed)].sort(),
+    }
+    : null;
+
+  const extras = {
+    ...(unavailable.length > 0 ? { unavailableSymbols: unavailable } : {}),
+    ...(diagnostics.length > 0 ? { valuationDiagnostics: diagnostics } : {}),
+    ...(lastGood ? { lastGood } : {}),
+  };
 
   if (count <= 0) {
     return {
@@ -544,6 +874,7 @@ function buildSectorValuationCoverage({
       stale: false,
       seedSourceState: 'error',
       errorCode: 'SECTOR_VALUATIONS_UNAVAILABLE',
+      ...extras,
     };
   }
   if (count < expected) {
@@ -556,6 +887,7 @@ function buildSectorValuationCoverage({
       stale: false,
       seedSourceState: 'partial',
       errorCode: 'SECTOR_VALUATIONS_PARTIAL',
+      ...extras,
     };
   }
   return {
@@ -567,6 +899,7 @@ function buildSectorValuationCoverage({
     stale: false,
     seedSourceState: 'ok',
     errorCode: null,
+    ...extras,
   };
 }
 
@@ -577,59 +910,133 @@ async function collectSectorValuations({
   sleepFn = sleep,
   v7UserAgent,
   v7ResolveProxyString,
+  v7Client,
   upstashGet,
   upstashSet,
+  fetchValueDetailed,
+  maxDurationMs = DEFAULT_SECTOR_VALUATION_BUDGET_MS,
+  now = Date.now,
 }) {
   const valuationSources = new Set();
-  let valuationCount = 0;
+  const deadlineAt = Number.isFinite(maxDurationMs)
+    ? now() + Math.max(1, maxDurationMs)
+    : null;
 
   // Tier 1: v7/finance/quote for P/E and beta
-  const v7Vals = v7UserAgent ? await collectV7Valuations(symbols, {
+  const v7Result = v7UserAgent ? await collectV7Valuations(symbols, {
     userAgent: v7UserAgent,
     resolveProxyString: v7ResolveProxyString,
     sleepFn,
+    client: v7Client,
+    deadlineAt,
+    now,
   }) : {};
+  const v7Vals = v7Result.valuations || {};
+  const valuationDiagnostics = v7Result.diagnostics || [];
+  for (const source of v7Result.valuationSources || []) valuationSources.add(source);
 
-  // Tier 2: merge return metrics from last-good cache
+  // Tier 2: reserve the last-good read until every current valuation tier has
+  // run. Otherwise a complete v7 failure followed by quoteSummary fallback
+  // data can overwrite the previous snapshot before its return metrics are
+  // available to merge.
   let lastGood = null;
-  if (Object.keys(v7Vals).length > 0 && typeof upstashGet === 'function') {
-    try {
-      const raw = await upstashGet(LAST_GOOD_KEY);
-      if (raw && typeof raw === 'object' && raw.valuations) lastGood = raw.valuations;
-    } catch {}
-  }
-  if (lastGood) mergeReturnMetrics(v7Vals, lastGood);
+  let lastGoodFetchedAt = null;
+  let lastGoodMetricsUsed = [];
 
   // Tier 3: v10/quoteSummary for symbols v7 didn't cover
   for (const symbol of symbols) {
     if (v7Vals[symbol]) continue;
-    const raw = await fetchValue(symbol);
+    if (deadlineAt != null && now() >= deadlineAt) {
+      valuationDiagnostics.push({
+        symbol,
+        outcomes: [{ route: 'quoteSummary', attempts: 0, responseClass: 'deadline_exceeded', failure: 'valuation_budget_exceeded' }],
+      });
+      continue;
+    }
+    const detailed = typeof fetchValueDetailed === 'function'
+      ? await fetchValueDetailed(symbol, { deadlineAt })
+      : null;
+    const raw = detailed?.value ?? (detailed ? null : await fetchValue(symbol));
     const parsed = parseValue(raw);
     if (parsed) {
-      v7Vals[symbol] = parsed;
+      v7Vals[symbol] = { ...parsed, ...(raw?.source ? { source: raw.source } : {}) };
       if (raw?.source) valuationSources.add(raw.source);
     }
-    await sleepFn(DEFAULT_REQUEST_SPACING_MS);
+    if (detailed?.diagnostics) {
+      valuationDiagnostics.push({ symbol, outcomes: detailed.diagnostics });
+    }
+    const remainingMs = deadlineAt == null ? DEFAULT_REQUEST_SPACING_MS : Math.max(0, deadlineAt - now());
+    if (remainingMs > 0) await sleepFn(Math.min(DEFAULT_REQUEST_SPACING_MS, remainingMs));
   }
+
+  if (Object.keys(v7Vals).length > 0 && typeof upstashGet === 'function') {
+    try {
+      const raw = await upstashGet(LAST_GOOD_KEY);
+      if (raw && typeof raw === 'object' && raw.valuations) {
+        lastGood = raw.valuations;
+        lastGoodFetchedAt = Number.isFinite(raw.fetchedAt) ? raw.fetchedAt : null;
+      }
+    } catch {}
+  }
+  if (lastGood) lastGoodMetricsUsed = mergeReturnMetrics(v7Vals, lastGood);
 
   const valuations = {};
-  for (const s of Object.keys(v7Vals)) {
-    valuations[s] = v7Vals[s];
-    valuationCount++;
+  const unavailableSymbols = [];
+  for (const symbol of symbols) {
+    if (!v7Vals[symbol]) {
+      unavailableSymbols.push(symbol);
+      continue;
+    }
+    const { source: _source, ...valuation } = v7Vals[symbol];
+    valuations[symbol] = valuation;
   }
+  const valuationCount = Object.keys(valuations).length;
   if (valuationCount > 0 && valuationSources.size === 0) valuationSources.add('yahoo_v7_quote');
 
-  // Persist last-good if we got fresh data
-  if (valuationCount > 0 && typeof upstashSet === 'function') {
+  const hasCompleteReturnMetrics = valuationCount === symbols.length
+    && symbols.length > 0
+    && symbols.every((symbol) => {
+      const valuation = valuations[symbol];
+      return valuation
+        && valuation.ytdReturn != null
+        && valuation.threeYearReturn != null
+        && valuation.fiveYearReturn != null;
+    });
+
+  // Persist last-good only when the current snapshot is complete at the
+  // field level. A v7-only run intentionally leaves return metrics null, and
+  // a partial quoteSummary fallback must never replace an older complete
+  // snapshot with that incomplete shape.
+  // A partial run may borrow return metrics from the previous snapshot. Do not
+  // rewrite that snapshot with a new fetchedAt: doing so would make borrowed
+  // metrics appear fresh forever across repeated partial cycles. Also retain a
+  // full last-good snapshot until a full current run replaces it; otherwise a
+  // partial outage would discard the symbols that were healthy previously.
+  if (
+    hasCompleteReturnMetrics
+    && lastGoodMetricsUsed.length === 0
+    && typeof upstashSet === 'function'
+  ) {
     try {
-      await upstashSet(LAST_GOOD_KEY, { valuations, fetchedAt: Date.now() }, LAST_GOOD_TTL);
-    } catch {}
+      const ok = await upstashSet(LAST_GOOD_KEY, { valuations, fetchedAt: now() }, LAST_GOOD_TTL);
+      // upstashSet resolves false on disable/timeout/non-OK without throwing.
+      if (!ok) {
+        console.warn('[Sector] last-good valuation snapshot write failed');
+      }
+    } catch {
+      console.warn('[Sector] last-good valuation snapshot write failed');
+    }
   }
 
   return {
     valuations,
     valuationSources: [...valuationSources],
     valuationCount,
+    ...(unavailableSymbols.length > 0 ? { unavailableSymbols } : {}),
+    ...(valuationDiagnostics.length > 0 ? { valuationDiagnostics } : {}),
+    ...(lastGoodFetchedAt && lastGoodMetricsUsed.length > 0
+      ? { lastGoodFetchedAt, lastGoodMetricsUsed }
+      : {}),
   };
 }
 
@@ -659,8 +1066,26 @@ function buildSectorValuationPublication({
       valuationSource: valuationCoverage.source,
       sourceState: seedSourceState,
       sourceVersion: 'market-sectors',
+      ...(valuationCoverage.unavailableSymbols?.length > 0
+        ? { valuationUnavailableSymbols: valuationCoverage.unavailableSymbols }
+        : {}),
+      ...(valuationCoverage.valuationDiagnostics?.length > 0
+        ? { valuationDiagnostics: valuationCoverage.valuationDiagnostics }
+        : {}),
+      ...(valuationCoverage.lastGood ? { valuationLastGood: valuationCoverage.lastGood } : {}),
       ...(errorCode ? { errorCode } : {}),
     },
+  };
+}
+
+function buildSectorSeedMeta(sectorMeta, canonicalPayloadWritten) {
+  if (canonicalPayloadWritten) return sectorMeta;
+  const { fetchedAt: _fetchedAt, ...withoutFreshness } = sectorMeta;
+  return {
+    ...withoutFreshness,
+    fetchedAt: null,
+    sourceState: 'error',
+    errorCode: 'SECTOR_DATA_WRITE_FAILED',
   };
 }
 
@@ -669,6 +1094,7 @@ module.exports = {
   buildCurlConfig,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
+  buildSectorSeedMeta,
   collectSectorValuations,
   collectV7Valuations,
   fetchYahooV7QuoteDirect,

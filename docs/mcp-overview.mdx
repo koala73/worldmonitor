@@ -209,7 +209,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 
 | Tool | Description |
 |------|-------------|
-| `get_market_data` | Equity quotes, commodity prices (incl. gold GC=F), crypto, FX, sector performance, ETF flows, Gulf markets. |
+| `get_market_data` | Equity quotes, commodity prices (incl. gold GC=F), crypto, FX, sector performance and valuation coverage, ETF flows, Gulf markets. Sector coverage separates write age from completeness and exposes bounded unavailable/last-good/direct-proxy diagnostics. |
 | `get_economic_data` | Fed Funds, economic calendar, fuel prices, ECB FX, EU yield curve, earnings, COT, energy storage, BIS DSR + property prices. |
 | `get_country_macro` | IMF WEO bundle per country: inflation, current account, GDP/capita, unemployment, savings-investment gap (~210 countries). |
 | `get_eu_housing_cycle` | Eurostat annual house price index (prc_hpi_a), 10-yr sparkline per EU member + EA20/EU27. |
@@ -420,7 +420,7 @@ Resources come in two tiers. **Concrete resources** are surfaced by `resources/l
 
 | Resource URI | Backing data |
 |--------------|--------------|
-| `worldmonitor://seed-meta/freshness` | Market-data bootstrap freshness envelope only: `cached_at` and `stale`. A cheap health probe to detect a stuck seeder — no auth, no quota. |
+| `worldmonitor://seed-meta/freshness` | Stock market-data bootstrap write-age only: `cached_at` and `stale` for `seed-meta:market:stocks`. Does **not** certify sector valuation completeness — use `get_market_data` `valuationCoverage` (`sourceStatus`, unavailable/last-good/diagnostics). Cheap seeder health probe — no auth, no quota. |
 
 `resources/templates/list` — parameterised URI templates. Substitute the placeholder, then `resources/read` the concrete URI (auth required; consumes the Pro daily quota symmetrically with the equivalent `tools/call`):
 
