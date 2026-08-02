@@ -8,6 +8,8 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
   SEARCH_SCOPES,
   commandMatchesSearchScope,
+  panelCommandTargetId,
+  resolveIdleSelectionTerm,
   resultMatchesSearchScope,
   type SearchScope,
 } from '@/components/search-scope';
@@ -34,11 +36,6 @@ const CATEGORY_KEYS: Record<string, string> = {
 
 function kebabToCamel(s: string): string {
   return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-}
-
-function panelCommandTargetId(commandId: string): string | null {
-  if (!commandId.startsWith('panel:')) return null;
-  return commandId.slice(6).split('@')[0] || null;
 }
 
 function resolveCommandLabel(cmd: Command): string {
@@ -244,6 +241,16 @@ export class SearchModal {
       this.closeTimeoutId = null;
       this.overlay?.remove();
       this.overlay = null;
+      // remove() deferred state reset never ran — clear selection/results now
+      // so a mid-close reopen does not inherit the prior session index.
+      this.input = null;
+      this.resultsList = null;
+      this.chipsContainer = null;
+      this.scopeContainer = null;
+      this.results = [];
+      this.commandResults = [];
+      this.selectedIndex = 0;
+      this.lastSearchedQuery = '';
     }
     if (this.overlay) return;
     this.isMobile = isMobileDevice();
@@ -252,6 +259,8 @@ export class SearchModal {
     if (flightIdx >= 0) this.sources[flightIdx] = { type: 'flight', items: [] };
     this.currentFlightCallsign = null;
     this.flightSearchFired = false;
+    this.selectedIndex = 0;
+    this.lastSearchedQuery = '';
     this.activeScope = 'all';
     this.quickLaunchExamples = [];
     this.createModal();
@@ -455,6 +464,9 @@ export class SearchModal {
     this.selectedIndex = 0;
     this.quickLaunchExamples = [];
     this.debouncedSearch.cancel();
+    // Invalidate deferred mobile initial population so it cannot repaint the
+    // previous channel after the operator already switched scopes.
+    if (this.isMobile) this.mobileInitialPopulationGeneration += 1;
     if (this.overlay) this.overlay.dataset.searchScope = scope;
     this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
       const active = button.dataset.searchScope === scope;
@@ -534,6 +546,11 @@ export class SearchModal {
     if (!query) {
       this.showingAllCommands = false;
       this.commandResults = [];
+      // Drop flight trigger state so Enter on the idle deck cannot re-fire a
+      // prior "flight …" search after the operator cleared the input.
+      this.currentFlightCallsign = null;
+      this.flightSearchFired = false;
+      this.selectedIndex = 0;
       this.showRecentOrEmpty();
       if (this.isMobile) this.renderChips();
       return;
@@ -545,9 +562,14 @@ export class SearchModal {
 
     // "flight {callsign}" prefix: bypass command matching entirely — "flight ek36" contains
     // substrings like "light" that spuriously match unrelated commands (e.g. "Switch to light mode").
+    // Honor exclusive channels: panels/actions never surface flight entities.
     this.currentFlightCallsign = null;
     this.flightSearchFired = false;
-    if (rawInput.startsWith('flight ') && this.onFlightSearch) {
+    const flightPrefixAllowed =
+      rawInput.startsWith('flight ')
+      && !!this.onFlightSearch
+      && resultMatchesSearchScope(this.activeScope, 'flight');
+    if (flightPrefixAllowed) {
       const callsign = rawInput.slice(7).trim().toUpperCase();
       if (callsign.length > 0) {
         this.currentFlightCallsign = callsign;
@@ -598,7 +620,9 @@ export class SearchModal {
       'news', 'prediction', 'market', 'earthquake', 'outage',
       'conflict', 'hotspot', 'country',
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
-      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'
+      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator',
+      // Map-channel finance entities (must stay in sync with MAP_RESULT_TYPES).
+      'exchange', 'financialcenter', 'centralbank', 'commodityhub',
     ];
 
     const maxResults = this.isMobile ? 5 : MAX_RESULTS;
@@ -621,7 +645,10 @@ export class SearchModal {
 
   private showRecentOrEmpty(): void {
     this.results = [];
+    this.commandResults = [];
     this.quickLaunchExamples = [];
+    // Keep keyboard highlight aligned with the freshly painted idle list.
+    this.selectedIndex = 0;
 
     if (this.showingAllCommands) {
       this.renderAllCommandsList();
@@ -657,8 +684,7 @@ export class SearchModal {
       item.appendChild(title);
 
       item.addEventListener('click', () => {
-        if (this.input) this.input.value = term;
-        this.handleSearch();
+        this.applyProgrammaticQuery(term);
       });
 
       this.resultsList?.appendChild(item);
@@ -707,7 +733,7 @@ export class SearchModal {
     tips.forEach((tip, i) => {
       const example = t(tip.exampleKey);
       html += `
-        <div class="search-result-item tip-item${i === 0 ? ' selected' : ''}" data-tip-example="${escapeHtml(example)}">
+        <div class="search-result-item tip-item${i === this.selectedIndex ? ' selected' : ''}" data-tip-example="${escapeHtml(example)}">
           <span class="search-result-icon" aria-hidden="true">${tip.icon}</span>
           <div class="search-result-content">
             <div class="search-result-title">${escapeHtml(t(tip.key))}</div>
@@ -723,14 +749,19 @@ export class SearchModal {
     this.resultsList.querySelectorAll('.tip-item').forEach((el) => {
       el.addEventListener('click', () => {
         const example = (el as HTMLElement).dataset.tipExample || '';
-        if (this.input) {
-          this.input.value = example;
-          this.handleSearch();
-        }
+        this.applyProgrammaticQuery(example);
       });
     });
 
     this.appendSeeAllCommandsLink();
+  }
+
+  /** Apply a tip/chip/recent term without letting a pending keystroke debounce race it. */
+  private applyProgrammaticQuery(term: string): void {
+    if (!this.input) return;
+    this.debouncedSearch.cancel();
+    this.input.value = term;
+    this.handleSearch();
   }
 
   private appendSeeAllCommandsLink(): void {
@@ -990,10 +1021,7 @@ export class SearchModal {
     this.chipsContainer.querySelectorAll('.search-chip').forEach(el => {
       el.addEventListener('click', () => {
         const val = (el as HTMLElement).dataset.value || '';
-        if (this.input) {
-          this.input.value = val;
-          this.handleSearch();
-        }
+        this.applyProgrammaticQuery(val);
       });
     });
   }
@@ -1037,8 +1065,14 @@ export class SearchModal {
       case 'Enter':
         e.preventDefault();
         if (this.currentFlightCallsign && this.onFlightSearch && this.results.length === 0 && this.commandResults.length === 0) {
-          this.triggerFlightSearch(this.currentFlightCallsign);
-          return;
+          // Only auto-trigger flight when the input still holds a flight prefix;
+          // after clear, fall through to idle launch/recent selection instead.
+          const stillFlightPrefix = (this.input?.value.toLowerCase() || '').trim().startsWith('flight ');
+          if (stillFlightPrefix) {
+            this.triggerFlightSearch(this.currentFlightCallsign);
+            return;
+          }
+          this.currentFlightCallsign = null;
         }
         this.selectResult(this.selectedIndex);
         break;
@@ -1073,13 +1107,15 @@ export class SearchModal {
 
   private selectResult(index: number): void {
     if (this.totalResultCount === 0) {
-      const term = this.activeScope === 'all' && this.recentSearches.length > 0
-        ? this.recentSearches[index]
-        : this.quickLaunchExamples[index];
-      if (term && this.input) {
-        this.input.value = term;
-        this.handleSearch();
-      }
+      const inputEmpty = !(this.input?.value.trim());
+      const term = resolveIdleSelectionTerm(
+        this.activeScope,
+        this.recentSearches,
+        this.quickLaunchExamples,
+        index,
+        inputEmpty,
+      );
+      if (term) this.applyProgrammaticQuery(term);
       return;
     }
 

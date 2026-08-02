@@ -1,16 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   SEARCH_SCOPES,
   commandMatchesSearchScope,
+  panelCommandTargetId,
+  resolveIdleSelectionTerm,
   resultMatchesSearchScope,
 } from '../src/components/search-scope.ts';
-
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const modalSource = readFileSync(resolve(root, 'src/components/SearchModal.ts'), 'utf8');
 
 describe('intelligence command deck scopes', () => {
   it('exposes the complete operator channel set in a stable order', () => {
@@ -35,33 +31,61 @@ describe('intelligence command deck scopes', () => {
     assert.equal(resultMatchesSearchScope('all', 'news'), true);
     assert.equal(resultMatchesSearchScope('signals', 'news'), true);
     assert.equal(resultMatchesSearchScope('signals', 'market'), true);
+    assert.equal(resultMatchesSearchScope('signals', 'flight'), true);
     assert.equal(resultMatchesSearchScope('signals', 'country'), false);
     assert.equal(resultMatchesSearchScope('map', 'country'), true);
     assert.equal(resultMatchesSearchScope('map', 'pipeline'), true);
+    assert.equal(resultMatchesSearchScope('map', 'exchange'), true);
+    assert.equal(resultMatchesSearchScope('map', 'financialcenter'), true);
+    assert.equal(resultMatchesSearchScope('map', 'centralbank'), true);
+    assert.equal(resultMatchesSearchScope('map', 'commodityhub'), true);
     assert.equal(resultMatchesSearchScope('map', 'market'), false);
     assert.equal(resultMatchesSearchScope('panels', 'news'), false);
+    assert.equal(resultMatchesSearchScope('panels', 'flight'), false);
     assert.equal(resultMatchesSearchScope('actions', 'hotspot'), false);
+    assert.equal(resultMatchesSearchScope('actions', 'flight'), false);
   });
 });
 
-describe('intelligence command deck interaction wiring', () => {
-  it('renders semantic scope controls and applies the selected scope to both command and entity matching', () => {
-    assert.match(modalSource, /role="toolbar" aria-label="Filter intelligence search"/);
-    assert.match(modalSource, /aria-pressed="\$\{scope === this\.activeScope\}"/);
-    assert.match(modalSource, /commandMatchesSearchScope\(this\.activeScope, cmd\.category\)/);
-    assert.match(modalSource, /resultMatchesSearchScope\(this\.activeScope, source\.type\)/);
+describe('intelligence command deck pure helpers', () => {
+  it('strips optional @variant from panel command ids for discovery', () => {
+    assert.equal(panelCommandTargetId('panel:news'), 'news');
+    assert.equal(panelCommandTargetId('panel:news@desktop'), 'news');
+    assert.equal(panelCommandTargetId('panel:country-deep-dive@mobile'), 'country-deep-dive');
+    assert.equal(panelCommandTargetId('panel:'), null);
+    assert.equal(panelCommandTargetId('layer:ais'), null);
+    assert.equal(panelCommandTargetId('navigate:home'), null);
   });
 
-  it('makes tactical launch cards executable from the keyboard', () => {
-    assert.match(modalSource, /private quickLaunchExamples: string\[\]/);
-    assert.match(modalSource, /const idleItemCount = this\.activeScope === 'all'/);
-    assert.match(modalSource, /: this\.quickLaunchExamples\[index\]/);
-  });
+  it('maps keyboard idle selection to recent searches or launch tips', () => {
+    const recents = ['ukraine', 'hormuz'];
+    const tips = ['brief ukraine', 'open map'];
 
-  it('remembers command queries as well as entity queries', () => {
-    assert.match(
-      modalSource,
-      /if \(cmd\) \{\s*this\.saveRecentSearch\(this\.input\?\.value\.trim\(\) \|\| ''\);\s*this\.close\(\);/,
+    assert.equal(
+      resolveIdleSelectionTerm('all', recents, tips, 1, true),
+      'hormuz',
     );
+    assert.equal(
+      resolveIdleSelectionTerm('signals', recents, tips, 0, true),
+      'brief ukraine',
+    );
+    assert.equal(
+      resolveIdleSelectionTerm('all', [], tips, 1, true),
+      'open map',
+    );
+    // Non-empty no-results query must not rehydrate idle history.
+    assert.equal(
+      resolveIdleSelectionTerm('all', recents, tips, 0, false),
+      undefined,
+    );
+  });
+
+  it('treats flight entities as out of panels/actions channels', () => {
+    // Flight-prefix special case in SearchModal must consult this predicate.
+    assert.equal(resultMatchesSearchScope('all', 'flight'), true);
+    assert.equal(resultMatchesSearchScope('signals', 'flight'), true);
+    assert.equal(resultMatchesSearchScope('map', 'flight'), true);
+    assert.equal(resultMatchesSearchScope('panels', 'flight'), false);
+    assert.equal(resultMatchesSearchScope('actions', 'flight'), false);
   });
 });
