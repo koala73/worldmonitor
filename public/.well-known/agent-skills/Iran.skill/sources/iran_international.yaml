@@ -1,0 +1,51 @@
+source: "Iran International"
+type: "realtime"
+last_verified: "2026-04-14"
+lean: |
+  资金来源：沙特阿拉伯相关资本（明确的资金追踪困难，但与沙特反伊朗政策一致）。
+  强烈的反伊朗政权立场，经常刊登批评伊朗政权压制、IRGC 腐败、人权侵犯的报道。
+  虽然资金来源预设立场，但在伊朗国内动态观察中仍有独特价值。
+
+core_framework: |
+  Iran International 采用"政权监控 + 国内动态观察"框架，聚焦 IRGC 派系竞争、改革派声音、社会不满。
+  输出特点：高频率新闻报道、人物分析、IRGC 内部动向、经济困难报道。波斯语版比英文版更及时、更深入。
+  是战后观察伊朗 IRGC 内部分裂、政权稳定性、社会抵抗的**最主要公开来源**之一。
+
+key_concepts:
+  - IRGC faction monitoring (Quds Force, Basij, hardliner networks)
+  - Internal government power struggles
+  - Economic crisis and public grievances
+  - Protest movements and civil society
+  - Regime stability indicators
+  - Personnel appointments and removals
+  - Corruption and military asset allocation
+
+blind_spots: |
+  沙特资金背景导致对伊朗政权的声讨超过对沙特自身政策的批评。
+  对伊朗改革派的报道可能被过度罗曼化（沙特不想看到真正的伊朗改革，更想看到政权更替）。
+  英文版滞后 2-6 小时，且有内容淡化，不反映波斯语版的完整信息。
+  报道中关于伊朗经济的数据有时缺乏独立验证。
+  对伊朗与俄罗斯、中国合作的报道可能被低估（沙特与西方利益一致则报道）。
+
+best_for:
+  - **战后 IRGC 内部动向观察**（这是最关键的用途）
+  - 伊朗政权稳定性指标
+  - 伊朗国内改革派和异议声音
+  - 人事任免和权力竞争
+  - 经济困难对社会的冲击
+
+not_for:
+  - 伊朗军事能力评估（非专业焦点）
+  - 公正的伊朗政策分析（资金和立场明确单向）
+  - 区域平衡的分析
+
+signal_vs_noise: |
+  信号：**波斯语版**的 IRGC 人事变动、派系竞争、社会抵抗报道。英文版为二手、滞后的翻译。
+  噪声：对伊朗经济困难的夸大（确实存在，但报道强度超过事实）、对政权脆弱性的过度乐观评估。
+  关键使用方式：**用波斯语版作为 IRGC 动向的晴雨表，而非绝对事实。跨验证多个来源。**
+  沙特资金驱动：选择性地强调政权内部矛盾，但不会报道沙特在伊朗的失败或伊朗军事成功。
+
+primary_urls:
+  - https://www.iranintl.com/
+  - https://www.iranintl.com/en/iran (英文版，已滞后)
+  - https://www.iranintl.com/fa/ایران (波斯语版，更及时更深入)

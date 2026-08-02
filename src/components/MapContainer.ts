@@ -57,6 +57,8 @@ import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-temp
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export type { ScenarioVisualState, ScenarioResult };
 
@@ -212,6 +214,7 @@ export class MapContainer {
   private cachedTrafficAnomalies: ProtoTrafficAnomaly[] | null = null;
   private cachedDdosLocations: DdosLocationHit[] | null = null;
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
+  private iranSkillOverlay: HTMLElement | null = null;
   private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
@@ -683,6 +686,7 @@ export class MapContainer {
     for (const [layer, loading] of this.layerLoadingState) this.setLayerLoading(layer, loading);
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
+    this.updateIranSkillOverlay(this.initialState.layers);
     const pendingViewportActions = this.pendingViewportActions.splice(0);
     for (const action of pendingViewportActions) {
       if (action.type === 'view') this.setView(action.view, action.zoom);
@@ -808,8 +812,13 @@ export class MapContainer {
   public setLayers(layers: MapLayers): void {
     const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
     this.initialState = { ...this.initialState, layers: sanitized };
-    if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
+    if (this.useGlobe) {
+      this.globeMap?.setLayers(sanitized);
+      this.updateIranSkillOverlay(sanitized);
+      return;
+    }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
+    this.updateIranSkillOverlay(sanitized);
   }
 
   public getState(): MapContainerState {
@@ -1512,8 +1521,90 @@ export class MapContainer {
     return this.isMobile;
   }
 
+  private updateIranSkillOverlay(layers: MapLayers): void {
+    if (layers.iranAttacks) {
+      if (!this.iranSkillOverlay) {
+        this.iranSkillOverlay = document.createElement('div');
+        this.iranSkillOverlay.className = 'iran-skill-overlay';
+        this.iranSkillOverlay.style.cssText = `
+          position: absolute;
+          bottom: 80px;
+          right: 20px;
+          z-index: 1000;
+          background: rgba(15, 17, 26, 0.85);
+          border: 1px solid rgba(142, 68, 173, 0.4);
+          border-radius: 8px;
+          padding: 12px;
+          width: 260px;
+          font-family: sans-serif;
+          backdrop-filter: blur(8px);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+          pointer-events: auto;
+          transition: opacity 0.3s ease;
+        `;
+        setTrustedHtml(this.iranSkillOverlay, trustedHtml(`
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: bold; font-size: 11px; color: #e0aaff; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+              🔮 Iran.skill Predictions
+            </span>
+            <a href="/.well-known/agent-skills/Iran.skill/SKILL.md" target="_blank" style="font-size: 9px; color: #9b59b6; text-decoration: underline;">View Skill</a>
+          </div>
+          <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.3;">
+            Analytical probabilities based on 2,500-year historical patterns and decision-maker models.
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: #fff; margin-bottom: 2px;">
+                <span>Korea-style frozen conflict (180d)</span>
+                <span style="font-weight: bold; color: #2ecc71;">55%</span>
+              </div>
+              <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                <div style="width: 55%; height: 100%; background: #2ecc71; border-radius: 2px;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: #fff; margin-bottom: 2px;">
+                <span>Framework deal (90d)</span>
+                <span style="font-weight: bold; color: #f1c40f;">40%</span>
+              </div>
+              <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                <div style="width: 40%; height: 100%; background: #f1c40f; border-radius: 2px;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: #fff; margin-bottom: 2px;">
+                <span>Ceasefire collapse (30d)</span>
+                <span style="font-weight: bold; color: #e67e22;">18%</span>
+              </div>
+              <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                <div style="width: 18%; height: 100%; background: #e67e22; border-radius: 2px;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: #fff; margin-bottom: 2px;">
+                <span>Regime change</span>
+                <span style="font-weight: bold; color: #e74c3c;">&lt;8%</span>
+              </div>
+              <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                <div style="width: 8%; height: 100%; background: #e74c3c; border-radius: 2px;"></div>
+              </div>
+            </div>
+          </div>
+        `, "static map predictions overlay"));
+        this.container.appendChild(this.iranSkillOverlay);
+      }
+      this.iranSkillOverlay.style.display = 'block';
+    } else {
+      if (this.iranSkillOverlay) {
+        this.iranSkillOverlay.style.display = 'none';
+      }
+    }
+  }
+
   public destroy(): void {
     this.destroyed = true;
+    this.iranSkillOverlay?.remove();
+    this.iranSkillOverlay = null;
     this.rendererReady = false;
     this.resizeObserver?.disconnect();
     this.rendererDemandCleanup?.();

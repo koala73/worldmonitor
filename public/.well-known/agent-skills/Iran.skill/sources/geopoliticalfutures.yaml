@@ -1,0 +1,47 @@
+source: "Geopolitical Futures (Friedman Analysis)"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  订阅制商业模式，主要收入来自机构和个人订阅。George Friedman 主导的地缘政治预测机构。
+  商业中立立场：客户来自全球多方，包括各国政府、企业、投资机构。
+  伊朗分析聚焦结构性约束和长期权力竞争，而非意识形态或政策立场。
+
+core_framework: |
+  Geopolitical Futures 采用"约束理论"分析伊朗：地理、人口、资源、历史关系如何规定伊朗的战略选择。
+  输出特点：长期预测（5-20 年），强调反直觉的结构性力量，避免情感化的威胁评估。
+  关于伊朗的分析经常预测区域权力平衡的重新配置，而非简单的冲突升级路径。
+
+key_concepts:
+  - Geopolitical constraint theory
+  - Long-term power rebalancing in Middle East
+  - Iranian strategic imperatives and historical patterns
+  - Energy security and global trade route competition
+  - Great power competition (US/China/Russia in region)
+  - Demographic and resource sustainability
+
+blind_spots: |
+  基于订阅模式，预测需要足够的不确定性来维持客户续费，可能高估波动性。
+  Friedman 的地缘政治决定论有时低估了国内政治和个人决策者的作用。
+  对伊朗国内改革运动和社会变化的实时感知有限。
+  2026-02-28 之前的战争预测如今部分已失效，需要验证哪些约束理论仍然成立。
+
+best_for:
+  - 5+ 年跨度的战略规划
+  - 地缘政治结构的长期变化
+  - 伊朗在全球权力竞争中的位置
+  - 中东区域平衡重新配置的趋势
+
+not_for:
+  - 战术军事情报和短期预测
+  - 伊朗国内政治派系竞争
+  - 具体武器系统和技术能力
+  - 人道主义和社会议题
+
+signal_vs_noise: |
+  信号：关于长期地缘政治结构变化的分析、伊朗战略可选项的约束识别。
+  噪声：订阅模式驱动高确定性预言，但许多关键变量（伊朗国内政治、外国干预程度）具有高不确定性。
+  商业驱动：需要足够的"发展中"叙事来保持客户关注，可能高估大事件概率。
+
+primary_urls:
+  - https://www.geopoliticalfutures.com/search/iran
+  - https://www.geopoliticalfutures.com/crisis-watch

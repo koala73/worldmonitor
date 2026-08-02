@@ -1,9 +1,9 @@
 ---
 title: "Agent Skills Catalog"
-description: "Human-readable catalog of the 25 World Monitor agent skills advertised through the /.well-known/agent-skills/index.json discovery endpoint."
+description: "Human-readable catalog of the 26 World Monitor agent skills advertised through the /.well-known/agent-skills/index.json discovery endpoint."
 ---
 
-The catalog contains 25 World Monitor agent skills for agents that need a focused, ready-to-run recipe instead of a full OpenAPI crawl. Each skill is a public `SKILL.md` file with when-to-use guidance, auth shape, REST examples, response notes, and content-safety handling.
+The catalog contains 26 World Monitor agent skills for agents that need a focused, ready-to-run recipe instead of a full OpenAPI crawl. Each skill is a public `SKILL.md` file with when-to-use guidance, auth shape, REST examples, response notes, and content-safety handling.
 
 The machine-readable source of truth is [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json). Each row below links to the served recipe whose SHA-256 digest is pinned in that manifest.
 
@@ -31,6 +31,7 @@ X-WorldMonitor-Key: wm_<40-hex>
 | `fetch-country-brief` | Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code. Use when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md) |
 | `fetch-resilience-score` | Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country. Use when the user asks how resilient a country is, or wants its numeric resilience score, trend, or per-domain breakdown. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md) |
 | `check-country-risk` | Retrieve composite country risk intelligence — Country Instability Index (CII), travel advisory level, and active sanctions exposure — for one country by ISO code. Use when the user asks how risky or unstable a country is right now. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-country-risk/SKILL.md) |
+| `Iran.skill` | Geopolitical analysis OS with 2,500-year historical patterns, analyst models, and decision-maker predictions. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/Iran.skill/SKILL.md) |
 
 ### Conflict, Instability, And Security
 

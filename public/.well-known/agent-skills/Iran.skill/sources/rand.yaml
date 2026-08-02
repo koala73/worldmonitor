@@ -1,0 +1,45 @@
+source: "RAND Corporation"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  美国国防部和其他政府机构合同资金（占总预算 ~60%），但在伊朗研究中保持学术独立性。
+  倾向结构性技术与军事分析，避免明确的政策立场。
+  研究团队内部存在政治经济倾向差异（项目级差异）。
+
+core_framework: |
+  RAND 对伊朗的分析聚焦量化博弈论、军事能力建模和长期战略结构。
+  输出特点：报告技术性强，数据驱动，但项目资金来源（DOD vs. 智库基金）影响关键假设的选择。
+  区域分析偏向美国地缘政治框架，对伊朗国内动态理解深度有限。
+
+key_concepts:
+  - Deterrence theory in asymmetric conflict
+  - Military capability assessments (IRGC, Houthi proxy networks)
+  - Strategic patience vs. escalation windows
+  - Cost-benefit modeling for Iranian decision-makers
+  - Drone/missile proliferation economics
+  - Sanctions regime effectiveness modeling
+
+blind_spots: |
+  项目级差异：DOD 资助的军事分析 vs. 智库资助的区域分析框架差异明显。
+  伊朗国内政治（哈梅内意派、改革派、IRGC 派系竞争）被简化为单一决策者模型。
+  对伊朗经济动能（非正式市场、加密货币、印度贸易）的实时感知滞后。
+  2026-02-28 之前的军事能力评估数据现已部分失效。
+
+best_for:
+  - 理解美国战略规划框架和假设
+  - 长期军事力量对比建模
+  - 赤字融资和经济制裁的结构性影响
+
+not_for:
+  - 伊朗国内政治派系动态
+  - 实时信号和战术情报
+  - 中国/俄罗斯在伊朗的影响评估（经常被低估）
+
+signal_vs_noise: |
+  信号：对称破缺、防御性扩散、长期资源可持续性的技术分析。
+  噪声：对伊朗决策者自主性和非理性压力（国内政治、宗教正统性）的价值预设。
+  政府合同敏感性：DOD 相关项目的关键假设被锁定为政策兼容性，不会发布推翻政府战略的结论。
+
+primary_urls:
+  - https://www.rand.org/pubs/external_publications/EA1750.html
+  - https://www.rand.org/topics/iran.html

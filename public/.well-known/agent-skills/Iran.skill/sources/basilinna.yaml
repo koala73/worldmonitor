@@ -1,0 +1,49 @@
+source: "Basilinna (Business Risk Intelligence)"
+type: "data"
+last_verified: "2026-04-14"
+lean: |
+  商业咨询公司，主要客户为企业、保险公司、投资机构。收入驱动：订阅咨询费。
+  商业中立立场：面向企业风险评估，不受政府或意识形态资助。
+  伊朗分析聚焦经济影响、贸易中断、能源市场波动、供应链风险。
+
+core_framework: |
+  Basilinna 对伊朗的分析采用"企业风险评估"框架，强调冲突对全球商业的具体影响。
+  输出特点：霍尔木兹海峡油运中断成本、伊朗石油出口禁运对国际油价的影响、制裁对金融系统的冲击。
+  包含行业特定风险评估（航运、能源、农业、科技）。
+
+key_concepts:
+  - Strait of Hormuz chokepoint economics (20% global oil flow)
+  - Oil price volatility and energy market impact
+  - Financial sanctions regime and secondary effects
+  - Supply chain disruption mapping (semiconductors, metals, chemicals)
+  - Insurance and re-insurance implications
+  - Currency and commodity market exposure
+  - Shipping route alternatives and logistics costs
+
+blind_spots: |
+  客户驱动的偏差：强调短期商业中断而可能低估长期地缘政治重构。
+  关于伊朗经济实际韧性的数据有限（伊朗数据本身不透明）。
+  对非传统贸易路线（中国过境、加密货币）的评估可能滞后。
+  模型中关于冲突程度和持续时间的假设是企业规划假设，不一定反映真实情景。
+  2026-02-28 之前的贸易流向预测现已部分失效。
+
+best_for:
+  - 伊朗冲突对全球能源市场的影响
+  - 供应链中断的成本评估
+  - 企业层面的风险指标和对冲策略
+  - 金融市场波动性预测
+  - 航运和物流成本评估
+
+not_for:
+  - 伊朗政治或军事分析
+  - 地缘政治战略理解
+  - 人道主义或社会评估
+
+signal_vs_noise: |
+  信号：关于已知贸易流量的定量数据、霍尔木兹海峡的油运统计、供应链中的具体瓶颈。
+  噪声：冲突程度假设、持续时间预测、伊朗替代贸易路线的实际可行性。
+  商业驱动：倾向于强调最坏情景以正当化咨询费用，可能高估风险概率。
+
+primary_urls:
+  - https://www.basilinna.com/risk-analysis
+  - https://www.basilinna.com/geopolitics/iran-conflict

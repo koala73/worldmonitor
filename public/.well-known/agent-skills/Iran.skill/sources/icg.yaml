@@ -1,0 +1,47 @@
+source: "International Crisis Group (ICG)"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  欧洲基金会和北欧政府资助为主（荷兰、挪威、瑞典、瑞士）。
+  明确的冲突预防和对话促进使命，但也接受美国基金会资助（Ford Foundation 等）。
+  对伊朗的分析倾向理解历史背景和国内政治复杂性，经常批评单方面制裁。
+
+core_framework: |
+  ICG 采用"冲突根源分析 + 对话促进"框架，强调伊朗国内派系、经济困境、国际孤立如何推动极端化。
+  输出特点：深度国别报告（通常 30-50 页），涉及历史、宗教、经济背景。政策建议偏向降级而非对抗。
+  对伊朗核计划的分析更多从谈判可能性而非绝对威胁的视角出发。
+
+key_concepts:
+  - Conflict root causes and escalation cycles
+  - Elite fragmentation and hardliner dynamics
+  - Sanctions effectiveness and humanitarian costs
+  - JCPOA and nuclear diplomacy pathways
+  - Regional proxy conflict de-escalation
+  - Economic pressure vs. social resilience
+
+blind_spots: |
+  对欧洲多边外交的信心可能过度，低估了美国单边压力的持久效果。
+  关于中国-伊朗战略关系的分析深度有限，缺乏实时数据。
+  虽然研究严谨，但对伊朗军事现代化进程的了解相对不足。
+  2026-02-28 之前的对话渠道评估可能已失效（冲突升级后外交通道关闭）。
+
+best_for:
+  - 伊朗国内政治和派系动态
+  - 冲突升级的历史背景和根源
+  - 制裁的社会经济成本评估
+  - 外交和谈判路径分析
+  - 区域安全合作的可能性
+
+not_for:
+  - 实时军事情报和能力评估
+  - 美国战略决策框架理解
+  - 以色列安全威胁的技术评估
+
+signal_vs_noise: |
+  信号：伊朗国内政治派系的细致分析、历史背景在决策中的影响。
+  噪声：对谈判可能性的过度乐观，低估了伊朗硬派和美国鹰派的制约。
+  资金驱动的倾向：欧洲冲突预防议程可能高估了多边外交的可行性。
+
+primary_urls:
+  - https://www.crisisgroup.org/iran
+  - https://www.crisisgroup.org/middle-east-north-africa

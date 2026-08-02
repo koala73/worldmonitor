@@ -1,0 +1,47 @@
+source: "Atlantic Council, MENA Program"
+type: "institution"
+last_verified: "2026-04-14"
+lean: |
+  混合资金来源：美国政府合同（State Department, NATO-related）、欧洲基金会、海湾国家捐赠、企业赞助。
+  项目级差异极大：美政府合同的伊朗分析倾向安全关切，海湾国家资助的项目倾向地缘政治竞争。
+  总体偏向跨大西洋对齐和海湾盟国支持，但相对于 CSIS/WINEP 言论更平衡。
+
+core_framework: |
+  Atlantic Council 的伊朗分析混合多个视角：美国国防战略、欧洲外交、海湾国家安全利益。
+  输出特点：问题导向的政策报告，针对特定议题（比如伊朗-中国关系、核进展、代理网络）的简中等长度分析。
+  经常发布跨领域综合报告，但内部观点差异大。
+
+key_concepts:
+  - Transatlantic coordination on Iran
+  - Gulf state perspectives and GCC security
+  - Iran-China strategic partnership
+  - Nuclear proliferation and IAEA inspections
+  - Regional proxy networks and economic sanctions
+  - Humanitarian concerns and civil society
+
+blind_spots: |
+  项目级差异：同一机构内对伊朗核计划的报告可能从"威胁论"到"外交可能"不一致。
+  海湾国家资金的项目倾向低估伊朗经济韧性，高估制裁有效性。
+  美政府合同敏感性：与 RAND 类似，关键假设被锁定为政策兼容。
+  对伊朗国内社会流动和改革派的实时了解有限。
+  2026-02-28 之前的地缘政治评估部分失效，特别是伊朗-俄罗斯军事合作部分。
+
+best_for:
+  - 美欧伊朗政策协调理解
+  - 海湾盟国的战略关切
+  - 伊朗-中国经济纽带
+  - 跨域整合分析（能源、贸易、军事）
+
+not_for:
+  - 单一深度的专题研究
+  - 伊朗国内政治派系动态
+  - 实时信号和战术情报
+
+signal_vs_noise: |
+  信号：伊朗与中国的具体贸易数据、海湾国家的安全顾虑、美欧协调的具体进展。
+  噪声：项目差异导致同机构内逻辑框架可能相互矛盾，需要仔细甄别资金来源。
+  资金驱动：海湾国家资助项目经常强调伊朗威胁，政府合同项目强调制裁有效性。
+
+primary_urls:
+  - https://www.atlanticcouncil.org/programs/middle-east-north-africa-center/
+  - https://www.atlanticcouncil.org/issue/iran/

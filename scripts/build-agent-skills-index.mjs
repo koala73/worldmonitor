@@ -64,6 +64,7 @@ const INSTRUCTIONS = [
   '- Use `track-climate-hazards` when the user asks about floods, cyclones, droughts, heatwaves, wildfires, climate anomalies, or climate disruption headlines.',
   '- Use `monitor-health-alerts` when the user asks about disease outbreaks or PM2.5 air-quality health warnings.',
   '- Use `check-forecast-signals` when the user asks what World Monitor is forecasting, how probabilities shifted, or how calibrated the forecasts are.',
+  '- Use `Iran.skill` when the user asks for deep geopolitical analysis, 2,500-year historical patterns, or analyst/decision-maker predictions for the Iran crisis.',
   '',
   'Beyond these skills the MCP server exposes a broad catalog of tools — displacement, natural disasters, research, imagery, and more. Use them together to check whether a live event (a conflict, sanction, climate hazard, or chokepoint disruption) has a plausible market, health, energy, or supply-chain transmission path.',
   '',
@@ -125,7 +126,7 @@ function collectSkills() {
       type: 'skill-md',
       description: fm.description,
       url: `${PUBLIC_BASE}/.well-known/agent-skills/${name}/SKILL.md`,
-      digest: `sha256:${sha256Hex(bytes)}`,
+      digest: `sha256:${sha256Hex(lfMd)}`,
     };
   });
 }

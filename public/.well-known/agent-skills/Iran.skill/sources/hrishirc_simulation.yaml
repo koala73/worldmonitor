@@ -1,0 +1,47 @@
+source: "hrishirc/iran-war-2026-analysis (GitHub Simulation)"
+type: "data"
+last_verified: "2026-04-14"
+lean: |
+  开源项目，无直接资金来源评估（GitHub 个人项目）。作者身份和动机需自行调查。
+  数据聚合来源：公开情报（新闻、卫星图像、官方声明）+ 未经验证的假设。
+  本 YAML 记录的是**数据架构和模型结构**，不评估真实性或准确性——这是用户的责任。
+
+core_framework: |
+  76 个文件组织的 6 层情报架构：信号收集层、事件关联层、行为体网络层、场景推演层、级联模型层、决策支持层。
+  采用图数据库（Neo4j-ready）表示战争参与者、武器系统、目标、行动的关系网络。
+  包含时间序列事件日志、卫星图像 OSINT 注解、宣传信号分析、经济制裁追踪。
+
+key_concepts:
+  - Scenario tree modeling (base case, escalation branches, de-escalation paths)
+  - Cascade failure models (critical infrastructure, supply chain disruption)
+  - Disinformation signal mapping (Persian-language media analysis)
+  - Targeting database (military assets, economic chokepoints, civilian infrastructure)
+  - Humanitarian impact estimation
+  - International actor response modeling (US, China, Russia, EU intervention thresholds)
+
+blind_spots: |
+  数据收集方法论未透露，难以评估偏差来源。作者是否有伊朗背景或美国背景？GitHub 投资者是谁？
+  许多假设是一人制定的，缺乏同行评审或多源验证。
+  模型中关于伊朗决策者理性的假设可能过度，忽视了宗教或民族主义驱动的非理性选择。
+  对中国、俄罗斯干预阈值的估计缺乏现实政治依据，太多技术决定论。
+  2026-02-28 之前的数据现已失效，需要用户更新。
+
+best_for:
+  - 战争情景建模的技术架构参考
+  - OSINT 数据组织的开源范例
+  - 假设-驱动分析的教学案例
+  - 批判性数据评估的对象
+
+not_for:
+  - 直接决策依赖（精度和验证程度不足）
+  - 当前战术军事规划
+  - 未经独立验证的数据应用
+
+signal_vs_noise: |
+  信号：开源 OSINT 方法论本身、数据组织结构、场景树的逻辑一致性。
+  噪声：所有具体数值和因果关系都是一个或少数人的解释，可能受到认知偏差、资讯获取渠道限制的影响。
+  关键问题：作者与何方资助者或意识形态阵营的关联？GitHub contributions 历史是否显示持续更新和自我修正？
+
+primary_urls:
+  - https://hrishirc.github.io/iran-war-2026-analysis/simulation/master-simulation/
+  - https://github.com/hrishirc/iran-war-2026-analysis

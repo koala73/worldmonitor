@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Iran.skill — Geopolitical Analysis OS</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Playfair+Display:wght@700;900&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1a1a1a;--paper:#f5f0e8;--red:#c41e1e;--gold:#b8860b;--blue:#1e3a5f;--green:#2d6a4f;--gray:#6b7280;--card:#fffdf7}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Crimson Pro','Noto Serif SC',serif;background:var(--paper);color:var(--ink)}
+
+/* Language toggle */
+.lang-bar{display:flex;justify-content:center;gap:0.5rem;padding:0.8rem;position:sticky;top:0;background:var(--paper);z-index:100;border-bottom:1px solid rgba(0,0,0,0.06)}
+.lang-btn{font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 1.2rem;border:1px solid rgba(0,0,0,0.15);background:transparent;cursor:pointer;letter-spacing:0.05em;transition:all 0.2s}
+.lang-btn.active{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.lang-btn:hover:not(.active){background:rgba(0,0,0,0.04)}
+
+/* Content switching */
+.zh{display:none}.en{display:block}
+body.lang-zh .zh{display:block}
+body.lang-zh .en{display:none}
+
+.hero{text-align:center;padding:3rem 2rem 1.5rem}
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(2.5rem,6vw,4rem);font-weight:900}.hero h1 span{color:var(--red)}
+
+.sub{font-size:0.95rem;color:var(--gray);margin-top:0.3rem;max-width:600px;margin-left:auto;margin-right:auto}
+.tag{font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--gold);margin-top:1rem;letter-spacing:0.03em}
+
+.stats{display:flex;justify-content:center;gap:1.5rem;flex-wrap:wrap;padding:1rem;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);margin:0.5rem auto;max-width:900px}
+.s{text-align:center}.sn{font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:900;color:var(--red)}.sl{font-size:0.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:0.1em}
+
+.sec{max-width:1100px;margin:1.8rem auto 0.3rem;padding:0 1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--gray)}
+.sec2{max-width:1100px;margin:0 auto 0.8rem;padding:0 1.5rem;font-family:'Crimson Pro',serif;font-size:1rem;font-style:italic;color:var(--blue)}
+.g{max-width:1100px;margin:0 auto 1rem;padding:0 1.5rem;display:grid;gap:0.5rem}
+.g2{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.g3{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.g4{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.g5{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.g6{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.c{background:var(--card);border:1px solid rgba(0,0,0,0.06);padding:0.6rem}.c:hover{box-shadow:0 3px 10px rgba(0,0,0,0.05)}
+.cl{position:relative;padding-left:0.5rem}.cl::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%}
+.clr::before{background:var(--red)}.clb::before{background:var(--blue)}.clg::before{background:var(--gold)}
+
+/* Analyst cards */
+.tier{font-family:'JetBrains Mono',monospace;font-size:0.5rem;color:white;padding:1px 5px;display:inline-block;margin-bottom:0.2rem}
+.t1{background:var(--red)}.t2{background:var(--blue)}.t3{background:var(--gold)}.t4{background:var(--green)}.t5{background:#7c3aed}.t6{background:#be185d}.t7{background:var(--gray)}
+.an{font-size:0.8rem;font-weight:700}.ao{font-size:0.55rem;color:var(--gray)}.al{font-size:0.65rem;color:var(--blue);font-family:'Crimson Pro',serif;font-style:italic;margin-top:0.15rem;line-height:1.25}
+
+/* Decision makers */
+.dm{display:flex;gap:0.5rem;align-items:flex-start}.df{font-size:1.2rem;flex-shrink:0}.dn{font-size:0.8rem;font-weight:700}.dw{font-size:0.65rem;color:var(--red);font-family:'Crimson Pro',serif;font-style:italic}.dl{font-size:0.6rem;color:var(--gray);line-height:1.25}
+
+/* Empire */
+.em{border-left:3px solid var(--gold)}.ee{font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--gold)}.en2{font-size:0.82rem;font-weight:700;margin:0.15rem 0}.emod{font-size:0.7rem;color:var(--blue);font-family:'Crimson Pro',serif;font-style:italic}.emap{font-size:0.6rem;color:var(--gray);margin-top:0.15rem;line-height:1.25}
+
+/* Books */
+.bt{writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:0.5rem;color:var(--gold);letter-spacing:0.1em;flex-shrink:0;padding-right:0.3rem;border-right:2px solid rgba(184,134,11,0.2)}
+.bk{display:flex;gap:0.4rem}.bi{flex:1;min-width:0}.bn{font-size:0.75rem;font-weight:700;line-height:1.2}.ba{font-size:0.6rem;color:var(--gray)}.bw{font-size:0.6rem;color:var(--blue);font-family:'Crimson Pro',serif;font-style:italic;line-height:1.2;margin-top:0.1rem}
+
+/* Bars and watches */
+.sc{display:flex;align-items:center;margin-bottom:0.5rem}.scl{width:110px;font-size:0.75rem;flex-shrink:0}.scb{flex:1;height:20px;background:rgba(0,0,0,0.04);overflow:hidden}
+.sb{height:100%;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:700;color:white}
+.wi{display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid rgba(0,0,0,0.04);font-size:0.8rem}.wi:last-child{border-bottom:0}
+.wv{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.75rem}
+.up{color:var(--red)}.nt{color:var(--gray)}
+
+/* Chain */
+.ch{display:flex;align-items:center;overflow-x:auto;padding:0.4rem 1.5rem;font-size:0.65rem;max-width:1100px;margin:0 auto}
+.cn{white-space:nowrap;padding:0.3rem 0.4rem;background:rgba(196,30,30,0.08);border:1px solid rgba(196,30,30,0.15);font-family:'JetBrains Mono',monospace;flex-shrink:0}.cnw{background:rgba(196,30,30,0.2);font-weight:700}
+.ca{padding:0 0.2rem;color:var(--red);flex-shrink:0}
+
+/* Quote */
+.wux{max-width:700px;margin:1.5rem auto;text-align:center;padding:1.5rem}
+.wq{font-size:clamp(1rem,2.5vw,1.4rem);font-style:italic;line-height:1.6;color:var(--blue)}
+.ws{font-size:0.75rem;color:var(--gray);margin-top:0.6rem}
+
+.ft{text-align:center;padding:1.5rem;font-size:0.75rem;color:var(--gray);border-top:1px solid rgba(0,0,0,0.08);max-width:700px;margin:1rem auto 0}
+.ft a{color:var(--red);text-decoration:none}
+
+@media(max-width:700px){.g2,.g3,.g4{grid-template-columns:repeat(2,1fr)}.g5,.g6{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="lang-bar">
+  <button class="lang-btn active" onclick="setLang('en')">EN</button>
+  <button class="lang-btn" onclick="setLang('zh')">中文</button>
+</div>
+
+<div class="hero">
+<h1>Iran<span>.skill</span></h1>
+
+<!-- EN subtitle -->
+<div class="en">
+<div class="sub">119 files. 21 distilled analysts. 7 empire mental models. An AI-native geopolitical analysis operating system.</div>
+<div class="tag">"It ensures you've asked every question that should be asked — before you answer."</div>
+</div>
+
+<!-- ZH subtitle -->
+<div class="zh">
+<div class="sub">119个文件 · 2500年波斯历史 · 80年美国战争模式 · 一个AI能用的地缘政治分析OS</div>
+<div class="tag">「没有止损线的预测不是预测——是信仰」</div>
+</div>
+</div>
+
+<div class="stats">
+<div class="s"><div class="sn">119</div><div class="sl en">Files</div><div class="sl zh">分析文件</div></div>
+<div class="s"><div class="sn">21</div><div class="sl en">Analysts Distilled</div><div class="sl zh">蒸馏分析师</div></div>
+<div class="s"><div class="sn">12</div><div class="sl en">Decision-Maker Models</div><div class="sl zh">决策者模型</div></div>
+<div class="s"><div class="sn">7</div><div class="sl en">Empire Mental Models</div><div class="sl zh">帝国心智模型</div></div>
+<div class="s"><div class="sn">29</div><div class="sl en">Source Books</div><div class="sl zh">参考书目</div></div>
+<div class="s"><div class="sn">8</div><div class="sl en">Bias Scans</div><div class="sl zh">偏差扫描</div></div>
+</div>
+
+<!-- Scenario + Watchlist -->
+<div class="g g6" style="margin-top:1.5rem">
+<div class="c cl clr" style="padding:1rem">
+<div class="sec en" style="margin:0 0 0.6rem;padding:0">180-Day Scenarios · Apr 14, 2026</div>
+<div class="sec zh" style="margin:0 0 0.6rem;padding:0">180天场景 · 2026.04.14</div>
+<div class="sc"><div class="scl"><span class="en">Frozen Conflict ★</span><span class="zh">冻结冲突 ★</span></div><div class="scb"><div class="sb" style="width:55%;background:var(--blue)">50-60%</div></div></div>
+<div class="sc"><div class="scl"><span class="en">Framework Deal</span><span class="zh">框架协议</span></div><div class="scb"><div class="sb" style="width:40%;background:var(--gold)">35-45%</div></div></div>
+<div class="sc"><div class="scl"><span class="en">Ceasefire Collapse</span><span class="zh">停火崩溃</span></div><div class="scb"><div class="sb" style="width:18%;background:var(--red)">15-20%</div></div></div>
+<div class="sc"><div class="scl"><span class="en">Regime Change</span><span class="zh">政权更迭</span></div><div class="scb"><div class="sb" style="width:8%;background:var(--green)">&lt;8%</div></div></div>
+<div class="en" style="font-size:0.6rem;color:var(--gray);margin-top:0.4rem">Red Team executed · Audit trail available · Confidence: MC</div>
+<div class="zh" style="font-size:0.6rem;color:var(--gray);margin-top:0.4rem">Red Team已执行 · 审计链可追溯 · 置信度MC</div>
+</div>
+<div class="c cl clb" style="padding:1rem">
+<div class="sec" style="margin:0 0 0.6rem;padding:0"><span class="en">Live Watchlist</span><span class="zh">实时 Watchlist</span></div>
+<div class="wi"><span><span class="en">Hormuz</span><span class="zh">霍尔木兹</span></span><span class="wv up">~15/day ↓89%</span></div>
+<div class="wi"><span>Brent</span><span class="wv up">~$100 ↑40%</span></div>
+<div class="wi"><span><span class="en">Ceasefire</span><span class="zh">停火</span></span><span class="wv nt"><span class="en">Fragile · Expires 4/21</span><span class="zh">脆弱 · 4/21到期</span></span></div>
+<div class="wi"><span><span class="en">Enrichment Gap</span><span class="zh">浓缩谈判</span></span><span class="wv nt">5yr vs 20yr</span></div>
+<div class="wi"><span>vs Polymarket</span><span class="wv up"><span class="en">Nuke deal overpriced 10-15pp</span><span class="zh">核协议偏高10-15pp</span></span></div>
+</div>
+</div>
+
+<!-- ANALYSTS -->
+<div class="en">
+<div class="sec">🧠 21 Distilled Analysts — HOW they think, not WHAT they said</div>
+<div class="sec2">Each analyst distilled into: mental models + decision heuristics + expression DNA + honest limits. 30 activatable perspectives.</div>
+</div>
+<div class="zh">
+<div class="sec">🧠 21位蒸馏分析师 — 提取的是HOW they think，不是WHAT they said</div>
+<div class="sec2">每位被蒸馏为：心智模型 + 决策启发式 + 表达DNA + 诚实边界。30个可激活perspective。</div>
+</div>
+<div class="g g2">
+<div class="c" style="text-align:center"><span class="tier t1">P1</span><div class="an">Sadjadpour</div><div class="ao">Carnegie</div><div class="al en">"What the regime fears most = real threat"</div><div class="al zh">「最害怕什么=真威胁」</div></div>
+<div class="c" style="text-align:center"><span class="tier t1">P1</span><div class="an">Takeyh</div><div class="ao">CFR</div><div class="al en">"Survival = victory" — why deterrence fails</div><div class="al zh">「存活即胜利」</div></div>
+<div class="c" style="text-align:center"><span class="tier t1">P1</span><div class="an">Nasr</div><div class="ao">SAIS</div><div class="al en">Proxies are symbiotic, not controlled</div><div class="al zh">「共生网络非控制链」</div></div>
+<div class="c" style="text-align:center"><span class="tier t1">P1</span><div class="an">Vaez</div><div class="ao">ICG</div><div class="al en">Distrust is trauma, not tactics</div><div class="al zh">「不信任=创伤后遗症」</div></div>
+<div class="c" style="text-align:center"><span class="tier t1">P1</span><div class="an">Mousavian</div><div class="ao">Princeton</div><div class="al en">Zero enrichment = political suicide</div><div class="al zh">「零浓缩=政治自杀」</div></div>
+<div class="c" style="text-align:center"><span class="tier t2">P2</span><div class="an">Albright</div><div class="ao">ISIS</div><div class="al">Satellite + IAEA real-time</div></div>
+<div class="c" style="text-align:center"><span class="tier t2">P2</span><div class="an">Lewis</div><div class="ao">CNS</div><div class="al">Open-source engineering</div></div>
+<div class="c" style="text-align:center"><span class="tier t2">P2</span><div class="an">Nadimi</div><div class="ao">WINEP</div><div class="al">IRGC capability quantification</div></div>
+<div class="c" style="text-align:center"><span class="tier t3">P3</span><div class="an">Nephew</div><div class="ao">Columbia</div><div class="al">Sanctions as engineering</div></div>
+<div class="c" style="text-align:center"><span class="tier t4">P4</span><div class="an">Eyre</div><div class="ao"><span class="en">Independent</span><span class="zh">独立</span></div><div class="al">Hormuz = new strategic lever</div></div>
+<div class="c" style="text-align:center"><span class="tier t6">P6</span><div class="an">Parsi</div><div class="ao">Quincy</div><div class="al en">Promise discount rate: 80%</div><div class="al zh">承诺折扣率80%</div></div>
+<div class="c" style="text-align:center"><span class="tier t7">P7</span><div class="an">Hua Liming</div><div class="ao"><span class="en">Fmr Ambassador</span><span class="zh">前驻伊大使</span></div><div class="al en">China's cost/benefit calculus</div><div class="al zh">中国C/B比</div></div>
+</div>
+
+<!-- DECISION MAKERS -->
+<div class="en">
+<div class="sec">🎯 12 Decision-Maker Behavioral Models — Trigger → Response pairs</div>
+</div>
+<div class="zh">
+<div class="sec">🎯 12个决策者行为模型 — 触发→反应对 + 武侠映射</div>
+</div>
+<div class="g g3">
+<div class="c dm"><div class="df">🇺🇸</div><div><div class="dn">Trump</div><div class="dw en">Jacksonian punitive expedition + Nixonian exit</div><div class="dw zh">曹操 · 百万大军过不了江</div><div class="dl">Bluff ~60% · Deal-seeker</div></div></div>
+<div class="c dm"><div class="df">🇮🇷</div><div><div class="dn">Mojtaba ★</div><div class="dw en">36 days in office. Least transparent variable.</div><div class="dw zh">慕容复 · 继承复国</div><div class="dl"><span class="en">IRGC-backed · Data scarce</span><span class="zh">IRGC拱卫 · 数据极稀缺</span></div></div></div>
+<div class="c dm"><div class="df">🇮🇱</div><div><div class="dn">Netanyahu</div><div class="dw en">War = stay in power. Ceasefire = prison.</div><div class="dw zh">岳不群 · 借刀杀人</div><div class="dl"><span class="en">Spoiler mechanism · Oct election</span><span class="zh">战争=留任 · 停火=入狱</span></div></div></div>
+<div class="c dm"><div class="df">🇨🇳</div><div><div class="dn">Xi Jinping</div><div class="dw en">"Alive but not thriving" strategy</div><div class="dw zh">司马懿 · 吸星大法</div><div class="dl"><span class="en">Energy / De-dollar / Taiwan triangle</span><span class="zh">能源/去美元/台海</span></div></div></div>
+<div class="c dm"><div class="df">🇺🇸</div><div><div class="dn">Vance</div><div class="dw en">Isolationist constraint · 2028 positioning</div><div class="dw zh">提利昂 · 体系内异见者</div></div></div>
+<div class="c dm"><div class="df">🇮🇷</div><div><div class="dn">IRGC Command</div><div class="dw en">Collective decision-making · Hawks vs Pragmatists</div><div class="dw zh">诸葛亮 · 凌波微步</div></div></div>
+</div>
+
+<!-- ADVERSARIAL DEBATE -->
+<div class="en"><div class="sec">⚔️ Multi-Agent Adversarial Debate — When one perspective isn't enough</div></div>
+<div class="zh"><div class="sec">⚔️ 多轮 Agent 辩论 — 当单一视角不够时，让分析师真正交锋</div></div>
+<div class="g g6">
+<div class="c cl clr" style="padding:1rem">
+<div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--gray);line-height:2.2">
+<span class="en">
+<strong style="color:var(--ink)">Red Team says "strong objection" → auto-escalate to 5-round debate</strong><br>
+R1 Free statements → initial probabilities<br>
+R2 Direct clash → must quote &amp; rebut opponent<br>
+R3 Evidence duel → data, precedents, real-time signals<br>
+R4 <strong style="color:var(--red)">Steel Man</strong> → restate opponent's STRONGEST case<br>
+R5 Synthesis → convergence + <strong style="color:var(--blue)">disagreement map</strong>
+</span>
+<span class="zh">
+<strong style="color:var(--ink)">Red Team 反驳强度「强」→ 自动升级为5轮辩论</strong><br>
+第1轮 自由陈述 → 初始概率<br>
+第2轮 直接交锋 → 必须引用对方原话反驳<br>
+第3轮 证据对决 → 数据/先例/实时信号<br>
+第4轮 <strong style="color:var(--red)">钢人论证</strong> → 用最强方式重述对手论点<br>
+第5轮 综合 → 收敛点 + <strong style="color:var(--blue)">分歧图</strong>
+</span>
+</div>
+</div>
+<div class="c cl clb" style="padding:1rem">
+<div style="font-size:0.7rem;font-family:'JetBrains Mono',monospace;color:var(--gray);margin-bottom:0.5rem"><span class="en">EXAMPLE: Will ceasefire hold past 4/21?</span><span class="zh">示例：停火能撑过4/21吗？</span></div>
+<div style="font-size:0.8rem;margin-bottom:0.4rem"><strong>Sadjadpour</strong> <span style="color:var(--gray);font-size:0.7rem">vs</span> <strong>Parsi</strong> <span style="color:var(--gray);font-size:0.7rem">vs</span> <strong>Mead</strong></div>
+<div style="font-size:0.75rem;line-height:1.5">
+<span class="en">
+<strong style="color:var(--blue)">Converged:</strong> Both sides prefer extension over resumption (85%)<br>
+<strong style="color:var(--red)">Disputed:</strong> Netanyahu indirect escalation risk — Mead: 30%, Sadjadpour: 15%<br>
+<strong style="color:var(--gold)">Key signal:</strong> If 4/15 Israel-Lebanon talks fail → Mead is right
+</span>
+<span class="zh">
+<strong style="color:var(--blue)">收敛：</strong>双方都倾向延期而非恢复打击 (85%)<br>
+<strong style="color:var(--red)">分歧：</strong>Netanyahu间接升级风险 — Mead: 30%, Sadjadpour: 15%<br>
+<strong style="color:var(--gold)">关键信号：</strong>如果4/15以黎谈判失败 → Mead是对的
+</span>
+</div>
+</div>
+</div>
+
+<!-- EMPIRE MENTAL MODELS -->
+<div class="en">
+<div class="sec">📜 7 Persian Empire Mental Models — 2,500 years of decision DNA</div>
+<div class="sec2">Not history class. Operational tools with contemporary_mapping fields. Each YAML maps an ancient pattern to a 2026 variable.</div>
+</div>
+<div class="zh">
+<div class="sec">📜 7个波斯帝国心智模型 — 2500年决策基因</div>
+<div class="sec2">不是历史课。是理解「为什么他们这样想」的操作工具。每个YAML含contemporary_mapping。</div>
+</div>
+<div class="g g4">
+<div class="c em"><div class="ee">BC 559</div><div class="en2">Cyrus the Great</div><div class="emod"><span class="en">Inclusive Empire</span><span class="zh">包容性帝国</span></div><div class="emap"><span class="en">Strategic tolerance = stability</span><span class="zh">战略宽容=稳定</span></div></div>
+<div class="c em"><div class="ee">AD 1588</div><div class="en2"><span class="en">Shah Abbas I</span><span class="zh">阿巴斯一世</span></div><div class="emod"><span class="en">Sectarian State-Building</span><span class="zh">教派国家建构</span></div><div class="emap"><span class="en">IRGC = modern ghulam slave-soldiers</span><span class="zh">IRGC=现代ghulam</span></div></div>
+<div class="c em"><div class="ee">AD 1789-1925</div><div class="en2"><span class="en">Qajar Dynasty</span><span class="zh">恺加王朝</span></div><div class="emod"><span class="en">Humiliation Memory</span><span class="zh">屈辱记忆</span></div><div class="emap"><span class="en">Root of "zero enrichment" allergy</span><span class="zh">零浓缩过敏的根源</span></div></div>
+<div class="c em"><div class="ee">AD 1951</div><div class="en2">Mosaddegh ★★★</div><div class="emod"><span class="en">Democracy Interrupted</span><span class="zh">民主中断</span></div><div class="emap"><span class="en">1953 = source code of all distrust</span><span class="zh">1953=不信任源代码</span></div></div>
+<div class="c em"><div class="ee">AD 1979</div><div class="en2">Khomeini ★★★</div><div class="emod"><span class="en">Revolutionary Will</span><span class="zh">革命意志</span></div><div class="emap"><span class="en">"Drinking poison" exit model → Path A</span><span class="zh">喝毒酒退出 → A路径文化基础</span></div></div>
+</div>
+
+<!-- Sovereignty Trauma Chain -->
+<div class="en"><div class="sec">⛓ Sovereignty Trauma Chain — Each new betrayal reactivates all previous ones</div></div>
+<div class="zh"><div class="sec">⛓ 主权创伤递归链 — 每次新创伤激活全部前次记忆</div></div>
+<div class="ch">
+<div class="cn">1901</div><div class="ca">→</div>
+<div class="cn">1907</div><div class="ca">→</div>
+<div class="cn">1953 CIA</div><div class="ca">→</div>
+<div class="cn">1979</div><div class="ca">→</div>
+<div class="cn">1988</div><div class="ca">→</div>
+<div class="cn">2015 JCPOA</div><div class="ca">→</div>
+<div class="cn">2018 <span class="en">Torn up</span><span class="zh">撕毁</span></div><div class="ca">→</div>
+<div class="cn cnw">2026 <span class="en">Airstrikes</span><span class="zh">空袭</span></div>
+</div>
+
+<!-- BOOKS -->
+<div class="en">
+<div class="sec">📚 29 Source Books (5 tiers, incl. Persian) — The knowledge base behind the mental models</div>
+</div>
+<div class="zh">
+<div class="sec">📚 核心书目（29本·5层·含波斯语）— Skill的心智模型提取源</div>
+</div>
+<div class="g g5">
+<div class="c bk"><div class="bt">CORE</div><div class="bi"><div class="bn">Iran: A Modern History</div><div class="ba">Amanat · 2018</div><div class="bw"><span class="en">Millennium history → all leader YAMLs</span><span class="zh">千年通史 → leaders/*.yaml</span></div></div></div>
+<div class="c bk"><div class="bt">CORE</div><div class="bi"><div class="bn">Shahnameh 列王纪</div><div class="ba">Ferdowsi · ~1010</div><div class="bw"><span class="en">1000-year-old poem → cultural psychology engine</span><span class="zh">一千年前的诗 → 文化心理原文</span></div></div></div>
+<div class="c bk"><div class="bt">CORE</div><div class="bi"><div class="bn">Iran's Grand Strategy</div><div class="ba">Nasr · 2024</div><div class="bw"><span class="en">Inside view → all frameworks</span><span class="zh">内部视角 → frameworks/</span></div></div></div>
+<div class="c bk"><div class="bt">CORE</div><div class="bi"><div class="bn">Vanguard of the Imam</div><div class="ba">Ostovar · 2016</div><div class="bw"><span class="en">IRGC: militia → empire</span><span class="zh">IRGC从民兵到帝国</span></div></div></div>
+<div class="c bk"><div class="bt">T3</div><div class="bi"><div class="bn">Treacherous Alliance</div><div class="ba">Parsi · 2007</div><div class="bw"><span class="en">Israel-Iran-US secret triangle</span><span class="zh">以伊美三角秘史</span></div></div></div>
+<div class="c bk"><div class="bt">波斯语</div><div class="bi"><div class="bn">تاریخ جامع ایران</div><div class="ba">20 vols · 170+ scholars</div><div class="bw"><span class="en">Iran's own narrative framework</span><span class="zh">伊朗自己的叙事框架</span></div></div></div>
+</div>
+
+<!-- Quote — different for each language -->
+<div class="wux">
+<div class="en">
+<div class="wq">"Its greatest value is not giving the right answer — but ensuring that before you give an answer, you've asked all the questions that should be asked."</div>
+<div class="ws">— Simulated Brookings peer review · Grade: B+/A-</div>
+</div>
+<div class="zh">
+<div class="wq">「江湖上有一条海峡，二十一里宽。<br>四十七天前，它被封死了。」</div>
+<div class="ws">——《霍尔木兹论剑》· Iran.skill 武侠版周预测</div>
+</div>
+</div>
+
+<div class="ft">
+<p>Built with <a href="https://github.com/alchaincyf/nuwa-skill">女娲 · Skill</a></p>
+<p style="margin-top:0.4rem"><span class="en">Based on 30+ scholars, 29 books, and Ferdowsi — a poet from a thousand years ago</span><span class="zh">源自30+位学者、29本书、以及Ferdowsi——一千年前的诗人</span></p>
+</div>
+
+<script>
+function setLang(lang) {
+  document.body.className = lang === 'zh' ? 'lang-zh' : '';
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
