@@ -23,7 +23,8 @@ const SPAN1_KEYS = [
   'live-webcams',
 ];
 const SPAN2_DEFAULT_KEYS = ['threat-timeline', 'gdelt-intel', 'energy-complex', 'strategic-posture', 'global-procurement'];
-const WIDE_KEYS = ['live-news', 'live-webcams'];
+const WIDE_KEYS = ['live-news'];
+const RESPONSIVE_WIDE_KEYS = ['live-webcams'];
 
 // The two pin blocks, extracted by their shared height declarations. Regex
 // anchors on a line START so `min-height:` can never satisfy it (review P2).
@@ -62,6 +63,20 @@ describe('always-full panel row stability (#5332)', () => {
         new RegExp(`#panelsGrid > \\.panel\\[data-panel="${key}"\\]\\.panel-wide:not\\(\\.resized\\):not\\(\\.span-1\\)`),
         `'${key}' uses .panel-wide (2x2), needs the wide pin excluding user-resized span states (review P1: a .panel-wide.span-1.resized panel must NOT stay 764px)`,
       );
+    }
+  });
+
+  it('keeps the natural webcam wall viewport-aware while preserving row minimums', () => {
+    const selector = '#panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4)';
+    const start = css.indexOf(selector);
+    assert.notEqual(start, -1, 'live-webcams needs a natural-footprint selector');
+    const block = css.slice(start, css.indexOf('}', start) + 1);
+    assert.match(block, /height:\s*min\(/, 'natural webcam height must be viewport-capped');
+    assert.match(block, /100dvh/, 'webcam height must respond to the dynamic viewport');
+    assert.match(block, /max\(var\(--dashboard-first-grid-reservation\)/, 'webcam height must retain the two-row minimum');
+    for (const key of RESPONSIVE_WIDE_KEYS) {
+      assert.match(block, new RegExp(`data-panel="${key}"`), `'${key}' must use the responsive wide-panel footprint`);
+      assert.match(block, /:not\(\.resized\)/, `'${key}' must preserve explicit user-resized spans`);
     }
   });
 

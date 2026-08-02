@@ -1761,11 +1761,11 @@ canvas,
   height: var(--dashboard-panel-row-max);
 }
 
-/* Offenders that are two-row by default — span-2 defaults and the 2x2
-   .panel-wide pair — get the populated two-row max (2 rows + gap) so their
-   footprint is identical loading vs populated, INCLUDING the deferred-shell
-   phase (the shell carries the same classes, so shell->panel swap is
-   shift-free). The pins apply to NATURAL footprints only: user-resized
+/* Offenders that are two-row by default — span-2 defaults and
+   the .panel-wide live-news panel — get the populated two-row max (2 rows +
+   gap) so its footprint is identical loading vs populated, INCLUDING the
+   deferred-shell phase (the shell carries the same classes, so shell->panel
+   swap is shift-free). The pins apply to NATURAL footprints only: user-resized
    panels (.resized, PR #5333 review P1) and explicit .span-N overrides keep
    the resize contract, and the #panelsGrid scope keeps panels dragged into
    the ultra-wide .map-bottom-grid (height:100%/1fr tracks) on that grid's
@@ -1775,9 +1775,22 @@ canvas,
 #panelsGrid > .panel[data-panel="energy-complex"].span-2:not(.resized),
 #panelsGrid > .panel[data-panel="strategic-posture"].span-2:not(.resized),
 #panelsGrid > .panel[data-panel="global-procurement"].span-2:not(.resized),
-#panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
-#panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+#panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
   height: calc(var(--dashboard-panel-row-max) * 2 + var(--dashboard-grid-gap));
+}
+
+/* The webcam wall is a 2x2 viewport surface, not a document-height panel.
+   Keep the CLS reservation on normal/tall windows, but cap the natural
+   footprint on short desktop windows so all four cells remain reachable in
+   the viewport. Explicit user-resized spans retain the normal resize
+   contract. The first-grid reservation prevents the two rows from collapsing
+   below their minimum track height on unusually short viewports. Reserve the
+   sticky dashboard chrome above the scrolled panel as well. */
+#panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+  height: min(
+    calc(var(--dashboard-panel-row-max) * 2 + var(--dashboard-grid-gap)),
+    max(var(--dashboard-first-grid-reservation), calc(100dvh - 64px))
+  );
 }
 
 .panel.span-3 {
