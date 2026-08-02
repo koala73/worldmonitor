@@ -33,6 +33,7 @@ const {
   classifyKey,
   healthResponseBody,
   computeOverallStatus,
+  hasExpiredRolloutPending,
   STATUS_COUNTS,
   BOOTSTRAP_KEYS,
   SEED_META,
@@ -559,6 +560,42 @@ test('freshness monitor excuses a rollout-pending key only while its own deadlin
   assert.equal(isRolloutPendingProblem(rolloutProblem(), BEFORE_DEADLINE), true);
   assert.equal(isRolloutPendingProblem(rolloutProblem(), AT_DEADLINE), false);
   assert.equal(isRolloutPendingProblem(rolloutProblem(), AFTER_DEADLINE), false);
+});
+
+test('freshness monitor refuses a deadline further out than one daily window', () => {
+  // Proven reachable by the cross-model pass: without an independent bound here,
+  // `{rolloutPendingUntil: '2099-01-01'}` is excused, so one bad deadline in the
+  // payload silences these keys in CI effectively forever. The gate consumes a
+  // network payload and must not take its own exemption on trust.
+  assert.equal(isRolloutPendingProblem(rolloutProblem({ rolloutPendingUntil: '2099-01-01T00:00:00Z' }), BEFORE_DEADLINE), false);
+  const justInside = new Date(BEFORE_DEADLINE + 23 * 60 * 60 * 1000).toISOString();
+  const justOutside = new Date(BEFORE_DEADLINE + 25 * 60 * 60 * 1000).toISOString();
+  assert.equal(isRolloutPendingProblem(rolloutProblem({ rolloutPendingUntil: justInside }), BEFORE_DEADLINE), true);
+  assert.equal(isRolloutPendingProblem(rolloutProblem({ rolloutPendingUntil: justOutside }), BEFORE_DEADLINE), false);
+});
+
+test('a cached verdict is not served once its own rollout deadline has passed', () => {
+  // The 60s verdict cache must not outlive the one value in the payload that is
+  // exact to the second. Proven reachable by the cross-model pass: a snapshot
+  // written just before a deadline kept serving ROLLOUT_PENDING after it.
+  const pending = { status: 'ROLLOUT_PENDING', records: 0, rolloutPendingUntil: new Date(US_UNTIL).toISOString() };
+  const compactSnap = { status: 'WARNING', problems: { [US]: pending } };
+  const fullSnap = { status: 'WARNING', checks: { [US]: pending } };
+
+  assert.equal(hasExpiredRolloutPending(compactSnap, BEFORE_DEADLINE), false, 'inside the window the cache is fine');
+  assert.equal(hasExpiredRolloutPending(compactSnap, AFTER_DEADLINE), true, 'past it, force a fresh sweep');
+  assert.equal(hasExpiredRolloutPending(fullSnap, AFTER_DEADLINE), true, 'both snapshot shapes');
+  assert.equal(hasExpiredRolloutPending(compactSnap, AT_DEADLINE), true, 'boundary is inclusive of expiry');
+  assert.equal(
+    hasExpiredRolloutPending({ status: 'WARNING', problems: { [US]: { status: 'ROLLOUT_PENDING', records: 0 } } }, BEFORE_DEADLINE),
+    true,
+    'an entry that cannot prove it is still inside its window is not served warm',
+  );
+  assert.equal(
+    hasExpiredRolloutPending({ status: 'WARNING', problems: { other: { status: 'STALE_SEED' } } }, AFTER_DEADLINE),
+    false,
+    'unrelated problems never force a sweep',
+  );
 });
 
 test('freshness monitor fails closed on a missing or unparseable deadline', () => {

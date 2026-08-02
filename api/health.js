@@ -1562,6 +1562,25 @@ function isProblemStatus(status) {
 }
 
 /**
+ * True when a cached verdict still carries a ROLLOUT_PENDING entry whose own
+ * published deadline has already passed — i.e. the cache is about to serve a
+ * softening that expired. Reads both snapshot shapes: the full one keyed by
+ * `checks`, the compact one by `problems`.
+ */
+function hasExpiredRolloutPending(snapshot, now) {
+  const entries = snapshot?.checks ?? snapshot?.problems;
+  if (!entries || typeof entries !== 'object') return false;
+  for (const entry of Object.values(entries)) {
+    if (entry?.status !== 'ROLLOUT_PENDING') continue;
+    const until = Date.parse(entry?.rolloutPendingUntil ?? '');
+    // An unparseable deadline is treated as expired: a ROLLOUT_PENDING entry
+    // that cannot prove it is still inside its window must not be served warm.
+    if (!Number.isFinite(until) || now >= until) return true;
+  }
+  return false;
+}
+
+/**
  * Bucket counts -> the endpoint's overall verdict.
  *
  * Extracted from the handler so it is reachable from tests. It used to be inline
@@ -1763,7 +1782,15 @@ export default async function handler(req, ctx) {
     if (!snapshotResult) throw new Error('Redis request failed');
     if (snapshotResult[0]?.error) throw new Error('Redis snapshot read failed');
     const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, Date.now(), { requireChecks: !compact });
-    if (cachedSnapshot) return healthResponse(cachedSnapshot, compact, headers);
+    // A rollout deadline is the one promise in this payload that is exact to the
+    // second, so the 60s verdict cache must not outlive it: a snapshot written
+    // just before a deadline would otherwise keep serving ROLLOUT_PENDING (and
+    // keep excusing the key downstream) for up to a minute after the softening
+    // was supposed to end. Sweep fresh instead — this can only fire in the one
+    // minute straddling a deadline, at most once per rollout.
+    if (cachedSnapshot && !hasExpiredRolloutPending(cachedSnapshot, Date.now())) {
+      return healthResponse(cachedSnapshot, compact, headers);
+    }
 
     refreshLockToken = `${now}:${crypto.randomUUID()}`;
     let lockResult = await redisPipeline([[
@@ -2047,6 +2074,7 @@ export const __testing__ = {
   ROLLOUT_PENDING_UNTIL_MS,
   ROLLOUT_PENDING_FROM_MS,
   computeOverallStatus,
+  hasExpiredRolloutPending,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,
