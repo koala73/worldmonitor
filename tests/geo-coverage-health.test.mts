@@ -7,7 +7,7 @@
  *
  *   1. shared/source-geography.json stays in sync with the feed catalog
  *      (every mapped name resolves, every ISO2 is known)
- *   2. strategic floors hold (UA/PL/TW/PK ≥ 1 EN default-on local source)
+ *   2. strategic floors hold (UA/PL/TW/PK/CA ≥ 1 EN default-on local source)
  *   3. the zeroDefaultOnAllowlist in shared/geo-coverage-policy.json matches
  *      reality EXACTLY — both directions: undocumented new gaps fail, and so
  *      do stale entries once a pack lands default-on local coverage
@@ -35,8 +35,107 @@ import {
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Strategic floors the epic pins — must stay in policy so CI cannot go green by emptying floors. */
-const STRATEGIC_FLOOR_ISO2 = ['UA', 'PL', 'TW', 'PK'] as const;
+const STRATEGIC_FLOOR_ISO2 = ['UA', 'PL', 'TW', 'PK', 'CA'] as const;
 const STRATEGIC_FLOOR_MIN = 1;
+
+/**
+ * Independent classification contract for every protected, rollout, Canada,
+ * and theater-preset source. Keep this exhaustive: key-set equality below
+ * fails closed when any required registry changes, while exact arrays prevent
+ * a regional desk (including reviewed non-local []) from masking a local gap.
+ */
+const EXPECTED_REQUIRED_SOURCE_GEOGRAPHY = new Map<string, readonly string[]>([
+  ['Actualite.cd', ['CD']],
+  ['Africa News', []],
+  ['Africanews', []],
+  ['Aftenposten', ['NO']],
+  ['Al Arabiya', []],
+  ['Al Jazeera', []],
+  ['Arab News', ['SA']],
+  ['Arctic Today', []],
+  ['Armenpress', ['AM']],
+  ['Asharq Business', ['SA']],
+  ['Azertag', ['AZ']],
+  ['BBC Africa', []],
+  ['BBC Middle East', []],
+  ['BBC Persian', ['IR']],
+  ['CBC News', ['CA']],
+  ['Channels TV', ['NG']],
+  ['Citi Newsroom', ['GH']],
+  ['Civil.ge', ['GE']],
+  ['CNA', ['SG']],
+  ['Dabanga Sudan', ['SD']],
+  ['Daily Sabah', ['TR']],
+  ['Daily Trust', ['NG']],
+  ['Dawn', ['PK']],
+  ['Digi24', ['RO']],
+  ['Dnevnik', ['BG']],
+  ['DR Nyheder', ['DK']],
+  ['ERR News', ['EE']],
+  ['Ethiopia Insight', ['ET']],
+  ['Eurasianet', []],
+  ['Focus Taiwan', ['TW']],
+  ['G4Media', ['RO']],
+  ['Geo News', ['PK']],
+  ['Global News', ['CA']],
+  ['Globe and Mail', ['CA']],
+  ['Guardian ME', []],
+  ['Haaretz', ['IL']],
+  ['Hiiraan Online', ['SO']],
+  ['HotNews', ['RO']],
+  ['Hromadske EN', ['UA']],
+  ['Iran International', ['IR']],
+  ['Irrawaddy', ['MM']],
+  ['Island Times (Palau)', ['PW']],
+  ['ISW', []],
+  ['Jakarta Post', ['ID']],
+  ['JAMnews', ['AM', 'AZ', 'GE']],
+  ['Japan Today', ['JP']],
+  ['Jerusalem Post', ['IL']],
+  ['Kyiv Independent', ['UA']],
+  ['Le Quotidien', ['SN']],
+  ['LRT English', ['LT']],
+  ['LSM English', ['LV']],
+  ['Meduza', ['RU']],
+  ['Moscow Times', ['RU']],
+  ['MyJoyOnline', ['GH']],
+  ['NewsMaker', ['MD']],
+  ['Nikkei Asia', ['JP']],
+  ['NRK', ['NO']],
+  ['NV EN', ['UA']],
+  ['OC Media', ['AM', 'AZ', 'GE']],
+  ['Oman Observer', ['OM']],
+  ['Premium Times', ['NG']],
+  ['Radio Okapi', ['CD']],
+  ['Radio Tamazuj', ['SD', 'SS']],
+  ['Rappler', ['PH']],
+  ['Reuters Asia', []],
+  ['RFE/RL Central Asia', []],
+  ['RFI Afrique', []],
+  ['Rudaw', ['IQ']],
+  ['Rzeczpospolita', ['PL']],
+  ['Sahel Crisis', []],
+  ['Seznam Zprávy', ['CZ']],
+  ['South China Morning Post', ['CN']],
+  ['Suspilne', ['UA']],
+  ['Taipei Times', ['TW']],
+  ['Taiwan News', ['TW']],
+  ['The Astana Times', ['KZ']],
+  ['The Diplomat', []],
+  ['The National', ['AE']],
+  ['The Reporter Ethiopia', ['ET']],
+  ['The Star (Malaysia)', ['MY']],
+  ['The Times of Central Asia', []],
+  ['ThisDay', ['NG']],
+  ['TVN24', ['PL']],
+  ['Ukrainska Pravda EN', ['UA']],
+  ['Ukrinform', ['UA']],
+  ['Vanguard Nigeria', ['NG']],
+  ['Yle News', ['FI']],
+  ['Ynetnews', ['IL']],
+  ['Zerkalo', ['BY']],
+  ['Ziarul de Gardă', ['MD']],
+]);
 
 let inputs: Awaited<ReturnType<typeof loadGeoCoverageInputs>>;
 
@@ -49,8 +148,24 @@ after(() => {
 });
 
 describe('geographic coverage health (#5957)', () => {
-  it('source-geography map is in sync with the catalog and geography model', () => {
+  it('source-geography classifies required sources and matches the catalog/geography model', () => {
     assert.deepEqual(validateSourceGeography(inputs), []);
+  });
+
+  it('pins every required source to an independent exact classification (#6058)', () => {
+    assert.deepEqual(
+      [...EXPECTED_REQUIRED_SOURCE_GEOGRAPHY.keys()].sort((a, b) => a.localeCompare(b)),
+      [...inputs.requiredMappedSourceNames].sort((a, b) => a.localeCompare(b)),
+      'required source registries and the exhaustive expected classification fixture drifted',
+    );
+
+    for (const [name, expectedIso2] of EXPECTED_REQUIRED_SOURCE_GEOGRAPHY) {
+      assert.deepEqual(
+        inputs.sourceGeography.get(name),
+        expectedIso2,
+        `${name} geography classification drifted`,
+      );
+    }
   });
 
   it('policy references only real keyCountries', () => {
@@ -101,12 +216,25 @@ describe('geographic coverage health (#5957)', () => {
         ['Not A Real Feed', ['US']],
         ['BBC World', ['ZZ', 'US', 'US']],
       ]),
+      requiredMappedSourceNames: new Set<string>(),
     };
     assert.deepEqual(validateSourceGeography(malformed), [
       'source-geography.json: "Not A Real Feed" is not a configured feed source '
         + '(rename in src/config/feeds.ts or fix the map)',
       'source-geography.json: "BBC World" lists duplicate ISO2 codes — each country must appear once',
       'source-geography.json: "BBC World" tags unknown ISO2 "ZZ"',
+    ]);
+  });
+
+  it('distinguishes a reviewed non-local source from a missing classification', () => {
+    const classified = {
+      sourceGeography: new Map([['BBC Africa', []]]),
+      catalogNames: new Set(['BBC Africa', 'ISW']),
+      validIso2: new Set(['GB', 'US']),
+      requiredMappedSourceNames: new Set(['BBC Africa', 'ISW']),
+    };
+    assert.deepEqual(validateSourceGeography(classified), [
+      'source-geography.json: required source "ISW" has no geography classification',
     ]);
   });
 
@@ -126,7 +254,7 @@ describe('geographic coverage health (#5957)', () => {
     assert.equal(violations.length, 1);
   });
 
-  it('pins strategic floors UA/PL/TW/PK at ≥1 in policy (not just live counts)', () => {
+  it('pins strategic floors UA/PL/TW/PK/CA at ≥1 in policy (not just live counts)', () => {
     const floors = inputs.policy.floors ?? {};
     for (const iso2 of STRATEGIC_FLOOR_ISO2) {
       const floor = floors[iso2] ?? 0;
@@ -138,7 +266,7 @@ describe('geographic coverage health (#5957)', () => {
     }
   });
 
-  it('strategic floors hold (UA/PL/TW/PK ≥ 1 EN default-on local source)', () => {
+  it('strategic floors hold (UA/PL/TW/PK/CA ≥ 1 EN default-on local source)', () => {
     const rows = computeGeoCoverage(inputs);
     for (const row of rows) {
       assert.ok(

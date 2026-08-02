@@ -4,23 +4,25 @@
     "",
     "floors: minimum EN default-on LOCAL sources (shared/source-geography.json)",
     "required per strategic keyCountry. v1 floors come from the epic sequencing:",
-    "UA/PL after P0 (#5949/#5950), TW/PK after P1 Indo-Pacific (#5954).",
+    "UA/PL after P0 (#5949/#5950), TW/PK after P1 Indo-Pacific (#5954),",
+    "and CA after the Canada source pack (#5960).",
     "",
     "zeroDefaultOnAllowlist: keyCountries that currently have ZERO EN default-on",
     "local sources, with the documented reason (wires-only or locale-gated).",
     "The audit fails both ways: a country drops to zero without being listed",
     "here (new gap), or a listed country gains default-on local coverage and",
-    "the entry is not removed (stale allowlist). Shrink this list as the",
-    "remaining epic packs land."
+    "the entry is not removed (stale allowlist). Shrink this list whenever",
+    "new EN default-on local coverage lands."
   ],
   "floors": {
     "UA": 1,
     "PL": 1,
     "TW": 1,
-    "PK": 1
+    "PK": 1,
+    "CA": 1
   },
   "zeroDefaultOnAllowlist": {
-    "AR": "Clarin / Infobae Americas are es locale-gated; no EN default-on local source.",
+    "AR": "Clarín / Infobae Americas are es locale-gated; no EN default-on local source.",
     "GB": "By design: covered via global-remit UK outlets (BBC World, Guardian World); no UK-domestic feed in catalog.",
     "EG": "No Egypt-dedicated source in catalog; covered via MENA wires.",
     "IQ": "Catalog has Rudaw (Kurdistan Region of Iraq); not EN default-on.",
