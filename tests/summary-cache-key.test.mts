@@ -164,7 +164,7 @@ describe('duplicate-composition stability (#4914)', () => {
     assert.notEqual(
       buildSummaryCacheKey(zuluPairs.map((pair) => pair.h), 'brief', 'US', 'full', 'en'),
       buildSummaryCacheKey(yankeePairs.map((pair) => pair.h), 'brief', 'US', 'full', 'en'),
-      'different prompt windows must always produce different cache keys',
+      'a different fifth selected story must change the cache key',
     );
   });
 });

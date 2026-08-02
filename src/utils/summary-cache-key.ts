@@ -105,13 +105,19 @@ export function buildSummaryCacheKey(
   const pairs = canon.headlines.map((h, i) => ({ h, b: canon.bodies[i] ?? '' }));
   // Select in request order before sorting. Prompt generation uses the same
   // helper, so no story outside the cache-key window can affect the summary.
-  // Sorting only the selected pairs keeps cache identity order-insensitive
-  // while preserving each headline/body association.
+  // Sorting the selected pairs keeps identity stable across reorderings
+  // WITHIN the window while preserving each headline/body association. Note
+  // the window itself is request-order dependent once more than
+  // MAX_SUMMARY_HEADLINES unique headlines arrive: permuting such an input
+  // selects a different five and therefore mints a different key. That is
+  // required — the prompt selects in request order too — so any caller that
+  // passes more than MAX_SUMMARY_HEADLINES headlines must keep its ordering
+  // stable across repeat requests for the same story set, or it will miss.
+  // Headline-only comparison: selectUniqueHeadlinePairs guarantees unique
+  // `h` in its output, so a body tie-break could never execute.
   const topPairs = selectUniqueHeadlinePairs(pairs).sort((a, b) => {
     if (a.h < b.h) return -1;
     if (a.h > b.h) return 1;
-    if (a.b < b.b) return -1;
-    if (a.b > b.b) return 1;
     return 0;
   });
   const sortedHeadlines = topPairs.map(p => p.h).join('|');

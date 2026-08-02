@@ -214,6 +214,13 @@ export async function summarizeArticle(
         // collapse that prompt-only alias without backfilling from outside
         // the cache-key window.
         const uniquePairs = selectUniqueHeadlinePairs(nonEmpty);
+        // Every selected headline sanitised away. Backfilling from outside the
+        // cache-key window would reopen the prompt/key divergence this
+        // selection exists to close, so reject instead: prompting the model
+        // with zero stories would cache an invented summary under a key that
+        // represents five real headlines. cacheFailures:false below keeps this
+        // out of Redis, matching the other rejections in this factory.
+        if (uniquePairs.length === 0) return null;
         // Preserves the existing variable name for downstream prompt
         // builder callers that expect the full sanitised-headline list.
         const promptHeadlines = nonEmpty.map((p) => p.h);

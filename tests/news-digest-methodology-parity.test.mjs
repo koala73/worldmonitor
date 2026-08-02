@@ -275,13 +275,26 @@ function extractStringUnionValues(src, propertyName) {
 }
 
 function extractPromptPairLimit(src, cacheKeySrc) {
-  const match = src.match(/nonEmpty\.slice\(0,\s*([0-9]+)\)/);
-  if (match) return Number(match[1]);
-
+  // #5969: the prompt window must come from the SAME bounded selection the
+  // cache key uses, or a story can reach the model without reaching cache
+  // identity. A bare substring check is not enough — the call can be present
+  // while its result is discarded and the window re-widened downstream — so
+  // pin the assignment AND assert nothing re-derives the window from the
+  // unbounded `paired` list afterwards.
   assert.match(
     src,
-    /selectUniqueHeadlinePairs\(paired\)/,
-    'failed to locate prompt-pair headline selection',
+    /const selectedPairs = selectUniqueHeadlinePairs\(paired\);/,
+    'prompt window must be assigned from selectUniqueHeadlinePairs(paired)',
+  );
+  assert.match(
+    src,
+    /const sanitizedPairs = selectedPairs\.map\(/,
+    'prompt sanitisation must consume the bounded selectedPairs, not the raw pairs',
+  );
+  assert.doesNotMatch(
+    src,
+    /const sanitizedPairs = paired\.map\(|nonEmpty = paired\b|selectUniqueHeadlinePairs\(paired\)\.concat/,
+    'prompt window must not be re-widened from the unbounded paired list',
   );
   return extractNumericConst(cacheKeySrc, 'MAX_SUMMARY_HEADLINES');
 }
