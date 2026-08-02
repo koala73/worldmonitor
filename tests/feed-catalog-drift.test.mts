@@ -35,6 +35,7 @@ const serverOutfile = join(tempDir, 'server-feeds-bundle.mjs');
 interface FeedEntry {
   name: string;
   lang?: string;
+  strategicDefault?: boolean;
   url: string | Record<string, string>;
 }
 
@@ -49,6 +50,7 @@ interface FeedsModule {
   FULL_FEEDS?: Record<string, FeedEntry[]>;
   FEEDS: Record<string, FeedEntry[]>;
   getAllDefaultEnabledSources: () => Set<string>;
+  getStrategicDefaultSources: () => Set<string>;
   getLocaleBoostedSources: (locale: string) => Set<string>;
   computeDefaultDisabledSources: (locale?: string) => string[];
   listConfiguredFeedNames: () => string[];
@@ -56,6 +58,10 @@ interface FeedsModule {
 
 interface ServerFeedsModule {
   VARIANT_FEEDS: Record<string, Record<string, FeedEntry[]>>;
+  isServerFeedReachableForLanguage: (
+    feed: Pick<FeedEntry, 'lang' | 'strategicDefault'>,
+    language: string,
+  ) => boolean;
 }
 
 /** Sources #5949/#5950 ship as EN-default frontline Europe coverage (cap-protected). */
@@ -80,6 +86,33 @@ const EASTERN_FLANK_FEEDS = {
   'LRT English': { url: 'https://www.lrt.lt/en/news-in-english?rss' },
   'LSM English': { url: 'https://eng.lsm.lv/rss/' },
   'Daily Sabah': { url: 'https://www.dailysabah.com/rss/home-page' },
+} as const;
+
+const STRATEGIC_DEFAULTS = [
+  'Hurriyet',
+  'Polsat News',
+  'Kathimerini',
+  'Jeune Afrique',
+  'Asahi Shimbun',
+  'MIIT (China)',
+  'MOFCOM (China)',
+  'Bangkok Post',
+  'VnExpress',
+  'Yonhap News',
+] as const;
+const AFRICA_DEPTH_EN_DEFAULTS = ['Hiiraan Online', 'RFI Afrique'] as const;
+const AFRICA_DEPTH_FEEDS = {
+  'Radio Tamazuj': { url: 'https://www.radiotamazuj.org/en/feed' },
+  'The Reporter Ethiopia': { url: 'https://www.thereporterethiopia.com/feed/' },
+  'Ethiopia Insight': { url: 'https://www.ethiopia-insight.com/feed/' },
+  'Dabanga Sudan': { url: 'https://www.dabangasudan.org/en/feed' },
+  'Hiiraan Online': { url: 'https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en' },
+  'Actualite.cd': { url: 'https://actualite.cd/feed', lang: 'fr' },
+  'Radio Okapi': { url: 'https://www.radiookapi.net/rss.xml', lang: 'fr' },
+  'MyJoyOnline': { url: 'https://www.myjoyonline.com/feed/' },
+  'Citi Newsroom': { url: 'https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en' },
+  'Le Quotidien': { url: 'https://lequotidien.sn/feed/', lang: 'fr' },
+  'RFI Afrique': { url: 'https://www.rfi.fr/en/africa/rss' },
 } as const;
 
 let feeds: FeedsModule;
@@ -158,6 +191,69 @@ describe('feed catalog drift', () => {
         'A default-enabled source without a feed definition is silently unfetchable — ' +
         'add it to the catalog or remove it from the default-enabled list.',
     );
+  });
+
+  it('strategic defaults are canonical, EN-enabled, cap-protected, and server-mirrored', () => {
+    const expected = new Set(STRATEGIC_DEFAULTS);
+    assert.deepEqual(
+      [...feeds.getStrategicDefaultSources()].sort(),
+      [...expected].sort(),
+      'strategic default declarations must match the closed-world source list',
+    );
+
+    const clientByName = new Map(
+      Object.values(feeds.FEEDS ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      Object.values(serverFeeds.VARIANT_FEEDS.full ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+
+    for (const name of STRATEGIC_DEFAULTS) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client?.strategicDefault, `${name} must be strategic on the client`);
+      assert.ok(server?.strategicDefault, `${name} must be strategic on the server`);
+      assert.ok(enabled.has(name), `${name} must be in the canonical default-enabled set`);
+      assert.ok(!disabledEn.has(name), `${name} must not be disabled for EN first boot`);
+      assert.equal(server?.lang, client?.lang, `${name} server/client language tags must match`);
+    }
+  });
+
+  it('keeps strategic reachability separate from English locale boosting', () => {
+    assert.deepEqual([...feeds.getLocaleBoostedSources('en')], []);
+    assert.equal(
+      serverFeeds.isServerFeedReachableForLanguage(
+        { lang: 'ja', strategicDefault: true },
+        'en',
+      ),
+      true,
+    );
+    assert.equal(
+      serverFeeds.isServerFeedReachableForLanguage({ lang: 'ja' }, 'en'),
+      false,
+    );
+  });
+
+  it('keeps strategic defaults under the free-tier source cap', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const protectedNames = new Set([
+      ...feeds.FREE_CAP_PROTECTED_SOURCES,
+      ...feeds.getStrategicDefaultSources(),
+    ]);
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      protectedNames,
+    );
+
+    for (const name of STRATEGIC_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free-tier source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the cap`);
+    }
   });
 
   it('DEFAULT_ENABLED_INTEL names all exist in the intel catalog', () => {
@@ -277,7 +373,9 @@ describe('feed catalog drift', () => {
   it('does not default-enable Hungary/Greece locale packs for EN (#5949)', () => {
     const enabled = feeds.getAllDefaultEnabledSources();
     // These stay locale-boosted (lang: hu / el), not EN default-on.
-    for (const localeOnly of ['Telex', 'Index.hu', 'Kathimerini', 'Naftemporiki'] as const) {
+    // Kathimerini is now a strategic default (#6000), so it is intentionally
+    // excluded from this locale-only control set.
+    for (const localeOnly of ['Telex', 'Index.hu', 'Naftemporiki'] as const) {
       assert.ok(
         !enabled.has(localeOnly),
         `${localeOnly} must stay locale-boosted, not EN default-on`,
@@ -384,7 +482,7 @@ describe('feed catalog drift', () => {
   it('keeps both Eastern-flank EN defaults under the production free cap (#5952)', () => {
     assert.deepEqual(
       [...feeds.FREE_CAP_PROTECTED_SOURCES].sort(),
-      [...FRONTLINE_EUROPE, ...EASTERN_FLANK_EN_DEFAULTS].sort(),
+      [...FRONTLINE_EUROPE, ...EASTERN_FLANK_EN_DEFAULTS, ...AFRICA_DEPTH_EN_DEFAULTS].sort(),
       'free-cap protected defaults must match the editorially protected sets',
     );
 
@@ -398,6 +496,52 @@ describe('feed catalog drift', () => {
     );
 
     for (const name of EASTERN_FLANK_EN_DEFAULTS) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
+  });
+
+  it('locks additive Africa-depth URL/lang parity and EN defaults (#5955)', () => {
+    const clientByName = new Map((feeds.FEEDS.africa ?? []).map((feed) => [feed.name, feed]));
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.africa ?? []).map((feed) => [feed.name, feed]),
+    );
+    const africaDefaults = feeds.DEFAULT_ENABLED_SOURCES.africa ?? [];
+
+    for (const [name, expected] of Object.entries(AFRICA_DEPTH_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must remain in the client Africa catalog`);
+      assert.ok(server, `${name} must remain in the server full/Africa catalog`);
+      assert.equal(client.url, expected.url, `${name} client URL drifted`);
+      assert.equal(server.url, expected.url, `${name} server URL drifted`);
+      assert.equal(client.lang, 'lang' in expected ? expected.lang : undefined, `${name} client lang drifted`);
+      assert.equal(server.lang, 'lang' in expected ? expected.lang : undefined, `${name} server lang drifted`);
+    }
+
+    for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
+      assert.ok(africaDefaults.includes(name), `${name} must remain an Africa EN default`);
+    }
+  });
+
+  it('allows every Africa-depth feed through the RSS proxy host policy (#5955)', () => {
+    for (const [name, { url }] of Object.entries(AFRICA_DEPTH_FEEDS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+    }
+  });
+
+  it('keeps both Africa-depth EN defaults under the production free cap (#5955)', () => {
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+
+    for (const name of AFRICA_DEPTH_EN_DEFAULTS) {
       assert.ok(keep.has(name), `${name} must survive the free source cap`);
       assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
     }

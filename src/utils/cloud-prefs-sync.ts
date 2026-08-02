@@ -16,10 +16,11 @@ import { CLOUD_SYNC_KEYS, type CloudSyncKey } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import {
-  computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
+  computePreStrategicDefaultDisabledSources,
   FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  getStrategicDefaultSources,
   INTEL_SOURCES,
 } from '@/config/feeds';
 import { FREE_MAX_SOURCES } from '@/config/panels';
@@ -67,7 +68,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 3;
+const CURRENT_PREFS_SCHEMA_VERSION = 4;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -93,16 +94,23 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // Schema 3 (#5963): recover the frontline sources from an untouched legacy
 // default blob. The exact-set guard preserves customized source preferences
 // and prevents a stale cloud row from re-poisoning a local migration.
+// Schema 4 (#6000): re-enable strategic defaults from an untouched pre-flag
+// default/cap blob. The same exact-set guard preserves customized preferences.
+const LEGACY_PRE_STRATEGIC_DEFAULT_DISABLED = new Set(computePreStrategicDefaultDisabledSources());
+const LEGACY_PRE_STRATEGIC_CAP_DISABLED = computeCapDisabledSources(
+  FEEDS,
+  INTEL_SOURCES,
+  LEGACY_PRE_STRATEGIC_DEFAULT_DISABLED,
+  FREE_MAX_SOURCES,
+);
 const MIGRATIONS = buildMigrations(
   FEEDS,
   new Set(computeLegacyDefaultDisabledSources()),
   new Set(FRONTLINE_EUROPE_PROTECTED_SOURCES),
-  computeCapDisabledSources(
-    FEEDS,
-    INTEL_SOURCES,
-    new Set(computeDefaultDisabledSources()),
-    FREE_MAX_SOURCES,
-  ),
+  LEGACY_PRE_STRATEGIC_CAP_DISABLED,
+  LEGACY_PRE_STRATEGIC_DEFAULT_DISABLED,
+  getStrategicDefaultSources(),
+  LEGACY_PRE_STRATEGIC_CAP_DISABLED,
 );
 
 type SyncState = 'synced' | 'pending' | 'syncing' | 'conflict' | 'offline' | 'signed-out' | 'error';

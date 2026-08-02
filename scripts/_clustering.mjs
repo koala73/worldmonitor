@@ -317,9 +317,12 @@ export function computeEntityCorroboration(clusters, nowMs = Date.now()) {
 /**
  * @param {object[]} clusters
  * @param {number} [maxCount]
- * @param {{ considered?: number; admissibilityDropped?: number; sourceCapDropped?: number; overflowDropped?: number }} [stats]
+ * @param {{ considered?: number; admissibilityDropped?: number; sourceCapDropped?: number; overflowDropped?: number; briefEligibleConsidered?: number; briefEligiblePromoted?: boolean }} [stats]
  *   #4920 coverage ledger: when provided, populated with how many clusters
  *   each gate dropped — previously all three gates were silent.
+ *   #5947 adds `briefEligibleConsidered` (corroborated clusters in the whole
+ *   corpus) and `briefEligiblePromoted` (whether a slot had to be reserved to
+ *   keep one in the list).
  */
 // biome-ignore lint/style/useDefaultParameterLast: maxCount's default predates the trailing params; reordering would break the (clusters, maxCount, stats) call shape
 export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
@@ -346,11 +349,7 @@ export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
   }
   admissible.sort((a, b) => b.effectiveScore - a.effectiveScore || b.score - a.score);
 
-  const selected = [];
-  const sourceCount = new Map();
   const MAX_PER_SOURCE = 3;
-  let sourceCapDropped = 0;
-  let overflowDropped = 0;
 
   // #4927 review P2: classify EVERY admissible candidate — breaking at
   // maxCount lumped later same-source candidates into overflow arithmetic
@@ -358,27 +357,69 @@ export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
   // room. Cap-first attribution: a candidate whose source already hit the
   // per-source cap is a sourceCap drop; only genuinely rankable candidates
   // count as overflow.
-  for (const { cluster, score, effectiveScore } of admissible) {
-    const source = cluster.primarySource;
-    const count = sourceCount.get(source) || 0;
-    if (count >= MAX_PER_SOURCE) {
-      sourceCapDropped++;
-      continue;
+  //
+  // `seed` reserves one slot for a specific candidate before ranking fills
+  // the rest; it still consumes per-source cap budget like any other pick.
+  const fill = (seed) => {
+    const selected = [];
+    const sourceCount = new Map();
+    let sourceCapDropped = 0;
+    let overflowDropped = 0;
+    const take = ({ cluster, score, effectiveScore }) => {
+      selected.push({ ...cluster, importanceScore: score, effectiveImportanceScore: effectiveScore });
+      sourceCount.set(cluster.primarySource, (sourceCount.get(cluster.primarySource) || 0) + 1);
+    };
+    if (seed && maxCount > 0) take(seed);
+    for (const entry of admissible) {
+      if (entry === seed) continue;
+      const source = entry.cluster.primarySource;
+      const count = sourceCount.get(source) || 0;
+      if (count >= MAX_PER_SOURCE) {
+        sourceCapDropped++;
+        continue;
+      }
+      if (selected.length >= maxCount) {
+        overflowDropped++;
+        continue;
+      }
+      take(entry);
     }
-    if (selected.length >= maxCount) {
-      overflowDropped++;
-      continue;
-    }
-    selected.push({ ...cluster, importanceScore: score, effectiveImportanceScore: effectiveScore });
-    sourceCount.set(source, count + 1);
-  }
+    // Keep the emitted list in rank order even when a seed was taken first.
+    selected.sort((a, b) => b.effectiveImportanceScore - a.effectiveImportanceScore
+      || b.importanceScore - a.importanceScore);
+    return { selected, sourceCapDropped, overflowDropped };
+  };
+
+  let result = fill(null);
+
+  // #5947: the brief lead requires a corroborated cluster (>=2 outlets or
+  // entity corroboration), but this ranking admits single-source alerts and
+  // multiplies by recencyWeight — and a cluster only becomes corroborated
+  // once a SECOND outlet publishes, so recency works against exactly the
+  // clusters the brief needs. On an alert-heavy cycle every slot went to a
+  // single-source alert, so pickBriefCluster returned null and seed-insights
+  // rejected the brief with INSIGHTS_SYNTHESIS_MISSING_CLUSTER on every run
+  // (35 consecutive in production) while corroborated clusters sat unused at
+  // rank 9+. Reserve one slot for the highest-ranked corroborated candidate
+  // rather than shipping no brief at all. This does not lower the brief's
+  // corroboration bar — it guarantees selection can satisfy it.
+  // maxCount <= 0 selects nothing, so no slot exists to reserve — guard here
+  // rather than only inside fill(), or the stats below would report a
+  // promotion that never happened.
+  const briefEligible = admissible.filter(entry => isBriefLeadEligible(entry.cluster));
+  const promoted = maxCount > 0 && !result.selected.some(isBriefLeadEligible)
+    ? (briefEligible[0] ?? null)
+    : null;
+  if (promoted) result = fill(promoted);
 
   if (stats && typeof stats === 'object') {
     stats.considered = clusters.length;
     stats.admissibilityDropped = admissibilityDropped;
-    stats.sourceCapDropped = sourceCapDropped;
-    stats.overflowDropped = overflowDropped;
+    stats.sourceCapDropped = result.sourceCapDropped;
+    stats.overflowDropped = result.overflowDropped;
+    stats.briefEligibleConsidered = briefEligible.length;
+    stats.briefEligiblePromoted = promoted != null;
   }
 
-  return selected;
+  return result.selected;
 }

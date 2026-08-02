@@ -88,10 +88,12 @@ import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 import {
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
+  computePreStrategicDefaultDisabledSources,
   FEEDS,
   FREE_CAP_PROTECTED_SOURCES,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getLocaleBoostedSources,
+  getStrategicDefaultSources,
   getTotalFeedCount,
   INTEL_SOURCES,
 } from '@/config/feeds';
@@ -139,7 +141,10 @@ import {
   onSignOut as cloudPrefsSignOut,
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
-import { migrateFrontlineEuropeDefaultsV3 } from '@/utils/cloud-prefs-migrations';
+import {
+  migrateFrontlineEuropeDefaultsV3,
+  migrateStrategicDefaultsV4,
+} from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
   getConvexApi,
@@ -985,6 +990,35 @@ export class App {
         }
         localStorage.setItem(frontlineKey, 'done');
       }
+      // #6000 — re-enable strategic defaults for profiles created before the
+      // flag became part of the canonical default set. An exact-set guard is
+      // required: a customized disabledFeeds set is user intent and must not
+      // be rewritten by a startup migration.
+      const strategicKey = 'worldmonitor-strategic-defaults-enable-v1';
+      if (!localStorage.getItem(strategicKey)) {
+        const legacyStrategicDefaults = new Set(computePreStrategicDefaultDisabledSources());
+        const legacyStrategicCap = computeCapDisabledSources(
+          FEEDS,
+          INTEL_SOURCES,
+          legacyStrategicDefaults,
+          FREE_MAX_SOURCES,
+        );
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateStrategicDefaultsV4(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          legacyStrategicDefaults,
+          getStrategicDefaultSources(),
+          legacyStrategicCap,
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (updated.length !== current.length) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log(
+            `[App] Strategic defaults enable (#6000): re-enabled ${current.length - updated.length} source(s)`,
+          );
+        }
+        localStorage.setItem(strategicKey, 'done');
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
@@ -1325,14 +1359,29 @@ export class App {
       engine.registerAdapter(disasterAdapter);
       this.state.correlationEngine = engine;
 
-      await engine.run(this.state);
-      if (this.state.isDestroyed) return;
-      for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-        const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
-        panel?.updateCards(engine.getCards(domain));
-      }
+      await this.runCorrelationEngine();
     } catch (error) {
       console.warn('[CorrelationEngine] Initial lazy load/run failed:', error);
+    }
+  }
+
+  private async runCorrelationEngine(): Promise<void> {
+    const engine = this.state.correlationEngine;
+    if (!engine || this.state.isDestroyed) return;
+
+    const { fetchCorrelationRuntimeMode } = await import('@/services/correlation-runtime-mode');
+    const runtimeMode = await fetchCorrelationRuntimeMode();
+    if (this.state.isDestroyed) return;
+
+    // run() reports false when it skipped because a run was already in flight.
+    // Not reachable today (run() never yields), but this diff put two awaits in
+    // front of it, so honour the contract rather than publishing getCards() —
+    // which on a first-run overlap would write empty cards into live panels.
+    const didRun = await engine.run(this.state, runtimeMode);
+    if (!didRun || this.state.isDestroyed) return;
+    for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
+      const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
+      panel?.updateCards(engine.getCards(domain));
     }
   }
 
@@ -2138,11 +2187,14 @@ export class App {
       let explicitLocale = '';
       try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
       const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
-      // Locale-boosted sources (non-en) + editorially protected EN defaults.
+      // Strategic defaults + locale-boosted sources (non-en) + editorially
+      // protected EN defaults. User-disabled names remain excluded by the cap
+      // helper, so strategic protection does not override explicit intent.
       // Without frontline protection, free EN users lose Kyiv Independent / Meduza /
       // Moscow Times to round-robin late-in-europe-bucket ordering; without the
       // Eastern-flank additions, Daily Sabah / ERR News are also stripped (#5952).
       const protectedNames = new Set<string>(FREE_CAP_PROTECTED_SOURCES);
+      for (const name of getStrategicDefaultSources()) protectedNames.add(name);
       if (userLang !== 'en') {
         for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
       }
@@ -2752,13 +2804,7 @@ export class App {
     this.refreshScheduler.scheduleRefresh(
       'correlation-engine',
       async () => {
-        const engine = this.state.correlationEngine;
-        if (!engine) return;
-        await engine.run(this.state);
-        for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-          const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
-          panel?.updateCards(engine.getCards(domain));
-        }
+        await this.runCorrelationEngine();
       },
       REFRESH_INTERVALS.correlationEngine,
       () => this.shouldRefreshCorrelation(),

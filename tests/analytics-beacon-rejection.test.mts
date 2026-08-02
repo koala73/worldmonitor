@@ -786,6 +786,7 @@ const {
   isRetryableIdentityFailure,
   isAlertWorthyCollectorFailure,
   getCollectorHealthForTesting,
+  _setCollectorHealthReporterForTesting,
 } = await import('../src/services/analytics-collector-transport.ts');
 
 /**
@@ -925,10 +926,73 @@ describe('collector alert policy is wired into the reporting path', () => {
     delete (globalThis.window as WinWithUmami).umami;
   });
 
+  it('sends low-volume environment failures to the cross-user aggregate', async () => {
+    const reports: unknown[] = [];
+    _setCollectorHealthReporterForTesting(async (report) => {
+      reports.push(report);
+      return true;
+    });
+    window.fetch = (() => Promise.resolve(collectorResponse(true, 200, '{}'))) as typeof window.fetch;
+    stubFailingUmami();
+
+    for (let i = 0; i < 4; i += 1) {
+      track('panel-open' as Parameters<typeof track>[0], { i });
+      await drainPromiseHandlers();
+    }
+
+    assert.equal(reports.length, 4, 'every environment failure contributes its delta before the local floor');
+    assert.deepEqual(reports[0], {
+      cohort: 'event',
+      writes: 1,
+      failures: 1,
+      failureKind: 'missing-receipt',
+    });
+    assert.equal(
+      getCollectorHealthForTesting().noiseReported,
+      false,
+      'an accepted aggregate report does not duplicate the server-side Sentry event locally',
+    );
+  });
+
+  it('keeps critical-event health separate from successful ordinary writes', async () => {
+    const reports: unknown[] = [];
+    _setCollectorHealthReporterForTesting(async (report) => {
+      reports.push(report);
+      return true;
+    });
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(calls <= 10 ? collectorResponse(true, 200) : collectorResponse(true, 200, '{}'));
+    }) as typeof window.fetch;
+    (globalThis.window as WinWithUmami).umami = {
+      track: (event: unknown, data?: unknown) => nativeTrackerBeacon('event', {
+        ...(data as Record<string, unknown> | undefined),
+        name: event as string,
+      }),
+      identify: (data: unknown) => nativeTrackerBeacon('identify', data as Record<string, unknown>),
+    };
+
+    for (let i = 0; i < 10; i += 1) {
+      track('panel-open' as Parameters<typeof track>[0], { i });
+      await drainPromiseHandlers();
+    }
+    track('checkout-success');
+    await drainPromiseHandlers();
+
+    assert.deepEqual(reports.at(-1), {
+      cohort: 'critical-event',
+      writes: 1,
+      failures: 1,
+      failureKind: 'missing-receipt',
+    });
+  });
+
   it('flips the once-per-window latch only after the sample floor is crossed', async () => {
     // Drives REAL writes through the gate so this proves recordCollectorOutcome
     // consults the predicate — a policy unit test alone would pass even if the
     // reporting path ignored it entirely.
+    _setCollectorHealthReporterForTesting(async () => false);
     window.fetch = (() => Promise.reject(new TypeError('Failed to fetch'))) as typeof window.fetch;
     stubFailingUmami();
 

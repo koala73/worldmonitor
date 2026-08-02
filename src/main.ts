@@ -382,7 +382,7 @@ import { initAnalytics, trackContentHandoff } from '@/services/analytics';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
-import { installSwUpdateHandler } from '@/bootstrap/sw-update';
+import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
@@ -501,8 +501,12 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
   });
 }
 
-if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  installSwUpdateHandler({ version: __APP_VERSION__ });
+// `'serviceWorker' in navigator` is not a safe gate: in a sandboxed iframe the
+// property exists but reading it throws SecurityError (WORLDMONITOR-Y5), which
+// at module scope aborts every top-level statement below. Read it once, safely.
+const swContainer = readServiceWorkerContainer();
+if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContainer) {
+  installSwUpdateHandler({ version: __APP_VERSION__, swContainer });
 
   const SW_UPDATE_SUCCESS_INTERVAL_MS = 60 * 60 * 1000;
   const SW_UPDATE_FAILURE_INTERVAL_MS = 5 * 60 * 1000;

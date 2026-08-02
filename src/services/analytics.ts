@@ -242,6 +242,7 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
 
 configureCollectorTransport({
   endpoint: UMAMI_COLLECTOR_ENDPOINT,
+  healthEndpoint: '/api/analytics-health',
   isCriticalEvent: (name) => CRITICAL_TRACK_EVENTS.has(name as UmamiEvent),
   onOutcome: handleCollectorOutcome,
 });
