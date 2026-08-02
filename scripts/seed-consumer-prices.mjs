@@ -110,7 +110,7 @@ export function coverageForSeedMeta(data) {
     status: typeof data.status === 'string' ? data.status : undefined,
     completedPages: Number(data.completedPages) || 0,
     failedPages: Number(data.failedPages) || 0,
-    completionRatio: Number(data.completionRatio) || 0,
+    completionRatio: data.completionRatio == null ? null : Number(data.completionRatio) || 0,
     rejectedCount: Number(data.rejectedCount) || 0,
     retailers: data.retailers,
   };

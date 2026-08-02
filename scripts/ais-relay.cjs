@@ -9760,6 +9760,7 @@ const server = http.createServer(async (req, res) => {
       else if (routeGroup === 'opensky') recordRelayOutcome('opensky', 'authRejection');
       else if (routeGroup === 'google-flights') recordRelayOutcome('googleFlights', 'authRejection');
       else if (routeGroup === 'rss') recordRelayOutcome('rss', 'authRejection');
+      else recordRelayOutcome('other', 'authRejection');
       return safeEnd(res, 401, { 'Content-Type': 'application/json' },
         JSON.stringify({ error: 'Unauthorized', time: Date.now() }));
     }

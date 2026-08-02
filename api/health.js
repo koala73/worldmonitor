@@ -1054,7 +1054,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         status: typeof meta.coverage.status === 'string' ? meta.coverage.status : null,
         completedPages: Number(meta.coverage.completedPages) || 0,
         failedPages: Number(meta.coverage.failedPages) || 0,
-        completionRatio: Number(meta.coverage.completionRatio) || 0,
+        completionRatio: meta.coverage.completionRatio == null ? null : Number(meta.coverage.completionRatio) || 0,
         rejectedCount: Number(meta.coverage.rejectedCount) || 0,
         retailers: coverageRetailers,
       }

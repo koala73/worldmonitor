@@ -33,7 +33,11 @@ function nextBackoffMs(previousFailures, baseMs, maxMs) {
   const failures = Math.max(0, Math.floor(Number(previousFailures) || 0));
   const base = Math.max(1, Number(baseMs) || 1);
   const cap = Math.max(base, Number(maxMs) || base);
-  return Math.min(base * (2 ** failures), cap);
+  const delay = Math.min(base * (2 ** failures), cap);
+  // Add jitter (±25%) to prevent thundering herd when multiple feeds
+  // enter backoff at the same time (e.g., after a correlated failure).
+  // Jitter is bounded by the cap so repeated calls never exceed maxMs.
+  return Math.min(cap, Math.round(delay * (0.75 + Math.random() * 0.5)));
 }
 
 function summarizeServedCoverage({ requests = 0, served = 0, minimum } = {}) {
