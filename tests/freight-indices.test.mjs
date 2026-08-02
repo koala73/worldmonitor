@@ -423,7 +423,10 @@ function declaredFields(messageName, protoPath = PROTO_PATH) {
   const src = readFileSync(resolve(root, protoPath), 'utf-8');
   const block = src.match(new RegExp(`message ${messageName} \\{\\n([\\s\\S]*?)\\n\\}`))?.[1];
   assert.ok(block, `message ${messageName} not found in ${protoPath}`);
-  const withoutComments = block.replace(/\/\/[^\n]*/g, '');
+  // Strip BOTH comment forms. Stripping only `//` let a block-commented field
+  // (`/* optional string x = 10; */`) keep counting as declared — the gate would
+  // then certify a field the proto no longer declares.
+  const withoutComments = block.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const fields = [...withoutComments.matchAll(PROTO_FIELD_RE)].map(m => snakeToCamel(m[1]));
   // Every field-number occurrence in the block must have been understood. A
   // field written in a form the field regex misses would silently shrink the
@@ -487,7 +490,16 @@ const FRED_FIXTURE = {
 // matching fixture here would contribute entries the gate never inspects, and
 // the gate would stay green while that producer drifted. That is the same
 // hand-mirrored-copy failure this whole file exists to avoid, one level up.
-const FETCH_ALL_INDEX_SOURCES = ['sh?.indices || []', 'scfiResult', 'ccfiResult', 'bdiResult'];
+// Pinned as the EXACT element lines, not just the spread expressions: matching
+// only `...x` made the guard blind to a non-spread element (a bare
+// `{ indexId: 'X', ... }` literal pushed straight into the array), which reaches
+// the published payload the same way a spread does.
+const FETCH_ALL_INDEX_ELEMENTS = [
+  '...(sh?.indices || []),',
+  '...scfiResult,',
+  '...ccfiResult,',
+  '...bdiResult,',
+];
 
 // Every producer that contributes entries to `allIndices` in fetchAll().
 function producedIndices() {
@@ -573,9 +585,11 @@ describe('ShippingIndex public contract gate (#6078)', () => {
     // cannot be compared and the gate's coverage claim is unverifiable.
     const block = seedSrc.match(/const allIndices = \[\n([\s\S]*?)\n\s*\];/)?.[1];
     assert.ok(block, 'Could not locate the `const allIndices = [...]` block in the seeder — update this guard');
-    const sources = [...block.matchAll(/\.\.\.\(?([^,\n)]+)\)?,/g)].map(m => m[1].trim());
-    assert.deepEqual(sources, FETCH_ALL_INDEX_SOURCES,
-      'fetchAll() changed which producers feed `allIndices`. Add a fixture for the new producer to producedIndices() above, then update FETCH_ALL_INDEX_SOURCES — otherwise its entries reach the public payload without this gate ever inspecting them.');
+    // Compare EVERY element line, so an added element of any form (spread or
+    // bare object literal) trips the guard.
+    const elements = block.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//'));
+    assert.deepEqual(elements, FETCH_ALL_INDEX_ELEMENTS,
+      'fetchAll() changed what feeds `allIndices`. Add a fixture for the new producer to producedIndices() above, then update FETCH_ALL_INDEX_ELEMENTS — otherwise its entries reach the public payload without this gate ever inspecting them.');
   });
 
   it('publishes no envelope field GetShippingRatesResponse does not declare', () => {
