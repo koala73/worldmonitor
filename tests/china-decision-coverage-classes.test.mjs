@@ -268,6 +268,32 @@ describe('health decision-group classes (#6060)', () => {
     assert.deepEqual(entry.decisionGroups.quietGroups, ['corporate-disclosures']);
   });
 
+  // /api/seed-health already publishes the full state map. Without it here, a
+  // caller polling /api/health sees `partial: 3` but cannot tell WHICH three
+  // without a second request to the sibling endpoint.
+  it('names every group state, not just the counts', () => {
+    const entry = classifyDecisionSignals(decisionMeta(auditSnapshot()));
+
+    assert.deepEqual(entry.decisionGroups.groupStates, {
+      macro: 'partial',
+      'policy-enforcement': 'partial',
+      'cross-strait-activity': 'available',
+      'corporate-disclosures': 'unavailable',
+      'corridor-conditions': 'partial',
+      'activity-nowcast': 'unavailable',
+    });
+    assert.deepEqual(entry.decisionGroups.partialGroups, [
+      'macro',
+      'policy-enforcement',
+      'corridor-conditions',
+    ]);
+    assert.equal(
+      entry.decisionGroups.partialGroups.length,
+      entry.decisionGroups.partial,
+      'the named list and the count agree',
+    );
+  });
+
   it('names a stale group apart from an unavailable one', () => {
     const entry = classifyDecisionSignals(decisionMeta(snapshot({
       'corridor-conditions': { state: 'stale', items: [item('corridor-1')] },
@@ -300,6 +326,22 @@ describe('health decision-group classes (#6060)', () => {
       entry.decisionGroups,
       'no diagnostic field is silently stripped on the wire',
     );
+  });
+
+  // seed-health's sibling projection withholds the whole breakdown on a
+  // malformed counts object; health must not publish a block of nulls instead.
+  it('withholds the breakdown when groupCounts is malformed', () => {
+    for (const counts of [undefined, null, 'not-an-object', 42, []]) {
+      const entry = classifyDecisionSignals({
+        ...decisionMeta(auditSnapshot()),
+        groupCounts: counts,
+      });
+      assert.equal(
+        entry.decisionGroups,
+        undefined,
+        `groupCounts=${JSON.stringify(counts) ?? 'undefined'} must not publish a null-filled block`,
+      );
+    }
   });
 
   it('ignores group ids the manifest does not declare', () => {

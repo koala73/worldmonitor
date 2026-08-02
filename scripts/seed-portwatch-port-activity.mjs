@@ -873,6 +873,10 @@ export async function publishPortActivitySnapshot(
   if (canonicalAdvances) {
     commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
     commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
+    // No EX: "this producer can publish content freshness" must survive the
+    // 3-day payload TTL, otherwise health would silently re-enter its
+    // pending-activation grace every time a run is skipped.
+    commands.push(['SET', PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY, '1']);
   }
   if (commands.length === 0) return [];
 
@@ -944,7 +948,21 @@ async function redisMgetJson(keys) {
 // attempt sweep in ceil(174 / 30) = 6 runs, independent of process restarts.
 // ISO2 is the deterministic tie-breaker so equal-age cohorts do not depend on
 // ArcGIS row order. Pure + exported for unit testing.
-export function orderColdFetchQueue(needsFetch) {
+// #6060: decision-critical countries jump the queue. Oldest-attempt-first
+// alone gives every country one slot per ceil(174/30) = 6 runs = 72h at the
+// 12h cadence — numerically equal to the content budget the China corridor
+// adapter enforces, so CN/HK would sit permanently at the staleness boundary
+// and the content-freshness alarm would measure the rotation instead of an
+// incident. Reserving their slots is what makes "China content is refreshed
+// within the 72-hour budget" true rather than merely observable.
+//
+// The reservation is 2 of 30 slots, so the remaining sweep still completes in
+// ceil(172/28) = 7 runs; the other countries shift by at most one run.
+export function orderColdFetchQueue(
+  needsFetch,
+  criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+) {
+  const critical = new Set(criticalCountries);
   const lastAttemptAt = (item) => {
     const prev = item?.prevPayload;
     if (!prev || typeof prev !== 'object') return Number.NEGATIVE_INFINITY;
@@ -953,7 +971,10 @@ export function orderColdFetchQueue(needsFetch) {
     return Number.NEGATIVE_INFINITY;
   };
   const stableId = (item) => String(item?.iso2 || item?.iso3 || '');
+  const priority = (item) => (critical.has(item?.iso2) ? 0 : 1);
   return [...needsFetch].sort((a, b) => {
+    const priorityOrder = priority(a) - priority(b);
+    if (priorityOrder !== 0) return priorityOrder;
     const ageOrder = lastAttemptAt(a) - lastAttemptAt(b);
     return ageOrder || stableId(a).localeCompare(stableId(b));
   });
@@ -1014,6 +1035,13 @@ export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 72 * 60;
 // health poll, so the full 174-country universe never goes on the wire;
 // the count of dropped entries does.
 export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
+// Durable, no-TTL activation marker (#6060). api/health.js redeploys within
+// minutes of a merge while this seeder is a 12h Railway cron, so health must be
+// able to tell "the producer has never shipped a contentFreshness block" from
+// "the block regressed". Written on every canonical-advancing publish; health
+// fails closed on an absent block only once this key exists.
+export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
+  'seed-activated:supply_chain:portwatch-ports:content-freshness';
 // The countries whose CONTENT freshness is a decision input, not just fleet
 // coverage: CHINA_CORRIDOR_KEYS in get-china-corridor-control-towers.ts reads
 // exactly `supply_chain:portwatch-ports:v1:CN` and `:HK`, and those two feed

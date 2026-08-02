@@ -60,12 +60,17 @@ function portwatchCtx(meta) {
   };
 }
 
-function classifyPortwatch(meta) {
+// Default context is post-activation: the producer has published the block at
+// least once, so a later absence is a real regression rather than a deploy lag.
+function classifyPortwatch(meta, { activated = true } = {}) {
   return classifyKey(
     'portwatchPortActivity',
     PORTWATCH_DATA_KEY,
     {},
-    portwatchCtx(meta),
+    {
+      ...portwatchCtx(meta),
+      activatedNames: new Set(activated ? ['portwatchContentFreshness'] : []),
+    },
   );
 }
 
@@ -89,7 +94,11 @@ function completeRun(contentFreshness) {
 }
 
 describe('readSeedMeta content-freshness parsing', () => {
-  const seedCfg = { key: PORTWATCH_META_KEY, maxStaleMin: 2160, requireContentFreshness: ['CN', 'HK'] };
+  const seedCfg = {
+    key: PORTWATCH_META_KEY,
+    maxStaleMin: 2160,
+    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 },
+  };
 
   it('surfaces a bounded content-freshness block', () => {
     const ctx = portwatchCtx(completeRun(contentFreshnessOf({
@@ -143,13 +152,81 @@ describe('readSeedMeta content-freshness parsing', () => {
 });
 
 describe('portwatchPortActivity classification', () => {
-  it('is registered to require content freshness over a health-pinned country set', () => {
+  it('is registered to require content freshness over a health-pinned scope and budget', () => {
     assert.deepEqual(
       SEED_META.portwatchPortActivity.requireContentFreshness,
-      ['CN', 'HK'],
-      'health pins the alarm scope itself rather than trusting the producer',
+      { countries: ['CN', 'HK'], budgetMinutes: 4320 },
+      'health pins both the alarm scope and its threshold, not just the scope',
     );
     assert.equal(SEED_META.portwatchPortActivity.minRecordCount, 174);
+  });
+
+  // The producer's counts are a measurement taken at seeder-run time, and
+  // seed-meta is rewritten only on a canonical-advancing 12h run. Trusting the
+  // count alone lets OK persist while the observation ages past budget — the
+  // exact green-while-dead failure this alarm exists to prevent.
+  it('re-ages the producer measurement instead of trusting a frozen count', () => {
+    // Seeder ran when CN was 71h old and counted it fresh. Health reads that
+    // same meta 12h later, by which time the observation is 83h old.
+    const observedAt = NOW - 83 * 60 * MINUTE_MS;
+    const entry = classifyPortwatch({
+      fetchedAt: NOW - 12 * 60 * MINUTE_MS,
+      recordCount: 174,
+      contentFreshness: contentFreshnessOf({
+        criticalFreshCount: 2,
+        criticalStaleCountries: [],
+        criticalOldestObservedAt: observedAt,
+        criticalOldestObservedCountry: 'CN',
+        criticalOldestAgeMinutes: 71 * 60,
+      }),
+    });
+
+    assert.equal(
+      entry.status,
+      'STALE_CONTENT',
+      'a stale-but-fresh-at-measurement-time observation must still alarm',
+    );
+    assert.equal(
+      entry.contentFreshness.criticalOldestAgeMinutes,
+      83 * 60,
+      'the published age is recomputed against now, not echoed from the producer',
+    );
+  });
+
+  it('keeps OK while the re-aged observation is still inside the pinned budget', () => {
+    const entry = classifyPortwatch({
+      fetchedAt: NOW - 12 * 60 * MINUTE_MS,
+      recordCount: 174,
+      contentFreshness: contentFreshnessOf({
+        criticalOldestObservedAt: NOW - 71 * 60 * MINUTE_MS,
+        criticalOldestAgeMinutes: 59 * 60,
+      }),
+    });
+    assert.equal(entry.status, 'OK');
+    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 71 * 60);
+  });
+
+  it('ignores a producer-supplied budget in favour of the one health pins', () => {
+    // A producer that widens its own budget to 30 days must not be able to
+    // certify a 98h-old observation as fresh.
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      budgetMinutes: 30 * 24 * 60,
+      criticalOldestObservedAt: NOW - 98 * 60 * MINUTE_MS,
+      criticalOldestAgeMinutes: 98 * 60,
+    })));
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.contentFreshness.budgetMinutes, 4320, 'the pinned budget is published');
+  });
+
+  it('fails closed when an all-fresh claim carries no re-ageable timestamp', () => {
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalOldestObservedAt: null,
+    })));
+    assert.equal(entry.status, 'COVERAGE_DEGRADED');
+    assert.deepEqual(
+      entry.contentFreshness.unusableReasons,
+      ['critical_observation_time_unusable'],
+    );
   });
 
   // Without this, the producer defines both the numerator and the denominator
@@ -181,6 +258,62 @@ describe('portwatchPortActivity classification', () => {
         `declared set ${JSON.stringify(declared)} does not cover the pinned scope`,
       );
     }
+  });
+
+  // `usable` is six ANDed conditions. Without a named reason a consumer has to
+  // reimplement that boolean from the raw counts to guess which one tripped —
+  // and `declared_scope_narrowed` is not reconstructable from the response at
+  // all, since the expected scope lives in health config, not seed metadata.
+  it('names which condition made the block unusable', () => {
+    const reasonsFor = (overrides) => classifyPortwatch(completeRun(
+      contentFreshnessOf(overrides),
+    )).contentFreshness.unusableReasons;
+
+    assert.deepEqual(reasonsFor({}), [], 'a usable block names no failure');
+    assert.deepEqual(reasonsFor({ criticalCountries: ['HK'], criticalFreshCount: 1 }), [
+      'declared_scope_narrowed',
+    ]);
+    assert.deepEqual(reasonsFor({ coveredCount: null }), ['covered_count_unusable']);
+    assert.deepEqual(reasonsFor({ freshCount: 'many' }), ['fresh_count_unusable']);
+    assert.deepEqual(reasonsFor({ coveredCount: 174, freshCount: 175 }), [
+      'fresh_exceeds_covered',
+    ]);
+    assert.deepEqual(reasonsFor({ criticalFreshCount: null }), [
+      'critical_fresh_count_unusable',
+    ]);
+    assert.deepEqual(reasonsFor({ criticalFreshCount: 3 }), [
+      'critical_fresh_exceeds_declared',
+    ]);
+    // Independent conditions accumulate rather than short-circuiting to one.
+    // criticalFreshCount is dropped to 0 so the empty declared set does not
+    // also trip `critical_fresh_exceeds_declared` and muddy the assertion.
+    assert.deepEqual(
+      reasonsFor({ coveredCount: null, criticalCountries: [], criticalFreshCount: 0 }),
+      ['covered_count_unusable', 'declared_scope_narrowed'],
+    );
+  });
+
+  it('publishes the fields that separate absent-from-run from present-but-stale', () => {
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalFreshCount: 1,
+      criticalStaleCountries: ['CN'],
+      criticalMissingCountries: 1,
+      criticalOldestObservedAt: Date.parse('2026-07-29T12:02:43.475Z'),
+    })));
+    assert.equal(entry.contentFreshness.criticalMissingCountries, 1);
+    assert.equal(
+      entry.contentFreshness.criticalOldestObservedAt,
+      Date.parse('2026-07-29T12:02:43.475Z'),
+    );
+  });
+
+  it('publishes the scope health pinned, not only the scope the producer declared', () => {
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalCountries: ['CN', 'HK', 'TW'],
+      criticalFreshCount: 3,
+    })));
+    assert.deepEqual(entry.contentFreshness.expectedCriticalCountries, ['CN', 'HK']);
+    assert.deepEqual(entry.contentFreshness.criticalCountries, ['CN', 'HK', 'TW']);
   });
 
   it('accepts a producer set that covers the pinned scope with extras', () => {
@@ -227,6 +360,47 @@ describe('portwatchPortActivity classification', () => {
       criticalMissingCountries: 1,
     })));
     assert.equal(entry.status, 'STALE_CONTENT');
+  });
+
+  // api/health.js is a Vercel edge function that redeploys in minutes; the
+  // producer is a Railway cron on a 12h cadence. Failing closed unconditionally
+  // would light a warning on a key that is genuinely fine for up to a full
+  // cron interval after every deploy — alarm noise that erodes the alarm.
+  it('does not fail closed before the producer has ever published the block', () => {
+    const entry = classifyPortwatch(completeRun(undefined), { activated: false });
+    assert.equal(entry.status, 'OK', 'a deployment that predates the feature is not a fault');
+    assert.equal(entry.contentFreshness, undefined);
+  });
+
+  it('fails closed once the producer has published the block at least once', () => {
+    const entry = classifyPortwatch(completeRun(undefined), { activated: true });
+    assert.equal(
+      entry.status,
+      'COVERAGE_DEGRADED',
+      'losing a block the producer proved it can write is a regression',
+    );
+  });
+
+  it('still evaluates a block that is present before activation is observed', () => {
+    const stale = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalFreshCount: 1,
+      criticalStaleCountries: ['CN'],
+    })), { activated: false });
+    assert.equal(
+      stale.status,
+      'STALE_CONTENT',
+      'the grace covers only absence, never a block that is present and stale',
+    );
+
+    // The grace must not extend to a block the producer DID write but wrote
+    // incoherently — that is a live regression, not a deployment-order state,
+    // and softening it would let a broken producer hide behind the marker.
+    const broken = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalCountries: ['HK'],
+      criticalFreshCount: 1,
+    })), { activated: false });
+    assert.equal(broken.status, 'COVERAGE_DEGRADED');
+    assert.deepEqual(broken.contentFreshness.unusableReasons, ['declared_scope_narrowed']);
   });
 
   it('fails closed when a required content-freshness block is missing or malformed', () => {

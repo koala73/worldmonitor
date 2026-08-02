@@ -206,11 +206,39 @@ check verdict is:
 
 The verdict keys on the **decision-critical** countries — currently `CN` and
 `HK`, the two the China corridor control towers read — rather than on all 174.
-Health pins that set in its own config rather than accepting whatever the
-producer declares, so a producer-side change cannot narrow the alarm scope
-silently: dropping `CN` from the seeder's list would otherwise report `OK` with
-China days stale, which is the exact failure this check exists to catch. A
-producer set that covers the pinned countries and adds more is accepted.
+Health pins both that set and the 72-hour budget in its own config rather than
+accepting whatever the producer declares, so a producer-side change cannot
+narrow the alarm scope or widen its threshold silently: dropping `CN` from the
+seeder's list, or publishing a 30-day budget, would otherwise report `OK` with
+China days stale — the exact failure this check exists to catch. A producer set
+that covers the pinned countries and adds more is accepted.
+
+The producer's counts are a measurement taken at seeder-run time, and seed
+metadata is only rewritten on a canonical-advancing 12-hour run. Health
+therefore **re-ages** the oldest decision-critical observation against the
+current time rather than trusting the count, so an observation that was inside
+budget when the seeder measured it still alarms once it crosses the boundary
+between runs. `criticalOldestAgeMinutes` on the wire is the recomputed age, not
+the producer's. A block claiming every critical country is fresh but carrying no
+usable observation timestamp cannot be re-aged, so it reads as unusable.
+
+`unusableReasons` names which condition failed (`declared_scope_narrowed`,
+`fresh_exceeds_covered`, `critical_observation_time_unusable`, …) so a consumer
+never has to reconstruct the verdict from the raw counts; `expectedCriticalCountries`
+publishes the pinned scope alongside the declared one.
+
+Because the edge function redeploys within minutes of a merge while the producer
+is a 12-hour cron, the absent-block case is softened until the seeder has
+published the field at least once, tracked by the durable marker
+`seed-activated:supply_chain:portwatch-ports:content-freshness`. The softening
+covers **absence only** — a block that is present is always evaluated, and once
+the marker exists a block that disappears fails closed.
+
+The seeder reserves cold-fetch slots for the decision-critical countries so they
+refresh every run they are a cache miss. Without that reservation the rotation
+period (`ceil(174 / 30)` runs at a 12-hour cadence ~ 72 hours) equals the
+content budget, and the alarm would measure the rotation rather than an
+incident.
 Fleet-wide content staleness is normal by construction: the seeder refreshes at
 most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
 tail of the rotation is routinely past budget. Alarming on that would produce a

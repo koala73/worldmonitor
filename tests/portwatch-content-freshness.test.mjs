@@ -14,14 +14,21 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import { __testing__ } from '../api/health.js';
 
 import {
   buildContentFreshnessReport,
   buildPortActivityMetaPayload,
+  orderColdFetchQueue,
+  PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
   PORTWATCH_DECISION_CRITICAL_COUNTRIES,
   PORTWATCH_MAX_REPORTED_STALE_COUNTRIES,
 } from '../scripts/seed-portwatch-port-activity.mjs';
+
+const { ACTIVATION_MARKERS, SEED_META } = __testing__;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -227,6 +234,106 @@ describe('buildContentFreshnessReport', () => {
     assert.equal(report.criticalMissingCountries, 2);
     assert.equal(report.criticalOldestObservedAt, null);
     assert.equal(report.criticalOldestAgeMinutes, null);
+  });
+});
+
+// Without slot reservation the alarm this PR adds is chronically at its own
+// boundary rather than measuring an incident: MAX_COLD_FETCH_PER_RUN caps
+// refreshes at 30 of 174 per run on a 12h cron, so any given country waits
+// ceil(174/30) = 6 runs = 72h — exactly the content budget. CN and HK feed the
+// China corridor adapter and the activity-nowcast's maritime family, so they
+// must be refreshed every run they are a cache miss, not once per sweep.
+describe('decision-critical cold-fetch priority', () => {
+  function queueItem(iso2, refreshAttemptedAt) {
+    return { iso2, iso3: `${iso2}X`, prevPayload: { iso2, refreshAttemptedAt } };
+  }
+
+  it('puts decision-critical countries at the head of the queue', () => {
+    // CN/HK were attempted most recently, so oldest-attempt-first alone would
+    // sort them dead last — behind every one of the 172 others.
+    const queue = [
+      ...Array.from({ length: 172 }, (_, index) =>
+        queueItem(`X${String(index).padStart(3, '0')}`, 1_000 + index)),
+      queueItem('CN', 9_000_000),
+      queueItem('HK', 9_000_001),
+    ];
+    const ordered = orderColdFetchQueue(queue).map((item) => item.iso2);
+
+    assert.deepEqual(ordered.slice(0, 2), ['CN', 'HK']);
+    assert.equal(ordered.length, queue.length, 'ordering is a permutation');
+    assert.equal(new Set(ordered).size, queue.length, 'no country is duplicated');
+  });
+
+  it('keeps oldest-attempt-first among the non-critical remainder', () => {
+    const ordered = orderColdFetchQueue([
+      queueItem('BR', 5_000),
+      queueItem('CN', 9_000),
+      queueItem('ZA', 1_000),
+      queueItem('US', 3_000),
+    ]).map((item) => item.iso2);
+    assert.deepEqual(ordered, ['CN', 'ZA', 'US', 'BR']);
+  });
+
+  it('orders critical countries among themselves by oldest attempt', () => {
+    const ordered = orderColdFetchQueue([
+      queueItem('HK', 2_000),
+      queueItem('CN', 8_000),
+      queueItem('US', 1_000),
+    ]).map((item) => item.iso2);
+    assert.deepEqual(ordered, ['HK', 'CN', 'US']);
+  });
+
+  it('still lets a never-attempted critical country lead', () => {
+    const ordered = orderColdFetchQueue([
+      queueItem('US', 1_000),
+      { iso2: 'CN', iso3: 'CHN', prevPayload: null },
+    ]).map((item) => item.iso2);
+    assert.deepEqual(ordered, ['CN', 'US']);
+  });
+
+  it('reserves fewer slots than the per-run cap so rotation still advances', () => {
+    assert.ok(
+      PORTWATCH_DECISION_CRITICAL_COUNTRIES.length < 30,
+      'critical reservations must not consume the whole cold-fetch budget',
+    );
+  });
+});
+
+describe('content-freshness activation marker', () => {
+  const src = readFileSync(
+    new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url),
+    'utf8',
+  );
+
+  it('matches the key api/health.js registers', () => {
+    assert.equal(
+      PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+      'seed-activated:supply_chain:portwatch-ports:content-freshness',
+    );
+    assert.equal(
+      SEED_META.portwatchPortActivity.contentFreshnessActivation,
+      'portwatchContentFreshness',
+    );
+    assert.equal(
+      ACTIVATION_MARKERS.portwatchContentFreshness,
+      PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+      'a drift here silently strands health in its pending-activation grace',
+    );
+  });
+
+  it('is written without a TTL so the grace cannot silently re-open', () => {
+    // The payload keys carry `'EX', TTL`; the marker deliberately does not —
+    // it records "this producer has shipped the field at least once", which
+    // must outlive a 3-day payload TTL and any run of skipped crons.
+    assert.match(
+      src,
+      /commands\.push\(\['SET', PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY, '1'\]\);/,
+    );
+    assert.doesNotMatch(
+      src,
+      /PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY, '1', 'EX'/,
+      'the activation marker must never expire',
+    );
   });
 });
 
