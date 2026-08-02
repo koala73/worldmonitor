@@ -17,9 +17,12 @@ import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
 import {
   LAYER_REGISTRY,
+  isLayerCommandAllowed,
   isLayerExecutable,
   isLayerEntitled,
+  isLayerToggleAllowed,
   sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
 } from '../src/config/map-layer-definitions';
 
 describe('LAYER_REGISTRY — deckGLOnly flag', () => {
@@ -173,6 +176,65 @@ describe('sanitizeLockedLayers — free-user stuck-state heal', () => {
     const out = sanitizeLockedLayers(input, true);
     assert.equal(out.resilienceScore, true);
     assert.equal(out.conflicts, true);
+  });
+});
+
+describe('isLayerToggleAllowed — stale locked-state recovery', () => {
+  test('free users may turn a stale locked layer off but not turn it on', () => {
+    assert.equal(isLayerToggleAllowed('resilienceScore', true, false), true,
+      'stale locked state must remain recoverable');
+    assert.equal(isLayerToggleAllowed('resilienceScore', false, false), false,
+      'free users must not activate a locked layer');
+  });
+
+  test('premium users may toggle locked layers in either direction', () => {
+    assert.equal(isLayerToggleAllowed('resilienceScore', true, true), true);
+    assert.equal(isLayerToggleAllowed('resilienceScore', false, true), true);
+  });
+
+  test('enhanced and free layers remain toggleable for free users', () => {
+    assert.equal(isLayerToggleAllowed('ciiChoropleth', false, false), true);
+    assert.equal(isLayerToggleAllowed('conflicts', false, false), true);
+  });
+
+  test('unknown layers never pass the toggle gate', () => {
+    // @ts-expect-error — intentionally passing a key outside the union
+    assert.equal(isLayerToggleAllowed('nonexistentLayer', true, false), false);
+  });
+});
+
+describe('shouldSanitizeLockedLayers — settled-free policy', () => {
+  test('does not clamp a pending session before the fallback deadline', () => {
+    assert.equal(shouldSanitizeLockedLayers(false, false, false), false);
+  });
+
+  test('clamps a settled anonymous session', () => {
+    assert.equal(shouldSanitizeLockedLayers(false, true, false), true);
+  });
+
+  test('clamps when the bounded fallback is active even if auth stays pending', () => {
+    assert.equal(shouldSanitizeLockedLayers(false, false, true), true);
+  });
+
+  test('never clamps a premium user', () => {
+    assert.equal(shouldSanitizeLockedLayers(true, true, true), false);
+  });
+});
+
+describe('isLayerCommandAllowed — CMD+K toggle policy', () => {
+  test('free users can clear stale locked layers but cannot enable them', () => {
+    assert.equal(isLayerCommandAllowed('resilienceScore', true, 'flat', true, false), true);
+    assert.equal(isLayerCommandAllowed('resilienceScore', false, 'flat', true, false), false);
+  });
+
+  test('premium and enhanced/free layers keep their expected toggle paths', () => {
+    assert.equal(isLayerCommandAllowed('resilienceScore', false, 'flat', true, true), true);
+    assert.equal(isLayerCommandAllowed('ciiChoropleth', false, 'flat', false, false), true);
+  });
+
+  test('renderer compatibility still blocks commands independently of entitlement', () => {
+    assert.equal(isLayerCommandAllowed('resilienceScore', false, 'globe', true, true), false);
+    assert.equal(isLayerCommandAllowed('storageFacilities', false, 'flat', false, true), false);
   });
 });
 

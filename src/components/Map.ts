@@ -63,9 +63,12 @@ import {
   getLayersForVariant,
   hasCuratedLayerExplanation,
   isSunsetLayer,
+  isLayerToggleAllowed,
   resolveLayerLabel,
   type MapVariant,
 } from '@/config/map-layer-definitions';
+import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import {
   createCountryClickGestureTracker,
@@ -3713,6 +3716,7 @@ export class MapComponent {
   ]);
 
   public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
+    if (!isLayerToggleAllowed(layer, this.state.layers[layer], hasPremiumAccess(getAuthState()))) return;
     console.log(`[Map.toggleLayer] ${layer}: ${this.state.layers[layer]} -> ${!this.state.layers[layer]}`);
     this.state.layers[layer] = !this.state.layers[layer];
     if (this.state.layers[layer]) {
@@ -3979,6 +3983,7 @@ export class MapComponent {
   }
 
   public enableLayer(layer: keyof MapLayers): void {
+    if (!isLayerToggleAllowed(layer, this.state.layers[layer], hasPremiumAccess(getAuthState()))) return;
     if (!this.state.layers[layer]) {
       this.state.layers[layer] = true;
       const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];

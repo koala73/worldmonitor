@@ -6,7 +6,11 @@
  */
 import { isMobileDevice } from '@/utils';
 import { markLcpDebug } from '@/utils/lcp-debug';
-import { isLayerEntitled, sanitizeLockedLayers } from '@/config/map-layer-definitions';
+import {
+  isLayerEntitled,
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
 import type { MapComponent } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
@@ -108,6 +112,7 @@ export interface MapContainerState {
 
 export interface MapContainerOptions {
   chrome?: boolean;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 interface TechEventMarker {
@@ -142,6 +147,7 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
   private rendererDemandCleanup: (() => void) | null = null;
@@ -220,6 +226,7 @@ export class MapContainer {
     this.container = container;
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.isFreeTierFallbackActive = options.isFreeTierFallbackActive ?? null;
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
@@ -811,7 +818,11 @@ export class MapContainer {
     // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
     // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.
     let sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
-    if (isProTierResolved() && !hasPremiumAccess(getAuthState())) {
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(getAuthState()),
+      isProTierResolved(),
+      this.isFreeTierFallbackActive?.() === true,
+    )) {
       sanitized = sanitizeLockedLayers(sanitized, false);
     }
     this.initialState = { ...this.initialState, layers: sanitized };

@@ -418,6 +418,54 @@ export function isLayerEntitled(
 }
 
 /**
+ * Whether a layer toggle may be applied from the current state.
+ *
+ * A free user may turn a locked layer off when stale state survives from an
+ * older build, but must not be able to turn it on. Keeping that distinction
+ * makes every toggle entry point able to heal old state without reopening the
+ * activation path (#6045).
+ */
+export function isLayerToggleAllowed(
+  layerKey: keyof MapLayers,
+  currentlyEnabled: boolean | undefined,
+  hasPremium: boolean,
+): boolean {
+  if (!LAYER_REGISTRY[layerKey]) return false;
+  return currentlyEnabled === true || isLayerEntitled(layerKey, hasPremium);
+}
+
+/**
+ * Whether a CMD+K layer command may toggle the layer in the current map
+ * context. This keeps renderer compatibility and entitlement in one policy
+ * used by the palette filter and its dispatch paths.
+ */
+export function isLayerCommandAllowed(
+  layerKey: keyof MapLayers,
+  currentlyEnabled: boolean | undefined,
+  currentRenderer: MapRenderer,
+  isDeckGLActive: boolean,
+  hasPremium: boolean,
+): boolean {
+  return isLayerExecutable(layerKey, currentRenderer, isDeckGLActive)
+    && isLayerToggleAllowed(layerKey, currentlyEnabled, hasPremium);
+}
+
+/**
+ * Whether locked-layer state may be persisted as a free-tier decision.
+ *
+ * A pending auth session is intentionally not enough: a paying user is
+ * indistinguishable from an anonymous user during boot. The explicit fallback
+ * signal is the bounded exception used when that session never settles.
+ */
+export function shouldSanitizeLockedLayers(
+  hasPremium: boolean,
+  tierResolved: boolean,
+  fallbackActive = false,
+): boolean {
+  return !hasPremium && (tierResolved || fallbackActive);
+}
+
+/**
  * Force locked premium layers off when the user is not entitled.
  * Heals stuck localStorage/state left by pre-#6045 CMD+K activation.
  * Does not mutate the input object.

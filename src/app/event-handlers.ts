@@ -9,7 +9,10 @@ import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { sanitizeLockedLayers } from '@/config/map-layer-definitions';
+import {
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
 import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
@@ -234,6 +237,7 @@ export interface EventHandlerCallbacks {
   refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -980,7 +984,11 @@ export class EventHandlerManager implements AppModule {
     );
     // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
     // Free users must not persist or apply locked layers through this path.
-    if (isProTierResolved() && !hasPremiumAccess()) {
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(),
+      isProTierResolved(),
+      this.callbacks.isFreeTierFallbackActive?.() === true,
+    )) {
       filtered = sanitizeLockedLayers(filtered, false);
     }
     return filtered;

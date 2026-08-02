@@ -6,7 +6,12 @@ import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components/SearchModal';
 import type { CIIPanel } from '@/components/CIIPanel';
 import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, getEffectivePanelConfig, isPanelEntitled } from '@/config';
-import { getAllowedLayerKeys, isLayerExecutable, isLayerEntitled } from '@/config/map-layer-definitions';
+import {
+  getAllowedLayerKeys,
+  isLayerCommandAllowed,
+  isLayerExecutable,
+  isLayerEntitled,
+} from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
@@ -220,11 +225,13 @@ export class SearchManager implements AppModule {
       if (!variantAllowed.has(key)) return false;
       const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
       const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
-      if (!isLayerExecutable(key, renderer, isDeckGL)) return false;
-      if (!isLayerEntitled(key, hasPremiumAccess(getAuthState())) && !this.ctx.mapLayers[key]) {
-        return false;
-      }
-      return true;
+      return isLayerCommandAllowed(
+        key,
+        this.ctx.mapLayers[key],
+        renderer,
+        isDeckGL,
+        hasPremiumAccess(getAuthState()),
+      );
     });
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
@@ -526,11 +533,17 @@ export class SearchManager implements AppModule {
         // dispatch, etc.) don't flip a layer on that can't render.
         const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
         const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
-        if (!isLayerExecutable(layerKey, renderer, isDeckGL)) return;
-        let newValue = !this.ctx.mapLayers[layerKey];
+        const currentValue = this.ctx.mapLayers[layerKey];
         // Locked premium layers: free users may turn them OFF (heal stuck
         // state) but must not turn them ON (#6045).
-        if (newValue && !isLayerEntitled(layerKey, hasPremiumAccess(getAuthState()))) return;
+        if (!isLayerCommandAllowed(
+          layerKey,
+          currentValue,
+          renderer,
+          isDeckGL,
+          hasPremiumAccess(getAuthState()),
+        )) return;
+        let newValue = !currentValue;
         if (newValue && layerKey === 'resilienceScore' && !this.ctx.map?.isDeckGLActive?.()) {
           newValue = false;
         }
@@ -588,8 +601,16 @@ export class SearchManager implements AppModule {
           const layerKey = 'resilienceScore' as keyof MapLayers;
           const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
           if (!variantAllowed.has(layerKey)) break;
-          let newValue = !this.ctx.mapLayers[layerKey];
-          if (newValue && !isLayerEntitled(layerKey, hasPremiumAccess(getAuthState()))) break;
+          const currentValue = this.ctx.mapLayers[layerKey];
+          const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+          if (!isLayerCommandAllowed(
+            layerKey,
+            currentValue,
+            renderer,
+            this.ctx.map?.isDeckGLActive?.() ?? false,
+            hasPremiumAccess(getAuthState()),
+          )) break;
+          let newValue = !currentValue;
           if (newValue && !this.ctx.map?.isDeckGLActive?.()) newValue = false;
           this.ctx.mapLayers[layerKey] = newValue;
           saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
