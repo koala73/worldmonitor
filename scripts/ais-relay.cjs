@@ -27,6 +27,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const {
   YahooQuoteSummaryClient,
+  buildSectorSeedMeta,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   collectSectorValuations,
@@ -2345,13 +2346,19 @@ async function seedSectorSummary() {
     valuations,
     valuationSources,
     valuationCount: valCount,
+    unavailableSymbols,
+    valuationDiagnostics,
+    lastGoodFetchedAt,
+    lastGoodMetricsUsed,
   } = await collectSectorValuations({
     symbols: SECTOR_SYMBOLS,
     fetchValue: fetchYahooQuoteSummary,
+    fetchValueDetailed: (symbol, options) => _yahooQuoteSummaryClient.fetchDetailed(symbol, options),
     parseValue: parseSectorValuation,
     sleepFn: sleep,
     v7UserAgent: CHROME_UA,
     v7ResolveProxyString: resolveProxyString,
+    v7Client: _yahooQuoteSummaryClient,
     upstashGet,
     upstashSet,
   });
@@ -2361,6 +2368,10 @@ async function seedSectorSummary() {
     expectedCount: SECTOR_SYMBOLS.length,
     fetchedAt: Date.now(),
     sources: valuationSources,
+    unavailableSymbols,
+    valuationDiagnostics,
+    lastGoodFetchedAt,
+    lastGoodMetricsUsed,
   });
   const { payload, meta: sectorMeta } = buildSectorValuationPublication({
     sectors,
@@ -2375,7 +2386,8 @@ async function seedSectorSummary() {
   }));
   const quotesPayload = { quotes: sectorQuotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
   const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: sectorQuotes.length, sourceVersion: 'market-sectors' });
-  const ok3 = await upstashSet('seed-meta:market:sectors', sectorMeta, 604800);
+  const persistedSectorMeta = buildSectorSeedMeta(sectorMeta, ok);
+  const ok3 = await upstashSet('seed-meta:market:sectors', persistedSectorMeta, 604800);
   console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount}/${SECTOR_SYMBOLS.length} valuations (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }

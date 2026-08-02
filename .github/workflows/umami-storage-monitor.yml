@@ -1,0 +1,67 @@
+name: Umami Storage Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: umami-storage-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - name: Restore bounded storage history
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/umami-storage-state.json
+          key: umami-storage-${{ github.run_id }}
+          restore-keys: umami-storage-
+
+      - name: Verify Railway production context
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_PRODUCTION_TOKEN is required for the read-only storage monitor."
+            exit 1
+          fi
+          if [ -z "$RAILWAY_PROJECT_ID" ]; then
+            echo "::error::RAILWAY_PROJECT_ID is required for the read-only storage monitor."
+            exit 1
+          fi
+          railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
+
+      - name: Read Umami Postgres volume usage
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cache
+          railway volume --project "$RAILWAY_PROJECT_ID" --environment production list --json > .cache/railway-volumes.json
+
+      - name: Check capacity and projected headroom
+        env:
+          UMAMI_POSTGRES_SERVICE_NAME: Postgres Umami
+        run: node scripts/check-umami-storage.mjs --input .cache/railway-volumes.json --state .cache/umami-storage-state.json

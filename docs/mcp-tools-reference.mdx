@@ -165,7 +165,7 @@ Universal arguments:
 
 ### `get_market_data`
 
-Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
+Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
 
 **Parameters (tool-specific):**
 
@@ -178,6 +178,7 @@ Real-time equity quotes, commodity prices (including gold futures GC=F), crypto 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- Sector `valuationCoverage` separates write age (`stale`) from completeness (`sourceStatus`: `ok`, `partial`, or `degraded`). `valuationCount` and `expectedValuationCount` follow a `symbols` filter when one is supplied. `unavailableSymbols` lists symbols without a current valuation; `lastGood` identifies symbols whose return metrics came from an older snapshot and includes that snapshot's timestamp. `valuationDiagnostics` is bounded per-symbol route metadata showing independent direct/proxy outcomes, response classes, and missing fields; it never contains credentials.
 
 <CodeGroup>
 

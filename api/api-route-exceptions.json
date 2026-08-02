@@ -496,6 +496,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/analytics-health.js",
+      "category": "ops-admin",
+      "reason": "Anonymous, bounded analytics collector health counter ingress. It accepts no event or identity payload and aggregates operator telemetry in Redis; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/seed-health.js",
       "category": "ops-admin",
       "reason": "Cron-triggered data-freshness check for feed seeds. Operator tool, not a user-facing API.",

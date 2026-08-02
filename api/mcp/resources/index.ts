@@ -54,15 +54,14 @@ import { CHOKEPOINT_SLUGS } from './slugs';
 // ---------------------------------------------------------------------------
 // Public resource freshness reader
 // ---------------------------------------------------------------------------
-// Market-data bootstrap freshness is a single seed-meta key at the same
-// 30-minute budget the get_market_data cache tool uses (api/mcp/registry/
-// cache-tools.ts `_seedMetaKey` / `_maxStaleMin`), so the envelope this
-// resource emits is identical to the freshness portion of a
-// get_market_data call — but computed WITHOUT dispatching the tool (no
-// data fetch, no Pro reservation), because the resource surfaces only the
-// envelope. Robust by construction: a missing/unreachable cache yields a
-// valid `{cached_at: null, stale: true}` envelope rather than an error,
-// so the anonymous read never surfaces empty content.
+// Market-data bootstrap freshness is the stock seed-meta key at the same
+// 30-minute budget the get_market_data cache tool uses, so the envelope this
+// resource emits remains compatible with existing clients. It is a write-age
+// probe only: sector valuation completeness and route diagnostics live in
+// get_market_data's valuationCoverage. Robust by construction: a
+// missing/unreachable cache yields a valid `{cached_at: null, stale: true}`
+// envelope rather than an error, so the anonymous read never surfaces empty
+// content.
 const MARKET_FRESHNESS_CHECK = { key: 'seed-meta:market:stocks', maxStaleMin: 30 } as const;
 
 async function readMarketFreshness(): Promise<string> {
@@ -78,7 +77,7 @@ export const PUBLIC_RESOURCE_REGISTRY: PublicResourceDef[] = [
   {
     uri: 'worldmonitor://seed-meta/freshness',
     name: 'Seed-Meta Freshness',
-    description: 'Cache-freshness probe for the high-cadence market-data bootstrap pipeline. Returns ONLY the envelope (cached_at + stale) — no quote payload, no auth, no quota. Use this as a cheap health check to detect a stuck seeder. v1 covers market freshness only; an aggregate freshness resource spanning energy + maritime + risk feeds is a follow-up if customers ask.',
+    description: 'Write-age probe for the high-cadence stock market-data bootstrap pipeline. Returns ONLY the envelope (cached_at + stale) — no quote payload, no auth, no quota. It does not certify sector valuation completeness; use get_market_data for valuationCoverage, source status, and route diagnostics.',
     mimeType: 'application/json',
     read: readMarketFreshness,
   },
