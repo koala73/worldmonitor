@@ -149,10 +149,16 @@ describe('brief-contract wiring (source-textual)', () => {
   it('seed-insights runs the synthesis path through the pure composer with enforce-by-default', () => {
     const src = readSrc('scripts/seed-insights.mjs');
     assert.match(src, /synthesisSystemPrompt/);
-    assert.match(src, /composeSynthesizedBrief\(synthesisResult\.text, topStories, \{/);
+    // #6001 moved the composer call behind composeFromText so the SAME gate
+    // decides provider acceptance and the final result. Both links still have
+    // to hold: the composer receives topStories, and the synthesis response is
+    // what gets composed.
+    assert.match(src, /composeSynthesizedBrief\(text, topStories, \{/);
+    assert.match(src, /composeFromText\(synthesisResult\.text\)/);
+    assert.match(src, /accept: composeFromText/, 'the acceptance gate must be the composer itself');
     assert.match(src, /validatorMode: BRIEF_VALIDATOR_MODE/);
     assert.match(src, /=== 'shadow' \? 'shadow' : 'enforce'/, 'enforce must be the default mode');
-    assert.match(src, /generateLegacySingleHeadlineBrief\(topStories\)/, 'L2 fallback must be wired');
+    assert.match(src, /generateLegacySingleHeadlineBrief\(topStories[,)]/, 'L2 fallback must be wired');
     assert.match(src, /briefStoryLines/);
     assert.match(src, /sourceAgeRange/);
   });
