@@ -3335,5 +3335,31 @@
     "deleteTab": "Fül törlése",
     "deleteTabAria": "{{name}} fül törlése",
     "tabNameAria": "Fül neve"
+  },
+  "theaterPresets": {
+    "label": "Lefedettségi csomagok",
+    "applied": "A(z) {{preset}} csomag alkalmazva: {{count}} forrás engedélyezve",
+    "alreadyApplied": "A(z) {{preset}} csomag már alkalmazva van",
+    "ukraineWar": {
+      "label": "Ukrajnai háború",
+      "description": "Ukrán elsődleges híroldalak, független orosz sajtó és frontértékelési források engedélyezése"
+    },
+    "indoPacific": {
+      "label": "Indo-csendes-óceáni térség / Tajvan",
+      "description": "Tajvani, pakisztáni és délkelet-ázsiai biztonsági források engedélyezése"
+    },
+    "sahelWestAfrica": {
+      "label": "Száhel-övezet és Nyugat-Afrika",
+      "description": "A Száhel-övezetből, Nigériából és Nyugat-Afrikából származó helyi források engedélyezése"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukázus és Közép-Ázsia",
+      "description": "A Dél-Kaukázusból és Közép-Ázsiából származó regionális források engedélyezése"
+    },
+    "middleEastFlashpoints": {
+      "label": "Közel-keleti gócpontok",
+      "description": "Iránnal, Izraellel, az Öböllel és a kurd régiókkal kapcsolatos források engedélyezése"
+    },
+    "unavailable": "A(z) {{preset}} csomag a jelenlegi panelekkel nem érhető el"
   }
 }

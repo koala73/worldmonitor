@@ -3335,5 +3335,31 @@
     "deleteTab": "탭 삭제",
     "deleteTabAria": "탭 {{name}} 삭제",
     "tabNameAria": "탭 이름"
+  },
+  "theaterPresets": {
+    "label": "커버리지 프리셋",
+    "applied": "{{preset}} 프리셋 적용됨: {{count}}개 소스 활성화",
+    "alreadyApplied": "{{preset}} 프리셋은 이미 적용되었습니다",
+    "ukraineWar": {
+      "label": "우크라이나 전쟁",
+      "description": "우크라이나 주요 매체, 독립 러시아 언론 및 전선 평가 소스를 활성화합니다"
+    },
+    "indoPacific": {
+      "label": "인도-태평양 / 대만",
+      "description": "대만, 파키스탄 및 동남아시아 안보 소스를 활성화합니다"
+    },
+    "sahelWestAfrica": {
+      "label": "사헬 및 서아프리카",
+      "description": "사헬, 나이지리아 및 서아프리카 현지 소스를 활성화합니다"
+    },
+    "caucasusCentralAsia": {
+      "label": "캅카스 및 중앙아시아",
+      "description": "남캅카스와 중앙아시아 지역 소스를 활성화합니다"
+    },
+    "middleEastFlashpoints": {
+      "label": "중동 분쟁 요충지",
+      "description": "이란, 이스라엘, 걸프 및 쿠르드 지역 소스를 활성화합니다"
+    },
+    "unavailable": "현재 패널에서는 {{preset}} 프리셋을 사용할 수 없습니다"
   }
 }

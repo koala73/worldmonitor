@@ -3335,5 +3335,31 @@
     "deleteTab": "Xóa tab",
     "deleteTabAria": "Xóa tab {{name}}",
     "tabNameAria": "Tên tab"
+  },
+  "theaterPresets": {
+    "label": "Gói phủ khu vực",
+    "applied": "Đã áp dụng gói {{preset}}: đã bật {{count}} nguồn",
+    "alreadyApplied": "Gói {{preset}} đã được áp dụng",
+    "ukraineWar": {
+      "label": "Chiến tranh Ukraine",
+      "description": "Bật các hãng tin chính của Ukraine, báo chí Nga độc lập và nguồn đánh giá tiền tuyến"
+    },
+    "indoPacific": {
+      "label": "Ấn Độ Dương - Thái Bình Dương / Đài Loan",
+      "description": "Bật các nguồn an ninh về Đài Loan, Pakistan và Đông Nam Á"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel và Tây Phi",
+      "description": "Bật các nguồn địa phương từ Sahel, Nigeria và Tây Phi"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucasus và Trung Á",
+      "description": "Bật các nguồn khu vực từ Nam Caucasus và Trung Á"
+    },
+    "middleEastFlashpoints": {
+      "label": "Điểm nóng Trung Đông",
+      "description": "Bật các nguồn về Iran, Israel, Vùng Vịnh và các khu vực người Kurd"
+    },
+    "unavailable": "Gói {{preset}} không khả dụng với các bảng hiện tại"
   }
 }

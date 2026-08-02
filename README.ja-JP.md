@@ -58,7 +58,7 @@
 - **ローカル AI** — Ollama ですべて実行可能、API キー不要
 - **単一コードベースから 6 つのサイトバリアント** (world、tech、finance、commodity、happy、energy)
 - **ネイティブデスクトップアプリ** (Tauri 2) — macOS、Windows、Linux 対応
-- **25 言語対応** — 各言語のネイティブフィードと RTL サポート
+- **26 言語対応** — 各言語のネイティブフィードと RTL サポート
 
 機能の全一覧、アーキテクチャ、データソース、アルゴリズムについては **[ドキュメント](https://www.worldmonitor.app/docs/documentation)** を参照してください。
 

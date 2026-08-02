@@ -3353,5 +3353,31 @@
     "deleteTab": "Eliminar separador",
     "deleteTabAria": "Eliminar separador {{name}}",
     "tabNameAria": "Nome do separador"
+  },
+  "theaterPresets": {
+    "label": "Predefinições de cobertura",
+    "applied": "Predefinição {{preset}} aplicada: {{count}} fontes ativadas",
+    "alreadyApplied": "A predefinição {{preset}} já foi aplicada",
+    "ukraineWar": {
+      "label": "Guerra na Ucrânia",
+      "description": "Ativar os principais meios ucranianos, a imprensa russa independente e fontes de avaliação da frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwan",
+      "description": "Ativar fontes de segurança de Taiwan, Paquistão e Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel e África Ocidental",
+      "description": "Ativar fontes locais do Sahel, Nigéria e África Ocidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso e Ásia Central",
+      "description": "Ativar fontes regionais do Cáucaso do Sul e da Ásia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Pontos de tensão no Oriente Médio",
+      "description": "Ativar fontes sobre Irã, Israel, Golfo e regiões curdas"
+    },
+    "unavailable": "A predefinição {{preset}} não está disponível com os painéis atuais"
   }
 }

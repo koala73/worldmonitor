@@ -3371,5 +3371,31 @@
     "deleteTab": "Smazat kartu",
     "deleteTabAria": "Smazat kartu {{name}}",
     "tabNameAria": "Název karty"
+  },
+  "theaterPresets": {
+    "label": "Balíčky pokrytí",
+    "applied": "Balíček {{preset}} použit: povoleno {{count}} zdrojů",
+    "alreadyApplied": "Balíček {{preset}} je již použit",
+    "ukraineWar": {
+      "label": "Válka na Ukrajině",
+      "description": "Povolit hlavní ukrajinská média, nezávislý ruský tisk a zdroje pro hodnocení fronty"
+    },
+    "indoPacific": {
+      "label": "Indo-pacifický region / Tchaj-wan",
+      "description": "Povolit bezpečnostní zdroje z Tchaj-wanu, Pákistánu a jihovýchodní Asie"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel a západní Afrika",
+      "description": "Povolit místní zdroje ze Sahelu, Nigérie a západní Afriky"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kavkaz a Střední Asie",
+      "description": "Povolit regionální zdroje z Jižního Kavkazu a Střední Asie"
+    },
+    "middleEastFlashpoints": {
+      "label": "Ohniska napětí na Blízkém východě",
+      "description": "Povolit zdroje z Íránu, Izraele, oblasti Perského zálivu a kurdských regionů"
+    },
+    "unavailable": "Balíček {{preset}} není s aktuálními panely dostupný"
   }
 }

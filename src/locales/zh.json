@@ -3335,5 +3335,31 @@
     "deleteTab": "删除标签页",
     "deleteTabAria": "删除标签页 {{name}}",
     "tabNameAria": "标签页名称"
+  },
+  "theaterPresets": {
+    "label": "覆盖预设",
+    "applied": "已应用{{preset}}预设：已启用{{count}}个来源",
+    "alreadyApplied": "{{preset}}预设已应用",
+    "ukraineWar": {
+      "label": "乌克兰战争",
+      "description": "启用乌克兰主要媒体、独立俄罗斯媒体和前线评估来源"
+    },
+    "indoPacific": {
+      "label": "印太 / 台湾",
+      "description": "启用台湾、巴基斯坦和东南亚安全来源"
+    },
+    "sahelWestAfrica": {
+      "label": "萨赫勒和西非",
+      "description": "启用萨赫勒、尼日利亚和西非本地来源"
+    },
+    "caucasusCentralAsia": {
+      "label": "高加索和中亚",
+      "description": "启用南高加索和中亚地区来源"
+    },
+    "middleEastFlashpoints": {
+      "label": "中东热点",
+      "description": "启用伊朗、以色列、海湾和库尔德地区来源"
+    },
+    "unavailable": "当前面板无法使用{{preset}}预设"
   }
 }

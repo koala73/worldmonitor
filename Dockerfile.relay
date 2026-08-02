@@ -26,6 +26,8 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+# Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
+COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
 # Authenticated Yahoo sector valuation client required at relay startup.
 COPY scripts/_yahoo-sector-valuations.cjs ./scripts/_yahoo-sector-valuations.cjs

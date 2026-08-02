@@ -3553,5 +3553,31 @@
     "deleteTab": "Obriši karticu",
     "deleteTabAria": "Obriši karticu {{name}}",
     "tabNameAria": "Naziv kartice"
+  },
+  "theaterPresets": {
+    "label": "Paketi pokrivenosti",
+    "applied": "Paket {{preset}} primijenjen: omogućena su {{count}} izvora",
+    "alreadyApplied": "Paket {{preset}} već je primijenjen",
+    "ukraineWar": {
+      "label": "Rat u Ukrajini",
+      "description": "Omogućite glavne ukrajinske medije, neovisni ruski tisak i izvore za procjenu bojišta"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacifik / Tajvan",
+      "description": "Omogućite sigurnosne izvore iz Tajvana, Pakistana i jugoistočne Azije"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel i zapadna Afrika",
+      "description": "Omogućite lokalne izvore iz Sahela, Nigerije i zapadne Afrike"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kavkaz i srednja Azija",
+      "description": "Omogućite regionalne izvore iz Južnog Kavkaza i srednje Azije"
+    },
+    "middleEastFlashpoints": {
+      "label": "Žarišta na Bliskom istoku",
+      "description": "Omogućite izvore o Iranu, Izraelu, Zaljevu i kurdskim regijama"
+    },
+    "unavailable": "Paket {{preset}} nije dostupan s vašim trenutačnim panelima"
   }
 }

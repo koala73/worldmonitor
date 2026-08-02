@@ -9,6 +9,7 @@
  */
 
 import { findFullyDisabledCategories, type FeedsByCategory } from '@/services/source-cap';
+import type { RegionalFeedRolloutMigrationTarget } from '@/services/regional-feed-rollout';
 
 /**
  * Apply all migrations from `fromVersion + 1` up through `toVersion`
@@ -27,6 +28,33 @@ export function applyMigrationChain(
     result = migrations[v]?.(result) ?? result;
   }
   return result;
+}
+
+export interface MigrationChainResult {
+  data: Record<string, unknown>;
+  schemaVersion: number;
+}
+
+/**
+ * Apply a migration chain while allowing a caller to fail closed before a
+ * particular step. The returned version is the last migration that actually
+ * ran, so a blocked step remains retryable on the next sync.
+ */
+export function applyMigrationChainWithSchemaVersion(
+  data: Record<string, unknown>,
+  fromVersion: number,
+  toVersion: number,
+  migrations: Record<number, (data: Record<string, unknown>) => Record<string, unknown>>,
+  shouldStopBefore?: (version: number, data: Record<string, unknown>) => boolean,
+): MigrationChainResult {
+  let result = data;
+  let schemaVersion = fromVersion;
+  for (let v = fromVersion + 1; v <= toVersion; v++) {
+    if (shouldStopBefore?.(v, result)) break;
+    result = migrations[v]?.(result) ?? result;
+    schemaVersion = v;
+  }
+  return { data: result, schemaVersion };
 }
 
 /**
@@ -135,28 +163,48 @@ export function parsePersistedDirtyKeys(
  * Schema migrations map. Used both inline by cloud-prefs-sync.ts (against the
  * variant-aware FEEDS) and by tests (against fixture FEEDS).
  */
+export interface CloudPrefsMigrationOptions {
+  frontline?: {
+    legacyDefaultDisabled?: ReadonlySet<string>;
+    names?: ReadonlySet<string>;
+    legacyCapDisabled?: ReadonlySet<string>;
+  };
+  strategic?: {
+    legacyDefaultDisabled?: ReadonlySet<string>;
+    names?: ReadonlySet<string>;
+    legacyCapDisabled?: ReadonlySet<string>;
+    legacyDisabledStates?: ReadonlyArray<ReadonlySet<string>>;
+  };
+  regionalRollout?: {
+    targets?: ReadonlyArray<RegionalFeedRolloutMigrationTarget>;
+  };
+}
+
 export function buildMigrations(
   feedsByCategory: FeedsByCategory,
-  legacyDefaultDisabled: ReadonlySet<string> = new Set(),
-  frontlineNames: ReadonlySet<string> = new Set(),
-  legacyCapDisabled: ReadonlySet<string> = new Set(),
-  legacyStrategicDefaultDisabled: ReadonlySet<string> = new Set(),
-  strategicDefaultNames: ReadonlySet<string> = new Set(),
-  legacyStrategicCapDisabled: ReadonlySet<string> = new Set(),
+  options: CloudPrefsMigrationOptions = {},
 ): Record<number, (data: Record<string, unknown>) => Record<string, unknown>> {
+  const frontline = options.frontline ?? {};
+  const strategic = options.strategic ?? {};
+  const regionalRollout = options.regionalRollout ?? {};
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
     3: (data) => migrateFrontlineEuropeDefaultsV3(
       data,
-      legacyDefaultDisabled,
-      frontlineNames,
-      legacyCapDisabled,
+      frontline.legacyDefaultDisabled ?? new Set(),
+      frontline.names ?? new Set(),
+      frontline.legacyCapDisabled ?? new Set(),
     ),
     4: (data) => migrateStrategicDefaultsV4(
       data,
-      legacyStrategicDefaultDisabled,
-      strategicDefaultNames,
-      legacyStrategicCapDisabled,
+      strategic.legacyDefaultDisabled ?? new Set(),
+      strategic.names ?? new Set(),
+      strategic.legacyCapDisabled ?? new Set(),
+      strategic.legacyDisabledStates ?? [],
+    ),
+    5: (data) => migrateRegionalFeedRolloutDefaultsV5(
+      data,
+      regionalRollout.targets ?? [],
     ),
   };
 }
@@ -269,21 +317,26 @@ export function migrateFrontlineEuropeDefaultsV3(
 /**
  * Schema-4 migration for PR #6000.
  *
- * Before strategic defaults were canonical, the ten tagged feeds were present
+ * Before strategic defaults were canonical, newly promoted feeds were present
  * in the untouched source-reduction disabled set. Only an exact match to that
- * old default or cap result is safe to rewrite: any extra or missing entry
- * means the user customized source preferences, so leave the blob alone.
+ * old default or cap result is safe to rewrite. Callers may supply exact
+ * locale-specific states because cloud rows do not retain the writing locale;
+ * any extra or missing entry still means the user customized preferences, so
+ * leave the blob alone.
  */
 export function migrateStrategicDefaultsV4(
   data: Record<string, unknown>,
   legacyDefaultDisabled: ReadonlySet<string>,
   strategicDefaultNames: ReadonlySet<string>,
   legacyCapDisabled: ReadonlySet<string> = new Set(),
+  additionalLegacyDisabledStates: ReadonlyArray<ReadonlySet<string>> = [],
 ): Record<string, unknown> {
-  if (
-    (legacyDefaultDisabled.size === 0 && legacyCapDisabled.size === 0)
-    || strategicDefaultNames.size === 0
-  ) return data;
+  const recognizedStates = [
+    legacyDefaultDisabled,
+    legacyCapDisabled,
+    ...additionalLegacyDisabledStates,
+  ].filter((state) => state.size > 0);
+  if (recognizedStates.length === 0 || strategicDefaultNames.size === 0) return data;
   const raw = data['worldmonitor-disabled-feeds'];
   if (typeof raw !== 'string') return data;
 
@@ -291,7 +344,7 @@ export function migrateStrategicDefaultsV4(
   try { parsed = JSON.parse(raw); } catch { return data; }
   if (
     !Array.isArray(parsed)
-    || (!hasExactStringSet(parsed, legacyDefaultDisabled) && !hasExactStringSet(parsed, legacyCapDisabled))
+    || !recognizedStates.some((state) => hasExactStringSet(parsed, state))
   ) return data;
 
   const cleaned = parsed.filter(
@@ -303,4 +356,93 @@ export function migrateStrategicDefaultsV4(
     `[prefs] schema-4 migration: re-enabled ${parsed.length - cleaned.length} strategic default source(s) from an untouched legacy default/cap state`,
   );
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
+}
+
+interface RegionalFeedRolloutMigrationAnalysis {
+  matchingTargets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>;
+  candidates: string[][];
+  candidateKeys: Set<string>;
+}
+
+function analyzeRegionalFeedRolloutMigration(
+  data: Record<string, unknown>,
+  targets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>,
+): RegionalFeedRolloutMigrationAnalysis | null {
+  if (targets.length === 0) return null;
+
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return null;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(parsed)) return null;
+
+  const matchingTargets = targets.filter(
+    (target) => hasExactStringSet(parsed, target.legacyDisabled),
+  );
+  if (matchingTargets.length === 0) return null;
+
+  const candidates = matchingTargets.map((target) => {
+    const cleaned = parsed.filter(
+      (name): name is string => typeof name === 'string' && !target.defaultNames.has(name),
+    );
+    return [...new Set([...cleaned, ...target.optInNames])];
+  });
+  const candidateKeys = new Set(
+    candidates.map((candidate) => JSON.stringify([...candidate].sort())),
+  );
+  return { matchingTargets, candidates, candidateKeys };
+}
+
+/**
+ * Whether schema 5 cannot safely infer the locale behind a cloud row.
+ * Callers use this before advancing the row's schema marker; the migration
+ * itself remains a pure data transform and continues to return the original
+ * blob for ambiguous fingerprints.
+ */
+export function isRegionalFeedRolloutMigrationAmbiguous(
+  data: Record<string, unknown>,
+  targets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>,
+): boolean {
+  const analysis = analyzeRegionalFeedRolloutMigration(data, targets);
+  return analysis !== null && analysis.candidateKeys.size !== 1;
+}
+
+/**
+ * Schema-5 migration for the #5975/#5976/#5977/#5980 regional feed wave,
+ * including exact dormant-profile fingerprints from the immediately preceding
+ * frontline and Ukraine-depth releases.
+ *
+ * Persisted source preferences are a denylist. Adding a feed therefore made
+ * it enabled for every returning profile unless the new name was explicitly
+ * inserted into `disabledFeeds`; the free cap could then persist the inverse
+ * problem by disabling sources that the catalog declared default-on.
+ *
+ * The denylist does not record whether an entry came from the user or the cap,
+ * so this migration never infers intent from individual names. Callers provide
+ * exact untouched default/cap states reconstructed for the chronological
+ * release paths. A single extra, missing, duplicated, or malformed entry makes
+ * the state unrecognized and leaves it unchanged. That preserves every
+ * deliberate post-rollout source toggle while repairing untouched profiles.
+ */
+export function migrateRegionalFeedRolloutDefaultsV5(
+  data: Record<string, unknown>,
+  targets: ReadonlyArray<RegionalFeedRolloutMigrationTarget>,
+): Record<string, unknown> {
+  const analysis = analyzeRegionalFeedRolloutMigration(data, targets);
+  if (!analysis) return data;
+  // The cloud row does not record the locale that produced its denylist. If
+  // multiple locales share a fingerprint but require different outcomes,
+  // preserve the row rather than guessing and overwriting user intent.
+  if (analysis.candidateKeys.size !== 1) return data;
+
+  const raw = data['worldmonitor-disabled-feeds'] as string;
+  const reconciled = analysis.candidates[0]!;
+  if (JSON.stringify(reconciled) === raw) return data;
+
+  const target = analysis.matchingTargets[0]!;
+  console.log(
+    `[prefs] schema-5 migration: reconciled ${target.defaultNames.size} rollout default(s) and ${target.optInNames.size} opt-in source(s) for an untouched profile`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(reconciled) };
 }

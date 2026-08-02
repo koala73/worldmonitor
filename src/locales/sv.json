@@ -3335,5 +3335,31 @@
     "deleteTab": "Ta bort flik",
     "deleteTabAria": "Ta bort flik {{name}}",
     "tabNameAria": "Fliknamn"
+  },
+  "theaterPresets": {
+    "label": "Täckningspaket",
+    "applied": "Paketet {{preset}} har tillämpats: {{count}} källor aktiverade",
+    "alreadyApplied": "Paketet {{preset}} har redan tillämpats",
+    "ukraineWar": {
+      "label": "Kriget i Ukraina",
+      "description": "Aktivera ukrainska huvudmedier, oberoende rysk press och källor för frontbedömning"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Aktivera säkerhetskällor från Taiwan, Pakistan och Sydostasien"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel och Västafrika",
+      "description": "Aktivera lokala källor från Sahel, Nigeria och Västafrika"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus och Centralasien",
+      "description": "Aktivera regionala källor från södra Kaukasus och Centralasien"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spänningshärdar i Mellanöstern",
+      "description": "Aktivera källor om Iran, Israel, Gulfen och kurdiska regioner"
+    },
+    "unavailable": "Paketet {{preset}} är inte tillgängligt med dina nuvarande paneler"
   }
 }

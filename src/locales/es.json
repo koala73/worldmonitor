@@ -3353,5 +3353,31 @@
     "deleteTab": "Eliminar pestaña",
     "deleteTabAria": "Eliminar pestaña {{name}}",
     "tabNameAria": "Nombre de pestaña"
+  },
+  "theaterPresets": {
+    "label": "Paquetes de cobertura",
+    "applied": "Paquete {{preset}} aplicado: {{count}} fuentes activadas",
+    "alreadyApplied": "El paquete {{preset}} ya está aplicado",
+    "ukraineWar": {
+      "label": "Guerra de Ucrania",
+      "description": "Activar medios ucranianos principales, prensa rusa independiente y fuentes de evaluación del frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwán",
+      "description": "Activar fuentes de seguridad de Taiwán, Pakistán y el Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel y África Occidental",
+      "description": "Activar fuentes locales del Sahel, Nigeria y África Occidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso y Asia Central",
+      "description": "Activar fuentes regionales del Cáucaso Sur y Asia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Focos de tensión en Oriente Medio",
+      "description": "Activar fuentes de Irán, Israel, el Golfo y las regiones kurdas"
+    },
+    "unavailable": "El paquete {{preset}} no está disponible con tus paneles actuales"
   }
 }

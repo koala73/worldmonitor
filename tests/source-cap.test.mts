@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  computeRolloutLegacyDisabledStates,
   computeCapDisabledSources,
   selectSourcesUnderCap,
   findFullyDisabledCategories,
@@ -19,6 +20,60 @@ describe('computeCapDisabledSources: legacy migration fingerprint', () => {
       2,
     );
     assert.deepEqual([...result].sort(), ['a2', 'b2']);
+  });
+});
+
+describe('computeRolloutLegacyDisabledStates: exact release-path fingerprints', () => {
+  it('enumerates untouched default and every chronological cap path without mutating inputs', () => {
+    const feeds = {
+      a: F('base-a', 'stage-1'),
+      b: F('base-b', 'stage-2'),
+      c: F('base-disabled'),
+    };
+    const initial = new Set(['base-disabled']);
+    const stages = [
+      { introducedNames: new Set(['stage-1']), protectedNames: new Set(['stage-1']) },
+      { introducedNames: new Set(['stage-2']), protectedNames: new Set(['stage-1', 'stage-2']) },
+    ];
+
+    const states = computeRolloutLegacyDisabledStates(
+      feeds,
+      [],
+      initial,
+      2,
+      new Set(),
+      stages,
+    );
+    const canonical = new Set(states.map((state) => [...state].sort().join('|')));
+
+    assert.ok(canonical.has('base-disabled'), 'a profile that stayed Pro/default-only must be recognized');
+    assert.ok(
+      canonical.has('base-b|base-disabled'),
+      'a profile capped after stage 1 must retain the exact auto-disabled base source',
+    );
+    assert.ok(
+      canonical.has('base-a|base-b|base-disabled'),
+      'a profile capped after both protected rollout stages must be recognized',
+    );
+    assert.equal(canonical.size, states.length, 'equivalent release paths must be deduplicated');
+    assert.deepEqual(initial, new Set(['base-disabled']), 'initial disabled state must not be mutated');
+  });
+
+  it('rejects rollout names that are introduced by more than one stage', () => {
+    assert.throws(
+      () => computeRolloutLegacyDisabledStates(
+        { a: F('base', 'duplicate') },
+        [],
+        new Set(),
+        1,
+        new Set(),
+        [
+          { introducedNames: new Set(['duplicate']), protectedNames: new Set() },
+          { introducedNames: new Set(['duplicate']), protectedNames: new Set() },
+        ],
+      ),
+      /introduced by more than one rollout stage/,
+    );
   });
 });
 

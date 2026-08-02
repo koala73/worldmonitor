@@ -3335,5 +3335,31 @@
     "deleteTab": "タブを削除",
     "deleteTabAria": "タブ {{name}} を削除",
     "tabNameAria": "タブ名"
+  },
+  "theaterPresets": {
+    "label": "カバレッジプリセット",
+    "applied": "{{preset}}プリセットを適用しました: {{count}}件のソースを有効化",
+    "alreadyApplied": "{{preset}}プリセットはすでに適用されています",
+    "ukraineWar": {
+      "label": "ウクライナ戦争",
+      "description": "ウクライナの主要メディア、独立系ロシア報道、前線評価ソースを有効にします"
+    },
+    "indoPacific": {
+      "label": "インド太平洋 / 台湾",
+      "description": "台湾、パキスタン、東南アジアの安全保障ソースを有効にします"
+    },
+    "sahelWestAfrica": {
+      "label": "サヘル・西アフリカ",
+      "description": "サヘル、ナイジェリア、西アフリカの現地ソースを有効にします"
+    },
+    "caucasusCentralAsia": {
+      "label": "コーカサス・中央アジア",
+      "description": "南コーカサスと中央アジアの地域ソースを有効にします"
+    },
+    "middleEastFlashpoints": {
+      "label": "中東の緊張地域",
+      "description": "イラン、イスラエル、湾岸、クルド地域のソースを有効にします"
+    },
+    "unavailable": "{{preset}}プリセットは現在のパネルでは利用できません"
   }
 }

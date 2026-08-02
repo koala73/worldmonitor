@@ -3353,5 +3353,31 @@
     "deleteTab": "Elimina scheda",
     "deleteTabAria": "Elimina scheda {{name}}",
     "tabNameAria": "Nome scheda"
+  },
+  "theaterPresets": {
+    "label": "Preset di copertura",
+    "applied": "Preset {{preset}} applicato: {{count}} fonti attivate",
+    "alreadyApplied": "Il preset {{preset}} è già applicato",
+    "ukraineWar": {
+      "label": "Guerra in Ucraina",
+      "description": "Attiva i principali media ucraini, la stampa russa indipendente e le fonti di valutazione del fronte"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacifico / Taiwan",
+      "description": "Attiva le fonti di sicurezza su Taiwan, Pakistan e Sud-est asiatico"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel e Africa occidentale",
+      "description": "Attiva le fonti locali del Sahel, della Nigeria e dell'Africa occidentale"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucaso e Asia centrale",
+      "description": "Attiva le fonti regionali del Caucaso meridionale e dell'Asia centrale"
+    },
+    "middleEastFlashpoints": {
+      "label": "Focolai di tensione in Medio Oriente",
+      "description": "Attiva le fonti su Iran, Israele, Golfo e regioni curde"
+    },
+    "unavailable": "Il preset {{preset}} non è disponibile con i pannelli attuali"
   }
 }

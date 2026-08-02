@@ -3335,5 +3335,31 @@
     "deleteTab": "Sekmeyi sil",
     "deleteTabAria": "{{name}} sekmesini sil",
     "tabNameAria": "Sekme adı"
+  },
+  "theaterPresets": {
+    "label": "Kapsama ön ayarları",
+    "applied": "{{preset}} ön ayarı uygulandı: {{count}} kaynak etkinleştirildi",
+    "alreadyApplied": "{{preset}} ön ayarı zaten uygulanmış",
+    "ukraineWar": {
+      "label": "Ukrayna Savaşı",
+      "description": "Ukrayna'nın başlıca yayınlarını, bağımsız Rus basınını ve cephe değerlendirme kaynaklarını etkinleştirir"
+    },
+    "indoPacific": {
+      "label": "Hint-Pasifik / Tayvan",
+      "description": "Tayvan, Pakistan ve Güneydoğu Asya güvenlik kaynaklarını etkinleştirir"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel ve Batı Afrika",
+      "description": "Sahel, Nijerya ve Batı Afrika'daki yerel kaynakları etkinleştirir"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kafkasya ve Orta Asya",
+      "description": "Güney Kafkasya ve Orta Asya bölgesel kaynaklarını etkinleştirir"
+    },
+    "middleEastFlashpoints": {
+      "label": "Orta Doğu gerilim noktaları",
+      "description": "İran, İsrail, Körfez ve Kürt bölgelerine ilişkin kaynakları etkinleştirir"
+    },
+    "unavailable": "{{preset}} ön ayarı mevcut panellerinizle kullanılamıyor"
   }
 }

@@ -3353,5 +3353,31 @@
     "deleteTab": "Șterge fila",
     "deleteTabAria": "Șterge fila {{name}}",
     "tabNameAria": "Numele filei"
+  },
+  "theaterPresets": {
+    "label": "Preseturi de acoperire",
+    "applied": "Presetul {{preset}} a fost aplicat: {{count}} surse activate",
+    "alreadyApplied": "Presetul {{preset}} este deja aplicat",
+    "ukraineWar": {
+      "label": "Războiul din Ucraina",
+      "description": "Activează principalele publicații ucrainene, presa rusă independentă și sursele de evaluare a frontului"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Activează sursele de securitate pentru Taiwan, Pakistan și Asia de Sud-Est"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel și Africa de Vest",
+      "description": "Activează sursele locale din Sahel, Nigeria și Africa de Vest"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucaz și Asia Centrală",
+      "description": "Activează sursele regionale din Caucazul de Sud și Asia Centrală"
+    },
+    "middleEastFlashpoints": {
+      "label": "Puncte fierbinți în Orientul Mijlociu",
+      "description": "Activează sursele despre Iran, Israel, Golf și regiunile kurde"
+    },
+    "unavailable": "Presetul {{preset}} nu este disponibil cu panourile actuale"
   }
 }

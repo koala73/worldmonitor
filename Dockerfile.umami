@@ -14,6 +14,7 @@ FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a55
 RUN apk add --no-cache git
 WORKDIR /upstream
 COPY docker/umami/session-data-upsert.patch /tmp/session-data-upsert.patch
+COPY docker/umami/v320-compat.patch /tmp/v320-compat.patch
 COPY docker/umami/runtime/session-data-upsert.sql /tmp/session-data-upsert.sql
 COPY docker/umami/21_update_session_data/migration.sql /tmp/21_update_session_data.sql
 COPY docker/umami/runtime/upstream-23-update-session-data.sql /tmp/upstream-23-update-session-data.sql
@@ -59,6 +60,23 @@ RUN git init \
   && test "$(git rev-parse HEAD)" = "2f6e2b5ff256862a081d9e74bed18a42ebf795e3" \
   && git apply --check /tmp/session-data-upsert.patch \
   && git apply /tmp/session-data-upsert.patch \
+  && git apply --check /tmp/v320-compat.patch \
+  && git apply /tmp/v320-compat.patch \
+  && node --input-type=module -e '\
+    import { readFileSync } from "node:fs"; \
+    const save = readFileSync("src/queries/sql/sessions/saveSessionData.ts", "utf8"); \
+    const lib = readFileSync("src/lib/prisma.ts", "utf8"); \
+    const m = save.match(/const\s*\{([^}]*)\}\s*=\s*prisma;/); \
+    if (!m) throw new Error("saveSessionData no longer destructures helpers from prisma"); \
+    const names = m[1].split(",").map((v) => v.trim()).filter(Boolean); \
+    if (!names.length) throw new Error("no prisma helpers destructured in saveSessionData"); \
+    const surface = lib.slice(lib.indexOf("export default {")); \
+    for (const n of names) { \
+      if (!new RegExp("(?:^|[\\s,{])" + n + "\\s*,").test(surface)) { \
+        throw new Error("saveSessionData calls prisma." + n + " but src/lib/prisma.ts does not export it"); \
+      } \
+    } \
+  ' \
   && node --input-type=module -e '\
     import { readFileSync } from "node:fs"; \
     const normalizeSql = (value) => value.trim().split("\n").map((line) => line.trim()).join("\n"); \

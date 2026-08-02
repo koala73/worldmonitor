@@ -62,6 +62,7 @@ import {
   getLayerExplanation,
   getLayersForVariant,
   hasCuratedLayerExplanation,
+  isSunsetLayer,
   resolveLayerLabel,
   type MapVariant,
 } from '@/config/map-layer-definitions';
@@ -530,11 +531,13 @@ export class MapComponent {
       'weather', 'fires',                     // operational risk
       'economic',                             // infrastructure context
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers
+    // Filter sunset layers (e.g. iranAttacks) so the SVG/mobile picker matches
+    // getLayersForVariant / DeckGL — otherwise a dead raw-key toggle wastes a slot (#6046).
+    const layers = (SITE_VARIANT === 'tech' ? techLayers
                  : SITE_VARIANT === 'finance' ? financeLayers
                  : SITE_VARIANT === 'happy' ? happyLayers
                  : SITE_VARIANT === 'energy' ? energyLayers
-                 : fullLayers;
+                 : fullLayers).filter((key) => !isSunsetLayer(key));
     const MAX_SVG_LAYERS = 9;
     const enforceLayerLimit = () => {
       const allBtns = Array.from(toggles.querySelectorAll<HTMLButtonElement>('.layer-toggle'));
