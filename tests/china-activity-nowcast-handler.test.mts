@@ -290,24 +290,35 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal((freight?.provenance as Record<string, unknown>).currentLevel, 1072.16);
   });
 
-  it('names an unavailable CCFI signal instead of claiming a missing prior (#6066)', () => {
-    const unavailable = corridorSnapshot();
-    const signal = unavailable.corridors[0]!.conditions
-      .find((item) => item.family === 'trade')!.sourceSignals[0]!;
-    signal.availability = 'unavailable';
-    signal.metrics = {};
+  it('names each way of having no CCFI change for what it is (#6066)', () => {
+    // A signal that never arrived, one that arrived but is stale, and one that
+    // arrived timely with only a level are three different facts.
+    const cases: Array<[CorridorSourceSignal['availability'], string]> = [
+      ['unavailable', 'source_signal_unavailable'],
+      ['stale', 'source_signal_stale'],
+      ['available', 'missing_comparable_prior'],
+    ];
 
-    const freight = buildChinaActivityNowcastInputs({
-      evaluatedAt: EVALUATED_AT,
-      macro: macroSnapshot() as never,
-      corridors: unavailable,
-      marketValues: marketValues(),
-    }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
-    assert.equal(freight?.value, null);
-    assert.equal(
-      (freight?.provenance as Record<string, unknown>).exclusion,
-      'source_signal_unavailable',
-    );
+    for (const [availability, expected] of cases) {
+      const snapshot = corridorSnapshot();
+      const signal = snapshot.corridors[0]!.conditions
+        .find((item) => item.family === 'trade')!.sourceSignals[0]!;
+      signal.availability = availability;
+      signal.metrics = { currentValue: 1072.16, unit: 'index' };
+
+      const freight = buildChinaActivityNowcastInputs({
+        evaluatedAt: EVALUATED_AT,
+        macro: macroSnapshot() as never,
+        corridors: snapshot,
+        marketValues: marketValues(),
+      }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
+      assert.equal(freight?.value, null, availability);
+      assert.equal(
+        (freight?.provenance as Record<string, unknown>).exclusion,
+        expected,
+        availability,
+      );
+    }
   });
 
   it('never lets a CCFI level or a fabricable display change become a freight move (#6066)', () => {

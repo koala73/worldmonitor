@@ -155,8 +155,16 @@ describe('CCFI parser (functional)', () => {
 // fail closed: published-or-derived from SSE's own envelope, never fabricated.
 
 describe('SSE period-over-period change contract (#6066)', () => {
+  // currentDate defaults to a real date because an undated observation fails the
+  // decision-grade field closed on its own (covered by its own test below).
   const parse = (line, data = {}) => parseSseIndexResponse(
-    { data: { lineDataList: [{ dataItemTypeName: 'CCFI_T', ...line }], ...data } },
+    {
+      data: {
+        currentDate: '2026-07-18',
+        lineDataList: [{ dataItemTypeName: 'CCFI_T', ...line }],
+        ...data,
+      },
+    },
     'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index',
   )[0];
 
@@ -203,6 +211,73 @@ describe('SSE period-over-period change contract (#6066)', () => {
       assert.equal(parse({ currentContent: 900, lastContent }).priorPeriodValue, null,
         String(lastContent));
     }
+  });
+
+  it('publishes no change when SSE does not date the observation', () => {
+    // An undated observation is stamped with today's date downstream, so a frozen
+    // index would keep clearing the 28-day freshness budget forever.
+    for (const data of [{}, { currentDate: '' }, { currentDate: 42 }]) {
+      const index = parseSseIndexResponse(
+        {
+          data: {
+            lineDataList: [{
+              dataItemTypeName: 'CCFI_T',
+              currentContent: 1072.16,
+              lastContent: 1054.38,
+              percentage: 1.69,
+            }],
+            ...data,
+          },
+        },
+        'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index',
+      )[0];
+      const label = JSON.stringify(data);
+      assert.equal(index.periodChangePct, null, label);
+      assert.equal(index.periodChangeBasis, null, label);
+      // The display record still renders — only the decision-grade field fails closed.
+      assert.equal(index.currentValue, 1072.16, label);
+      assert.equal(index.changePct, 1.69, label);
+    }
+  });
+
+  it('withholds both prior-period facts when no change was proven', () => {
+    // A prior level or date with no change to attach it to describes a comparison
+    // that was never made. Each case below supplies a FINITE prior that would
+    // otherwise be published next to a null change.
+    const zeroPrior = parse({ currentContent: 900, lastContent: 0 }, { lastDate: '2026-07-11' });
+    assert.equal(zeroPrior.periodChangePct, null, 'zero prior proves no change');
+    assert.equal(zeroPrior.priorPeriodValue, null, 'zero prior is not a comparison');
+    assert.equal(zeroPrior.priorPeriodDate, null);
+
+    const undated = parseSseIndexResponse(
+      {
+        data: {
+          lastDate: '2026-07-11',
+          lineDataList: [{
+            dataItemTypeName: 'CCFI_T',
+            currentContent: 1072.16,
+            lastContent: 1054.38,
+            percentage: 1.69,
+          }],
+        },
+      },
+      'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index',
+    )[0];
+    assert.equal(undated.periodChangePct, null, 'undated observation proves no change');
+    assert.equal(undated.priorPeriodValue, null, 'no change means no comparison to report');
+    assert.equal(undated.priorPeriodDate, null);
+
+    const noPrior = parse({ currentContent: 900 }, { lastDate: '2026-07-11' });
+    assert.equal(noPrior.periodChangePct, null);
+    assert.equal(noPrior.priorPeriodValue, null);
+    assert.equal(noPrior.priorPeriodDate, null);
+
+    const proven = parse(
+      { currentContent: 1072.16, lastContent: 1054.38, percentage: 1.69 },
+      { currentDate: '2026-07-18', lastDate: '2026-07-11' },
+    );
+    assert.equal(proven.priorPeriodValue, 1054.38);
+    assert.equal(proven.priorPeriodDate, '2026-07-11');
   });
 });
 

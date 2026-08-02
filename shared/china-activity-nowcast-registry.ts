@@ -65,7 +65,7 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
       transformation: {
         kind: 'signed_value',
         direction: 'same',
-        description: 'Use the published period-over-period percentage change; do not infer a change from a single index level.',
+        description: "Use the exchange's own published period-over-period percentage change, or the change between two period levels it published; never infer a change from a single index level.",
       },
       lagRule: {
         days: 0,

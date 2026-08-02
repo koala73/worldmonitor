@@ -244,18 +244,22 @@ function corridorProxyObservations(
     signal.selectorId === 'supply_chain:shipping:v2:CCFI'
     || signal.id.startsWith('signal:ccfi:'));
   if (ccfi) {
-    // Only the publisher's own period-over-period move counts (#6066). The
-    // current level and the legacy fabricable `changePct` are never read, so a
-    // level cannot be reinterpreted as a change or a neutral contribution.
+    // Only a proven period-over-period move counts (#6066) — the exchange's own
+    // percentage, or the change between two levels it published. The current
+    // level and the legacy fabricable `changePct` are never read, so a level
+    // cannot be reinterpreted as a change or a neutral contribution.
     const periodChange = finiteNumber(ccfi.metrics.periodChangePct);
-    // A signal that never arrived is not the same exclusion as one that arrived
-    // with a level but no comparable prior; naming the wrong one would overstate
-    // what the source actually published.
+    // Each way of having no change gets its own name. A signal that never
+    // arrived, one that arrived but is no longer timely, and one that arrived
+    // timely with a level but no comparable prior are three different facts;
+    // collapsing them would overstate what the source actually published.
     const exclusion = periodChange !== null
       ? null
-      : ccfi.availability === 'available'
-        ? 'missing_comparable_prior'
-        : 'source_signal_unavailable';
+      : ccfi.availability === 'unavailable'
+        ? 'source_signal_unavailable'
+        : ccfi.availability === 'stale'
+          ? 'source_signal_stale'
+          : 'missing_comparable_prior';
     observations.push(corridorObservation({
       evaluatedAt,
       seriesId: 'ccfi_freight_rate_change',
