@@ -55,7 +55,7 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 }
 ```
 
-`summary` fields: `total` is one entry per probed key (currently ~194 and growing as panels are added). `warn` **excludes** on-demand-empty keys — those are surfaced separately as `onDemandWarn` so they don't drive the overall verdict to `WARNING`. `staleContent` is a **subset** of `warn` (fresh seeder but the upstream feed stopped advancing). Only `crit` (`EMPTY`/`EMPTY_DATA`) drives `DEGRADED`/`UNHEALTHY`.
+`summary` fields: `total` is one entry per probed key (currently ~194 and growing as panels are added). `warn` **excludes** on-demand-empty keys — those are surfaced separately as `onDemandWarn` so they don't drive the overall verdict to `WARNING`. `staleContent` is a **subset** of `warn` (fresh seeder but the upstream feed stopped advancing), and `rolloutPending` is another **subset** of `warn` (a newly deployed schema still inside its bounded deploy-before-cron window). Only `crit` (`EMPTY`/`EMPTY_DATA`) drives `DEGRADED`/`UNHEALTHY`.
 
 With `?compact=1`, the `checks` object is replaced by `problems` containing only non-OK keys.
 
@@ -64,6 +64,21 @@ With `?compact=1`, the `checks` object is replaced by `problems` containing only
 The consumer-prices-core service exposes `GET /wm/consumer-prices/v1/coverage?market=ae` (the service API key is required). Its response includes attempted, completed, failed, and validator-rejected page counts for the market and each active retailer. `status` is `healthy`, `partial`, or `degraded`; a partial result remains publishable, while a rejected observation is never admitted merely to improve the coverage count. The publisher writes the same snapshot to `consumer-prices:coverage:<market>` and includes its aggregate completion ratio in `seed-meta`, so `/api/health` can distinguish a fresh partial run from a stopped producer.
 
 This operational contract complements, rather than replaces, the source-quality work in [#5445](https://github.com/koala73/worldmonitor/issues/5445) and [#5811](https://github.com/koala73/worldmonitor/issues/5811).
+
+#### Coverage schema rollout handshake
+
+The Edge health registry deploys with the PR that adds a market, but the keys it reads can only appear on consumer-prices-core's next daily scrape (02:00 UTC) → aggregate (02:15) → publish (02:30) window. [#6059](https://github.com/koala73/worldmonitor/issues/6059) closes that window with two independent gates, both required:
+
+1. **Activation.** After it writes a coverage snapshot that actually attempted pages for a market, the daily publisher (`consumer-prices-core/src/jobs/publish.ts`, and only it) `SET`s `seed-activated:consumer-prices:coverage:v1:<market>` with **no TTL**. The marker is durable and one-way — once it exists, that market is strict forever and absent, empty, stale, or below-threshold coverage classifies exactly as it would without the handshake. A truthful-but-empty snapshot (no active retailers, or retailers with zero recorded runs) does **not** activate. The `v1` segment is the coverage schema version, so a future schema change opens its own separately-reviewed window rather than inheriting activation earned by the old shape.
+2. **Deadline.** Softening also stops at a per-market wall-clock timestamp compiled into `api/health.js`, whether or not the producer ever ran. A missed or failed first tick therefore escalates to `EMPTY` (crit) on its own, within one complete scrape/aggregate/publish window.
+
+Every one of the eight coverage checks also carries `activated` (true once its durable marker exists) in **all** statuses, so rollout progress is auditable from the payload and an `EMPTY` market can be told apart as "activated, then broke" rather than "never ran" without probing Redis by hand.
+
+**If a market is still `ROLLOUT_PENDING` as its deadline approaches**, the producer — not the health reader — is what needs attention. Check the `seed-consumer-prices-publish` service logs for that market: `coverage-activation:<market> failed` means the snapshot published but the marker write did not (it retries next run), while `coverage:<market> published without attempted pages — activation marker withheld` means no retailer page was attempted for that market at all, which is a scrape problem, not a rollout one. `scripts/seed-consumer-prices.mjs --force` can republish a single market's data as a last resort, but it deliberately does **not** activate: its coverage key carries a 30-minute TTL, and a permanent activation earned from a 30-minute artifact would leave that market in an unrecoverable `EMPTY` (crit) once the data expired. Only the daily publisher, which writes a 26h key, activates a market.
+
+Only a wholly absent coverage key is softened. Once the key exists the producer has run, so `EMPTY_DATA`, `COVERAGE_DEGRADED`, `COVERAGE_PARTIAL`, and `STALE_SEED` all stay strict — coverage counts are never synthesized, and success is never inferred from unrelated canonical consumer-price keys. `scripts/check-seed-freshness.mjs` re-checks each `rolloutPendingUntil` against the wall clock rather than trusting the status string, so an expired or unparseable deadline (or a stale cached compact snapshot) reports the problem normally.
+
+Two limits are deliberate. First, softening keys on "the coverage key is absent" is not identical to "the producer has not run": if a scheduled run publishes every other snapshot for a market but `buildCoverageSnapshot` alone throws, that market reads `ROLLOUT_PENDING` rather than a coverage failure until its deadline passes. Narrowing this by inferring health from sibling keys is deliberately not done — it is the fabricated-success inference the design forbids, and seven of the eight markets have no sibling health keys registered anyway. Second, `overall` becomes `WARNING` (never `UNHEALTHY`) for the duration of the window, so a keyword monitor configured per [Integration with Monitoring Tools](#integration-with-monitoring-tools) — which alerts whenever `"status":"HEALTHY"` is absent — will fire during a rollout. That threshold already fires on any ordinary `STALE_SEED` warn, so this adds no new alert class, but it is worth knowing before a planned schema rollout.
 
 ### Relay ingestion telemetry
 
@@ -90,6 +105,8 @@ Keys are grouped into three tiers that determine alert severity:
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
 | `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
+| `COVERAGE_DEGRADED` | Warn | The producer's own coverage diagnostics are missing, or its completion ratio is below the key's `minSuccessRate` (for example, a consumer-price market that completed 4 of 12 retailer pages) |
+| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the entry carries a `rolloutPendingUntil` deadline compiled into `api/health.js`, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
 | `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |

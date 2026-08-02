@@ -173,6 +173,19 @@ describe('generated request validation', () => {
     ]);
   });
 
+  it('accepts the macro-stress FRED batch within the handler limit', () => {
+    assert.equal(validateGeneratedRequest('getFredSeriesBatch', {
+      seriesIds: Array.from({ length: 11 }, (_, index) => `SERIES_${index}`),
+      limit: 120,
+    }), undefined);
+    assert.deepEqual(validateGeneratedRequest('getFredSeriesBatch', {
+      seriesIds: Array.from({ length: 21 }, (_, index) => `SERIES_${index}`),
+      limit: 120,
+    }), [
+      { field: 'seriesIds', description: 'array must contain at most 20 item(s)' },
+    ]);
+  });
+
   it('enforces every supported scalar and cardinality rule family', () => {
     assert.deepEqual(validateGeneratedRequest('getFlightStatus', {
       flightNumber: 'AB',

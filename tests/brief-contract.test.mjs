@@ -203,10 +203,12 @@ describe('brief-contract wiring (source-textual)', () => {
     assert.match(src, /brief: citationCheck\.text/);
   });
 
-  it('panel renders story lines and the freshness footer', () => {
+  it('panel keeps cited story lines behind a disclosure and renders the freshness footer', () => {
     const src = readSrc('src/components/InsightsPanel.ts');
     assert.match(src, /renderBriefExtras/);
+    assert.match(src, /insights-brief-details/);
     assert.match(src, /insights-brief-lines/);
+    assert.match(src, /formatIntelBrief\(brief, \{ sources \}\)/);
     assert.match(src, /components\.insights\.briefFreshness/);
   });
 

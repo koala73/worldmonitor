@@ -1493,7 +1493,8 @@
       "newsSignals": "{{news}} news • {{signals}} signals",
       "compiledFrom": "Compiled from {{stories}} stories across {{sources}} sources",
       "provenanceTitle": "Coverage provenance: how many ingested stories and distinct sources this brief was selected from",
-      "briefFreshness": "Generated {{minutes}}m ago · newest source {{hours}}h old"
+      "briefFreshness": "Generated {{minutes}}m ago · newest source {{hours}}h old",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Export Settings",

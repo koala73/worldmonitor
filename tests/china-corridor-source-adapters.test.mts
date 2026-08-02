@@ -185,5 +185,55 @@ describe('China corridor source adapters (#5578)', () => {
     assert.equal(comtrade?.contentFreshness, 'stale');
     assert.equal(ccfi?.metrics.changePct, undefined);
     assert.equal(ccfi?.metrics.currentValue, 900);
+    // The seeder published no comparable prior, so no period change is exposed
+    // even though the legacy display field fabricates a flat 0 (#6066).
+    assert.equal(ccfi?.metrics.periodChangePct, undefined);
+    assert.equal(ccfi?.metrics.periodChangeBasis, undefined);
+    assert.equal(ccfi?.metrics.priorPeriodValue, undefined);
+  });
+
+  it('exposes the published CCFI period change with its basis and prior period (#6066)', () => {
+    const signalFor = (index: Record<string, unknown>) =>
+      buildChinaCorridorSourceBundle({
+        shipping: { indices: [{ indexId: 'CCFI', unit: 'index', ...index }] },
+        shippingMeta: FRESH_META,
+      }, ASSESSED_AT).families.trade.signals.find((signal) =>
+        signal.selectorId === 'supply_chain:shipping:v2:CCFI');
+
+    const published = signalFor({
+      currentValue: 1072.16,
+      previousValue: 1054.38,
+      changePct: 1.69,
+      periodChangePct: 1.69,
+      periodChangeBasis: 'publisher_reported',
+      priorPeriodValue: 1054.38,
+      priorPeriodDate: '2026-07-11',
+      history: [{ date: '2026-07-18', value: 1072.16 }],
+    });
+    assert.equal(published?.metrics.periodChangePct, 1.69);
+    assert.equal(published?.metrics.periodChangeBasis, 'publisher_reported');
+    assert.equal(published?.metrics.priorPeriodValue, 1054.38);
+    assert.equal(published?.metrics.priorPeriodDate, '2026-07-11');
+    assert.equal(published?.metrics.changePct, undefined);
+
+    // An explicit unchanged week is a real directional observation, not a gap.
+    const flat = signalFor({
+      currentValue: 900,
+      periodChangePct: 0,
+      periodChangeBasis: 'publisher_reported',
+      history: [{ date: '2026-07-18', value: 900 }],
+    });
+    assert.equal(flat?.metrics.periodChangePct, 0);
+
+    // A non-finite change is never carried through as evidence.
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, '1.69', null]) {
+      const rejected = signalFor({
+        currentValue: 900,
+        periodChangePct: invalid,
+        history: [{ date: '2026-07-18', value: 900 }],
+      });
+      assert.equal(rejected?.metrics.periodChangePct, undefined, String(invalid));
+      assert.equal(rejected?.metrics.currentValue, 900, String(invalid));
+    }
   });
 });

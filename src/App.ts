@@ -243,6 +243,7 @@ export class App {
   private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
+  private viewportHydrationReady = false;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
@@ -252,10 +253,19 @@ export class App {
       showToast('Anonymous data is temporarily unavailable. Check your cookie settings, then reload.');
     }
   };
-  private readonly handleViewportPrime = (): void => {
+  private readonly handleViewportPrime = (event?: Event): void => {
+    if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    if (
+      event?.type === 'scroll' &&
+      event.target instanceof Element &&
+      !event.target.matches('.main-content, .panels-grid')
+    ) {
+      return;
+    }
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
+      markLcpDebug('wm:hydration:viewport-trigger');
       void this.primeVisiblePanelData();
       // loadAllData covers panels primeVisiblePanelData does not (news,
       // markets, intelligence, fred, …). Now that bootstrap runs with
@@ -1202,6 +1212,10 @@ export class App {
         void this.openSearch();
       },
       loadAllData: () => this.dataLoader.loadAllData(),
+      primeVisiblePanelData: () => {
+        if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+        void this.primeVisiblePanelData();
+      },
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
@@ -1937,12 +1951,6 @@ export class App {
     this.dataLoader.syncDataFreshnessWithLayers();
     const slowTierReady = this.waitForSlowBootstrapCheckpoint();
     if (this.state.isDestroyed) return;
-    // Prime panel-specific data concurrently with bulk loading.
-    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
-    // are NOT part of loadAllData. Running them in parallel prevents those
-    // panels from being blocked when a loadAllData batch is slow.
-    window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
-    window.addEventListener('resize', this.handleViewportPrime);
     // forceAll=false at bootstrap: data-loader's existing per-panel
     // viewport gate (shouldLoad(id) = forceAll || isPanelNearViewport(id))
     // now actually fires, cutting the ~80-request fan-out down to the
@@ -1959,6 +1967,20 @@ export class App {
     // (3.5 s browser / 8.5 s desktop). (#4512)
     await slowTierReady;
     if (this.state.isDestroyed) return;
+    this.viewportHydrationReady = true;
+    // Register viewport triggers only after the slow bootstrap tier settles.
+    // Scrolls before this point are covered by the initial fan-out below, which
+    // scans the current viewport after readiness. Registering earlier lets a
+    // captured descendant scroll consume hydration keys before they arrive.
+    window.addEventListener('scroll', this.handleViewportPrime, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener('resize', this.handleViewportPrime);
+    // Prime panel-specific data concurrently with bulk loading.
+    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
+    // are NOT part of loadAllData. Running them in parallel prevents those
+    // panels from being blocked when a loadAllData batch is slow.
     // Snapshot whether precision geometry was already loaded BEFORE the fan-out
     // (the map renderer triggers the memoized fetch early). If so, the fan-out's
     // geometry-dependent CII ingests already attributed correctly and the
@@ -2328,8 +2350,9 @@ export class App {
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    this.viewportHydrationReady = false;
     cancelBootstrapSlowTier();
-    window.removeEventListener('scroll', this.handleViewportPrime);
+    window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);

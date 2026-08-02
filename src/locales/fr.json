@@ -1312,7 +1312,8 @@
       "sources_many": "{{count}} sources",
       "provenanceTitle": "Provenance de la couverture : nombre d'articles ingérés et de sources distinctes à partir desquels ce résumé a été sélectionné",
       "compiledFrom": "Compilé à partir de {{stories}} articles provenant de {{sources}} sources",
-      "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h"
+      "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Exporter les paramètres",

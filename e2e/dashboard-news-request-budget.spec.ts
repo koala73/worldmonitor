@@ -728,3 +728,376 @@ test.describe('dashboard news request budget (#5376)', () => {
     ).toBe(afterRecovery);
   });
 });
+
+const STABLECOIN_GLOB = '**/api/market/v1/list-stablecoin-markets*';
+const SCROLL_HYDRATION_PANEL_ORDER = [
+  'live-news',
+  'intel',
+  'gdelt-intel',
+  'cii',
+  'cascade',
+  'strategic-risk',
+  'politics',
+  'us',
+  'europe',
+  'stablecoins',
+  'middleeast',
+  'africa',
+  'latam',
+  'asia',
+  'energy',
+  'gov',
+  'thinktanks',
+  'polymarket',
+  'commodities',
+  'markets',
+  'stock-analysis',
+  'stock-backtest',
+  'daily-market-brief',
+  'economic',
+  'finance',
+  'tech',
+  'crypto',
+  'heatmap',
+  'ai',
+  'macro-signals',
+  'etf-flows',
+  'monitors',
+];
+
+type ScrollMetrics = {
+  clientHeight: number;
+  owner: 'main-content' | 'panels-grid';
+  scrollHeight: number;
+  scrollTop: number;
+  targetTop: number;
+  viewportHeight: number;
+};
+
+const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
+const INITIAL_FANOUT_COMPLETE_MARK = 'wm:data:initial-fanout-complete';
+
+async function seedScrollableDashboard(page: Page): Promise<void> {
+  await seedFreshAnonymousFullVariant(page, {
+    stablecoins: { name: 'Stablecoins', enabled: true, priority: 1 },
+  });
+  await page.addInitScript((panelOrder: string[]) => {
+    localStorage.setItem('wm_lcp_debug', '1');
+    localStorage.setItem('worldmonitor-panel-order-v1.9', 'done');
+    localStorage.setItem('worldmonitor-panel-prune-v1', 'done');
+    localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
+    localStorage.setItem('panel-order', JSON.stringify(panelOrder));
+  }, SCROLL_HYDRATION_PANEL_ORDER);
+}
+
+async function installStablecoinContract(page: Page): Promise<string[]> {
+  const requests: string[] = [];
+
+  await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => {
+    return route.abort('blockedbyclient');
+  });
+  await page.route(STABLECOIN_GLOB, async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        stablecoins: [{
+          symbol: 'TEST',
+          name: 'Test Dollar',
+          price: 1,
+          marketCap: 1_000_000,
+          volume24h: 100_000,
+          change24h: 0,
+          pegStatus: 'ON PEG',
+          deviation: 0,
+        }],
+        summary: {
+          totalMarketCap: 1_000_000,
+          totalVolume24h: 100_000,
+          coinCount: 1,
+          depeggedCount: 0,
+          healthStatus: 'HEALTHY',
+        },
+      }),
+    });
+  });
+  return requests;
+}
+
+async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {
+  return page.evaluate(() => {
+    const main = document.querySelector('.main-content');
+    const grid = document.querySelector('.panels-grid');
+    const target = document.querySelector('[data-panel="stablecoins"]');
+    if (
+      !(main instanceof HTMLElement) ||
+      !(grid instanceof HTMLElement) ||
+      !(target instanceof HTMLElement)
+    ) {
+      throw new Error('missing dashboard scroll test elements');
+    }
+    const gridOverflow = getComputedStyle(grid).overflowY;
+    const scroller =
+      (gridOverflow === 'auto' || gridOverflow === 'scroll') &&
+      grid.scrollHeight > grid.clientHeight
+        ? grid
+        : main;
+    return {
+      clientHeight: scroller.clientHeight,
+      owner: scroller === grid ? 'panels-grid' : 'main-content',
+      scrollHeight: scroller.scrollHeight,
+      scrollTop: scroller.scrollTop,
+      targetTop: target.getBoundingClientRect().top,
+      viewportHeight: window.innerHeight,
+    };
+  });
+}
+
+async function scrollTargetIntoView(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const main = document.querySelector('.main-content');
+    const grid = document.querySelector('.panels-grid');
+    const target = document.querySelector('[data-panel="stablecoins"]');
+    if (
+      !(main instanceof HTMLElement) ||
+      !(grid instanceof HTMLElement) ||
+      !(target instanceof HTMLElement)
+    ) {
+      throw new Error('missing dashboard scroll test elements');
+    }
+    const gridOverflow = getComputedStyle(grid).overflowY;
+    const scroller =
+      (gridOverflow === 'auto' || gridOverflow === 'scroll') &&
+      grid.scrollHeight > grid.clientHeight
+        ? grid
+        : main;
+    const targetTopInScroller =
+      target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    scroller.scrollTop = Math.max(1, targetTopInScroller - scroller.clientHeight + 200);
+  });
+}
+
+async function installDashboardScrollCounter(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const state = window as typeof window & { __wmDashboardScrollCount?: number };
+    state.__wmDashboardScrollCount = 0;
+    window.addEventListener('scroll', (event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches('.main-content, .panels-grid')
+      ) {
+        state.__wmDashboardScrollCount = (state.__wmDashboardScrollCount ?? 0) + 1;
+      }
+    }, { capture: true });
+  });
+}
+
+async function waitForDashboardScroll(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => ((window as typeof window & { __wmDashboardScrollCount?: number })
+      .__wmDashboardScrollCount ?? 0) >= 1,
+  );
+}
+
+async function lcpMarkCount(page: Page, name: string): Promise<number> {
+  return page.evaluate((markName) => {
+    const debug = (window as typeof window & {
+      __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
+    }).__wmLcpDebug;
+    return debug?.getSnapshot?.().marks.filter((mark) => mark.name === markName).length ?? 0;
+  }, name);
+}
+
+async function waitForLcpMark(page: Page, name: string): Promise<void> {
+  await page.waitForFunction((markName) => {
+    const debug = (window as typeof window & {
+      __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
+    }).__wmLcpDebug;
+    return debug?.getSnapshot?.().marks.some((mark) => mark.name === markName) === true;
+  }, name);
+}
+
+async function scrollNestedProbe(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.dataset.scrollProbe = 'true';
+    Object.assign(probe.style, {
+      height: '12px',
+      left: '-100px',
+      overflowY: 'auto',
+      position: 'fixed',
+      top: '0',
+      width: '12px',
+    });
+    const content = document.createElement('div');
+    content.style.height = '96px';
+    probe.append(content);
+    document.body.append(probe);
+
+    const state = window as typeof window & { __wmNestedScrollCount?: number };
+    state.__wmNestedScrollCount = 0;
+    window.addEventListener('scroll', (event) => {
+      if (event.target === probe) {
+        state.__wmNestedScrollCount = (state.__wmNestedScrollCount ?? 0) + 1;
+      }
+    }, { capture: true });
+    probe.scrollTop = 48;
+  });
+  await page.waitForFunction(
+    () => ((window as typeof window & { __wmNestedScrollCount?: number })
+      .__wmNestedScrollCount ?? 0) >= 1,
+  );
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
+
+async function installDelayedSlowBootstrap(page: Page): Promise<{
+  release: () => void;
+  waitUntilRequested: () => Promise<void>;
+}> {
+  let release!: () => void;
+  let markRequested!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const requested = new Promise<void>((resolve) => {
+    markRequested = resolve;
+  });
+  await page.route(/\/api\/bootstrap\?tier=slow(?:&|$)/, async (route) => {
+    markRequested();
+    await released;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: {}, missing: [] }),
+    });
+  });
+  return {
+    release,
+    waitUntilRequested: () => requested,
+  };
+}
+
+test.describe('dashboard container scroll hydration (#5876)', () => {
+  for (const viewport of [
+    { label: 'desktop', width: 1280, height: 720, scrollOwner: 'main-content' },
+    { label: 'mobile', width: 390, height: 844, scrollOwner: 'main-content' },
+    { label: 'ultra-wide', width: 1720, height: 720, scrollOwner: 'panels-grid' },
+  ]) {
+    test(`${viewport.label} container scroll hydrates a panel-specific data path`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await seedScrollableDashboard(page);
+      const stablecoinRequests = await installStablecoinContract(page);
+
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await waitForLcpMark(page, INITIAL_FANOUT_COMPLETE_MARK);
+
+      const main = page.locator('.main-content');
+      const stablecoins = page.locator('[data-panel="stablecoins"]');
+      await expect(main).toBeAttached();
+      await expect(stablecoins).toBeAttached();
+
+      const initial = await readScrollMetrics(page);
+      expect(initial.owner, 'the layout must use the expected dashboard scroll owner').toBe(
+        viewport.scrollOwner,
+      );
+      expect(initial.scrollHeight, 'the dashboard scroll owner must genuinely overflow').toBeGreaterThan(
+        initial.clientHeight,
+      );
+      expect(initial.scrollTop, 'the test must start before any dashboard scroll').toBe(0);
+      expect(
+        initial.targetTop,
+        'stablecoins must start outside the 400px viewport hydration margin',
+      ).toBeGreaterThan(initial.viewportHeight + 400);
+      expect(
+        stablecoinRequests,
+        'the panel-specific request must be absent before scrolling',
+      ).toEqual([]);
+
+      const hydrationMarksBeforeNestedScroll = await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK);
+      await scrollNestedProbe(page);
+      expect(
+        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
+        'an independently scrollable descendant must not schedule dashboard hydration',
+      ).toBe(hydrationMarksBeforeNestedScroll);
+      expect(stablecoinRequests, 'a nested scroll must not fetch the deferred panel').toEqual([]);
+
+      await installDashboardScrollCounter(page);
+      await scrollTargetIntoView(page);
+      await waitForDashboardScroll(page);
+
+      const afterFirstScroll = await readScrollMetrics(page);
+      expect(afterFirstScroll.scrollTop, 'the dashboard scrollTop must change').toBeGreaterThan(0);
+      expect(
+        afterFirstScroll.targetTop,
+        'the target panel must enter the viewport after the real container scroll',
+      ).toBeLessThan(afterFirstScroll.viewportHeight);
+
+      await page.waitForFunction(() => {
+        const target = document.querySelector('[data-panel="stablecoins"]');
+        return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
+      });
+
+      await expect.poll(
+        () => stablecoinRequests.length,
+        { message: 'one dashboard scroll must invoke primeVisiblePanelData for stablecoins' },
+      ).toBe(1);
+      await expect(stablecoins.locator('.stable-health')).toContainText('HEALTHY');
+      expect(stablecoinRequests).toHaveLength(1);
+    });
+  }
+
+  test('an early scroll waits for slow-tier readiness and hydrates without a second gesture', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await seedScrollableDashboard(page);
+    const stablecoinRequests = await installStablecoinContract(page);
+    // Register this route last so it takes precedence over the external-network
+    // blocker installed by the stablecoin contract when VITE_API_BASE_URL is set.
+    const slowBootstrap = await installDelayedSlowBootstrap(page);
+    let released = false;
+
+    try {
+      await page.goto('/');
+      await slowBootstrap.waitUntilRequested();
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+
+      const stablecoins = page.locator('[data-panel="stablecoins"]');
+      await expect(stablecoins).toBeAttached();
+      await installDashboardScrollCounter(page);
+      await scrollTargetIntoView(page);
+      await waitForDashboardScroll(page);
+      await page.waitForFunction(() => {
+        const target = document.querySelector('[data-panel="stablecoins"]');
+        return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
+      });
+
+      expect(
+        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
+        'the App viewport handler must stay dormant while the slow tier is pending',
+      ).toBe(0);
+      expect(
+        stablecoinRequests,
+        'post-mount panel priming must remain gated while the slow tier is pending',
+      ).toEqual([]);
+
+      slowBootstrap.release();
+      released = true;
+      await waitForLcpMark(page, INITIAL_FANOUT_COMPLETE_MARK);
+      await expect.poll(
+        () => stablecoinRequests.length,
+        { message: 'the readiness fan-out must hydrate the already-scrolled panel exactly once' },
+      ).toBe(1);
+      await expect(stablecoins.locator('.stable-health')).toContainText('HEALTHY');
+      expect(stablecoinRequests).toHaveLength(1);
+    } finally {
+      if (!released) slowBootstrap.release();
+    }
+  });
+});
