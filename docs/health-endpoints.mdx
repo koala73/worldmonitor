@@ -202,10 +202,15 @@ check verdict is:
 | --- | --- |
 | Every decision-critical country inside the 72-hour content budget | `OK` |
 | A decision-critical country past budget, future-dated, missing a usable timestamp, or absent from the run | `STALE_CONTENT` |
-| The block is absent, or its counts are missing or arithmetically incoherent | `COVERAGE_DEGRADED` |
+| The block is absent, its counts are missing or arithmetically incoherent, or the producer's declared country set does not cover the set health pins | `COVERAGE_DEGRADED` |
 
 The verdict keys on the **decision-critical** countries — currently `CN` and
 `HK`, the two the China corridor control towers read — rather than on all 174.
+Health pins that set in its own config rather than accepting whatever the
+producer declares, so a producer-side change cannot narrow the alarm scope
+silently: dropping `CN` from the seeder's list would otherwise report `OK` with
+China days stale, which is the exact failure this check exists to catch. A
+producer set that covers the pinned countries and adds more is accepted.
 Fleet-wide content staleness is normal by construction: the seeder refreshes at
 most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
 tail of the rotation is routinely past budget. Alarming on that would produce a

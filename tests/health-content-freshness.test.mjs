@@ -89,7 +89,7 @@ function completeRun(contentFreshness) {
 }
 
 describe('readSeedMeta content-freshness parsing', () => {
-  const seedCfg = { key: PORTWATCH_META_KEY, maxStaleMin: 2160, requireContentFreshness: true };
+  const seedCfg = { key: PORTWATCH_META_KEY, maxStaleMin: 2160, requireContentFreshness: ['CN', 'HK'] };
 
   it('surfaces a bounded content-freshness block', () => {
     const ctx = portwatchCtx(completeRun(contentFreshnessOf({
@@ -143,9 +143,52 @@ describe('readSeedMeta content-freshness parsing', () => {
 });
 
 describe('portwatchPortActivity classification', () => {
-  it('is registered to require content freshness', () => {
-    assert.equal(SEED_META.portwatchPortActivity.requireContentFreshness, true);
+  it('is registered to require content freshness over a health-pinned country set', () => {
+    assert.deepEqual(
+      SEED_META.portwatchPortActivity.requireContentFreshness,
+      ['CN', 'HK'],
+      'health pins the alarm scope itself rather than trusting the producer',
+    );
     assert.equal(SEED_META.portwatchPortActivity.minRecordCount, 174);
+  });
+
+  // Without this, the producer defines both the numerator and the denominator
+  // of its own alarm: shrink PORTWATCH_DECISION_CRITICAL_COUNTRIES to ['HK']
+  // and health reports OK with CN 98h stale — precisely the #6060 failure.
+  it('fails closed when the producer narrows the declared critical set', () => {
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalCountries: ['HK'],
+      criticalFreshCount: 1,
+      criticalStaleCountries: [],
+    })));
+    assert.equal(
+      entry.status,
+      'COVERAGE_DEGRADED',
+      'a producer cannot silently drop a country out of the alarm scope',
+    );
+    assert.equal(entry.contentFreshness.usable, false);
+  });
+
+  it('fails closed when the producer declares a critical set health does not expect', () => {
+    for (const declared of [[], ['CN'], ['HK', 'SG'], ['cn', 'hk']]) {
+      const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+        criticalCountries: declared,
+        criticalFreshCount: declared.length,
+      })));
+      assert.equal(
+        entry.status,
+        'COVERAGE_DEGRADED',
+        `declared set ${JSON.stringify(declared)} does not cover the pinned scope`,
+      );
+    }
+  });
+
+  it('accepts a producer set that covers the pinned scope with extras', () => {
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalCountries: ['CN', 'HK', 'TW'],
+      criticalFreshCount: 3,
+    })));
+    assert.equal(entry.status, 'OK', 'widening the producer scope is not a failure');
   });
 
   it('reports OK when 174/174 countries are also content-fresh', () => {

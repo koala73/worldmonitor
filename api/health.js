@@ -554,7 +554,13 @@ const SEED_META = {
   // old — past the 72h budget the China corridor adapter and activity-nowcast
   // enforce. The seeder publishes contentFreshness; a missing block is
   // COVERAGE_DEGRADED, a stale country is STALE_CONTENT.
-  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: true },
+  //
+  // The value is the country set health REQUIRES the producer to cover, not a
+  // bare `true`: it mirrors PORTWATCH_DECISION_CRITICAL_COUNTRIES in
+  // scripts/seed-portwatch-port-activity.mjs and CHINA_CORRIDOR_KEYS in
+  // get-china-corridor-control-towers.ts, and it exists so a producer-side
+  // change cannot narrow the alarm scope without health noticing.
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: ['CN', 'HK'] },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
@@ -1102,15 +1108,26 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     // warning that is always lit and never actionable.
     const criticalCountries = entityList(block?.criticalCountries);
     const criticalFreshCount = count(block?.criticalFreshCount);
+    // The producer must not be able to define both the numerator and the
+    // denominator of its own alarm. `requireContentFreshness` carries the
+    // country set HEALTH expects to be covered; narrowing the producer-side
+    // list would otherwise shrink the alarm scope silently — drop `CN` from it
+    // and this check reports OK with China 98h stale, which is exactly the
+    // #6060 failure. Extras are fine; a missing expected country is not.
+    const expectedCountries = Array.isArray(seedCfg.requireContentFreshness)
+      ? seedCfg.requireContentFreshness
+      : [];
+    const declaredScopeCoversExpected = expectedCountries.length > 0
+      && expectedCountries.every((entity) => criticalCountries.includes(entity));
     // `usable` is the fail-closed gate: without a coherent declared/fresh pair
-    // health cannot prove content freshness and must not report OK. The
-    // fresh > declared case is included because a producer reporting more
-    // fresh entities than it declared is arithmetically broken, and "broken"
-    // must never be the branch that certifies freshness.
+    // over the expected scope, health cannot prove content freshness and must
+    // not report OK. The fresh > declared case is included because a producer
+    // reporting more fresh entities than it declared is arithmetically broken,
+    // and "broken" must never be the branch that certifies freshness.
     const usable = coveredCount !== null
       && freshCount !== null
       && freshCount <= coveredCount
-      && criticalCountries.length > 0
+      && declaredScopeCoversExpected
       && criticalFreshCount !== null
       && criticalFreshCount <= criticalCountries.length;
     contentFreshness = {
