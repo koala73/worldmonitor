@@ -49,6 +49,15 @@ const DEFAULT_REPLAY_DAYS = 14;
 const REPLAY_KEY_PREFIX = 'digest:replay-log:v1';
 const SCAN_PAGE_SIZE = 200;
 
+/**
+ * Entries per LRANGE page. Upstash's max-request-size limit counts a
+ * SINGLE command's result, so `LRANGE key 0 -1` on a full day list was
+ * rejected outright once the lists grew past 50MiB. Matches the page
+ * size already used by the sibling harnesses (sweep-topic-thresholds.mjs,
+ * brief-quality-report.mjs) — ~1.5MB per page at observed entry sizes.
+ */
+const LRANGE_PAGE_SIZE = 1_000;
+
 // ── Pure aggregation (test-exercised) ───────────────────────────────
 
 /**
@@ -471,7 +480,61 @@ Output:
 `.trim();
 
 /**
- * Live-Redis fetch path. SCANs all replay-log keys, ranges each list,
+ * Read one replay-log day list in bounded pages.
+ *
+ * Replaces `LRANGE key 0 -1`, which Upstash rejects once a day list
+ * exceeds the 50MiB per-command limit. Two failure modes are collapsed
+ * into one throw so neither can be mistaken for "this day had no data":
+ *
+ *   - non-2xx (transport / auth)
+ *   - HTTP 200 carrying a per-command `error` field, which is how the
+ *     max-request-size rejection actually arrives. `res.ok` is true and
+ *     `body.result` is undefined, so the pre-2026-08-02 reader scored it
+ *     as an empty list and the harness exited 2 blaming the feature flag.
+ *
+ * @param {string} url                       Upstash REST base URL
+ * @param {string} token                     Upstash REST token
+ * @param {string} key                       replay-log day key
+ * @param {object} [opts]
+ * @param {typeof fetch} [opts.fetchImpl]    injectable for tests
+ * @param {number} [opts.pageSize]           entries per request
+ * @returns {Promise<string[]>}              raw JSON strings, list order
+ */
+export async function readReplayListPaged(url, token, key, opts = {}) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const pageSize = opts.pageSize ?? LRANGE_PAGE_SIZE;
+  // A non-positive page size makes `stop` land on -1, i.e. the exact
+  // unbounded `LRANGE key 0 -1` this function exists to avoid — and the
+  // short-page check could never terminate. Fail loudly instead.
+  if (!Number.isInteger(pageSize) || pageSize < 1) {
+    throw new TypeError(`readReplayListPaged: pageSize must be a positive integer, got ${pageSize}`);
+  }
+  /** @type {string[]} */
+  const out = [];
+  let start = 0;
+  for (;;) {
+    const stop = start + pageSize - 1;
+    const res = await fetchImpl(`${url}/lrange/${encodeURIComponent(key)}/${start}/${stop}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      throw new Error(`LRANGE ${key} [${start}..${stop}] failed: HTTP ${res.status}`);
+    }
+    const body = await res.json();
+    if (body?.error) {
+      throw new Error(`LRANGE ${key} [${start}..${stop}] rejected by Upstash: ${body.error}`);
+    }
+    const items = Array.isArray(body?.result) ? body.result : [];
+    out.push(...items);
+    // A short page is the end of the list. An exact-multiple list costs
+    // one extra empty page, which is cheaper than an LLEN round-trip.
+    if (items.length < pageSize) return out;
+    start += pageSize;
+  }
+}
+
+/**
+ * Live-Redis fetch path. SCANs all replay-log keys, pages each list,
  * deserialises records, returns the flat record array. Bounded by
  * --days; defaults to 14.
  *
@@ -524,16 +587,21 @@ async function fetchRecords(args) {
 
   /** @type {ReplayRecord[]} */
   const records = [];
+  let failedKeys = 0;
   for (const key of eligibleKeys) {
-    const rangeRes = await fetch(`${url}/lrange/${encodeURIComponent(key)}/0/-1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!rangeRes.ok) {
-      console.warn(`[replay] LRANGE failed for ${key}: ${rangeRes.status}; continuing`);
+    /** @type {string[]} */
+    let list;
+    try {
+      list = await readReplayListPaged(url, token, key);
+    } catch (err) {
+      // Keep the legacy per-key skip so one bad day doesn't abort a run,
+      // but the message now carries the real reason (previously an
+      // oversized-result rejection arrived as HTTP 200 and was silently
+      // read as an empty day).
+      failedKeys++;
+      console.warn(`[replay] ${err?.message ?? err}; continuing`);
       continue;
     }
-    const body = await rangeRes.json();
-    const list = Array.isArray(body?.result) ? body.result : [];
     for (const item of list) {
       try {
         const parsed = JSON.parse(item);
@@ -542,6 +610,15 @@ async function fetchRecords(args) {
         console.warn(`[replay] failed to parse record in ${key}: ${err?.message ?? err}`);
       }
     }
+  }
+  if (failedKeys > 0) {
+    // Without this the caller's "no records returned. Verify
+    // DIGEST_DEDUP_REPLAY_LOG=1" message blames the flag for what is
+    // actually a read failure.
+    console.warn(
+      `[replay] ${failedKeys} of ${eligibleKeys.length} day keys failed to read — `
+      + 'coverage below is incomplete and NOT evidence the flag was off',
+    );
   }
   return records;
 }

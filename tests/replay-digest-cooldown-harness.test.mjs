@@ -15,6 +15,7 @@ import {
   aggregateReplayDecisions,
   clusterIdFromRecord,
   parseArgs,
+  readReplayListPaged,
   renderMarkdownSummary,
 } from '../scripts/replay-digest-cooldown.mjs';
 
@@ -449,5 +450,115 @@ describe('parseArgs', () => {
   it('throws when --rule is missing its value', () => {
     assert.throws(() => parseArgs(['node', 'r.mjs', '--rule']), /requires a value/);
     assert.throws(() => parseArgs(['node', 'r.mjs', '--rule', '--days']), /requires a value/);
+  });
+});
+
+// ── Paged list reads (regression: the 50MiB per-command limit) ────────
+//
+// Before 2026-08-02 fetchRecords issued `/lrange/<key>/0/-1`. Upstash's
+// max-request-size limit counts a SINGLE command's result, so once the
+// per-day lists grew past 50MiB every such call was rejected. Verified
+// live against production on 2026-08-02:
+//   LRANGE digest:replay-log:v1:full:en:all:2026-08-01 0 -1
+//   -> HTTP 200 [{"error":"ERR max request size exceeded.
+//                 Limit: 52428800 bytes, Actual: 144028523 bytes"}]
+// The rejection arrives as HTTP 200 with a per-command `error` field, so
+// `res.ok` was true and `body.result` was undefined — the harness read it
+// as an empty list and exited 2 with "no records returned. Verify
+// DIGEST_DEDUP_REPLAY_LOG=1", pointing the operator at the wrong cause.
+describe('readReplayListPaged', () => {
+  /** Fake Upstash that serves `total` entries and records every URL hit. */
+  function mockUpstash(total) {
+    const urls = [];
+    return {
+      urls,
+      impl: async (url) => {
+        urls.push(url);
+        const [, start, stop] = url.match(/\/lrange\/[^/]+\/(-?\d+)\/(-?\d+)$/).map(Number);
+        const from = start;
+        const to = Math.min(stop, total - 1);
+        const result = [];
+        for (let i = from; i <= to; i++) result.push(JSON.stringify({ storyHash: `h-${i}` }));
+        return { ok: true, status: 200, json: async () => ({ result }) };
+      },
+    };
+  }
+
+  it('never issues an unbounded 0/-1 range', async () => {
+    const up = mockUpstash(2_500);
+    await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
+    assert.ok(up.urls.length > 0, 'at least one range request');
+    for (const url of up.urls) {
+      assert.ok(!url.endsWith('/0/-1'), `unbounded LRANGE issued: ${url}`);
+    }
+  });
+
+  it('pages sequentially and returns every entry in list order', async () => {
+    const up = mockUpstash(2_500);
+    const out = await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
+    assert.equal(out.length, 2_500);
+    assert.equal(JSON.parse(out[0]).storyHash, 'h-0');
+    assert.equal(JSON.parse(out[2_499]).storyHash, 'h-2499');
+    assert.equal(up.urls.length, 3, '1000 + 1000 + 500 → three pages');
+    assert.ok(up.urls[0].endsWith('/0/999'));
+    assert.ok(up.urls[1].endsWith('/1000/1999'));
+    assert.ok(up.urls[2].endsWith('/2000/2999'));
+  });
+
+  it('stops on a short page without an extra probe request', async () => {
+    const up = mockUpstash(400);
+    const out = await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
+    assert.equal(out.length, 400);
+    assert.equal(up.urls.length, 1, 'a short first page ends the loop');
+  });
+
+  it('throws on an exact-multiple list only after the empty terminator page', async () => {
+    const up = mockUpstash(2_000);
+    const out = await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
+    assert.equal(out.length, 2_000);
+    assert.equal(up.urls.length, 3, 'full page, full page, then an empty page terminates');
+  });
+
+  // The load-bearing one: an HTTP 200 carrying a per-command error must
+  // NOT be read as "this day had no records".
+  it('throws on an HTTP-200 per-command Upstash error instead of returning []', async () => {
+    const impl = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        error: 'ERR max request size exceeded. Limit: 52428800 bytes, Actual: 144028523 bytes',
+      }),
+    });
+    await assert.rejects(
+      () => readReplayListPaged('https://u', 't', 'k', { fetchImpl: impl }),
+      /max request size exceeded/,
+      'an oversized-result rejection must surface, not degrade to an empty list',
+    );
+  });
+
+  it('throws on a non-2xx response', async () => {
+    const impl = async () => ({ ok: false, status: 500, json: async () => ({}) });
+    await assert.rejects(
+      () => readReplayListPaged('https://u', 't', 'k', { fetchImpl: impl }),
+      /HTTP 500/,
+    );
+  });
+});
+
+describe('readReplayListPaged — pageSize guard', () => {
+  // A non-positive page size puts `stop` at -1, reconstructing the exact
+  // unbounded `LRANGE key 0 -1` this helper replaced, and the short-page
+  // check (`items.length < pageSize`) could never fire.
+  it('rejects a non-positive or non-integer pageSize before issuing any request', async () => {
+    let called = 0;
+    const impl = async () => { called++; return { ok: true, status: 200, json: async () => ({ result: [] }) }; };
+    for (const bad of [0, -1, 1.5, Number.NaN]) {
+      await assert.rejects(
+        () => readReplayListPaged('https://u', 't', 'k', { fetchImpl: impl, pageSize: bad }),
+        /pageSize must be a positive integer/,
+        `pageSize=${bad} must be rejected`,
+      );
+    }
+    assert.equal(called, 0, 'guard must fire before any network call');
   });
 });
