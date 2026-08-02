@@ -386,6 +386,14 @@ Runs before every `git push`:
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
 
+The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
+upstream v3.2.0 release and applies the reviewed session-data upsert fix.
+The separate `umami-retention` cron uses `Dockerfile.umami-retention` and the
+bounded SQL contract. The old collector is drained to zero before the patched
+image runs its schema migration as a monitored one-off; schema verification,
+patched-runtime write acceptance, and retention are independent operational
+gates.
+
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 
 ---

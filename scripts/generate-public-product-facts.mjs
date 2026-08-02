@@ -440,7 +440,10 @@ function pricingSummary() {
         name: 'Free',
         price_usd_monthly: 0,
         signup_required: false,
-        features: [`${stats.layerDefinitions} map layers`, '500+ feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs'],
+        // Free gets every map layer except the Pro-locked Resilience layer. The
+        // caveat rides on the total rather than a free count: registry size is
+        // derivable, a truthful free count is not (see docs-stats.mjs).
+        features: [`${stats.layerDefinitions} map layers (Resilience is Pro)`, '500+ feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs'],
       },
       {
         name: 'Pro',

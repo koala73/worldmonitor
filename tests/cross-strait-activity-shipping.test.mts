@@ -51,6 +51,21 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
         transportStatus: 'error',
         blockedReason: 'HTTP_403',
         proxyControlProbe: 'reachable',
+        transportMode: 'japanese_homepage_candidate_discovery',
+        companionResolution: 'english_index_blocked_no_derivable_companion',
+        candidates: [{
+          sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260730_01.pdf',
+          documentId: 'p20260730_01',
+          publicationDay: '2026-07-30',
+          title: '中国海軍艦艇の動向について',
+        }],
+        shadowIndexProbe: {
+          url: 'https://www.mod.go.jp/js/press/index-en.html',
+          checkedAt: '2026-07-25T08:30:00.000Z',
+          status: 'blocked',
+          httpStatus: 403,
+          errorCode: 'HTTP_403',
+        },
         proxyFailureDetail: {
           stage: 'response',
           httpStatus: 403,
@@ -82,6 +97,8 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
     const {
       proxyFailureDetail: _proxyFailureDetail,
       proxyControlProbe: _proxyControlProbe,
+      shadowIndexProbe: _shadowIndexProbe,
+      candidates: _candidates,
       ...publicSource
     } = source;
     return publicSource;
@@ -89,6 +106,22 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
   assert.equal(
     projection.sources.some((source) => 'proxyFailureDetail' in source),
     false,
+  );
+  // The candidate backlog is a review-workflow artifact and the shadow probe
+  // reports OUR egress against a blocked URL. Neither has a client surface, so
+  // neither belongs in the payload every anonymous visitor hydrates.
+  assert.equal(
+    projection.sources.some((source) => 'candidates' in source),
+    false,
+  );
+  assert.equal(
+    projection.sources.some((source) => 'shadowIndexProbe' in source),
+    false,
+  );
+  // The bounded descriptors that explain the state do survive.
+  assert.equal(
+    projection.sources.find((source) => source.id === 'japan-mod')?.transportMode,
+    'japanese_homepage_candidate_discovery',
   );
   // The control probe reports whether OUR egress is working, which is operator
   // diagnostics, not source disclosure -- and no client surface reads it. The

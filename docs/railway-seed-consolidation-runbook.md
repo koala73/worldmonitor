@@ -454,40 +454,89 @@ operator approval. Keep that approval, the observed validation evidence, and
 the rollback decision outside the code deployment; the code path is only the
 fail-closed read and hand-off contract.
 
-#### Japan MOD transport recovery gate
+#### Japan MOD discovery surface and recovery gate
 
-The official Japan Joint Staff index is
-`https://www.mod.go.jp/js/press/index-en.html`. The runtime makes one direct
-index request and, after a transport failure, one request through
-`JAPAN_MOD_PROXY_URL` (falling back to `PROXY_URL`). It never downloads linked
-PDFs during a scheduled run.
+The official discovery URL is the Japanese Joint Staff homepage,
+`https://www.mod.go.jp/js/`. The runtime makes one direct request and, after a
+transport failure, one request through `JAPAN_MOD_PROXY_URL` (falling back to
+`PROXY_URL`). It never downloads linked PDFs during a scheduled run.
 
-As of 2026-07-31, destination allowlisting is not recovery: direct Railway
-egress and the configured Decodo gateway both receive an HTTP 403 Cloudflare
-managed challenge (`Just a moment...`). Production therefore remains
-truthfully `SOURCE_BLOCKED` with `blockedReason: HTTP_403`; its two reviewed
-rows are retained context, not proof of a successful fetch.
+**Japan MOD's Cloudflare rule is path-level, not egress-level.** Measured
+2026-08-01, from both direct egress and the configured Decodo path:
 
-Recovery requires an account-approved managed-browser/unblocker route that
-returns the authentic official index. For the current provider, the concrete
-external dependency is an active
+| Path | Result |
+|---|---|
+| `https://www.mod.go.jp/js/` | 200, 33,419 bytes, 9 `/js/pdf/2026/` links |
+| `https://www.mod.go.jp/js/pdf/2026/*.pdf` | 200, `application/pdf` |
+| `https://www.mod.go.jp/js/press/index-en.html` | 403 `Just a moment...` |
+| `https://www.mod.go.jp/js/index-en.html` | 403 |
+| `https://www.mod.go.jp/js/index.html` | 403 |
+| `https://www.mod.go.jp/js/press/` | 403 |
+| `https://www.mod.go.jp/js/en/` | 403 |
+
+Note that `/js/` succeeds while `/js/index.html` does not. Cloudflare fronts the
+succeeding path too — the 200 response carries a `window.__CF$cv$params` beacon —
+so this is a rule that exempts `/js/`, not a zone the CDN does not cover.
+Changing the discovery URL to any other path on this host is a regression, not a
+refinement. This is the general lesson for other Japanese government sources:
+probe the bare directory before concluding the host is blocked.
+
+**Do not derive an English companion PDF by inserting `e` before `.pdf`.** The
+English series carries its own counter, so the mapping resolves to unrelated
+releases. Measured 2026-08-01:
+
+| Document | Content |
+|---|---|
+| `p20260730_01.pdf` (JA) | 中国海軍艦艇の動向について — Chinese Navy, Renhai/Jiangkai II |
+| `p20260730_01e.pdf` | "Russian aircraft activity around Japan" (July 27) |
+| `p20260730_03e.pdf` | "Chinese Military Activities" — the real counterpart |
+
+That day Japanese published `_01`/`_02` while English published `_01e`–`_05e`.
+Every check that mapping would be validated against — HTTP 200,
+`application/pdf`, `%PDF` magic, Joint Staff publisher marker — passes on the
+*wrong* document, so it cannot be validated into correctness. The correct
+counterpart is only resolvable from the English index, which is the surface
+Cloudflare blocks. `parseJapanModIndex` therefore accepts only
+`/js/pdf/<year>/p<YYYYMMDD>_<NN>.pdf`, which structurally excludes the English
+series, and the source reports
+`companionResolution: english_index_blocked_no_derivable_companion`.
+
+Discovery records candidates for manual review; it never admits an observation.
+`admittedDocumentCount` counts hand-reviewed rows and `unreviewedCandidateCount`
+counts the discovered backlog. A 200 carrying no allowlisted release is
+`JMOD_INDEX_EMPTY`, not success.
+
+The blocked English index stays wired as `shadowIndexUrl`: a direct probe that
+runs at most once per 24 hours, only after the homepage request already
+succeeded. It is diagnostic only — it never contributes to `requestCount`,
+`errorCodes`, `transportStatus`, or `lastSuccessAt`. Watch
+`shadowIndexProbe.status` flip from `blocked` to `reachable`; that is the signal
+that English provenance can be restored and the `+e` constraint above revisited.
+`candidates` and `shadowIndexProbe` are operator-only and stripped from the
+anonymous bootstrap projection.
+
+If a future provider change is needed instead, the concrete external dependency
+for the current provider is an active
 [Decodo Site Unblocker](https://help.decodo.com/docs/site-unblocker-quick-start)
-subscription with source-specific credentials and a successful target test.
-The ordinary residential gateway credential is not a substitute for that
-product. Do not repoint `JAPAN_MOD_PROXY_URL` until the exact adapter request
-returns a 2xx response containing valid Japan Joint Staff PDF links within the
-existing 524,288-byte bound. If the provider requires disabling TLS
-verification, do not weaken the adapter; provision a trusted provider CA or
-use an approved authenticated HTTPS integration instead.
+subscription with source-specific credentials and a successful target test. The
+ordinary residential gateway credential is not a substitute for that product. If
+the provider requires disabling TLS verification, do not weaken the adapter;
+provision a trusted provider CA or use an approved authenticated HTTPS
+integration instead.
 
-After provisioning, recovery is accepted only when:
+Recovery is accepted only when:
 
 1. `crossStraitActivityJapanMod` reports `OK` for two consecutive scheduled
    three-hour runs from distinct scheduled executions;
-2. `lastSuccessAt` is non-null, later than the configuration change, and
-   advances between those two successful runs;
-3. newly admitted Japan MOD records are tied to the successful index fetch;
-4. the combined cross-Strait publication remains available and explicitly
+2. `lastSuccessAt` is non-null, later than the deploy, and advances between
+   those two successful runs;
+3. the published `_seed.sourceVersion` reads
+   `taiwan-mnd-html+japan-joint-staff-homepage-v2`, proving the new adapter is
+   the code that ran rather than a merged-but-not-deployed PR;
+4. the source reports `transportMode: japanese_homepage_candidate_discovery`
+   and at least one newly discovered candidate tied to each successful fetch —
+   retained rows do not count;
+5. the combined cross-Strait publication remains available and explicitly
    source-degraded when a later Japan MOD request fails.
 
 ### Bundle 6: seed-bundle-climate

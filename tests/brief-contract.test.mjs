@@ -17,6 +17,7 @@ import {
   checkLeadGrounding,
   leadGroundsAgainstStory,
   extractAnchorTokens,
+  validateNoHallucinatedFacts,
 } from '../shared/brief-llm-core.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -142,6 +143,39 @@ describe('grounding spine port (#4921)', () => {
     const core = await import('../shared/brief-llm-core.js');
     assert.equal(lib.checkLeadGrounding, core.checkLeadGrounding, 'must be the SAME function object');
     assert.equal(lib.leadGroundsAgainstStory, core.leadGroundsAgainstStory);
+  });
+});
+
+describe('citation-scoped numeric and date grounding (#6030)', () => {
+  it('matches digit and word forms but rejects an uncited numeric fact', () => {
+    assert.equal(
+      validateNoHallucinatedFacts('Nine people were killed.', 'Nine killed in strikes on Kyiv.').ok,
+      true,
+    );
+    assert.equal(
+      validateNoHallucinatedFacts('9 people were killed.', 'Nine killed in strikes on Kyiv.').ok,
+      true,
+    );
+    assert.equal(
+      validateNoHallucinatedFacts('Nine people were killed.', 'Russia hit the Ukrainian capital.').ok,
+      false,
+      'a numeric fact from an uncited sibling must fail even when proper nouns do not expose it',
+    );
+  });
+
+  it('accepts equivalent date formats but rejects a different date', () => {
+    assert.equal(
+      validateNoHallucinatedFacts('The event occurred on August 1, 2026.', 'The event occurred on Aug. 1, 2026.').ok,
+      true,
+    );
+    assert.equal(
+      validateNoHallucinatedFacts('The event occurred on August 2, 2026.', 'The event occurred on Aug. 1, 2026.').ok,
+      false,
+    );
+  });
+
+  it('does not treat citation markers as numeric facts', () => {
+    assert.equal(validateNoHallucinatedFacts('A claim is supported here [3].', 'A claim is supported here.').ok, true);
   });
 });
 
@@ -374,5 +408,106 @@ describe('balanced-brace extraction (#4928 external review P3)', () => {
       lines: [{ n: 1, text: 'Iran threatens to close the Strait of Hormuz [1].' }],
     });
     assert.ok(parseBriefSynthesis(withInnerBrace, 1));
+  });
+});
+
+// ── #6001 ──────────────────────────────────────────────────────────────────
+// seed-insights splits one real-world event across two top-story clusters.
+// Measured on the production digest: sim(story3, story7) = 0.1231 against the
+// 0.615 same-story threshold, and both clusters yield zero entity-corroboration
+// keys — no existing signal can merge them without a threshold loose enough to
+// merge unrelated news. The model correctly writes ONE merged claim but cites
+// only one slot, so a proper noun living in the sibling cluster reads as
+// invented and the brief is rejected.
+//
+// #6019 made the provider chain fall through to a model whose plainer leads do
+// not trip the gate. These pin the layer underneath: the gate already unions
+// ground text across EVERY cited story, so a correctly multi-cited merge is
+// accepted on the FIRST provider — and widening the gate to corpus-wide
+// grounding (the tempting fix) regresses #4928.
+
+describe('fragmented-cluster leads (#6001)', () => {
+  // The production digest news:digest:v1:full:en @ 2026-08-01T18:05:12.313Z.
+  // Stories 3 and 7 are the same Kyiv strike; "Kyiv" appears only in 7.
+  const TITLES = [
+    'EU agrees new sanctions package targeting Russian shadow fleet',
+    'Israel and Hamas resume indirect talks in Doha',
+    'Russia hits Ukrainian capital with ballistic missiles and drones',
+    'Magnitude 6.8 earthquake strikes northern Chile',
+    'Sudan paramilitary shelling kills dozens in El Fasher',
+    'Venezuela opposition leader detained ahead of vote',
+    'Nine killed in strikes on Kyiv, as Ukraine sinks Russian convoy',
+    'Typhoon forces mass evacuations across the Philippines',
+  ];
+  const SOURCES = ['Reuters', 'AP News', 'AP News', 'AP', 'AFP', 'BBC World', 'BBC World', 'CNN'];
+  const STORIES6001 = TITLES.map((title, i) => ({
+    primaryTitle: title,
+    primarySource: SOURCES[i],
+    primaryLink: `https://example.test/${i + 1}`,
+    pubDate: '2026-08-01T17:00:00Z',
+    sources: [SOURCES[i], 'Wire'],
+    memberTitles: [title],
+  }));
+
+  const compose = (lead) => composeSynthesizedBrief(
+    JSON.stringify({
+      lead,
+      lines: TITLES.map((t, i) => ({ n: i + 1, text: `${t} continues to develop [${i + 1}].` })),
+    }),
+    STORIES6001,
+    { briefCluster: STORIES6001[2] },
+  );
+
+  const DOHA = 'Israel and Hamas resumed indirect talks in Doha [2].';
+
+  it('rejects the merged Kyiv claim when it cites only one of the two slots', () => {
+    // The exact production rejection: nouns ["kyiv"], cited [3]. "Kyiv" is
+    // absent from story 3 ("Ukrainian capital") and present only in story 7.
+    const out = compose(`Russia struck Kyiv with missiles and drones, killing at least 9 [3]. ${DOHA}`);
+    assert.equal(out, null, 'a fact drawn from an uncited sibling must not ship');
+  });
+
+  it('rejects a sibling-only numeric fact when proper nouns are grounded', () => {
+    const out = compose(`Russia struck the Ukrainian capital, killing nine [3]. ${DOHA}`);
+    assert.equal(out, null, 'a casualty count drawn from an uncited sibling must not ship');
+  });
+
+  it('accepts a sibling numeric fact once both fragments are cited', () => {
+    const out = compose(`Russia struck the Ukrainian capital, killing nine [3][7]. ${DOHA}`);
+    assert.ok(out, 'citing the story that supplies the number must satisfy the fact gate');
+  });
+
+  it('accepts the SAME claim once it cites both fragments', () => {
+    const out = compose(`Russia struck Kyiv with missiles and drones, killing at least 9 [3][7]. ${DOHA}`);
+    assert.ok(out, 'citing every contributing story must satisfy the citation-scoped gate');
+    assert.match(out.lead, /\[3\]\[7\]/, 'both citations survive verification');
+  });
+
+  it('still rejects a claim whose facts come from an UNCITED story (#4928)', () => {
+    // The misattribution #4928 exists to stop. Chile is genuinely IN the
+    // corpus (story 4), so corpus-wide grounding would wave this through —
+    // but the claim binds to [6] (Venezuela). Citation-scoped grounding is
+    // the only thing that catches it, and #6001 must not relax it.
+    const out = compose(`A magnitude 6.8 earthquake struck northern Chile [6]. ${DOHA}`);
+    assert.equal(out, null, '#4928 misattribution protection must survive #6001');
+  });
+
+  it('rejects an invented proper noun even when every slot is cited', () => {
+    const allCited = STORIES6001.map((_, i) => `[${i + 1}]`).join('');
+    const out = compose(`Belarus opened a second front against Latvia ${allCited}. ${DOHA}`);
+    assert.equal(out, null, 'citing everything must not launder a hallucination');
+  });
+
+  it('system prompt tells the model to cite EVERY story a claim draws from', () => {
+    const prompt = synthesisSystemPrompt('2026-08-02');
+    assert.doesNotMatch(
+      prompt,
+      /Never merge facts from different stories/,
+      'the blanket no-merge rule is what pushed the model into under-cited merges',
+    );
+    assert.match(prompt, /\[3\]\[7\]/, 'the multi-citation shape must be shown, not just described');
+    // The no-invention floor is untouched — merging is now legal, inventing is not.
+    assert.match(prompt, /Do not invent proper nouns/);
+    assert.match(prompt, /ONLY facts present/);
   });
 });

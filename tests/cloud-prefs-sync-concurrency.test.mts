@@ -29,12 +29,18 @@ const stubs: Record<string, string> = {
     'export const computeCapDisabledSources = () => [];',
     'export const findFullyDisabledCategories = () => [];',
   ].join('\n'),
+  '@/services/regional-feed-rollout': [
+    'export const buildPreStrategicDefaultDisabledStates = () => [];',
+    'export const buildRegionalFeedRolloutMigrationTargets = () => [];',
+  ].join('\n'),
 };
 
 interface HarnessResult {
   acceptedDataByToken: Record<string, Record<string, string>>;
+  acceptedSchemaVersionsByToken: Record<string, number[]>;
   conflictCount: number;
   localSyncVersion: number;
+  localSchemaVersion: number;
   postCount: number;
   serverSyncVersion: number;
   state: string | null;
@@ -49,7 +55,7 @@ interface HeldRequest {
 interface HarnessControls {
   dispatchHidden: () => void;
   holdNextPost: () => HeldRequest;
-  seedRow: (token: string, data: Record<string, string>, syncVersion: number) => void;
+  seedRow: (token: string, data: Record<string, string>, syncVersion: number, schemaVersion?: number) => void;
   setToken: (token: string) => void;
   stateHistory: string[];
   timeoutNextRequest: () => void;
@@ -185,9 +191,11 @@ async function runHarness(
 
   interface ServerRow {
     data: Record<string, string>;
+    schemaVersion: number;
     syncVersion: number;
   }
   const rows = new Map<string, ServerRow>();
+  const acceptedSchemaVersionsByToken: Record<string, number[]> = {};
   let postCount = 0;
   let conflictCount = 0;
   let pendingHold: {
@@ -212,11 +220,11 @@ async function runHarness(
     const method = init.method ?? 'GET';
     const authorization = new Headers(init.headers).get('Authorization') ?? '';
     const token = authorization.replace(/^Bearer\s+/, '') || 'anonymous';
-    const row = rows.get(token) ?? { data: {}, syncVersion: 0 };
+    const row = rows.get(token) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     if (method === 'GET') {
       return Response.json({
         data: row.data,
-        schemaVersion: 2,
+        schemaVersion: row.schemaVersion,
         syncVersion: row.syncVersion,
       });
     }
@@ -250,8 +258,12 @@ async function runHarness(
 
     const nextRow = {
       data: body.data as Record<string, string>,
+      schemaVersion: body.schemaVersion as number,
       syncVersion: row.syncVersion + 1,
     };
+    const acceptedVersions = acceptedSchemaVersionsByToken[token] ?? [];
+    acceptedVersions.push(nextRow.schemaVersion);
+    acceptedSchemaVersionsByToken[token] = acceptedVersions;
     rows.set(token, nextRow);
     return Response.json({ syncVersion: nextRow.syncVersion });
   };
@@ -273,8 +285,8 @@ async function runHarness(
       pendingHold = { releasePromise, resolveRelease, resolveStarted };
       return { release: resolveRelease, started };
     },
-    seedRow: (token, data, syncVersion) => {
-      rows.set(token, { data: { ...data }, syncVersion });
+    seedRow: (token, data, syncVersion, schemaVersion = 2) => {
+      rows.set(token, { data: { ...data }, schemaVersion, syncVersion });
     },
     setToken: (token) => {
       Object.assign(globalThis, { __cloudPrefsToken: token });
@@ -289,13 +301,17 @@ async function runHarness(
     const cloudPrefs = await loadCloudPrefsModule();
     await invoke(cloudPrefs, controls);
     const activeToken = String(Reflect.get(globalThis, '__cloudPrefsToken'));
-    const activeRow = rows.get(activeToken) ?? { data: {}, syncVersion: 0 };
+    const activeRow = rows.get(activeToken) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     return {
       acceptedDataByToken: Object.fromEntries(
         [...rows].map(([token, row]) => [token, { ...row.data }]),
       ),
+      acceptedSchemaVersionsByToken: Object.fromEntries(
+        Object.entries(acceptedSchemaVersionsByToken).map(([token, versions]) => [token, [...versions]]),
+      ),
       conflictCount,
       localSyncVersion: Number(localStorage.getItem('wm-cloud-sync-version') ?? 0),
+      localSchemaVersion: Number(localStorage.getItem('wm-cloud-prefs-local-schema-version') ?? 0),
       postCount,
       serverSyncVersion: activeRow.syncVersion,
       state: localStorage.getItem('wm-cloud-sync-state'),
@@ -372,6 +388,20 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.postCount, 2);
     assert.equal(result.localSyncVersion, result.serverSyncVersion);
     assert.equal(result.state, 'synced');
+  });
+
+  it('migrates the local blob before a sign-out keepalive upload', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      await cloudPrefs.onSignIn('user-1', 'full');
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-cloud-prefs-local-schema-version', '4');
+      localStorage.setItem('wm-market-watchlist-v1', 'save-before-sign-out');
+      cloudPrefs.onSignOut();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    });
+
+    assert.equal(result.localSchemaVersion, 5);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [5, 5]);
   });
 
   it('preserves edits made for a new account while its sign-in waits in the queue', async () => {

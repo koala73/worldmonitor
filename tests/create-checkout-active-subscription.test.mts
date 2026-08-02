@@ -109,14 +109,14 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay error:');
   });
 
-  it('continues logging non-409 relay failures before returning the fallback envelope', async () => {
+  it('preserves a reached relay provider-timeout 500 as non-retryable edge 500', async () => {
     const mod = await importFreshCreateCheckout();
     const consoleError = mock.method(console, 'error', () => {});
     const relayFetch = mock.fn(async () =>
       Response.json(
         {
-          error: 'UPSTREAM_CHECKOUT_FAILURE',
-          message: 'Dodo checkout temporarily failed',
+          error: 'Checkout failed: Request timed out.',
+          message: 'Dodo checkout request exceeded its provider timeout',
         },
         { status: 500 },
       ),
@@ -132,17 +132,44 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
 
     const res = await mod.default(makeCheckoutRequest());
 
-    assert.equal(res.status, 502);
+    assert.equal(res.status, 500);
     assert.deepEqual(await res.json(), {
-      error: 'UPSTREAM_CHECKOUT_FAILURE',
+      error: 'Checkout failed: Request timed out.',
     });
     assert.equal(consoleError.mock.calls.length, 1);
     assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay error:');
     assert.equal(consoleError.mock.calls[0].arguments[1], 500);
     assert.deepEqual(consoleError.mock.calls[0].arguments[2], {
-      error: 'UPSTREAM_CHECKOUT_FAILURE',
-      message: 'Dodo checkout temporarily failed',
+      error: 'Checkout failed: Request timed out.',
+      message: 'Dodo checkout request exceeded its provider timeout',
     });
+    assert.equal(relayFetch.mock.calls.length, 1, 'one logical relay create call');
+  });
+
+  it('keeps a true edge-to-relay fetch failure on the retryable 502 channel', async () => {
+    const mod = await importFreshCreateCheckout();
+    const consoleError = mock.method(console, 'error', () => {});
+    const relayFetch = mock.fn(async () => {
+      throw new TypeError('Failed to fetch relay');
+    });
+
+    mod.__setCreateCheckoutDepsForTests({
+      validateBearerToken: async () => ({
+        valid: true,
+        userId: 'user_relay_network_failure',
+      }),
+      fetch: relayFetch,
+    });
+
+    const res = await mod.default(makeCheckoutRequest());
+
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), {
+      error: 'Checkout service unavailable',
+    });
+    assert.equal(relayFetch.mock.calls.length, 1);
+    assert.equal(consoleError.mock.calls.length, 1);
+    assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay failed:');
   });
 
   it('preserves relay 429 and Retry-After without logging it as an unexpected failure', async () => {

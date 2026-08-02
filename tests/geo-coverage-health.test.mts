@@ -17,7 +17,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,10 @@ import {
 } from '../scripts/geo-coverage-health.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** Strategic floors the epic pins — must stay in policy so CI cannot go green by emptying floors. */
+const STRATEGIC_FLOOR_ISO2 = ['UA', 'PL', 'TW', 'PK'] as const;
+const STRATEGIC_FLOOR_MIN = 1;
 
 let inputs: Awaited<ReturnType<typeof loadGeoCoverageInputs>>;
 
@@ -88,6 +92,50 @@ describe('geographic coverage health (#5957)', () => {
       'geo-coverage-policy.json: floors key "ZZ" is not a keyCountry in shared/geography.js',
       'geo-coverage-policy.json: zeroDefaultOnAllowlist key "YY" is not a keyCountry in shared/geography.js',
     ]);
+  });
+
+  it('reports unknown catalog names, unknown ISO2, and duplicate ISO2 tags', () => {
+    const malformed = {
+      ...inputs,
+      sourceGeography: new Map([
+        ['Not A Real Feed', ['US']],
+        ['BBC World', ['ZZ', 'US', 'US']],
+      ]),
+    };
+    assert.deepEqual(validateSourceGeography(malformed), [
+      'source-geography.json: "Not A Real Feed" is not a configured feed source '
+        + '(rename in src/config/feeds.ts or fix the map)',
+      'source-geography.json: "BBC World" lists duplicate ISO2 codes — each country must appear once',
+      'source-geography.json: "BBC World" tags unknown ISO2 "ZZ"',
+    ]);
+  });
+
+  it('counts each source at most once per country when ISO2 tags are duplicated', () => {
+    const rows = computeGeoCoverage({
+      keyCountries: [{ iso2: 'UA', regions: ['europe'] }],
+      sourceGeography: new Map([['Kyiv Independent', ['UA', 'UA']]]),
+      defaultEnabled: new Set(['Kyiv Independent']),
+      policy: { floors: { UA: 2 }, zeroDefaultOnAllowlist: {} },
+    });
+    assert.deepEqual(rows[0].catalogSources, ['Kyiv Independent']);
+    assert.deepEqual(rows[0].defaultOnSources, ['Kyiv Independent']);
+    assert.equal(rows[0].defaultOnSources.length, 1);
+    // Floor 2 must still fail — one source with duplicated tags cannot game it.
+    const { violations } = evaluateGeoCoverage(rows);
+    assert.equal(rows[0].status, 'FLOOR-BREACH');
+    assert.equal(violations.length, 1);
+  });
+
+  it('pins strategic floors UA/PL/TW/PK at ≥1 in policy (not just live counts)', () => {
+    const floors = inputs.policy.floors ?? {};
+    for (const iso2 of STRATEGIC_FLOOR_ISO2) {
+      const floor = floors[iso2] ?? 0;
+      assert.ok(
+        floor >= STRATEGIC_FLOOR_MIN,
+        `policy.floors must pin ${iso2} >= ${STRATEGIC_FLOOR_MIN} (got ${floor}) — `
+          + 'emptying floors must not keep CI green',
+      );
+    }
   });
 
   it('strategic floors hold (UA/PL/TW/PK ≥ 1 EN default-on local source)', () => {
@@ -185,6 +233,42 @@ describe('geographic coverage health (#5957)', () => {
       const output = JSON.parse(result.stdout);
       assert.deepEqual(output.violations, []);
       assert.deepEqual(readdirSync(tempRoot), [], 'CLI must clean its temporary bundle before exiting');
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('CLI exits 1 when policy floors are breached', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'geo-coverage-cli-fail-'));
+    const policyPath = join(tempRoot, 'geo-coverage-policy.json');
+    try {
+      // Impossible floor forces FLOOR-BREACH while reusing the real map/catalog.
+      writeFileSync(policyPath, JSON.stringify({
+        floors: { UA: 999 },
+        zeroDefaultOnAllowlist: {},
+      }, null, 2));
+
+      const result = spawnSync(
+        process.execPath,
+        [join(repoRoot, 'scripts/geo-coverage-report.mjs'), '--json'],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            TMPDIR: tempRoot,
+            GEO_COVERAGE_POLICY_PATH: policyPath,
+          },
+          encoding: 'utf8',
+        },
+      );
+      assert.ifError(result.error);
+      assert.equal(result.status, 1, `expected exit 1 on floor breach, got ${result.status}: ${result.stderr}`);
+      const output = JSON.parse(result.stdout);
+      assert.ok(Array.isArray(output.violations) && output.violations.length > 0);
+      assert.ok(
+        output.violations.some((v: string) => v.includes('UA') && v.includes('below floor')),
+        `expected UA floor breach in violations: ${JSON.stringify(output.violations)}`,
+      );
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

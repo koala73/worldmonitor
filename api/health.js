@@ -127,6 +127,7 @@ const BOOTSTRAP_KEYS = {
   consumerPricesMovers:     'consumer-prices:movers:ae:30d',
   consumerPricesSpread:     'consumer-prices:retailer-spread:ae:essentials-ae',
   consumerPricesFreshness:  'consumer-prices:freshness:ae',
+  consumerPricesCoverage:   'consumer-prices:coverage:ae',
   groceryBasket:     'economic:grocery-basket:v1',
   bigmac:            'economic:bigmac:v1',
   fuelPrices:        'economic:fuel-prices:v1',
@@ -549,6 +550,7 @@ const SEED_META = {
   consumerPricesMovers:     { key: 'seed-meta:consumer-prices:movers:ae:30d',               maxStaleMin: 1500 },
   consumerPricesSpread:     { key: 'seed-meta:consumer-prices:retailer-spread:ae:essentials-ae', maxStaleMin: 1500 },
   consumerPricesFreshness:  { key: 'seed-meta:consumer-prices:freshness:ae',    maxStaleMin: 1500 },
+  consumerPricesCoverage:   { key: 'seed-meta:consumer-prices:coverage:ae',      maxStaleMin: 1500, minSuccessRate: 0.5, requireCoverage: true },
   // defiTokens/aiTokens/otherTokens all share one seed run (seed-token-panels cron, every 30min)
   defiTokens:        { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   aiTokens:          { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
@@ -664,6 +666,23 @@ const SEED_META = {
   intelHistoryIngestMilitaryCrossStrait: { key: 'seed-meta:intel-history:military:cross-strait-activity',  maxStaleMin: 720 }, // mirrors crossStraitActivity
   intelHistoryIngestEnergyIntelligence:  { key: 'seed-meta:intel-history:energy:intelligence',             maxStaleMin: 720 }, // mirrors energyIntelligence
 };
+
+// consumer-prices-core publishes coverage for every currently enabled market.
+// The Edge health registry cannot import the package YAML, so keep this small
+// list synchronized with consumer-prices-core/configs/retailers/*.yaml. AE keeps
+// its historical public health name; the other markets use explicit suffixes.
+const CONSUMER_PRICE_HEALTH_MARKETS = Object.freeze(['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']);
+for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
+  if (market === 'ae') continue;
+  const name = `consumerPricesCoverage${market.toUpperCase()}`;
+  BOOTSTRAP_KEYS[name] = `consumer-prices:coverage:${market}`;
+  SEED_META[name] = {
+    key: `seed-meta:consumer-prices:coverage:${market}`,
+    maxStaleMin: 1500,
+    minSuccessRate: 0.5,
+    requireCoverage: true,
+  };
+}
 
 // Iran-events sunset: when disabled (default), drop it from all health
 // classification so the deliberately-dormant manual seed can't raise
@@ -1015,15 +1034,29 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  // Per-market coverage: optional { completedPages, failedPages, completionRatio, rejectedCount }
+  // Per-market coverage: optional { status, completedPages, failedPages, completionRatio, rejectedCount, retailers }
   // written by consumer-prices publish.ts and other seeders that track partial completion.
   // null when the seeder didn't write coverage fields.
+  const coverageRetailers = Array.isArray(meta?.coverage?.retailers)
+    ? meta.coverage.retailers.slice(0, 100).map((retailer) => ({
+        slug: typeof retailer?.slug === 'string' ? retailer.slug.slice(0, 80) : null,
+        name: typeof retailer?.name === 'string' ? retailer.name.slice(0, 120) : null,
+        coverageStatus: typeof retailer?.coverageStatus === 'string' ? retailer.coverageStatus : 'unknown',
+        pagesAttempted: Number(retailer?.pagesAttempted) || 0,
+        pagesSucceeded: Number(retailer?.pagesSucceeded) || 0,
+        failedPages: Number(retailer?.failedPages) || 0,
+        rejectedCount: Number(retailer?.rejectedCount) || 0,
+        completionRatio: retailer?.completionRatio == null ? null : Number(retailer.completionRatio) || 0,
+      }))
+    : null;
   const coverage = meta?.coverage && typeof meta.coverage === 'object'
     ? {
+        status: typeof meta.coverage.status === 'string' ? meta.coverage.status : null,
         completedPages: Number(meta.coverage.completedPages) || 0,
         failedPages: Number(meta.coverage.failedPages) || 0,
-        completionRatio: Number(meta.coverage.completionRatio) || 0,
+        completionRatio: meta.coverage.completionRatio == null ? null : Number(meta.coverage.completionRatio) || 0,
         rejectedCount: Number(meta.coverage.rejectedCount) || 0,
+        retailers: coverageRetailers,
       }
     : null;
 
@@ -1177,7 +1210,16 @@ function classifyKey(name, redisKey, opts, ctx) {
   // (consumer-prices publish.ts etc.), flag COVERAGE_DEGRADED if the ratio
   // falls below minSuccessRate. Fires after COVERAGE_PARTIAL so record-count
   // shortfalls take precedence.
-  else if (seedCfg?.minSuccessRate != null && coverage && coverage.completionRatio < seedCfg.minSuccessRate) status = 'COVERAGE_DEGRADED';
+  else if (seedCfg?.requireCoverage && !coverage) status = 'COVERAGE_DEGRADED';
+  else if (
+    seedCfg?.minSuccessRate != null
+    && coverage
+    && (coverage.completionRatio < seedCfg.minSuccessRate || coverage.status === 'degraded')
+  ) status = 'COVERAGE_DEGRADED';
+  else if (
+    coverage
+    && (coverage.status === 'partial' || coverage.retailers?.some((retailer) => retailer.coverageStatus === 'failed'))
+  ) status = 'COVERAGE_PARTIAL';
   // Content-age check (opt-in via runSeed contentMeta + maxContentAgeMin).
   // Fires AFTER all earlier failure paths so STALE_SEED, COVERAGE_PARTIAL,
   // EMPTY_*, etc. take precedence — STALE_CONTENT is "the seeder is healthy
@@ -1207,6 +1249,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
   if (seedCfg?.minPoolCounts) entry.minPoolCounts = seedCfg.minPoolCounts;
   if (poolCounts) entry.poolCounts = poolCounts;
+  if (coverage || seedCfg?.requireCoverage) entry.coverage = coverage;
   if (status === 'SEED_ERROR' && errorCode) entry.errorCode = errorCode;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from

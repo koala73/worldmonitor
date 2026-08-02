@@ -59,6 +59,16 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 
 With `?compact=1`, the `checks` object is replaced by `problems` containing only non-OK keys.
 
+### Consumer-price source coverage
+
+The consumer-prices-core service exposes `GET /wm/consumer-prices/v1/coverage?market=ae` (the service API key is required). Its response includes attempted, completed, failed, and validator-rejected page counts for the market and each active retailer. `status` is `healthy`, `partial`, or `degraded`; a partial result remains publishable, while a rejected observation is never admitted merely to improve the coverage count. The publisher writes the same snapshot to `consumer-prices:coverage:<market>` and includes its aggregate completion ratio in `seed-meta`, so `/api/health` can distinguish a fresh partial run from a stopped producer.
+
+This operational contract complements, rather than replaces, the source-quality work in [#5445](https://github.com/koala73/worldmonitor/issues/5445) and [#5811](https://github.com/koala73/worldmonitor/issues/5811).
+
+### Relay ingestion telemetry
+
+The relay's public `GET /health` keeps the top-level `status: "ok"` contract for process-liveness probes. Its nested `ingestion.status` is the application-level verdict: it becomes `degraded` when aviation or RSS served coverage falls below its configured floor, or when AIS snapshot requests have no served snapshot. `GET /metrics` exposes the rolling-window per-route counters for success, throttle, timeout, authentication rejection, fallback, terminal failure, served coverage, cooldowns, and RSS feed backoff. AIS snapshot `unauthorizedClient` is tracked separately from upstream authentication failures so client traffic cannot be mistaken for provider health.
+
 ### Key Classifications
 
 Keys are grouped into three tiers that determine alert severity:

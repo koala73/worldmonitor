@@ -257,6 +257,9 @@ describe('UnifiedSettings theater coverage presets', () => {
     expect(sourceButton('ISW')?.classList.contains('active')).toBe(true);
     expect(sourceButton('Ukrinform')?.classList.contains('active')).toBe(true);
     expect(sourceButton(UNRELATED_SOURCE)?.classList.contains('active')).toBe(true);
+    expect(internal.overlay.querySelector('#usSourcesCounter')?.textContent).toBe(
+      tt('header.sourcesEnabled', { enabled: String(ALL_SOURCES.length), total: String(ALL_SOURCES.length) }),
+    );
 
     expect(toastText()).toBe(
       tt('theaterPresets.applied', { preset: presetLabel(), count: '3' }),

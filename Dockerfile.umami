@@ -1,0 +1,136 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+
+# WorldMonitor-managed Umami 3.2.0 image with the minimal upstream #4183 fix.
+# Base release: https://github.com/umami-software/umami/commit/2f6e2b5ff256862a081d9e74bed18a42ebf795e3
+# Fix source:  https://github.com/umami-software/umami/commit/7c030e4c5da4b5fdf3e75e80787a0344b040ac8a
+#
+# Do not advance either commit independently. The application/schema/test patch
+# is byte-for-byte identical to the upstream fix. Migration 21 contains the
+# byte-verified upstream migration 23, wrapped only by the reviewed transaction
+# and lock/statement timeouts required for controlled production deployment.
+
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS source
+
+RUN apk add --no-cache git
+WORKDIR /upstream
+COPY docker/umami/session-data-upsert.patch /tmp/session-data-upsert.patch
+COPY docker/umami/runtime/session-data-upsert.sql /tmp/session-data-upsert.sql
+COPY docker/umami/21_update_session_data/migration.sql /tmp/21_update_session_data.sql
+COPY docker/umami/runtime/upstream-23-update-session-data.sql /tmp/upstream-23-update-session-data.sql
+COPY docker/umami/runtime/21-update-session-data-prefix.sql /tmp/21-update-session-data-prefix.sql
+COPY docker/umami/runtime/21-update-session-data-suffix.sql /tmp/21-update-session-data-suffix.sql
+RUN git init \
+  && git remote add origin https://github.com/umami-software/umami.git \
+  && git fetch --depth=1 origin 2f6e2b5ff256862a081d9e74bed18a42ebf795e3 \
+  && git fetch --depth=2 origin 7c030e4c5da4b5fdf3e75e80787a0344b040ac8a \
+  && test "$(git rev-parse '2f6e2b5ff256862a081d9e74bed18a42ebf795e3^{commit}')" = "2f6e2b5ff256862a081d9e74bed18a42ebf795e3" \
+  && test "$(git rev-parse '7c030e4c5da4b5fdf3e75e80787a0344b040ac8a^{commit}')" = "7c030e4c5da4b5fdf3e75e80787a0344b040ac8a" \
+  && git diff --no-ext-diff --no-textconv --no-renames --no-color --abbrev=8 \
+    '7c030e4c5da4b5fdf3e75e80787a0344b040ac8a^' \
+    7c030e4c5da4b5fdf3e75e80787a0344b040ac8a \
+    -- prisma/schema.prisma \
+    > /tmp/upstream-session-data-upsert.patch \
+  && git diff --no-ext-diff --no-textconv --no-renames --no-color --abbrev=8 \
+    '7c030e4c5da4b5fdf3e75e80787a0344b040ac8a^' \
+    7c030e4c5da4b5fdf3e75e80787a0344b040ac8a \
+    -- \
+    src/queries/sql/sessions/saveSessionData.ts \
+    >> /tmp/upstream-session-data-upsert.patch \
+  && git diff --no-ext-diff --no-textconv --no-renames --no-color --abbrev=8 \
+    '7c030e4c5da4b5fdf3e75e80787a0344b040ac8a^' \
+    7c030e4c5da4b5fdf3e75e80787a0344b040ac8a \
+    -- \
+    src/queries/sql/sessions/saveSessionData.test.ts \
+    >> /tmp/upstream-session-data-upsert.patch \
+  && cmp -s /tmp/upstream-session-data-upsert.patch /tmp/session-data-upsert.patch \
+  && git show \
+    7c030e4c5da4b5fdf3e75e80787a0344b040ac8a:prisma/migrations/23_update_session_data/migration.sql \
+    > /tmp/upstream-update-session-data.sql \
+  && cmp -s /tmp/upstream-update-session-data.sql /tmp/upstream-23-update-session-data.sql \
+  && printf '\n' > /tmp/21-update-session-data-separator.sql \
+  && cat \
+    /tmp/21-update-session-data-prefix.sql \
+    /tmp/21-update-session-data-separator.sql \
+    /tmp/upstream-23-update-session-data.sql \
+    /tmp/21-update-session-data-suffix.sql \
+    > /tmp/expected-21-update-session-data.sql \
+  && cmp -s /tmp/expected-21-update-session-data.sql /tmp/21_update_session_data.sql \
+  && git checkout --detach 2f6e2b5ff256862a081d9e74bed18a42ebf795e3 \
+  && test "$(git rev-parse HEAD)" = "2f6e2b5ff256862a081d9e74bed18a42ebf795e3" \
+  && git apply --check /tmp/session-data-upsert.patch \
+  && git apply /tmp/session-data-upsert.patch \
+  && node --input-type=module -e '\
+    import { readFileSync } from "node:fs"; \
+    const normalizeSql = (value) => value.trim().split("\n").map((line) => line.trim()).join("\n"); \
+    const source = readFileSync("src/queries/sql/sessions/saveSessionData.ts", "utf8"); \
+    const fixture = readFileSync("/tmp/session-data-upsert.sql", "utf8").trim(); \
+    const match = source.match(/writeRawQuery\(\s*`([\s\S]*?)`\s*,/); \
+    if (!match || normalizeSql(match[1]) !== normalizeSql(fixture)) throw new Error("session-data upsert fixture does not match the applied source"); \
+  ' \
+  && mkdir -p prisma/migrations/21_update_session_data \
+  && cp /tmp/21_update_session_data.sql prisma/migrations/21_update_session_data/migration.sql
+
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS deps
+
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY --from=source /upstream/package.json /upstream/pnpm-lock.yaml ./
+RUN npm install --global pnpm@10.15.1
+RUN printf 'strictDepBuilds: false\n' > pnpm-workspace.yaml
+RUN pnpm install --frozen-lockfile
+
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
+
+WORKDIR /app
+RUN npm install --global pnpm@10.15.1
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=source /upstream/ ./
+COPY --from=source /upstream/docker/proxy.ts ./src/
+
+ARG BASE_PATH
+ENV BASE_PATH=$BASE_PATH
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="postgresql://user:pass@localhost:5432/dummy"
+
+RUN pnpm vitest run src/queries/sql/sessions/saveSessionData.test.ts
+RUN npm run build-docker
+
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
+
+LABEL org.opencontainers.image.source=https://github.com/koala73/worldmonitor \
+  org.opencontainers.image.version=3.2.0-worldmonitor.1 \
+  org.opencontainers.image.revision=2f6e2b5ff256862a081d9e74bed18a42ebf795e3 \
+  worldmonitor.umami.fix-commit=7c030e4c5da4b5fdf3e75e80787a0344b040ac8a
+
+WORKDIR /app
+
+ARG NODE_OPTIONS
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=$NODE_OPTIONS
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+RUN set -x \
+  && apk add --no-cache curl libc6-compat \
+  && npm install --global pnpm@10.15.1
+
+COPY docker/umami/runtime/package.json docker/umami/runtime/pnpm-lock.yaml docker/umami/runtime/pnpm-workspace.yaml ./
+RUN pnpm install --prod --frozen-lockfile \
+  && chown -R nextjs:nodejs /app/node_modules
+
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/generated ./generated
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+CMD ["npm", "run", "start-docker"]

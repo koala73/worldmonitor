@@ -1,6 +1,12 @@
 {
   "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
   "layerDefinitions": 56,
+  "lockedLayerDefinitions": 1,
+  "lockedLayerKeys": [
+    "resilienceScore"
+  ],
+  "tier1Countries": 31,
+  "rankableUniverseCountries": 196,
   "variantLayers": {
     "full": 37,
     "tech": 13,
@@ -11,7 +17,7 @@
   },
   "variantCount": 6,
   "componentTopLevelTsFiles": 179,
-  "serviceTopLevelEntries": 220,
+  "serviceTopLevelEntries": 221,
   "apiEndpointEntries": 91,
   "panelClasses": 107,
   "protoFiles": 290,

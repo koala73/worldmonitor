@@ -11,6 +11,7 @@ import {
   buildOverviewSnapshot,
   buildRetailerSpreadSnapshot,
 } from '../snapshots/worldmonitor.js';
+import { buildCoverageSnapshot } from '../snapshots/coverage.js';
 import { loadAllBasketConfigs, loadAllRetailerConfigs } from '../config/loader.js';
 import { closePool } from '../db/client.js';
 
@@ -78,7 +79,14 @@ async function writeSnapshot(
   data: unknown,
   ttlSeconds: number,
   advanceSeedMeta = true,
-  coverage?: { pagesOk: number; pagesFailed: number; rejectedCount: number },
+  coverage?: {
+    status?: string;
+    pagesOk: number;
+    pagesFailed: number;
+    rejectedCount: number;
+    completionRatio?: number | null;
+    retailers?: unknown[];
+  },
 ): Promise<void> {
   const count = recordCount(data);
   // Envelope the canonical payload. Legacy seed-meta:<key> is still written
@@ -89,14 +97,16 @@ async function writeSnapshot(
   if (advanceSeedMeta) {
     const meta: Record<string, unknown> = { fetchedAt: Date.now(), recordCount: count };
     if (coverage) {
-      const completionRatio = coverage.pagesOk + coverage.pagesFailed > 0
+      const completionRatio = coverage.completionRatio ?? (coverage.pagesOk + coverage.pagesFailed > 0
         ? Number((coverage.pagesOk / (coverage.pagesOk + coverage.pagesFailed)).toFixed(4))
-        : 0;
+        : 0);
       meta.coverage = {
+        ...(coverage.status ? { status: coverage.status } : {}),
         completedPages: coverage.pagesOk,
         failedPages: coverage.pagesFailed,
         completionRatio,
         rejectedCount: coverage.rejectedCount,
+        ...(coverage.retailers ? { retailers: coverage.retailers } : {}),
       };
     }
     await upstashCommand(url, token, [
@@ -147,6 +157,30 @@ export async function publishAll() {
 
     let pagesOk = 0;
     let pagesFailed = 0;
+
+    try {
+      const coverage = await buildCoverageSnapshot(marketCode);
+      await writeSnapshot(
+        url,
+        token,
+        makeKey(['consumer-prices', 'coverage', marketCode]),
+        coverage,
+        TTL,
+        advanceSeedMeta,
+        {
+          pagesOk: coverage.completedPages,
+          pagesFailed: coverage.failedPages,
+          rejectedCount: coverage.rejectedCount,
+          completionRatio: coverage.completionRatio,
+          status: coverage.status,
+          retailers: coverage.retailers,
+        },
+      );
+      pagesOk++;
+    } catch (err) {
+      pagesFailed++;
+      logger.error(`coverage:${marketCode} failed: ${err}`);
+    }
 
     try {
       const overview = await buildOverviewSnapshot(marketCode);

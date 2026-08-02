@@ -367,6 +367,22 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
   ['intel-history:ingest-health:energy:intelligence:v1',
     'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['consumer-prices:coverage:ae',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:au',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:br',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:gb',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:in',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:sa',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:sg',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:us',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
 ]);
 
 // -----------------------------------------------------------------------------

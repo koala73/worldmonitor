@@ -91,6 +91,91 @@ test('classifyKey: fresh seed + data → OK', () => {
   assert.equal(entry.status, 'OK');
 });
 
+test('classifyKey: consumer-price coverage below the declared completion floor degrades', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: { completedPages: 4, failedPages: 8, completionRatio: 0.3333, rejectedCount: 2 },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: consumer-price coverage at the floor remains healthy', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: { completedPages: 6, failedPages: 6, completionRatio: 0.5, rejectedCount: 0 },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'OK');
+});
+
+test('classifyKey: consumer-price coverage requires diagnostics and exposes retailer rejection state', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: {
+          status: 'partial',
+          completedPages: 8,
+          failedPages: 2,
+          completionRatio: 0.8,
+          rejectedCount: 3,
+          retailers: [{
+            slug: 'retailer-a',
+            name: 'Retailer A',
+            coverageStatus: 'failed',
+            pagesAttempted: 2,
+            pagesSucceeded: 0,
+            failedPages: 2,
+            rejectedCount: 1,
+            completionRatio: 0,
+          }],
+        },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.coverage.status, 'partial');
+  assert.equal(entry.coverage.rejectedCount, 3);
+  assert.equal(entry.coverage.retailers[0].coverageStatus, 'failed');
+});
+
+test('classifyKey: missing consumer-price coverage metadata fails closed', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: { [SEED_META.consumerPricesCoverage.key]: seedMeta({ recordCount: 4 }) },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(entry.coverage, null);
+});
+
+test('health registers every currently enabled consumer-price market coverage key', () => {
+  for (const market of ['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']) {
+    const name = market === 'ae' ? 'consumerPricesCoverage' : `consumerPricesCoverage${market.toUpperCase()}`;
+    assert.equal(BOOTSTRAP_KEYS[name], `consumer-prices:coverage:${market}`);
+    assert.equal(SEED_META[name].key, `seed-meta:consumer-prices:coverage:${market}`);
+    assert.equal(SEED_META[name].requireCoverage, true);
+  }
+});
+
 test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still present', () => {
   const entry = classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false },
     makeCtx({

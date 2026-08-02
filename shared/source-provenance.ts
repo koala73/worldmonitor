@@ -297,7 +297,7 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Armenpress': { risk: 'high', stateAffiliated: 'Armenia', note: 'Armenian state news agency' },
   // Periphery packs (#5953) — Belarus / Moldova
   'Zerkalo': { risk: 'low', note: 'Independent Belarusian exile news outlet (formerly TUT.BY)' },
-  'NewsMaker': { risk: 'medium', note: 'Moldovan independent news outlet, English/Romanian' },
+  'NewsMaker': { risk: 'medium', note: 'Moldovan independent news outlet; configured Russian-language feed' },
   'Ziarul de Gardă': { risk: 'medium', note: 'Moldovan investigative journalism outlet, Romanian-language' },
   // Periphery packs (#5953) — Central Asia
   'Eurasianet': { risk: 'medium', note: 'Nonprofit regional news covering Eurasia, Carnegie-funded' },

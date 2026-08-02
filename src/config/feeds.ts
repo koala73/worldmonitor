@@ -219,7 +219,9 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Armenpress', url: rss('https://news.google.com/rss/search?q=site:armenpress.am+when:3d&hl=en-US&gl=US&ceid=US:en') },
     // Belarus / Moldova (#5953) — secondary pressure line
     { name: 'Zerkalo', url: rss('https://news.google.com/rss/search?q=site:zerkalo.io+when:2d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'NewsMaker', url: rss('https://newsmaker.md/en/feed/') },
+    // NewsMaker removed its English feed; keep the live native Russian feed
+    // locale-scoped instead of default-enabling a 404 or mislabeled content.
+    { name: 'NewsMaker', url: rss('https://newsmaker.md/feed'), lang: 'ru' },
     { name: 'Ziarul de Gardă', url: rss('https://www.zdg.md/feed/'), lang: 'ro' },
   ],
   middleeast: [
@@ -401,21 +403,21 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     // Pacific Islands
     { name: 'Island Times (Palau)', url: rss('https://islandtimes.org/feed/') },
     // Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
-    { name: 'Eurasianet', url: rss('https://eurasianet.org/feed/') },
+    { name: 'Eurasianet', url: rss('https://eurasianet.org/rss') },
     { name: 'RFE/RL Central Asia', url: rss('https://news.google.com/rss/search?q=site:rferl.org+Central+Asia+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Astana Times', url: rss('https://astanatimes.com/feed/') },
     { name: 'The Times of Central Asia', url: rss('https://timesca.com/feed/') },
     // Taiwan (#5954)
-    { name: 'Focus Taiwan', url: rss('https://focustaiwan.tw/search/simple/all/1/rss') },
-    { name: 'Taipei Times', url: rss('https://www.taipeitimes.com/feeds/front.xml') },
-    { name: 'Taiwan News', url: rss('https://www.taiwannews.com.tw/rss') },
+    { name: 'Focus Taiwan', url: rss('https://news.google.com/rss/search?q=site%3Afocustaiwan.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Taipei Times', url: rss('https://news.google.com/rss/search?q=site%3Ataipeitimes.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Taiwan News', url: rss('https://news.google.com/rss/search?q=site%3Ataiwannews.com.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
     // Pakistan (#5954)
     { name: 'Dawn', url: rss('https://www.dawn.com/feeds/home/') },
     { name: 'Geo News', url: rss('https://news.google.com/rss/search?q=site:geo.tv+when:2d&hl=en-US&gl=US&ceid=US:en') },
     // SE Asia security (#5954)
-    { name: 'Jakarta Post', url: rss('https://www.thejakartapost.com/rss/news.xml') },
+    { name: 'Jakarta Post', url: rss('https://news.google.com/rss/search?q=site%3Athejakartapost.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Rappler', url: rss('https://www.rappler.com/feed/') },
-    { name: 'The Star (Malaysia)', url: rss('https://www.thestar.com.my/rss/editors-pick') },
+    { name: 'The Star (Malaysia)', url: rss('https://news.google.com/rss/search?q=site%3Athestar.com.my%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Irrawaddy', url: rss('https://www.irrawaddy.com/feed/') },
   ],
   energy: [
@@ -1133,6 +1135,87 @@ const AFRICA_DEPTH_EN_DEFAULT_SOURCES = [
   'RFI Afrique',
 ] as const;
 
+const CAUCASUS_EN_DEFAULT_SOURCES = [
+  'Civil.ge',
+  'OC Media',
+] as const;
+
+const CENTRAL_ASIA_EN_DEFAULT_SOURCES = [
+  'Eurasianet',
+  'The Astana Times',
+] as const;
+
+const INDO_PACIFIC_EN_DEFAULT_SOURCES = [
+  'Focus Taiwan',
+  'Dawn',
+  'Rappler',
+] as const;
+
+/** Current editorial defaults introduced by the four regional feed PRs. */
+export const REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES = [
+  ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+  ...CAUCASUS_EN_DEFAULT_SOURCES,
+  ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
+  ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
+  ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+] as const;
+
+/**
+ * Current opt-in sources introduced by the same rollout wave. Persisted
+ * denylist profiles need these names inserted by the schema-5 migration;
+ * otherwise a newly cataloged source is implicitly enabled for every returner.
+ */
+export const REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES = [
+  'Seznam Zprávy', 'Digi24', 'HotNews', 'G4Media', 'Dnevnik',
+  'LRT English', 'LSM English',
+  'JAMnews', 'Azertag', 'Armenpress', 'Zerkalo', 'NewsMaker', 'Ziarul de Gardă',
+  'Radio Tamazuj', 'The Reporter Ethiopia', 'Actualite.cd', 'Radio Okapi',
+  'MyJoyOnline', 'Le Quotidien', 'RFE/RL Central Asia', 'The Times of Central Asia',
+  'Taipei Times', 'Taiwan News', 'Geo News', 'Jakarta Post',
+  'The Star (Malaysia)', 'Irrawaddy',
+  'Ethiopia Insight', 'Dabanga Sudan', 'Citi Newsroom',
+] as const;
+
+/** Chronological feed introductions used to reconstruct untouched cap states. */
+export const REGIONAL_FEED_ROLLOUT_STAGES = [
+  {
+    introducedNames: [
+      'Civil.ge', 'OC Media', 'JAMnews', 'Azertag', 'Armenpress', 'Zerkalo',
+      'NewsMaker', 'Ziarul de Gardă', 'Radio Tamazuj', 'The Reporter Ethiopia',
+      'Actualite.cd', 'Radio Okapi', 'MyJoyOnline', 'Le Quotidien',
+      'Eurasianet', 'RFE/RL Central Asia', 'The Astana Times', 'The Times of Central Asia',
+    ],
+    protectedNames: [...FRONTLINE_EUROPE_PROTECTED_SOURCES],
+  },
+  {
+    introducedNames: [
+      'Focus Taiwan', 'Taipei Times', 'Taiwan News', 'Dawn', 'Geo News',
+      'Jakarta Post', 'Rappler', 'The Star (Malaysia)', 'Irrawaddy',
+    ],
+    protectedNames: [...FRONTLINE_EUROPE_PROTECTED_SOURCES],
+  },
+  {
+    introducedNames: [
+      'Daily Sabah', 'Seznam Zprávy', 'Digi24', 'HotNews', 'G4Media',
+      'Dnevnik', 'ERR News', 'LRT English', 'LSM English',
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [
+      'Ethiopia Insight', 'Dabanga Sudan', 'Hiiraan Online', 'Citi Newsroom', 'RFI Afrique',
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+      ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+    ],
+  },
+] as const;
+
 /**
  * Editorially required EN defaults that must survive the free-tier source cap.
  * Keep the narrower frontline set above for its one-shot migration contract;
@@ -1140,8 +1223,7 @@ const AFRICA_DEPTH_EN_DEFAULT_SOURCES = [
  */
 export const FREE_CAP_PROTECTED_SOURCES = [
   ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
-  ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
-  ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+  ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
 ] as const;
 
 /**
@@ -1201,10 +1283,8 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
     'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
     ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
     ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
-    'Ukrainska Pravda EN',
-    'NV EN',
     // Periphery packs (#5953) — Caucasus, Belarus/Moldova
-    'Civil.ge', 'OC Media', 'NewsMaker',
+    ...CAUCASUS_EN_DEFAULT_SOURCES,
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
@@ -1215,8 +1295,8 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   ],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
 asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
-    'Eurasianet', 'The Astana Times',
-    'Focus Taiwan', 'Dawn', 'Rappler',
+    ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
+    ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
   ],
   tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
   ai: ['AI News', 'VentureBeat AI', 'The Verge AI', 'MIT Tech Review', 'ArXiv AI'],
@@ -1233,23 +1313,27 @@ export const DEFAULT_ENABLED_INTEL: string[] = [
   'Military Times', 'USNI News', 'Bellingcat', 'Krebs Security',
 ];
 
-export function getAllDefaultEnabledSources(): Set<string> {
+function getExplicitDefaultEnabledSources(): Set<string> {
   const s = new Set<string>();
   for (const names of Object.values(DEFAULT_ENABLED_SOURCES)) names.forEach(n => s.add(n));
   DEFAULT_ENABLED_INTEL.forEach(n => s.add(n));
+  return s;
+}
+
+export function getAllDefaultEnabledSources(): Set<string> {
+  const s = getExplicitDefaultEnabledSources();
   for (const name of getStrategicDefaultSources()) s.add(name);
   return s;
 }
 
 /**
- * Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key).
- *
- * Strategic defaults are handled by `getAllDefaultEnabledSources()` and are
- * therefore not locale boosts. Keeping the concepts separate prevents an
- * English locale lookup from implicitly enabling every ordinary multi-URL feed
- * that happens to expose an `en` URL.
+ * Sources selected strictly by a non-English language match. Kept separate
+ * from strategic-default policy so historical preference migrations can
+ * reconstruct pre-rollout locale states deterministically. In particular, an
+ * English locale lookup must not implicitly enable every ordinary multi-URL
+ * feed that happens to expose an `en` URL.
  */
-export function getLocaleBoostedSources(locale: string): Set<string> {
+export function getLanguageMatchedSources(locale: string): Set<string> {
   const lang = (locale.split('-')[0] ?? 'en').toLowerCase();
   const boosted = new Set<string>();
   if (lang === 'en') return boosted;
@@ -1259,6 +1343,11 @@ export function getLocaleBoostedSources(locale: string): Set<string> {
     if (typeof f.url === 'object' && lang in f.url) boosted.add(f.name);
   }
   return boosted;
+}
+
+/** Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key). */
+export function getLocaleBoostedSources(locale: string): Set<string> {
+  return getLanguageMatchedSources(locale);
 }
 
 export function computeDefaultDisabledSources(locale?: string): string[] {
@@ -1273,14 +1362,46 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
 }
 
 /**
+ * Sources that were removed from DEFAULT_ENABLED_SOURCES during the regional
+ * feed rollout reconciliation (PR #6031). They were historically default-on
+ * and must remain in the reconstructed pre-strategic fingerprint so exact-set
+ * migration matching finds them in the enabled (not disabled) set.
+ */
+const PRE_ROLLOUT_RECONCILIATION_DEFAULTS = [
+  'Ukrainska Pravda EN',
+  'NV EN',
+  'NewsMaker',
+] as const;
+
+/**
  * Reconstruct the source-reduction defaults from before strategic defaults
  * became part of the canonical default-enabled set. This is used only by the
  * exact-set migrations that repair profiles created before PR #6000.
  */
-export function computePreStrategicDefaultDisabledSources(): string[] {
-  const disabled = new Set(computeDefaultDisabledSources());
-  for (const name of getStrategicDefaultSources()) disabled.add(name);
-  return [...disabled];
+export function computePreStrategicDefaultDisabledSources(locale?: string): string[] {
+  const enabled = getExplicitDefaultEnabledSources();
+  for (const name of PRE_ROLLOUT_RECONCILIATION_DEFAULTS) enabled.add(name);
+  if (locale) {
+    for (const name of getLanguageMatchedSources(locale)) enabled.add(name);
+  }
+  const all = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) for (const feed of feeds) all.add(feed.name);
+  for (const feed of INTEL_SOURCES) all.add(feed.name);
+  return [...all].filter((name) => !enabled.has(name));
+}
+
+/**
+ * Reconstruct the untouched default denylist immediately before PR #5976.
+ * Every later regional source is removed because it did not exist in that
+ * catalog; the remaining set can be compared exactly without hard-coding a
+ * large, brittle list of unrelated feed names.
+ */
+export function computePreRegionalFeedRolloutDefaultDisabledSources(locale?: string): string[] {
+  const introduced = new Set<string>(
+    REGIONAL_FEED_ROLLOUT_STAGES.flatMap((stage) => [...stage.introducedNames]),
+  );
+  return computePreStrategicDefaultDisabledSources(locale)
+    .filter((name) => !introduced.has(name));
 }
 
 /**

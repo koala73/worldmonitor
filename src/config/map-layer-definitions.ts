@@ -344,7 +344,8 @@ const I18N_PREFIX = 'components.deckgl.layers.';
 // see src/services/maritime/index.ts and tests/browser-bundle-secret-guard.
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
-function isSunsetLayer(key: keyof MapLayers): boolean {
+/** True when a layer is feature-sunset and must not appear in any picker. */
+export function isSunsetLayer(key: keyof MapLayers): boolean {
   return !IRAN_ATTACKS_ENABLED && key === 'iranAttacks';
 }
 

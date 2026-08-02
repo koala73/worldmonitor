@@ -1,5 +1,5 @@
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
-import { THEATER_PRESETS, getTheaterPreset, resolveTheaterPresetSources, type TheaterPreset } from '@/config/theater-presets';
+import { THEATER_PRESETS, getTheaterPreset, getTheaterPresetEnableList, resolveTheaterPresetSources, type TheaterPreset } from '@/config/theater-presets';
 import {
   PANEL_CATEGORY_MAP,
   ALL_PANELS,
@@ -1267,7 +1267,7 @@ export class UnifiedSettings {
 
     const known = new Set(this.config.getAllSourceNames());
     const resolvable = resolveTheaterPresetSources(preset, known);
-    const toEnable = resolvable.filter((name) => this.config.getDisabledSources().has(name));
+    const toEnable = getTheaterPresetEnableList(preset, this.config.getDisabledSources(), known);
     const label = t(preset.labelKey);
 
     // Zero resolvable sources (narrow variant or unloaded panels) is not the

@@ -18,7 +18,13 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 ### Seed-Owned Key
 
-A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key.
+A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key, Read Outcome.
+
+### Read Outcome
+
+The three-way result a cache read is obliged to report — **hit**, **miss**, or **failure** — as against the two-way present/absent that a bare returned value can express. The distinction exists because it is observable only at the read itself: a helper that answers the same empty value for "the key genuinely holds nothing" and "the read did not complete" has destroyed the difference at its only observation point, and every caller downstream then decides on a fabricated fact.
+
+What makes the collapse expensive is that the two outcomes license opposite actions. A miss is a legitimate empty state — serve the computed fallback, render the empty panel, treat the day as having no records. A failure is an outage, and the correct response is almost always to abstain: skip the tick rather than publish a partial, keep the last good value rather than replace it with nothing, report the read as incomplete rather than as a finding. Collapsing them converts an outage into a confident empty answer, which then propagates as though it were data. Two properties of the cache store's REST interface make this easy to get wrong. A transport-level success status is not evidence the command ran — the store can answer a success status whose body carries a per-command error — so a reader that checks only the status and then reads the result field silently reclassifies every such rejection as a miss. And because the rejection is per command, one command in a batch can fail while its siblings succeed, so an outcome must be tracked per command rather than inferred once for the whole batch. See also: Seed-Owned Key, One-Shot Hydration.
 
 ### Source Tag
 
@@ -101,6 +107,16 @@ An element that browser and RUM layout-shift attribution names because its *posi
 ### Shift Mover
 
 The element that *causes* a layout shift by changing its own footprint — growing, shrinking, materializing (insertion), or disappearing (removal). Movers are not reported by shift-attribution APIs; naming one requires diffing element geometry across the shift itself (a cached top/height baseline compared at shift delivery). The victim/mover distinction is load-bearing for all layout-stability work in this project: two shipped fixes aimed at victims had null field effect before mover instrumentation named the true mechanism. See also: Shift Victim, Deferred-Shell Contract.
+
+## Payments Provider Calls
+
+### Retry Ownership
+
+The invariant that exactly one layer owns retry policy for any external provider call — every other layer in the chain (vendor SDK internals, edge gateway, client transport) is either pinned to zero retries or restricted to failure classes the owning layer never retries. Vendor SDKs commonly ship default internal retries that honor a provider's advertised wait verbatim, so a retry layer added above an unpinned SDK silently multiplies raw request volume and turns the owner's attempt counts and wall-clock deadlines into fiction — the owning layer can only bound what it can see. Ownership is asserted by construction (retries pinned off when the client is built, each attempt individually time-bounded) and guarded by a contract test, never by convention. See also: Rate-Limit Outcome.
+
+### Rate-Limit Outcome
+
+The typed value a provider-rate-limited operation returns *instead of throwing*, so every downstream surface renders a deliberate retry state — an HTTP 429 with a retry hint at the service boundary, a structured error code on the public API — rather than collapsing the limit into a generic failure. The outcome only exists after the owning retry layer has exhausted its bounded attempts; a raw rate-limit error escaping before that point is a defect, not an outcome. See also: Retry Ownership.
 
 ## Test & Guard Verification
 
