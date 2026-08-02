@@ -112,6 +112,22 @@ six group records and a seed no older than 60 minutes. Per-source transport
 details for policy, exchanges, and cross-Strait publishers remain visible only
 in this authenticated operator view; they are not copied into the public
 country summary or Pro MCP result.
+
+The six required records count **operationally covered** groups, which is not
+the same as populated groups. A group whose state is `unavailable` with the
+cause `healthy_quiet_window` is covered: the upstream answered and simply had
+nothing qualifying to report, which is not a source failure and needs no
+operator action. Its public state and zero-item payload are unchanged — no
+event is invented to fill it. Every other unavailable cause
+(`insufficient_data`, `provenance_rejected`, `upstream_unavailable`,
+`unknown`) is a real failure and stays uncovered, and a cause that is absent or
+malformed fails closed as uncovered.
+
+Both health surfaces publish a group breakdown so a shortfall names its own
+work item instead of reading as a bare `4/6`: `quietGroups` (nothing to do),
+`staleGroups` (chase the source's content), and `unavailableGroups`, each
+carrying the group id and its `unavailableCause`.
+
 Blocked China contracts remain visible in the audit with their stable reason
 code but are excluded from the strict launched-entry health count.
 
@@ -173,6 +189,42 @@ health entries where those feeds publish seed metadata.
 `COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country
 PortWatch cache entries, but the canonical country list and healthy seed-meta
 signal do not advance until full 174-country coverage returns.
+
+`portwatchPortActivity` additionally requires per-country **content**
+freshness, which is a different question from transport freshness and country
+cardinality. The seeder reuses a cached country payload whenever upstream
+`max(date)` has not advanced, so a run can report a fresh heartbeat and a
+complete 174/174 country list while an individual country's observation is
+days old. The producer therefore publishes a `contentFreshness` block, and the
+check verdict is:
+
+| Condition | Status |
+| --- | --- |
+| Every decision-critical country inside the 72-hour content budget | `OK` |
+| A decision-critical country past budget, future-dated, missing a usable timestamp, or absent from the run | `STALE_CONTENT` |
+| The block is absent, or its counts are missing or arithmetically incoherent | `COVERAGE_DEGRADED` |
+
+The verdict keys on the **decision-critical** countries — currently `CN` and
+`HK`, the two the China corridor control towers read — rather than on all 174.
+Fleet-wide content staleness is normal by construction: the seeder refreshes at
+most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
+tail of the rotation is routinely past budget. Alarming on that would produce a
+warning that is always lit and never actionable. The fleet-wide counts
+(`coveredCount`, `freshCount`, `staleCount`, `unknownCount`, a bounded
+`staleCountries` list, and the oldest observation with its age) stay published
+for visibility; only the critical subset moves the status.
+
+The 72-hour budget is deliberately the same one
+`china-corridor-source-adapters.ts` applies to a PortWatch observation, so this
+alarm explains the China activity-nowcast's `marked_stale` exclusion rather
+than contradicting it. Health is inclusive at the boundary and treats a
+future-dated observation as stale, both one step more conservative than the
+data gate — an alarm should fire no later than the contract it protects.
+
+Named entities are operator-only. `contentFreshness` and the
+`chinaDecisionSignals` group breakdown are stripped from the anonymous
+`?compact=1` projection, which keeps the status but not which source is
+degraded.
 
 `predictionMarkets` also requires at least one published market in each
 `geopolitical`, `tech`, and `finance` pool. Its seed metadata publishes
