@@ -594,6 +594,32 @@ describe('existing beforeSend filters', () => {
     assert.equal(beforeSend(event), null, 'Extension chain-ending-in-window.fetch fetch failure should be suppressed');
   });
 
+  it('suppresses bare "Failed to fetch" when the extension fetch frame carries an alias annotation (WORLDMONITOR-Y8)', () => {
+    // Real WORLDMONITOR-Y8 stack (Adjust SDK injectScriptAdjust.js, the same
+    // extension already named in the SG gate): Sentry renders the frame whose
+    // function was reached through an alias as `<name> [<annotation>]`, so the
+    // wrapper surfaces as `window.fetch [<annotation>]`. The SG function match
+    // is anchored, so the trailing annotation made it miss and the identical
+    // wrapper class re-surfaced as a new issue.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-RVfx_Amx.js', lineno: 2, function: 'Ln' },
+      { filename: 'chrome-extension://bkkbcggnhapdmkeljlodobbkopceiche/injectScriptAdjust.js', lineno: 1, function: 'window.fetch [as originalFetch]' },
+      { filename: '/assets/widget-store-B60Ai24W.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'alias-annotated extension window.fetch frame should be suppressed');
+  });
+
+  it('does NOT suppress when only the ALIAS half of an extension frame looks like fetch', () => {
+    // Precision guard for the annotation strip above: the meaningful name is the
+    // one BEFORE the bracket. An extension frame whose own function is unrelated
+    // must not qualify just because it was stored under a fetch-ish property.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+      { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/inject.js', lineno: 1, function: 'trackEvent [as fetch]' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'alias-only fetch resemblance must not trigger SG suppression');
+  });
+
   it('does NOT suppress bare "Failed to fetch" with a first-party frame and a NON-fetch extension frame', () => {
     // Precision guard for WORLDMONITOR-SG: an extension frame whose function is
     // not a fetch wrapper is NOT evidence the extension owns the orphan fetch
