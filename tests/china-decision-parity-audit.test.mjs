@@ -131,12 +131,16 @@ describe('China decision-signal static and staging audit (#5580)', () => {
         partial: 0,
         stale: 0,
         unavailable: 6,
+        healthyQuiet: 0,
+        operationallyCovered: 0,
       },
       bootstrapGroupCounts: {
         populated: 0,
         partial: 0,
         stale: 0,
         unavailable: 6,
+        healthyQuiet: 0,
+        operationallyCovered: 0,
       },
     });
     assert.doesNotMatch(JSON.stringify(result), /apiKey|private-document|must-not-leak/);
@@ -153,6 +157,10 @@ describe('China decision-signal static and staging audit (#5580)', () => {
       partial: 1,
       stale: 1,
       unavailable: 1,
+      // The lone unavailable group declares no cause, so it is not a proven
+      // healthy quiet window and stays uncovered (#6060).
+      healthyQuiet: 0,
+      operationallyCovered: 3,
     });
 
     const groups = CHINA_DECISION_PARITY_MANIFEST.map(({ groupId }) => ({
@@ -193,6 +201,8 @@ describe('China decision-signal static and staging audit (#5580)', () => {
       partial: 0,
       stale: 0,
       unavailable: 6,
+      healthyQuiet: 0,
+      operationallyCovered: 0,
     });
   });
 

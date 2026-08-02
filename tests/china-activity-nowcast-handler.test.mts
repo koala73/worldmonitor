@@ -328,3 +328,209 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal(projectChinaActivityNowcastWireResponse(unchanged).upstreamUnavailable, false);
   });
 });
+
+// #6060 — the production failure was activity-nowcast `unavailable` with
+// `insufficient_data` and these four missing input diagnostics:
+//
+//   freight  / ccfi_freight_rate_change        : missing_directional_value
+//   maritime / portwatch_tanker_calls_trend    : marked_stale
+//   energy   / china_energy_demand_change      : missing_directional_value
+//   corridor / corridor_activity_breadth_change: missing_directional_value
+//
+// That refusal is correct and must stay correct. These tests pin the
+// fail-closed contract so a future "make the nowcast available again" change
+// cannot buy availability with a forward fill, an interpolation, or a neutral
+// substitution.
+describe('China activity nowcast fail-closed contract (#6060)', () => {
+  // The energy proxy carries a documented 30-day publication lag, so a
+  // same-day observation is excluded as `lag_not_elapsed` before the
+  // directional check is ever reached. Production reported
+  // `missing_directional_value`, which means the lag HAD elapsed there —
+  // reproduce that by backdating energy to 40 days before evaluation: past
+  // the 30-day lag, inside the 90-day comparison window, and well inside the
+  // 210-day freshness budget.
+  const ENERGY_OBSERVED_AT = '2026-06-15T10:00:00.000Z';
+
+  function staleCorridorSnapshot(): ChinaCorridorControlTowerResponse {
+    // Exactly what a China PortWatch payload older than the corridor adapter's
+    // 72h content budget produces: transport is fine, the content is not.
+    const base = corridorSnapshot();
+    return {
+      ...base,
+      corridors: base.corridors.map((corridor) => ({
+        ...corridor,
+        conditions: corridor.conditions.map((item) => {
+          if (item.family === 'port') {
+            return {
+              ...item,
+              sourceSignals: item.sourceSignals.map((source) => ({
+                ...source,
+                contentFreshness: 'stale' as const,
+              })),
+            };
+          }
+          if (item.family === 'power_energy') {
+            return {
+              ...item,
+              sourceSignals: item.sourceSignals.map((source) => ({
+                ...source,
+                observationTime: ENERGY_OBSERVED_AT,
+                releaseTime: '2026-06-15T10:10:00.000Z',
+                retrievalTime: '2026-06-15T10:15:00.000Z',
+              })),
+            };
+          }
+          return item;
+        }),
+      })),
+    };
+  }
+
+  it('excludes content-stale PortWatch rather than forward-filling it', async () => {
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => staleCorridorSnapshot(),
+      readMarketBatch: async () => marketValues(),
+    });
+
+    const maritime = response.contributions
+      .find((item) => item.seriesId === 'portwatch_tanker_calls_trend');
+    assert.equal(maritime?.included, false);
+    assert.equal(maritime?.exclusionReason, 'marked_stale');
+    assert.equal(maritime?.direction, null, 'a stale observation has no direction');
+    assert.equal(
+      maritime?.transformedValue,
+      null,
+      'stale content is dropped, never carried forward or zeroed',
+    );
+    // The raw upstream number is still visible for diagnosis; what must not
+    // happen is that number becoming a contribution.
+    assert.equal(maritime?.rawValue, 1.5);
+    assert.equal(response.comparisonWindow.forwardFill, false);
+    assert.equal(response.comparisonWindow.interpolate, false);
+    assert.equal(
+      response.missingInputs.some((input) =>
+        input.family === 'maritime'
+        && input.seriesId === 'portwatch_tanker_calls_trend'
+        && input.reason === 'marked_stale'),
+      true,
+    );
+  });
+
+  it('reproduces the audit diagnostics: every missing family and its exact reason', async () => {
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => staleCorridorSnapshot(),
+      readMarketBatch: async () => marketValues(),
+    });
+
+    assert.deepEqual(
+      response.missingInputs.filter((input) => [
+        'freight', 'maritime', 'energy', 'corridor',
+      ].includes(input.family)),
+      [
+        {
+          family: 'freight',
+          seriesId: 'ccfi_freight_rate_change',
+          reason: 'missing_directional_value',
+        },
+        {
+          family: 'maritime',
+          seriesId: 'portwatch_tanker_calls_trend',
+          reason: 'marked_stale',
+        },
+        {
+          family: 'energy',
+          seriesId: 'china_energy_demand_change',
+          reason: 'missing_directional_value',
+        },
+        {
+          family: 'corridor',
+          seriesId: 'corridor_activity_breadth_change',
+          reason: 'missing_directional_value',
+        },
+      ],
+      'each unavailable family names its own series and its own reason',
+    );
+  });
+
+  it('stays insufficient below three non-flat proxy families', async () => {
+    // Two non-flat families survive (commodity + market); the maritime family
+    // is content-stale and aviation is flat.
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => {
+        const base = staleCorridorSnapshot();
+        return {
+          ...base,
+          corridors: base.corridors.map((corridor) => ({
+            ...corridor,
+            conditions: corridor.conditions.map((item) => (
+              item.family === 'aviation'
+                ? {
+                    ...item,
+                    // One normal and one disrupted hub nets to exactly zero.
+                    sourceSignals: [
+                      signal('aviation:pvg', 'aviation', { providerStatus: 'normal' }),
+                      signal('aviation:hkg', 'aviation', { providerStatus: 'disruption' }),
+                    ],
+                  }
+                : item
+            )),
+          })),
+        };
+      },
+      readMarketBatch: async () => marketValues(),
+    });
+
+    const nonFlatFamilies = new Set(
+      response.contributions
+        .filter((item) => item.included && item.direction !== 'unchanged')
+        .map((item) => item.family),
+    );
+    assert.equal(nonFlatFamilies.size, 2);
+    assert.equal(response.state, 'insufficient_data');
+    assert.equal(response.confidence.level, 'insufficient');
+    assert.match(response.confidence.reason, /At least 3 non-flat proxy families are required; 2 are eligible\./);
+
+    // An eligible-but-flat family is counted as coverage but never as a
+    // direction — that is the distinction the >=3 gate rests on.
+    const aviation = response.contributions
+      .find((item) => item.seriesId === 'aviation_hub_disruption_balance');
+    assert.equal(aviation?.included, true);
+    assert.equal(aviation?.direction, 'unchanged');
+    assert.equal(nonFlatFamilies.has('aviation'), false);
+  });
+
+  it('leaves unavailable once three non-flat families are restored', async () => {
+    // Same inputs, PortWatch content back inside its budget: maritime rejoins
+    // commodity and market, and the deterministic method can conclude.
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => corridorSnapshot(),
+      readMarketBatch: async () => marketValues(),
+    });
+
+    const nonFlatFamilies = new Set(
+      response.contributions
+        .filter((item) => item.included && item.direction !== 'unchanged')
+        .map((item) => item.family),
+    );
+    assert.equal(nonFlatFamilies.size >= 3, true);
+    assert.notEqual(response.state, 'insufficient_data');
+    assert.equal(response.state, 'agreement');
+    assert.notEqual(response.confidence.level, 'insufficient');
+    assert.equal(
+      response.missingInputs.some((input) => input.family === 'maritime'),
+      false,
+      'a fresh PortWatch observation is no longer a missing input',
+    );
+    // Freight, energy and corridor remain structurally unpublished — recovery
+    // for those is tracked in their own blocking issues, and the nowcast must
+    // never manufacture them to reach three.
+    assert.deepEqual(
+      response.missingInputs.map((input) => input.family),
+      ['freight', 'energy', 'corridor'],
+    );
+  });
+});

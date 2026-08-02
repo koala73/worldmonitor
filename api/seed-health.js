@@ -34,6 +34,10 @@ const CHINA_DECISION_SIGNAL_STATES = new Set([
   'stale',
   'unavailable',
 ]);
+// #6060: the one unavailable cause that is operational coverage rather than a
+// source failure. Mirrors CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE in
+// scripts/seed-china-decision-signals.mjs.
+const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
 
 function projectChinaDecisionGroupDiagnostics(meta) {
   const states = meta?.groupStates;
@@ -51,12 +55,27 @@ function projectChinaDecisionGroupDiagnostics(meta) {
   );
   if (
     Object.values(groupStates).some((state) => !CHINA_DECISION_SIGNAL_STATES.has(state))
-    || !['populated', 'partial', 'stale', 'unavailable'].every(
+    // healthyQuiet + operationallyCovered (#6060) are required, not optional:
+    // without them this surface cannot tell a quiet exchange window from an
+    // outage, and a partially-written diagnostics patch must fail closed
+    // rather than publish a breakdown that omits the distinction.
+    || !['populated', 'partial', 'stale', 'unavailable', 'healthyQuiet', 'operationallyCovered'].every(
       (key) => Number.isInteger(counts[key])
         && counts[key] >= 0
         && counts[key] <= CHINA_DECISION_SIGNAL_GROUP_IDS.length,
     )
   ) return null;
+  const unavailableCauses = meta?.unavailableCauses;
+  const causeOf = (groupId) => (
+    unavailableCauses
+    && typeof unavailableCauses === 'object'
+    && !Array.isArray(unavailableCauses)
+    && typeof unavailableCauses[groupId] === 'string'
+      ? unavailableCauses[groupId].slice(0, 40)
+      : 'unknown'
+  );
+  const unavailableGroupIds = CHINA_DECISION_SIGNAL_GROUP_IDS
+    .filter((groupId) => groupStates[groupId] === 'unavailable');
   return {
     groupStates,
     groupCounts: {
@@ -64,7 +83,18 @@ function projectChinaDecisionGroupDiagnostics(meta) {
       partial: counts.partial,
       stale: counts.stale,
       unavailable: counts.unavailable,
+      healthyQuiet: counts.healthyQuiet,
+      operationallyCovered: counts.operationallyCovered,
     },
+    // A quiet window needs no operator action; every other unavailable cause
+    // does. Naming them separately is what turns "4/6" into a work item.
+    quietGroups: unavailableGroupIds
+      .filter((groupId) => causeOf(groupId) === CHINA_DECISION_HEALTHY_QUIET_CAUSE),
+    unavailableGroups: unavailableGroupIds
+      .filter((groupId) => causeOf(groupId) !== CHINA_DECISION_HEALTHY_QUIET_CAUSE)
+      // NOT `cause`: api/_json-response.js strips that key fleet-wide as an
+      // Error.cause leak guard, so a field named `cause` never reaches the wire.
+      .map((groupId) => ({ id: groupId, unavailableCause: causeOf(groupId) })),
   };
 }
 

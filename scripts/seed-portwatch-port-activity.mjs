@@ -999,6 +999,148 @@ export function buildRefreshFailureState(item, reason, attemptedAt = Date.now())
   };
 }
 
+// #6060 content-freshness budget, equal to the budget the China corridor
+// adapter applies to a PortWatch observation (server/worldmonitor/supply-chain/
+// v1/china-corridor-source-adapters.ts passes `72 * 60` to contentFreshness).
+// Keeping them equal is what makes this report explain the activity-nowcast's
+// `marked_stale` exclusion instead of contradicting it.
+//
+// Two deliberate differences, both in the conservative direction, because this
+// is an alarm and that is a data gate: the boundary here is inclusive (a
+// country exactly at budget is stale), and a future-dated observation is stale
+// rather than being clamped to age 0 the way `ageMinutes` does.
+export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 72 * 60;
+// Bound on the published stale-country list. seed-meta is read on every
+// health poll, so the full 174-country universe never goes on the wire;
+// the count of dropped entries does.
+export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
+// The countries whose CONTENT freshness is a decision input, not just fleet
+// coverage: CHINA_CORRIDOR_KEYS in get-china-corridor-control-towers.ts reads
+// exactly `supply_chain:portwatch-ports:v1:CN` and `:HK`, and those two feed
+// the maritime proxy family of the China activity-nowcast.
+//
+// The health verdict keys on THIS set rather than all 174 countries, because
+// fleet-wide staleness is normal by construction: MAX_COLD_FETCH_PER_RUN caps
+// refreshes at 30 per run on a 12h cron, so a full sweep takes ~6 runs ≈ 72h
+// and served-stale payloads are retained for up to MAX_CACHE_AGE_MS (7 days).
+// A "any country past budget" alarm would be permanently lit and therefore
+// worthless. Fleet-wide counts stay published for visibility.
+export const PORTWATCH_DECISION_CRITICAL_COUNTRIES = Object.freeze(['CN', 'HK']);
+
+// Per-country content freshness for the published country set.
+//
+// Reads the SAME field the corridor adapter reads (`payload.fetchedAt`), not
+// `cacheWrittenAt`: a cache-reuse hit (upstream max(date) unchanged) keeps the
+// original fetchedAt, which is precisely the signal that made China 98h old
+// inside a 174/174 run. Countries whose fetchedAt is unusable or future-dated
+// are never counted fresh — freshness has to be proven, not assumed.
+//
+// Pure + exported for unit testing.
+export function buildContentFreshnessReport({
+  countryData,
+  now = Date.now(),
+  budgetMinutes = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+  maxStaleCountries = PORTWATCH_MAX_REPORTED_STALE_COUNTRIES,
+  criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+}) {
+  const budgetMs = budgetMinutes * 60_000;
+  const entries = countryData instanceof Map ? [...countryData.entries()] : [];
+  const critical = new Set(criticalCountries);
+  let freshCount = 0;
+  let staleCount = 0;
+  let unknownCount = 0;
+  let criticalFreshCount = 0;
+  let criticalSeen = 0;
+  const staleCountries = [];
+  const criticalStaleCountries = [];
+  let oldestObservedAt = null;
+  let oldestObservedCountry = null;
+  let criticalOldestObservedAt = null;
+  let criticalOldestObservedCountry = null;
+
+  for (const [iso2, payload] of entries) {
+    const isCritical = critical.has(iso2);
+    if (isCritical) criticalSeen++;
+    const observedAt = typeof payload?.fetchedAt === 'string'
+      ? Date.parse(payload.fetchedAt)
+      : Number.NaN;
+    if (!Number.isFinite(observedAt)) {
+      unknownCount++;
+      staleCountries.push(iso2);
+      if (isCritical) criticalStaleCountries.push(iso2);
+      continue;
+    }
+    if (oldestObservedAt === null || observedAt < oldestObservedAt) {
+      oldestObservedAt = observedAt;
+      oldestObservedCountry = iso2;
+    }
+    if (isCritical
+      && (criticalOldestObservedAt === null || observedAt < criticalOldestObservedAt)) {
+      criticalOldestObservedAt = observedAt;
+      criticalOldestObservedCountry = iso2;
+    }
+    const age = now - observedAt;
+    // age < 0 is a future-dated observation: an upstream clock skew or a
+    // forecast mislabelled as an observation, never evidence of freshness.
+    if (age < 0 || age >= budgetMs) {
+      staleCount++;
+      staleCountries.push(iso2);
+      if (isCritical) criticalStaleCountries.push(iso2);
+      continue;
+    }
+    freshCount++;
+    if (isCritical) criticalFreshCount++;
+  }
+
+  // A declared critical country the run never published cannot be fresh, and
+  // must be named rather than quietly dropping out of the denominator.
+  for (const iso2 of criticalCountries) {
+    if (!(countryData instanceof Map) || !countryData.has(iso2)) {
+      criticalStaleCountries.push(iso2);
+    }
+  }
+
+  staleCountries.sort();
+  criticalStaleCountries.sort();
+  return {
+    budgetMinutes,
+    assessedAt: now,
+    coveredCount: entries.length,
+    freshCount,
+    staleCount,
+    unknownCount,
+    staleCountries: staleCountries.slice(0, maxStaleCountries),
+    staleCountriesTruncated: Math.max(0, staleCountries.length - maxStaleCountries),
+    oldestObservedAt,
+    oldestObservedCountry,
+    oldestAgeMinutes: oldestObservedAt === null
+      ? null
+      : Math.round((now - oldestObservedAt) / 60_000),
+    // Decision-critical view — the half health gates on.
+    criticalCountries: [...criticalCountries].sort(),
+    criticalFreshCount,
+    criticalStaleCountries,
+    criticalMissingCountries: criticalCountries.length - criticalSeen,
+    criticalOldestObservedAt,
+    criticalOldestObservedCountry,
+    criticalOldestAgeMinutes: criticalOldestObservedAt === null
+      ? null
+      : Math.round((now - criticalOldestObservedAt) / 60_000),
+  };
+}
+
+// seed-meta payload builder. Kept pure so the content-freshness block is
+// covered by value assertions rather than a source regex — a wiring guard
+// that only greps main() would stay green with the block silently dropped.
+export function buildPortActivityMetaPayload({ countryData, coverage, now = Date.now() }) {
+  return {
+    fetchedAt: now,
+    recordCount: countryData instanceof Map ? countryData.size : 0,
+    coverage,
+    contentFreshness: buildContentFreshnessReport({ countryData, now }),
+  };
+}
+
 export function buildCoverageReport({
   eligibleCountries,
   expectedCountries = [],
@@ -1599,11 +1741,7 @@ async function main() {
       capTriggered,
       upstreamContactCount,
     });
-    const metaPayload = {
-      fetchedAt: Date.now(),
-      recordCount: countryData.size,
-      coverage,
-    };
+    const metaPayload = buildPortActivityMetaPayload({ countryData, coverage });
 
     if (!canonicalAdvances) {
       // Per-country data and attempt state persist, but canonical + seed-meta
