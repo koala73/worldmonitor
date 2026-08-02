@@ -1,9 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrateDisabledFeedsV2, applyMigrationChain, buildMigrations } from '../src/utils/cloud-prefs-migrations';
+import {
+  migrateDisabledFeedsV2,
+  migrateFrontlineEuropeDefaultsV3,
+  migrateStrategicDefaultsV4,
+  applyMigrationChain,
+  buildMigrations,
+} from '../src/utils/cloud-prefs-migrations';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
+const FRONTLINE = ['Kyiv Independent', 'TVN24', 'Rzeczpospolita', 'Meduza', 'Moscow Times'] as const;
+const STRATEGIC = ['Polsat News', 'MIIT (China)'] as const;
 
 describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', () => {
   // The poisoned-state shape that triggered this migration: free-tier v1
@@ -107,6 +115,82 @@ describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', 
     assert.equal(blob['worldmonitor-disabled-feeds'], inputJson, 'input blob must not be mutated');
   });
 
+  it('REGRESSION (#5963): migrates only an untouched legacy default set', () => {
+    const legacy = new Set(['legacy-default-a', 'legacy-default-b', ...FRONTLINE]);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacy]),
+    };
+    const result = migrateFrontlineEuropeDefaultsV3(blob, legacy, new Set(FRONTLINE));
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+    assert.deepEqual(disabled, ['legacy-default-a', 'legacy-default-b']);
+  });
+
+  it('REGRESSION (#5963): preserves customized disabled source sets', () => {
+    const legacy = new Set(['legacy-default-a', 'legacy-default-b', ...FRONTLINE]);
+    const customized = ['legacy-default-a', 'legacy-default-b', ...FRONTLINE, 'user-choice'];
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(customized) };
+    const result = migrateFrontlineEuropeDefaultsV3(blob, legacy, new Set(FRONTLINE));
+    assert.equal(result, blob, 'customized source preferences must not be rewritten');
+  });
+
+  it('REGRESSION (#5966): recovers an untouched pre-protected-cap result', () => {
+    const legacy = new Set(['legacy-default-a', ...FRONTLINE]);
+    const legacyCap = new Set([...legacy, 'auto-disabled-by-cap']);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacyCap]),
+    };
+    const result = migrateFrontlineEuropeDefaultsV3(
+      blob,
+      legacy,
+      new Set(FRONTLINE),
+      legacyCap,
+    );
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a', 'auto-disabled-by-cap'],
+    );
+  });
+
+  it('REGRESSION (#6000): re-enables strategic defaults from an untouched legacy default set', () => {
+    const legacy = new Set(['legacy-default-a', ...STRATEGIC]);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacy]),
+    };
+    const result = migrateStrategicDefaultsV4(blob, legacy, new Set(STRATEGIC));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a'],
+    );
+  });
+
+  it('REGRESSION (#6000): re-enables strategic defaults from an untouched legacy cap result', () => {
+    const legacyDefault = new Set(['legacy-default-a', ...STRATEGIC]);
+    const legacyCap = new Set([...legacyDefault, 'auto-disabled-by-cap']);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacyCap]),
+    };
+    const result = migrateStrategicDefaultsV4(
+      blob,
+      legacyDefault,
+      new Set(STRATEGIC),
+      legacyCap,
+    );
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a', 'auto-disabled-by-cap'],
+    );
+  });
+
+  it('REGRESSION (#6000): preserves customized strategic source preferences', () => {
+    const legacy = new Set(['legacy-default-a', ...STRATEGIC]);
+    const customized = [...legacy, 'user-choice'];
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(customized),
+    };
+    const result = migrateStrategicDefaultsV4(blob, legacy, new Set(STRATEGIC));
+    assert.equal(result, blob, 'customized source preferences must not be rewritten');
+  });
+
   it('REGRESSION (PR #3524 review): the same migration applied to LOCAL blob produces clean data', () => {
     // The reviewer-flagged scenario: a user with poisoned local data and
     // local syncVersion == cloud syncVersion would skip Branch A's inbound
@@ -201,5 +285,34 @@ describe('applyMigrationChain', () => {
     const cleaned = JSON.parse(result['worldmonitor-disabled-feeds'] as string);
     // Layoffs sources recovered; BBC World preserved (partial-disable safety)
     assert.deepEqual(cleaned, ['BBC World']);
+  });
+
+  it('integrates the frontline migration as schema 3', () => {
+    const legacy = new Set(['legacy-default-a', ...FRONTLINE]);
+    const migrations = buildMigrations({}, legacy, new Set(FRONTLINE));
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify([...legacy]) };
+    const result = applyMigrationChain(blob, 2, 3, migrations);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a'],
+    );
+  });
+
+  it('integrates the strategic migration as schema 4', () => {
+    const legacy = new Set(['legacy-default-a', ...STRATEGIC]);
+    const migrations = buildMigrations(
+      {},
+      new Set(),
+      new Set(),
+      new Set(),
+      legacy,
+      new Set(STRATEGIC),
+    );
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify([...legacy]) };
+    const result = applyMigrationChain(blob, 3, 4, migrations);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a'],
+    );
   });
 });

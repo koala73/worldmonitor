@@ -1,8 +1,7 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-storage';
-import { sanitizeWidgetHtml } from '@/utils/widget-sanitizer';
 import { getAuthState } from '@/services/auth-state';
-import { isEntitled } from '@/services/entitlements';
+import { isEntitled, getEntitlementState } from '@/services/entitlements';
 import {
   clearLegacyKeyStorage,
   migrateLegacyKeysToHttpOnlySession,
@@ -14,6 +13,18 @@ const MAX_WIDGETS = 10;
 const MAX_HISTORY = 10;
 const MAX_HTML_CHARS = 50_000;
 const MAX_HTML_CHARS_PRO = 80_000;
+
+type WidgetSanitizer = Pick<typeof import('@/utils/widget-sanitizer'), 'sanitizeWidgetHtml'>;
+
+let widgetSanitizerPromise: Promise<WidgetSanitizer> | null = null;
+
+function getWidgetSanitizer(): Promise<WidgetSanitizer> {
+  widgetSanitizerPromise ??= import('@/utils/widget-sanitizer').catch((error) => {
+    widgetSanitizerPromise = null;
+    throw error;
+  });
+  return widgetSanitizerPromise;
+}
 
 function proHtmlKey(id: string): string {
   return `wm-pro-html-${id}`;
@@ -31,16 +42,34 @@ export interface CustomWidgetSpec {
   updatedAt: number;
 }
 
-export function loadWidgets(): CustomWidgetSpec[] {
-  const raw = loadFromStorage<CustomWidgetSpec[]>(STORAGE_KEY, []);
+function materializeWidgets(raw: unknown, strict: boolean): CustomWidgetSpec[] {
+  if (!Array.isArray(raw)) {
+    if (strict) throw new Error('Stored custom widgets must be an array');
+    return [];
+  }
+
   const result: CustomWidgetSpec[] = [];
-  for (const w of raw) {
+  for (const candidate of raw) {
+    if (
+      typeof candidate !== 'object' ||
+      candidate === null ||
+      typeof (candidate as Partial<CustomWidgetSpec>).id !== 'string'
+    ) {
+      if (strict) throw new Error('Stored custom widget is malformed');
+      continue;
+    }
+    const w = candidate as CustomWidgetSpec;
+    // Legacy widgets predate the `tier` field (added after custom widgets
+    // shipped) and have no `tier` key at all. Both loaders normalize a
+    // missing/invalid tier to 'basic' rather than dropping the widget from
+    // the dashboard.
     const tier = w.tier === 'pro' ? 'pro' : 'basic';
     if (tier === 'pro') {
       const sideKeyHtml = localStorage.getItem(proHtmlKey(w.id));
       const storedHtml = typeof w.html === 'string' ? w.html : '';
       const proHtml = storedHtml || sideKeyHtml;
       if (!proHtml) {
+        if (strict) throw new Error('Stored Pro widget is missing HTML');
         // HTML missing — drop widget and clean up spans
         clearPanelSpanEntry(w.id);
         clearPanelColSpanEntry(w.id);
@@ -48,13 +77,32 @@ export function loadWidgets(): CustomWidgetSpec[] {
       }
       result.push({ ...w, tier, html: proHtml });
     } else {
+      if (strict && typeof w.html !== 'string') {
+        throw new Error('Stored basic widget is missing HTML');
+      }
       result.push({ ...w, tier: 'basic' });
     }
   }
   return result;
 }
 
-export function saveWidget(spec: CustomWidgetSpec): void {
+export function loadWidgets(): CustomWidgetSpec[] {
+  return materializeWidgets(loadFromStorage<unknown>(STORAGE_KEY, []), false);
+}
+
+/**
+ * Activation-cohort reads must distinguish a genuinely empty widget list from
+ * unavailable or malformed storage. The regular loader intentionally degrades
+ * those failures to `[]` for dashboard resilience.
+ */
+export function loadWidgetsStrict(): CustomWidgetSpec[] {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw === null) return [];
+  const parsed: unknown = JSON.parse(raw);
+  return materializeWidgets(parsed, true);
+}
+
+export async function saveWidget(spec: CustomWidgetSpec): Promise<void> {
   if (spec.tier === 'pro') {
     const proHtml = spec.html.slice(0, MAX_HTML_CHARS_PRO);
     const meta: CustomWidgetSpec = {
@@ -71,6 +119,7 @@ export function saveWidget(spec: CustomWidgetSpec): void {
       throw new Error('Storage quota exceeded saving PRO widget');
     }
   } else {
+    const { sanitizeWidgetHtml } = await getWidgetSanitizer();
     const trimmed: CustomWidgetSpec = {
       ...spec,
       tier: 'basic',
@@ -178,6 +227,33 @@ export function isProUser(): boolean {
     getAuthState().user?.role === 'pro' ||
     isEntitled()
   );
+}
+
+/**
+ * Whether `isProUser()` is answering from settled signals rather than from
+ * "nothing has loaded yet".
+ *
+ * A false from isProUser() is ambiguous on a normal page load: Clerk is not
+ * awaited, and for a signed-in user the Convex entitlement snapshot lands later
+ * still, so a paying subscriber reads as free for the first seconds. Callers
+ * that PERSIST a free-tier decision (the boot clamp, the dashboard-tab
+ * snapshot heal) must wait for this before writing, or they overwrite a Pro
+ * user's layout on every load.
+ *
+ * A true from isProUser() is always definitive — no signal that says "Pro"
+ * needs confirmation.
+ *
+ * Mirrors `shouldDeferFreeTierEnforcement` in config/panels.ts, which App uses
+ * for the same decision plus its grace-timer backstop. The rule is stated twice
+ * rather than shared because importing config from services would close a
+ * config <-> services import cycle; keep the two in sync.
+ */
+export function isProTierResolved(): boolean {
+  if (isProUser()) return true;
+  const session = getAuthState();
+  if (session.isPending) return false;
+  // Anonymous is a settled answer; a signed-in user still needs the snapshot.
+  return session.user === null || getEntitlementState() !== null;
 }
 
 export function getProWidgetKey(): string {

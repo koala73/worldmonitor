@@ -1,0 +1,39 @@
+---
+title: "世界时钟"
+description: "感知市场开盘状态的世界时钟面板，覆盖纽约、伦敦、东京、香港、法兰克福、上海、悉尼等全球主要交易所 —— 提供开 / 闭状态指示器、并发交易会话可见性以及跨时区交易时段的重叠视图，帮助交易员和分析师直观把握全球流动性窗口、外汇联动时刻、跨市场套利机会与最佳下单时段。"
+---
+
+**World Clock** 面板（内部 id `world-clock`）是一个市场感知时钟 — 不仅仅是时区网格。每个条目显示一个主要金融中心的当前本地时间、交易所代码（NYSE、LSE、XETRA、HKEX、SGX、Tadawul 等），以及该交易所根据交易时间是否当前开市。
+
+## 面板显示内容
+
+`WORLD_CITIES`（`src/components/WorldClockPanel.ts:14-43`）中 30 个全球市场中心的行。每行包含：
+
+- **城市 + 交易所标签** — 例如纽约/NYSE、伦敦/LSE、东京/TSE、利雅得/Tadawul。
+- **本地时间** — 持续更新。
+- **市场开/闭指示器** — 根据每个城市条目配置中的 `marketOpen` / `marketClose` 时间推导。
+
+默认覆盖范围横跨美洲（纽约、芝加哥、圣保罗、多伦多、墨西哥城）、EMEA（伦敦、巴黎、法兰克福、苏黎世、莫斯科、伊斯坦布尔）、中东（利雅得、迪拜）、亚太（孟买、曼谷、新加坡、香港、上海、首尔、东京）和大洋洲（悉尼、奥克兰）。
+
+面板 id 为 `world-clock`；规范组件为 `src/components/WorldClockPanel.ts`。标题来自 i18n（配置名："World Clock"）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *clock*、*time* 或交易所代码。
+- **按变体的可用性**：在 **full/geopolitical**、**tech**、**finance** 和 **commodity** 变体中注册并默认启用（全部 `priority: 2`）。在 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`、`TECH_PANELS`、`FINANCE_PANELS`、`COMMODITY_PANELS` 的 `world-clock` 条目。
+
+## 数据来源
+
+无外部数据 — 面板本地运行。时间从浏览器时钟使用每个城市的 IANA 时区（例如 `America/New_York`、`Asia/Hong_Kong`）计算。交易所开市状态从面板内置的每城市 `marketOpen` / `marketClose` 时间推导。
+
+## 刷新频率
+
+客户端 tick；无网络获取。
+
+## 层级与门控
+
+**免费。** 任何变体注册中均无 `premium` 标志。
+
+## API 参考
+
+无 — 此面板完全客户端运行。

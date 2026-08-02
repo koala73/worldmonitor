@@ -1,9 +1,18 @@
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { getClientIp } from './client-ip';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } from '../../api/_rate-limit-fallback.js';
+
+// Client-IP derivation lives in the dependency-free client-ip.ts (#5231) so
+// seeder-reachable modules (usage.ts) can use it without pulling this file's
+// @upstash imports into Railway containers. Re-exported here because this was
+// the helpers' original home and existing callers import them from this
+// module (getClientIp: api/ask.ts, api/a2a.ts, api/mcp-proxy.ts;
+// UNKNOWN_CLIENT_IP: turnstile.ts; plus the rate-limit test suites).
+export { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. The node test runner sets
@@ -34,13 +43,6 @@ function getRatelimit(): Ratelimit | null {
   });
   return ratelimit;
 }
-
-// Sentinel returned when no trusted client-IP header is present. Routed
-// through the Upstash limiter as a single shared bucket so the entire
-// "no trusted identity" population is naturally rate-limited together —
-// an attacker who strips cf-connecting-ip / x-real-ip can no longer rotate
-// identities by toggling x-forwarded-for. See getClientIp / #3531.
-export const UNKNOWN_CLIENT_IP = 'unknown';
 
 // Structured one-line log so api/server log aggregation can grep for the
 // "rate-limit available" gap independently of Sentry. Keep the prefix
@@ -93,56 +95,29 @@ export const RATE_LIMIT_DEGRADED_HEADERS = {
   'Retry-After': '5',
 } as const;
 
-// Header a Cloudflare Transform Rule injects on every proxied request to prove
-// the request actually transited CF. Keep in sync with api/_client-ip.js.
-const CF_EDGE_PROOF_HEADER = 'x-wm-edge-proof';
-
-// Constant-time comparison for the edge-proof secret. Synchronous so getClientIp
-// stays sync (per-request rate-limit hot path, several non-awaiting callers).
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-// True only when the request proves it transited Cloudflare. If
-// CF_EDGE_PROOF_SECRET is unset, do not trust cf-connecting-ip; fall back to
-// x-real-ip/UNKNOWN so a missing deployment secret cannot silently reopen
-// GHSA-c267.
-function cfTransitProven(request: Request): boolean {
-  const secret = (process.env.CF_EDGE_PROOF_SECRET ?? '').trim();
-  if (!secret) return false;
-  return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
-}
-
-export function getClientIp(request: Request): string {
-  // cf-connecting-ip is only unforgeable for traffic that actually transited
-  // Cloudflare (x-real-ip is then the CF edge IP, shared across users). On a
-  // direct-to-origin hit (bypassing CF) cf-connecting-ip is fully client-
-  // controlled, so a caller sending a fresh value per request rotates the
-  // per-IP window and neutralises the limit (GHSA-c267). Trust it only with
-  // proof of CF transit. Otherwise fall back to x-real-ip (the real peer IP)
-  // then the UNKNOWN_CLIENT_IP sentinel — the spoofable cf-connecting-ip and
-  // the client-settable x-forwarded-for (#3531) are deliberately NOT fallbacks.
-  //
-  // Trim each header value before falling through — a whitespace-only
-  // cf-connecting-ip would otherwise short-circuit past x-real-ip.
-  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
-  const xr = (request.headers.get('x-real-ip') ?? '').trim();
-  if (cf && cfTransitProven(request)) return cf;
-  return xr || UNKNOWN_CLIENT_IP;
-}
-
-function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>): Response {
+function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>, windowSeconds: number): Response {
+  // `reset` is a Unix epoch in MILLISECONDS (Upstash). IETF RateLimit fields
+  // carry a delta-seconds reset (`t` / RateLimit-Reset), NOT an epoch — derive
+  // it here. Legacy X-RateLimit-Reset stays epoch-ms for back-compat.
+  const resetSeconds = Math.max(0, Math.ceil((reset - Date.now()) / 1000));
   return new Response(JSON.stringify({ error: 'Too many requests' }), {
     status: 429,
     headers: {
       'Content-Type': 'application/json',
+      // IETF RateLimit fields (draft-ietf-httpapi-ratelimit-headers). The
+      // combined RateLimit member references the "default" policy advertised on
+      // every API response via vercel.json so agents can self-throttle. Mirrors
+      // api/_rate-limit.js.
+      'RateLimit-Policy': `"default";q=${limit};w=${windowSeconds}`,
+      'RateLimit-Limit': String(limit),
+      'RateLimit-Remaining': '0',
+      'RateLimit-Reset': String(resetSeconds),
+      RateLimit: `"default";r=0;t=${resetSeconds}`,
+      // Legacy X-RateLimit-* retained for back-compat (Reset is epoch-ms).
       'X-RateLimit-Limit': String(limit),
       'X-RateLimit-Remaining': '0',
       'X-RateLimit-Reset': String(reset),
-      'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+      'Retry-After': String(resetSeconds),
       ...corsHeaders,
     },
   });
@@ -169,6 +144,19 @@ export interface RateLimitOptions {
    * black-hole the whole site. (#3531)
    */
   failClosed?: boolean;
+  /**
+   * Optional trusted server-derived user ID for policies that should isolate
+   * authenticated principals sharing one public IP. Callers must never pass a
+   * raw client-controlled header here. The limiter owns the namespace prefix
+   * so user IDs cannot collide with anonymous IP buckets.
+   */
+  principalUserId?: string;
+}
+
+export type EndpointRateLimitOptions = RateLimitOptions;
+
+function getPrincipalRateLimitIdentifier(principalUserId?: string): string | null {
+  return principalUserId ? `user:${principalUserId}` : null;
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
@@ -181,13 +169,24 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  const ip = getClientIp(request);
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    getClientIp(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
+    const { success, limit, reset } = await limitWithFallback(
+      rl,
+      identifier,
+      `rl:fw:${identifier}`,
+      GLOBAL_RATE_LIMIT,
+      GLOBAL_RATE_WINDOW_SECONDS,
+    );
 
     if (!success) {
-      return tooManyRequestsResponse(limit, reset, corsHeaders);
+      return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
     return null;
@@ -222,6 +221,34 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // classify-event budget (same limit/window) — both are AI-backed Intelligence
   // RPCs. (#4676)
   '/api/intelligence/v1/deduct-situation': { limit: 600, window: '60 s' },
+  // Historical intelligence memory (#5694): both semantic routes embed the
+  // caller's free text through the OpenRouter embeddings API on every cache
+  // miss, so they are provider-backed spend, not pure reads. They are also
+  // premium-gated, which means the gateway serves them with no CDN cache — a
+  // The three intel-history reads. All are Pro-gated and reach the function on
+  // every request, but they spend two different budgets, so they are sized
+  // against two different ceilings.
+  //
+  // search + similar-events each embed their input on a paid provider. They
+  // share ONE budget while the registry is keyed per PATH, so a caller
+  // alternating them gets the sum, not the cap — 30/min each holds the
+  // combined worst case at the 60/min per-principal embeddings bill this is
+  // sized for. Still generous for interactive use (a search plus follow-ups),
+  // and far under the LLM routes' 600/min because nothing here runs in a
+  // page-load fan-out.
+  //
+  // timeline embeds nothing, which is why it originally carried no policy at
+  // all. That reasoning was right about money and wrong about the resource
+  // that actually scales with retention: Convex reads whole documents, and
+  // every intelHistory row carries a 512-float embedding the projection
+  // immediately discards. One limit=200 call scoped by both domain and
+  // country scans TIMELINE_MAX_SCAN=800 rows (4x over-fetch for the
+  // post-filter) — roughly 3MB of Convex read budget, which the 600/min
+  // availability-first fallback did not bound. 120/min keeps a timeline read
+  // comfortable while capping that worst case.
+  '/api/intelligence/v1/search-intel-history': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/get-similar-events': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/get-intel-timeline': { limit: 120, window: '60 s' },
   // Batch humanitarian-summary fans out to the external HAPI (humdata) provider
   // on cache miss — up to 25 countries per request, 5 concurrent upstream
   // fetches. Batch aircraft-details fans out to the external Wingbits provider —
@@ -237,18 +264,25 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
   // that budget now that LookupSanctionEntity proxies OpenSanctions live.
   '/api/sanctions/v1/lookup-sanction-entity': { limit: 30, window: '60 s' },
+  // Corporate intelligence (#5695): each cache miss proxies SEC EDGAR and/or
+  // Finnhub on the caller's behalf, and the per-company inputs are effectively
+  // unbounded (any ticker/name/domain), so these cannot inherit the fail-open
+  // global fallback. Same 30/min provider-proxy budget as the sanctions lookup
+  // and batch fan-out routes above.
+  '/api/intelligence/v1/get-company-enrichment': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/list-company-signals': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
   // Lead capture: preserve the 3/hr and 5/hr budgets from legacy api/contact.js
   // and api/register-interest.js. Lower limits than normal IP rate limit since
   // these hit Convex + Resend per request.
   '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
-  // inline Upstash INCR. Gateway now enforces the same budget with per-IP
-  // keying in checkEndpointRateLimit.
+  // inline Upstash INCR. Gateway preserves the same budget while using a
+  // trusted paid-user principal when available, otherwise the client IP.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
   // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
-  // Per-IP keying matches run-scenario's production behavior. Pro-identity
-  // primitive deferred (checkScopedRateLimit available if needed).
+  // It follows the same trusted-principal-or-IP attribution contract.
   '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
   // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
@@ -268,6 +302,14 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // resolves edge-function paths via api/api-route-exceptions.json instead
   // of the OpenAPI specs.
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
+  // Docs MCP facade (`api/docs-mcp.ts`, external-protocol exception — serves
+  // /docs/mcp, proxying the Mintlify docs MCP server and lifting its
+  // protocol-level tool-call failures into proper JSON-RPC error objects).
+  // Anonymous by design (upstream is fully public), so the per-IP minute
+  // limit is the whole abuse defence; 60/min mirrors the MCP public-method
+  // posture. Enforced in-handler via `checkScopedRateLimit`, same pattern as
+  // /api/mcp-proxy.
+  '/api/docs-mcp': { limit: 60, window: '60 s' },
   // A2A concierge endpoint (`api/a2a.ts`, external-protocol exception —
   // JSON-RPC shape dictated by the A2A spec, served at /a2a). Anonymous and
   // quota-free by design (routes over the public tool catalog + public
@@ -298,8 +340,23 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/intelligence/v1/deduct-situation': {
     reason: 'LLM-backed situational deduction can drive provider spend on cache misses.',
   },
+  '/api/intelligence/v1/search-intel-history': {
+    reason: 'Semantic history search embeds the caller\'s query through a paid embeddings provider on every request.',
+  },
+  '/api/intelligence/v1/get-similar-events': {
+    reason: 'Precedent lookup embeds the caller\'s situation text through a paid embeddings provider on every request.',
+  },
   '/api/conflict/v1/get-humanitarian-summary-batch': {
     reason: 'Batch summary fans out to the external HAPI (humdata) provider on cache miss.',
+  },
+  '/api/intelligence/v1/get-company-enrichment': {
+    reason: 'Per-company composite fans out to SEC EDGAR and Finnhub on cache miss.',
+  },
+  '/api/intelligence/v1/list-company-signals': {
+    reason: 'Per-company signal discovery fans out to SEC EDGAR and Finnhub on cache miss.',
+  },
+  '/api/intelligence/v1/search-sec-filings': {
+    reason: 'Full-text filing search proxies SEC EDGAR on cache miss with unbounded query cardinality.',
   },
   '/api/military/v1/get-aircraft-details-batch': {
     reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
@@ -337,6 +394,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
 export const GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES: Record<string, RateLimitPolicyDecision> = {
   '/api/aviation/v1/list-airport-delays': {
     reason: 'Read-only cache-backed airport delay listing; availability-first fallback is acceptable.',
+  },
+  '/api/intelligence/v1/list-material-events': {
+    reason: 'Read-only Redis read of the seeded 8-K stream; no upstream fetch on miss, so availability-first fallback carries no spend risk.',
   },
 };
 
@@ -391,7 +451,7 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
-export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
+export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
 
   const rl = getEndpointRatelimit(pathname);
@@ -404,7 +464,9 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
 
-  const ip = getClientIp(request);
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    `ip:${getClientIp(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
@@ -412,10 +474,10 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   if (!policy) return null;
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${ip}`, `rl:ep:fw:${pathname}:${ip}`, policy.limit, durationToSeconds(policy.window));
+    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${identifier}`, `rl:ep:fw:${pathname}:${identifier}`, policy.limit, durationToSeconds(policy.window));
 
     if (!success) {
-      return tooManyRequestsResponse(limit, reset, corsHeaders);
+      return tooManyRequestsResponse(limit, reset, corsHeaders, durationToSeconds(policy.window));
     }
 
     return null;
@@ -499,6 +561,27 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     logRateLimitDegraded(`checkScopedRateLimit:${scope}`, err);
     return { allowed: true, limit, reset: 0, degraded: true };
   }
+}
+
+/**
+ * Applies a distinct, fail-closed per-IP scoped guard and converts its result
+ * into the gateway's standard 429/503 response contract. Use this ahead of
+ * expensive identity-attribution lookups that cannot yet use the endpoint's
+ * final principal-scoped bucket.
+ */
+export async function checkFailClosedScopedIpRateLimit(
+  request: Request,
+  scope: string,
+  limit: number,
+  window: Duration,
+  corsHeaders: Record<string, string>,
+): Promise<Response | null> {
+  const result = await checkScopedRateLimit(scope, limit, window, getClientIp(request));
+  if (result.degraded) return rateLimitDegradedResponse(corsHeaders);
+  if (!result.allowed) {
+    return tooManyRequestsResponse(result.limit, result.reset, corsHeaders, durationToSeconds(window));
+  }
+  return null;
 }
 
 export function __resetRateLimitForTest(): void {

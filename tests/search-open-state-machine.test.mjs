@@ -45,19 +45,47 @@ function extractOpenSearch() {
   const js = ts.transpileModule(classSrc, {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None },
   }).outputText;
-  // showToast is a free (module-level) reference inside the method — inject it.
+  // Module-level references inside the method are injected as recording doubles.
   // eslint-disable-next-line no-new-func
-  return new Function('showToast', `${js}\nreturn __OpenSearchHarness;`);
+  return new Function('showToast', 'overlayHistory', `${js}\nreturn __OpenSearchHarness;`);
 }
 
 const toastMessages = [];
-const Harness = extractOpenSearch()((msg) => toastMessages.push(msg));
+const historyDouble = {
+  calls: [],
+  current: null,
+  beginPending(id, replaceOverlayId, onCancel) {
+    const state = { active: true, id, onCancel };
+    this.current = state;
+    this.calls.push({ method: 'beginPending', id, replaceOverlayId });
+    return {
+      isCurrent: () => state.active && this.current === state,
+      cancel: () => {
+        if (!state.active) return;
+        state.active = false;
+        onCancel();
+        this.calls.push({ method: 'cancel', id });
+      },
+    };
+  },
+  back() {
+    if (!this.current?.active) return;
+    this.current.active = false;
+    this.current.onCancel();
+    this.calls.push({ method: 'back', id: this.current.id });
+  },
+  reset() {
+    this.calls.length = 0;
+    this.current = null;
+  },
+};
+const Harness = extractOpenSearch()((msg) => toastMessages.push(msg), historyDouble);
 
 function makeInstance({ failLoad = false } = {}) {
   const inst = new Harness();
   const modal = {
-    _open: false, opens: 0, closes: 0,
-    open() { this._open = true; this.opens++; },
+    _open: false, opens: 0, closes: 0, openArgs: [],
+    open(replaceOverlayId) { this._open = true; this.opens++; this.openArgs.push(replaceOverlayId); },
     close() { this._open = false; this.closes++; },
     isOpen() { return this._open; },
   };
@@ -85,7 +113,10 @@ function makeInstance({ failLoad = false } = {}) {
 }
 
 describe('App.openSearch lazy-load state machine (#4403)', () => {
-  beforeEach(() => { toastMessages.length = 0; });
+  beforeEach(() => {
+    toastMessages.length = 0;
+    historyDouble.reset();
+  });
 
   it('opens on a single Cmd+K toggle (first load)', async () => {
     const h = makeInstance();
@@ -155,5 +186,40 @@ describe('App.openSearch lazy-load state machine (#4403)', () => {
     assert.equal(h.modal.opens, 1);
     await h.inst.openSearch({ toggle: true }); // second toggle, now loaded + open
     assert.equal(h.modal.closes, 1, 'toggle on an open modal closes it');
+  });
+
+  it('records replacement context and passes the pending marker to SearchModal', async () => {
+    const h = makeInstance();
+    const p = h.inst.openSearch({ historyPending: true, replaceOverlayId: 'menu' });
+    assert.deepEqual(historyDouble.calls, [
+      { method: 'beginPending', id: 'search-pending', replaceOverlayId: 'menu' },
+    ]);
+
+    await h.resolveLoad();
+    await p;
+    assert.deepEqual(h.modal.openArgs, ['search-pending']);
+  });
+
+  it('does not open Search after Back cancels its pending lazy load', async () => {
+    const h = makeInstance();
+    const p = h.inst.openSearch({ historyPending: true });
+    historyDouble.back();
+
+    await h.resolveLoad();
+    await p;
+    assert.equal(h.modal.opens, 0);
+    assert.equal(h.inst.searchToggleDesiredOpen, false);
+  });
+
+  it('does not toast when a Back-cancelled Search chunk later fails', async () => {
+    const h = makeInstance({ failLoad: true });
+    const p = h.inst.openSearch({ historyPending: true });
+    await Promise.resolve(); // let openSearch attach its handler to the in-flight chunk
+    historyDouble.back();
+    h.failLoadNow();
+
+    await p;
+    assert.equal(h.modal.opens, 0);
+    assert.deepEqual(toastMessages, []);
   });
 });

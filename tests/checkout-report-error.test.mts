@@ -89,12 +89,23 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
     // this assertion forces an accompanying policy decision.
     assert.deepEqual(
       [...knownActions].sort(),
-      ['exception', 'http-error', 'missing-checkout-url', 'no-token', 'no-user'].sort(),
+      [
+        'exception',
+        'http-error',
+        'missing-checkout-url',
+        // WORLDMONITOR-XV: a 200 whose body will not parse is reported
+        // separately from one that parses but lacks checkout_url — the
+        // two point at different layers (transport vs. relay payload).
+        'unparsable-success-body',
+        'no-token',
+        'no-user',
+      ].sort(),
     );
   });
 
   it('keeps duplicate-subscription checkout attempts at info level', () => {
     assert.equal(checkoutErrorTelemetryLevel({ code: 'duplicate_subscription' }), 'info');
+    assert.equal(checkoutErrorTelemetryLevel({ code: 'rate_limited' }), 'info');
     assert.equal(checkoutErrorTelemetryLevel({ code: 'payment_in_progress' }), 'error');
     assert.equal(checkoutErrorTelemetryLevel({ code: 'service_unavailable' }), 'error');
   });

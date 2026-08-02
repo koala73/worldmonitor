@@ -116,22 +116,66 @@ describe('horizon drift guard', () => {
   });
 });
 
-describe('buildResolutionSpec — happy path (conflict)', () => {
-  it('a conflict forecast yields a hard spec with camelCase keys, a real sourceFeed, finite threshold', () => {
+describe('buildResolutionSpec — conflict is judged (#5136)', () => {
+  it('a conflict forecast with a ucdp signal yields a JUDGED spec (was hard) — the conflict count feed needs ACLED creds it lacks', () => {
     const forecast = pred({
       domain: 'conflict',
+      region: 'Sudan',
       signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    assert.equal(spec.kind, 'judged');
+    // judged specs carry a question + derived deadline, and NO hard-metric fields
+    assert.equal(spec.metricKey, null);
+    assert.equal(spec.sourceFeed, null);
+    assert.equal(spec.operator, null);
+    assert.equal(spec.threshold, null);
+    assert.ok(Number.isFinite(spec.deadline), 'judged spec still carries a derived deadline');
+    assert.ok(typeof spec.question === 'string' && spec.question.length > 0);
+  });
+
+  it('conflict judged specs use an escalation-framed, region-anchored question', () => {
+    const spec = buildResolutionSpec(
+      pred({ domain: 'conflict', region: 'Sudan', timeHorizon: '30d', signals: [{ type: 'ucdp', value: '9 UCDP conflict events', weight: 0.5 }] }),
+      {},
+      GENERATED_AT,
+    );
+    assert.match(spec.question, /Sudan/);
+    assert.match(spec.question, /escalat/i);
+    assert.match(spec.question, /30d/);
+  });
+
+  it('unrest is also judged by default (#5091 — same empty-feed root cause as conflict)', () => {
+    const spec = buildResolutionSpec(
+      pred({ domain: 'political', region: 'Kenya', timeHorizon: '7d', signals: [{ type: 'unrest_events', value: '20 unrest events', weight: 0.5 }] }),
+      {},
+      GENERATED_AT,
+    );
+    assert.equal(spec.kind, 'judged');
+    assert.match(spec.question, /Kenya/);
+    assert.match(spec.question, /unrest|instability/i);
+    assert.match(spec.question, /7d/); // horizon embedded in the question template
+  });
+
+  it('unrest with the feed forced available but no finite count signal still falls back to judged (tally-null guard)', () => {
+    const spec = buildResolutionSpec(
+      pred({ domain: 'political', region: 'Kenya', timeHorizon: '7d', signals: [{ type: 'unrest_events', value: 'unrest reported (no count)', weight: 0.5 }] }),
+      {},
+      GENERATED_AT,
+      { unrestCountFeedAvailable: true },
+    );
+    assert.equal(spec.kind, 'judged');
+  });
+
+  it('the reclassification is scoped — cyber (populated feed) still emits a hard spec', () => {
+    const spec = buildResolutionSpec(
+      pred({ domain: 'cyber', region: 'Estonia', timeHorizon: '7d', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] }),
+      {},
+      GENERATED_AT,
+    );
     assert.equal(spec.kind, 'hard');
     assert.ok(RESOLUTION_FEED_KEYS.has(spec.sourceFeed));
-    assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     assert.ok(Number.isFinite(spec.threshold));
-    assert.ok(['>=', '<=', 'crosses'].includes(spec.operator));
-    assert.ok(Object.hasOwn(spec, 'metricKey'));
-    assert.ok(Object.hasOwn(spec, 'sourceFeed'));
-    assert.equal(spec.metric_key, undefined);
-    assert.equal(spec.source_feed, undefined);
   });
 });
 
@@ -226,17 +270,21 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.equal(spec.sourceFeed, 'intelligence:gpsjam:v2');
   });
 
-  it('a UCDP-zone forecast resolves to the fresh ACLED count feed', () => {
+  it('a UCDP-zone forecast resolves to the fresh ACLED count feed (when the feed is available)', () => {
     const forecast = pred({
       domain: 'conflict',
       signals: [{ type: 'ucdp', value: '25 UCDP conflict events', weight: 0.5 }],
     });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    // conflict/ucdp_zone are judged by default (#5136); force the hard path to
+    // assert the feed mapping still points at the ACLED-resolution feed.
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT, { conflictCountFeedAvailable: true });
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+    assert.equal(CONFLICT_COUNT_SOURCE_FEED, 'conflict:acled-resolution:v1:all:0:0');
+    assert.notEqual(spec.sourceFeed, 'conflict:acled:v1:all:0:0');
   });
 
-  it('a political unrest-events forecast resolves to the unrest count feed', () => {
+  it('a political unrest-events forecast resolves to the unrest count feed (when the feed is available)', () => {
     const forecast = pred({
       domain: 'political',
       region: 'Venezuela',
@@ -246,9 +294,12 @@ describe('buildResolutionSpec — feed mapping per family', () => {
         { type: 'unrest_events', value: '4 unrest events in Venezuela', weight: 0.3 },
       ],
     });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    // unrest is judged by default (#5091); force the hard path to assert the feed mapping.
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT, { unrestCountFeedAvailable: true });
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
+    assert.equal(UNREST_COUNT_SOURCE_FEED, 'unrest:events-resolution:v1');
+    assert.notEqual(spec.sourceFeed, 'unrest:events:v1');
     assert.equal(spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
   });
 
@@ -265,15 +316,21 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.equal(spec.metricKey, `${CYBER_COUNT_SOURCE_FEED}|count(country==Estonia)`);
   });
 
-  it('an infrastructure forecast resolves to infra:outages:v1', () => {
+  it('the legacy infrastructure cascade detector is retired from publication', () => {
+    assert.doesNotMatch(seederSource, /Infrastructure cascade risk/);
+    assert.doesNotMatch(seederSource, /detectInfraScenarios/);
+  });
+
+  it('an infrastructure outage forecast no longer uses the present() hard family', () => {
     const forecast = pred({
       domain: 'infrastructure',
       timeHorizon: '24h',
       signals: [{ type: 'outage', value: '3 active outages', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'hard');
-    assert.equal(spec.sourceFeed, 'infra:outages:v1');
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.sourceFeed, null);
+    assert.equal(spec.metricKey, null);
   });
 
   it('a prediction_market forecast resolves to prediction:markets-bootstrap:v1', () => {
@@ -329,6 +386,32 @@ describe('buildResolutionSpec — prediction_market deadline is the market endDa
     assert.equal(spec.deadline, endDateMs);
     assert.notEqual(spec.deadline, GENERATED_AT + HORIZON_MS['30d']);
   });
+
+  // #5733: the endDate index reads all three pools. It used to read only
+  // `.geopolitical`, which was every market while the producer published
+  // near-duplicate pools; now the pools are a disjoint partition, so a
+  // market-anchored forecast whose market classifies as tech or finance would
+  // silently lose its real settlement deadline and fall back to the horizon.
+  for (const pool of ['tech', 'finance']) {
+    it(`deadline resolves from a market in the ${pool} pool`, () => {
+      const endDateMs = Date.parse('2026-12-31');
+      const forecast = pred({
+        domain: 'economic',
+        region: 'United States',
+        title: 'Will no Fed rate cuts happen in 2026?',
+        timeHorizon: '30d',
+        signals: [{ type: 'prediction_market', value: 'Polymarket: 62%', weight: 0.8 }],
+      });
+      const spec = buildResolutionSpec(forecast, {
+        predictionMarkets: {
+          geopolitical: [],
+          [pool]: [{ title: 'Will no Fed rate cuts happen in 2026?', yesPrice: 62, endDate: '2026-12-31' }],
+        },
+      }, GENERATED_AT);
+      assert.equal(spec.deadline, endDateMs, `${pool}-pool market must supply the settlement deadline`);
+      assert.notEqual(spec.deadline, GENERATED_AT + HORIZON_MS['30d']);
+    });
+  }
 
   it('falls back to the horizon deadline when the market endDate is missing (still non-null)', () => {
     const forecast = pred({
@@ -429,7 +512,7 @@ describe('buildResolutionSpec — domain-specific hard and judged families', () 
 
 describe('buildResolutionSpec — domain constraints win over hard-mapped signals (R3 by-domain)', () => {
   it('JUDGED_DOMAINS only retains domains without a stable hard metric identity', () => {
-    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['military']);
+    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['infrastructure', 'military']);
   });
 
   it('a political-domain forecast carrying a cii signal yields judged, never a hard conflict spec', () => {
@@ -474,7 +557,8 @@ describe('deadline is always present', () => {
     });
     const judgedForecast = pred({ domain: 'political', signals: [] });
 
-    const hardSpec = buildResolutionSpec(hardForecast, {}, GENERATED_AT);
+    // conflict is judged by default (#5136); force the hard path to exercise the deadline invariant on a hard spec.
+    const hardSpec = buildResolutionSpec(hardForecast, {}, GENERATED_AT, { conflictCountFeedAvailable: true });
     const judgedSpec = buildResolutionSpec(judgedForecast, {}, GENERATED_AT);
 
     assert.equal(hardSpec.kind, 'hard');
@@ -505,7 +589,6 @@ describe('R4 — sourceFeed membership over every hard fixture', () => {
     pred({ id: 'cyber', domain: 'cyber', region: 'Estonia', signals: [{ type: 'cyber', value: '10 threats', weight: 0.5 }] }),
     pred({ id: 'supply_chain', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
     pred({ id: 'gps', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'gps_jamming', value: '5 jamming hexes', weight: 0.5 }] }),
-    pred({ id: 'infra', domain: 'infrastructure', timeHorizon: '24h', signals: [{ type: 'outage', value: '2 outages', weight: 0.5 }] }),
     pred({ id: 'pm', domain: 'market', signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }] }),
     pred({
       id: 'market',
@@ -523,7 +606,9 @@ describe('R4 — sourceFeed membership over every hard fixture', () => {
     for (const forecast of fixtures) {
       // COMMODITY_INPUTS supplies the commodities feed the market fixture
       // needs; a harmless superset for the other families (they don't read it).
-      const spec = buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT);
+      // conflict (#5136) and unrest (#5091) are judged by default — force both
+      // hard so their fixtures still exercise the sourceFeed-membership invariant.
+      const spec = buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT, { conflictCountFeedAvailable: true, unrestCountFeedAvailable: true });
       assert.equal(spec.kind, 'hard', `expected fixture ${forecast.id} to resolve hard`);
       assert.ok(
         RESOLUTION_FEED_KEYS.has(spec.sourceFeed),
@@ -592,7 +677,6 @@ describe('edge cases', () => {
     assert.equal(SIGNAL_TO_HARD_FAMILY.unrest_events, 'unrest');
     assert.equal(SIGNAL_TO_HARD_FAMILY.cyber, 'cyber');
     assert.equal(SIGNAL_TO_HARD_FAMILY.gps_jamming, 'gps');
-    assert.equal(SIGNAL_TO_HARD_FAMILY.outage, 'infrastructure');
     assert.equal(SIGNAL_TO_HARD_FAMILY.conflict_events, 'conflict');
     assert.equal(SIGNAL_TO_HARD_FAMILY.cii, 'conflict');
   });
@@ -604,7 +688,6 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
       conflict: ['conflict', 'ucdp_zone'],
       market: ['market', 'prediction_market'],
       supply_chain: ['supply_chain', 'gps'],
-      infrastructure: ['infrastructure'],
       political: ['unrest'],
       cyber: ['cyber'],
     });
@@ -678,7 +761,9 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
         { type: 'conflict_events', value: '3 cross-border events', weight: 0.35 },
       ],
     });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    // conflict is judged by default (#5136); force the hard path to lock the
+    // preserved #5010 horizon-commensurable threshold derivation.
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT, { conflictCountFeedAvailable: true });
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     // #5010 horizon-commensurable threshold: the 365d-trailing tally (3) is
@@ -699,23 +784,18 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
       region: 'Pakistan',
       signals: [{ type: 'ucdp', value: '175 UCDP conflict events', weight: 0.5 }],
     });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    // conflict is judged by default (#5136); force the hard path to lock the metricKey grammar.
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT, { conflictCountFeedAvailable: true });
     assert.equal(spec.metricKey, `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Pakistan)`);
     assert.ok(!spec.metricKey.includes('<region>'));
   });
 
-  it('supply_chain, infrastructure, gps, and prediction_market metricKeys are all real-value == form', () => {
+  it('supply_chain, gps, and prediction_market metricKeys are all real-value == form', () => {
     const sc = buildResolutionSpec(pred({
       domain: 'supply_chain', region: 'Strait of Hormuz', timeHorizon: '7d',
       signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }],
     }), {}, GENERATED_AT);
     assert.equal(sc.metricKey, 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)');
-
-    const infra = buildResolutionSpec(pred({
-      domain: 'infrastructure', region: 'Cuba', timeHorizon: '24h',
-      signals: [{ type: 'outage', value: '3 outages', weight: 0.5 }],
-    }), {}, GENERATED_AT);
-    assert.equal(infra.metricKey, 'infra:outages:v1|present(country==Cuba)');
 
     const gps = buildResolutionSpec(pred({
       domain: 'supply_chain', region: 'Black Sea', timeHorizon: '7d',
@@ -729,7 +809,7 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
     }), {}, GENERATED_AT);
     assert.equal(pm.metricKey, 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)');
 
-    for (const spec of [sc, infra, gps, pm]) {
+    for (const spec of [sc, gps, pm]) {
       assert.ok(!/[^=]=[^=]/.test(spec.metricKey.split('|')[1]), `metricKey must use ==: ${spec.metricKey}`);
     }
   });
@@ -818,14 +898,8 @@ describe('#5010 amendment — resolvable windows + horizon-commensurable count',
     const conflict = buildResolutionSpec(pred({
       domain: 'conflict', region: 'Mali',
       signals: [{ type: 'conflict_events', value: '12 cross-border events', weight: 0.4 }],
-    }), {}, GENERATED_AT);
+    }), {}, GENERATED_AT, { conflictCountFeedAvailable: true }); // judged by default (#5136); force hard to assert the window
     assert.equal(conflict.window, 'within-horizon');
-
-    const infra = buildResolutionSpec(pred({
-      domain: 'infrastructure', region: 'Cuba',
-      signals: [{ type: 'outage', value: 'Cuba major outage', weight: 0.4 }],
-    }), {}, GENERATED_AT);
-    assert.equal(infra.window, 'within-horizon');
 
     const market = buildResolutionSpec(pred({
       domain: 'market', region: 'Middle East', title: 'Oil price impact',
@@ -835,10 +909,11 @@ describe('#5010 amendment — resolvable windows + horizon-commensurable count',
   });
 
   it('the conflict count threshold scales with the horizon (24h vs 30d from the same tally)', () => {
+    // conflict is judged by default (#5136); force the hard path to lock the preserved #5010 horizon scaling.
     const mk = (horizon) => buildResolutionSpec(pred({
       domain: 'conflict', region: 'Pakistan', timeHorizon: horizon,
       signals: [{ type: 'ucdp', value: '175 UCDP conflict events', weight: 0.5 }],
-    }), {}, GENERATED_AT);
+    }), {}, GENERATED_AT, { conflictCountFeedAvailable: true });
     const day = mk('24h');
     const month = mk('30d');
     // 175 events/365d: 24h → max(1, round(175 × 1/365 × 1.5)) = 1;
@@ -847,6 +922,20 @@ describe('#5010 amendment — resolvable windows + horizon-commensurable count',
     assert.equal(month.threshold, 22);
     assert.notEqual(month.threshold, 175);
     assert.equal(CONFLICT_ESCALATION_RATIO, 1.5);
+  });
+
+  it('the unrest count threshold scales with the horizon when the feed is available', () => {
+    const mk = (horizon) => buildResolutionSpec(pred({
+      domain: 'political', region: 'Venezuela', timeHorizon: horizon,
+      signals: [{ type: 'unrest_events', value: '20 unrest events', weight: 0.5 }],
+    }), {}, GENERATED_AT, { unrestCountFeedAvailable: true });
+    const day = mk('24h');
+    const month = mk('30d');
+    // 20 events/30d: 24h -> max(1, round(20 x 1/30 x 0.75)) = 1;
+    // 30d -> max(1, round(20 x 30/30 x 0.75)) = 15. Never the raw tally.
+    assert.equal(day.threshold, 1);
+    assert.equal(month.threshold, 15);
+    assert.notEqual(month.threshold, 20);
   });
 });
 

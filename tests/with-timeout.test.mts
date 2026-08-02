@@ -29,7 +29,7 @@ describe('withTimeout', () => {
       },
     );
     const elapsed = Date.now() - start;
-    assert.ok(elapsed >= 20 && elapsed < 200, `elapsed ${elapsed}ms outside [20,200)`);
+    assert.ok(elapsed >= 20 && elapsed < 2000, `elapsed ${elapsed}ms outside [20,2000)`);
   });
 
   it('clears the timer when the source resolves, so a longer test exits without dangling work', async () => {

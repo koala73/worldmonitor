@@ -1,0 +1,52 @@
+---
+title: "代理与原始数据直通"
+description: "面向上游第三方 API 的轻量级服务端代理端点完整参考，World Monitor 仪表盘借助它们规避浏览器 CORS 限制、隐藏敏感凭据与商业 API 密钥，并统一添加速率限制、边缘缓存、失败重试、熔断与降级策略，全面保障数据流的稳定性、安全性、成本控制与可观测性。"
+---
+
+这些端点将调用者请求直通到上游数据源。它们的存在是为了：
+
+1. 在服务端隐藏上游 API 密钥
+2. 绕过 CORS
+3. 添加缓存 + 按 IP 速率限制
+4. 标准化响应形状
+
+<Warning>
+大多数代理面向**我们自己的仪表盘**且门控较轻。它们不是公共 API 合约的一部分，可能随时更改或移除。对于稳定集成，请优先使用领域 RPC 服务（`/api/<domain>/v1/*`）。
+</Warning>
+
+## 原始数据直通
+
+| 端点 | 上游 | 用途 |
+|----------|----------|---------|
+| `GET /api/opensky` | OpenSky Network | 实时 ADS-B 状态向量。航班图层使用。 |
+| `GET /api/polymarket` | Polymarket gamma-api | 活动事件合约。 |
+| `GET /api/gpsjam` | gpsjam.org | GPS 干扰热点报告。 |
+| `GET /api/oref-alerts` | OREF（以色列后方司令部） | Tzeva Adom 火箭弹警报镜像。 |
+| `GET /api/supply-chain/hormuz-tracker` | 内部 AIS + 注册表 | 实时霍尔木兹通行仪表盘数据。 |
+
+所有代理：
+- 遵守源 CORS 允许列表。
+- 通过 `_ip-rate-limit.js` 应用按 IP 速率限制（默认约 60 请求/分钟/IP）。
+- 积极缓存（`s-maxage` 因上游而异）。
+
+## 内容代理
+
+### `GET /api/rss-proxy?url=<allowed-feed>`
+
+获取 RSS/Atom 源并返回解析后的 JSON。URL 必须匹配 `_rss-allowed-domains.js` 中的模式之一 — 拒绝任意 URL 以防止 SSRF。
+
+## Skills 注册表
+
+### `GET /api/skills/fetch-agentskills`
+
+返回 WorldMonitor 聊天分析师可调用的"技能"（agent 能力）目录。由 `chat-analyst.ts` 和 widget agent 内部使用。
+
+## 遗留/内部
+
+### `POST /api/fwdstart`
+
+桌面应用首次运行时使用的转发启动场景助手。内部使用。
+
+### `GET /api/mcp-proxy`
+
+遗留 MCP 垫片 — 转发到当前 MCP 路由。已弃用；请直接使用 [`/api/mcp`](/zh/mcp-overview)。

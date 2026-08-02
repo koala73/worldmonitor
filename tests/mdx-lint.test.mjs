@@ -14,8 +14,9 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 
-const DOCS_DIR = new URL('../docs/', import.meta.url).pathname;
+const DOCS_DIR = fileURLToPath(new URL('../docs/', import.meta.url));
 
 // Parse .mintignore for excluded files/dirs
 const mintignorePath = join(DOCS_DIR, '.mintignore');

@@ -14,7 +14,7 @@ paths:
                 - NaturalService
             summary: ListNaturalEvents
             description: |-
-                ListNaturalEvents retrieves seeded EONET/GDACS/NHC natural events. Empty
+                ListNaturalEvents retrieves seeded EONET/GDACS/NHC/HKO natural events. Empty
                  events with fetched_at=0 or data_available=false means the seed snapshot is
                  unavailable/degraded, not that there are confirmed zero events.
             operationId: ListNaturalEvents
@@ -44,11 +44,17 @@ paths:
                             example:
                                 "dataAvailable": true
                                 "events":
-                                    - "basin": "example"
+                                    - "agencyObservations":
+                                        - "agency": "example"
+                                          "agencyId": "example-id"
+                                          "classification": "example"
+                                          "lat": 40.7128
+                                          "lon": -74.006
+                                      "basin": "example"
+                                      "canonicalAliases":
+                                          - "example"
+                                      "canonicalId": "example-id"
                                       "category": "cs.AI"
-                                      "categoryTitle": "cs.AI"
-                                      "classification": "example"
-                                      "closed": true
                                 "fetchedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/ListNaturalEventsResponse'
@@ -278,6 +284,25 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/PastTrackPoint'
+                canonicalId:
+                    type: string
+                    description: |-
+                        Cross-agency tropical cyclone identity and attribution. These fields keep
+                         each agency's observation intact instead of collapsing incompatible wind
+                         averaging periods into one number.
+                matchingConfidence:
+                    type: string
+                canonicalAliases:
+                    type: array
+                    items:
+                        type: string
+                windAveragingPeriodMinutes:
+                    type: integer
+                    format: int32
+                agencyObservations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CycloneAgencyObservation'
         ForecastPoint:
             type: object
             properties:
@@ -328,3 +353,37 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        CycloneAgencyObservation:
+            type: object
+            properties:
+                agency:
+                    type: string
+                agencyId:
+                    type: string
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                windKt:
+                    type: integer
+                    format: int32
+                windAveragingPeriodMinutes:
+                    type: integer
+                    format: int32
+                pressureMb:
+                    type: integer
+                    format: int32
+                classification:
+                    type: string
+                status:
+                    type: string
+                sourceName:
+                    type: string
+                sourceUrl:
+                    type: string

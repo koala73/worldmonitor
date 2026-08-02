@@ -7,6 +7,8 @@ import {
   countSettlementLagMs,
   parseMetricKey,
   resolveHardSpec,
+  extractMetricObservation,
+  extractMetricValue,
 } from '../scripts/_forecast-resolution-eval.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -155,6 +157,74 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.outcome, 'YES');
     assert.equal(resolved.evidence.metricValue, 2);
     assert.equal(resolved.evidence.comparison, '2 >= 2');
+  });
+
+  it('voids a 30d ACLED display feed whose retained window starts after forecast generation', () => {
+    const generatedAt = START;
+    const deadline = generatedAt + 30 * DAY_MS;
+    const sealAt = deadline + ACLED_SETTLEMENT_LAG_MS;
+    const e = entry({
+      id: 'fc-display-window-pruned',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled:v1:all:0:0',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', occurredAt: generatedAt + 2 * DAY_MS },
+        { country: 'Burkina Faso', occurredAt: deadline },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, sealAt);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'VOID');
+    assert.equal(result.evidence.reason, 'count_source_window_not_retained');
+    assert.equal(result.evidence.sourceMinTs, generatedAt + 2 * DAY_MS);
+    assert.equal(result.evidence.partialMetricValue, 1);
+  });
+
+  it('resolves a below-threshold 30d ACLED count when the resolution feed retains pre-generation coverage', () => {
+    const generatedAt = START;
+    const deadline = generatedAt + 30 * DAY_MS;
+    const sealAt = deadline + ACLED_SETTLEMENT_LAG_MS;
+    const e = entry({
+      id: 'fc-resolution-window-retained',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled-resolution:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled-resolution:v1:all:0:0',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Ghana', occurredAt: generatedAt - DAY_MS },
+        { country: 'Mali', occurredAt: generatedAt + 2 * DAY_MS },
+        { country: 'Burkina Faso', occurredAt: deadline },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, sealAt);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'NO');
+    assert.equal(result.evidence.metricValue, 1);
+    assert.equal(result.evidence.sourceCoverage.minTs, generatedAt - DAY_MS);
   });
 
   it('keeps due count specs pending until the UCDP source has reached the forecast deadline', () => {
@@ -589,5 +659,43 @@ describe('resolveHardSpec', () => {
 
   it('fixtures stay omission-shaped', () => {
     assertNoNullFields(entry());
+  });
+});
+
+describe('extractMetricObservation present() semantics (#void-triage)', () => {
+  const parsed = parseMetricKey('infra:outages:v1|present(country==Cuba)');
+
+  it('observes 0 (not NaN) when the subject is absent, matching extractMetricValue', () => {
+    const feed = { outages: [{ country: 'Iraq' }] }; // Cuba absent (no outage)
+    assert.equal(extractMetricValue(parsed, feed), 0);
+    const obs = extractMetricObservation(parsed, feed);
+    assert.equal(obs.value, 0); // was NaN → error sample → false VOID
+    assert.equal(obs.asOf, null);
+  });
+
+  it('observes 1 when the subject is present', () => {
+    const feed = { outages: [{ country: 'Cuba', date: '2026-07-14' }] };
+    const obs = extractMetricObservation(parsed, feed);
+    assert.equal(obs.value, 1);
+    assert.equal(obs.asOf, Date.parse('2026-07-14'));
+  });
+
+  it('lets a within-horizon present spec resolve NO on a sampled absence (not VOID)', () => {
+    const now = Date.parse('2026-07-14T00:00:00Z');
+    const spec = {
+      kind: 'hard',
+      metricKey: 'infra:outages:v1|present(country==Cuba)',
+      operator: '>=',
+      threshold: 1,
+      window: 'within-horizon',
+      deadline: now,
+      sourceFeed: 'infra:outages:v1',
+    };
+    const entry = { spec, generatedAt: now - DAY_MS };
+    // a sampled absence within the window (value 0) — must resolve NO, not VOID
+    const samples = [{ ts: now - DAY_MS / 2, value: 0 }];
+    const res = resolveHardSpec(entry, { outages: [{ country: 'Iraq' }] }, samples, now + 1);
+    assert.equal(res.status, 'resolved');
+    assert.equal(res.outcome, 'NO');
   });
 });

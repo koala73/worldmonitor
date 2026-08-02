@@ -2,10 +2,24 @@
 // @ts-check
 
 import { inflateRaw } from 'node:zlib';
+import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  runSeed,
+  writeExtraKey,
+  readSeedSnapshot,
+  extendExistingTtl,
+} from './_seed-utils.mjs';
+import {
+  assessChinaJodiCoverage,
+  hasFiniteMeasurementAtPaths,
+} from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
+const require = createRequire(import.meta.url);
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 const inflateRawAsync = promisify(inflateRaw);
 
@@ -133,6 +147,50 @@ export function validateGasCountries(iso2Array) {
   return Array.isArray(iso2Array) && iso2Array.length >= MIN_COUNTRIES;
 }
 
+function hasGasMeasurements(record) {
+  return hasFiniteMeasurementAtPaths(record, JODI_MEASUREMENT_FIELDS.gas);
+}
+
+export function assessChinaGasCoverage(records, now = new Date()) {
+  return assessChinaJodiCoverage(records, now, hasGasMeasurements);
+}
+
+/**
+ * Reject unusable China coverage without letting the prior per-country
+ * snapshot expire behind the still-preserved canonical country list.
+ *
+ * @param {Parameters<typeof assessChinaGasCoverage>[0]} records
+ * @param {Date} now
+ * @param {{
+ *   readSnapshot?: (key: string) => Promise<unknown>,
+ *   extendTtl?: (keys: string[], ttlSeconds: number) => Promise<unknown>,
+ * }} deps
+ */
+export async function enforceChinaGasCoverage(records, now = new Date(), deps = {}) {
+  const chinaCoverage = assessChinaGasCoverage(records, now);
+  if (chinaCoverage.ok) return chinaCoverage;
+
+  const readSnapshot = deps.readSnapshot ?? readSeedSnapshot;
+  const extendTtl = deps.extendTtl ?? extendExistingTtl;
+  const previousIso2List = await readSnapshot(CANONICAL_KEY).catch(() => null);
+  const previousCountryKeys = Array.isArray(previousIso2List)
+    ? previousIso2List
+      .filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2))
+      .map((iso2) => `${KEY_PREFIX}${iso2}`)
+    : [];
+
+  if (previousCountryKeys.length > 0) {
+    await extendTtl(previousCountryKeys, GAS_TTL).catch(() => {});
+  }
+
+  const error = new Error(`China JODI gas coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  // The coverage result is deterministic for the downloaded snapshot. Tell
+  // runSeed's outer withRetry loop not to download and parse the same ZIP
+  // again after last-good country TTLs have already been preserved.
+  error.nonRetryable = true;
+  throw error;
+}
+
 function findZipEntry(buf, filename) {
   const LOCAL_SIG = 0x04034b50;
   let offset = 0;
@@ -200,6 +258,7 @@ async function fetchJodiGas() {
   console.log(`  Rows after TJ/flow/assessment filter: ${rows.length}`);
   const records = buildCountryRecords(rows);
   console.log(`  Countries with gas data: ${records.length}`);
+  await enforceChinaGasCoverage(records);
   return records;
 }
 

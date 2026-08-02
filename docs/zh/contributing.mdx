@@ -1,0 +1,186 @@
+---
+title: "贡献指南"
+description: "面向 World Monitor 项目贡献者的完整开发指南：涵盖代码风格规范、Pull Request 提交与评审流程、可接受的贡献类型、安全漏洞披露实践、单元测试与端到端测试要求、提交信息约定以及开源社区行为准则，帮助新贡献者顺利完成首个补丁与后续长期协作。"
+---
+欢迎贡献代码！无论是修复 bug、添加功能、改进文档，还是提出建议，你的帮助都能让这个项目变得更好。本指南涵盖了贡献工作流程、代码规范以及安全要求。
+
+## 快速开始
+
+1. 在 GitHub 上 **Fork 仓库**
+2. **克隆你的 fork** 到本地：
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/worldmonitor.git
+   cd worldmonitor
+   ```
+3. **安装依赖**：
+   ```bash
+   npm install
+   ```
+4. **创建功能分支**：
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+5. **启动开发服务器**：
+   ```bash
+   npm run dev
+   ```
+
+## 代码风格与规范
+
+本项目遵循特定的模式以保持一致性：
+
+**TypeScript**
+
+- 启用严格类型检查，尽量避免使用 `any`
+- 数据结构使用 interface，联合类型使用 type
+- 优先使用 `const` 而非 `let`，绝不使用 `var`
+
+**架构**
+
+- Services（`src/services/`）处理数据获取与业务逻辑
+- Components（`src/components/`）处理 UI 渲染
+- Config（`src/config/`）包含静态数据与常量
+- Utils（`src/utils/`）包含共享的辅助函数
+
+**性能**
+
+- 耗时计算应放在 Web Worker 中运行
+- 列表项超过 50 条时使用虚拟滚动
+- 对外部 API 调用实现熔断器
+
+**注释政策**
+
+- 代码应通过清晰的命名实现自文档化
+- 仅在算法或变通方案不明显时才添加注释
+- 永远不要提交被注释掉的代码
+
+## 安全与输入校验
+
+仪表盘处理来自数十个外部来源的不可信数据。纵深防御措施可防止注入攻击与 API 滥用。
+
+### XSS 防护
+
+所有对用户可见的内容在插入 DOM 之前都会被净化：
+
+```typescript
+escapeHtml(str)  // 将 & < > " ' 编码为 HTML 实体
+sanitizeUrl(url) // 仅允许 http/https 协议
+```
+
+这适用于：
+
+- 新闻标题与来源（RSS feeds）
+- 搜索结果与高亮
+- 监控关键词（用户输入）
+- 地图弹窗内容
+- 紧张关系配对标签
+
+搜索中的 `mark` 元素高亮在包裹匹配项*之前*先对文本进行转义，防止通过构造恶意搜索查询进行注入。
+
+### 代理端点校验
+
+公开 API 入口对所有参数进行校验与限幅：
+
+| 端点 | 校验规则 |
+|----------|------------|
+| `GET /api/market/v1/list-market-quotes` | 股票/指数 `symbols` 列表；为空则返回默认值 |
+| `GET /api/market/v1/list-crypto-quotes` | CoinGecko `ids` 列表；为空则返回默认值 |
+| `GET /api/polymarket` | 遗留 Polymarket 代理：排序字段白名单，limit 限制在 1-100 |
+
+这可防止上游 API 滥用以及因格式错误请求导致的速率限制耗尽。
+
+### 内容安全
+
+- URL 通过 `URL()` 构造函数校验，仅允许 `http:` 与 `https:` 协议
+- 外部链接使用 `rel="noopener"` 以防止反向标签劫持
+- 没有内联脚本或 `eval()`，所有代码在构建时打包
+
+### 安全相关贡献
+
+- 渲染用户可控或外部数据时始终使用 `escapeHtml()`
+- 对来自外部来源的 URL 使用 `sanitizeUrl()`
+- 在 API 代理端点中校验并限幅参数
+
+## 提交 Pull Request
+
+1. **确保代码可构建**：
+   ```bash
+   npm run build
+   ```
+
+2. 在浏览器中**手动测试你的改动**
+
+3. **编写清晰的提交信息**：
+   ```
+   Add earthquake magnitude filtering to map layer
+
+   - Adds slider control to filter by minimum magnitude
+   - Persists preference to localStorage
+   - Updates URL state for shareable links
+   ```
+
+4. **推送到你的 fork**：
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+5. **提交 Pull Request**，需包含：
+   - 清晰描述改动的标题
+   - PR 做了什么以及为什么的说明
+   - UI 改动的截图
+   - 任何破坏性变更或迁移说明
+
+## 优秀的 PR 应具备什么
+
+| 应该做 | 不应该做 |
+|----|-------|
+| 聚焦于单一功能或修复 | 把不相关的改动捆绑在一起 |
+| 遵循现有代码模式 | 未经讨论就引入新框架 |
+| 保持改动最小且聚焦 | 不必要地重构周边代码 |
+| 添加功能时更新 README | 添加功能却不写文档 |
+| 测试边界情况 | 只考虑正常流程 |
+
+## 贡献类型
+
+**Bug 修复**
+
+- 发现问题？修复它并提交 PR
+- 在 PR 描述中提供复现步骤
+
+**新功能**
+
+- 新的数据图层（需有公开 API 来源）
+- UI/UX 改进
+- 性能优化
+- 新的信号检测算法
+
+**数据源**
+
+- 用于新闻聚合的额外 RSS feeds
+- 新的地理空间数据集（基地、基础设施等）
+- 现有数据的替代 API
+
+**文档**
+
+- 澄清现有文档
+- 添加示例与用例
+- 修复错别字并提升可读性
+
+**安全**
+
+- 通过 GitHub Issues（非关键）或邮件（关键）报告漏洞
+- XSS 防护改进
+- 输入校验增强
+
+## 评审流程
+
+1. 提交 PR 时运行**自动化检查**
+2. 数日内进行**维护者评审**
+3. 通过向同一分支提交 commit 来**处理反馈**
+4. 批准后**合并**
+
+未遵循代码风格或引入安全问题的 PR 将被要求修改。
+
+## 许可证
+
+向 World Monitor 贡献代码即表示你同意你的贡献以 AGPL-3.0 许可。完整条款、商业许可及常见场景请参见[许可证](/zh/license)页面。

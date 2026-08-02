@@ -10,7 +10,7 @@ import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-defin
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
-import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
+import { TIER1_COUNTRIES } from '@/services/country-instability';
 import { getCachedCountryScores } from '@/services/cached-risk-scores';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
@@ -637,14 +637,18 @@ export class SearchManager implements AppModule {
 
   /**
    * Deep-links to a tab inside a panel by dispatching the panel's open-tab
-   * event once it's mounted. The element existing in the DOM implies the
-   * panel's constructor (and its event listener) has run, so we retry until
-   * then — mirrors scrollToPanelWhenReady for async-mounted panels.
+   * event once it's mounted. Deferred-shell placeholders carry the same
+   * data-panel attribute but no listener — only the REAL panel element (shell
+   * excluded via data-deferred-panel) proves the constructor has run, so we
+   * retry until the shell is replaced in place. The scroll helpers above
+   * intentionally still match shells: a shell occupies the panel's slot, and
+   * scrolling to it is what brings it into the IntersectionObserver margin
+   * that triggers the mount.
    */
   private dispatchPanelTab(panelId: string, tab: string, attemptsLeft = 12): void {
     // Currently only Consumer Prices exposes a tab deep-link contract.
     if (panelId !== 'consumer-prices') return;
-    if (document.querySelector(`[data-panel="${panelId}"]`)) {
+    if (document.querySelector(`[data-panel="${panelId}"]:not([data-deferred-panel])`)) {
       window.dispatchEvent(new CustomEvent('wm-consumer-prices-open-tab', { detail: { tab } }));
       return;
     }
@@ -781,7 +785,7 @@ export class SearchManager implements AppModule {
     const panelScores = (this.ctx.panels.cii as CIIPanel | undefined)?.getScores() ?? [];
     const scores = cachedScores.length > 0
       ? cachedScores
-      : (panelScores.length > 0 ? panelScores : calculateCII());
+      : panelScores;
     const ciiByCode = new Map(scores.map((score) => [score.code, score]));
     return Object.entries(TIER1_COUNTRIES).map(([code, name]) => {
       const score = ciiByCode.get(code);

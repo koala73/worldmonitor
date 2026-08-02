@@ -8,7 +8,7 @@ import type {
   CyberThreatIndicatorType,
 } from '@/types';
 import { createCircuitBreaker } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated } from '@/services/bootstrap';
 import { CyberServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breaker ----
@@ -81,7 +81,13 @@ function clampInt(rawValue: number | undefined, fallback: number, min: number, m
 }
 
 export async function fetchCyberThreats(options: { limit?: number; days?: number } = {}): Promise<CyberThreat[]> {
-  const hydrated = getHydratedData('cyberThreats') as { threats?: ProtoCyberThreat[] } | undefined;
+  // `cyberThreats` is an on-demand bootstrap key (#5300): it no longer rides in
+  // the slow tier, because loadCyberThreats is gated on the cyber layer being ON
+  // and that layer is off by default in every variant — so the tier was shipping
+  // 364 KB to every visitor for data the default visitor never read. Callers that
+  // reach here have already passed that gate, so fetch it now, through its own
+  // CDN-shielded per-key URL. Falls through to the RPC below if that fetch fails.
+  const hydrated = (await ensureHydrated('cyberThreats')) as { threats?: ProtoCyberThreat[] } | undefined;
   if (hydrated?.threats?.length) return hydrated.threats.map(toCyberThreat);
 
   const limit = clampInt(options.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);

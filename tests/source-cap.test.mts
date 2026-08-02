@@ -1,9 +1,26 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { selectSourcesUnderCap, findFullyDisabledCategories } from '../src/services/source-cap';
+import {
+  computeCapDisabledSources,
+  selectSourcesUnderCap,
+  findFullyDisabledCategories,
+} from '../src/services/source-cap';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
+
+describe('computeCapDisabledSources: legacy migration fingerprint', () => {
+  it('reconstructs the exact mixed default-plus-cap disabled set', () => {
+    const defaultDisabled = new Set(['a2']);
+    const result = computeCapDisabledSources(
+      { a: F('a1', 'a2'), b: F('b1', 'b2') },
+      [],
+      defaultDisabled,
+      2,
+    );
+    assert.deepEqual([...result].sort(), ['a2', 'b2']);
+  });
+});
 
 describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
   it('returns empty when cap is 0', () => {
@@ -97,6 +114,40 @@ describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
     assert.ok(r.keep.has('b1'));
     assert.ok(r.keep.has('intel-1'));
     assert.equal(r.keep.size, 3);
+  });
+
+  it('REGRESSION (#5950): UA/RU balance sources survive free-tier europe late-bucket ordering', () => {
+    // europe declaration puts pan-EU defaults first; Kyiv Independent / Meduza /
+    // Moscow Times sit late. With many categories and FREE_MAX_SOURCES=80,
+    // round-robin only keeps ~5 europe slots — without protectedNames the
+    // balance set is auto-disabled while tests on DEFAULT_ENABLED stay green.
+    const europe = F(
+      'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA',
+      'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
+      'TVN24', 'Rzeczpospolita',
+      'Meduza', 'Kyiv Independent', 'Moscow Times',
+    );
+    // ~16 buckets × 5 slots ≈ 80 — europe late names drop without protection.
+    const categories: { [k: string]: ReturnType<typeof F> } = { europe };
+    for (let i = 0; i < 15; i++) {
+      categories[`cat-${i}`] = F(`c${i}-1`, `c${i}-2`, `c${i}-3`, `c${i}-4`, `c${i}-5`);
+    }
+    const CAP = 80;
+    const balance = new Set(['Kyiv Independent', 'Meduza', 'Moscow Times']);
+
+    const baseline = selectSourcesUnderCap(categories, [], new Set(), CAP);
+    for (const name of balance) {
+      assert.ok(
+        !baseline.keep.has(name),
+        `baseline should NOT keep ${name} (proves free-tier drop without protection)`,
+      );
+    }
+
+    const protectedRun = selectSourcesUnderCap(categories, [], new Set(), CAP, balance);
+    for (const name of balance) {
+      assert.ok(protectedRun.keep.has(name), `protected free-tier run MUST keep ${name}`);
+      assert.ok(!protectedRun.autoDisabled.has(name), `${name} must not be auto-disabled`);
+    }
   });
 
   it('REGRESSION (PR #3857): locale-late entries in a bucket survive the cap when protected', () => {

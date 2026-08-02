@@ -19,6 +19,7 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 const { default: handler } = await import('../api/seed-health.js');
 
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
+const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 
@@ -54,6 +55,15 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
         if (missingPortwatchMeta) return { result: null };
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: portwatchRecordCount }) };
       }
+      if (key === PREDICTION_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt: Date.now(),
+            recordCount: 38,
+            poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
+          }),
+        };
+      }
       if (key === RESILIENCE_INTERVAL_PROBE_KEY) {
         return {
           result: JSON.stringify({
@@ -65,7 +75,10 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
           }),
         };
       }
-      return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
+      // This fixture isolates the PortWatch entry. Keep every unrelated
+      // coverage-gated feed above its floor so a new minRecordCount contract
+      // cannot turn the aggregate warning for an unrelated reason.
+      return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
     });
     return new Response(JSON.stringify(results), {
       status: 200,

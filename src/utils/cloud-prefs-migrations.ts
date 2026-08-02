@@ -132,14 +132,32 @@ export function parsePersistedDirtyKeys(
 }
 
 /**
- * Schema-2 migrations map. Used both inline by cloud-prefs-sync.ts (against
- * the variant-aware FEEDS) and by tests (against fixture FEEDS).
+ * Schema migrations map. Used both inline by cloud-prefs-sync.ts (against the
+ * variant-aware FEEDS) and by tests (against fixture FEEDS).
  */
 export function buildMigrations(
   feedsByCategory: FeedsByCategory,
+  legacyDefaultDisabled: ReadonlySet<string> = new Set(),
+  frontlineNames: ReadonlySet<string> = new Set(),
+  legacyCapDisabled: ReadonlySet<string> = new Set(),
+  legacyStrategicDefaultDisabled: ReadonlySet<string> = new Set(),
+  strategicDefaultNames: ReadonlySet<string> = new Set(),
+  legacyStrategicCapDisabled: ReadonlySet<string> = new Set(),
 ): Record<number, (data: Record<string, unknown>) => Record<string, unknown>> {
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
+    3: (data) => migrateFrontlineEuropeDefaultsV3(
+      data,
+      legacyDefaultDisabled,
+      frontlineNames,
+      legacyCapDisabled,
+    ),
+    4: (data) => migrateStrategicDefaultsV4(
+      data,
+      legacyStrategicDefaultDisabled,
+      strategicDefaultNames,
+      legacyStrategicCapDisabled,
+    ),
   };
 }
 
@@ -187,6 +205,102 @@ export function migrateDisabledFeedsV2(
   );
   console.log(
     `[cloud-prefs] schema-2 migration: re-enabled ${recoverable.length} source(s) from fully-disabled categories`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
+}
+
+function hasExactStringSet(values: unknown[], expected: ReadonlySet<string>): boolean {
+  if (values.length !== expected.size) return false;
+  const actual = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string') return false;
+    actual.add(value);
+  }
+  if (actual.size !== expected.size) return false;
+  for (const value of expected) {
+    if (!actual.has(value)) return false;
+  }
+  return true;
+}
+
+/**
+ * Schema-3 migration body for #5949/#5963.
+ *
+ * The old v3 source-reduction defaults stored the five frontline sources in
+ * `disabledFeeds`, and the first protected-cap rollout could append the same
+ * names to its exact persisted cap result. Only an exact match to one of
+ * those untouched legacy sets is safe to migrate: any extra or missing entry
+ * indicates that the user customized source preferences, so the migration
+ * leaves the blob alone rather than overriding explicit choices. The
+ * exact-match guard also makes this safe when a stale cloud row is applied
+ * after the local startup migration.
+ */
+export function migrateFrontlineEuropeDefaultsV3(
+  data: Record<string, unknown>,
+  legacyDefaultDisabled: ReadonlySet<string>,
+  frontlineNames: ReadonlySet<string>,
+  legacyCapDisabled: ReadonlySet<string> = new Set(),
+): Record<string, unknown> {
+  if (
+    (legacyDefaultDisabled.size === 0 && legacyCapDisabled.size === 0)
+    || frontlineNames.size === 0
+  ) return data;
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || (!hasExactStringSet(parsed, legacyDefaultDisabled) && !hasExactStringSet(parsed, legacyCapDisabled))
+  ) return data;
+
+  const cleaned = parsed.filter(
+    (name) => typeof name !== 'string' || !frontlineNames.has(name),
+  );
+  if (cleaned.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-3 migration: re-enabled ${parsed.length - cleaned.length} frontline source(s) from an untouched legacy default/cap state`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
+}
+
+/**
+ * Schema-4 migration for PR #6000.
+ *
+ * Before strategic defaults were canonical, the ten tagged feeds were present
+ * in the untouched source-reduction disabled set. Only an exact match to that
+ * old default or cap result is safe to rewrite: any extra or missing entry
+ * means the user customized source preferences, so leave the blob alone.
+ */
+export function migrateStrategicDefaultsV4(
+  data: Record<string, unknown>,
+  legacyDefaultDisabled: ReadonlySet<string>,
+  strategicDefaultNames: ReadonlySet<string>,
+  legacyCapDisabled: ReadonlySet<string> = new Set(),
+): Record<string, unknown> {
+  if (
+    (legacyDefaultDisabled.size === 0 && legacyCapDisabled.size === 0)
+    || strategicDefaultNames.size === 0
+  ) return data;
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || (!hasExactStringSet(parsed, legacyDefaultDisabled) && !hasExactStringSet(parsed, legacyCapDisabled))
+  ) return data;
+
+  const cleaned = parsed.filter(
+    (name) => typeof name !== 'string' || !strategicDefaultNames.has(name),
+  );
+  if (cleaned.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-4 migration: re-enabled ${parsed.length - cleaned.length} strategic default source(s) from an untouched legacy default/cap state`,
   );
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(cleaned) };
 }

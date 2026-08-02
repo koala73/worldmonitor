@@ -177,17 +177,25 @@ function assertSharedImportPanelGuard(source: string) {
   );
 }
 
+function assertNoDirectComponentConstructors(source: string) {
+  assert.doesNotMatch(
+    source,
+    /import\(['"]@\/components\/[^'"]+['"]\)\.then\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>[\s\S]{0,700}\bnew\s+\1\.[A-Za-z0-9_]+/m,
+    'Lazy component constructors must route through importPanel() instead of direct import(...).then(m => new m.Panel()) registrations.',
+  );
+}
+
 function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
-  const registrationStart = source.indexOf("this.lazyPanel('chat-analyst'");
+  const registrationStart = source.indexOf("this.lazyImportedPanel('chat-analyst'");
   assert.notEqual(registrationStart, -1, 'chat-analyst lazy panel registration not found');
-  const registrationEnd = source.indexOf("this.lazyPanel('forecast'", registrationStart);
+  const registrationEnd = source.indexOf("this.lazyDefaultPanel(\n      'forecast'", registrationStart);
   assert.ok(registrationEnd > registrationStart, 'chat-analyst lazy panel registration boundary not found');
   const registration = source.slice(registrationStart, registrationEnd);
 
   assert.match(
     registration,
-    /import\('@\/components\/ChatAnalystPanel'\)\.then\(m => \{/,
-    'chat-analyst panel component should load independently',
+    /this\.lazyImportedPanel\('chat-analyst',\s*\(\) => import\('@\/components\/ChatAnalystPanel'\),\s*'ChatAnalystPanel'/,
+    'chat-analyst panel component should load through the guarded helper',
   );
   assert.doesNotMatch(
     registration,
@@ -196,7 +204,7 @@ function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
   );
   assert.match(
     registration,
-    /const panel = new m\.ChatAnalystPanel\(\);[\s\S]*?void import\('@\/app\/agent-bus-applier'\)/,
+    /const panel = new ChatAnalystPanel\(\);[\s\S]*?void import\('@\/app\/agent-bus-applier'\)/,
     'chat-analyst should create the panel before loading the optional dashboard action handler',
   );
   assert.match(
@@ -208,6 +216,50 @@ function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
     registration,
     /return panel;/,
     'chat-analyst loader should return the panel even while the optional action handler is loading',
+  );
+}
+
+function assertLiveNewsDirectMountCatchesCallbackErrors(source: string) {
+  const start = source.indexOf('mountLiveNewsIfReady(): void');
+  const end = source.indexOf('\n  private shouldCreatePanel', start);
+  assert.ok(start >= 0 && end > start, 'mountLiveNewsIfReady block not found');
+  const block = source.slice(start, end);
+  assert.match(
+    block,
+    /void this\.importPanel\([\s\S]*?\)\.then\(\(panel\) => \{[\s\S]*?this\.afterPanelMounted\('live-news', panel\);[\s\S]*?\}\)\.catch\(\(err\) => \{[\s\S]*?failed to lazy-load "live-news"/,
+    'direct live-news mount path must catch callback errors as well as import failures',
+  );
+}
+
+function assertGccInvestmentsFocusHelperIsLoadedOnce(source: string) {
+  const start = source.indexOf("this.lazyPanel('gcc-investments'");
+  const end = source.indexOf("this.lazyDefaultPanel('world-clock'", start);
+  assert.ok(start >= 0 && end > start, 'gcc-investments lazy panel registration not found');
+  const registration = source.slice(start, end);
+  assert.match(
+    registration,
+    /const \{ focusInvestmentOnMap \} = await import\('@\/services\/investments-focus'\);[\s\S]*?this\.importPanel\('gcc-investments'/,
+    'gcc-investments should load the map focus helper once during panel load before constructing the click handler',
+  );
+  assert.doesNotMatch(
+    registration,
+    /new InvestmentsPanel\(\(inv\) => \{[\s\S]*?import\('@\/services\/investments-focus'\)/,
+    'gcc-investments click handler must not import investments-focus on every click',
+  );
+}
+
+function assertDestroyOnceIsolatesPanelThrows(source: string) {
+  const start = source.indexOf('const destroyOnce =');
+  assert.notEqual(start, -1, 'destroyOnce helper not found');
+  // Bound the helper body at its arrow closing so the assertion can't match a
+  // try/catch that belongs to some later statement in destroy().
+  const end = source.indexOf('\n    };', start);
+  assert.ok(end > start, 'destroyOnce helper body boundary not found');
+  const body = source.slice(start, end);
+  assert.match(
+    body,
+    /try \{\s*target\.destroy\?\.\(\);\s*\} catch/,
+    'destroyOnce must wrap target.destroy?.() in try/catch so one panel throwing cannot abort the rest of teardown (App.destroy() iterates modules without its own try/catch).',
   );
 }
 
@@ -238,6 +290,11 @@ describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
     assertLazyLoaderHandlesFailedImports(source);
   });
 
+  it('all lazy component constructors route through the shared guarded helper', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertNoDirectComponentConstructors(source);
+  });
+
   it('split-risk panels are demand-loaded through the guarded helper', async () => {
     const source = await readFile(filePath, 'utf8');
     for (const [panelKey, modulePath, exportName] of SPLIT_RISK_PANEL_IMPORTS) {
@@ -249,6 +306,21 @@ describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
   it('chat analyst mounts even if the dashboard action handler chunk fails', async () => {
     const source = await readFile(filePath, 'utf8');
     assertChatAnalystLoadsWithoutAgentBusApplier(source);
+  });
+
+  it('direct live-news mid-session mount path catches callback errors', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertLiveNewsDirectMountCatchesCallbackErrors(source);
+  });
+
+  it('GCC investments map focus helper is loaded once during panel load', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertGccInvestmentsFocusHelperIsLoadedOnce(source);
+  });
+
+  it('destroy() isolates a single panel destroy() throw from the rest of teardown', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertDestroyOnceIsolatesPanelThrows(source);
   });
 
   it('token-aware brace walker skips strings/templates/comments', () => {

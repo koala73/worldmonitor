@@ -11,11 +11,22 @@
 // score data) where the PR-6 gate could never pass anyway.
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { buildRankingItem, ensureResilienceScoreCached, RESILIENCE_SCORE_CACHE_PREFIX } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
+
+const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+
+beforeEach(() => {
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+});
+
+afterEach(() => {
+  if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
+});
 
 describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
   describe('buildRankingItem', () => {

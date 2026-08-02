@@ -1,6 +1,6 @@
 ---
 title: "CLI Release Runbook"
-description: "How maintainers publish the worldmonitor npm CLI from cli/ with cli-v* tags and npm trusted publishing."
+description: "How maintainers publish the worldmonitor npm CLI from cli/ using cli-v* tags, npm trusted publishing, and the release workflow's dry-run gates."
 ---
 This runbook covers maintainer releases of the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm CLI from `cli/`. CLI releases are intentionally independent from desktop app releases: a `cli-vX.Y.Z` Git tag triggers `.github/workflows/publish-cli.yml`.
 The Python, Ruby, and Go SDKs release the same way with their own tags (`py-v*`, `gem-v*`, `sdk/go/v*`) — see [Official SDKs → Releasing](/sdks#releasing-maintainers).

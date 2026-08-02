@@ -51,7 +51,6 @@ import {
   setCIIGetter,
   setGeoAlertGetter,
 } from '@/services/hotspot-escalation';
-import { getCountryScore } from '@/services/country-instability';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
@@ -222,6 +221,10 @@ export class MapComponent {
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
   private lastContainerSize = { width: 0, height: 0 };
+  // #5080 slice 2: last zoom (4dp) whose overlay counter-scale CSS vars were
+  // written — lets applyTransform() skip same-value setProperty calls that
+  // would restyle every marker on every render pass.
+  private lastOverlayVarZoom = '';
   // Desktop measures label overlap from the start; mobile defers until the first
   // interaction. The effective value is set in the constructor (= !this.isMobile);
   // false here documents the mobile-off default.
@@ -887,16 +890,6 @@ export class MapComponent {
       );
     };
 
-    // Resume mobile label-overlap measurement on the first direct map interaction.
-    // Mobile-only: on desktop the flag is always armed, so this would only ever
-    // early-return inside resumeMobileLabelVisibility().
-    if (this.isMobile) {
-      this.container.addEventListener('pointerdown', (e) => {
-        if (shouldIgnoreInteractionStart(e.target)) return;
-        this.resumeMobileLabelVisibility();
-      }, { signal });
-    }
-
     // Wheel zoom with smooth delta
     this.container.addEventListener(
       'wheel',
@@ -967,9 +960,10 @@ export class MapComponent {
     const touchHistory: Array<{ x: number; y: number; t: number }> = [];
     let inertiaRaf = 0;
 
+    // Keep tap starts out of the label-collision pass; arm it only once the
+    // gesture actually moves/zooms the viewport.
     this.container.addEventListener('touchstart', (e) => {
       if (shouldIgnoreInteractionStart(e.target)) return;
-      this.resumeMobileLabelVisibility();
       cancelAnimationFrame(inertiaRaf);
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
@@ -1019,6 +1013,7 @@ export class MapComponent {
         this.state.pan.y += (center.y - lastTouchCenter.y) * panSpeed;
         lastTouchCenter = center;
 
+        this.resumeMobileLabelVisibility();
         this.applyTransform();
       } else if (e.touches.length === 1 && isDragging && touch1) {
         if (!touchDragActive) {
@@ -1026,6 +1021,7 @@ export class MapComponent {
           const dy0 = touch1.clientY - touchStartPos.y;
           if (Math.hypot(dx0, dy0) < TOUCH_DRAG_THRESHOLD) return;
           touchDragActive = true;
+          this.resumeMobileLabelVisibility();
         }
 
         e.preventDefault();
@@ -3674,7 +3670,7 @@ export class MapComponent {
   }
 
   public initEscalationGetters(): void {
-    setCIIGetter((code) => getCachedCountryScoreValue(code) ?? getCountryScore(code));
+    setCIIGetter(getCachedCountryScoreValue);
     setGeoAlertGetter(getAlertsNearLocation);
   }
 
@@ -4040,11 +4036,22 @@ export class MapComponent {
     // Set CSS variable for counter-scaling labels/markers
     // Labels: max 1.5x scale, so counter-scale = min(1.5, zoom) / zoom
     // Markers: fixed size, so counter-scale = 1 / zoom
-    const labelScale = Math.min(1.5, zoom) / zoom;
-    const markerScale = 1 / zoom;
-    this.wrapper.style.setProperty('--label-scale', String(labelScale));
-    this.wrapper.style.setProperty('--marker-scale', String(markerScale));
-    this.wrapper.style.setProperty('--zoom', String(zoom));
+    // #5080 slice 2: write the vars ONLY when zoom actually changed.
+    // applyTransform() also runs on every render/data pass at unchanged zoom,
+    // and each setProperty — even with an identical value — invalidates every
+    // var() consumer: invalidation tracking measured thousands of per-marker
+    // style recalcs in a single tap window (earthquake-marker 4356,
+    // hotspot-marker 1694, conflict-zone 1210) — the dominant mobile tap
+    // presentation cost.
+    const overlayVarZoom = zoom.toFixed(4);
+    if (this.lastOverlayVarZoom !== overlayVarZoom) {
+      this.lastOverlayVarZoom = overlayVarZoom;
+      const labelScale = Math.min(1.5, zoom) / zoom;
+      const markerScale = 1 / zoom;
+      this.wrapper.style.setProperty('--label-scale', String(labelScale));
+      this.wrapper.style.setProperty('--marker-scale', String(markerScale));
+      this.wrapper.style.setProperty('--zoom', String(zoom));
+    }
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
@@ -4198,6 +4205,7 @@ export class MapComponent {
     if (!topLeft || !bottomRight) {
       this.state.zoom = 4;
       this.setCenter(midLat, midLon);
+      this.resumeMobileLabelVisibility();
       return;
     }
     const pxWidth = Math.abs(bottomRight[0] - topLeft[0]);
@@ -4207,6 +4215,7 @@ export class MapComponent {
     const zoomY = pxHeight > 0 ? (height * padFactor) / pxHeight : 4;
     this.state.zoom = Math.max(1, Math.min(8, Math.min(zoomX, zoomY)));
     this.setCenter(midLat, midLon);
+    this.resumeMobileLabelVisibility();
   }
 
   public getState(): MapState {

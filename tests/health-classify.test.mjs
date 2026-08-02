@@ -16,7 +16,14 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 
-const { classifyKey, STATUS_COUNTS, BOOTSTRAP_KEYS, STANDALONE_KEYS, SEED_META } = __testing__;
+const {
+  classifyKey,
+  healthResponseBody,
+  STATUS_COUNTS,
+  BOOTSTRAP_KEYS,
+  STANDALONE_KEYS,
+  SEED_META,
+} = __testing__;
 
 const NOW = 1_700_000_000_000;
 const ONE_MIN_MS = 60_000;
@@ -37,6 +44,15 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {} } 
 }
 
 const seedMeta = (over = {}) => JSON.stringify({ fetchedAt: NOW - ONE_MIN_MS, recordCount: 5, ...over });
+const classifyNewsInsights = (over = {}) => classifyKey(
+  'newsInsights',
+  BOOTSTRAP_KEYS.newsInsights,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [BOOTSTRAP_KEYS.newsInsights]: 4096 },
+    metaValues: { [SEED_META.newsInsights.key]: seedMeta(over) },
+  }),
+);
 
 // Mirror of the handler's overall-status computation (api/health.js ~850-859).
 // The handler computes this inline; these tests exercise the LOCAL replica —
@@ -86,6 +102,109 @@ test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still pres
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: repeated insights synthesis rejection warns while the LKG remains present', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 45 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+    consecutiveFailures: 2,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.records, 8);
+  assert.equal(entry.consecutiveFailures, 2);
+  assert.equal(entry.lastSynthesisFailureCode, 'INSIGHTS_SYNTHESIS_PARSE');
+  assert.equal(entry.servedGeneratedAt, '2026-08-01T06:30:39.268Z');
+  assert.equal(entry.lastSuccessAt, NOW - 45 * ONE_MIN_MS);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: one recent insights synthesis failure stays OK within the warning bounds', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 5 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:25:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(entry.consecutiveFailures, 1);
+});
+
+test('classifyKey: an old single insights synthesis failure warns by age', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 25 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 10 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.synthesisFailureAgeMin, 25);
+});
+
+test('classifyKey: a fresh successful insights publication clears synthesis warning state', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - ONE_MIN_MS,
+    lastSuccessAt: NOW - ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:30:39.268Z',
+    consecutiveFailures: 0,
+    lastSynthesisFailureCode: null,
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.consecutiveFailures, 0);
+  assert.equal(entry.servedGeneratedAt, '2026-08-01T08:30:39.268Z');
+});
+
+test('classifyKey: no-LKG synthesis failure warns even on the first attempted publication', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - ONE_MIN_MS,
+    lastSuccessAt: null,
+    servedGeneratedAt: '2026-08-01T08:30:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.consecutiveFailures, 1);
+  assert.equal(entry.lastSuccessAt, null);
+});
+
+test('compact health problem projection retains insights synthesis diagnostics', () => {
+  const snapshot = {
+    status: 'WARNING',
+    summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+    checkedAt: '2026-08-01T08:31:00.000Z',
+    checks: {
+      newsInsights: {
+        status: 'SEED_ERROR',
+        records: 8,
+        maxStaleMin: 30,
+        consecutiveFailures: 2,
+        lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+        servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+      },
+    },
+  };
+
+  assert.deepEqual(healthResponseBody(snapshot, true).problems.newsInsights, snapshot.checks.newsInsights);
+});
+
 test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PARTIAL', () => {
   const entry = classifyKey('riskScores', BOOTSTRAP_KEYS.riskScores, { allowOnDemand: false },
     makeCtx({
@@ -97,6 +216,49 @@ test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PART
   assert.equal(entry.records, 1);
   assert.equal(entry.minRecordCount, 3);
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: sector valuation partial/total loss degrades despite 12 price rows', () => {
+  for (const valuationState of [
+    { sourceState: 'partial', valuationRecordCount: 3 },
+    { sourceState: 'error', valuationRecordCount: 0 },
+  ]) {
+    const entry = classifyKey('sectors', BOOTSTRAP_KEYS.sectors, { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS.sectors]: 1234 },
+        metaValues: {
+          'seed-meta:market:sectors': seedMeta({
+            recordCount: 12,
+            sectorRecordCount: 12,
+            expectedValuationRecordCount: 12,
+            ...valuationState,
+          }),
+        },
+      }));
+
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.records, 12, 'price coverage remains visible');
+    assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  }
+});
+
+test('classifyKey: sector valuation recovery returns health to OK', () => {
+  const entry = classifyKey('sectors', BOOTSTRAP_KEYS.sectors, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.sectors]: 1234 },
+      metaValues: {
+        'seed-meta:market:sectors': seedMeta({
+          recordCount: 12,
+          sectorRecordCount: 12,
+          valuationRecordCount: 12,
+          expectedValuationRecordCount: 12,
+          sourceState: 'ok',
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 12);
 });
 
 test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIAL', () => {
@@ -112,6 +274,72 @@ test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIA
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 38);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: stale prediction snapshot outranks per-pool coverage', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          fetchedAt: NOW - 100 * ONE_MIN_MS,
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+});
+
+test('classifyKey: predictionMarkets requires valid per-pool metadata', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({ recordCount: 38 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+});
+
+test('classifyKey: predictionMarkets is OK when every pool meets its floor', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 20,
+          poolCounts: { geopolitical: 1, tech: 1, finance: 18 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 1, tech: 1, finance: 18 });
+});
+
 test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
   const entry = classifyKey('socialVelocity', BOOTSTRAP_KEYS.socialVelocity, { allowOnDemand: false },
     makeCtx({
@@ -125,7 +353,145 @@ test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is p
     }));
   assert.equal(entry.status, 'SEED_ERROR');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
-  assert.equal(entry.records, 1);
+  assert.equal(entry.records, 5);
+});
+
+test('classifyKey: gdelt timeline repair metadata → SEED_ERROR while canonical articles remain available', () => {
+  const entry = classifyKey('gdeltIntel', BOOTSTRAP_KEYS.gdeltIntel, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.gdeltIntel]: 4096 },
+      metaValues: {
+        'seed-meta:intelligence:gdelt-intel': seedMeta({
+          recordCount: 6,
+          status: 'error',
+          errorReason: 'timeline_keys_missing_or_unconfirmed',
+          errorCode: 'GDELT_SHARED_PROXY_TLS',
+          missingTimelineKeys: ['gdelt:intel:vol:military'],
+        }),
+      },
+    }));
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(entry.records, 6,
+    'SEED_ERROR preserves the declared canonical record count while surfacing the timeline outage');
+  assert.equal(entry.errorCode, 'GDELT_SHARED_PROXY_TLS');
+});
+
+test('classifyKey: unsafe free-form error codes are not reflected into health', () => {
+  const entry = classifyKey('gdeltIntel', BOOTSTRAP_KEYS.gdeltIntel, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.gdeltIntel]: 4096 },
+      metaValues: {
+        'seed-meta:intelligence:gdelt-intel': seedMeta({
+          status: 'error',
+          errorCode: 'proxy failed at https://user:pass@example.test',
+        }),
+      },
+    }));
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(Object.hasOwn(entry, 'errorCode'), false);
+});
+
+test('compact health preserves the bounded GDELT failure code', () => {
+  const snapshot = {
+    status: 'WARNING',
+    summary: { ok: 1, warn: 1, crit: 0 },
+    checkedAt: '2026-07-29T08:00:00.000Z',
+    checks: {
+      gdeltIntel: {
+        status: 'SEED_ERROR',
+        records: 6,
+        maxStaleMin: 720,
+        errorCode: 'GDELT_SHARED_PROXY_TLS',
+      },
+    },
+  };
+  assert.deepEqual(healthResponseBody(snapshot, true).problems.gdeltIntel, {
+    status: 'SEED_ERROR',
+    records: 6,
+    maxStaleMin: 720,
+    errorCode: 'GDELT_SHARED_PROXY_TLS',
+  });
+});
+
+test('classifyKey: degraded source with a non-positive or invalid fetchedAt exposes unknown age', () => {
+  const name = 'crossStraitActivityJapanMod';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+
+  for (const fetchedAt of [0, -1, 'invalid']) {
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+      makeCtx({
+        strens: { [dataKey]: 396 },
+        metaValues: {
+          [metaKey]: seedMeta({
+            fetchedAt,
+            recordCount: 2,
+            sourceState: 'error',
+            stale: true,
+          }),
+        },
+      }));
+
+    assert.equal(entry.status, 'SEED_ERROR', String(fetchedAt));
+    assert.equal(entry.records, 2, String(fetchedAt));
+    assert.equal(
+      Object.hasOwn(entry, 'seedAgeMin'),
+      false,
+      `${String(fetchedAt)} must remain unknown instead of fabricating an age`,
+    );
+  }
+});
+
+test('classifyKey: missing corporate-disclosure payload cannot be hidden by fresh zero-record metadata', () => {
+  const name = 'chinaCorporateDisclosures';
+  const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+    makeCtx({
+      metaValues: {
+        [metaKey]: seedMeta({ recordCount: 0 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(entry.records, 0);
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: present current corporate-disclosure payload may contain zero admitted events', () => {
+  const name = 'chinaCorporateDisclosures';
+  const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+    makeCtx({
+      strens: { [dataKey]: 512 },
+      metaValues: {
+        [metaKey]: seedMeta({ recordCount: 0 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 0);
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('classifyKey: a permanently blocked humanitarian provider surfaces as SEED_ERROR', () => {
+  const dataKey = STANDALONE_KEYS.humanitarianSummary;
+  const metaKey = SEED_META.humanitarianSummary.key;
+  const entry = classifyKey('humanitarianSummary', dataKey, { allowOnDemand: false },
+    makeCtx({
+      strens: { [dataKey]: 1234 },
+      metaValues: {
+        [metaKey]: seedMeta({
+          status: 'error',
+          errorReason: 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED',
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
 test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh at 300min → OK', () => {
@@ -197,7 +563,7 @@ const ISSUE_5055_HEALTH_REGISTRATIONS = [
   ['defensePatents', 'patents:defense:latest', 'seed-meta:military:defense-patents', 25200],
   ['acledIntel', 'conflict:acled:v1:all:0:0', 'seed-meta:conflict:acled-intel', 38],
   ['portwatchDisruptions', 'portwatch:disruptions:active:v1', 'seed-meta:portwatch:disruptions', 150],
-  ['comtradeBilateralHs4', 'seed-meta:comtrade:bilateral-hs4', 'seed-meta:comtrade:bilateral-hs4', 34560],
+  ['comtradeBilateralHs4', 'seed-meta:comtrade:bilateral-hs4', 'seed-meta:comtrade:bilateral-hs4', 50400],
   ['sharedFxRates', 'shared:fx-rates:v1', 'seed-meta:shared:fx-rates', 3600],
   ['submarineCables', 'infrastructure:submarine-cables:v1', 'seed-meta:infrastructure:submarine-cables', 25200],
 ];
@@ -210,6 +576,22 @@ test('issue #5055: validated seed-meta writers are registered in /api/health', (
   }
 });
 
+test('HKO warning snapshots are classified through their matching seed-meta key', () => {
+  assert.equal(STANDALONE_KEYS.hkoWarnings, 'weather:hko-warnings:v1');
+  assert.deepEqual(SEED_META.hkoWarnings, {
+    key: 'seed-meta:weather:hko-warnings',
+    maxStaleMin: 540,
+  });
+
+  const entry = classifyKey('hkoWarnings', STANDALONE_KEYS.hkoWarnings, { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.hkoWarnings]: 1024 },
+      metaValues: { 'seed-meta:weather:hko-warnings': seedMeta({ recordCount: 1 }) },
+    }));
+
+  assert.equal(entry.status, 'OK');
+});
+
 test('classifyKey: issue #5055 strict seeds surface missing metadata instead of reporting OK', () => {
   const entry = classifyKey('energyPrices', STANDALONE_KEYS.energyPrices, { allowOnDemand: true },
     makeCtx({ strens: { [STANDALONE_KEYS.energyPrices]: 2048 } }));
@@ -218,6 +600,22 @@ test('classifyKey: issue #5055 strict seeds surface missing metadata instead of 
   assert.equal(entry.records, 1);
   assert.equal(entry.maxStaleMin, 150);
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: issue #5099 ACLED display feed is strict, not on-demand softened', () => {
+  const missing = classifyKey('acledIntel', STANDALONE_KEYS.acledIntel, { allowOnDemand: true },
+    makeCtx({}));
+  assert.equal(missing.status, 'EMPTY');
+  assert.equal(missing.records, 0);
+  assert.equal(missing.maxStaleMin, 38);
+  assert.equal(STATUS_COUNTS[missing.status], 'crit');
+
+  const dataWithoutMeta = classifyKey('acledIntel', STANDALONE_KEYS.acledIntel, { allowOnDemand: true },
+    makeCtx({ strens: { [STANDALONE_KEYS.acledIntel]: 2048 } }));
+  assert.equal(dataWithoutMeta.status, 'STALE_SEED');
+  assert.equal(dataWithoutMeta.records, 1);
+  assert.equal(dataWithoutMeta.maxStaleMin, 38);
+  assert.equal(STATUS_COUNTS[dataWithoutMeta.status], 'warn');
 });
 
 test('classifyKey: issue #5055 Comtrade bilateral probe is explicitly meta-only', () => {
@@ -231,7 +629,7 @@ test('classifyKey: issue #5055 Comtrade bilateral probe is explicitly meta-only'
   assert.equal(STANDALONE_KEYS.comtradeBilateralHs4, metaKey);
   assert.equal(entry.status, 'OK');
   assert.equal(entry.records, 180);
-  assert.equal(entry.maxStaleMin, 34560);
+  assert.equal(entry.maxStaleMin, 50400);
 });
 
 test('classifyKey: empty on-demand standalone key → EMPTY_ON_DEMAND (warn)', () => {

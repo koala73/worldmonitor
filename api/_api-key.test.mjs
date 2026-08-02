@@ -82,6 +82,13 @@ test('HttpOnly wm-pro-key cookie is accepted as enterprise key without a JS-read
   assert.equal(r.kind, 'enterprise');
 });
 
+test('HttpOnly wm-widget-key cookie is accepted as enterprise key without a JS-readable header', async () => {
+  const r = await validateApiKey(makeReq({ cookie: `wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}` }));
+  assert.equal(r.valid, true);
+  assert.equal(r.required, true);
+  assert.equal(r.kind, 'enterprise');
+});
+
 test('dual wm-pro-key cookies use the first value sent by the browser', async () => {
   const r = await validateApiKey(makeReq({
     cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}; wm-pro-key=old-js-readable-key`,
@@ -124,10 +131,11 @@ test('enterprise key allowlist uses timingSafeIncludes, not Array.includes', asy
     /import\s*\{[^}]*\btimingSafeIncludes\b[^}]*\}\s*from\s*['"]\.\/_crypto\.js['"]/,
     'api/_api-key.js must use the Edge-safe timingSafeIncludes helper',
   );
+  // Ban the common non-constant-time spellings, not just one.
   assert.doesNotMatch(
     source,
-    /\bvalidKeys\.includes\s*\(\s*key\s*\)/,
-    'enterprise key validation must not use non-constant-time Array.includes(key)',
+    /\bvalidKeys\.(includes|some|indexOf|find)\s*\(/,
+    'enterprise key validation must not use non-constant-time Array comparison',
   );
 });
 

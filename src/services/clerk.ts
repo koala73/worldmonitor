@@ -25,6 +25,7 @@ import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 type ClerkInstance = Clerk;
+type ClerkSession = NonNullable<ClerkInstance['session']>;
 
 function readPublishableKey(): string | undefined {
   try {
@@ -35,6 +36,16 @@ function readPublishableKey(): string | undefined {
 }
 
 const PUBLISHABLE_KEY = readPublishableKey();
+
+/**
+ * True when a Clerk publishable key is configured. Used by surfaces that must
+ * distinguish "auth still hydrating" from "Clerk will never load" (e.g. the
+ * Pro banner deferral in #5728 — without this, `isPending` stays sticky when
+ * the key is absent and free users would never see the upsell).
+ */
+export function isClerkAuthEnabled(): boolean {
+  return Boolean(PUBLISHABLE_KEY);
+}
 
 let clerkInstance: ClerkInstance | null = null;
 let loadPromise: Promise<void> | null = null;
@@ -234,12 +245,24 @@ export async function initClerk(): Promise<void> {
       await clerk.load({
         clerkUICtor: getClerkUICtor(),
         appearance: getAppearance(),
+        localization: {
+          userButton: {
+            action__manageAccount: 'Profile & security',
+          },
+        },
         afterSignOutUrl: getAfterSignOutUrl(),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
+      // Flip auth isPending → false for queued subscribers even though
+      // clerkInstance stays null. Without this, surfaces that defer while
+      // auth is pending (Pro banner #5728, AuthHeaderWidget skeletons)
+      // hang forever on permanent load failures (blocked CDN, CN in-app
+      // browsers). Leave the queue intact so a later successful retry can
+      // still attachListener + re-fire with a real session.
+      notifyPendingSubscribersOfHydrationFailure();
       throw e;
     }
   })();
@@ -297,6 +320,23 @@ function attachPendingSubscribers(): void {
     // Fire once so subscribers learn about a cookie-backed signed-in
     // session that was already present before Clerk finished loading.
     cb();
+  }
+}
+
+/**
+ * Fire queued pre-load subscribers without consuming the queue.
+ * Used when initClerk fails so `subscribeAuthState` can snapshot
+ * `{ user: null, isPending: false }` instead of leaving the whole app
+ * stuck on the boot-default pending session.
+ */
+function notifyPendingSubscribersOfHydrationFailure(): void {
+  for (const cb of pendingSubscribers) {
+    if (pendingSubscriberDetachers.get(cb)?.detached) continue;
+    try {
+      cb();
+    } catch {
+      // One subscriber must not block the rest of the settle fan-out.
+    }
   }
 }
 
@@ -427,10 +467,7 @@ export function getClerkUserCreatedAt(): number | null {
 
 /** Sign out the current user. */
 export async function signOut(): Promise<void> {
-  _cachedToken = null;
-  _cachedTokenAt = 0;
-  _tokenInflight = null;
-  _tokenGen++;
+  clearClerkTokenCache();
   await clerkInstance?.signOut();
 }
 
@@ -450,8 +487,10 @@ export async function signOut(): Promise<void> {
 export function clearClerkTokenCache(): void {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
+  _clerkClockState = { kind: 'uncalibrated' };
 }
 
 /**
@@ -459,20 +498,160 @@ export function clearClerkTokenCache(): void {
  * Uses the 'convex' JWT template which includes the `plan` claim.
  * Returns null if no active session.
  *
- * Tokens are cached for 50s (Clerk tokens expire at 60s) with in-flight
- * deduplication to prevent concurrent panels from racing against Clerk.
+ * Tokens are cached with in-flight deduplication to prevent concurrent panels
+ * from racing against Clerk, bounded by BOTH the flat TTL below and the token's
+ * own `exp` (see shouldReuseCachedClerkToken — the TTL alone is not enough).
  * A monotonic _tokenGen counter lets clearClerkTokenCache() invalidate
  * any mid-flight fetch whose result would otherwise paint the previous
  * user's JWT into the new session.
  */
 let _cachedToken: string | null = null;
 let _cachedTokenAt = 0;
+let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
+// Positive means the client clock is behind the issuer clock. This is measured
+// from a token fetched with skipCache so a stale Clerk token cannot masquerade
+// as a clock offset. Keep the modes explicit: a trusted zero skew is different
+// from an opaque token that can only use the legacy flat TTL.
+type ClerkClockState =
+  | { kind: 'uncalibrated' }
+  | { kind: 'trusted'; skewMs: number }
+  | { kind: 'opaque-ttl' }
+  | { kind: 'retry-after'; atMs: number };
+
+let _clerkClockState: ClerkClockState = { kind: 'uncalibrated' };
 const TOKEN_CACHE_TTL_MS = 50_000;
+const CLOCK_CALIBRATION_RETRY_BACKOFF_MS = 5_000;
+
+/**
+ * How long before a token's own `exp` we stop reusing it.
+ *
+ * `server/auth-session.ts` applies only a small, bounded `clockTolerance`.
+ * This larger client-side margin keeps cache reuse and request flight time from
+ * consuming that entire server-side allowance.
+ */
+const TOKEN_EXPIRY_SAFETY_MARGIN_MS = 10_000;
+
+function clockSkewMsForReuse(state: ClerkClockState): number | null {
+  if (state.kind === 'trusted') return state.skewMs;
+  if (state.kind === 'opaque-ttl') return 0;
+  return null;
+}
+
+function effectiveClerkNowMs(now: number, state: ClerkClockState): number {
+  return now + (state.kind === 'trusted' ? state.skewMs : 0);
+}
+
+function canCacheClerkToken(state: ClerkClockState): boolean {
+  return state.kind === 'trusted' || state.kind === 'opaque-ttl';
+}
+
+type ClerkTokenClaimsMs = { exp: number | null; iat: number | null };
+
+function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+  const payload = token?.split('.')[1];
+  if (!payload) return { exp: null, iat: null };
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(
+      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
+    ) as Record<string, unknown>;
+    const toEpochMs = (value: unknown): number | null =>
+      typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
+    return { exp: toEpochMs(claims.exp), iat: toEpochMs(claims.iat) };
+  } catch {
+    return { exp: null, iat: null };
+  }
+}
+
+/**
+ * The `exp` claim of a Clerk JWT as epoch ms, or null when it cannot be read.
+ *
+ * Null (rather than throwing, or assuming expiry) keeps an unreadable token on
+ * the flat-TTL path — the behaviour that predates this function — so a Clerk
+ * token-format change degrades to the old caching instead of signing everyone
+ * out. Reading `exp` needs no signature check: the server is the authority, and
+ * a forged `exp` can only make this client refresh sooner.
+ */
+export function clerkTokenExpiresAtMs(token: string | null): number | null {
+  return clerkTokenClaimsMs(token).exp;
+}
+
+type ClerkTokenReuseInput = {
+  token: string | null;
+  cachedAt: number;
+  now: number;
+  /** Issuer time minus client time, measured from a fresh Clerk token. */
+  clockSkewMs?: number | null;
+};
+
+function shouldReuseCachedClerkTokenWithExpiry(
+  input: ClerkTokenReuseInput,
+  expiresAt: number | null,
+): boolean {
+  const { token, cachedAt, now, clockSkewMs } = input;
+  if (!token) return false;
+  if (now - cachedAt >= TOKEN_CACHE_TTL_MS) return false;
+  if (expiresAt === null) return true;
+  const effectiveNow = now + (
+    typeof clockSkewMs === 'number' && Number.isFinite(clockSkewMs) ? clockSkewMs : 0
+  );
+  return effectiveNow < expiresAt - TOKEN_EXPIRY_SAFETY_MARGIN_MS;
+}
+
+/**
+ * Whether the cached token can still sign a request. Both bounds must hold.
+ *
+ * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ): Clerk's `getToken()`
+ * is stale-while-revalidate — within 15s of expiry it returns the CACHED token
+ * immediately and refreshes in the background — so the premise this cache was
+ * built on ("Clerk tokens expire at 60s", i.e. every token arrives fresh) does
+ * not hold. Stamping a token that had 12s left with a flat 50s TTL left ~38s in
+ * which every request it signed came back 401, healing only when the TTL lapsed.
+ *
+ * The TTL is still enforced on top: it is what bounds how long a session that
+ * was revoked but not yet expired keeps working.
+ */
+export function shouldReuseCachedClerkToken(input: ClerkTokenReuseInput): boolean {
+  return shouldReuseCachedClerkTokenWithExpiry(input, clerkTokenExpiresAtMs(input.token));
+}
+
+type ClerkTokenFetchResult = {
+  token: string | null;
+  unavailable: boolean;
+};
+
+async function fetchClerkToken(session: ClerkSession, skipCache = false): Promise<ClerkTokenFetchResult> {
+  const cacheOptions = skipCache ? { skipCache: true } : {};
+  let firstRequestSucceeded = false;
+  try {
+    const token = await session.getToken({ template: 'convex', ...cacheOptions });
+    firstRequestSucceeded = true;
+    if (token) return { token, unavailable: false };
+  } catch { /* Try the standard session token below. */ }
+  try {
+    return { token: await session.getToken(cacheOptions), unavailable: false };
+  } catch {
+    return { token: null, unavailable: !firstRequestSucceeded };
+  }
+}
 
 export async function getClerkToken(): Promise<string | null> {
-  if (_cachedToken && Date.now() - _cachedTokenAt < TOKEN_CACHE_TTL_MS) {
+  const now = Date.now();
+  const clockState = _clerkClockState;
+  const calibrationBackoffActive = clockState.kind !== 'retry-after'
+    || now < clockState.atMs;
+  const clockSkewMs = clockSkewMsForReuse(clockState);
+  if (clerkInstance?.session === _cachedSession
+    && clockSkewMs !== null
+    && calibrationBackoffActive
+    && shouldReuseCachedClerkToken({
+      token: _cachedToken,
+      cachedAt: _cachedTokenAt,
+      now,
+      clockSkewMs,
+    })) {
     return _cachedToken;
   }
   if (_tokenInflight) return _tokenInflight;
@@ -492,17 +671,109 @@ export async function getClerkToken(): Promise<string | null> {
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.
-      const token = (await session.getToken({ template: 'convex' }).catch(() => null))
-        ?? await session.getToken().catch(() => null);
+      const initial = await fetchClerkToken(session);
+      let token = initial.token;
+      const firstFetchedAt = Date.now();
+      let refreshUnavailable = false;
+      let nextClockState = _clerkClockState;
+      let tokenClaims = clerkTokenClaimsMs(token);
+      const tokenNeedsRefresh = token && !shouldReuseCachedClerkTokenWithExpiry({
+        token,
+        cachedAt: firstFetchedAt,
+        now: firstFetchedAt,
+        clockSkewMs: clockSkewMsForReuse(nextClockState),
+      }, tokenClaims.exp);
+      const shouldRetryCalibration = nextClockState.kind === 'retry-after'
+        && firstFetchedAt >= nextClockState.atMs;
+      const calibrationBackoffActive = nextClockState.kind === 'retry-after'
+        && !shouldRetryCalibration;
+      const shouldCalibrateClock = token !== null && tokenClaims.iat !== null
+        && (nextClockState.kind === 'uncalibrated'
+          || nextClockState.kind === 'opaque-ttl'
+          || shouldRetryCalibration);
+      if (shouldRetryCalibration && tokenClaims.iat === null) {
+        // Opaque/legacy tokens cannot provide a better clock sample.
+        nextClockState = { kind: 'uncalibrated' };
+      }
+      // A first token cannot establish clock offset safely: it may be an older
+      // stale-while-revalidate value whose age is indistinguishable from a fast
+      // client clock. Force one fresh token so its iat is an issuer-time sample.
+      if (token && ((tokenNeedsRefresh === true && !calibrationBackoffActive) || shouldCalibrateClock)) {
+        // Clerk may return a near-expiry cached token while refreshing it in the
+        // background. The initiating caller must not receive that stale token:
+        // force one server refresh, then accept only a token outside the margin.
+        const refreshed = await fetchClerkToken(session, true);
+        if (refreshed.token) {
+          // A successful fresh response is authoritative for both the token
+          // and the issuer/client clock relationship.
+          token = refreshed.token;
+          tokenClaims = clerkTokenClaimsMs(refreshed.token);
+          nextClockState = tokenClaims.iat === null
+            ? { kind: 'opaque-ttl' }
+            : { kind: 'trusted', skewMs: tokenClaims.iat - Date.now() };
+        } else {
+          // A failed forced refresh is distinct from a successful refresh that
+          // still returns a near-expiry token. Preserve #5933's bounded fallback
+          // when a trusted clock sample already exists; without one, returning
+          // the original JWT could admit a near-expiry token on a slow client.
+          refreshUnavailable = refreshed.unavailable;
+          if (shouldCalibrateClock) {
+            // Without a trusted sample, the local clock cannot safely decide
+            // whether a JWT is still inside the server-side expiry margin.
+            // Fail closed until a later bounded retry can calibrate it.
+            nextClockState = {
+              kind: 'retry-after',
+              atMs: Date.now() + CLOCK_CALIBRATION_RETRY_BACKOFF_MS,
+            };
+          }
+        }
+      }
+      if (nextClockState.kind === 'retry-after' && !shouldRetryCalibration
+        && tokenClaims.iat !== null) {
+        // A JWT remains unsafe to return while calibration is backed off.
+        token = null;
+      }
+      // Opaque/legacy tokens have no issuer clock to sample. Preserve the
+      // pre-existing flat-TTL behavior rather than adding an extra fetch that
+      // cannot improve the expiry decision.
+      if (token && nextClockState.kind === 'uncalibrated' && !shouldCalibrateClock
+        && tokenNeedsRefresh !== true) {
+        nextClockState = { kind: 'opaque-ttl' };
+      }
       // If the session generation advanced while getToken() was in
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
-      if (myGen !== _tokenGen) return null;
-      if (token) {
-        _cachedToken = token;
-        _cachedTokenAt = Date.now();
+      if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+      if (token === null && nextClockState.kind === 'retry-after') {
+        _cachedToken = null;
+        _cachedTokenAt = 0;
+        _cachedSession = null;
       }
-      return token;
+      _clerkClockState = nextClockState;
+      const fetchedAt = Date.now();
+      if (shouldReuseCachedClerkTokenWithExpiry({
+        token,
+        cachedAt: fetchedAt,
+        now: fetchedAt,
+        clockSkewMs: clockSkewMsForReuse(nextClockState),
+      }, tokenClaims.exp)) {
+        // Cache only after a trusted clock sample exists, or after the opaque
+        // token path has explicitly opted back into the legacy flat TTL.
+        if (canCacheClerkToken(nextClockState)) {
+          _cachedToken = token;
+          _cachedTokenAt = fetchedAt;
+          _cachedSession = session;
+        }
+        return token;
+      }
+      // Deliberately uncached: serving a near-expiry token for the full TTL is
+      // the stacked-cache defect this function was rewritten to fix, so the next
+      // caller must go back to Clerk once it is reachable again.
+      if (refreshUnavailable) {
+        const expiresAt = clerkTokenExpiresAtMs(token);
+        if (expiresAt === null || effectiveClerkNowMs(fetchedAt, nextClockState) < expiresAt) return token;
+      }
+      return null;
     } catch {
       return null;
     } finally {
@@ -515,6 +786,11 @@ export async function getClerkToken(): Promise<string | null> {
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
+  clerkInstance = instance;
+  clearClerkTokenCache();
 }
 
 
@@ -562,7 +838,77 @@ export function subscribeClerk(callback: () => void): () => void {
  * Mount Clerk's UserButton component into a DOM element.
  * Returns an unmount function.
  */
-export function mountUserButton(el: HTMLDivElement): () => void {
+export interface UserButtonMenuActions {
+  onBillingClick?: () => void;
+  onSettingsClick?: () => void;
+}
+
+type UserButtonProps = NonNullable<Parameters<ClerkInstance['mountUserButton']>[1]>;
+type CustomMenuItem = NonNullable<UserButtonProps['customMenuItems']>[number];
+type MenuIconKind = 'billing' | 'settings';
+
+function mountMenuIcon(el: HTMLDivElement, kind: MenuIconKind): void {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const paths = kind === 'billing'
+    ? [
+        'M3 6h18v12H3z',
+        'M3 10h18',
+        'M7 15h3',
+      ]
+    : [
+        'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+        'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z',
+      ];
+  for (const d of paths) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  }
+  el.replaceChildren(svg);
+}
+
+export function createAccountMenuItems(actions: UserButtonMenuActions): CustomMenuItem[] {
+  const items: CustomMenuItem[] = [];
+  if (actions.onBillingClick) {
+    items.push({
+      label: 'Plan & billing',
+      onClick: actions.onBillingClick,
+      mountIcon: (el) => mountMenuIcon(el, 'billing'),
+      unmountIcon: (el) => el?.replaceChildren(),
+    });
+  }
+  if (actions.onSettingsClick) {
+    items.push({
+      label: 'Settings',
+      onClick: actions.onSettingsClick,
+      mountIcon: (el) => mountMenuIcon(el, 'settings'),
+      unmountIcon: (el) => el?.replaceChildren(),
+    });
+  }
+  return items;
+}
+
+function getUserButtonProps(actions: UserButtonMenuActions): UserButtonProps {
+  return {
+    appearance: getAppearance(),
+    customMenuItems: createAccountMenuItems(actions),
+  };
+}
+
+export function mountUserButton(
+  el: HTMLDivElement,
+  actions: UserButtonMenuActions = {},
+): () => void {
   if (!clerkInstance) {
     // Deferred-load path: the avatar widget asked to mount before Clerk
     // finished its idle-callback load. Trigger an immediate load and
@@ -572,9 +918,7 @@ export function mountUserButton(el: HTMLDivElement): () => void {
     let realUnmount: (() => void) | null = null;
     void initClerk().then(() => {
       if (cancelled || !clerkInstance) return;
-      clerkInstance.mountUserButton(el, {
-        appearance: getAppearance(),
-      });
+      clerkInstance.mountUserButton(el, getUserButtonProps(actions));
       realUnmount = () => clerkInstance?.unmountUserButton(el);
     });
     return () => {
@@ -582,8 +926,6 @@ export function mountUserButton(el: HTMLDivElement): () => void {
       realUnmount?.();
     };
   }
-  clerkInstance.mountUserButton(el, {
-    appearance: getAppearance(),
-  });
+  clerkInstance.mountUserButton(el, getUserButtonProps(actions));
   return () => clerkInstance?.unmountUserButton(el);
 }

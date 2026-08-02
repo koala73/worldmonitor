@@ -26,6 +26,11 @@ describe('secondary dashboard startup', () => {
       'Umami must be injected by the deferred dashboard loader, not index.html',
     );
     assert.equal(
+      /<script\b[^>]+src=["']https:\/\/cdn\.debugbear\.com\/lpMwA9KpC6pf\.js["']/i.test(activeMarkup),
+      false,
+      'DebugBear RUM must be injected by the dashboard loader, not index.html',
+    );
+    assert.equal(
       /<link\b[^>]+rel=["']preconnect["'][^>]+href=["']https:\/\/o4509927897890816\.ingest\.us\.sentry\.io["']/i.test(activeMarkup),
       false,
       'Sentry ingest preconnect must not compete with initial dashboard paint',
@@ -51,6 +56,7 @@ describe('secondary dashboard startup', () => {
     const scriptSrc = dashboardCsp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.match(scriptSrc, /'strict-dynamic'/);
     assert.doesNotMatch(scriptSrc, /https:\/\/abacus\.worldmonitor\.app/);
+    assert.doesNotMatch(scriptSrc, /https:\/\/cdn\.debugbear\.com/);
     assert.doesNotMatch(scriptSrc, /https:\/\/static\.cloudflareinsights\.com/);
     assert.doesNotMatch(dashboardCsp, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
     assert.match(dashboardCsp, /font-src[^;]*'self'/);
@@ -153,6 +159,7 @@ describe('deferred Umami loader', () => {
       const analytics = await import('../src/services/analytics.ts');
       analytics.track('search-open', { source: 'desktop' });
       analytics.identifyUser('user_1', 'free', null, null);
+      analytics.identifyUser('user_1', 'pro', null, null);
       await analytics.initAnalytics();
 
       assert.equal(appendedScripts.length, 1);
@@ -180,7 +187,7 @@ describe('deferred Umami loader', () => {
 
       assert.deepEqual(calls, [
         { kind: 'track', name: 'search-open', data: { source: 'desktop' } },
-        { kind: 'identify', data: { userId: 'user_1', plan: 'free' } },
+        { kind: 'identify', data: { userId: 'user_1', plan: 'pro' } },
       ]);
     } finally {
       delete (globalThis as { window?: unknown }).window;

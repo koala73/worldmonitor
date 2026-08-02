@@ -1,0 +1,46 @@
+---
+title: "WSB 代码扫描器"
+description: "零售情绪扫描器面板，聚合 Reddit WSB 风格子版块中的股票代码提及数据，按提及次数、总评论分数与提及速度指标进行综合排名，帮助分析师捕捉迷因股与热门题材动向、识别新兴社交媒体热度、提前发现可能出现异常波动的散户重仓标的以及潜在的短线情绪转折点与逼空机会。"
+---
+
+**WSB Ticker Scanner** 面板（内部 id `wsb-ticker-scanner`）将 Reddit 零售投资者讨论转化为一个可排序的代码排名列表 — 包含提及次数、独立帖子数、总点赞分数、平均点赞比、代表性热门帖子和一个速度分数，旨在发现具有异常近期动量的代码。
+
+## 面板显示内容
+
+一个 `WsbTicker` 行列表，包含：
+
+- **代码**
+- **提及次数** — 跨跟踪子版块的总提及。
+- **独立帖子** — 提及该代码的不同帖子。
+- **总点赞分数** — 聚合帖子分数。
+- **平均点赞比** — 参与度质量代理。
+- **热门帖子** — 标题/URL/分数/子版块，链接回 Reddit。
+- **子版块** — 提及来自哪些社区。
+- **速度分数** — 通过 `velocityColor()` 按阈值着色：≥80 红色，≥50 橙色，≥25 黄色，更低绿色（`src/components/WsbTickerScannerPanel.ts:27-31`）。
+
+数字字段通过 `formatCompact()` 紧凑渲染（例如 `1.2K`、`3.4M`）。
+
+排序由用户通过 `SortField` 联合类型控制：`'mentionCount' | 'totalScore' | 'velocityScore'`。
+
+面板 id 为 `wsb-ticker-scanner`；规范组件为 `src/components/WsbTickerScannerPanel.ts`。标题从 i18n 解析（`panels.wsbTickerScanner`）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *wsb*、*retail sentiment* 或代码符号。
+- **按变体的可用性**：在 **full/geopolitical** 和 **finance** 变体中注册并默认启用 — 两者均锁定，`priority: 75`（在默认面板网格中显示位置低于 priority-1 面板）。在 tech、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts:91` 处 `FULL_PANELS` 中的 `'wsb-ticker-scanner'` 和 `FINANCE_PANELS` 中的等价条目。
+
+## 数据来源
+
+面板从 bootstrap 水合数据（`getHydratedData(...)`）读取，通过 `toApiUrl()` 解析 API URL。上游是一个 Reddit 爬取 cron，统计 WSB 系列子版块中的代码提及，将聚合排名写入 Redis。
+
+## 刷新频率
+
+聚合在计划 cron 上运行（面向市场时段）。面板从 bootstrap 水合中读取最新快照 — 无轮询。
+
+## 层级与门控
+
+**PRO（硬锁定）。** 变体注册中的 `premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`wsb-ticker-scanner` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。
+
+## API 参考
+
+- [Markets service](/api/MarketService.openapi.yaml) — Reddit/零售情绪 RPC 族（也包括 premium-stock-store 集成）。

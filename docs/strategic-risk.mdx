@@ -1,6 +1,6 @@
 ---
 title: "Strategic Risk"
-description: "Composite risk scoring that synthesizes all intelligence modules into a unified strategic assessment, including the Pentagon Pizza Index and server-side risk computation."
+description: "Composite strategic risk scoring that fuses every intelligence module — including the Pentagon Pizza Index — into a unified server-side assessment."
 ---
 The Strategic Risk system provides a composite dashboard for global risk triage. Its server-published headline score is a top-5 Country Instability Index (CII) roll-up, while the panel layers additional convergence, infrastructure, theater posture, breaking-news, sanctions, and radiation-watch context around that headline.
 
@@ -330,7 +330,7 @@ The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
 `/api/intelligence/v1/get-risk-scores` every 8 minutes, lets the RPC handler
 refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`
 for health monitoring when scores are returned. That seed-meta `recordCount`
-is realtime signal-density coverage, not raw feed availability: it counts the
+is real-time signal-density coverage, not raw feed availability: it counts the
 score-relevant Tier-1 conflict (ACLED or UCDP), news, and cyber signal families
-present in the CII refresh. Quiet-but-fresh realtime feeds can therefore produce
+present in the CII refresh. Quiet-but-fresh real-time feeds can therefore produce
 `COVERAGE_PARTIAL`; source-specific freshness remains the feed-heartbeat view.

@@ -61,3 +61,5 @@ Disallow: /
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml
 Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml
+# Mintlify owns the documentation index, including /docs/zh/ translations.
+Sitemap: https://www.worldmonitor.app/docs/sitemap.xml

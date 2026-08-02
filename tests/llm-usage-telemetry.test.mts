@@ -30,6 +30,7 @@ interface CapturedIngest {
 
 function installFetchMock(opts: {
   openrouterStatus?: number;
+  openrouterFinishReason?: string;
   captured: CapturedIngest;
 }) {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -54,7 +55,10 @@ function installFetchMock(opts: {
         return new Response('openrouter down', { status: opts.openrouterStatus });
       }
       return new Response(JSON.stringify({
-        choices: [{ message: { content: 'openrouter answer' } }],
+        choices: [{
+          message: { content: 'openrouter answer' },
+          ...(opts.openrouterFinishReason ? { finish_reason: opts.openrouterFinishReason } : {}),
+        }],
         model: 'deepseek/deepseek-v4-flash',
         usage: { prompt_tokens: 130, completion_tokens: 55, total_tokens: 185 },
       }), { status: 200 });
@@ -124,6 +128,28 @@ describe('llm usage telemetry', () => {
     assert.equal(ok.ok, true);
     assert.equal(ok.fallback_index, 1);
     assert.equal(ok.tokens_total, 160);
+  });
+
+  it('records an opted-in length rejection before the fallback success', async () => {
+    baseEnv();
+    const captured: CapturedIngest = { events: [] };
+    installFetchMock({ openrouterFinishReason: 'length', captured });
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'user prompt' }],
+      stage: 'brief-why-matters-test',
+      retryOnLengthLimit: true,
+    });
+
+    assert.equal(result?.content, 'groq answer');
+    assert.equal(captured.events.length, 2);
+    const [lengthReject, fallbackSuccess] = captured.events;
+    assert.equal(lengthReject.provider, 'openrouter');
+    assert.equal(lengthReject.ok, false);
+    assert.equal(lengthReject.reason, 'length');
+    assert.equal(lengthReject.tokens_completion, 55);
+    assert.equal(fallbackSuccess.provider, 'groq');
+    assert.equal(fallbackSuccess.ok, true);
   });
 
   it('emits nothing when USAGE_TELEMETRY is off', async () => {

@@ -1,0 +1,192 @@
+---
+title: "轨道监视"
+description: "WorldMonitor 轨道监视功能在交互式 3D 地球仪上实时追踪卫星轨道位置，采用 CelesTrak TLE 两行根数数据与 SGP4 轨道传播算法精确推算，支持按国家、用途与轨道类型筛选，覆盖侦察、通信、导航与气象卫星，并提供针脚抽屉查看轨道参数、过境时间与地面覆盖范围。"
+---
+
+## 概览
+
+轨道监视图层实时追踪约 80–120 颗与情报相关的卫星。卫星按其实际轨道高度渲染在地球仪上，带有国家编码颜色、轨道轨迹和地面覆盖投影。
+
+**仅限地球仪** — 轨道力学无法有意义地转换为平面地图投影。
+
+### 显示内容
+
+| 元素 | 说明 |
+|---------|-------------|
+| **卫星标记** | 实际轨道高度处的 4px 发光点（LEO 约 400km，SSO 约 600–900km） |
+| **国家颜色** | CN = 红色，RU = 橙色，US = 蓝色，EU = 绿色，KR = 紫色，OTHER = 灰色 |
+| **轨道轨迹** | 在轨道高度处渲染为虚线路径的 15 分钟历史迹线 |
+| **地面覆盖** | 投影在每个卫星下方地表的半透明圆（星下点） |
+| **工具提示** | 名称、国家、传感器类型（SAR Imaging / Optical Imaging / Military / SIGINT）、高度 |
+
+---
+
+## 架构
+
+### 数据流
+
+```
+CelesTrak (free) ──2h──▶ Railway relay ──Redis──▶ Vercel edge ──CDN 1h──▶ Browser
+                         (TLE parse,              (read-only,              (SGP4 propagation
+                          filter,                  10min cache)             every 3 seconds)
+                          classify)
+```
+
+### 成本模型
+
+| 组件 | 成本 | 说明 |
+|-----------|------|-------|
+| CelesTrak API | 免费 | 公开 NORAD TLE 数据，2h 更新周期 |
+| Railway relay | ~$0 | 播种循环在现有 `ais-relay.cjs` 进程内运行 |
+| Redis (Upstash) | 可忽略 | 单键，4h TTL，约 50KB 负载 |
+| Vercel edge | ~$0 | CDN 缓存 1h（`s-maxage=3600`），stale-while-revalidate 30min |
+| 浏览器 CPU | 客户端 | SGP4 计算每 3s 在本地运行 — 实时移动的服务器成本为零 |
+
+**关键洞察**：TLE 数据变化缓慢（每 2h），但卫星位置每秒变化。通过将 TLE 送达浏览器并在客户端进行 SGP4 传播，我们以零持续服务器成本获得了实时移动。
+
+---
+
+## 卫星选择
+
+抓取两组 CelesTrak 数据：`military`（约 21 颗卫星）和 `resource`（约 164 颗卫星）。经过去重和名称模式筛选后，保留约 80–120 颗与情报相关的卫星。
+
+### 筛选模式
+
+| 类别 | 模式 | 类型分类 |
+|----------|----------|---------------------|
+| **中国侦察** | YAOGAN, GAOFEN, JILIN | SAR (YAOGAN)，光学 |
+| **俄罗斯侦察** | COSMOS 24xx/25xx | 军事 |
+| **商业 SAR** | COSMO-SKYMED, TERRASAR, PAZ, SAR-LUPE, ICEYE | SAR |
+| **商业光学** | WORLDVIEW, SKYSAT, PLEIADES, KOMPSAT | 光学 |
+| **军事** | SAPPHIRE, PRAETORIAN | 军事 |
+| **欧盟/民用** | SENTINEL | SAR (Sentinel-1)，光学 (Sentinel-2) |
+
+### 国家分类
+
+卫星按运营国分类：CN、RU、US、EU、IN、KR、JP、IL 或 OTHER。分类基于名称（例如，YAOGAN → CN，COSMOS → RU，WORLDVIEW → US）。
+
+> **注意**：美国 KH-11 间谍卫星（USA-224/245/290/314/338）属于机密 — 不存在公开 TLE。所追踪的卫星是那些具有公开可用轨道根数的卫星。
+
+---
+
+## 技术细节
+
+### SGP4 传播
+
+浏览器使用 [`satellite.js`](https://github.com/shashwatak/satellite-js)（v6）进行 SGP4/SDP4 轨道传播：
+
+1. **`initSatRecs()`** — 将 TLE 解析为 `SatRec` 对象（开销大，缓存至 TLE 刷新）
+2. **`propagatePositions()`** — 对每颗卫星：`propagate()` → `eciToGeodetic()` → lat/lng/alt。同时计算 15 点轨迹（每分钟 1 点，回溯 15 分钟）
+3. **`startPropagationLoop()`** — 通过 `setInterval` 每 3 秒运行一次。LEO 卫星在 3 秒内移动约 23km，在地球仪上产生可见运动
+
+### 地球仪渲染
+
+| 属性 | 值 |
+|----------|-------|
+| `htmlAltitude` | `altitude_km / 6371`（地球半径 = 6371km，globe.gl 使用归一化单位） |
+| 标记大小 | 4px，带 6px 发光 |
+| 轨迹渲染 | `pathsData` 配合 `pathPointAlt` 形成 3D 轨道路径 |
+| 覆盖范围 | 地表级标记（`htmlAltitude = 0`），带 12px 半透明环 |
+
+### 生命周期
+
+| 事件 | 动作 |
+|-------|--------|
+| 图层启用 | `loadSatellites()` → 抓取 TLE → 初始化 satrecs → 启动 3s 传播循环 |
+| 图层禁用 | `stopSatellitePropagation()` → 清除 interval |
+| 地球仪 → 平面地图 | 传播停止（仅地球仪图层） |
+| 页面加载（冷启动） | 如果 `satellites` 已启用且为地球仪模式：与其他情报信号一起加载 |
+| 页面卸载 | 在 `destroy()` 中清理 |
+
+### 断路器
+
+客户端抓取使用断路器：连续 3 次失败触发 10 分钟冷却。冷却期间继续使用缓存数据。
+
+---
+
+## Redis 键
+
+| 键 | TTL | 写入方 | 形状 |
+|-----|-----|--------|-------|
+| `intelligence:satellites:tle:v1` | 4h | Railway relay（2h 周期） | `{ satellites: SatelliteTLE[], fetchedAt: number }` |
+| `seed-meta:intelligence:satellites` | 7d | Railway relay | `{ fetchedAt: number, recordCount: number }` |
+
+### 健康监控
+
+- `api/health.js` 将 `intelligence:satellites:tle:v1` 作为独立键检查
+- 播种元数据以 `maxStaleMin: 180` 检查（3h — 可承受 1 次错过的周期）
+
+### 后端端点
+
+| 访问面 | 端点 | 备注 |
+|---|---|---|
+| 卫星 TLE 镜像 | `GET /api/intelligence/v1/list-satellites` | 生成的 IntelligenceService RPC，读取 `intelligence:satellites:tle:v1`；当前渲染器仍使用下方列出的遗留 `api/satellites.js` 路径。 |
+| SAR / 光学场景搜索 | `GET /api/imagery/v1/search-imagery` | 按 `bbox`、`datetime`、`source` 和 `limit` 的 STAC 后端 Sentinel 搜索，按吸附后的查询缓存。 |
+
+---
+
+## 文件
+
+| 文件 | 用途 |
+|------|---------|
+| `scripts/ais-relay.cjs` | `seedSatelliteTLEs()` + `startSatelliteSeedLoop()` |
+| `api/satellites.js` | Vercel edge 处理器（Redis 读取，CDN 缓存） |
+| `src/services/satellites.ts` | 前端服务：抓取、解析、传播、循环 |
+| `src/components/GlobeMap.ts` | 标记渲染、轨迹、覆盖、工具提示 |
+| `src/components/MapContainer.ts` | 带缓存和重水合的适配器 |
+| `src/app/data-loader.ts` | 生命周期：加载、循环、停止、清理 |
+| `src/config/map-layer-definitions.ts` | 图层注册表条目（仅地球仪） |
+
+---
+
+## 分层可用性
+
+| 功能 | Free | Pro | Enterprise |
+|---------|------|-----|------------|
+| 地球仪上的实时卫星位置 | 是 | 是 | 是 |
+| 轨道轨迹（15 分钟迹线） | 是 | 是 | 是 |
+| 地面覆盖标记 | 是 | 是 | 是 |
+| 过顶预测 | — | 计划中 | 计划中 |
+| 重访频率分析 | — | 计划中 | 计划中 |
+| 成像窗口告警 | — | 计划中 | 计划中 |
+| 跨图层关联（卫星 + GPS 干扰，卫星 + 冲突） | — | 计划中 | 计划中 |
+| 卫星情报摘要面板 | — | 计划中 | 计划中 |
+| 传感器幅宽 / FOV 可视化 | — | 计划中 | — |
+| 历史过顶日志（24h） | — | 计划中 | 计划中（30 天归档） |
+| 实际卫星图像（SAR/光学） | — | — | 是 |
+
+---
+
+## 路线图（第 2 阶段）
+
+### 过顶预测
+
+计算用户所选位置（热点、冲突区、基地）的下次过顶时间。示例：_"GAOFEN-12 将在 14 分钟后过顶塔尔图斯。"_
+
+### 重访时间分析
+
+计算某位置被敌方或友方卫星观测的频率。适用于作战安全和情报缺口分析。
+
+### 成像窗口告警
+
+当 SAR 或光学卫星过顶用户关注区域时推送通知。与 Pro 投递渠道（Slack、Telegram、WhatsApp、Email）集成。
+
+### 传感器幅宽可视化
+
+基于卫星传感器规格和轨道高度，用实际视场锥替换星下点覆盖。
+
+### 跨图层关联
+
+通过将卫星位置与其他图层结合，检测与情报相关的模式：
+
+- **卫星 + GPS 干扰区** → 电子战背景
+- **卫星 + 冲突区** → 战场 ISR 探测
+- **卫星 + AIS 缺口** → 海上侦察指示
+
+### 卫星情报摘要面板
+
+专用 Pro 面板，包含所追踪卫星的表格：运营方、传感器能力、轨道类型、当前位置以及下次过顶用户定义关注点的时间。
+
+### 历史过顶日志
+
+过去 24h（Pro）或 30 天（Enterprise）内过顶给定位置的卫星。适用于事后分析：_"事件发生时有哪些成像资产过顶？"_

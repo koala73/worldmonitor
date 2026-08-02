@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 loadEnvFile(import.meta.url);
@@ -134,7 +135,7 @@ function validate(data) {
 
 // isMain guard — required for scripts that export AND call runSeed at top level.
 // Prevents runSeed() from firing when this module is imported in tests or CI.
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   runSeed('economic', 'fsi-eu', FSI_EU_KEY, fetchEcbCiss, {
     validateFn: validate,

@@ -1,0 +1,5 @@
+{
+  "rates": [
+    { "countryCode": "CN", "country": "China", "rate": 3.0, "previousRate": 3.1, "date": "2026-06-01" }
+  ]
+}

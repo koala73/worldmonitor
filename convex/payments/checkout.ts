@@ -16,6 +16,11 @@ import { checkout } from "../lib/dodo";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import { ANON_ID_V4_REGEX, signAnonClaimToken, signUserId } from "../lib/identitySigning";
 import { resolveProductToPlan } from "../config/productCatalog";
+import {
+  CHECKOUT_RATE_LIMITED,
+  checkoutRateLimitedOutcomeFromError,
+  isCheckoutRateLimitedOutcome,
+} from "./checkoutRateLimit";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
@@ -242,6 +247,13 @@ async function _createCheckoutSession(
       : result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const rateLimited = checkoutRateLimitedOutcomeFromError(err);
+    if (rateLimited) {
+      console.warn(
+        `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId}; retry after ${rateLimited.retryAfterSeconds}s`,
+      );
+      return rateLimited;
+    }
     console.error(
       `[checkout] createCheckout failed for user=${user.userId} product=${args.productId}: ${msg}`,
     );
@@ -294,11 +306,22 @@ export const createCheckout = action({
         identity.name
       : undefined;
 
-    return _createCheckoutSession(ctx, args, {
+    const result = await _createCheckoutSession(ctx, args, {
       userId,
       email: identity?.email,
       name: customerName,
     });
+    // The public Convex action historically rejects provider failures. Keep
+    // that error-channel contract: only the trusted internal relay consumes
+    // the typed outcome and translates it into HTTP 429 + Retry-After.
+    if (isCheckoutRateLimitedOutcome(result)) {
+      throw new ConvexError({
+        code: CHECKOUT_RATE_LIMITED,
+        message: "Checkout is temporarily rate limited. Retry shortly.",
+        retryAfterSeconds: result.retryAfterSeconds,
+      });
+    }
+    return result;
   },
 });
 

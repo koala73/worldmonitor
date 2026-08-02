@@ -1,6 +1,6 @@
 /**
  * ListNaturalEvents RPC -- reads seeded natural disaster data from Railway seed cache.
- * All external EONET/GDACS/NHC API calls happen in seed-natural-events.mjs on Railway.
+ * All external EONET/GDACS/NHC/HKO API calls happen in seed-natural-events.mjs on Railway.
  */
 
 import type {

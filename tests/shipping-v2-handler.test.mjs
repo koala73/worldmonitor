@@ -19,6 +19,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.shippingV2.resolveWebhookHostnameForTest');
 
 function makeCtx(headers = {}) {
   const req = new Request('https://worldmonitor.app/api/v2/shipping/route-intelligence', {
@@ -52,6 +53,7 @@ describe('ShippingV2Service handlers', () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'pro-test-key';
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    Reflect.set(globalThis, TEST_RESOLVER_KEY, async () => ['93.184.216.34']);
 
     const riMod = await import('../server/worldmonitor/shipping/v2/route-intelligence.ts');
     const rwMod = await import('../server/worldmonitor/shipping/v2/register-webhook.ts');
@@ -70,6 +72,7 @@ describe('ShippingV2Service handlers', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    Reflect.deleteProperty(globalThis, TEST_RESOLVER_KEY);
     Object.keys(process.env).forEach((k) => {
       if (!(k in originalEnv)) delete process.env[k];
     });
@@ -203,7 +206,7 @@ describe('ShippingV2Service handlers', () => {
       // webhooks. Must fire before any premium check.
       await assert.rejects(
         () => registerWebhook(makeCtx(), {
-          callbackUrl: 'https://hooks.example.com/wm',
+          callbackUrl: 'https://93.184.216.34/wm',
           chokepointIds: [],
           alertThreshold: 50,
         }),
@@ -250,7 +253,7 @@ describe('ShippingV2Service handlers', () => {
     it('rejects unknown chokepointIds', async () => {
       await assert.rejects(
         () => registerWebhook(proCtx(), {
-          callbackUrl: 'https://hooks.example.com/wm',
+          callbackUrl: 'https://93.184.216.34/wm',
           chokepointIds: ['not_a_real_chokepoint'],
           alertThreshold: 50,
         }),
@@ -265,7 +268,7 @@ describe('ShippingV2Service handlers', () => {
     it('rejects alertThreshold > 100 with ValidationError', async () => {
       await assert.rejects(
         () => registerWebhook(proCtx(), {
-          callbackUrl: 'https://hooks.example.com/wm',
+          callbackUrl: 'https://93.184.216.34/wm',
           chokepointIds: [],
           alertThreshold: 9999,
         }),
@@ -276,7 +279,7 @@ describe('ShippingV2Service handlers', () => {
     it('rejects alertThreshold < 0 with ValidationError', async () => {
       await assert.rejects(
         () => registerWebhook(proCtx(), {
-          callbackUrl: 'https://hooks.example.com/wm',
+          callbackUrl: 'https://93.184.216.34/wm',
           chokepointIds: [],
           alertThreshold: -1,
         }),
@@ -287,7 +290,7 @@ describe('ShippingV2Service handlers', () => {
     it('happy path returns wh_-prefixed subscriberId and 64-char hex secret; issues SET + SADD + EXPIRE pipeline with 30-day TTL', async () => {
       const calls = stubRedisOk();
       const res = await registerWebhook(proCtx(), {
-        callbackUrl: 'https://hooks.example.com/wm',
+        callbackUrl: 'https://93.184.216.34/wm',
         chokepointIds: [],
         alertThreshold: 60,
       });
@@ -315,7 +318,7 @@ describe('ShippingV2Service handlers', () => {
     it('alertThreshold omitted (undefined) applies the legacy default of 50', async () => {
       const calls = stubRedisOk();
       await registerWebhook(proCtx(), {
-        callbackUrl: 'https://hooks.example.com/wm',
+        callbackUrl: 'https://93.184.216.34/wm',
         chokepointIds: [],
         // alertThreshold omitted — proto3 `optional int32` arrives as undefined
       });
@@ -330,7 +333,7 @@ describe('ShippingV2Service handlers', () => {
       // intent to receive every disruption.
       const calls = stubRedisOk();
       await registerWebhook(proCtx(), {
-        callbackUrl: 'https://hooks.example.com/wm',
+        callbackUrl: 'https://93.184.216.34/wm',
         chokepointIds: [],
         alertThreshold: 0,
       });
@@ -341,7 +344,7 @@ describe('ShippingV2Service handlers', () => {
     it('empty chokepointIds subscribes to the full CHOKEPOINT_REGISTRY', async () => {
       const calls = stubRedisOk();
       await registerWebhook(proCtx(), {
-        callbackUrl: 'https://hooks.example.com/wm',
+        callbackUrl: 'https://93.184.216.34/wm',
         chokepointIds: [],
         alertThreshold: 50,
       });
@@ -525,6 +528,25 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(seen.headers['x-wm-event'], 'chokepoint.disruption');
       assert.match(seen.headers['x-wm-signature'], /^sha256=[0-9a-f]{64}$/);
       assert.equal(seen.body, JSON.stringify(payload));
+    });
+  });
+
+  describe('registerWebhook DNS validation', () => {
+    it('rejects private DNS answers before registration persists a callback URL', async () => {
+      await assert.rejects(
+        () => webhookShared.assertCallbackUrlRegistrationSafe(
+          'https://hooks.example.com/wm',
+          async () => ['93.184.216.34', '169.254.169.254'],
+        ),
+        /private\/reserved/,
+      );
+    });
+
+    it('accepts a public IP literal without performing a DNS lookup', async () => {
+      await assert.doesNotReject(() => webhookShared.assertCallbackUrlRegistrationSafe(
+        'https://93.184.216.34/wm',
+        async () => { throw new Error('public IP literals must not require DNS'); },
+      ));
     });
   });
 });

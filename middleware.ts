@@ -74,7 +74,7 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
   tech: {
     name: 'Tech Monitor',
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
-    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
+    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and technology events worldwide with live context.',
     image: 'https://tech.worldmonitor.app/favico/tech/og-image.png',
     url: 'https://tech.worldmonitor.app/dashboard',
   },
@@ -88,14 +88,14 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
   commodity: {
     name: 'Commodity Monitor',
     title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
-    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
+    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global trade flows with live context.',
     image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
     url: 'https://commodity.worldmonitor.app/dashboard',
   },
   happy: {
     name: 'Happy Monitor',
     title: 'Happy Monitor - Good News & Global Progress',
-    description: 'Curated positive news, progress data, and uplifting stories from around the world.',
+    description: 'Curated positive news, global progress data, science breakthroughs, conservation wins, and uplifting stories from around the world with daily highlights.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
     url: 'https://happy.worldmonitor.app/dashboard',
   },
@@ -124,6 +124,18 @@ function isAllowedHost(host: string): boolean {
 
 function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
+}
+
+function clientAcceptsSse(request: Request): boolean {
+  const accept = request.headers.get('accept') ?? '';
+  return accept.split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/event-stream') return false;
+    const qParam = params.find((part) => part.startsWith('q='));
+    if (!qParam) return true;
+    const q = Number(qParam.slice(2));
+    return Number.isFinite(q) && q > 0;
+  });
 }
 
 // HTML-escape a string for safe interpolation into BOTH text content and
@@ -233,6 +245,38 @@ export default function middleware(request: Request) {
     }
   }
 
+  // Variant subdomain MCP discovery canonicalization. The MCP endpoint's
+  // canonical URL is apex (`https://worldmonitor.app/mcp`), and the Cloudflare
+  // apex→www redirect explicitly exempts `/mcp` so POST JSON-RPC calls aren't
+  // converted to GET. Variant subdomains would otherwise serve the same `/mcp`
+  // content as the apex, fragmenting discovery signals; redirect plain GET/HEAD
+  // requests to the apex canonical. GETs that carry MCP transport headers
+  // (`Last-Event-ID` or `Accept: text/event-stream`) are NOT redirected — they
+  // are protocol operations (SSE stream open or replay) and must reach the same
+  // host/instance that handled the POST handshake. POST/OPTIONS/etc. are also
+  // NOT redirected; they continue to the `/api/mcp` rewrite unchanged.
+  if (
+    path === '/mcp' &&
+    (request.method === 'GET' || request.method === 'HEAD') &&
+    VARIANT_HOST_MAP[host] &&
+    !request.headers.get('last-event-id') &&
+    !clientAcceptsSse(request)
+  ) {
+    // Built by hand rather than via Response.redirect() so the response can
+    // carry Vary. This redirect is decided by Accept and Last-Event-ID, and a
+    // 308 is cacheable by default (RFC 9110 §15.4.9) — without Vary a shared
+    // cache could store it and replay it to the SSE stream-open GET that must
+    // reach this host's transport instead.
+    return new Response(null, {
+      status: 308,
+      headers: {
+        Location: 'https://worldmonitor.app/mcp',
+        Vary: 'Accept, Last-Event-ID',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
+  }
+
   // Only apply bot filtering to /api/* paths.
   //
   // /favico/* is deliberately NOT gated: it serves public static brand
@@ -284,11 +328,11 @@ export default function middleware(request: Request) {
   // Authenticated Pro API clients bypass UA filtering. This is a cheap
   // edge heuristic, not auth — real validation (SHA-256 hash vs Convex
   // userApiKeys + entitlement) happens in server/gateway.ts. To keep the
-  // bot-UA shield meaningful, require the exact key shape emitted by
-  // src/services/api-keys.ts:generateKey: `wm_` + 40 lowercase hex chars.
-  // A random scraper would have to guess a specific 43-char format, and
-  // spoofed-but-well-shaped keys still 401 at the gateway.
-  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40}$/;
+  // bot-UA shield meaningful, require the `wm_` prefix plus 40–64 lowercase
+  // hex chars. User keys are 40 hex chars; enterprise keys may be longer.
+  // A random scraper would still have to guess this format, and spoofed-but-
+  // well-shaped keys still 401 at the gateway.
+  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40,64}$/;
   const apiKey =
     request.headers.get('x-worldmonitor-key') ??
     request.headers.get('x-api-key') ??
@@ -315,5 +359,5 @@ export default function middleware(request: Request) {
 }
 
 export const config = {
-  matcher: ['/', '/api/:path*'],
+  matcher: ['/', '/mcp', '/api/:path*'],
 };

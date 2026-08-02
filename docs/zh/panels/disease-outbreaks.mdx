@@ -1,0 +1,48 @@
+---
+title: "疾病爆发"
+description: "疾病爆发面板实时聚合全球活跃传染病警报，来源包括世卫组织 WHO DON 疫情通报、美国 CDC HAN 健康警报网、Outbreak News Today 与 ThinkGlobalHealth 依托 ProMED 的疫情追踪器，按严重性排序并支持全文搜索，为公共卫生监测、旅行安全与生物安全风险预警提供统一视图。"
+---
+
+**Disease Outbreaks** 面板展示全球活跃的爆发警报 — 确诊病例、受影响地区、病例数和每事件的威胁级别。它是仪表盘的公共卫生信号层。
+
+## 面板显示内容
+
+一个按严重性排名的活跃爆发事件列表。每行显示疾病、受影响国家/地区、警报级别、病例数（如有报告）和相对时间戳。列表按严重性（警报优先）然后按时间排序。
+
+- 顶部的**警报级别标签**可按严重性筛选：`ALERT`（红色）、`WARNING`（橙色）、`WATCH`（黄色）。点击标签切换筛选；再次点击清除。
+- **搜索** — 对国家/地区/疾病的自由文本匹配。小写子串匹配。
+- **行内来源链接** — 每行将上游来源名称渲染为内联链接（消毒后的 URL，`target="_blank"`）。点击来源名称链接打开上游公告。行本身没有点击处理 — 只有内联链接是活动的。
+
+面板 id 为 `disease-outbreaks`；规范组件为 `src/components/DiseaseOutbreaksPanel.ts`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *disease* 或 *outbreak*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中的 `FULL_PANELS`。
+
+## 数据来源
+
+单个 RPC 支持该面板：
+
+- `GET /api/health/v1/list-disease-outbreaks`
+
+种子器（`scripts/seed-disease-outbreaks.mjs`）扇出到：
+
+- **WHO Disease Outbreak News** — 官方 WHO DON JSON API。全球重大爆发的主要来源。
+- **CDC Health Alert Network (HAN)** — 以美国为中心的源，补充 WHO 的北美事件。
+- **Outbreak News Today** — 第三方聚合器，整合 WHO、CDC 和区域卫生部的警报。
+- **ThinkGlobalHealth disease tracker** — 包含约 1,600+ ProMED 来源实时警报的开源包，附经纬度（保持 90 天回溯，使地图不被旧事件淹没）。
+
+注意：面板内的信息工具提示为简洁起见将其概括为 "WHO、ProMED 和卫生部"。以上是种子器中实现的完整上游列表。结果被标准化、去重，并写入 Redis 中的 `health:disease-outbreaks:v1`，TTL 为 72 小时（每日 cron 间隔的 3 倍）。
+
+## 刷新频率
+
+种子器以**每日**频率运行。该键在 `api/health.js` 中允许最多 48 小时（`maxStaleMin: 2880`）后健康面才会升级 — 标称间隔的 2 倍 — 以吸收上游瞬态不稳定而不触发误报告警。
+
+## 层级与门控
+
+Disease Outbreaks 是**免费的**。`src/config/panels.ts` 中无 `premium` 标志；RPC 是公开的。
+
+## API 参考
+
+- [Health service](/api/HealthService.openapi.yaml) — 涵盖 `list-disease-outbreaks` 和 `list-air-quality-alerts`。

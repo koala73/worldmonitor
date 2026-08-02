@@ -71,6 +71,21 @@ export function rankLongTasks(entries) {
     .sort((a, b) => b.tbtMs - a.tbtMs || b.totalMs - a.totalMs);
 }
 
+function summarizeLongTaskWindows(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => (Number(entry?.duration) || 0) > TBT_THRESHOLD_MS)
+    .map((entry) => {
+      const startTime = Number(entry?.startTime) || 0;
+      const duration = Number(entry?.duration) || 0;
+      return {
+        source: longTaskSource(entry),
+        startTime: round(startTime),
+        duration: round(duration),
+        endTime: round(startTime + duration),
+      };
+    });
+}
+
 /** Headline long-task summary: counts, total ms, TBT ms, and the per-source ranking. */
 export function summarizeLongTasks(entries) {
   const list = Array.isArray(entries) ? entries : [];
@@ -83,6 +98,7 @@ export function summarizeLongTasks(entries) {
     totalMs: round(totalMs),
     tbtMs: round(tbtMs),
     ranked: rankLongTasks(list),
+    windows: summarizeLongTaskWindows(list),
   };
 }
 
@@ -96,6 +112,14 @@ function summarizeLcpResources(resources) {
     count: Number(resource?.count) || 0,
     encodedBodySize: round(resource?.encodedBodySize),
     transferSize: round(resource?.transferSize),
+  }));
+}
+
+function summarizeLcpMarks(marks) {
+  return (Array.isArray(marks) ? marks : []).map((mark) => ({
+    name: String(mark?.name || ''),
+    startTime: round(mark?.startTime),
+    ...(mark?.detail ? { detail: mark.detail } : {}),
   }));
 }
 
@@ -114,6 +138,7 @@ export function summarizeLcpDebug(snapshot) {
     } : null,
     context: snapshot?.context ?? latest?.context ?? null,
     entryCount: entries.length,
+    marks: summarizeLcpMarks(snapshot?.marks),
     resources: summarizeLcpResources(latest?.resources ?? snapshot?.resources),
   };
 }

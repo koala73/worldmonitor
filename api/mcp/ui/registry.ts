@@ -25,6 +25,11 @@ import { COUNTRY_RISK_APP_HTML } from './country-risk-app';
 import { MARKET_RADAR_APP_HTML } from './market-radar-app';
 import { buildUiMeta, UI_RESOURCE_MIME_TYPE as SHELL_UI_MIME_TYPE, type UiResourceMeta } from './shell';
 import { WORLD_BRIEF_APP_HTML } from './world-brief-app';
+import { NEWS_INTELLIGENCE_APP_HTML } from './news-intelligence-app';
+import { CONFLICT_EVENTS_APP_HTML } from './conflict-events-app';
+import { NATURAL_DISASTERS_APP_HTML } from './natural-disasters-app';
+import { PREDICTION_MARKETS_APP_HTML } from './prediction-markets-app';
+import { FORECASTS_APP_HTML } from './forecasts-app';
 
 // Re-exported from the shared shell so the mimeType has a single source of
 // truth across the fleet (the first widget defined it here in v1.11.0).
@@ -38,6 +43,11 @@ export const WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief.html';
 export const COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief.html';
 export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar.html';
 export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
+export const NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence.html';
+export const CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events.html';
+export const NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters.html';
+export const PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets.html';
+export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts.html';
 
 // Per-resource `_meta.ui` (ext-apps `UIResourceMeta`) is built by the shared
 // `buildUiMeta()` in ./shell — SINGLE source of truth for the fleet's CSP /
@@ -106,6 +116,51 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: CHOKEPOINT_MONITOR_APP_HTML,
+  },
+  {
+    uri: NEWS_INTELLIGENCE_UI_URI,
+    name: 'News Intelligence (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_news_intelligence: renders AI-classified top stories (title, category, alert flag, country, source) from WorldMonitor\'s intelligence layer. Linked from the get_news_intelligence tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: NEWS_INTELLIGENCE_APP_HTML,
+  },
+  {
+    uri: CONFLICT_EVENTS_UI_URI,
+    name: 'Conflict Events (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_conflict_events: renders active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. Linked from the get_conflict_events tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: CONFLICT_EVENTS_APP_HTML,
+  },
+  {
+    uri: NATURAL_DISASTERS_UI_URI,
+    name: 'Natural Disasters (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_natural_disasters: groups recent earthquakes (USGS magnitude, place, time) and active wildfires (NASA FIRMS). Linked from the get_natural_disasters tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: NATURAL_DISASTERS_APP_HTML,
+  },
+  {
+    uri: PREDICTION_MARKETS_UI_URI,
+    name: 'Prediction Markets (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_prediction_markets: renders active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Linked from the get_prediction_markets tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: PREDICTION_MARKETS_APP_HTML,
+  },
+  {
+    uri: FORECASTS_UI_URI,
+    name: 'Forecasts (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor\'s AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: FORECASTS_APP_HTML,
   },
 ];
 

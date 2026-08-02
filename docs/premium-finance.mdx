@@ -1,6 +1,6 @@
 ---
 title: "Premium Finance"
-description: "Premium finance is the finance-variant layer providing stock-analysis capabilities within World Monitor, originally inspired by a standalone daily_stock_analysis project but now fully integrated."
+description: "The finance-variant layer that adds stock-analysis capabilities to World Monitor — tickers, targets, backtests, and analyst signals in one panel."
 ---
 Premium finance is the finance-variant layer providing stock-analysis capabilities within World Monitor. These features were originally inspired by a standalone `daily_stock_analysis` project but are now fully integrated into the World Monitor codebase.
 
@@ -94,7 +94,8 @@ It computes:
 - MACD state
 - RSI state
 - bullish and risk factors
-- composite signal and signal score
+- technical-only `signal` / `signalScore` pair
+- fundamentals-blended `ratingSignal` / `compositeScore` pair
 - AI overlay using the shared LLM chain when configured
 
 Each stored analysis record includes stable replay fields so the record can be reused later:
@@ -102,12 +103,17 @@ Each stored analysis record includes stable replay fields so the record can be r
 - `analysisId`
 - `analysisAt`
 - `signal`
+- `ratingSignal`
+- `signalScore`
+- `compositeScore`
 - `currentPrice`
 - `stopLoss`
 - `takeProfit`
 - `engineVersion`
 
-Those fields matter because backtesting now validates stored analysis records rather than re-deriving a different strategy view later.
+The two signal pairs are intentionally separate: existing clients continue to
+receive a consistent technical signal and score, while updated clients surface
+the fundamentals-blended rating.
 
 ---
 
@@ -144,16 +150,22 @@ It is **not** a relational finance ledger yet. Long-lived querying, rich paginat
 
 ## Backtesting
 
-Backtesting in World Monitor is intentionally tied to stored analysis records, not just a raw signal replay.
+Backtesting currently validates the technical signal model only. Yahoo's daily
+price history does not provide point-in-time fundamentals, so the backtest must
+not be interpreted as a historical replay of the live fundamentals-blended
+rating. Responses expose `ratingBasis: "technical_only"` and use a distinct
+technical-only engine version.
 
 Current flow:
 
-1. Build or refresh a historical stored analysis ledger from Yahoo daily bars.
+1. Build or refresh a historical technical-signal ledger from Yahoo daily bars.
 2. Persist those records with stable IDs and timestamps.
-3. Evaluate forward performance from each stored record's saved signal and target levels.
+3. Evaluate forward performance from each technical-only record's saved signal and target levels.
 4. Store the resulting backtest summary in Redis for shared reuse.
 
-This makes the feature closer to "validate prior premium analyses" than "rerun whatever the latest strategy code happens to do."
+This validates the deterministic technical model against later price action. It
+does not claim to validate the live composite rating until a trustworthy
+point-in-time fundamentals dataset is available.
 
 ---
 

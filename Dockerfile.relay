@@ -27,11 +27,19 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+# Authenticated Yahoo sector valuation client required at relay startup.
+COPY scripts/_yahoo-sector-valuations.cjs ./scripts/_yahoo-sector-valuations.cjs
 COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 # llm-telemetry.cjs is transitively imported by _seed-utils.mjs (SIGTERM
 # telemetry flush, #4954) — missing it = silent startup crash in the image.
 COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
+# country-names.json backs the full name→ISO2 map (#5359 uniform country
+# scoping); required by country-name-to-iso2.cjs at startup.
+COPY scripts/shared/country-names.json ./scripts/shared/country-names.json
+# iso2-to-region.json backs regional_* country-scope matching in
+# notification-relay.cjs (#5359).
+COPY scripts/shared/iso2-to-region.json ./scripts/shared/iso2-to-region.json
 # notification-dedup.cjs is required by ais-relay.cjs and notification-relay.cjs
 # (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
 # relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
@@ -39,9 +47,16 @@ COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.c
 # market-hours.cjs gates the equity portion of the relay market seed loop on
 # the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
 COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
+# market-quote-refresh.cjs prevents partial upstream success from shrinking the
+# bootstrap basket and bounds Yahoo fallback cadence.
+COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refresh.cjs
 # closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
 # logic importable/testable for ais-relay.cjs. Missing it = startup crash.
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
+# ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
+# scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
+# startup (the require is top-level in the UCDP section).
+COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
@@ -52,8 +67,14 @@ COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # guards this COPY list against future regressions.
 COPY scripts/_seed-envelope-source.mjs ./scripts/_seed-envelope-source.mjs
 COPY scripts/_seed-contract.mjs ./scripts/_seed-contract.mjs
+# ais-relay dynamically imports this helper to write the China country index
+# companion cache from a one-month Yahoo chart.
+COPY scripts/_country-stock-index.mjs ./scripts/_country-stock-index.mjs
 COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
 COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
+# Shared single-pass entity decoder imported by seed-climate-news.mjs (and the
+# other seeders migrated in #5436). Same ERR_MODULE_NOT_FOUND risk as above.
+COPY scripts/_html-entities.mjs ./scripts/_html-entities.mjs
 COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
 COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
 COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs

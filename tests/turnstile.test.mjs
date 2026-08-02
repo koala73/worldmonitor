@@ -20,12 +20,38 @@ test.afterEach(() => {
   restoreEnv();
 });
 
-test('getClientIp prefers cf-connecting-ip, then x-real-ip', () => {
+test('getClientIp ignores an unproven cf-connecting-ip and falls back to x-real-ip (#5235)', () => {
+  process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
   const request = new Request('https://worldmonitor.app/api/test', {
     headers: {
       'x-forwarded-for': '198.51.100.8, 203.0.113.10',
       'cf-connecting-ip': '203.0.113.7',
       'x-real-ip': '192.0.2.5',
+    },
+  });
+
+  assert.equal(getClientIp(request), '192.0.2.5');
+});
+
+test('getClientIp ignores cf-connecting-ip when the Cloudflare proof secret is unset (#5235)', () => {
+  delete process.env.CF_EDGE_PROOF_SECRET;
+  const request = new Request('https://worldmonitor.app/api/test', {
+    headers: {
+      'cf-connecting-ip': '203.0.113.7',
+      'x-real-ip': '192.0.2.5',
+    },
+  });
+
+  assert.equal(getClientIp(request), '192.0.2.5');
+});
+
+test('getClientIp trusts cf-connecting-ip when Cloudflare transit is proven (#5235)', () => {
+  process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+  const request = new Request('https://worldmonitor.app/api/test', {
+    headers: {
+      'cf-connecting-ip': '203.0.113.7',
+      'x-real-ip': '192.0.2.5',
+      'x-wm-edge-proof': 'edge-secret-xyz',
     },
   });
 

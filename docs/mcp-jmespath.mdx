@@ -1,6 +1,6 @@
 ---
 title: "JMESPath Projection Guide"
-description: "Cut MCP response payloads by 80-95% with JMESPath. Twelve worked examples against real WorldMonitor response shapes."
+description: "Cut MCP response payloads by 80-95% using JMESPath projections — twelve worked examples against real World Monitor response shapes."
 ---
 
 Every WorldMonitor MCP tool accepts an optional `jmespath` string argument. The server applies the expression **after** any per-tool filter and `summary` args, then projects the response before serialisation. A well-chosen projection typically cuts payload size by **80–95%** — the single most effective lever you have for keeping a long agent loop inside its context window.

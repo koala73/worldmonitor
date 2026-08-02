@@ -41,6 +41,32 @@ function withSettleTimeout(promise, ms, label) {
   return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
 }
 
+const R2_STORAGE_PROFILES = Object.freeze({
+  default: Object.freeze({
+    accountId: ['CLOUDFLARE_R2_ACCOUNT_ID'],
+    endpoint: ['CLOUDFLARE_R2_ENDPOINT'],
+    accessKeyId: ['CLOUDFLARE_R2_ACCESS_KEY_ID'],
+    secretAccessKey: ['CLOUDFLARE_R2_SECRET_ACCESS_KEY'],
+    apiToken: ['CLOUDFLARE_R2_TOKEN', 'CLOUDFLARE_API_TOKEN'],
+    apiBaseUrl: ['CLOUDFLARE_API_BASE_URL'],
+    region: ['CLOUDFLARE_R2_REGION'],
+    forcePathStyle: ['CLOUDFLARE_R2_FORCE_PATH_STYLE'],
+    defaultPrefix: 'seed-data/forecast-traces',
+  }),
+  bootstrap: Object.freeze({
+    accountId: ['R2_ACCOUNT_ID'],
+    endpoint: ['R2_ENDPOINT'],
+    bucket: ['R2_BOOTSTRAP_BUCKET'],
+    accessKeyId: ['R2_BOOTSTRAP_ACCESS_KEY_ID'],
+    secretAccessKey: ['R2_BOOTSTRAP_SECRET_ACCESS_KEY'],
+    apiToken: [],
+    apiBaseUrl: [],
+    region: [],
+    forcePathStyle: [],
+    defaultPrefix: '',
+  }),
+});
+
 function getEnvValue(env, keys) {
   for (const key of keys) {
     if (env[key]) return env[key];
@@ -110,17 +136,25 @@ async function withR2Retry(operation, context = {}) {
 }
 
 function resolveR2StorageConfig(env = process.env, options = {}) {
-  const accountId = getEnvValue(env, ['CLOUDFLARE_R2_ACCOUNT_ID']);
-  const bucket = getEnvValue(env, [options.bucketEnv || 'CLOUDFLARE_R2_TRACE_BUCKET', 'CLOUDFLARE_R2_BUCKET']);
-  const accessKeyId = getEnvValue(env, ['CLOUDFLARE_R2_ACCESS_KEY_ID']);
-  const secretAccessKey = getEnvValue(env, ['CLOUDFLARE_R2_SECRET_ACCESS_KEY']);
-  const apiToken = getEnvValue(env, ['CLOUDFLARE_R2_TOKEN', 'CLOUDFLARE_API_TOKEN']);
-  const endpoint = getEnvValue(env, ['CLOUDFLARE_R2_ENDPOINT']) || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : '');
-  const apiBaseUrl = getEnvValue(env, ['CLOUDFLARE_API_BASE_URL']) || 'https://api.cloudflare.com/client/v4';
-  const region = getEnvValue(env, ['CLOUDFLARE_R2_REGION']) || 'auto';
-  const basePrefix = (getEnvValue(env, [options.prefixEnv || 'CLOUDFLARE_R2_TRACE_PREFIX']) || 'seed-data/forecast-traces')
+  const profileName = options.profile || 'default';
+  const profile = R2_STORAGE_PROFILES[profileName];
+  if (!profile) throw new TypeError(`Unknown R2 storage profile: ${profileName}`);
+
+  const isDefaultProfile = profileName === 'default';
+  const accountId = getEnvValue(env, profile.accountId);
+  const bucketKeys = profile.bucket
+    || [options.bucketEnv || 'CLOUDFLARE_R2_TRACE_BUCKET', 'CLOUDFLARE_R2_BUCKET'];
+  const bucket = getEnvValue(env, bucketKeys);
+  const accessKeyId = getEnvValue(env, profile.accessKeyId);
+  const secretAccessKey = getEnvValue(env, profile.secretAccessKey);
+  const apiToken = getEnvValue(env, profile.apiToken);
+  const endpoint = getEnvValue(env, profile.endpoint) || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : '');
+  const apiBaseUrl = getEnvValue(env, profile.apiBaseUrl) || 'https://api.cloudflare.com/client/v4';
+  const region = getEnvValue(env, profile.region) || 'auto';
+  const prefixKeys = isDefaultProfile ? [options.prefixEnv || 'CLOUDFLARE_R2_TRACE_PREFIX'] : [];
+  const basePrefix = (getEnvValue(env, prefixKeys) || profile.defaultPrefix)
     .replace(/^\/+|\/+$/g, '');
-  const forcePathStyle = parseBoolean(getEnvValue(env, ['CLOUDFLARE_R2_FORCE_PATH_STYLE']), true);
+  const forcePathStyle = parseBoolean(getEnvValue(env, profile.forcePathStyle), true);
 
   if (!bucket || !accountId) {
     console.log(`  [R2] Config: accountId=${accountId ? 'set' : 'MISSING'}, bucket=${bucket ? 'set' : 'MISSING'}`);

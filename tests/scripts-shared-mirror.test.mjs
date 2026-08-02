@@ -18,7 +18,10 @@ const repoRoot = resolve(__dirname, '..');
 // mirrored files, append them to MIRRORED_FILES.
 
 const MIRRORED_FILES = [
+  'china-corporate-disclosure-policy.js',
+  'correlation-runtime-mode.js',
   'geography.js',
+  'hapi-app-identifier.json',
   'iso2-to-region.json',
   'iso3-to-iso2.json',
   'story-identity.js',

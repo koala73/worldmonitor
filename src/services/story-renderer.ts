@@ -103,63 +103,68 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
   ctx.fillText(codeLabel, RIGHT - codeLabelW + 12, y - 2);
 
   // ── CII SCORE ──
-  const levelColor = LEVEL_COLORS[data.cii?.level || 'normal'] || '#888';
-  const score = data.cii?.score ?? 0;
-
   y += 62;
-  ctx.fillStyle = levelColor;
-  ctx.font = '800 72px Inter, system-ui, sans-serif';
-  ctx.fillText(`${score}`, PAD, y);
-  const scoreNumW = ctx.measureText(`${score}`).width;
-  ctx.fillStyle = '#777';
-  ctx.font = '400 38px Inter, system-ui, sans-serif';
-  ctx.fillText('/100', PAD + scoreNumW + 4, y);
-  const slashW = ctx.measureText('/100').width;
-  if (data.cii?.change24h) {
-    const ch = data.cii.change24h;
-    const chSign = ch > 0 ? '+' : '';
-    ctx.fillStyle = ch > 0 ? '#ef4444' : ch < 0 ? '#22c55e' : '#888';
-    ctx.font = '600 28px Inter, system-ui, sans-serif';
-    ctx.fillText(`${chSign}${ch} 24h`, PAD + scoreNumW + 4 + slashW + 16, y);
-  }
+  if (!data.cii) {
+    ctx.fillStyle = '#888';
+    ctx.font = '700 44px Inter, system-ui, sans-serif';
+    ctx.fillText(t('common.unavailable'), PAD, y);
+    y += 32;
+  } else {
+    const levelColor = LEVEL_COLORS[data.cii.level] || '#888';
+    const score = data.cii.score;
 
-  // Trend + level badges
-  const trendIcon = data.cii?.trend === 'rising' ? '▲' : data.cii?.trend === 'falling' ? '▼' : '●';
-  const trendLabel = (data.cii?.trend || 'stable').toUpperCase();
-  const levelLabel = (data.cii?.level || 'normal').toUpperCase();
-
-  ctx.font = '700 26px Inter, system-ui, sans-serif';
-  ctx.fillStyle = levelColor;
-  const badgeText = `${trendIcon} ${trendLabel}`;
-  const badgeTextW = ctx.measureText(badgeText).width + 28;
-  roundRect(ctx, RIGHT - badgeTextW, y - 26, badgeTextW, 34, 6);
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.fillText(badgeText, RIGHT - badgeTextW + 14, y - 3);
-
-  ctx.font = '600 22px Inter, system-ui, sans-serif';
-  const lvlW = ctx.measureText(levelLabel).width + 24;
-  const lvlX = RIGHT - badgeTextW - lvlW - 12;
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  roundRect(ctx, lvlX, y - 24, lvlW, 30, 4);
-  ctx.fill();
-  ctx.fillStyle = levelColor;
-  ctx.fillText(levelLabel, lvlX + 12, y - 3);
-
-  // Score bar
-  y += 32;
-  const barW = W - PAD * 2;
-  ctx.fillStyle = '#1a1a2e';
-  roundRect(ctx, PAD, y, barW, 18, 9);
-  ctx.fill();
-  if (score > 0) {
     ctx.fillStyle = levelColor;
-    roundRect(ctx, PAD, y, barW * score / 100, 18, 9);
-    ctx.fill();
-  }
+    ctx.font = '800 72px Inter, system-ui, sans-serif';
+    ctx.fillText(`${score}`, PAD, y);
+    const scoreNumW = ctx.measureText(`${score}`).width;
+    ctx.fillStyle = '#777';
+    ctx.font = '400 38px Inter, system-ui, sans-serif';
+    ctx.fillText('/100', PAD + scoreNumW + 4, y);
+    const slashW = ctx.measureText('/100').width;
+    if (data.cii.change24h) {
+      const ch = data.cii.change24h;
+      const chSign = ch > 0 ? '+' : '';
+      ctx.fillStyle = ch > 0 ? '#ef4444' : ch < 0 ? '#22c55e' : '#888';
+      ctx.font = '600 28px Inter, system-ui, sans-serif';
+      ctx.fillText(`${chSign}${ch} 24h`, PAD + scoreNumW + 4 + slashW + 16, y);
+    }
 
-  // Component scores
-  if (data.cii?.components) {
+    // Trend + level badges
+    const trendIcon = data.cii.trend === 'rising' ? '▲' : data.cii.trend === 'falling' ? '▼' : '●';
+    const trendLabel = data.cii.trend.toUpperCase();
+    const levelLabel = data.cii.level.toUpperCase();
+
+    ctx.font = '700 26px Inter, system-ui, sans-serif';
+    ctx.fillStyle = levelColor;
+    const badgeText = `${trendIcon} ${trendLabel}`;
+    const badgeTextW = ctx.measureText(badgeText).width + 28;
+    roundRect(ctx, RIGHT - badgeTextW, y - 26, badgeTextW, 34, 6);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(badgeText, RIGHT - badgeTextW + 14, y - 3);
+
+    ctx.font = '600 22px Inter, system-ui, sans-serif';
+    const lvlW = ctx.measureText(levelLabel).width + 24;
+    const lvlX = RIGHT - badgeTextW - lvlW - 12;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    roundRect(ctx, lvlX, y - 24, lvlW, 30, 4);
+    ctx.fill();
+    ctx.fillStyle = levelColor;
+    ctx.fillText(levelLabel, lvlX + 12, y - 3);
+
+    // Score bar
+    y += 32;
+    const barW = W - PAD * 2;
+    ctx.fillStyle = '#1a1a2e';
+    roundRect(ctx, PAD, y, barW, 18, 9);
+    ctx.fill();
+    if (score > 0) {
+      ctx.fillStyle = levelColor;
+      roundRect(ctx, PAD, y, barW * score / 100, 18, 9);
+      ctx.fill();
+    }
+
+    // Component scores
     y += 44;
     const comps = [
       { label: t('common.unrest').toUpperCase(), val: data.cii.components.unrest, color: '#f97316' },

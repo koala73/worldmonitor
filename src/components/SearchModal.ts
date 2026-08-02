@@ -5,6 +5,11 @@ import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  overlayHistory,
+  type OverlayCloseOrigin,
+  type OverlayId,
+} from '@/utils/overlay-history';
 
 
 interface CommandResult {
@@ -99,6 +104,9 @@ export class SearchModal {
   private resultsList: HTMLElement | null = null;
   private chipsContainer: HTMLElement | null = null;
   private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  // Invalidates deferred mobile list population when the sheet closes before
+  // its first paint (or is immediately reopened).
+  private mobileInitialPopulationGeneration = 0;
   // Debounce the per-keystroke search so fast typing runs the command match +
   // sort once after settle, not on every input event — cuts INP processing
   // time (#4537). Programmatic handleSearch() calls (filters, category select)
@@ -201,7 +209,7 @@ export class SearchModal {
     this.layerExecutableFn = fn;
   }
 
-  public open(): void {
+  public open(replaceOverlayId?: OverlayId): void {
     if (this.closeTimeoutId) {
       clearTimeout(this.closeTimeoutId);
       this.closeTimeoutId = null;
@@ -218,13 +226,21 @@ export class SearchModal {
     this.createModal();
     this.input?.focus();
     this.showingAllCommands = false;
-    this.showRecentOrEmpty();
-    if (this.isMobile) this.renderChips();
+    if (this.isMobile) {
+      const close = (origin: OverlayCloseOrigin) => this.close(origin);
+      if (replaceOverlayId) overlayHistory.replace(replaceOverlayId, 'search', close);
+      else overlayHistory.open('search', close);
+      this.scheduleMobileInitialPopulation();
+    } else {
+      this.showRecentOrEmpty();
+    }
   }
 
-  public close(): void {
+  public close(origin: OverlayCloseOrigin = 'control'): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
+    this.mobileInitialPopulationGeneration += 1;
+    if (this.isMobile && origin === 'control') overlayHistory.close('search');
     if (this.viewportHandler && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', this.viewportHandler);
       this.viewportHandler = null;
@@ -258,6 +274,36 @@ export class SearchModal {
     return this.overlay !== null;
   }
 
+  /**
+   * Keep the tap frame limited to the sheet shell. The results list and command
+   * chips can create several nodes plus event listeners, which otherwise makes
+   * the first sheet presentation compete with the FAB interaction (#5158).
+   */
+  private scheduleMobileReveal(overlay: HTMLElement): void {
+    requestAnimationFrame(() => {
+      // The sheet can close or be replaced before its queued reveal runs. Do
+      // not let stale work reopen an outgoing or removed overlay.
+      if (this.overlay !== overlay || this.closeTimeoutId !== null) return;
+      overlay.classList.add('open');
+    });
+  }
+
+  private scheduleMobileInitialPopulation(): void {
+    const generation = ++this.mobileInitialPopulationGeneration;
+    // The first frame reveals the sheet; the second runs after that paint. Do
+    // not use the startup after-paint scheduler here: it can wait for load and
+    // idle time even though this is an already-interactive control.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // A close/reopen or an immediate keystroke owns the content now; never
+        // overwrite its current results with the initial empty/recent state.
+        if (generation !== this.mobileInitialPopulationGeneration || !this.overlay || this.input?.value) return;
+        this.showRecentOrEmpty();
+        this.renderChips();
+      });
+    });
+  }
+
   private createModal(): void {
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('role', 'dialog');
@@ -287,7 +333,7 @@ export class SearchModal {
       this.chipsContainer = this.overlay.querySelector('.search-sheet-chips');
 
       this.container.appendChild(this.overlay);
-      requestAnimationFrame(() => this.overlay?.classList.add('open'));
+      this.scheduleMobileReveal(this.overlay);
 
       const sheet = this.overlay.querySelector('.search-sheet') as HTMLElement | null;
       if (sheet && window.visualViewport) {
@@ -365,6 +411,9 @@ export class SearchModal {
   }
 
   private handleSearch(): void {
+    // A programmatic refresh can render while the mobile sheet's initial
+    // population is still deferred. Its results now own the list.
+    if (this.isMobile) this.mobileInitialPopulationGeneration += 1;
     const rawInput = this.input?.value.toLowerCase() || '';
     const query = rawInput.trim();
     // Record what we actually searched so flushPendingSearch can detect stale results.

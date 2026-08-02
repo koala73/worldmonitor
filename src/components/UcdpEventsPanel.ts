@@ -2,9 +2,24 @@ import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { t } from '@/services/i18n';
+import type { UcdpTabAggregate } from '@/services/conflict';
+
+// The panel's tabs are the three UCDP violence types. The projection keys its
+// aggregates by the proto enum, so map between them in exactly one place.
+const UCDP_EVENT_TYPES: UcdpEventType[] = ['state-based', 'non-state', 'one-sided'];
+const PROTO_VIOLENCE_TYPE: Record<UcdpEventType, string> = {
+  'state-based': 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+  'non-state': 'UCDP_VIOLENCE_TYPE_NON_STATE',
+  'one-sided': 'UCDP_VIOLENCE_TYPE_ONE_SIDED',
+};
+
+function totalFromAggregates(aggregates: Record<string, UcdpTabAggregate>): number {
+  return UCDP_EVENT_TYPES.reduce((sum, type) => sum + (aggregates[PROTO_VIOLENCE_TYPE[type]]?.count ?? 0), 0);
+}
 
 export class UcdpEventsPanel extends Panel {
   private events: UcdpGeoEvent[] = [];
+  private aggregates?: Record<string, UcdpTabAggregate>;
   private hasLoadedEvents = false;
   private activeTab: UcdpEventType = 'state-based';
   private onEventClick?: (lat: number, lon: number) => void;
@@ -40,10 +55,18 @@ export class UcdpEventsPanel extends Panel {
     this.onEventClick = handler;
   }
 
-  public setEvents(events: UcdpGeoEvent[]): void {
+  /**
+   * `aggregates` carries per-tab counts and death totals computed over the FULL
+   * event set. The bootstrap payload is a projection (#5300) — `events` holds only
+   * the rows this panel renders — so deriving those numbers from `events` would
+   * silently under-report them. When the caller has the full set (the RPC path, or
+   * the map layer being on) it passes no aggregates and we compute as before.
+   */
+  public setEvents(events: UcdpGeoEvent[], aggregates?: Record<string, UcdpTabAggregate>): void {
     this.events = events;
+    this.aggregates = aggregates;
     this.hasLoadedEvents = true;
-    this.setCount(events.length);
+    this.setCount(aggregates ? totalFromAggregates(aggregates) : events.length);
     this.renderContent();
   }
 
@@ -68,11 +91,19 @@ export class UcdpEventsPanel extends Panel {
       'non-state': 0,
       'one-sided': 0,
     };
-    for (const event of this.events) {
-      tabCounts[event.type_of_violence] += 1;
+    if (this.aggregates) {
+      for (const type of UCDP_EVENT_TYPES) {
+        tabCounts[type] = this.aggregates[PROTO_VIOLENCE_TYPE[type]]?.count ?? 0;
+      }
+    } else {
+      for (const event of this.events) {
+        tabCounts[event.type_of_violence] += 1;
+      }
     }
 
-    const totalDeaths = filtered.reduce((sum, e) => sum + e.deaths_best, 0);
+    const totalDeaths = this.aggregates
+      ? (this.aggregates[PROTO_VIOLENCE_TYPE[this.activeTab]]?.totalDeaths ?? 0)
+      : filtered.reduce((sum, e) => sum + e.deaths_best, 0);
 
     const tabsHtml = tabs.map(t =>
       `<button class="panel-tab ${t.key === this.activeTab ? 'active' : ''}" data-tab="${t.key}">${t.label} <span class="ucdp-tab-count">${tabCounts[t.key]}</span></button>`

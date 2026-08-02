@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+const { trackApiAction } = await import('../src/services/analytics.ts');
 
 test('UMAMI_DOMAINS covers the canonical www host', () => {
   const src = read('src/services/analytics.ts');
@@ -37,8 +38,55 @@ test('UMAMI_DOMAINS covers the canonical www host', () => {
 
 test('funnel events exist in the typed catalog', () => {
   const src = read('src/services/analytics.ts');
-  for (const ev of ['checkout-start', 'checkout-success', 'checkout-failed']) {
+  for (const ev of ['checkout-start', 'checkout-success', 'checkout-failed', 'api-action']) {
     assert.ok(src.includes(`'${ev}': true`), `event '${ev}' missing from EVENTS catalog`);
+  }
+});
+
+test('API outcome telemetry is bounded to successful key lifecycle actions', () => {
+  const analytics = read('src/services/analytics.ts');
+  const settings = read('src/components/UnifiedSettings.ts');
+  assert.ok(analytics.includes("['key-created', 'key-revoked'] as const"),
+    'API action vocabulary must stay closed to key lifecycle outcomes');
+  assert.ok(analytics.includes("track('api-action', { action })"),
+    'API action helper must emit only the normalized action bucket');
+  assert.ok(settings.includes("trackApiAction('key-created')"),
+    'successful API key creation no longer contributes to API outcomes');
+  assert.ok(settings.includes("trackApiAction('key-revoked')"),
+    'successful API key revocation no longer contributes to API outcomes');
+  assert.ok(!settings.includes('trackApiAction(keyId)'),
+    'API telemetry must not include a key identifier');
+});
+
+test('API outcome telemetry emits only the closed key lifecycle buckets at runtime', () => {
+  const calls = [];
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      umami: {
+        track: (event, data) => calls.push({ event, data }),
+      },
+    },
+  });
+
+  try {
+    trackApiAction('key-created');
+    trackApiAction('key-revoked');
+    // The TypeScript signature protects typed callers; this exercises the
+    // runtime boundary where an untyped or stale caller can still arrive.
+    trackApiAction('key-exported');
+
+    assert.deepEqual(calls, [
+      { event: 'api-action', data: { action: 'key-created' } },
+      { event: 'api-action', data: { action: 'key-revoked' } },
+    ]);
+  } finally {
+    if (previousWindow) {
+      Object.defineProperty(globalThis, 'window', previousWindow);
+    } else {
+      delete globalThis.window;
+    }
   }
 });
 
@@ -67,6 +115,17 @@ test('/pro and welcome pages load the Umami tracker (www + nonce)', () => {
       `${page}: www.worldmonitor.app missing from tracker data-domains`);
     assert.ok(tag[0].includes('nonce="wm-static-bootstrap"'),
       `${page}: static CSP nonce missing — strict-dynamic CSP will block the tracker`);
+  }
+});
+
+test('/pro and welcome entries initialize DebugBear RUM', () => {
+  for (const entry of ['pro-test/src/main.tsx', 'pro-test/src/welcome-main.tsx']) {
+    const src = read(entry);
+    assert.ok(
+      src.includes("import { initDebugBearRum } from './debugbear-rum'"),
+      `${entry}: DebugBear RUM import missing`,
+    );
+    assert.ok(src.includes('initDebugBearRum();'), `${entry}: DebugBear RUM init missing`);
   }
 });
 
@@ -115,8 +174,8 @@ test('checkout-start product ids are bucketed on both surfaces (round-4 F2)', ()
   const analytics = read('src/services/analytics.ts');
   assert.ok(analytics.includes('bucketProductIdForAnalytics(productId)'),
     'dashboard trackCheckoutStart no longer buckets the (resume-path URL-derived) productId');
-  assert.ok(analytics.includes('Object.values(DODO_PRODUCTS)'),
-    'dashboard product allowlist no longer derives from the generated catalog');
+  assert.ok(analytics.includes("from '@/config/product-ids.generated'") && analytics.includes('DODO_PRODUCT_IDS'),
+    'dashboard product allowlist must keep deriving from the generated catalog');
   const pro = read('pro-test/src/services/checkout.ts');
   const emissions = pro.match(/trackFunnelEvent\(\s*'checkout-start'[\s\S]{0,300}?\}\s*\)/g) ?? [];
   assert.equal(emissions.length, 2, 'expected exactly two /pro checkout-start emissions');
@@ -144,8 +203,11 @@ test('/pro checkout-start survives the Dodo redirect via sessionStorage handoff 
   const pro = read('pro-test/src/services/checkout.ts');
   assert.ok(pro.includes("'wm-pro-funnel-pending'"),
     '/pro no longer persists undelivered checkout-start — the fast signed-in path dies with the redirect');
-  assert.ok(pro.includes('persistFunnelEventForReplay(event, data)'),
-    '/pro queue branch no longer mirrors events into sessionStorage');
+  assert.ok(
+    pro.includes('persistFunnelEventForReplay(event, data)')
+      || pro.includes('persistFunnelEventForReplay(event, enrichedData)'),
+    '/pro queue branch no longer mirrors events into sessionStorage',
+  );
   assert.ok(pro.includes('clearPersistedFunnelEvents()'),
     '/pro flush no longer clears the mirror — delivered events would double-replay on the dashboard');
   const analytics = read('src/services/analytics.ts');

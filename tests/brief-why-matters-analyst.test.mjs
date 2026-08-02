@@ -22,6 +22,95 @@ import {
   WHY_MATTERS_SYSTEM,
 } from '../shared/brief-llm-core.js';
 
+const ANALYST_MAX_TOKEN_CLIP =
+  'Marine Le Pen\u2019s conviction on appeal leaves her legally eligible for the 2027 presidential election. ' +
+  'The ruling reshapes the campaign while leaving debate over democratic norms and';
+const ABBREVIATION_LENGTH_CLIP =
+  'The ruling would reshape alliance planning across Europe and force renewed debate among officials in the U.S.';
+
+const HANDLER_ENV_KEYS = [
+  'RELAY_SHARED_SECRET',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'BRIEF_WHY_MATTERS_PRIMARY',
+  'BRIEF_WHY_MATTERS_SHADOW',
+  'OLLAMA_API_URL',
+  'OLLAMA_API_KEY',
+  'GROQ_API_KEY',
+  'OPENROUTER_API_KEY',
+  'LLM_API_URL',
+  'LLM_API_KEY',
+];
+
+async function invokeHandlerWithCachedEnvelope(
+  envelope,
+  providerCompletion = null,
+  primary = 'gemini',
+  fallbackProviderCompletion = null,
+) {
+  const previousEnv = Object.fromEntries(HANDLER_ENV_KEYS.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  const fetchCalls = [];
+  process.env.RELAY_SHARED_SECRET = 'test-relay-secret';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-redis-token';
+  process.env.BRIEF_WHY_MATTERS_PRIMARY = primary;
+  process.env.BRIEF_WHY_MATTERS_SHADOW = '0';
+  for (const key of ['OLLAMA_API_URL', 'OLLAMA_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'LLM_API_URL', 'LLM_API_KEY']) {
+    delete process.env[key];
+  }
+  if (providerCompletion) process.env.OPENROUTER_API_KEY = 'or-test-key';
+  if (fallbackProviderCompletion) process.env.GROQ_API_KEY = 'groq-test-key';
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method || 'GET';
+    fetchCalls.push({ url, method });
+    if (url.startsWith('https://redis.example.test')) {
+      const result = url.endsWith('/pipeline')
+        ? []
+        : envelope === null ? null : JSON.stringify(envelope);
+      return new Response(JSON.stringify({ result }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (method === 'GET') return new Response('', { status: 200 });
+    if (url === 'https://openrouter.ai/api/v1/chat/completions' && providerCompletion) {
+      return new Response(JSON.stringify(providerCompletion), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url === 'https://api.groq.com/openai/v1/chat/completions' && fallbackProviderCompletion) {
+      return new Response(JSON.stringify(fallbackProviderCompletion), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    throw new Error(`unexpected fetch ${method} ${url}`);
+  };
+
+  try {
+    const { default: handler } = await import('../api/internal/brief-why-matters.ts');
+    const request = new Request('https://worldmonitor.test/api/internal/brief-why-matters', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-relay-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ story: story() }),
+    });
+    const response = await handler(request);
+    return { response, body: await response.json(), fetchCalls };
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 // ── Story fixture matching the cron's actual payload shape
 // (shared/brief-filter.js:134-135). ────────────────────────────────────
 
@@ -128,6 +217,135 @@ describe('cache key identity', () => {
   });
 });
 
+describe('brief-why-matters Edge cache acceptance', () => {
+  it('serves a complete v10 envelope as a cache hit', async () => {
+    const whyMatters = 'The ruling keeps the 2027 race open while reshaping coalition strategy.';
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
+      whyMatters,
+      producedBy: 'analyst',
+      at: '2026-07-10T00:00:00.000Z',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, whyMatters);
+    assert.equal(body.source, 'cache');
+    assert.equal(body.producedBy, 'analyst');
+    assert.equal(fetchCalls.length, 1, 'a valid cache hit must not call an LLM provider');
+  });
+
+  it('treats a clipped v10 envelope as a miss when regeneration fails', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
+      whyMatters: ANALYST_MAX_TOKEN_CLIP,
+      producedBy: 'analyst',
+      at: '2026-07-10T00:00:00.000Z',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, null);
+    assert.equal(body.source, 'gemini');
+    assert.equal(body.producedBy, null);
+    assert.equal(fetchCalls.length, 1, 'a failed regeneration must not serve or rewrite clipped prose');
+  });
+
+  it('rejects a length-limited provider response even when it ends in an abbreviation', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(null, {
+      choices: [{
+        message: { content: ABBREVIATION_LENGTH_CLIP },
+        finish_reason: 'length',
+      }],
+      usage: { total_tokens: 120, completion_tokens: 80 },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, null);
+    assert.equal(body.source, 'gemini');
+    assert.equal(body.producedBy, null);
+    assert.equal(
+      fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
+      false,
+      'a length-limited response must never be cached',
+    );
+  });
+
+  it('accepts and caches a stop-finished response containing a dotted abbreviation', async () => {
+    const complete = 'The ruling could alter European coordination with the U.S. Navy as regional tensions rise.';
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(null, {
+      choices: [{ message: { content: complete }, finish_reason: 'stop' }],
+      usage: { total_tokens: 80, completion_tokens: 30 },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, complete);
+    assert.equal(body.source, 'gemini');
+    assert.equal(body.producedBy, 'gemini');
+    assert.equal(
+      fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
+      true,
+      'a stop-finished complete response should populate v10',
+    );
+  });
+
+  it('applies the same length-completion rejection to the analyst path', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(null, {
+      choices: [{
+        message: { content: ABBREVIATION_LENGTH_CLIP },
+        finish_reason: 'length',
+      }],
+      usage: { total_tokens: 120, completion_tokens: 80 },
+    }, 'analyst');
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, null);
+    assert.equal(body.source, 'analyst');
+    assert.equal(body.producedBy, null);
+    assert.equal(
+      fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
+      false,
+      'an analyst length-limited response must never be cached',
+    );
+  });
+
+  it('walks the configured provider chain after a length-limited completion on both paths', async () => {
+    const fallback =
+      'The ruling changes alliance planning across Europe while forcing policymakers to reassess regional commitments. ' +
+      'That shift could alter near-term diplomatic and defense priorities.';
+    const clippedCompletion = {
+      choices: [{
+        message: { content: ABBREVIATION_LENGTH_CLIP },
+        finish_reason: 'length',
+      }],
+      usage: { total_tokens: 120, completion_tokens: 80 },
+    };
+    const fallbackCompletion = {
+      choices: [{ message: { content: fallback }, finish_reason: 'stop' }],
+      usage: { total_tokens: 75, completion_tokens: 35 },
+    };
+
+    for (const primary of ['gemini', 'analyst']) {
+      const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(
+        null,
+        clippedCompletion,
+        primary,
+        fallbackCompletion,
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(body.whyMatters, fallback);
+      assert.equal(body.producedBy, primary);
+      assert.deepEqual(
+        fetchCalls
+          .filter(({ url, method }) => method === 'POST' && url.includes('/chat/completions'))
+          .map(({ url }) => url),
+        [
+          'https://openrouter.ai/api/v1/chat/completions',
+          'https://api.groq.com/openai/v1/chat/completions',
+        ],
+        `${primary} must retry the fallback provider in-request`,
+      );
+    }
+  });
+});
+
 // ── parseWhyMattersV2 — analyst-path output validator ───────────────────
 //
 // This is the only output-validation gate between the analyst LLM and
@@ -141,12 +359,15 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
     'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters.';
 
-  it('accepts a valid 2-sentence, ~40–70 word output', () => {
+  it('accepts a valid 1–2 sentence output', () => {
     const out = parseWhyMattersV2(VALID_MULTI);
     assert.equal(out, VALID_MULTI);
   });
 
-  it('accepts a valid 3-sentence output with optional WATCH arc', () => {
+  it('parser tolerates a longer 3-sentence output (lenient by design; the prompt asks for 1–2)', () => {
+    // The parser only gates 100–500 chars + shape, not sentence count, so an
+    // occasional over-length generation is passed through rather than nuked
+    // to the stub. Conciseness is enforced by the prompt contract, not here.
     const three =
       "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
       'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
@@ -160,13 +381,17 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     assert.equal(parseWhyMattersV2('Short sentence under 100 chars.'), null);
     assert.equal(parseWhyMattersV2('x'.repeat(99)), null);
     // Boundary: exactly 100 passes.
-    assert.equal(typeof parseWhyMattersV2('x'.repeat(100)), 'string');
+    assert.equal(typeof parseWhyMattersV2(`${'x'.repeat(99)}.`), 'string');
   });
 
   it('rejects output over the 500-char cap (prevents runaway essays)', () => {
     assert.equal(parseWhyMattersV2('x'.repeat(501)), null);
     // Boundary: exactly 500 passes.
-    assert.equal(typeof parseWhyMattersV2('x'.repeat(500)), 'string');
+    assert.equal(typeof parseWhyMattersV2(`${'x'.repeat(499)}.`), 'string');
+  });
+
+  it('rejects the captured max-token clips from both model eras', () => {
+    assert.equal(parseWhyMattersV2(ANALYST_MAX_TOKEN_CLIP), null);
   });
 
   it('rejects banned preamble phrases (v2-specific)', () => {
@@ -190,6 +415,26 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     ]) {
       assert.equal(parseWhyMattersV2(leak), null, `should reject label leak: "${leak.slice(0, 40)}..."`);
     }
+  });
+
+  it('rejects raw forecast-probability disclosures but preserves ordinary sourced percentages', () => {
+    const forecastLeak =
+      "WorldMonitor's internal forecast assigns an 84% probability to a Strait of Hormuz disruption, which would intensify regional shipping risk. " +
+      'That projection is not a reader-facing fact and must fall through to the next generation layer.';
+    const likelyLeak =
+      'A disruption is 84% likely according to the forecast, creating an immediate risk of higher insurance costs across Gulf shipping routes. ' +
+      'The analyst should not present that internal probability as a published fact.';
+    const provenance = {
+      publicStory: {
+        headline: 'Insurers reassess Gulf shipping routes',
+        description: 'Carriers are reviewing transit plans after new regional threats.',
+        source: 'Reuters',
+      },
+      privateForecasts: 'WorldMonitor disruption model: Strait closure remains 84% likely.',
+    };
+    assert.equal(parseWhyMattersV2(forecastLeak, provenance), null);
+    assert.equal(parseWhyMattersV2(likelyLeak, provenance), null);
+    assert.equal(parseWhyMattersV2(VALID_MULTI), VALID_MULTI, 'ordinary story percentages must remain valid');
   });
 
   it('rejects markdown leakage (bullets, headers, numbered lists)', () => {
@@ -305,6 +550,35 @@ describe('generateWhyMatters — analyst priority', () => {
     assert.equal(callLlmInvoked, true, 'legacy callLLM must fire after analyst miss');
   });
 
+  it('logs an accurate runtime type when analyst returns a non-string value', async () => {
+    const originalWarn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.join(' '));
+
+    try {
+      for (const [analystOut, expectedType] of [
+        [null, 'null'],
+        [{ whyMatters: VALID }, 'object'],
+      ]) {
+        warnings.length = 0;
+        const out = await generateWhyMatters(story(), {
+          callAnalystWhyMatters: async () => analystOut,
+          callLLM: async () => VALID,
+          cacheGet: async () => null,
+          cacheSet: async () => {},
+        });
+
+        assert.equal(out, VALID);
+        assert.ok(
+          warnings.some((line) => line.includes(`endpoint returned no usable string (type=${expectedType})`)),
+          `expected a ${expectedType} runtime type tag; got ${JSON.stringify(warnings)}`,
+        );
+      }
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it('falls through when analyst returns out-of-bounds output (too short)', async () => {
     let callLlmInvoked = false;
     const out = await generateWhyMatters(story(), {
@@ -320,11 +594,25 @@ describe('generateWhyMatters — analyst priority', () => {
     assert.equal(callLlmInvoked, true, 'out-of-bounds analyst output must trigger fallback');
   });
 
+  it('falls through when the analyst endpoint returns a max-token clip', async () => {
+    let callLlmInvoked = false;
+    const out = await generateWhyMatters(story(), {
+      callAnalystWhyMatters: async () => ANALYST_MAX_TOKEN_CLIP,
+      callLLM: async () => {
+        callLlmInvoked = true;
+        return VALID;
+      },
+      cacheGet: async () => null,
+      cacheSet: async () => {},
+    });
+    assert.equal(out, VALID);
+    assert.equal(callLlmInvoked, true, 'clipped endpoint output must trigger fallback');
+  });
+
   it('preserves multi-sentence v2 analyst output verbatim (P1 regression guard)', async () => {
-    // The endpoint now returns 2–3 sentences validated by parseWhyMattersV2.
-    // The cron MUST NOT reparse with the v1 single-sentence parser, which
-    // would silently truncate the 2nd + 3rd sentences. Caught in PR #3269
-    // review; fixed by trusting the endpoint's own validation and only
+    // The endpoint now returns 1–2 sentences validated by parseWhyMattersV2.
+    // The cron MUST NOT reparse with the narrower v1 bounds. Caught in PR
+    // #3269 review; fixed by trusting the endpoint's own validation and only
     // rejecting obvious garbage (length / stub echo) here.
     const multi =
       "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
@@ -492,7 +780,7 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.ok(typeof builder === 'function');
   });
 
-  it('uses the analyst v2 system prompt (multi-sentence, grounded) + date-grounding line', async () => {
+  it('uses the analyst v2 system prompt (multi-sentence, grounded, varied) + date-grounding line', async () => {
     const { WHY_MATTERS_ANALYST_SYSTEM_V2, briefDateLine } = await import('../shared/brief-llm-core.js');
     const { system } = builder(
       story(),
@@ -509,10 +797,17 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     );
     // F6: system prompt is the static v2 const + an injected date line.
     assert.equal(system, `${WHY_MATTERS_ANALYST_SYSTEM_V2}\n${briefDateLine('2026-05-14')}`);
-    // Contract must still mention the 40–70 word target + grounding rule.
-    assert.match(system, /40–70 words/);
+    // Contract must mention the tightened 25–40 word target + concision +
+    // grounding rule.
+    assert.match(system, /25–40 words/);
+    assert.match(system, /1–2 sentences/);
+    assert.match(system, /be concise/i);
+    assert.doesNotMatch(system, /40–70 words/);
     assert.match(system, /named person \/ country \/ organization \/ number \/ percentage \/ date \/ city/);
     assert.match(system, /^Today is 2026-05-14\./m);
+    assert.match(system, /vary sentence structure/i);
+    assert.doesNotMatch(system, /STRUCTURE:/);
+    assert.doesNotMatch(system, /SITUATION —/);
   });
 
   it('includes story fields with the multi-sentence footer', () => {
@@ -530,7 +825,7 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.match(user, /Severity: critical/);
     assert.match(user, /Category: Geopolitical Risk/);
     assert.match(user, /Country: IR/);
-    assert.match(user, /Write 2–3 sentences \(40–70 words\)/);
+    assert.match(user, /Write 1–2 sentences \(25–40 words\)/);
     assert.match(user, /grounded in at least ONE specific/);
   });
 
@@ -795,6 +1090,118 @@ describe('sectionsForCategory — structural relevance gating', () => {
     assert.match(user, /DO NOT force/i, 'guardrail phrase "DO NOT force" must be in footer');
     assert.match(user, /off-topic market metric|VIX|forecast probability/i);
     assert.match(user, /named actor, place, date, or figure/);
+    assert.match(user, /only when materially connected/i);
+    assert.match(user, /most stories should not mention the global context/i);
+    assert.match(user, /do not quote raw forecast probabilities/i);
+  });
+
+  it('buildAnalystWhyMattersPrompt — production-shaped local stories do not receive global narrative or forecasts', async (t) => {
+    const stories = [
+      {
+        name: 'Srebrenica historical memory',
+        headline: 'Three survivors of the 1995 Srebrenica genocide preserve the memory of those killed',
+        description: 'Their testimony keeps historical memory alive three decades after the massacre.',
+        threatLevel: 'critical',
+        category: 'Conflict',
+        country: 'BA',
+      },
+      {
+        name: 'mass-casualty smuggling prosecution',
+        headline: 'Two Guatemalan nationals extradited to the U.S. admit roles in a 2021 mass casualty smuggling event',
+        description: 'The defendants entered guilty pleas in federal court.',
+        threatLevel: 'critical',
+        category: 'Conflict',
+        country: 'US',
+      },
+      {
+        name: 'civil-rights court ruling',
+        headline: 'Federal judge orders release of $5.8 million to E. Jean Carroll',
+        description: 'The plaintiff won access to funds after a federal civil-rights ruling.',
+        threatLevel: 'medium',
+        category: 'General',
+        country: 'US',
+      },
+    ];
+
+    for (const story of stories) {
+      await t.test(story.name, () => {
+        const { user, policyLabel } = builder(
+          {
+            headline: story.headline,
+            description: story.description,
+            source: 'AP',
+            threatLevel: story.threatLevel,
+            category: story.category,
+            country: story.country,
+          },
+          {
+            worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
+            countryBrief: 'Local institutions are handling the reported event.',
+            riskScores: 'Domestic stability risk is moderate.',
+            forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains 84% likely.',
+            marketData: 'Oil trades at $87.',
+            macroSignals: 'FX stress remains elevated.',
+            degraded: false,
+          },
+        );
+        assert.equal(policyLabel, 'local', `${story.name} should match the local policy`);
+        assert.doesNotMatch(user, /US-Iran ceasefire/);
+        assert.doesNotMatch(user, /84% likely/);
+        assert.match(user, /Local institutions are handling/);
+      });
+    }
+  });
+
+  it('buildAnalystWhyMattersPrompt — genuine geopolitical Conflict story retains global narrative and forecasts', () => {
+    const { user, policyLabel } = builder(
+      {
+        headline: 'Mass casualty missile strikes escalate active conflict across the Gulf',
+        description: 'Military forces exchanged strikes overnight as regional tensions rose.',
+        source: 'Reuters',
+        threatLevel: 'critical',
+        category: 'Conflict',
+        country: 'IR',
+      },
+      {
+        worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
+        countryBrief: 'Iranian forces remain on high alert.',
+        riskScores: 'Regional stability risk is severe.',
+        forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains elevated.',
+        marketData: 'Oil trades at $87.',
+        macroSignals: 'FX stress remains elevated.',
+        degraded: false,
+      },
+    );
+
+    assert.equal(policyLabel, 'geopolitical');
+    assert.match(user, /US-Iran ceasefire/);
+    assert.match(user, /Hormuz traffic disruption remains elevated/);
+  });
+
+  it('buildAnalystWhyMattersPrompt — specific market category outranks a court keyword', () => {
+    const { user, policyLabel } = builder(
+      {
+        headline: 'Court blocks major oil pipeline permit',
+        description: 'The ruling delays a planned expansion of regional crude capacity.',
+        source: 'Reuters',
+        threatLevel: 'medium',
+        category: 'Energy',
+        country: 'US',
+      },
+      {
+        worldBrief: 'Global energy supply remains tight.',
+        countryBrief: 'The permit dispute is proceeding through federal court.',
+        riskScores: 'Domestic stability risk is low.',
+        forecasts: 'Pipeline capacity is expected to remain constrained.',
+        marketData: 'Oil trades at $87.',
+        macroSignals: 'Refining margins remain elevated.',
+        degraded: false,
+      },
+    );
+
+    assert.equal(policyLabel, 'market');
+    assert.match(user, /Pipeline capacity is expected to remain constrained/);
+    assert.match(user, /Oil trades at \$87/);
   });
 });
 

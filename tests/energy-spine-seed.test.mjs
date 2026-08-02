@@ -225,7 +225,7 @@ describe('buildSpineEntry — full data', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildSpineEntry — JODI oil key missing', () => {
-  it('sets hasJodiOil: false and all oil fields to 0', () => {
+  it('sets hasJodiOil: false and preserves unknown oil fields as null', () => {
     const spine = buildSpineEntry('JP', {
       mix: makeMix(),
       jodiOil: null,
@@ -233,11 +233,11 @@ describe('buildSpineEntry — JODI oil key missing', () => {
       ieaStocks: makeIeaStocks(),
     });
     assert.equal(spine.coverage.hasJodiOil, false);
-    assert.equal(spine.oil.crudeImportsKbd, 0);
-    assert.equal(spine.oil.gasolineDemandKbd, 0);
-    assert.equal(spine.oil.dieselDemandKbd, 0);
-    assert.equal(spine.oil.jetDemandKbd, 0);
-    assert.equal(spine.oil.lpgDemandKbd, 0);
+    assert.equal(spine.oil.crudeImportsKbd, null);
+    assert.equal(spine.oil.gasolineDemandKbd, null);
+    assert.equal(spine.oil.dieselDemandKbd, null);
+    assert.equal(spine.oil.jetDemandKbd, null);
+    assert.equal(spine.oil.lpgDemandKbd, null);
   });
 });
 

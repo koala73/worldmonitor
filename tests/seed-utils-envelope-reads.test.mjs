@@ -51,6 +51,14 @@ test('readSeedSnapshot: null Upstash result returns null', async () => {
   assert.equal(await readSeedSnapshot('missing:key:v1'), null);
 });
 
+test('readSeedSnapshot: strict mode distinguishes an upstream read failure from a missing key', async () => {
+  globalThis.fetch = async () => ({ ok: false, status: 503 });
+  await assert.rejects(
+    readSeedSnapshot('conflict:acled:v1:all:0:0', { strict: true }),
+    /Redis snapshot read failed: HTTP 503/,
+  );
+});
+
 test('verifySeedKey: envelope-wrapped value returns inner data only', async () => {
   mockFetch({
     _seed: { fetchedAt: 1, recordCount: 1, sourceVersion: 'v1', schemaVersion: 1, state: 'OK' },

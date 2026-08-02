@@ -15,6 +15,7 @@ import {
   getUsEquitySession,
   isUsEquityMarketOpen,
   isUsEquityTradingDay,
+  isMultiMarketEquityTradingDay,
 } from '../scripts/shared/market-hours.cjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -83,6 +84,12 @@ describe('isUsEquityMarketOpen / isUsEquityTradingDay (#4922d)', () => {
     assert.equal(isUsEquityTradingDay(new Date('2026-11-26T17:00:00Z')), false);
     assert.equal(isUsEquityTradingDay(new Date('2026-11-27T17:00:00Z')), true);
   });
+
+  it('multi-market gate keeps Asian quotes live on full NYSE holidays', () => {
+    assert.equal(isUsEquityTradingDay(new Date('2026-11-26T17:00:00Z')), false);
+    assert.equal(isMultiMarketEquityTradingDay(new Date('2026-11-26T17:00:00Z')), true);
+    assert.equal(isMultiMarketEquityTradingDay(new Date('2026-07-11T16:00:00Z')), false);
+  });
 });
 
 describe('server TS twin stays in lockstep with the .cjs helper', () => {
@@ -109,7 +116,7 @@ describe('closed-market seeding gates (source-textual, #4922d)', () => {
   it('seed-market-quotes skips upstream fetch on non-trading days and reuses the exit-75 TTL machinery', () => {
     const src = readSrc('scripts/seed-market-quotes.mjs');
     assert.match(src, /from '\.\/shared\/market-hours\.cjs'/);
-    assert.match(src, /isUsEquityTradingDay\(/);
+    assert.match(src, /isMultiMarketEquityTradingDay\(/);
     assert.match(src, /extendExistingTtl\(/, 'must reuse the runSeed phase-1 graceful helper');
     assert.match(src, /process\.exit\(0\)/, 'closed-market skip is exit 0, never 75');
   });
@@ -117,7 +124,8 @@ describe('closed-market seeding gates (source-textual, #4922d)', () => {
   it('ais-relay gates the equity block only, with a state-transition log', () => {
     const src = readSrc('scripts/ais-relay.cjs');
     assert.match(src, /require\('\.\/shared\/market-hours\.cjs'\)/);
-    assert.match(src, /isUsEquityTradingDay\(/);
+    assert.match(src, /isMultiMarketEquityTradingDay\(/);
+    assert.match(src, /if \(_marketSeedRun\)/, 'overlong market refreshes must not overlap');
     // crypto is 24/7 — its seeding call must not sit behind the equity gate
     assert.match(src, /const cr = await seedCryptoQuotes\(\);/);
   });

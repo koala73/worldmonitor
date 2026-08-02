@@ -9,6 +9,15 @@ const BLOCKED_METADATA_HOSTNAMES = new Set([
   'link-local.s3.amazonaws.com',
 ]);
 
+const DNS_RESOLUTION_TIMEOUT_MS = 3_000;
+const DNS_JSON_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
+
+type ResolveHostname = (hostname: string) => Promise<string[]>;
+
+function isIpLiteral(hostname: string): boolean {
+  return hostname.includes(':') || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+}
+
 function ipv4Parts(value: string): [number, number, number, number] | null {
   const parts = value.split('.');
   if (parts.length !== 4) return null;
@@ -171,4 +180,59 @@ export function blockedNotificationWebhookUrlReason(rawUrl: string): string | nu
   }
 
   return null;
+}
+
+async function resolveDnsJson(hostname: string, recordType: 'A' | 'AAAA'): Promise<string[]> {
+  const url = new URL(DNS_JSON_ENDPOINT);
+  url.searchParams.set('name', hostname);
+  url.searchParams.set('type', recordType);
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/dns-json',
+      'User-Agent': 'WorldMonitor-Notification-Webhooks/1.0',
+    },
+    signal: AbortSignal.timeout(DNS_RESOLUTION_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`DNS ${recordType} lookup failed: HTTP ${response.status}`);
+  const data = await response.json() as { Status?: number; Answer?: Array<{ type?: number; data?: string }> };
+  if (data.Status !== 0) throw new Error(`DNS ${recordType} lookup failed: status ${data.Status}`);
+  const expectedType = recordType === 'A' ? 1 : 28;
+  return (data.Answer ?? [])
+    .filter(answer => answer.type === expectedType && typeof answer.data === 'string')
+    .map(answer => answer.data!);
+}
+
+async function defaultResolveHostname(hostname: string): Promise<string[]> {
+  const records = await Promise.all([
+    resolveDnsJson(hostname, 'A'),
+    resolveDnsJson(hostname, 'AAAA'),
+  ]);
+  return records.flat();
+}
+
+/**
+ * Fail fast at registration when the webhook hostname currently resolves to a
+ * private or reserved address. Delivery repeats this check (and pins its
+ * connection) because DNS can change after registration.
+ */
+export async function assertNotificationWebhookRegistrationUrlSafe(
+  rawUrl: string,
+  resolveHostname: ResolveHostname = defaultResolveHostname,
+): Promise<void> {
+  const staticError = blockedNotificationWebhookUrlReason(rawUrl);
+  if (staticError) throw new Error(staticError);
+
+  const hostname = new URL(rawUrl).hostname.toLowerCase();
+  if (isIpLiteral(hostname)) return;
+  let resolvedAddresses: string[];
+  try {
+    resolvedAddresses = await resolveHostname(hostname);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Webhook URL DNS resolution failed: ${message}`);
+  }
+  if (!resolvedAddresses.length) throw new Error('Webhook URL DNS resolution returned no addresses');
+  if (resolvedAddresses.some(isBlockedNotificationResolvedAddress)) {
+    throw new Error('Webhook URL must not point to a private/local address');
+  }
 }

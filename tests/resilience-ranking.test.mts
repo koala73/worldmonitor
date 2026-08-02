@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { createDomainGateway } from '../server/gateway.ts';
 import { mapErrorToResponse } from '../server/error-mapper.ts';
@@ -42,6 +42,12 @@ const RANKING_META = {
   coverage: 1,
   partial: false,
 };
+
+beforeEach(() => {
+  // This suite exercises the legacy d6 ranking/cache contract. Production now
+  // defaults to pillar-combine; rollback coverage must opt into d6 explicitly.
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;

@@ -253,6 +253,22 @@ describe('dashboard critical CSS graph', () => {
     );
   });
 
+  it('keeps happy variant theme CSS off the default dashboard static graph', () => {
+    const dashboardGraph = collectStaticGraph('src/main.ts');
+
+    assert.equal(
+      dashboardGraph.has('src/styles/happy-theme.css'),
+      false,
+      'Non-happy dashboard variants must not eagerly import happy-theme.css through src/main.ts.',
+    );
+
+    assert.equal(
+      dynamicModuleSpecifiers('src/main.ts').includes('./styles/happy-theme.css'),
+      true,
+      'The happy variant should still be able to load happy-theme.css through an explicit dynamic import.',
+    );
+  });
+
   it('keeps dashboard preferences content on dashboard-owned button styles', () => {
     const preferencesContent = src('src/services/preferences-content.ts');
     const mainCss = src('src/styles/main.css');

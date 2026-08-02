@@ -6,7 +6,7 @@
 // Indicators:
 //   NGDP_RPCH   — Real GDP growth, % change
 //   NGDPDPC     — Nominal GDP per capita, USD
-//   NGDP_R      — Real GDP, national currency (constant prices)
+//   NGDP_R      — Real GDP, national currency (constant prices), billions
 //   PPPPC       — GDP per capita, PPP USD
 //   PPPGDP      — GDP, PPP USD
 //   NID_NGDP    — Total investment % GDP
@@ -24,6 +24,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:imf:growth:v1';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days — monthly IMF WEO release cadence
+const SCHEMA_VERSION = 3;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 const ISO3_TO_ISO2 = Object.fromEntries(Object.entries(ISO2_TO_ISO3).map(([k, v]) => [v, k]));
@@ -94,6 +95,8 @@ export function buildGrowthCountries(perIndicator) {
     countries[iso2] = {
       realGdpGrowthPct:   growth?.value ?? null,
       gdpPerCapitaUsd:    gdpPc?.value ?? null,
+      realGdpLcuB:        realGdpV?.value ?? null,
+      // Deprecated bootstrap alias: keep through the v3 rollout window.
       realGdp:            realGdpV?.value ?? null,
       gdpPerCapitaPpp:    pppPc?.value ?? null,
       gdpPpp:             pppGdpV?.value ?? null,
@@ -149,7 +152,7 @@ export function validate(data) {
   return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 190;
 }
 
-export { CANONICAL_KEY, CACHE_TTL };
+export { CANONICAL_KEY, CACHE_TTL, SCHEMA_VERSION };
 
 export function declareRecords(data) {
   return Object.keys(data?.countries || {}).length;
@@ -166,7 +169,9 @@ if (process.argv[1]?.endsWith('seed-imf-growth.mjs')) {
     declareRecords,
     // schemaVersion bumped 1→2 in Codex PR #3604 review fix: see
     // seed-imf-external.mjs for the rationale (new `latestYear` field).
-    schemaVersion: 2,
+    // Bump 2→3 because this seeder adds explicit `realGdpLcuB` naming while
+    // preserving the deprecated `realGdp` alias during rollout.
+    schemaVersion: SCHEMA_VERSION,
     maxStaleMin: 100800,
 
     // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──

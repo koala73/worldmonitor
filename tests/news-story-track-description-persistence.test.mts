@@ -15,10 +15,12 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { shouldDropOpinionTrack } from '../scripts/lib/digest-opinion-track-filter.mjs';
 
 const {
   buildStoryTrackHsetFields,
   computeEntityCorroborationSignals,
+  parseRssXml,
   promoteDiplomacySeverity,
 } = __testing__;
 
@@ -67,7 +69,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.ok(m.has('lang'));
   });
 
-  it('writes isOpinion as "1" / "0" — stamps the opinion verdict on the row (F3)', () => {
+  it('writes isOpinion as "1" / "0" — stamps the non-event brief verdict on the row (F3)', () => {
     // The brief's read path (buildDigest) excludes isOpinion="1" rows.
     // Written unconditionally for the same shared-row reason as
     // `description`: a stale "1" from an earlier mention must be
@@ -83,6 +85,54 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual(
       fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isOpinion'),
       '0',
+    );
+  });
+
+  it('carries the DW historical-explainer verdict from RSS parsing into the HSET shape', () => {
+    const result = parseRssXml(
+      `<?xml version="1.0"?><rss><channel><item>
+        <title>How Turkey's 2016 coup attempt changed the country for good</title>
+        <link>https://amp.dw.com/en/how-turkeys-2016-coup-attempt-changed-the-country-for-good/a-77955154</link>
+        <pubDate>Tue, 14 Jul 2026 12:00:00 GMT</pubDate>
+        <description>DW examines the lasting political effects of the failed coup attempt in Turkey.</description>
+      </item></channel></rss>`,
+      { url: 'https://amp.dw.com/rss', name: 'DW News', lang: 'en' },
+      'full',
+    );
+    assert.ok(result, 'RSS parser should return a parse result');
+    const item = result.items[0];
+    assert.ok(item, 'RSS parser should retain the dated item');
+    assert.strictEqual(item.isOpinion, true);
+    const persisted = fieldsToMap(buildStoryTrackHsetFields(item, '1784030400000', 42));
+    assert.strictEqual(persisted.get('isOpinion'), '1');
+    assert.strictEqual(
+      shouldDropOpinionTrack(Object.fromEntries(persisted)),
+      true,
+      'the stamped RSS record must be excluded by the digest read-path policy',
+    );
+  });
+
+  it('carries the Al Jazeera duration-led retrospective verdict from RSS into the digest filter', () => {
+    const result = parseRssXml(
+      `<?xml version="1.0"?><rss><channel><item>
+        <title>10 years on from Turkiye’s failed coup attempt on Erdogan</title>
+        <link>https://www.aljazeera.com/video/newsfeed/2026/7/15/10-years-on-from-turkiyes-failed-coup-attempt-on-erdogan?traffic_source=rss</link>
+        <pubDate>Wed, 15 Jul 2026 20:35:09 +0000</pubDate>
+        <description>10 years on from Turkiye’s coup attempt to overthrow President Erdogan, the country remains divided over its legacy.</description>
+      </item></channel></rss>`,
+      { url: 'https://www.aljazeera.com/xml/rss/all.xml', name: 'Al Jazeera', lang: 'en' },
+      'full',
+    );
+    assert.ok(result, 'RSS parser should return a parse result');
+    const item = result.items[0];
+    assert.ok(item, 'RSS parser should retain the dated item');
+    assert.strictEqual(item.isOpinion, true);
+    const persisted = fieldsToMap(buildStoryTrackHsetFields(item, '1784147709000', 42));
+    assert.strictEqual(persisted.get('isOpinion'), '1');
+    assert.strictEqual(
+      shouldDropOpinionTrack(Object.fromEntries(persisted)),
+      true,
+      'the stamped anniversary retrospective must be excluded before severity bucketing',
     );
   });
 
@@ -346,7 +396,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
 });
 
 describe('fetchAndParseRss — cache prefix invalidation contract', () => {
-  it('rss:feed cache prefix is v6 (post-droppedFeedCap, #4920), not v4/v5', () => {
+  it('rss:feed cache prefix is v8 (duration-led historical-explainer stamp), not v4/v5/v6/v7', () => {
     // Pre-PR ParsedItems cached at rss:feed:v4 lack the
     // isEphemeralLiveCoverage field. If a cache hit returned one of those,
     // the falsy-coerce in
@@ -363,15 +413,19 @@ describe('fetchAndParseRss — cache prefix invalidation contract', () => {
       resolve(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', 'list-feed-digest.ts'),
       'utf-8',
     );
-    // v5→v6 (#4920 review): ParseResult gained droppedFeedCap; warm v5
-    // rows lack it and would undercount the coverage ledger for their TTL.
+    // v7→v8: duration-led historical explainers now receive the same stable
+    // ingest stamp. Digest reads trust explicit stamps, so warm v7 rows must
+    // not retain a pre-rule "0" verdict for a cache TTL.
     assert.ok(
-      src.includes("`rss:feed:v6:${variant}:${feed.url}`"),
-      'rss:feed cache key must use v6 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
+      src.includes("`rss:feed:v8:${variant}:${feed.url}`"),
+      'rss:feed cache key must use v8 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
     );
     assert.ok(
-      !src.includes("`rss:feed:v5:${variant}:${feed.url}`") && !src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
-      'must NOT leave a residual v4/v5 cacheKey assignment — would silently revert the cutover',
+      !src.includes("`rss:feed:v7:${variant}:${feed.url}`") &&
+        !src.includes("`rss:feed:v6:${variant}:${feed.url}`") &&
+        !src.includes("`rss:feed:v5:${variant}:${feed.url}`") &&
+        !src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
+      'must NOT leave a residual v4/v5/v6/v7 cacheKey assignment — would silently revert the cutover',
     );
   });
 });

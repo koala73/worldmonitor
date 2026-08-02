@@ -1,8 +1,7 @@
 # Mobile main-thread baseline — 2026-06-27 (#4443 / U2)
 
-The committed baseline + measurement methodology for the mobile main-thread budget roadmap
-(`docs/plans/2026-06-27-001-perf-mobile-mainthread-budget-roadmap-plan.md`). Every spin-off
-PR (U3–U8) compares against this doc.
+The committed baseline and measurement methodology for mobile main-thread performance.
+Every follow-up change compares against this document.
 
 ## How to measure
 

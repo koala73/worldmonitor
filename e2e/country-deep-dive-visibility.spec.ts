@@ -3,8 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 // Regression guard for the country deep-dive panel visibility contract.
 //
 // PR #4346 added an inline critical-CSS rule in index.html to keep the CLOSED
-// panel off-canvas before the bundled CSS loads. The rule was UNLAYERED and
-// UNCONDITIONAL:
+// panel off-canvas before the bundled CSS loads. The original rule was
+// UNLAYERED and UNCONDITIONAL:
 //
 //     #country-deep-dive-panel.country-deep-dive{ right:-460px; visibility:hidden }
 //
@@ -18,7 +18,9 @@ import { expect, test, type Page } from '@playwright/test';
 // inline rule won the cascade even after open() added `.active` / `.maximized`
 // and set aria-hidden="false" — the panel could never slide on-screen. The fix
 // scopes the inline rule to the closed state ([aria-hidden="true"]) so it stops
-// matching once the panel opens.
+// matching once the panel opens. Issue #4580 later found that animating `right`
+// itself can show up as CLS on the panel; the contract is now "right stays
+// settled at 0, transform moves the panel off/on canvas."
 //
 // This spec loads the real dashboard (inline critical CSS + the layered bundle)
 // and applies the exact class + aria-hidden mutations CountryDeepDivePanel
@@ -33,7 +35,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const PANEL = '#country-deep-dive-panel';
 
-type Geometry = { right: string; visibility: string };
+type Geometry = { right: string; transform: string; visibility: string };
 
 // Mirrors the DOM mutations in CountryDeepDivePanel.open()/hide():
 // classList.add('active'[, 'maximized']) + setAttribute('aria-hidden', ...).
@@ -43,14 +45,14 @@ const applyPanelState = (page: Page, classes: string[], ariaHidden: boolean): Pr
     if (!el) throw new Error('#country-deep-dive-panel not found');
     // Disable the 0.28s slide so getComputedStyle returns the settled target,
     // not an interpolated frame. This is an inline style and only affects
-    // `transition` — `right`/`visibility` still resolve through the real cascade.
+    // `transition` — `right`/`transform`/`visibility` still resolve through the real cascade.
     el.style.transition = 'none';
     el.classList.remove('active', 'maximized');
     for (const cls of classes) el.classList.add(cls);
     el.setAttribute('aria-hidden', ariaHidden ? 'true' : 'false');
     void el.offsetWidth; // force a style/layout flush before measuring
     const style = getComputedStyle(el);
-    return { right: style.right, visibility: style.visibility };
+    return { right: style.right, transform: style.transform, visibility: style.visibility };
   }, { classes, ariaHidden });
 
 const bootDashboard = async (page: Page): Promise<void> => {
@@ -70,8 +72,8 @@ test.describe('country deep-dive panel visibility contract', () => {
   test('stays off-canvas and hidden while closed (aria-hidden="true")', async ({ page }) => {
     const closed = await applyPanelState(page, [], true);
     expect(closed.visibility).toBe('hidden');
-    // 430px panel parked at right:-460px (or -100vw on mobile) — i.e. off-canvas.
-    expect(Number.parseFloat(closed.right)).toBeLessThan(0);
+    expect(closed.right).toBe('0px');
+    expect(closed.transform).not.toBe('none');
   });
 
   test('slides on-screen and becomes visible when opened (.active)', async ({ page }) => {
@@ -80,11 +82,13 @@ test.describe('country deep-dive panel visibility contract', () => {
     // right:-460px / visibility:hidden over the layered .country-deep-dive.active.
     expect(open.visibility).toBe('visible');
     expect(open.right).toBe('0px');
+    expect(open.transform).toBe('none');
   });
 
   test('is visible and full-bleed when opened maximized (.active.maximized)', async ({ page }) => {
     const maximized = await applyPanelState(page, ['active', 'maximized'], false);
     expect(maximized.visibility).toBe('visible');
     expect(maximized.right).toBe('0px'); // from inset: 0
+    expect(maximized.transform).toBe('none');
   });
 });

@@ -56,8 +56,10 @@ const EVENT_BUFFER_FAILURE = 'regional_buffer_failure';
 /** Regime labels that upgrade a regime shift from high to critical severity. */
 const CRITICAL_REGIME_LABELS = new Set(['escalation_ladder', 'fragmentation_risk']);
 
-/** Dedup TTL for the notification queue. Matches the 6h snapshot cron cadence. */
-const DEDUP_TTL_SECONDS = 6 * 60 * 60;
+/** Default dedup TTL for the notification queue. Matches the 6h snapshot cadence. */
+const DEFAULT_DEDUP_TTL_SECONDS = 6 * 60 * 60;
+const MIN_DEDUP_TTL_SECONDS = 5 * 60;
+const MAX_DEDUP_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 // ── Humanization helpers (pure) ──────────────────────────────────────────────
 
@@ -194,12 +196,21 @@ export function simpleHash(str) {
  * Build the Upstash dedup key for an event. Exposed so tests can assert the
  * exact key shape without reaching into the default publisher.
  *
- * @param {{eventType: string, payload: {title?: string}}} event
+ * A caller may provide a stable payload.dedupe_key when mutable display text
+ * (for example a corrected title) must not create a second alert lineage.
+ *
+ * @param {{eventType: string, payload: {title?: string, dedupe_key?: string}}} event
  * @returns {string}
  */
 export function buildDedupKey(event) {
-  const title = String(event.payload?.title ?? '');
-  return `wm:notif:scan-dedup:${event.eventType}:${simpleHash(`${event.eventType}:${title}`)}`;
+  const identity = String(event.payload?.dedupe_key ?? event.payload?.title ?? '');
+  return `wm:notif:scan-dedup:${event.eventType}:${simpleHash(`${event.eventType}:${identity}`)}`;
+}
+
+function eventDedupTtlSeconds(event) {
+  const requested = event?.cooldownSeconds;
+  if (!Number.isInteger(requested)) return DEFAULT_DEDUP_TTL_SECONDS;
+  return Math.min(MAX_DEDUP_TTL_SECONDS, Math.max(MIN_DEDUP_TTL_SECONDS, requested));
 }
 
 // ── Default Upstash publisher ────────────────────────────────────────────────
@@ -253,6 +264,42 @@ async function upstashDel(url, token, key) {
   }
 }
 
+const ENQUEUE_ONCE_SCRIPT = [
+  "if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end",
+  "redis.call('LPUSH', KEYS[2], ARGV[2])",
+  "redis.call('SET', KEYS[1], '1', 'EX', ARGV[1])",
+  'return 1',
+].join('\n');
+
+async function upstashEnqueueOnce(url, token, dedupKey, ttlSeconds, queueKey, value) {
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([
+        'EVAL',
+        ENQUEUE_ONCE_SCRIPT,
+        2,
+        dedupKey,
+        queueKey,
+        String(ttlSeconds),
+        value,
+      ]),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return 'error';
+    const json = await resp.json().catch(() => null);
+    if (json?.result === 1) return 'enqueued';
+    if (json?.result === 0) return 'duplicate';
+    return 'error';
+  } catch {
+    return 'error';
+  }
+}
+
 /**
  * Redis operations needed by the publish-with-rollback path. Callers
  * (including tests) inject these so the orchestration logic is fully
@@ -262,6 +309,7 @@ async function upstashDel(url, token, key) {
  *   setNx: (key: string, ttlSeconds: number) => Promise<boolean|'new'|'duplicate'|'error'|'disabled'>,
  *   lpush: (key: string, value: string) => Promise<boolean>,
  *   del: (key: string) => Promise<boolean>,
+ *   enqueueOnce?: (dedupKey: string, ttlSeconds: number, queueKey: string, value: string) => Promise<'enqueued'|'duplicate'|'error'>,
  * }} RedisPublishOps
  */
 
@@ -271,13 +319,20 @@ async function upstashDel(url, token, key) {
  * is a thin wrapper that builds real Upstash REST calls and delegates here.
  *
  * Flow:
- *   1. SET NX dedup key (6h TTL). If already set → dedup hit, return false.
+ *   1. If ops.enqueueOnce is available, dedup + LPUSH commit atomically in a
+ *      single Redis script. A transport error from that path falls back to
+ *      the legacy SET NX → LPUSH flow below so high/critical events still
+ *      fail open through the shared notification-dedup policy instead of
+ *      being silently dropped.
+ *   2. SET NX dedup key with the caller-selected bounded TTL. If already set
+ *      → dedup hit, return false.
  *      SET NX transport errors fail open for high/critical events through the
  *      shared notification-dedup policy, with in-process fallback suppression.
- *   2. LPUSH event onto wm:events:queue.
- *   3. If LPUSH fails → DEL the dedup key so the next cron cycle can retry.
- *      Otherwise the alert would be silently suppressed for 6h even though
- *      nothing was enqueued. Matches the rollback path in ais-relay.cjs
+ *   3. LPUSH event onto wm:events:queue.
+ *   4. If LPUSH fails → DEL the dedup key so the next cron cycle can retry.
+ *      Otherwise the alert would be silently suppressed for the full dedup
+ *      window even though nothing was enqueued. Matches the rollback path in
+ *      ais-relay.cjs
  *      publishNotificationEvent().
  *
  * Never throws. Returns an outcome object so tests can assert exactly
@@ -291,13 +346,46 @@ export async function publishEventWithOps(event, ops) {
   const outcome = { enqueued: false, dedupHit: false, rolledBack: false };
   try {
     const dedupKey = buildDedupKey(event);
-    const dedupResult = await ops.setNx(dedupKey, DEDUP_TTL_SECONDS);
+    const dedupTtlSeconds = eventDedupTtlSeconds(event);
+    const msg = JSON.stringify({ ...event, publishedAt: Date.now() });
+    if (typeof ops.enqueueOnce === 'function') {
+      const result = await ops.enqueueOnce(
+        dedupKey,
+        dedupTtlSeconds,
+        'wm:events:queue',
+        msg,
+      );
+      if (result === 'enqueued') {
+        outcome.enqueued = true;
+        const title = String(event.payload?.title ?? '');
+        console.log(`[alerts] queued ${event.severity} ${event.eventType}: ${title.slice(0, 60)}`);
+        return outcome;
+      }
+      if (result === 'duplicate') {
+        outcome.dedupHit = true;
+        const title = String(event.payload?.title ?? '');
+        console.log(`[alerts] dedup skip: ${event.eventType} — ${title.slice(0, 60)}`);
+        return outcome;
+      }
+      // result === 'error': the atomic script's transport failed and we
+      // cannot tell whether the dedup+enqueue committed server-side. Fall
+      // back to the legacy SET NX → LPUSH path below, which still applies
+      // the shared fail-open policy for high/critical severity, rather than
+      // dropping the event outright. If the legacy ops aren't available
+      // there is nothing left to retry with.
+      if (typeof ops.setNx !== 'function' || typeof ops.lpush !== 'function') {
+        console.warn(`[alerts] enqueueOnce transport error for ${event.eventType} — no legacy fallback ops, dropping`);
+        return outcome;
+      }
+      console.warn(`[alerts] enqueueOnce transport error for ${event.eventType} — falling back to legacy dedup path`);
+    }
+    const dedupResult = await ops.setNx(dedupKey, dedupTtlSeconds);
     const dedupDecision = recordDedupOutcome(dedupResult, {
-      surface: 'regional-snapshot',
+      surface: String(event.payload?.surface ?? 'regional-snapshot'),
       eventType: event.eventType,
       severity: event.severity,
       fallbackKey: dedupKey,
-      fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+      fallbackTtlSeconds: dedupTtlSeconds,
       emitTelemetry: ({ line }) => console.warn(line),
     });
     if (!dedupDecision.shouldPublish) {
@@ -308,8 +396,12 @@ export async function publishEventWithOps(event, ops) {
       }
       return outcome;
     }
-    const msg = JSON.stringify({ ...event, severity: dedupDecision.severity, publishedAt: Date.now() });
-    const ok = await ops.lpush('wm:events:queue', msg);
+    const queueMessage = JSON.stringify({
+      ...event,
+      severity: dedupDecision.severity,
+      publishedAt: Date.now(),
+    });
+    const ok = await ops.lpush('wm:events:queue', queueMessage);
     if (ok) {
       outcome.enqueued = true;
       const title = String(event.payload?.title ?? '');
@@ -320,12 +412,10 @@ export async function publishEventWithOps(event, ops) {
     // retry this alert instead of suppressing it for the full 6h window.
     console.warn(`[alerts] LPUSH failed for ${event.eventType} — rolling back dedup key`);
     try {
-      await ops.del(dedupKey);
+      outcome.rolledBack = await ops.del(dedupKey) === true;
     } catch {
-      // Even rollback failed — ignore; next retry will still suppress this
-      // alert for 6h, but we logged the LPUSH failure so operators can see.
+      outcome.rolledBack = false;
     }
-    outcome.rolledBack = true;
     return outcome;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -342,7 +432,7 @@ export async function publishEventWithOps(event, ops) {
  * @param {object} event
  * @returns {Promise<boolean>} true when enqueued, false on dedup or failure
  */
-async function defaultPublishEvent(event) {
+export async function publishNotificationEventOutcome(event) {
   let url;
   let token;
   try {
@@ -352,15 +442,23 @@ async function defaultPublishEvent(event) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[alerts] publish failed for ${event?.eventType}: ${msg}`);
-    return false;
+    return { enqueued: false, dedupHit: false, rolledBack: false };
   }
   const ops = /** @type {RedisPublishOps} */ ({
     setNx: (key, ttl) => upstashSetNx(url, token, key, ttl),
     lpush: (key, value) => upstashLpush(url, token, key, value),
     del: (key) => upstashDel(url, token, key),
+    // The default production path commits dedup + queue insertion in one Redis
+    // script. This removes the orphan-dedup window that a failed LPUSH followed
+    // by a failed DEL creates in the legacy dependency-injected path.
+    enqueueOnce: (dedupKey, ttl, queueKey, value) =>
+      upstashEnqueueOnce(url, token, dedupKey, ttl, queueKey, value),
   });
-  const outcome = await publishEventWithOps(event, ops);
-  return outcome.enqueued;
+  return publishEventWithOps(event, ops);
+}
+
+export async function publishNotificationEvent(event) {
+  return (await publishNotificationEventOutcome(event)).enqueued;
 }
 
 // ── Public: emit alerts for one region snapshot ──────────────────────────────
@@ -382,7 +480,7 @@ export async function emitRegionalAlerts(region, snapshot, diff, opts = {}) {
   const events = buildAlertEvents(region, snapshot, diff);
   if (events.length === 0) return { enqueued: 0, events };
 
-  const publisher = opts.publishEvent ?? defaultPublishEvent;
+  const publisher = opts.publishEvent ?? publishNotificationEvent;
   let enqueued = 0;
   for (const event of events) {
     try {

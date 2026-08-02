@@ -1,0 +1,391 @@
+// Regression test for issue #5478 (strand 1): runSeed's own seed-meta
+// bookkeeping writes must DEGRADE, not crash, when Redis stays down past the
+// retry budget.
+//
+// The #5438 fix wrapped writeFreshnessMetadata's SET in withRetry, but the
+// helper still (correctly — external callers depend on it) throws after
+// exhausting retries. On 2026-07-23 the sustained GDELT-brownout contention
+// window produced three consecutive Upstash aborts in one run, the throw
+// escaped runSeed's phase-2 try, and seed-gdelt-intel exited 1 with
+// `FATAL: The operation was aborted due to timeout` — a red badge + alert
+// over pure bookkeeping. By the time these writes run, the run's outcome is
+// already decided (publish succeeded, or the skip path preserved last-good):
+// the honest failure mode is a loud warning + an aging seed-meta key, which
+// /api/health reports as STALE_SEED independently.
+
+import { test, beforeEach, afterEach } from 'node:test';
+import { strict as assert } from 'node:assert';
+
+process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+
+const { runSeed } = await import('../scripts/_seed-utils.mjs');
+
+const originalFetch = globalThis.fetch;
+const originalSetTimeout = globalThis.setTimeout;
+const originalExit = process.exit;
+const originalWarn = console.warn;
+const ORIGINAL_SIGTERM_LISTENERS = new Set(process.rawListeners('SIGTERM'));
+
+const CANONICAL_ENVELOPE = {
+  _seed: { fetchedAt: 1784621196406, recordCount: 6, sourceVersion: 'test-v1', schemaVersion: 1, state: 'OK' },
+  data: { items: ['cached'] },
+};
+
+let calls;
+let warns;
+
+function jsonResponse(body) {
+  return new Response(JSON.stringify(body), { status: 200 });
+}
+
+function abortError() {
+  const err = new Error('The operation was aborted due to timeout');
+  err.name = 'AbortError';
+  return err;
+}
+
+beforeEach(() => {
+  calls = [];
+  warns = [];
+  console.warn = (...args) => { warns.push(args.join(' ')); originalWarn(...args); };
+  // Collapse retry backoffs (>=500ms) so exhaustion tests don't sleep for real.
+  globalThis.setTimeout = (cb, ms, ...args) =>
+    originalSetTimeout(cb, ms >= 500 ? 0 : ms, ...args);
+  // Route every Redis surface runSeed touches; the seed-meta SET is the one
+  // that stays down for the whole run (timeout-flavored, like the incident).
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    if (Array.isArray(body) && body[0] === 'SET' && String(body[1]).startsWith('seed-meta:')) {
+      throw abortError();
+    }
+    return jsonResponse({ result: 'OK' });
+  };
+  // Convert exits to throws so the test can inspect the exit code.
+  process.exit = (code) => {
+    const e = new Error(`__test_exit__:${code}`);
+    e.exitCode = code;
+    throw e;
+  };
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  globalThis.setTimeout = originalSetTimeout;
+  process.exit = originalExit;
+  console.warn = originalWarn;
+  for (const listener of process.rawListeners('SIGTERM')) {
+    if (!ORIGINAL_SIGTERM_LISTENERS.has(listener)) process.removeListener('SIGTERM', listener);
+  }
+});
+
+async function runWithExitTrap(fn) {
+  try {
+    await fn();
+    return { exitCode: null, threw: null };
+  } catch (err) {
+    if (String(err.message).startsWith('__test_exit__:')) return { exitCode: err.exitCode, threw: null };
+    return { exitCode: null, threw: err };
+  }
+}
+
+function metaSetAttempts(resource) {
+  return calls.filter((c) =>
+    Array.isArray(c.body) && c.body[0] === 'SET' && c.body[1] === `seed-meta:test:${resource}`,
+  ).length;
+}
+
+test('validate-skip path: seed-meta mirror write exhausting retries degrades to exit 0, not FATAL', async () => {
+  const { exitCode, threw } = await runWithExitTrap(() =>
+    runSeed('test', 'meta-degrade-skip', 'test:meta-degrade-skip:v1',
+      async () => ({ items: [] }),
+      {
+        validateFn: (d) => Array.isArray(d?.items) && d.items.length > 0, // fails → skip path
+        ttlSeconds: 3600,
+        declareRecords: (d) => (Array.isArray(d?.items) ? 1 : 0) || 1, // >0 → contract OK, reaches atomicPublish
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+      }),
+  );
+
+  assert.equal(threw, null, `a bookkeeping SET must not escape runSeed as a crash; got: ${threw}`);
+  assert.equal(exitCode, 0, 'skip path must still exit 0 when the seed-meta mirror write stays down');
+  assert.ok(metaSetAttempts('meta-degrade-skip') >= 3, 'the SET must still be retried before degrading');
+  assert.ok(
+    warns.some((w) => w.includes('seed-meta write') && w.includes('STALE_SEED')),
+    `degrade must be loud and name the surviving alarm; warns were: ${JSON.stringify(warns)}`,
+  );
+});
+
+test('validate-skip path calls the completion hook after last-good preservation succeeds', async () => {
+  let completed = 0;
+  let rejected = 0;
+  const { exitCode, threw } = await runWithExitTrap(() =>
+    runSeed('test', 'preserved-complete', 'test:preserved-complete:v1',
+      async () => ({ items: [] }),
+      {
+        validateFn: () => false,
+        ttlSeconds: 3600,
+        declareRecords: () => 1,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+        afterValidationSkip: async (_data, context) => {
+          rejected += 1;
+          assert.equal(context.preservationSucceeded, true);
+        },
+        afterPreservedValidationSkip: async (_data, context) => {
+          completed += 1;
+          assert.equal(context.canonicalKey, 'test:preserved-complete:v1');
+          assert.equal(context.recordCount, 1);
+        },
+      }),
+  );
+
+  assert.equal(threw, null);
+  assert.equal(exitCode, 0);
+  assert.equal(rejected, 1);
+  assert.equal(completed, 1);
+});
+
+test('validate-skip path reports rejection but does not complete when last-good preservation fails', async () => {
+  let completed = 0;
+  let rejected = 0;
+  const fetchWithCanonical = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    if (u.includes('/get/')) return jsonResponse({ result: null });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 0 })));
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'preserve-failed', 'test:preserve-failed:v1',
+        async () => ({ items: [] }),
+        {
+          validateFn: () => false,
+          ttlSeconds: 3600,
+          declareRecords: () => 1,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterValidationSkip: async (_data, context) => {
+            rejected += 1;
+            assert.equal(context.canonicalKey, 'test:preserve-failed:v1');
+            assert.equal(context.preservationSucceeded, false);
+          },
+          afterPreservedValidationSkip: async () => { completed += 1; },
+        }),
+    );
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(rejected, 1);
+    assert.equal(completed, 0);
+  } finally {
+    globalThis.fetch = fetchWithCanonical;
+  }
+});
+
+test('validate-skip path reports rejection when only part of the preservation cohort exists', async () => {
+  let completed = 0;
+  let rejected = 0;
+  const fetchWithCanonical = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    if (u.includes('/get/')) {
+      return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    }
+    if (u.endsWith('/pipeline')) {
+      return jsonResponse(body.map((_command, index) => ({ result: index === 0 ? 1 : 0 })));
+    }
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'preserve-partial', 'test:preserve-partial:v1',
+        async () => ({ items: [] }),
+        {
+          validateFn: () => false,
+          ttlSeconds: 3600,
+          declareRecords: () => 1,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterValidationSkip: async (_data, context) => {
+            rejected += 1;
+            assert.equal(context.canonicalKey, 'test:preserve-partial:v1');
+            assert.equal(context.preservationSucceeded, false);
+          },
+          afterPreservedValidationSkip: async () => { completed += 1; },
+        }),
+    );
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(rejected, 1);
+    assert.equal(completed, 0);
+  } finally {
+    globalThis.fetch = fetchWithCanonical;
+  }
+});
+
+test('validate-skip hook diagnostics merge without re-anchoring canonical freshness', async () => {
+  const originalFetchForHook = globalThis.fetch;
+  const metaSets = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const decodedUrl = decodeURIComponent(u);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (decodedUrl.includes('/get/test:hook-diagnostics:v1')) {
+      return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    }
+    if (decodedUrl.includes('/get/seed-meta:test:hook-diagnostics')) {
+      return jsonResponse({ result: JSON.stringify({
+        fetchedAt: CANONICAL_ENVELOPE._seed.fetchedAt,
+        recordCount: CANONICAL_ENVELOPE._seed.recordCount,
+        sourceVersion: 'test-v1',
+        lastAttemptAt: CANONICAL_ENVELOPE._seed.fetchedAt,
+      }) });
+    }
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    if (Array.isArray(body) && body[0] === 'SET' && body[1] === 'seed-meta:test:hook-diagnostics') {
+      metaSets.push(JSON.parse(body[2]));
+    }
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'hook-diagnostics', 'test:hook-diagnostics:v1',
+        async () => ({ items: [] }),
+        {
+          validateFn: () => false,
+          ttlSeconds: 3600,
+          declareRecords: () => 1,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterValidationSkip: async () => ({
+            freshnessMetaPatch: {
+              lastAttemptAt: CANONICAL_ENVELOPE._seed.fetchedAt + 60_000,
+              status: 'error',
+              fetchedAt: 0,
+              recordCount: 999,
+            },
+          }),
+        }),
+    );
+
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(metaSets.length, 1);
+    assert.equal(metaSets[0].lastAttemptAt, CANONICAL_ENVELOPE._seed.fetchedAt + 60_000);
+    assert.equal(metaSets[0].status, 'error');
+    assert.equal(metaSets[0].fetchedAt, CANONICAL_ENVELOPE._seed.fetchedAt);
+    assert.equal(metaSets[0].recordCount, CANONICAL_ENVELOPE._seed.recordCount);
+  } finally {
+    globalThis.fetch = originalFetchForHook;
+  }
+});
+
+test('publish-success path: seed-meta write exhausting retries degrades to exit 0, not FATAL', async () => {
+  const { exitCode, threw } = await runWithExitTrap(() =>
+    runSeed('test', 'meta-degrade-pub', 'test:meta-degrade-pub:v1',
+      async () => ({ items: [1, 2, 3] }),
+      {
+        validateFn: (d) => Array.isArray(d?.items) && d.items.length > 0, // passes → publish path
+        ttlSeconds: 3600,
+        declareRecords: (d) => d.items.length,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+      }),
+  );
+
+  assert.equal(threw, null, `the canonical publish already succeeded; a meta SET must not crash the run; got: ${threw}`);
+  assert.equal(exitCode, 0, 'publish path must still exit 0 when the seed-meta write stays down');
+  const canonicalSets = calls.filter((c) =>
+    Array.isArray(c.body) && c.body[0] === 'SET' && c.body[1] === 'test:meta-degrade-pub:v1',
+  );
+  assert.ok(canonicalSets.length >= 1, 'canonical publish must have happened before the degraded meta write');
+  assert.ok(
+    warns.some((w) => w.includes('seed-meta write')),
+    `degrade must be loud; warns were: ${JSON.stringify(warns)}`,
+  );
+});
+
+test('publish-success path logs the completion state returned by afterPublish', async () => {
+  const seedEvents = [];
+  const originalLog = console.log;
+  const metaFailureFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    return jsonResponse({ result: 'OK' });
+  };
+  console.log = (...args) => {
+    try {
+      const event = JSON.parse(args[0]);
+      if (event?.event === 'seed_complete') seedEvents.push(event);
+    } catch {
+      // Human-readable progress output is not JSON.
+    }
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'post-publish-state', 'test:post-publish-state:v1',
+        async () => ({ items: [1] }),
+        {
+          validateFn: (data) => data.items.length > 0,
+          ttlSeconds: 3600,
+          declareRecords: (data) => data.items.length,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterPublish: async () => ({
+            completionState: 'DEGRADED',
+            freshnessMetaPatch: {
+              status: 'error',
+              errorReason: 'post_publish_incomplete',
+              fetchedAt: 0,
+              recordCount: 999,
+            },
+          }),
+        }),
+    );
+
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(seedEvents.length, 1);
+    assert.equal(seedEvents[0].state, 'DEGRADED',
+      'a known post-publish failure must not be overwritten by contract state OK');
+    const metaSets = calls.filter((call) =>
+      Array.isArray(call.body)
+      && call.body[0] === 'SET'
+      && call.body[1] === 'seed-meta:test:post-publish-state',
+    );
+    assert.equal(metaSets.length, 1, 'the degraded health outcome must be written once');
+    const meta = JSON.parse(metaSets[0].body[2]);
+    assert.equal(meta.status, 'error');
+    assert.equal(meta.errorReason, 'post_publish_incomplete');
+    assert.equal(meta.recordCount, 1);
+    assert.notEqual(meta.fetchedAt, 0,
+      'post-publish diagnostics must not overwrite core freshness metadata');
+  } finally {
+    console.log = originalLog;
+    globalThis.fetch = metaFailureFetch;
+  }
+});

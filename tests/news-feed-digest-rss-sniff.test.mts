@@ -30,8 +30,8 @@ describe('looksLikeRssXml: reject non-RSS bodies before they poison the cache', 
   });
 
   it('REGRESSION: accepts RSS 1.0 / RDF feeds (Nature News, Asahi, Slashdot)', () => {
-    // Real Nature News body shape — this feed is in the registry at
-    // server/worldmonitor/news/v1/_feeds.ts:418 (`feeds.nature.com/nature/rss/current`).
+    // Real Nature News body shape — the registry uses Nature's direct RSS endpoint,
+    // while the document retains the publisher's legacy rdf:about identifier.
     // Pre-fix-fix the sniff rejected this entire feed as non-RSS, even
     // though parseRssXml handles its <item> blocks correctly.
     const body = `<?xml version="1.0" encoding="UTF-8"?>

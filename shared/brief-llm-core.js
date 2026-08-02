@@ -25,6 +25,11 @@ export const WHY_MATTERS_SYSTEM =
   '("This matters because…"), no questions, no calls to action, no markdown, ' +
   'no quotes. One sentence only.';
 
+export const WHY_MATTERS_V1_MIN_CHARS = 30;
+export const WHY_MATTERS_V1_MAX_CHARS = 400;
+export const WHY_MATTERS_V2_MIN_CHARS = 100;
+export const WHY_MATTERS_V2_MAX_CHARS = 500;
+
 /**
  * Date-grounding line appended to every brief LLM system prompt.
  *
@@ -80,7 +85,23 @@ export function buildWhyMattersUserPrompt(story, todayIso) {
 }
 
 /**
- * Parse + validate the LLM response into a single editorial sentence.
+ * Whether a whyMatters candidate ends as a complete sentence. Accept closing
+ * quote marks after terminal punctuation so cached and wire-format values are
+ * safe to validate before parser-specific normalization.
+ *
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function hasTerminalPunctuation(text) {
+  if (typeof text !== 'string') return false;
+  const s = text.trim();
+  const prose = s.replace(/["'\u2019\u201D]+$/, '');
+  if (/(?:\.\.\.|\u2026)$/.test(prose)) return false;
+  return /[.!?]$/.test(prose);
+}
+
+/**
+ * Parse + validate the LLM response into complete editorial prose.
  * Returns null when the output is obviously wrong (empty, boilerplate
  * preamble that survived stripReasoningPreamble, too short / too long).
  *
@@ -92,11 +113,13 @@ export function parseWhyMatters(text) {
   let s = text.trim();
   if (!s) return null;
   s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
-  const match = s.match(/^[^.!?]+[.!?]/);
-  const sentence = match ? match[0].trim() : s;
-  if (sentence.length < 30 || sentence.length > 400) return null;
-  if (/^story flagged by your sensitivity/i.test(sentence)) return null;
-  return sentence;
+  // Dotted abbreviations make sentence splitting intrinsically ambiguous
+  // (`U.S. Navy` vs `U.S. Markets rallied`). The prompt owns sentence count;
+  // provider finish_reason plus this punctuation gate own completeness.
+  if (!hasTerminalPunctuation(s)) return null;
+  if (s.length < WHY_MATTERS_V1_MIN_CHARS || s.length > WHY_MATTERS_V1_MAX_CHARS) return null;
+  if (/^story flagged by your sensitivity/i.test(s)) return null;
+  return s;
 }
 
 /**
@@ -161,28 +184,30 @@ export async function hashBriefStory(story) {
 // single-sentence abstraction-speak ("destabilize / systemic / sovereign
 // risk repricing") with no named actors, metrics, or dates. Root cause:
 // the 18–30 word cap compressed the context's specifics out of the LLM's
-// response. v2 loosens to 40–70 words across 2–3 sentences and REQUIRES
-// the LLM to ground at least one specific reference from the live context.
+// response. v2 first loosened to 40–70 words / 2–3 sentences; 2026-07-10
+// retightens to 25–40 words / 1–2 sentences after the field read found the
+// looser cap produced padded, formulaic prose — "much longer to say almost
+// the same" as the concise stable path. Still REQUIRES the LLM to ground at
+// least one specific reference from the story or materially relevant live
+// context.
 
 /**
- * System prompt for the analyst-path v2 (2–3 sentences, ~40–70 words,
- * grounded in a specific named actor / metric / date / place drawn
- * from the live context). Shape nudged toward the WMAnalyst chat voice
- * (SITUATION → ANALYSIS → optional WATCH) but rendered as plain prose,
- * no section labels in the output.
+ * System prompt for the analyst-path v2 (1–2 sentences, ~25–40 words,
+ * grounded in a specific named actor / metric / date / place). It uses
+ * varied plain prose rather than a fixed analytic sequence, with no
+ * section labels in the output.
  */
 export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
   'You are the lead analyst at WorldMonitor Brief, a geopolitical intelligence magazine. ' +
-  'Using the Live WorldMonitor Context AND the story, write 2–3 sentences (40–70 words total) ' +
+  'Using the story as the primary source and the optional Live WorldMonitor Context only when it is materially connected, write 1–2 sentences (25–40 words total) ' +
   'on why the story matters.\n\n' +
-  'STRUCTURE:\n' +
-  '1. SITUATION — what is happening right now, grounded in a SPECIFIC named actor, ' +
-  'metric, date, or place relevant to this story.\n' +
-  '2. ANALYSIS — the structural consequence (why this forces a repricing, shifts ' +
-  'the balance, triggers a cascade).\n' +
-  '3. (Optional) WATCH — the threshold or indicator to track, if clear from the context.\n\n' +
+  'VOICE:\n' +
+  '- Be concise: high signal density, every word earns its place. Do not pad to fill the range or restate the headline.\n' +
+  '- Vary sentence structure and emphasis across stories; choose the natural angle for this story rather than following a fixed sequence.\n' +
+  '- Do not default to a second sentence beginning "This…" or a "Watch for…" closing construction.\n' +
+  '- Ground the prose in a SPECIFIC named actor, metric, date, or place relevant to this story.\n\n' +
   'HARD CONSTRAINTS:\n' +
-  '- Total length 40–70 words across 2–3 sentences.\n' +
+  '- Total length 25–40 words across 1–2 sentences.\n' +
   '- MUST reference at least ONE specific: named person / country / organization / ' +
   'number / percentage / date / city.\n' +
   '- No preamble ("This matters because…", "The importance of…").\n' +
@@ -190,11 +215,12 @@ export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
   '- Editorial, impersonal, serious. No calls to action, no questions, no quotes.\n\n' +
   'RELEVANCE RULE (critical, read carefully):\n' +
   '- The context block may contain facts from world-brief, country-brief, risk scores, ' +
-  'forecasts, macro signals, and market data. These are BACKGROUND — only cite what is ' +
-  "directly relevant to this story's category and country.\n" +
+  'forecasts, macro signals, and market data. These are optional BACKGROUND, not a ' +
+  "mandatory narrative — most stories should not mention the global context. Only cite what is directly relevant to this story's category and country.\n" +
   '- If NO context fact clearly fits, ground instead in a named actor, place, date, ' +
   'or figure drawn from the headline or description. That is a VALID grounding — do ' +
   'NOT invent a market reading, VIX value, or forecast probability to satisfy the rule.\n' +
+  '- Treat internal forecast figures as private reasoning input. Do not quote raw forecast probabilities or present a WorldMonitor forecast as a user-facing fact.\n' +
   '- NEVER drag an off-topic market metric, FX reading, or probability into a ' +
   'humanitarian, aviation, diplomacy, or cyber story. A story about a refugee flow ' +
   'does not need a VIX number; a story about a drone incursion does not need an FX ' +
@@ -202,7 +228,7 @@ export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
 
 /**
  * Parse + validate the analyst-path v2 LLM response. Accepts
- * multi-sentence output (2–3 sentences), 100–500 chars. Otherwise
+ * short multi-sentence output (1–2 sentences), 100–500 chars. Otherwise
  * same rejection semantics as v1 (stub echo, empty) plus explicit
  * rejection of preamble boilerplate and leaked section labels.
  *
@@ -210,15 +236,20 @@ export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
  * fall through to the next layer.
  *
  * @param {unknown} text
+ * @param {{
+ *   publicStory?: { headline?: string, description?: string, source?: string },
+ *   privateForecasts?: string,
+ * }} [provenance]
  * @returns {string | null}
  */
-export function parseWhyMattersV2(text) {
+export function parseWhyMattersV2(text, provenance) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   if (!s) return null;
   // Drop surrounding quotes if the model insisted.
   s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
-  if (s.length < 100 || s.length > 500) return null;
+  if (s.length < WHY_MATTERS_V2_MIN_CHARS || s.length > WHY_MATTERS_V2_MAX_CHARS) return null;
+  if (!hasTerminalPunctuation(s)) return null;
   // Reject the stub echo (same as v1).
   if (/^story flagged by your sensitivity/i.test(s)) return null;
   // Reject common preamble the system prompt explicitly banned.
@@ -228,6 +259,32 @@ export function parseWhyMattersV2(text) {
   // Reject markdown / section-label leakage (we told it to use plain prose).
   if (/^(#|-|\*|\d+\.\s)/.test(s)) return null;
   if (/^(situation|analysis|watch)\s*[:\-–—]/i.test(s)) return null;
+  // Forecast context is private reasoning input. Compare normalized percentage
+  // values instead of nearby wording so paraphrases, distance, and newlines do
+  // not bypass the guard. A value present in the public story remains valid
+  // even when the private forecast block happens to contain the same number.
+  const percentageValues = (value) => {
+    if (typeof value !== 'string' || value.length === 0) return new Set();
+    const values = new Set();
+    const percentage = /(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:%|per\s*cent\b)/gi;
+    for (const match of value.matchAll(percentage)) {
+      const number = Number(match[1]);
+      if (Number.isFinite(number)) values.add(String(number));
+    }
+    return values;
+  };
+  const privateValues = percentageValues(provenance?.privateForecasts);
+  if (privateValues.size > 0) {
+    const publicStory = provenance?.publicStory;
+    const publicText = [publicStory?.headline, publicStory?.description, publicStory?.source]
+      .filter((value) => typeof value === 'string')
+      .join('\n');
+    const publicValues = percentageValues(publicText);
+    const outputValues = percentageValues(s);
+    for (const value of outputValues) {
+      if (privateValues.has(value) && !publicValues.has(value)) return null;
+    }
+  }
   return s;
 }
 
@@ -972,4 +1029,3 @@ export function verifyCitationIndexes(text, sourceCount) {
   });
   return { text: cleaned, stripped };
 }
-

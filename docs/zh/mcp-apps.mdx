@@ -1,0 +1,118 @@
+---
+title: "MCP Apps：WorldMonitor 的交互式 ui:// 小部件"
+description: "WorldMonitor MCP Apps 完整实现契约文档，覆盖交互式 ui:// 资源、工具链接协议、宿主客户端渲染流程、沙箱与安全态势、能力协商、以及漂移检查机制，帮助集成开发者理解在 Claude、Cursor 等 MCP 客户端中嵌入可交互 UI 组件的规范与调试流程。"
+---
+
+WorldMonitor 通过 `io.modelcontextprotocol/ui` 扩展支持 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build)。当前阵容提供 10 个 MCP Apps：自包含的 `ui://` HTML 资源，MCP Apps 宿主可在关联的工具调用后内联渲染它们。
+
+本页面是交互式接口的权威指南。请与 [MCP Server 概述](/zh/mcp-overview)配合使用，以了解认证、配额、传输和一般 JSON-RPC 行为。
+
+## 契约
+
+| 字段 | 值 |
+|---|---|
+| 扩展 | `io.modelcontextprotocol/ui` |
+| 规范版本 | `2026-01-26` |
+| UI 资源 MIME 类型 | `text/html;profile=mcp-app` |
+| 传输端点 | `https://worldmonitor.app/mcp` |
+| UI 资源方案 | `ui://worldmonitor/...` |
+| 数据路径 | 正常的受限 `tools/call`，然后宿主通过 `postMessage` 传入 iframe |
+| 模板路径 | 对 `ui://...` 的 `resources/read`，公开且不计配额 |
+
+三个发现信号必须保持一致：
+
+| 信号 | 出现位置 | 用途 |
+|---|---|---|
+| `initialize.result.capabilities.extensions["io.modelcontextprotocol/ui"]` | `initialize` 响应 | 与宿主协商 MCP Apps 支持。 |
+| `_meta.ui.resourceUri` 和 `_meta["ui/resourceUri"]` | 关联工具的 `tools/list` / `describe_tool` 条目 | 告诉宿主应由哪个应用外壳渲染工具结果。 |
+| 带有 `_meta.ui.csp` 的 `ui://...` 资源 | `resources/list` 和 `resources/read` | 让宿主发现并获取静态 HTML 模板及视图策略。 |
+
+## 阵容
+
+| UI 资源 URI | 关联工具 | 应用 | 渲染内容 |
+|---|---|---|---|
+| `ui://worldmonitor/country-risk.html` | `get_country_risk` | 国家风险（交互式） | 综合不稳定指数评分、组成部分细分、旅行建议和制裁风险敞口。 |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | 世界简报（交互式） | AI 摘要的全球简报、支撑性头条新闻和信息源文章。 |
+| `ui://worldmonitor/country-brief.html` | `get_country_brief` | 国家简报（交互式） | 按国家划分的情报简报、分析框架视角和支撑来源。 |
+| `ui://worldmonitor/market-radar.html` | `get_market_data` | 市场雷达（交互式） | 恐惧贪婪综合指数，以及股票、大宗商品、加密货币、海湾地区和行业报价表，附带带符号、颜色编码的涨跌。 |
+| `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 咽喉要道监视器（交互式） | 按咽喉要道划分的通行摘要、周环比变化、油轮构成和风险等级徽章。 |
+| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | 新闻情报（交互式） | AI 分类的头条报道，附带类别、警报标记、国家和来源。 |
+| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 冲突事件（交互式） | 来自 UCDP 的活跃武装冲突事件（交战方、暴力类型、国家、死亡人数、日期）。 |
+| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 自然灾害（交互式） | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组展示。 |
+| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | 预测市场（交互式） | 按类别（地缘政治、科技、金融）分组的事件合约赔率，每个市场附带一个概率条。 |
+| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 预测（交互式） | 以概率卡片形式呈现的 AI 生成的地缘政治和经济预测（标题、领域、地区）。 |
+
+## 运行时流程
+
+1. 宿主对 `https://worldmonitor.app/mcp` 调用 `initialize`。
+2. WorldMonitor 返回正常的 MCP 能力，外加 `capabilities.extensions["io.modelcontextprotocol/ui"]`。
+3. 宿主调用 `tools/list`。关联 UI 的工具携带 `_meta.ui.resourceUri` 以及已弃用的扁平别名 `_meta["ui/resourceUri"]`。
+4. 宿主调用 `resources/list` 并看到 `ui://` 应用资源。每个 UI 条目包含 `mimeType: text/html;profile=mcp-app` 和 `_meta.ui.csp`。
+5. 宿主对选定的 `ui://` URI 调用 `resources/read`。此次读取是公开且不计配额的，因为它只返回一个静态的、不含数据的模板。
+6. 宿主对关联工具执行正常的、经过身份验证的 `tools/call`。这是唯一获取实时数据并消耗适用配额的步骤。
+7. 宿主将返回的 HTML 嵌入一个沙盒化的 iframe，并交换 MCP Apps 消息：
+
+```text
+View -> Host: ui/initialize
+Host -> View: initialize result with hostContext
+View -> Host: ui/notifications/initialized
+Host -> View: ui/notifications/tool-result
+View -> Host: ui/notifications/size-changed
+```
+
+视图本身从不获取实时的 WorldMonitor 数据。实时数据始终在正常的工具调用之后通过宿主到达应用。
+
+## 资源读取与配额
+
+`resources/list` 暴露具体的公开资源，包括所有 `ui://` 模板。`resources/templates/list` 暴露参数化的数据资源。
+
+| 读取类型 | 示例 | 认证 | Pro 每日配额 | 原因 |
+|---|---|---|---|---|
+| UI 模板 | `resources/read` `ui://worldmonitor/market-radar.html` | 否 | 否 | 静态 HTML 外壳，无数据、无上游获取。 |
+| 公开元数据 | `resources/read` `worldmonitor://seed-meta/freshness` | 否 | 否 | 仅含元数据的健康/新鲜度探测。 |
+| 数据模板实例化 | `resources/read` `worldmonitor://countries/de/risk` | 是 | 是 | 经由与等效 `tools/call` 相同的调度器路由。 |
+| 工具数据 | `tools/call` `get_market_data` | 是 | 在 OAuth/Pro 上下文中为是 | 获取实时或缓存数据。 |
+
+所有方法仍计入每密钥、每用户或匿名 IP 每分钟 60 次的速率限制器。
+
+## 视图安全
+
+应用外壳被刻意设计得静态且受限：
+
+- 它们是自包含的 HTML：没有外部脚本、样式、图像、iframe、字体或网络获取。
+- 渲染使用 DOM 构造和 `textContent`，绝不使用 `innerHTML`。
+- 链接仅通过 `http:` 或 `https:` URL 解析被允许，并以 `rel="noopener noreferrer"` 渲染。
+- 共享外壳在初始化后以及每次渲染后报告尺寸，以便宿主调整 iframe 大小。
+- 软错误信封（`_budget_exceeded`、`_jmespath_error` 以及顶层字符串 `error`）会渲染为可见的错误消息，而非空白的成功状态。
+- 该 HTML 包含一个 meta CSP，设置了 `default-src 'none'`、限定范围的内联脚本/样式许可、锁定的 `form-action` 和 `base-uri`，以及镜像 `_meta.ui.csp.connectDomains` 策略的 connect-src。
+
+重要限制：meta CSP 中的 `frame-ancestors` 仅为建议性。浏览器仅从 HTTP `Content-Security-Policy` 响应头强制执行 `frame-ancestors`。该 meta 指令保留在外壳中，供静态扫描器和意图文档使用；请勿将其视为浏览器级别的点击劫持防护。
+
+## 添加新的 MCP App
+
+1. 在 `api/mcp/ui/*-app.ts` 下添加自包含的应用外壳。
+2. 复用 `api/mcp/ui/shell.ts` 中的 `buildAppHtml()`，除非有协议方面的理由不这样做。
+3. 在 `api/mcp/ui/registry.ts` 中添加规范的 `*_UI_URI` 常量和注册表条目。
+4. 在 `api/mcp/registry/rpc-tools.ts` 或 `api/mcp/registry/cache-tools.ts` 中，恰好为一个后备工具设置 `_uiResourceUri`。
+5. 更新 `docs/mcp-apps.mdx`、简短的 [MCP 概述](/zh/mcp-overview#mcp-apps-interactive-ui)以及 `public/.well-known/mcp/server-card.json`。
+6. 运行 `npm run docs:stats` 以刷新 `docs/generated/stats.json`。
+7. 运行 `npm run docs:check` 以及针对性的 MCP 资源/工具测试。
+
+docs-stat 门禁从 `api/mcp/ui/registry.ts` 和工具注册表派生应用清单。它在以下情况失败：
+
+- `docs/mcp-apps.mdx`、`docs/mcp-overview.mdx` 或 `public/mcp-server.md` 遗漏了某个关联工具或 `ui://` URI。
+- `public/.well-known/mcp/server-card.json.metadata.mcpApps` 与代码派生的应用列表、规范版本或 MIME 类型不一致。
+- `docs/docs.json` 将本页面从导航中移除。
+- 文档记录的 MCP 工具数量与服务器卡片的工具清单不一致。
+
+## 源文件
+
+| 源文件 | 负责 |
+|---|---|
+| `api/mcp/ui/shell.ts` | 共享 HTML 构建器、协议桥接、MIME 类型、规范版本、CSP、主题、软错误处理。 |
+| `api/mcp/ui/registry.ts` | 规范的 `ui://` 资源清单和 `resources/read` 响应构建器。 |
+| `api/mcp/registry/rpc-tools.ts` | RPC 后备工具（如 `get_world_brief`、`get_country_brief` 和 `get_country_risk`）的 UI 链接。 |
+| `api/mcp/registry/cache-tools.ts` | 缓存后备工具（如 `get_market_data` 和 `get_chokepoint_status`）的 UI 链接。 |
+| `api/mcp/handler.ts` | 公开 `ui://` 读取提升、`resources/list`、`resources/read` 以及 `initialize` 能力声明。 |
+| `public/.well-known/mcp/server-card.json` | 供扫描器和智能体使用的静态预连接发现元数据。 |
+| `scripts/docs-stats.mjs` | 针对文档、服务器卡片元数据、导航和应用清单的漂移守护。 |

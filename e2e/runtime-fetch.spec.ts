@@ -78,6 +78,7 @@ test.describe('desktop runtime routing guardrails', () => {
       const originalFetch = window.fetch.bind(window);
 
       const calls: string[] = [];
+      const proxiedPaths: string[] = [];
       const responseJson = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), {
           status,
@@ -94,15 +95,8 @@ test.describe('desktop runtime routing guardrails', () => {
 
         calls.push(url);
 
-        if (url.includes('127.0.0.1:46123/api/fred-data')) {
-          return responseJson({ error: 'missing local api key' }, 500);
-        }
         if (url.includes('worldmonitor.app/api/fred-data')) {
           return responseJson({ observations: [{ value: '321.5' }] }, 200);
-        }
-
-        if (url.includes('127.0.0.1:46123/api/stablecoin-markets')) {
-          throw new Error('ECONNREFUSED');
         }
         if (url.includes('worldmonitor.app/api/stablecoin-markets')) {
           return responseJson({ stablecoins: [{ symbol: 'USDT' }] }, 200);
@@ -112,7 +106,21 @@ test.describe('desktop runtime routing guardrails', () => {
       }) as typeof window.fetch;
 
       const previousTauri = globalWindow.__TAURI__;
-      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      globalWindow.__TAURI__ = {
+        core: {
+          invoke: async (command: string, payload?: { request?: { path?: string } }) => {
+            if (command === 'proxy_local_api_request') {
+              const path = payload?.request?.path || '';
+              proxiedPaths.push(path);
+              if (path.startsWith('/api/fred-data')) {
+                return { status: 500, headers: { 'content-type': 'application/json' }, body: Array.from(new TextEncoder().encode('{"error":"missing local api key"}')) };
+              }
+              if (path.startsWith('/api/stablecoin-markets')) throw new Error('ECONNREFUSED');
+            }
+            return null;
+          },
+        },
+      };
       delete globalWindow.__wmFetchPatched;
 
       // Set a valid WM API key so cloud fallback is allowed
@@ -133,6 +141,7 @@ test.describe('desktop runtime routing guardrails', () => {
           stableStatus: stableResponse.status,
           stableSymbol: stableBody.stablecoins?.[0]?.symbol ?? null,
           calls,
+          proxiedPaths,
         };
       } finally {
         window.fetch = originalFetch;
@@ -151,13 +160,13 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.stableStatus).toBe(200);
     expect(result.stableSymbol).toBe('USDT');
 
-    expect(result.calls.some((url) => url.includes('127.0.0.1:46123/api/fred-data'))).toBe(true);
     expect(result.calls.some((url) => url.includes('worldmonitor.app/api/fred-data'))).toBe(true);
-    expect(result.calls.some((url) => url.includes('127.0.0.1:46123/api/stablecoin-markets'))).toBe(true);
     expect(result.calls.some((url) => url.includes('worldmonitor.app/api/stablecoin-markets'))).toBe(true);
+    expect(result.proxiedPaths.some((path) => path.startsWith('/api/fred-data'))).toBe(true);
+    expect(result.proxiedPaths.some((path) => path.startsWith('/api/stablecoin-markets'))).toBe(true);
   });
 
-  test('runtime fetch patch never sends local-only endpoints to cloud', async ({ page }) => {
+  test('runtime fetch patch never sends blocked local-control endpoints to cloud', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
@@ -166,52 +175,37 @@ test.describe('desktop runtime routing guardrails', () => {
       const originalFetch = window.fetch.bind(window);
 
       const calls: string[] = [];
-      const responseJson = (body: unknown, status = 200) =>
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { 'content-type': 'application/json' },
-        });
-
-      window.fetch = (async (input: RequestInfo | URL) => {
-        const url =
-          typeof input === 'string'
-            ? input
-            : input instanceof URL
-            ? input.toString()
-            : input.url;
-        calls.push(url);
-
-        if (url.includes('127.0.0.1:46123/api/local-env-update')) {
-          return responseJson({ error: 'Unauthorized' }, 401);
-        }
-        if (url.includes('127.0.0.1:46123/api/local-validate-secret')) {
-          throw new Error('ECONNREFUSED');
-        }
-
-        if (url.includes('worldmonitor.app/api/local-env-update')) {
-          return responseJson({ leaked: true }, 200);
-        }
-        if (url.includes('worldmonitor.app/api/local-validate-secret')) {
-          return responseJson({ leaked: true }, 200);
-        }
-
-        return responseJson({ ok: true }, 200);
-      }) as typeof window.fetch;
+      const proxiedPaths: string[] = [];
 
       const previousTauri = globalWindow.__TAURI__;
-      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      globalWindow.__TAURI__ = {
+        core: {
+          invoke: async (command: string, payload?: { request?: { path?: string } }) => {
+            if (command === 'proxy_local_api_request') {
+              const path = payload?.request?.path || '';
+              proxiedPaths.push(path);
+              throw new Error(`native proxy rejected ${path}`);
+            }
+            return null;
+          },
+        },
+      };
       delete globalWindow.__wmFetchPatched;
 
       try {
         runtime.installRuntimeFetchPatch();
 
-        const envUpdateResponse = await window.fetch('/api/local-env-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'GROQ_API_KEY', value: 'sk-secret-value' }),
-        });
-
+        let envUpdateError: string | null = null;
         let validateError: string | null = null;
+        try {
+          await window.fetch('/api/local-env-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'GROQ_API_KEY', value: 'sk-secret-value' }),
+          });
+        } catch (error) {
+          envUpdateError = error instanceof Error ? error.message : String(error);
+        }
         try {
           await window.fetch('/api/local-validate-secret', {
             method: 'POST',
@@ -223,9 +217,10 @@ test.describe('desktop runtime routing guardrails', () => {
         }
 
         return {
-          envUpdateStatus: envUpdateResponse.status,
+          envUpdateError,
           validateError,
           calls,
+          proxiedPaths,
         };
       } finally {
         window.fetch = originalFetch;
@@ -238,13 +233,55 @@ test.describe('desktop runtime routing guardrails', () => {
       }
     });
 
-    expect(result.envUpdateStatus).toBe(401);
-    expect(result.validateError).toContain('ECONNREFUSED');
-
-    expect(result.calls.some((url) => url.includes('127.0.0.1:46123/api/local-env-update'))).toBe(true);
-    expect(result.calls.some((url) => url.includes('127.0.0.1:46123/api/local-validate-secret'))).toBe(true);
+    expect(result.envUpdateError).toContain('native proxy rejected /api/local-env-update');
+    expect(result.validateError).toContain('native proxy rejected /api/local-validate-secret');
+    expect(result.proxiedPaths).toContain('/api/local-env-update');
+    expect(result.proxiedPaths).toContain('/api/local-validate-secret');
     expect(result.calls.some((url) => url.includes('worldmonitor.app/api/local-env-update'))).toBe(false);
     expect(result.calls.some((url) => url.includes('worldmonitor.app/api/local-validate-secret'))).toBe(false);
+  });
+
+  test('runtime fetch patch preserves Request abort signals', async ({ page }) => {
+    await page.goto('/tests/runtime-harness.html');
+
+    const result = await page.evaluate(async () => {
+      const runtime = await import('/src/services/runtime.ts');
+      const globalWindow = window as unknown as Record<string, unknown>;
+      const previousTauri = globalWindow.__TAURI__;
+      const originalFetch = window.fetch.bind(window);
+      globalWindow.__TAURI__ = {
+        core: {
+          invoke: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            return { status: 200, headers: {}, body: [] };
+          },
+        },
+      };
+      delete globalWindow.__wmFetchPatched;
+
+      try {
+        const controller = new AbortController();
+        runtime.installRuntimeFetchPatch();
+        const request = window.fetch(new Request(`${window.location.origin}/api/fred-data`, { signal: controller.signal }));
+        controller.abort();
+        try {
+          await request;
+          return { name: null };
+        } catch (error) {
+          return { name: error instanceof DOMException ? error.name : null };
+        }
+      } finally {
+        window.fetch = originalFetch;
+        delete globalWindow.__wmFetchPatched;
+        if (previousTauri === undefined) {
+          delete globalWindow.__TAURI__;
+        } else {
+          globalWindow.__TAURI__ = previousTauri;
+        }
+      }
+    });
+
+    expect(result.name).toBe('AbortError');
   });
 
   test('chunk preload reload guard is one-shot until app boot clears it', async ({ page }) => {
@@ -1394,7 +1431,7 @@ test.describe('desktop runtime routing guardrails', () => {
         };
       };
 
-      const marketRenders: number[] = [];
+      const marketRenders: Array<Array<{ symbol?: string }>> = [];
       const marketConfigErrors: string[] = [];
       const heatmapRenders: number[] = [];
       const heatmapConfigErrors: string[] = [];
@@ -1403,20 +1440,23 @@ test.describe('desktop runtime routing guardrails', () => {
       const cryptoRenders: number[] = [];
       const apiStatuses: Array<{ name: string; status: string }> = [];
 
-      // Yahoo-only symbols (same set as server handler)
-      const yahooOnly = new Set(['^GSPC', '^DJI', '^IXIC', '^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F']);
+      // Representative Yahoo-only symbols, including exchange-qualified China
+      // entries from the default basket. Omit SMIC below to prove one missing
+      // quote does not blank the available Shanghai/Hong Kong rows.
+      const yahooOnly = new Set([
+        '^GSPC', '^DJI', '^IXIC', '^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F',
+        '600519.SS', '0700.HK', '688981.SS',
+      ]);
 
-      window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      window.fetch = (async (input: RequestInfo | URL) => {
         const url = toUrl(input);
         calls.push(url);
         const parsed = new URL(url);
 
-        // Sebuf proto: POST /api/market/v1/list-market-quotes
         if (parsed.pathname === '/api/market/v1/list-market-quotes') {
-          const body = init?.body ? JSON.parse(String(init.body)) : {};
-          const symbols: string[] = body.symbols || [];
+          const symbols = parsed.searchParams.getAll('symbols');
           const quotes = symbols
-            .filter((s: string) => yahooOnly.has(s))
+            .filter((s: string) => yahooOnly.has(s) && s !== '688981.SS')
             .map((s: string) => {
               const base = s.length * 100;
               return { symbol: s, name: s, display: s, price: base + 1, change: ((base + 1) - base) / base * 100, sparkline: [base - 2, base - 1, base, base + 1] };
@@ -1425,6 +1465,20 @@ test.describe('desktop runtime routing guardrails', () => {
             quotes,
             finnhubSkipped: true,
             skipReason: 'FINNHUB_API_KEY not configured',
+          });
+        }
+
+        if (parsed.pathname === '/api/market/v1/list-commodity-quotes') {
+          const symbols = parsed.searchParams.getAll('symbols');
+          return responseJson({
+            quotes: symbols.map((symbol) => ({
+              symbol,
+              name: symbol,
+              display: symbol,
+              price: symbol.length * 100 + 1,
+              change: 0.25,
+              sparkline: [1, 2, 3],
+            })),
           });
         }
 
@@ -1447,7 +1501,7 @@ test.describe('desktop runtime routing guardrails', () => {
           latestMarkets: [] as Array<unknown>,
           panels: {
             markets: {
-              renderMarkets: (data: Array<unknown>) => marketRenders.push(data.length),
+              renderMarkets: (data: Array<{ symbol?: string }>) => marketRenders.push(data),
               showConfigError: (message: string) => marketConfigErrors.push(message),
             },
             heatmap: {
@@ -1476,9 +1530,11 @@ test.describe('desktop runtime routing guardrails', () => {
         await (DataLoaderManager.prototype as unknown as { loadMarkets: () => Promise<void> })
           .loadMarkets.call(fakeApp);
 
-        // Commodities now go through listMarketQuotes (batch), not individual Yahoo calls
         const marketQuoteCalls = calls.filter((url) =>
           new URL(url).pathname === '/api/market/v1/list-market-quotes'
+        );
+        const commodityQuoteCalls = calls.filter((url) =>
+          new URL(url).pathname === '/api/market/v1/list-commodity-quotes'
         );
 
         return {
@@ -1491,15 +1547,20 @@ test.describe('desktop runtime routing guardrails', () => {
           cryptoRenders,
           apiStatuses,
           latestMarketsCount: fakeApp.ctx.latestMarkets.length,
+          latestMarketSymbols: (fakeApp.ctx.latestMarkets as Array<{ symbol?: string }>).map((entry) => entry.symbol),
           marketQuoteCalls: marketQuoteCalls.length,
+          commodityQuoteCalls: commodityQuoteCalls.length,
         };
       } finally {
         window.fetch = originalFetch;
       }
     });
 
-    expect(result.marketRenders.some((count) => count > 0)).toBe(true);
+    expect(result.marketRenders.some((render) => render.length > 0)).toBe(true);
     expect(result.latestMarketsCount).toBeGreaterThan(0);
+    expect(result.latestMarketSymbols).toContain('600519.SS');
+    expect(result.latestMarketSymbols).toContain('0700.HK');
+    expect(result.latestMarketSymbols).not.toContain('688981.SS');
     expect(result.marketConfigErrors.length).toBe(0);
 
     expect(result.heatmapRenders.length).toBe(0);
@@ -1507,8 +1568,8 @@ test.describe('desktop runtime routing guardrails', () => {
 
     expect(result.commoditiesRenders.some((count) => count > 0)).toBe(true);
     expect(result.commoditiesConfigErrors.length).toBe(0);
-    // Commodities go through listMarketQuotes batch (at least 2 calls: stocks + commodities)
-    expect(result.marketQuoteCalls).toBeGreaterThanOrEqual(2);
+    expect(result.marketQuoteCalls).toBeGreaterThanOrEqual(1);
+    expect(result.commodityQuoteCalls).toBeGreaterThanOrEqual(1);
 
     expect(result.cryptoRenders.some((count) => count > 0)).toBe(true);
     expect(result.apiStatuses.some((entry) => entry.name === 'Finnhub' && entry.status === 'error')).toBe(true);
@@ -1583,6 +1644,7 @@ test.describe('desktop runtime routing guardrails', () => {
       const originalFetch = window.fetch.bind(window);
 
       const calls: string[] = [];
+      const proxiedPaths: string[] = [];
       const responseJson = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), {
           status,
@@ -1599,9 +1661,6 @@ test.describe('desktop runtime routing guardrails', () => {
 
         calls.push(url);
 
-        if (url.includes('127.0.0.1:46123/api/fred-data')) {
-          throw new Error('ECONNREFUSED');
-        }
         if (url.includes('worldmonitor.app/api/fred-data')) {
           return responseJson({ observations: [{ value: '999' }] }, 200);
         }
@@ -1609,7 +1668,17 @@ test.describe('desktop runtime routing guardrails', () => {
       }) as typeof window.fetch;
 
       const previousTauri = globalWindow.__TAURI__;
-      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      globalWindow.__TAURI__ = {
+        core: {
+          invoke: async (command: string, payload?: { request?: { path?: string } }) => {
+            if (command === 'proxy_local_api_request') {
+              proxiedPaths.push(payload?.request?.path || '');
+              throw new Error('ECONNREFUSED');
+            }
+            return null;
+          },
+        },
+      };
       delete globalWindow.__wmFetchPatched;
 
       try {
@@ -1627,7 +1696,7 @@ test.describe('desktop runtime routing guardrails', () => {
         return {
           fetchError,
           cloudCalls: cloudCalls.length,
-          localCalls: calls.filter(u => u.includes('127.0.0.1')).length,
+          localCalls: proxiedPaths.length,
         };
       } finally {
         window.fetch = originalFetch;
@@ -1655,6 +1724,7 @@ test.describe('desktop runtime routing guardrails', () => {
       const originalFetch = window.fetch.bind(window);
 
       const calls: string[] = [];
+      const proxiedPaths: string[] = [];
       const capturedHeaders: Record<string, string> = {};
       const responseJson = (body: unknown, status = 200) =>
         new Response(JSON.stringify(body), {
@@ -1678,9 +1748,6 @@ test.describe('desktop runtime routing guardrails', () => {
           if (wmKey) capturedHeaders['X-WorldMonitor-Key'] = wmKey;
         }
 
-        if (url.includes('127.0.0.1:46123/api/market/v1/test')) {
-          throw new Error('ECONNREFUSED');
-        }
         if (url.includes('worldmonitor.app/api/market/v1/test')) {
           return responseJson({ quotes: [] }, 200);
         }
@@ -1688,7 +1755,17 @@ test.describe('desktop runtime routing guardrails', () => {
       }) as typeof window.fetch;
 
       const previousTauri = globalWindow.__TAURI__;
-      globalWindow.__TAURI__ = { core: { invoke: () => Promise.resolve(null) } };
+      globalWindow.__TAURI__ = {
+        core: {
+          invoke: async (command: string, payload?: { request?: { path?: string } }) => {
+            if (command === 'proxy_local_api_request') {
+              proxiedPaths.push(payload?.request?.path || '');
+              throw new Error('ECONNREFUSED');
+            }
+            return null;
+          },
+        },
+      };
       delete globalWindow.__wmFetchPatched;
 
       const testKey = 'wm_test_key_1234567890abcdef';
@@ -1705,6 +1782,7 @@ test.describe('desktop runtime routing guardrails', () => {
           hasQuotes: Array.isArray(body.quotes),
           cloudCalls: calls.filter(u => u.includes('worldmonitor.app')).length,
           wmKeyHeader: capturedHeaders['X-WorldMonitor-Key'] || null,
+          proxiedPaths,
         };
       } finally {
         window.fetch = originalFetch;
@@ -1721,7 +1799,8 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.status).toBe(200);
     expect(result.hasQuotes).toBe(true);
     expect(result.cloudCalls).toBe(1);
-    expect(result.wmKeyHeader).toBe('wm_test_key_1234567890abcdef');
+    expect(result.wmKeyHeader).toBeNull();
+    expect(result.proxiedPaths).toContain('/api/market/v1/test');
   });
 
   test('country-instability HAPI fallback ignores eventsCivilianTargeting in score', async ({ page }) => {

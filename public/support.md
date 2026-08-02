@@ -23,6 +23,7 @@ How to reach World Monitor, by concern. Human-readable version: https://www.worl
 
 ## Common Self-Serve Answers
 
+- Find, create, or replace a `wm_` key: https://www.worldmonitor.app/docs/api-keys. Full keys are shown only once and cannot be recovered; revoke a lost key and create a replacement.
 - API key rotation or limit increases: see https://www.worldmonitor.app/docs/usage-auth and https://www.worldmonitor.app/docs/usage-rate-limits, or email support@worldmonitor.app.
 - Pricing and plans: https://worldmonitor.app/pricing.md (markdown) or `GET https://www.worldmonitor.app/api/product-catalog` (JSON, public).
 - Billing portal (invoices, cancel/renew): sign in at https://worldmonitor.app/pro and open the customer portal.

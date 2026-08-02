@@ -5,14 +5,23 @@
  * into a Sentry event and routes it through `enqueueSentryCall` so it survives
  * Sentry's deferred (~10s idle) init. Reporting the largest shift target/value
  * lets field data name the real shifting element before we ship a layout fix.
+ * Good-rated events are trimmed (#4565), so captured-event p75 is conditioned
+ * on the bad tail. Verify fixes with bad-event rate per formFactor plus
+ * weekly page-level CrUX queryHistoryRecord, not p75 of captured Sentry events.
  *
  * The `onCLS` registration that calls this lives behind the `web-vitals`
  * dependency (see `registerClsReporting` doc at the bottom). This module keeps
  * the reportable logic free of that import so it builds and is unit-tested
  * without the package present.
  */
+import { getMoverRecordStrings, startClsMoverTracking } from '@/bootstrap/cls-mover-tracker';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { roundMs } from '@/bootstrap/web-vitals-utils';
+import {
+  getWebVitalsFormFactor,
+  roundMs,
+  shouldSampleWebVital,
+  WEB_VITAL_SAMPLE_RATE,
+} from '@/bootstrap/web-vitals-utils';
 
 /** Structural subset of web-vitals' CLS attribution (kept local to avoid the dep). */
 export interface ClsAttributionLike {
@@ -73,16 +82,27 @@ export function reportClsMetric(
   metric: ClsMetricLike,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
   env: ClsReportEnv = collectClsReportEnv(),
+  keep: () => boolean = shouldSampleWebVital,
+  movers: () => string[] = getMoverRecordStrings,
 ): void {
   // Volume trim: skip 'good' (<0.1) CLS and report needs-improvement / poor /
   // unknown only, so field attribution stays focused on actionable shifts.
   if (metric.rating === 'good') return;
+  // Uniform sample of the surviving bad tail to cut Sentry volume ~80% without
+  // biasing the rating/formFactor/shift-target distributions.
+  if (!keep()) return;
   const a = metric.attribution ?? {};
+  const formFactor = getWebVitalsFormFactor();
+  // Snapshot at metric-report time. The Sentry closure may drain ~12s later,
+  // after more shifts or a bfcache lifecycle reset have changed tracker state.
+  const moverRecords = [...movers()];
   enqueue((s) => {
     s.captureMessage('web-vital: CLS', {
       level: 'info',
       tags: {
         webvital: 'cls',
+        formFactor,
+        sampleRate: String(WEB_VITAL_SAMPLE_RATE),
         'cls.rating': metric.rating ?? 'unknown',
       },
       extra: {
@@ -96,6 +116,11 @@ export function reportClsMetric(
         visibilityState: env.visibilityState,
         scrollY: env.scrollY,
         viewport: env.viewport,
+        // #5332: shift-time mover attribution — which panels CHANGED HEIGHT
+        // (movers) vs merely moved (victims) vs got inserted, captured by
+        // cls-mover-tracker at the moment of each qualifying shift. The
+        // victim-only largestShiftTarget cannot distinguish these.
+        movers: moverRecords,
       },
     });
   });
@@ -117,6 +142,10 @@ export function registerClsReporting(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') hadHiddenPeriod = true;
   });
+  // #5332: shift-time geometry tracking must start now — the CLS report fires
+  // at hide time, long after the shifts, so movers are only nameable if the
+  // per-panel cache diffs were captured when each shift happened.
+  startClsMoverTracking();
   void import('web-vitals/attribution')
     .then(({ onCLS }) => {
       onCLS((metric) => reportClsMetric(metric as unknown as ClsMetricLike));

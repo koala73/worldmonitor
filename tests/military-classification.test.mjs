@@ -48,6 +48,7 @@ function isMilitaryCallsign(callsign) {
 // Extract client-side hex ranges from military.ts
 // ---------------------------------------------------------------------------
 const clientSrc = readFileSync(join(root, 'src/config/military.ts'), 'utf-8');
+const seederSrc = readFileSync(join(root, 'scripts/seed-military-flights.mjs'), 'utf-8');
 
 function extractHexRanges(src) {
   const ranges = [];
@@ -57,6 +58,21 @@ function extractHexRanges(src) {
     ranges.push({ start: m[1].toUpperCase(), end: m[2].toUpperCase() });
   }
   return ranges;
+}
+
+function extractExactAircraftRegistry(src, blockPattern) {
+  const block = src.match(blockPattern)?.[1] ?? '';
+  const records = {};
+  const rowRe = /'([0-9A-F]{6})'\s*[:,]\s*\{\s*operator:\s*'([^']+)',\s*country:\s*'([^']+)',\s*aircraftType:\s*'([^']+)'/g;
+  let match;
+  while ((match = rowRe.exec(block)) !== null) {
+    records[match[1]] = {
+      operator: match[2],
+      country: match[3],
+      aircraftType: match[4],
+    };
+  }
+  return records;
 }
 
 const HEX_RANGES = extractHexRanges(clientSrc);
@@ -233,6 +249,7 @@ describe('Military hex range classifier (client-side)', () => {
       { country: 'UK', start: '400000', end: '43FFFF' },
       { country: 'Canada', start: 'C00000', end: 'C3FFFF' },
       { country: 'Australia', start: '7C0000', end: '7FFFFF' },
+      { country: 'China', start: '780000', end: '7BFFFF' },
     ];
     for (const alloc of countryAllocations) {
       it(`no single range covers all of ${alloc.country} (${alloc.start}-${alloc.end})`, () => {
@@ -245,5 +262,25 @@ describe('Military hex range classifier (client-side)', () => {
         );
       });
     }
+  });
+
+  it('does not use civilian Chinese airline codes as PLA callsign patterns', () => {
+    assert.doesNotMatch(clientSrc, /pattern:\s*'\^CCA'/, 'Air China must not be a PLA pattern');
+    assert.doesNotMatch(clientSrc, /pattern:\s*'\^CHH'/, 'Hainan Airlines must not be a PLAN pattern');
+  });
+
+  it('keeps the exact PLA aircraft registry aligned between client and seeder classifiers', () => {
+    const clientRegistry = extractExactAircraftRegistry(
+      clientSrc,
+      /KNOWN_MILITARY_AIRCRAFT[^=]*=\s*\{([\s\S]*?)\n\};/,
+    );
+    const seederRegistry = extractExactAircraftRegistry(
+      seederSrc,
+      /EXACT_MILITARY_AIRCRAFT\s*=\s*new Map\(\[([\s\S]*?)\n\]\);/,
+    );
+
+    assert.deepEqual(Object.keys(clientRegistry).sort(), ['7A4262', '7A4403', '7A444F', '7A446F']);
+    assert.deepEqual(seederRegistry, clientRegistry,
+      'client and seeder exact matches must agree on operator, country, and aircraft type');
   });
 });

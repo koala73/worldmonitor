@@ -8,6 +8,7 @@ import {
   validate as validateGrowth,
   CANONICAL_KEY as GROWTH_KEY,
   CACHE_TTL as GROWTH_TTL,
+  SCHEMA_VERSION as GROWTH_SCHEMA_VERSION,
 } from '../scripts/seed-imf-growth.mjs';
 
 import {
@@ -49,9 +50,10 @@ describe('seed-imf shared helpers', () => {
 });
 
 describe('seed-imf-growth', () => {
-  it('uses the v1 economic:imf:growth canonical key with 35-day TTL', () => {
+  it('uses the v1 economic:imf:growth canonical key with 35-day TTL and v3 schema', () => {
     assert.equal(GROWTH_KEY, 'economic:imf:growth:v1');
     assert.equal(GROWTH_TTL, 35 * 24 * 3600);
+    assert.equal(GROWTH_SCHEMA_VERSION, 3);
   });
 
   it('buildGrowthCountries maps ISO3 → ISO2, drops aggregates, and computes savings-investment gap', () => {
@@ -68,6 +70,8 @@ describe('seed-imf-growth', () => {
     assert.ok(countries.US, 'USA → US');
     assert.equal(countries.US.realGdpGrowthPct, 2.5);
     assert.equal(countries.US.gdpPerCapitaUsd, 80000);
+    assert.equal(countries.US.realGdpLcuB, 22000);
+    assert.equal(countries.US.realGdp, 22000);
     assert.equal(countries.US.savingsInvestmentGap, -3);
     assert.equal(countries.US.year, Number(YEAR));
 

@@ -502,6 +502,79 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     }
   });
 
+  it('rejects localStorage entries without a valid strategic-risk payload', async () => {
+    const invalidStrategicRisks = [
+      undefined,
+      { score: 101, level: 'high', trend: 'stable', lastUpdated: null, contributors: [] },
+      { score: 50, level: 'normal', trend: 'stable', lastUpdated: null, contributors: [{ country: 'Unknown', code: 'ZZ', score: 50, level: 'normal' }] },
+    ];
+
+    for (const strategicRisk of invalidStrategicRisks) {
+      const { getCachedScores, removedKeys } = await loadAdapter({
+        storageValue: makeStoredScores([makeCachedCii()], { strategicRisk }),
+      });
+      assert.equal(getCachedScores(), null);
+      assert.deepEqual(removedKeys, ['wm:risk-scores']);
+    }
+  });
+
+  it('accepts every strategic-risk enum emitted by the adapter', async () => {
+    const strategicRiskLevels = ['low', 'medium', 'high'];
+    const trends = ['rising', 'stable', 'falling'];
+    const contributorLevels = ['low', 'normal', 'elevated', 'high', 'critical'];
+
+    for (const level of strategicRiskLevels) {
+      for (const trend of trends) {
+        for (const contributorLevel of contributorLevels) {
+          const strategicRisk = {
+            score: 50,
+            level,
+            trend,
+            lastUpdated: null,
+            contributors: [{
+              country: 'United States',
+              code: 'US',
+              score: 50,
+              level: contributorLevel,
+            }],
+          };
+          const { getCachedScores, removedKeys } = await loadAdapter({
+            storageValue: makeStoredScores([makeCachedCii()], { strategicRisk }),
+          });
+
+          assert.ok(getCachedScores(), `${level}/${trend}/${contributorLevel} must remain loadable`);
+          assert.deepEqual(removedKeys, []);
+        }
+      }
+    }
+  });
+
+  it('rejects malformed persisted strategic-risk enums', async () => {
+    const validStrategicRisk = {
+      score: 50,
+      level: 'medium',
+      trend: 'stable',
+      lastUpdated: null,
+      contributors: [{ country: 'United States', code: 'US', score: 50, level: 'elevated' }],
+    };
+    const invalidStrategicRisks = [
+      { ...validStrategicRisk, level: 'critical' },
+      { ...validStrategicRisk, trend: 'escalating' },
+      {
+        ...validStrategicRisk,
+        contributors: [{ ...validStrategicRisk.contributors[0], level: 'medium' }],
+      },
+    ];
+
+    for (const strategicRisk of invalidStrategicRisks) {
+      const { getCachedScores, removedKeys } = await loadAdapter({
+        storageValue: makeStoredScores([makeCachedCii()], { strategicRisk }),
+      });
+      assert.equal(getCachedScores(), null);
+      assert.deepEqual(removedKeys, ['wm:risk-scores']);
+    }
+  });
+
   it('toCountryScore returns Date for non-null cached lastUpdated', async () => {
     const { toCountryScore } = await loadAdapter();
     const iso = new Date(1_700_000_000_000).toISOString();

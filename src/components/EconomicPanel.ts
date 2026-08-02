@@ -223,7 +223,7 @@ export class EconomicPanel extends Panel {
         </button>
         ${hasSpending ? `
           <button class="panel-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
-            ${t('components.economic.gov')}
+            Recent awards
           </button>
         ` : ''}
         ${hasBis ? `

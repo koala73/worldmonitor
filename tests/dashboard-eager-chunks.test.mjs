@@ -30,6 +30,10 @@ const DEFERRED_AGENT_BUS_CHUNKS = ['agent-bus-actions'];
 //   confetti.module — canvas-confetti, loaded on the first milestone celebration
 // Re-adding a static `import` of either would re-eagerise it into main and fail this.
 const DEFERRED_NPM_LIB_CHUNKS = ['satellite.es', 'confetti.module'];
+// Checkout catalog and widget HTML sanitization are needed only after an
+// upgrade/custom-widget action. Keep them out of the dashboard's static graph;
+// otherwise their shared dependencies rejoin the post-hydration long-task wave.
+const DEFERRED_CHECKOUT_CHUNKS = ['products', 'widget-sanitizer'];
 // Enrichment SERVICE tail deferred off the eager boot graph (#4486 — service-graph
 // split, Phase A). Each runs only AFTER first paint — correlation-engine.run() is
 // post-loadAllData fire-and-forget; story-renderer fires on story-modal open — so its
@@ -284,6 +288,13 @@ describe('eager chunk budget: opt-in npm libs stay off the entry', { skip: !exis
   registerDeferredChunkAssertions(DEFERRED_NPM_LIB_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if missing, the lib was inlined into another chunk by a static import`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads on demand`,
+  });
+});
+
+describe('eager chunk budget: checkout-only code stays off the dashboard entry', { skip: !existsSync(dashboardHtml) }, () => {
+  registerDeferredChunkAssertions(DEFERRED_CHECKOUT_CHUNKS, {
+    missingMessage: (chunk) => `${chunk}-*.js chunk should exist — checkout/widget work must remain code-split`,
+    preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads only after checkout or widget interaction`,
   });
 });
 

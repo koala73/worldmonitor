@@ -21,6 +21,20 @@ const PAIRING_TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"; // 43 chars
 
 async function seedPairingToken(t: ReturnType<typeof convexTest>) {
   await t.run(async (ctx) => {
+    await ctx.db.insert("entitlements", {
+      userId: USER_ID,
+      planKey: "pro_monthly",
+      features: {
+        tier: 1,
+        maxDashboards: 10,
+        apiAccess: true,
+        apiRateLimit: 1000,
+        prioritySupport: true,
+        exportFormats: ["json", "csv"],
+      },
+      validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      updatedAt: Date.now(),
+    });
     await ctx.db.insert("telegramPairingTokens", {
       userId: USER_ID,
       token: PAIRING_TOKEN,
@@ -143,4 +157,25 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
     expect(res.status).toBe(200);
     expect(await tokenUsed(t)).toBe(true); // handler ran and claimed the token
   });
+
+  test.each([null, [], "not-an-object", 42, true])(
+    "matching secret with non-object JSON (%j) → 200 without consuming token",
+    async (payload) => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+      const t = convexTest(schema, modules);
+      await seedPairingToken(t);
+
+      const res = await t.fetch("/api/telegram-pair-callback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Telegram-Bot-Api-Secret-Token": VALID_SECRET,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await tokenUsed(t)).toBe(false);
+    },
+  );
 });

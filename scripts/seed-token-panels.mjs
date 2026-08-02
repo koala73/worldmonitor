@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById, coingeckoEndpoint } from './_seed-utils.mjs';
 
 const defiConfig = loadSharedConfig('defi-tokens.json');
@@ -130,7 +131,7 @@ export const TOKEN_PANEL_EXTRA_KEYS = [
 
 // isMain guard — required so tests/agents can `import` declareRecords without
 // firing runSeed on module load (which would touch Redis and process.exit).
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,

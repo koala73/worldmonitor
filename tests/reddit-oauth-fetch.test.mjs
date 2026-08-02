@@ -59,7 +59,7 @@ test('shared helper prefers oauth.reddit.com and falls back to the public endpoi
 test('ScrapeCreators is the gated, preferred path with bounded cursor pagination (no limit param)', () => {
   assert.match(
     relaySource,
-    /const SCRAPECREATORS_API_KEY = \(process\.env\.SCRAPECREATORS_API_KEY \|\| ''\)\n\s+\.trim\(\)\n\s+\.replace\(\/\^\[\\s"'‘’“”\]\+\|\[\\s"'‘’“”\]\+\$\/g, ''\);\nif \(SCRAPECREATORS_API_KEY && [^\n]+\) \{\n\s+console\.warn\('[^']*non-Latin1 character/
+    /const SCRAPECREATORS_API_KEY = \(process\.env\.SCRAPECREATORS_API_KEY \|\| ''\)\r?\n\s+\.trim\(\)\r?\n\s+\.replace\(\/\^\[\\s"'‘’“”\]\+\|\[\\s"'‘’“”\]\+\$\/g, ''\);\r?\nif \(SCRAPECREATORS_API_KEY && [^\n]+\) \{\r?\n\s+console\.warn\('[^']*non-Latin1 character/
   );
   assert.match(relaySource, /const SCRAPECREATORS_ENABLED = !!SCRAPECREATORS_API_KEY/);
   assert.match(relaySource, /const SC_MAX_PAGES = 4/);

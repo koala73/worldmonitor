@@ -1,0 +1,75 @@
+---
+title: "Premium 股票分析"
+description: "Premium 股票分析支持按股票代码按需生成完整的基本面与技术面综合分析报告，附带明确的买入、持有、卖出交易信号、多档价格目标区间、华尔街分析师共识评级、近期评级升降调整记录、公司高管内部人买卖交易明细以及可视化的价格走势迷你图，为个股深度研究、组合构建与投资决策提供统一工作区。"
+---
+
+**Premium Stock Analysis** 面板（内部 id `stock-analysis`）是仪表盘的按代码深度分析：一次一个分析，包含信号的结构化综合（买入/持有/卖出）、价格目标、分析师共识、近期评级升降、内部人交易和价格迷你图。由 Market service 的分析师/价格目标/内部人 RPC 支持。
+
+## 面板显示内容
+
+每个所选代码一张分析卡片。每张卡片渲染：
+
+- **代码 + 价格** — 当前价格，带货币格式化（`formatPrice()`），今日百分比变化（`formatChange()`）。
+- **评级徽章 + 分数** — 优先展示融合基本面的 `ratingSignal` / `compositeScore`；对于旧快照，会安全回退到仅技术面的 `signal` / `signalScore`。
+- **论点、行动与 “Why Now”** — 与当前展示评级严格配对的叙述，并分别列出看涨因素与风险因素。
+- **新闻情绪** — 仅当 LLM 实际分析了已检索标题时显示看涨/中性/看跌标签。规则回退或没有标题时会省略，而不是虚构一个中性读数。
+- **分析师共识** — 来自生成的 Market service 客户端的 `AnalystConsensus` 形状。
+- **价格目标** — 来自 `PriceTarget[]` 的低/平均/高。
+- **近期评级升降** — `UpgradeDowngrade[]` 列表。
+- **内部人交易** — 来自 `InsiderTransactionsResult` 的文件，通过 `setInsiderData(symbol, data)` 单独附加。
+- **迷你图** — 通过 `@/utils/sparkline` 渲染的价格历史。
+- **基本面** — 展示实际可用的利润率、营业利润率、净资产收益率、营收增长、盈利增长、债务/权益与自由现金流单元格；缺失字段保持缺失。
+- **历史** — 同一代码的先前分析保存在 `StockAnalysisHistory` 中。
+
+面板 id 为 `stock-analysis`；规范组件为 `src/components/StockAnalysisPanel.ts`。标题 "Premium Stock Analysis" 来自面板自身的 `super({...})` 调用。
+
+## 如何访问
+
+- **Cmd+K**：输入 *stock* 或代码符号。
+- **按变体的可用性**：在 **full/geopolitical** 和 **finance** 变体中注册并默认启用 — 两者均锁定。在 tech、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts:49` 和 `:422` 处 `FULL_PANELS` 和 `FINANCE_PANELS` 中的 `'stock-analysis'` 条目。
+
+## 数据来源
+
+所有字段来自生成的 `MarketServiceClient` 路由。面板已锁定，付费股票分析调用使用 `premiumFetch`；内部人富化路由仅在此锁定面内渲染。
+
+| 方法 + 路由 | 支撑内容 |
+|---|---|
+| `GET /api/market/v1/analyze-stock` | 按代码分析卡片：当前价格、迷你图、技术信号、论点、目标、评级、标题与 AI 综合。 |
+| `GET /api/market/v1/get-stock-analysis-history` | 缓存/共享的先前分析，使面板可在重新计算陈旧代码之前渲染已存储快照。 |
+| `GET /api/market/v1/get-insider-transactions` | 内部人活动板块，在分析卡片渲染后附加。 |
+
+目前没有专用的 MCP 股票分析工具。编程式客户端需使用 Market REST 路由与受支持的 Premium 凭证；仅通过 MCP 工作的流程无法把这项面板分析作为工具调用。
+
+## 评级模型与仅 API 分析字段
+
+响应有意保留两组分数与叙述：
+
+- `signal` + `signalScore` 是稳定的仅技术面契约。
+- `ratingSignal` + `compositeScore` 以及 `rating*` 叙述字段，是当前 UI 展示的投资评级。
+
+当质量、增长、杠杆三类中至少两类拥有足够的基本面数据时，复合分数为**65% 技术面分数 + 35% 基本面分数**。若基本面过于稀疏，`fundamentalScore` 会被省略，复合分数会精确回退为技术面分数；缺失数据不会暗中惩罚公司。
+
+API 还会返回若干已经完整计算、但当前面板卡片尚未渲染的字段：
+
+| 字段 | 含义 | 缺失 / 零值语义 |
+|---|---|---|
+| `fundamentals.grossMargin`、`returnOnAssets`、`totalCash`、`totalDebt`、`ebitda` | 超出 7 个展示单元格、为评分与编程式使用保留的额外输入 | Yahoo 未提供某字段时，该字段会独立省略 |
+| `nextEarningsDate`、`consensusEps`、`consensusRevenue` | 共享财报日历约两周窗口内、下一条尚未公布的事件 | 没有未来事件时省略；EPS 与营收预期各自独立可选 |
+| `realizedVolatility` | 基于已获取六个月窗口内日对数收益率样本标准差的年化波动率（`× √252`） | 历史不足时为 `0` |
+| `atr` | 以响应货币价格单位表示的 Wilder 14 周期平均真实波幅 | 历史不足时为 `0` |
+| `maxDrawdown` | 同一窗口内最大峰谷跌幅，以非正比率表示 | 单调上涨或历史不足时为 `0` |
+
+这些值复用分析已经获取的数据：风险指标使用六个月 K 线，基本面共享 Yahoo `financialData` 响应。面板已渲染的 `newsSentiment` 字段同样由现有覆盖层调用一并输出，而不是发起第二次 LLM 请求。这些增强都不会为每个指标额外增加一次上游请求。
+
+## 刷新频率
+
+分析按需进行；无轮询。面板在 `StockAnalysisHistory` 中缓存先前分析，因此重新打开一个代码会立即显示上次分析，同时获取新的分析。
+
+## 层级与门控
+
+**PRO（硬锁定）。** 两个变体注册中的 `premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`stock-analysis` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。
+
+## API 参考
+
+- [Markets service](/api/MarketService.openapi.yaml) — `analyze-stock`、`get-stock-analysis-history` 与 `get-insider-transactions` 的 schema 和参数。
+- 相关：[Premium 回测](/zh/panels/stock-backtest) — 同一数据集的回测面。

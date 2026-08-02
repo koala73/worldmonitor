@@ -31,7 +31,7 @@ function makeRequest(method, url, headers = {}) {
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
 const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
-const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
 // Must be a superset of every method any api/* route advertises. Notably
 // includes DELETE for api/product-catalog.js — pinning this prevents the
 // regression that PR review caught (Worker omitted DELETE → product-catalog
@@ -203,6 +203,57 @@ test('GET response from origin has CORS headers stamped by the Worker', async ()
     assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
     assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
     assert.equal(resp.headers.get('content-type'), 'application/json');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('GET response preserves function-specific exposed headers (bootstrap U3a regression)', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Expose-Headers': [
+        'Server-Timing',
+        'X-WorldMonitor-Bootstrap-Redis-Duration',
+        'Age',
+        'X-Vercel-Cache',
+        'CF-Cache-Status',
+        // A baseline name must not be duplicated when the lists are merged.
+        'Retry-After',
+      ].join(', '),
+    },
+  });
+  try {
+    const req = makeRequest('GET', 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1', {
+      Origin: KNOWN_GOOD,
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(
+      resp.headers.get('access-control-expose-headers'),
+      `${ACEH_EXPECTED}, Server-Timing, X-WorldMonitor-Bootstrap-Redis-Duration, Age, X-Vercel-Cache, CF-Cache-Status`,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('GET response does not preserve function-specific exposed headers outside bootstrap', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Expose-Headers': 'X-Internal-Diagnostic',
+    },
+  });
+  try {
+    const req = makeRequest('GET', 'https://api.worldmonitor.app/api/health', {
+      Origin: KNOWN_GOOD,
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
   } finally {
     globalThis.fetch = original;
   }

@@ -27,7 +27,7 @@ describe('energy variant renewable wiring', () => {
     const layout = src('src/app/panel-layout.ts');
     assert.match(
       layout,
-      /Renewable Energy is shared by happy and energy variants\.[\s\S]*?shouldCreatePanel\('renewable'\)[\s\S]*?this\.lazyPanel\('renewable'/,
+      /Renewable Energy is shared by happy and energy variants\.[\s\S]*?shouldCreatePanel\('renewable'\)[\s\S]*?this\.lazy(?:Imported)?Panel\('renewable'/,
       'panel-layout.ts must mount RenewableEnergyPanel via shouldCreatePanel() so energy can instantiate it',
     );
   });

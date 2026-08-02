@@ -31,7 +31,16 @@ import {
 } from '../scripts/lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { composeBriefFromDigestStories, digestStoryToSynthesisShape } from '../scripts/lib/brief-compose.mjs';
-import { briefDateLine } from '../shared/brief-llm-core.js';
+import {
+  WHY_MATTERS_V1_MIN_CHARS,
+  WHY_MATTERS_V2_MAX_CHARS,
+  briefDateLine,
+} from '../shared/brief-llm-core.js';
+
+const MAX_TOKEN_CLIP =
+  'Marine Le Pen\u2019s conviction on appeal leaves her legally eligible for the 2027 presidential election, creating a high-stakes';
+const ABBREVIATION_LENGTH_CLIP =
+  'The ruling would reshape alliance planning across Europe and force renewed debate among officials in the U.S.';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -138,10 +147,10 @@ describe('parseWhyMatters', () => {
     assert.equal(parseWhyMatters(long), null);
   });
 
-  it('takes the first sentence only when the model returns multiple', () => {
+  it('preserves fully completed multi-sentence output instead of truncating it', () => {
     const text = 'Closure would spike oil markets and force a naval response. A second sentence here.';
     const out = parseWhyMatters(text);
-    assert.equal(out, 'Closure would spike oil markets and force a naval response.');
+    assert.equal(out, text);
   });
 
   it('strips surrounding quotes (smart and straight)', () => {
@@ -158,11 +167,37 @@ describe('parseWhyMatters', () => {
     assert.match(out, /^Closure of the Strait/);
     assert.ok(out.endsWith('.'));
   });
+
+  it('rejects a max-token clip with no terminal punctuation', () => {
+    assert.equal(parseWhyMatters(MAX_TOKEN_CLIP), null);
+  });
+
+  it('keeps a stop-finished sentence intact across a dotted abbreviation', () => {
+    const complete = 'The ruling would reshape alliance planning as U.S. officials prepare for the 2027 vote.';
+    assert.equal(parseWhyMatters(complete), complete);
+  });
 });
 
 // ── generateWhyMatters ─────────────────────────────────────────────────────
 
 describe('generateWhyMatters', () => {
+  it('accepts analyst endpoint prose across the derived v1/v2 union bounds', async () => {
+    for (const prose of [
+      `${'x'.repeat(WHY_MATTERS_V1_MIN_CHARS - 1)}.`,
+      `${'x'.repeat(WHY_MATTERS_V2_MAX_CHARS - 1)}.`,
+    ]) {
+      const cache = makeCache();
+      const llm = makeLLM(() => { throw new Error('analyst output must short-circuit the fallback'); });
+      const out = await generateWhyMatters(story(), {
+        ...cache,
+        callLLM: llm.callLLM,
+        callAnalystWhyMatters: async () => prose,
+      });
+      assert.equal(out, prose);
+      assert.equal(llm.calls.length, 0);
+    }
+  });
+
   it('returns the cached value without calling the LLM when cache hits', async () => {
     const cache = makeCache();
     const llm = makeLLM(() => 'should not be called');
@@ -178,8 +213,8 @@ describe('generateWhyMatters', () => {
     const real = makeLLM('Closure would freeze a fifth of seaborne crude within days.');
     const first = await generateWhyMatters(story(), { ...cache, callLLM: real.callLLM });
     assert.ok(first);
-    const cachedKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:whymatters:v5:'));
-    assert.ok(cachedKey, 'expected a whymatters cache entry under the v4 key (bumped 2026-05-14 for the F6 date-grounding line)');
+    const cachedKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:whymatters:v6:'));
+    assert.ok(cachedKey, 'expected a whymatters cache entry under the v6 completion-safe namespace');
 
     // Second call: responder throws — cache must prevent the call
     llm.calls.length = 0;
@@ -209,6 +244,101 @@ describe('generateWhyMatters', () => {
     const llm = makeLLM('too short');
     const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
     assert.equal(out, null);
+  });
+
+  it('revalidates the current v6 cache row and replaces rejected prose', async () => {
+    const cache = makeCache();
+    const hash = await hashBriefStory(story());
+    const key = `brief:llm:whymatters:v6:${hash}`;
+    cache.store.set(key, MAX_TOKEN_CLIP);
+    const fresh = 'Closure of the Strait of Hormuz would spike oil prices globally.';
+    const llm = makeLLM(fresh);
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, fresh);
+    assert.equal(llm.calls.length, 1, 'invalid current-v6 prose must not short-circuit regeneration');
+    assert.equal(cache.store.get(key), fresh, 'fresh prose must replace the rejected v6 row');
+  });
+
+  it('returns null and writes no cache for complete-looking v1 prose without terminal punctuation', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(
+      'This development would reshape regional deterrence and force allies to reconsider their security guarantees',
+    );
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, null, 'the caller must degrade to the baseline stub');
+    assert.equal(llm.calls.length, 1);
+    assert.equal(cache.store.size, 0, 'incomplete v1 prose must not be cached');
+  });
+
+  it('returns null and writes no cache for an over-400-character v1 output', async () => {
+    const cache = makeCache();
+    const overlong = `${'Regional pressure would force allies to reconsider their security posture. '.repeat(7)}Markets would react.`;
+    assert.ok(overlong.length > 400, 'fixture must exercise the v1 upper bound');
+    const llm = makeLLM(overlong);
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, null, 'the caller must degrade to the baseline stub');
+    assert.equal(llm.calls.length, 1);
+    assert.equal(cache.store.size, 0, 'overlong v1 prose must not be cached');
+  });
+
+  it('ignores a clipped legacy v5 cache row and regenerates it under v6', async () => {
+    const cache = makeCache();
+    const hash = await hashBriefStory(story());
+    cache.store.set(
+      `brief:llm:whymatters:v5:${hash}`,
+      MAX_TOKEN_CLIP,
+    );
+    const fresh = 'Closure of the Strait of Hormuz would spike oil prices globally.';
+    const llm = makeLLM(fresh);
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, fresh);
+    assert.equal(llm.calls.length, 1, 'clipped v5 cache row must not short-circuit regeneration');
+    assert.equal(
+      [...cache.store.keys()].some((key) => key.startsWith('brief:llm:whymatters:v6:')),
+      true,
+    );
+  });
+
+  it('ignores a legacy v5 abbreviation-ending clip that the old parser accepted', async () => {
+    const cache = makeCache();
+    const hash = await hashBriefStory(story());
+    cache.store.set(`brief:llm:whymatters:v5:${hash}`, ABBREVIATION_LENGTH_CLIP);
+    const fresh = 'Closure of the Strait of Hormuz would spike oil prices globally.';
+    const llm = makeLLM(fresh);
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, fresh);
+    assert.equal(llm.calls.length, 1, 'pre-signal v5 rows must be dark after the v6 bump');
+  });
+
+  it('keeps and caches stop-finished Railway prose across a dotted abbreviation', async () => {
+    const cache = makeCache();
+    const complete = 'The sanctions would constrain trade while forcing the U.S.-led coalition to respond.';
+    const llm = makeLLM(complete);
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, complete);
+    const v6Value = [...cache.store.entries()].find(([key]) => key.startsWith('brief:llm:whymatters:v6:'))?.[1];
+    assert.equal(v6Value, complete);
+  });
+
+  it('returns null instead of stale prose when clipped legacy regeneration fails', async () => {
+    const cache = makeCache();
+    const hash = await hashBriefStory(story());
+    cache.store.set(`brief:llm:whymatters:v5:${hash}`, MAX_TOKEN_CLIP);
+    const llm = makeLLM(null);
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, null);
+    assert.equal(llm.calls.length, 1, 'clipped v5 cache row must attempt regeneration');
   });
 
   it('pins the provider chain to openrouter (skipProviders=ollama,groq)', async () => {
@@ -1750,78 +1880,115 @@ describe('generateStoryDescription — sanitisation + prefix bump (U5)', () => {
   });
 });
 
-// ── generateWhyMatters — v8 endpoint-cache cross-read (#4914) ──────────────
+// ── generateWhyMatters — v10 endpoint-cache cross-read (#4914) ─────────────
 //
 // The analyst endpoint (api/internal/brief-why-matters.ts) caches its
-// envelope at brief:llm:whymatters:v8:{hashBriefStory} — the SAME story
-// identity as the cron's legacy v5 namespace. When the endpoint CALL fails
+// envelope at brief:llm:whymatters:v10:{hashBriefStory} — the SAME story
+// identity as the cron's legacy v6 namespace. When the endpoint CALL fails
 // transiently, the envelope may still be sitting in Redis; the fallback
 // must read it before paying a direct-Gemini generation.
 
-describe('generateWhyMatters — v8 endpoint-cache cross-read (#4914)', () => {
-  const V8_PROSE = 'Closure of the Strait of Hormuz would freeze a fifth of seaborne crude and force allied navies to respond.';
+describe('generateWhyMatters — v10 endpoint-cache cross-read (#4914)', () => {
+  const V10_PROSE = 'Closure of the Strait of Hormuz would freeze a fifth of seaborne crude and force allied navies to respond.';
 
-  async function seedV8(cache, s, envelopeOverrides = {}) {
+  it('pins the endpoint cache to v10 and its shadow cohort to v7', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const src = await readFile(new URL('../api/internal/brief-why-matters.ts', import.meta.url), 'utf8');
+    assert.match(src, /const cacheKey = `brief:llm:whymatters:v10:\$\{hash\}`;/);
+    assert.match(src, /const shadowKey = `brief:llm:whymatters:shadow:v7:\$\{hash\}`;/);
+    assert.doesNotMatch(src, /const cacheKey = `brief:llm:whymatters:v9:/);
+    assert.doesNotMatch(src, /const shadowKey = `brief:llm:whymatters:shadow:v6:/);
+  });
+
+  async function seedV10(cache, s, envelopeOverrides = {}) {
     const hash = await hashBriefStory(s);
-    cache.store.set(`brief:llm:whymatters:v8:${hash}`, {
-      whyMatters: V8_PROSE,
+    cache.store.set(`brief:llm:whymatters:v10:${hash}`, {
+      whyMatters: V10_PROSE,
       producedBy: 'analyst',
       ...envelopeOverrides,
     });
     return hash;
   }
 
-  it('reuses the v8 envelope when the analyst endpoint call fails — no paid LLM call', async () => {
+  it('reuses the v10 envelope when the analyst endpoint call fails — no paid LLM call', async () => {
     const cache = makeCache();
     const s = story();
-    await seedV8(cache, s);
-    const llm = makeLLM(() => { throw new Error('must not pay direct-Gemini when v8 is warm'); });
+    await seedV10(cache, s);
+    const llm = makeLLM(() => { throw new Error('must not pay direct-Gemini when v10 is warm'); });
     const out = await generateWhyMatters(s, {
       ...cache,
       callLLM: llm.callLLM,
       callAnalystWhyMatters: async () => { throw new Error('endpoint down'); },
     });
-    assert.equal(out, V8_PROSE);
-    assert.equal(llm.calls.length, 0, 'v8 hit must short-circuit the legacy chain');
+    assert.equal(out, V10_PROSE);
+    assert.equal(llm.calls.length, 0, 'v10 hit must short-circuit the legacy chain');
   });
 
-  it('reuses the v8 envelope when no analyst endpoint is configured at all', async () => {
+  it('reuses the v10 envelope when no analyst endpoint is configured at all', async () => {
     const cache = makeCache();
     const s = story();
-    await seedV8(cache, s);
+    await seedV10(cache, s);
     const llm = makeLLM(() => { throw new Error('must not pay'); });
     const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
-    assert.equal(out, V8_PROSE);
+    assert.equal(out, V10_PROSE);
     assert.equal(llm.calls.length, 0);
   });
 
-  it('malformed v8 envelope falls through to the legacy chain', async () => {
+  it('ignores a pre-completion-signal v9 envelope and falls through to the legacy chain', async () => {
     const cache = makeCache();
     const s = story();
     const hash = await hashBriefStory(s);
-    cache.store.set(`brief:llm:whymatters:v8:${hash}`, { whyMatters: 'too short' });
+    cache.store.set(`brief:llm:whymatters:v9:${hash}`, {
+      whyMatters: 'The response looks complete because the clipped fragment happens to end with an abbreviation such as the U.S.',
+      producedBy: 'analyst',
+    });
+    const fresh = 'Closure of the Strait of Hormuz would spike oil prices globally.';
+    const llm = makeLLM(fresh);
+    const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, fresh);
+    assert.equal(llm.calls.length, 1, 'v9 must not short-circuit the completion-signal generation chain');
+  });
+
+  it('malformed v10 envelope falls through to the legacy chain', async () => {
+    const cache = makeCache();
+    const s = story();
+    const hash = await hashBriefStory(s);
+    cache.store.set(`brief:llm:whymatters:v10:${hash}`, { whyMatters: 'too short' });
     const llm = makeLLM('Closure of the Strait of Hormuz would spike oil prices globally.');
     const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
     assert.equal(out, 'Closure of the Strait of Hormuz would spike oil prices globally.');
-    assert.equal(llm.calls.length, 1, 'invalid v8 payload must not be served — legacy chain pays once');
+    assert.equal(llm.calls.length, 1, 'invalid v10 payload must not be served — legacy chain pays once');
   });
 
-  it('v8 sensitivity-stub prose is rejected, not served', async () => {
+  it('v10 sensitivity-stub prose is rejected, not served', async () => {
     const cache = makeCache();
     const s = story();
-    await seedV8(cache, s, { whyMatters: 'Story flagged by your sensitivity settings. Open for context and details.' });
+    await seedV10(cache, s, { whyMatters: 'Story flagged by your sensitivity settings. Open for context and details.' });
     const llm = makeLLM('Closure of the Strait of Hormuz would spike oil prices globally.');
     const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
     assert.equal(out, 'Closure of the Strait of Hormuz would spike oil prices globally.');
     assert.equal(llm.calls.length, 1);
   });
 
-  it('v8 read is read-only — the legacy path must not copy into or overwrite the v8 namespace', async () => {
+  it('v10 max-token clips are rejected, not served', async () => {
+    const cache = makeCache();
+    const s = story();
+    await seedV10(cache, s, {
+      whyMatters: MAX_TOKEN_CLIP,
+    });
+    const fresh = 'Closure of the Strait of Hormuz would spike oil prices globally.';
+    const llm = makeLLM(fresh);
+    const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, fresh);
+    assert.equal(llm.calls.length, 1);
+  });
+
+  it('v10 read is read-only — the legacy path must not copy into or overwrite the v10 namespace', async () => {
     const cache = makeCache();
     const s = story();
     const llm = makeLLM('Closure of the Strait of Hormuz would spike oil prices globally.');
     await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
-    const v8Keys = [...cache.store.keys()].filter((k) => k.startsWith('brief:llm:whymatters:v8:'));
-    assert.equal(v8Keys.length, 0, 'legacy single-sentence output must stay in the v5 namespace');
+    const v10Keys = [...cache.store.keys()].filter((k) => k.startsWith('brief:llm:whymatters:v10:'));
+    assert.equal(v10Keys.length, 0, 'legacy fallback output must stay in the v6 namespace');
   });
 });

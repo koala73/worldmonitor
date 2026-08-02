@@ -1,17 +1,30 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr, readSeedSnapshot, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 import { getAcledToken } from './shared/acled-oauth.mjs';
+import { GDELT_BULK_UNREST_KEY } from './_gdelt-bulk-contract.mjs';
 
 loadEnvFile(import.meta.url);
 
 const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
+const UNREST_RESOLUTION_CACHE_KEY = 'unrest:events-resolution:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
+const ACLED_DISPLAY_LOOKBACK_DAYS = 30;
+const ACLED_DISPLAY_LIMIT = 500;
+const UNREST_RESOLUTION_LOOKBACK_DAYS = 60;
+const UNREST_RESOLUTION_PAGE_LIMIT = 5000;
+const UNREST_RESOLUTION_MAX_PAGES = 20;
+const ACLED_PAGE_DELAY_MS = 250;
 const MAX_SOURCE_URLS = 5;
 const GDELT_THEME_MIN_DELAY_MS = 5_500;
 const GDELT_THEME_JITTER_MS = 1_000;
+// The 15-minute bulk materializer can miss several cycles without forcing an
+// immediate failover, but a preserved snapshot older than 3h must not be
+// republished as fresh unrest data.
+export const GDELT_BULK_UNREST_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -140,25 +153,32 @@ function sortBySeverityAndRecency(events) {
 
 // ---------- ACLED Fetch ----------
 
-async function fetchAcledProtests() {
-  const token = await getAcledToken({ userAgent: CHROME_UA });
-  if (!token) {
-    console.log('  ACLED: no credentials configured, skipping');
-    return [];
-  }
+let acledTokenPromise;
+function getAcledTokenOnce() {
+  if (!acledTokenPromise) acledTokenPromise = getAcledToken({ userAgent: CHROME_UA });
+  return acledTokenPromise;
+}
 
-  const now = Date.now();
-  const startDate = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const endDate = new Date(now).toISOString().split('T')[0];
+function acledDateRange(now, lookbackDays) {
+  return {
+    startDate: new Date(now - lookbackDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date(now).toISOString().split('T')[0],
+  };
+}
 
+function buildAcledProtestParams({ startDate, endDate, limit, page }) {
   const params = new URLSearchParams({
     event_type: 'Protests',
     event_date: `${startDate}|${endDate}`,
     event_date_where: 'BETWEEN',
-    limit: '500',
+    limit: String(limit),
     _format: 'json',
   });
+  if (page) params.set('page', String(page));
+  return params;
+}
 
+async function fetchAcledProtestPage(token, params) {
   const resp = await fetch(`${ACLED_API_URL}?${params}`, {
     headers: {
       Accept: 'application/json',
@@ -171,10 +191,10 @@ async function fetchAcledProtests() {
   if (!resp.ok) throw new Error(`ACLED API error: ${resp.status}`);
   const data = await resp.json();
   if (data.message || data.error) throw new Error(data.message || data.error || 'ACLED API error');
+  return Array.isArray(data.data) ? data.data : [];
+}
 
-  const rawEvents = data.data || [];
-  console.log(`  ACLED: ${rawEvents.length} raw events`);
-
+function normalizeAcledProtestEvents(rawEvents) {
   return rawEvents
     .filter((e) => {
       const lat = parseFloat(e.latitude || '');
@@ -206,6 +226,56 @@ async function fetchAcledProtests() {
         sourceUrls: extractAcledSourceUrls(e),
       };
     });
+}
+
+async function fetchAcledProtests({
+  lookbackDays = ACLED_DISPLAY_LOOKBACK_DAYS,
+  limit = ACLED_DISPLAY_LIMIT,
+  paginated = false,
+  maxPages = 1,
+  label = 'ACLED',
+} = {}) {
+  const token = await getAcledTokenOnce();
+  if (!token) {
+    console.log(`  ${label}: no credentials configured, skipping`);
+    return { events: [], pagination: undefined };
+  }
+
+  const now = Date.now();
+  const { startDate, endDate } = acledDateRange(now, lookbackDays);
+  const rawEvents = [];
+  const seen = new Set();
+  let pagesFetched = 0;
+  let lastPageCount = 0;
+  const pageLimit = paginated ? Math.max(1, maxPages) : 1;
+
+  for (let page = 1; page <= pageLimit; page += 1) {
+    const params = buildAcledProtestParams({
+      startDate,
+      endDate,
+      limit,
+      page: paginated ? page : undefined,
+    });
+    const pageEvents = await fetchAcledProtestPage(token, params);
+    pagesFetched = page;
+    lastPageCount = pageEvents.length;
+    const before = rawEvents.length;
+    for (const event of pageEvents) {
+      const id = event.event_id_cnty || `${event.event_date}:${event.country}:${event.latitude}:${event.longitude}:${event.notes || event.source || ''}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      rawEvents.push(event);
+    }
+    if (!paginated || pageEvents.length < limit || rawEvents.length === before) break;
+    await sleep(ACLED_PAGE_DELAY_MS);
+  }
+
+  const events = normalizeAcledProtestEvents(rawEvents);
+  const pagination = paginated
+    ? { lookbackDays, limit, pagesFetched, maxPages, truncated: pagesFetched >= maxPages && lastPageCount >= limit }
+    : undefined;
+  console.log(`  ${label}: ${events.length} raw events (${startDate} to ${endDate}${paginated ? `, ${pagesFetched} page(s)` : ''})`);
+  return { events, pagination };
 }
 
 // ---------- GDELT Fetch ----------
@@ -369,23 +439,83 @@ export async function fetchGdeltEvents(opts = {}) {
   return events;
 }
 
+export async function readMaterializedGdeltEvents({
+  _readSnapshot = () => readSeedSnapshot(GDELT_BULK_UNREST_KEY, { strict: true }),
+  _now = Date.now,
+} = {}) {
+  const snapshot = await _readSnapshot();
+  if (!snapshot || !Array.isArray(snapshot.events)) {
+    throw new Error(`${GDELT_BULK_UNREST_KEY} missing or malformed`);
+  }
+  const fetchedAtMs = typeof snapshot.fetchedAt === 'number'
+    ? snapshot.fetchedAt
+    : Date.parse(snapshot.fetchedAt);
+  if (!Number.isFinite(fetchedAtMs)) {
+    throw new Error(`${GDELT_BULK_UNREST_KEY} fetchedAt is unparseable: ${snapshot.fetchedAt}`);
+  }
+  const ageMs = _now() - fetchedAtMs;
+  if (ageMs > GDELT_BULK_UNREST_MAX_AGE_MS) {
+    throw new Error(
+      `${GDELT_BULK_UNREST_KEY} stale snapshot`
+      + ` (${Math.round(ageMs / 60000)}min old; max ${GDELT_BULK_UNREST_MAX_AGE_MS / 60000}min)`,
+    );
+  }
+  if (ageMs < -GDELT_BULK_MAX_FUTURE_SKEW_MS) {
+    throw new Error(
+      `${GDELT_BULK_UNREST_KEY} future snapshot`
+      + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
+    );
+  }
+  return snapshot;
+}
+
 // ---------- Main Fetch ----------
 
 async function fetchUnrestEvents() {
-  const results = await Promise.allSettled([fetchAcledProtests(), fetchGdeltEvents()]);
+  const results = await Promise.allSettled([
+    fetchAcledProtests({ label: 'ACLED display' }),
+    fetchAcledProtests({
+      lookbackDays: UNREST_RESOLUTION_LOOKBACK_DAYS,
+      limit: UNREST_RESOLUTION_PAGE_LIMIT,
+      paginated: true,
+      maxPages: UNREST_RESOLUTION_MAX_PAGES,
+      label: 'ACLED resolution',
+    }),
+    readMaterializedGdeltEvents(),
+  ]);
 
-  const acledEvents = results[0].status === 'fulfilled' ? results[0].value : [];
-  const gdeltEvents = results[1].status === 'fulfilled' ? results[1].value : [];
+  const acled = results[0].status === 'fulfilled' ? results[0].value : null;
+  const acledResolution = results[1].status === 'fulfilled' ? results[1].value : null;
+  const acledEvents = acled?.events ?? [];
+  const gdeltSnapshot = results[2].status === 'fulfilled' ? results[2].value : null;
+  const gdeltEvents = gdeltSnapshot?.events ?? [];
 
   if (results[0].status === 'rejected') console.log(`  ACLED failed: ${describeErr(results[0].reason)}`);
-  if (results[1].status === 'rejected') console.log(`  GDELT failed: ${describeErr(results[1].reason)}`);
+  if (results[1].status === 'rejected') console.log(`  ACLED resolution failed: ${describeErr(results[1].reason)}`);
+  if (results[2].status === 'rejected') console.log(`  GDELT failed: ${describeErr(results[2].reason)}`);
+
+  if (acledResolution?.events?.length) {
+    const sortedResolutionEvents = sortBySeverityAndRecency([...acledResolution.events]);
+    await writeExtraKeyWithMeta(
+      UNREST_RESOLUTION_CACHE_KEY,
+      { events: sortedResolutionEvents, clusters: [], pagination: acledResolution.pagination },
+      CACHE_TTL,
+      sortedResolutionEvents.length,
+    );
+  }
 
   const merged = deduplicateEvents([...acledEvents, ...gdeltEvents]);
   const sorted = sortBySeverityAndRecency(merged);
 
   console.log(`  Merged: ${acledEvents.length} ACLED + ${gdeltEvents.length} GDELT = ${sorted.length} deduplicated`);
 
-  return { events: sorted, clusters: [], pagination: undefined };
+  return {
+    events: sorted,
+    clusters: [],
+    pagination: gdeltSnapshot
+      ? { gdeltFetchedAt: gdeltSnapshot.fetchedAt }
+      : undefined,
+  };
 }
 
 function validate(data) {

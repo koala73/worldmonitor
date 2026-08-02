@@ -1,4 +1,4 @@
-import { calculateCII, type CountryScore } from './country-instability';
+import type { CountryScore } from './country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from './cached-risk-scores';
 import type { ClusteredEvent } from '@/types';
 import type { ThreatLevel } from './threat-classifier';
@@ -64,11 +64,7 @@ export function collectStoryData(
   convergence?: { score: number; signalTypes: string[]; regionalDescriptions: string[] } | null,
 ): StoryData {
   const normalizedCountryCode = normalizeCiiCountryCode(countryCode);
-  let countryScore: CountryScore | null = getCachedCountryScore(normalizedCountryCode);
-  if (!countryScore) {
-    const scores = calculateCII();
-    countryScore = scores.find(s => s.code === normalizedCountryCode) || null;
-  }
+  const countryScore: CountryScore | null = getCachedCountryScore(normalizedCountryCode);
 
   const keywords = CURATED_COUNTRIES[normalizedCountryCode]?.scoringKeywords || [countryName.toLowerCase()];
   const countryNews = allNews.filter(e => {

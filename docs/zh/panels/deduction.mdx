@@ -1,0 +1,46 @@
+---
+title: "推演态势"
+description: "推演态势面板允许用户向 WorldMonitor AI 分析师提交假设性或当前正在发生的事件，自动生成完整的时间线推演与多维度影响评估报告，支持自定义分析框架（现实主义、自由主义、建构主义等）与地理范围粒度，涵盖政治、军事、金融市场、能源与全球供应链的传导路径，广泛用于情景规划、政策沙盘与危机预演。"
+---
+
+**Deduct Situation** 面板（内部 id `deduction`）是一个一次性 AI 分析界面：你编写一个场景提示（假设性或当前的），可选地限定到某个区域，分析师返回对可能时间线和影响的结构化推演，由当前活动的分析框架构建。
+
+## 面板显示内容
+
+一个包含三个输入框和结果区域的表单：
+
+- **查询文本框** — 自由格式场景提示。
+- **地理输入** — 可选的区域/国家范围，应用于分析。
+- **框架选择器** — 面板的 `FrameworkSelector` 绑定 `panelId: 'deduction'`，用户可以在活动的分析框架之间切换进行此次运行。
+- **提交按钮** — 调用进行中时禁用。
+- **结果容器** — 将响应渲染为 Markdown → 消毒后的 HTML。
+
+5 秒冷却时间（`src/components/DeductionPanel.ts` 中的 `COOLDOWN_MS = 5_000`）防止意外的连续提交。
+
+面板可以在挂载时通过宿主传入的可选 `getLatestNews` 钩子消费最新新闻源 — 新闻上下文被折叠进请求中，使推演反映当今世界状态。
+
+当分析师文本包含来源概率时，面板会从渲染后的 Markdown 中提取一个紧凑徽章。粗略范围保留为范围，例如 `40-55%`；单个值以近似标记渲染，例如 `~55%`。徽章工具提示将这些标注为粗略或近似的来源概率，且该值是从分析师文本中解析的，而非由 UI 计算。替代路径徽章仅从开头的百分比中提取，因此句子中后续出现的偶然百分比不会变成虚假精度。
+
+面板 id 为 `deduction`；规范组件为 `src/components/DeductionPanel.ts`。标题 "Deduct Situation" 见 `src/config/panels.ts:111`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *deduce*、*situation* 或 *what if*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册，且**默认禁用**（`src/config/panels.ts:111` 处的 `enabled: false, premium: 'locked'`）。PRO 用户需手动启用。在 tech、finance、commodity 或 happy 变体中不存在。
+
+## 数据来源
+
+面板通过生成的 `IntelligenceServiceClient`（`getRpcBaseUrl()` + `/api/intelligence/v1/*`）调用 **Intelligence service**。底层通过 `buildNewsContext(latestNews)` 组合新闻上下文，并附带 `getActiveFrameworkForPanel('deduction')` 的活动框架元数据提交提示。
+
+## 刷新频率
+
+每次提交都是一次新的 LLM 调用 — 无缓存。提交之间有 5 秒冷却时间。
+
+## 层级与门控
+
+**PRO（硬锁定）且需手动启用。** `src/config/panels.ts:111` 中的 `enabled: false, premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`deduction` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。根据渲染路径，提交前还会检查 `hasPremiumAccess()`。
+
+## API 参考
+
+- [Intelligence service](/api/IntelligenceService.openapi.yaml) — 面板使用的生成客户端。
+- 相关 MCP 工具：[`analyze_situation`](/zh/mcp-overview#ai-intelligence-live-llm) 通过 MCP 传输为基于 agent 的调用者提供等效功能。

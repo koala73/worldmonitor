@@ -51,6 +51,8 @@ import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/g
 import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
+import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -164,6 +166,7 @@ export class MapContainer {
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
   private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void) | null = null;
+  private cachedOnChinaCorridorRendererCapabilityChange: ((supported: boolean) => void) | null = null;
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -212,6 +215,7 @@ export class MapContainer {
   private cachedDdosLocations: DdosLocationHit[] | null = null;
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
   private iranSkillOverlay: HTMLElement | null = null;
+  private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
@@ -670,6 +674,10 @@ export class MapContainer {
     if (this.cachedTrafficAnomalies) this.setTrafficAnomalies(this.cachedTrafficAnomalies);
     if (this.cachedDdosLocations) this.setDdosLocations(this.cachedDdosLocations);
     if (this.cachedChokepointData !== undefined) this.setChokepointData(this.cachedChokepointData);
+    if (this.cachedChinaCorridorSelection) {
+      const supported = this.applyChinaCorridorSelection(this.cachedChinaCorridorSelection);
+      this.cachedOnChinaCorridorRendererCapabilityChange?.(supported);
+    }
     if (this.cachedWebcams) {
       if (this.useGlobe) this.globeMap?.setWebcams(this.cachedWebcams);
       else if (this.useDeckGL) this.deckGLMap?.setWebcams(this.cachedWebcams);
@@ -1090,6 +1098,31 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setChokepointData(data); return; }
     if (this.useDeckGL) { this.deckGLMap?.setChokepointData(data); return; }
     this.svgMap?.setChokepointData(data);
+  }
+
+  private applyChinaCorridorSelection(corridor: ChinaCorridorControlTower): boolean {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setChinaCorridorSelection(corridor);
+      return true;
+    }
+    const { center, bounds } = projectChinaCorridorOverlay(corridor);
+    const span = Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+    this.setCenter(center.lat, center.lon, span > 25 ? 3 : span > 8 ? 4 : 5);
+    return false;
+  }
+
+  public setChinaCorridorSelection(
+    corridor: ChinaCorridorControlTower,
+  ): boolean | undefined {
+    this.cachedChinaCorridorSelection = corridor;
+    if (!this.hasActiveRenderer()) return undefined;
+    return this.applyChinaCorridorSelection(corridor);
+  }
+
+  public setOnChinaCorridorRendererCapabilityChange(
+    callback: (supported: boolean) => void,
+  ): void {
+    this.cachedOnChinaCorridorRendererCapabilityChange = callback;
   }
 
   public setCIIScores(scores: CIIScore[]): void {
@@ -1592,6 +1625,7 @@ export class MapContainer {
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
     this.cachedOnMapContextMenu = null;
+    this.cachedOnChinaCorridorRendererCapabilityChange = null;
     this.cachedEarthquakes = null;
     this.cachedConflictEvents = null;
     this.cachedWeatherAlerts = null;
@@ -1634,6 +1668,7 @@ export class MapContainer {
     this.cachedTrafficAnomalies = null;
     this.cachedDdosLocations = null;
     this.cachedChokepointData = undefined;
+    this.cachedChinaCorridorSelection = null;
     this.pendingCenter = null;
     this.pendingViewportActions = [];
     this.pendingChokepointOpen = null;

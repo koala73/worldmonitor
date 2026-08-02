@@ -126,6 +126,7 @@ export async function validateSessionToken(token) {
   let payload;
   try { payload = JSON.parse(base64UrlToString(body)); } catch { return false; }
   if (typeof payload.exp !== 'number') return false;
-  if (Date.now() > payload.exp) return false;
+  if (!Number.isFinite(payload.exp)) return false;
+  if (Date.now() >= payload.exp) return false;
   return true;
 }

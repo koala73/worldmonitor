@@ -7,12 +7,23 @@ import type {
   ServerContext,
   ListMarketQuotesRequest,
   ListMarketQuotesResponse,
-  MarketQuote,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { parseStringArray } from './_shared';
 import { getCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
+
+export function filterMarketQuotes(
+  bootstrap: ListMarketQuotesResponse,
+  symbols: string[],
+): ListMarketQuotesResponse {
+  if (symbols.length === 0) return bootstrap;
+  const symbolSet = new Set(symbols);
+  return {
+    ...bootstrap,
+    quotes: bootstrap.quotes.filter((quote) => symbolSet.has(quote.symbol)),
+  };
+}
 
 export async function listMarketQuotes(
   _ctx: ServerContext,
@@ -26,13 +37,7 @@ export async function listMarketQuotes(
       return { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
     }
 
-    if (parsedSymbols.length > 0) {
-      const symbolSet = new Set(parsedSymbols);
-      const filtered = bootstrap.quotes.filter((q: MarketQuote) => symbolSet.has(q.symbol));
-      return { quotes: filtered, finnhubSkipped: false, skipReason: '', rateLimited: false };
-    }
-
-    return bootstrap;
+    return filterMarketQuotes(bootstrap, parsedSymbols);
   } catch {
     return { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
   }

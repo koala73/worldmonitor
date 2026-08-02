@@ -11,45 +11,17 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/wildfire/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
+import { limitFireDetectionsForDashboard } from '../../../../api/_wildfire-dashboard.js';
+export { WILDFIRE_DASHBOARD_DETECTION_LIMIT, limitFireDetectionsForDashboard } from '../../../../api/_wildfire-dashboard.js';
 
-const SEED_CACHE_KEY = 'wildfire:fires:v1';
-const SEED_META_KEY = 'seed-meta:wildfire:fires';
-export const WILDFIRE_DASHBOARD_DETECTION_LIMIT = 500;
+const COMPACT_SEED_CACHE_KEY = 'wildfire:fires-bootstrap:v1';
+const COMPACT_SEED_META_KEY = 'seed-meta:wildfire:fires-bootstrap';
+const CANONICAL_SEED_CACHE_KEY = 'wildfire:fires:v1';
+const CANONICAL_SEED_META_KEY = 'seed-meta:wildfire:fires';
 
 interface SeedMeta {
   fetchedAt?: number;
-}
-
-type FireDetection = ListFireDetectionsResponse['fireDetections'][number];
-
-function numeric(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function confidenceRank(confidence: FireDetection['confidence']): number {
-  switch (confidence) {
-    case 'FIRE_CONFIDENCE_HIGH': return 3;
-    case 'FIRE_CONFIDENCE_NOMINAL': return 2;
-    case 'FIRE_CONFIDENCE_LOW': return 1;
-    default: return 0;
-  }
-}
-
-function compareFireDetectionsForDashboard(a: FireDetection, b: FireDetection): number {
-  return Number(Boolean(b.possibleExplosion)) - Number(Boolean(a.possibleExplosion))
-    || confidenceRank(b.confidence) - confidenceRank(a.confidence)
-    || numeric(b.brightness) - numeric(a.brightness)
-    || numeric(b.frp) - numeric(a.frp)
-    || numeric(b.detectedAt) - numeric(a.detectedAt);
-}
-
-export function limitFireDetectionsForDashboard(
-  detections: FireDetection[],
-  limit = WILDFIRE_DASHBOARD_DETECTION_LIMIT,
-): FireDetection[] {
-  if (detections.length <= limit) return detections;
-  return [...detections].sort(compareFireDetectionsForDashboard).slice(0, limit);
 }
 
 export const listFireDetections: WildfireServiceHandler['listFireDetections'] = async (
@@ -57,18 +29,32 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
   _req: ListFireDetectionsRequest,
 ): Promise<ListFireDetectionsResponse> => {
   try {
-    const [result, meta] = await Promise.all([
-      getCachedJson(SEED_CACHE_KEY, true) as Promise<Partial<ListFireDetectionsResponse> | null>,
-      getCachedJson(SEED_META_KEY, true) as Promise<SeedMeta | null>,
+    let [result, meta] = await Promise.all([
+      getCachedJson(COMPACT_SEED_CACHE_KEY, true) as Promise<Partial<ListFireDetectionsResponse> | null>,
+      getCachedJson(COMPACT_SEED_META_KEY, true) as Promise<SeedMeta | null>,
     ]);
+
+    // Keep deploy ordering safe: the RPC can serve the canonical seed until the
+    // compact extra-key writer has published its first payload.
+    if (!result) {
+      [result, meta] = await Promise.all([
+        getCachedJson(CANONICAL_SEED_CACHE_KEY, true) as Promise<Partial<ListFireDetectionsResponse> | null>,
+        getCachedJson(CANONICAL_SEED_META_KEY, true) as Promise<SeedMeta | null>,
+      ]);
+    }
+
     if (!result) return { fireDetections: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
     const rawDetections = result.fireDetections ?? [];
     const fireDetections = limitFireDetectionsForDashboard(rawDetections);
     const capped = fireDetections.length < rawDetections.length;
+    // The canonical key is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866) and
+    // carries the pre-cap FIRMS total in `pagination`. Re-deriving the count from the array we
+    // received would silently report the seeder's cap as the number of fires burning.
+    const totalCount = resolveFireDetectionTotalCount({ fireDetections: rawDetections, pagination: result.pagination });
 
     return {
       fireDetections,
-      pagination: capped ? { nextCursor: '', totalCount: rawDetections.length } : result.pagination,
+      pagination: capped ? { nextCursor: '', totalCount } : result.pagination,
       fetchedAt: Number(result.fetchedAt || meta?.fetchedAt || 0),
       dataAvailable: true,
     };

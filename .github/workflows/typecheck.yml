@@ -10,6 +10,12 @@ permissions:
 
 jobs:
   changes:
+    # Distinct check-run name: test.yml and lint-code.yml each define a job with
+    # the same `changes` id, and the deploy gate matches check runs by name only
+    # — same-named runs collapse to whichever finished last, hiding the others'
+    # failures behind it (#5822). The job id stays `changes` so `needs: changes`
+    # below keeps resolving; only the published check-run name changes.
+    name: typecheck-changes
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -35,7 +41,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '24'

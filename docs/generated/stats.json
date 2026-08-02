@@ -10,11 +10,11 @@
     "energy": 18
   },
   "variantCount": 6,
-  "componentTopLevelTsFiles": 160,
-  "serviceTopLevelEntries": 197,
-  "apiEndpointEntries": 88,
-  "panelClasses": 104,
-  "protoFiles": 279,
+  "componentTopLevelTsFiles": 179,
+  "serviceTopLevelEntries": 220,
+  "apiEndpointEntries": 91,
+  "panelClasses": 107,
+  "protoFiles": 290,
   "protoServices": 35,
   "protoDomainFolders": 36,
   "openapiServiceSpecs": 35,
@@ -48,15 +48,19 @@
   ],
   "locales": 25,
   "workflows": [
+    "analytics-collector-monitor.yml",
     "build-desktop.yml",
+    "china-decision-parity-live.yml",
     "contributor-trust.yml",
     "convex-deploy.yml",
     "deploy-gate.yml",
     "deploy-worker.yml",
     "docker-publish.yml",
     "feed-validation.yml",
+    "indexnow-submit.yml",
     "lint-code.yml",
     "lint.yml",
+    "live-api-cache-auth.yml",
     "mcp-live-smoke.yml",
     "pro-bundle-freshness.yml",
     "proto-check.yml",
@@ -65,15 +69,17 @@
     "publish-python.yml",
     "publish-ruby.yml",
     "security-audit.yml",
+    "seed-freshness-monitor.yml",
     "test-linux-app.yml",
     "test.yml",
-    "typecheck.yml"
+    "typecheck.yml",
+    "umami-storage-monitor.yml"
   ],
-  "workflowCount": 20,
+  "workflowCount": 26,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 567,
-  "airportCount": 111,
+  "feedDefinitions": 615,
+  "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
   "telegramFullEnabledChannels": 56,
@@ -85,7 +91,7 @@
   "leaderNames": 16,
   "populationPriorityCountries": 20,
   "sebufVersion": "v0.11.1",
-  "mcpToolCount": 40,
+  "mcpToolCount": 59,
   "mcpApps": {
     "specVersion": "2026-01-26",
     "mimeType": "text/html;profile=mcp-app",
@@ -124,6 +130,41 @@
         "name": "Chokepoint Monitor (interactive)",
         "description": "Interactive in-conversation app shell for get_chokepoint_status: renders per-chokepoint rolling transit summaries (today's transit count, week-over-week change, tanker split) with a risk-level badge. Linked from the get_chokepoint_status tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
         "tool": "get_chokepoint_status"
+      },
+      {
+        "uriConst": "NEWS_INTELLIGENCE_UI_URI",
+        "uri": "ui://worldmonitor/news-intelligence.html",
+        "name": "News Intelligence (interactive)",
+        "description": "Interactive in-conversation app shell for get_news_intelligence: renders AI-classified top stories (title, category, alert flag, country, source) from WorldMonitor's intelligence layer. Linked from the get_news_intelligence tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_news_intelligence"
+      },
+      {
+        "uriConst": "CONFLICT_EVENTS_UI_URI",
+        "uri": "ui://worldmonitor/conflict-events.html",
+        "name": "Conflict Events (interactive)",
+        "description": "Interactive in-conversation app shell for get_conflict_events: renders active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. Linked from the get_conflict_events tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_conflict_events"
+      },
+      {
+        "uriConst": "NATURAL_DISASTERS_UI_URI",
+        "uri": "ui://worldmonitor/natural-disasters.html",
+        "name": "Natural Disasters (interactive)",
+        "description": "Interactive in-conversation app shell for get_natural_disasters: groups recent earthquakes (USGS magnitude, place, time) and active wildfires (NASA FIRMS). Linked from the get_natural_disasters tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_natural_disasters"
+      },
+      {
+        "uriConst": "PREDICTION_MARKETS_UI_URI",
+        "uri": "ui://worldmonitor/prediction-markets.html",
+        "name": "Prediction Markets (interactive)",
+        "description": "Interactive in-conversation app shell for get_prediction_markets: renders active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Linked from the get_prediction_markets tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_prediction_markets"
+      },
+      {
+        "uriConst": "FORECASTS_UI_URI",
+        "uri": "ui://worldmonitor/forecasts.html",
+        "name": "Forecasts (interactive)",
+        "description": "Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor's AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_forecast_predictions"
       }
     ],
     "uiResources": [
@@ -131,14 +172,24 @@
       "ui://worldmonitor/world-brief.html",
       "ui://worldmonitor/country-brief.html",
       "ui://worldmonitor/market-radar.html",
-      "ui://worldmonitor/chokepoint-monitor.html"
+      "ui://worldmonitor/chokepoint-monitor.html",
+      "ui://worldmonitor/news-intelligence.html",
+      "ui://worldmonitor/conflict-events.html",
+      "ui://worldmonitor/natural-disasters.html",
+      "ui://worldmonitor/prediction-markets.html",
+      "ui://worldmonitor/forecasts.html"
     ],
     "linkedTools": [
       "get_country_risk",
       "get_world_brief",
       "get_country_brief",
       "get_market_data",
-      "get_chokepoint_status"
+      "get_chokepoint_status",
+      "get_news_intelligence",
+      "get_conflict_events",
+      "get_natural_disasters",
+      "get_prediction_markets",
+      "get_forecast_predictions"
     ],
     "toolLinks": [
       {
@@ -160,22 +211,72 @@
       {
         "tool": "get_chokepoint_status",
         "uri": "ui://worldmonitor/chokepoint-monitor.html"
+      },
+      {
+        "tool": "get_news_intelligence",
+        "uri": "ui://worldmonitor/news-intelligence.html"
+      },
+      {
+        "tool": "get_conflict_events",
+        "uri": "ui://worldmonitor/conflict-events.html"
+      },
+      {
+        "tool": "get_natural_disasters",
+        "uri": "ui://worldmonitor/natural-disasters.html"
+      },
+      {
+        "tool": "get_prediction_markets",
+        "uri": "ui://worldmonitor/prediction-markets.html"
+      },
+      {
+        "tool": "get_forecast_predictions",
+        "uri": "ui://worldmonitor/forecasts.html"
       }
     ]
   },
-  "mcpAppCount": 5,
+  "mcpAppCount": 10,
   "mcpAppUiResources": [
     "ui://worldmonitor/country-risk.html",
     "ui://worldmonitor/world-brief.html",
     "ui://worldmonitor/country-brief.html",
     "ui://worldmonitor/market-radar.html",
-    "ui://worldmonitor/chokepoint-monitor.html"
+    "ui://worldmonitor/chokepoint-monitor.html",
+    "ui://worldmonitor/news-intelligence.html",
+    "ui://worldmonitor/conflict-events.html",
+    "ui://worldmonitor/natural-disasters.html",
+    "ui://worldmonitor/prediction-markets.html",
+    "ui://worldmonitor/forecasts.html"
   ],
   "mcpAppLinkedTools": [
     "get_country_risk",
     "get_world_brief",
     "get_country_brief",
     "get_market_data",
-    "get_chokepoint_status"
-  ]
+    "get_chokepoint_status",
+    "get_news_intelligence",
+    "get_conflict_events",
+    "get_natural_disasters",
+    "get_prediction_markets",
+    "get_forecast_predictions"
+  ],
+  "bootstrapCache": {
+    "tierCache": {
+      "slow": "max-age=300, stale-while-revalidate=600, stale-if-error=3600",
+      "fast": "max-age=60, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "tierCdnCache": {
+      "slow": "public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200",
+      "fast": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "onDemandProfiles": {
+      "chinaDecisionSignals": {
+        "browser": "max-age=60, stale-while-revalidate=120, stale-if-error=900",
+        "cdn": "public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900"
+      }
+    },
+    "onDemandDefaultTier": "slow",
+    "defaultCacheControl": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900",
+    "defaultCdnTier": "fast",
+    "nonCacheable": "no-store"
+  }
 }

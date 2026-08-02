@@ -1,0 +1,33 @@
+---
+title: "嵌入实时地图"
+description: "只需一段 iframe 代码片段，即可将 World Monitor 公开的实时地图嵌入新闻文章、企业仪表盘、内部工具或作战室页面。本文档提供推荐尺寸、图层与主题参数、初始坐标缩放、深色模式、多种示例代码，以及常见集成场景的最佳实践与嵌入调优注意事项，帮助快速上线可交互态势地图。"
+---
+
+World Monitor 在 `/embed` 提供一个仅含地图的公开 iframe。
+
+```html
+<iframe
+  src="https://www.worldmonitor.app/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full"
+  title="World Monitor live map"
+  loading="lazy"
+  referrerpolicy="strict-origin-when-cross-origin"
+  style="width:100%;height:420px;border:0;display:block"
+  allowfullscreen
+></iframe>
+```
+
+## 查询参数
+
+| 参数 | 示例 | 说明 |
+| --- | --- | --- |
+| `layers` | `conflicts,earthquakes,weather` | 仅限白名单内的公开图层。支持的值：`conflicts`、`earthquakes`、`protests`、`weather`。未知、高级、需认证或高频图层将被忽略。 |
+| `center` | `25.2,55.3` | 纬度和经度，会被限制在有效范围内。 |
+| `zoom` | `4` | 限制在 `1` 与 `10` 之间。 |
+| `theme` | `dark` | `dark` 或 `light`。 |
+| `variant` | `full` | `full`、`tech`、`finance`、`commodity`、`happy` 或 `energy` 之一。 |
+
+## 范围
+
+该嵌入路由有意仅提供地图。它不会暴露任意面板、账户状态、高级图层、已保存的偏好设置、Clerk 认证或通知状态。使用仪表盘的 **Embed（嵌入）** 按钮，即可为当前的公开地图视图生成代码片段。
+
+每个嵌入都包含一个指向 World Monitor 的永久归属链接，并带有来源活动参数。

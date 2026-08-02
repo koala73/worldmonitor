@@ -10,6 +10,7 @@ import type {
   CountryDeepDiveEconomicIndicator,
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
+  ChinaCountrySummaryData,
 } from '@/components/CountryBriefPanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
@@ -23,7 +24,7 @@ import {
   iso3ToIso2Code,
   nameToCountryCode,
 } from '@/services/country-geometry';
-import { calculateCII, getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
+import { getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
@@ -58,7 +59,9 @@ import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
+import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
+import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -78,6 +81,7 @@ type CountryStockSnapshot = {
   price: string;
   weekChangePercent: string;
   currency: string;
+  fetchedAt: string;
 };
 
 type CountryIntelBriefResult = {
@@ -295,15 +299,64 @@ export class CountryIntelManager implements AppModule {
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
       if (canonicalName !== code) country = canonicalName;
+      const isChina = code.toUpperCase() === 'CN';
 
       const scoreCode = normalizeCiiCountryCode(code);
-      const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
+      const score = getCachedCountryScore(scoreCode);
 
       const signals = await this.getCountrySignals(code, country);
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
       page.show(country, code, score, signals);
       pageShown = true;
+      const updateChinaSummary = (data: ChinaCountrySummaryData): void => {
+        if (!isChina || token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode()?.toUpperCase() !== 'CN') return;
+        this.ctx.countryBriefPage.updateChinaCountrySummary?.(data);
+      };
+      if (isChina) {
+        getChinaDecisionSignalsData().then((snapshot) => {
+          if (
+            token !== this.briefRequestToken
+            || this.ctx.countryBriefPage?.getCode()?.toUpperCase() !== 'CN'
+          ) return;
+          updateChinaSummary({
+            groups: snapshot.groups.map((group) => ({
+              id: group.id,
+              state: group.state,
+              signals: group.items.map((item) => {
+                const translation = item.metadata.translation as { state?: unknown } | null;
+                const supersession = item.metadata.supersession as { state?: unknown } | null;
+                return {
+                  label: item.label,
+                  value: item.summary,
+                  source: `${item.sourceName} · ${item.publisherType.replace(/_/g, ' ')}`,
+                  sourceUrl: item.sourceUrl ?? undefined,
+                  observedAt: item.observedAt ?? undefined,
+                  publishedAt: item.publishedAt ?? undefined,
+                  effectiveAt: item.effectiveAt ?? undefined,
+                  status: typeof supersession?.state === 'string' ? supersession.state : undefined,
+                  translationState: typeof translation?.state === 'string' ? translation.state.replace(/_/g, ' ') : undefined,
+                  publisherType: item.publisherType,
+                  lineageId: item.lineageId,
+                  provenance: item.provenance,
+                  stale: item.stale,
+                };
+              }),
+              unavailableReason: group.reason ?? undefined,
+            })),
+          });
+        }).catch(() => {
+          updateChinaSummary({
+            groups: CHINA_DECISION_SIGNAL_GROUP_IDS.map((id) => ({
+              id,
+              state: 'unavailable',
+              signals: [],
+              unavailableReason: t('countryBrief.china.decisionSignalsUnavailable'),
+            })),
+          });
+        });
+
+      }
       // Yield so the deep-dive panel paint lands before the map catch-up
       // (highlightCountry deck rebuild + fitCountry fitBounds animation) — country
       // click is the field #1 INP offender, presentation-delay-dominated (#4617).
@@ -344,11 +397,13 @@ export class CountryIntelManager implements AppModule {
           price: String(resp.price),
           weekChangePercent: String(resp.weekChangePercent),
           currency: resp.currency,
+          fetchedAt: resp.fetchedAt,
         }))
-        .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
+        .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '', fetchedAt: '' }));
 
       let latestStock: CountryStockSnapshot | null = null;
       let latestImf: ImfCountryBundle | null = null;
+      const imfPromise = getImfCountryBundle(code);
 
       stockPromise.then((stock) => {
         latestStock = stock;
@@ -359,7 +414,7 @@ export class CountryIntelManager implements AppModule {
 
       // IMF WEO bundle (issue #3027): macro / growth / labor / external from
       // the SDMX-3.0 seeded keys. Tolerant: missing data leaves card unchanged.
-      getImfCountryBundle(code).then((bundle) => {
+      imfPromise.then((bundle) => {
         latestImf = bundle;
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
@@ -546,7 +601,8 @@ export class CountryIntelManager implements AppModule {
         });
 
       // Fetch multi-sector exposure (all 10 seeded HS2 codes in parallel)
-      fetchMultiSectorExposure(code)
+      const sectorExposurePromise = fetchMultiSectorExposure(code);
+      sectorExposurePromise
         .then((sectors) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           if (sectors.length === 0) {
@@ -888,7 +944,7 @@ export class CountryIntelManager implements AppModule {
     if (!code || code === '__loading__' || code === '__error__') return;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const scoreCode = normalizeCiiCountryCode(code);
-    const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
+    const score = getCachedCountryScore(scoreCode);
     void this.getCountrySignals(code, name)
       .then((signals) => {
         if (page.isVisible() && page.getCode() === code) page.updateScore?.(score, signals);
@@ -910,7 +966,7 @@ export class CountryIntelManager implements AppModule {
       params.set('framework', framework.slice(0, 2000));
     }
 
-    const resp = await fetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
+    const resp = await premiumFetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
       method: 'GET',
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,

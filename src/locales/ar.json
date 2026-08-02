@@ -129,8 +129,63 @@
       "currencies": "العملات",
       "area": "المساحة"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable."
+    "loadingResilienceScore": "جارٍ تحميل درجة المرونة…",
+    "resilienceScoreUnavailable": "درجة المرونة غير متاحة.",
+    "china": {
+      "title": "لمحة قطرية عن الصين",
+      "description": "الوضع الحالي للاقتصاد الكلي والأسواق والتجارة والطاقة والتوافر التشغيلي من عقود البيانات العامة القائمة.",
+      "policyEvents": "السياسة والتطبيق",
+      "energy": "الطاقة",
+      "availability": "المخاطر والطيران",
+      "observed": "اعتبارًا من:",
+      "published": "نُشر:",
+      "effective": "نافذ:",
+      "sectors": "القطاعات:",
+      "entities": "الجهات:",
+      "translation": "الترجمة:",
+      "source": "المصدر:",
+      "imfGrowth": "توقعات النمو من صندوق النقد الدولي",
+      "creditGdp": "الائتمان إلى الناتج المحلي الإجمالي",
+      "strategicTrade": "الانكشاف التجاري الاستراتيجي",
+      "crudeImports": "واردات النفط الخام",
+      "gasDemand": "الطلب على الغاز",
+      "energyMix": "مزيج الكهرباء",
+      "coal": "الفحم",
+      "noMajorDisruptions": "لم يُبلَّغ عن اضطرابات كبيرة",
+      "activeDisruptions_zero": "لا توجد اضطرابات نشطة",
+      "activeDisruptions_one": "اضطراب نشط واحد",
+      "activeDisruptions_two": "اضطرابان نشطان",
+      "activeDisruptions_few": "{{count}} اضطرابات نشطة",
+      "activeDisruptions_many": "{{count}} اضطرابًا نشطًا",
+      "activeDisruptions_other": "{{count}} اضطراب نشط",
+      "activeSignals_zero": "لا توجد إشارات نشطة",
+      "activeSignals_one": "إشارة نشطة واحدة",
+      "activeSignals_two": "إشارتان نشطتان",
+      "activeSignals_few": "{{count}} إشارات نشطة",
+      "activeSignals_many": "{{count}} إشارة نشطة",
+      "activeSignals_other": "{{count}} إشارة نشطة",
+      "aviationSource": "مراقبة الطيران",
+      "hazardSource": "إشارات الاستخبارات القُطرية",
+      "marketSource": "مؤشر السوق الوطني",
+      "ccfiSource": "بورصة شنغهاي للشحن",
+      "comtradeSource": "قاعدة الأمم المتحدة كومتريد، الجهة المبلغة 156",
+      "sourceUnavailable": "المصدر غير متاح",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
+      "status": {
+        "loading": "جارٍ التحميل",
+        "available": "متاح",
+        "partial": "جزئي",
+        "stale": "قديم",
+        "unavailable": "غير متاح"
+      },
+      "macroSignals": "الإشارات الكلية",
+      "crossStraitActivity": "النشاط عبر المضيق",
+      "corporateDisclosures": "الإفصاحات المؤسسية",
+      "corridorConditions": "أحوال الممرات",
+      "activityNowcast": "التنبؤ الآني للنشاط",
+      "decisionSignalsUnavailable": "لقطة إشارات قرار الصين غير متاحة حالياً."
+    }
   },
   "header": {
     "world": "العالم",
@@ -210,7 +265,7 @@
     "panelCatCommodityEcon": "الاقتصاد والتجارة",
     "panelCatHappyNews": "أخبار إيجابية",
     "panelCatHappyPlanet": "الكوكب والعطاء",
-    "embed": "Embed"
+    "embed": "تضمين"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",
@@ -590,15 +645,15 @@
       },
       "worldMonitor": {
         "apiKey": {
-          "title": "مفتاح الترخيص",
+          "title": "مفتاح الترخيص / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "الصق ترخيصك لفتح جميع مصادر البيانات وميزات AI فوراً."
+          "description": "ينشئ مشتركو API Starter وAPI Business هذا المفتاح في لوحة الويب ضمن Settings → API Keys. إذا فُقد المفتاح الكامل، فألغِه وأنشئ بديلاً."
         },
         "dividerOr": "أو",
         "register": {
-          "title": "احجز مكانك",
-          "description": "نحن نستعد لإطلاق تراخيص World Monitor. سجّل الآن وكن أول من يحصل على الوصول — الأعضاء الأوائل يحصلون على أولوية الوصول وتسعير المؤسسين.",
-          "submitBtn": "انضم لقائمة الانتظار"
+          "title": "هل تحتاج إلى مفتاح API؟",
+          "description": "راجع worldmonitor.app/docs/api-keys للحصول على إرشادات خطوة بخطوة. تتطلب مفاتيح API اليدوية خطة API Starter أو API Business.",
+          "submitBtn": "عرض خطط API"
         }
       },
       "shellTitle": "إعدادات مراقب العالم",
@@ -797,7 +852,7 @@
       "fytdLabel": "السنة المالية {{year}} حتى الآن",
       "vsPriorFy": "مقابل السنة المالية {{year}}",
       "sourceWto": "منظمة التجارة العالمية",
-      "sourceTreasury": "خزانة الولايات المتحدة",
+      "sourceTreasury": "وزارة الخزانة الأمريكية",
       "colDate": "التاريخ",
       "colMonthly": "شهري",
       "colFytd": "السنة المالية حتى الآن",
@@ -1182,8 +1237,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "متدهور",
+        "stale": "قديم"
       }
     },
     "insights": {
@@ -1335,10 +1390,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII مخزن مؤقتاً {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "متدهور",
+        "stale": "قديم"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1445,6 +1500,8 @@
       "relatedAssetsNear": "أصول ذات صلة بالقرب من {{location}}",
       "summaryError": "تعذّر إنشاء الملخص",
       "summaryFailed": "فشل التلخيص",
+      "sourceCoverage": "{{covered}}/{{total}} مصدر",
+      "sourceCoverageHint": "يعرض {{covered}} من أصل {{total}} مصدرًا مفعّلًا — تتناوب هذه اللوحة على مصادرها مع كل تحديث",
       "sortBy": "ترتيب حسب",
       "sortNewest": "الأحدث",
       "sortRelevance": "الصلة"
@@ -1732,7 +1789,26 @@
       "trend": "الاتجاه",
       "trending": "رائج",
       "velocity": "السرعة",
-      "wallets": "المحافظ"
+      "wallets": "المحافظ",
+      "benchmarkTitle": "معايير التبرع العالمية",
+      "benchmarkInfoTooltip": "<strong>معايير التبرع العالمية</strong> بيانات المنصات والمؤسسات المنشورة مع فترات المصادر وحالة التحقق. الأرقام السنوية تقديرية وليست نشاطاً فورياً.",
+      "status": {
+        "published": "معايير منشورة مع تغطية مصدر موثقة.",
+        "partial": "معايير منشورة مع تغطية مصدر جزئية.",
+        "legacy": "لقطة قديمة؛ تفاصيل المصدر غير متاحة.",
+        "cached": "عرض لقطة مخزنة مؤقتاً؛ التحديث غير متاح."
+      },
+      "trackedAnnualized": "تبرعات المنصة المتتبعة — تقدير سنوي",
+      "annualizedDaily": "تقدير يومي سنوي",
+      "atLeast": "على الأقل",
+      "about": "حوالي",
+      "sourceNotVerified": "المصدر غير موثق",
+      "reportedCumulative": "الإجمالي التراكمي المُبلَّغ عنه",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "معيار منشور",
+      "sourcesMethodology": "المصادر والمنهجية",
+      "methodologyIntro": "تدخل العنوان الرئيسي فقط بيانات المنصات السنوية الموثقة أو المحسوبة سنوياً بصورة مقبولة. تبقى الأرقام التراكمية والمؤسسية سياقاً منفصلاً.",
+      "partialEstimate": "تقدير موثق جزئياً"
     },
     "supplyChain": {
       "chokepoints": "نقاط الاختناق",
@@ -2093,7 +2169,11 @@
       "infoTooltip": "<strong>تسلسل الكوارث</strong> يكتشف الكوارث الطبيعية وإشارات البنية التحتية المتقاربة:<ul><li>يربط الزلازل والحرائق البرية والفيضانات والطقس الشديد</li><li>يتتبع الآثار المتسلسلة على البنية التحتية وسلسلة التوريد</li><li>يبرز المناطق ذات مخاطر الكوارث المركبة</li></ul>انقر على بطاقة للتكبير على المنطقة المتأثرة."
     },
     "markets": {
-      "infoTooltip": "<strong>الأسواق</strong> مؤشرات الأسهم والأسهم والأسعار المشفرة في الوقت الفعلي. خصص قائمة المراقبة الخاصة بك باستخدام زر قائمة المراقبة. تعرض الرسوم البيانية الصغيرة اتجاه السعر الأخير."
+      "infoTooltip": "<strong>الأسواق</strong> مؤشرات الأسهم والأسهم والأسعار المشفرة في الوقت الفعلي. خصص قائمة المراقبة الخاصة بك باستخدام زر قائمة المراقبة. تعرض الرسوم البيانية الصغيرة اتجاه السعر الأخير.",
+      "chart": {
+        "title": "مخطط سعر {{symbol}}",
+        "close": "إغلاق المخطط"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>خريطة حرارية للقطاعات</strong> أداء قطاع S&P 500 في لمحة. يعكس كثافة اللون مقدار التغيير اليومي. الأخضر = أرباح، الأحمر = خسائر."
@@ -2155,11 +2235,101 @@
       "cta": "ترقية إلى Pro →",
       "dismiss": "رفض"
     },
+    "billingState": {
+      "onHoldDesc": "فشل الدفع. حدِّث طريقة الدفع لاستعادة الوصول المميز.",
+      "onHoldBannerMessage": "فشل الدفع. حدِّث طريقة الدفع للحفاظ على اشتراكك نشطًا.",
+      "updatePayment": "تحديث الدفع",
+      "renewalPendingDesc": "نتحقق من تجديد اشتراكك. ستتم استعادة الوصول المميز تلقائيًا فور التأكيد.",
+      "refreshStatus": "تحديث الحالة",
+      "renewalFailedDesc": "تعذّر التحقق من تجديد اشتراكك. أدر الفوترة أو تواصل مع الدعم إذا استمرت المشكلة.",
+      "manageBilling": "إدارة الفوترة",
+      "lapsedDesc": "انتهى اشتراكك في Pro. أعد الاشتراك لاستعادة الوصول المميز.",
+      "resubscribe": "إعادة الاشتراك"
+    },
     "checkoutFailureBanner": {
       "message": "لم يتمكن من إكمال الدفع. لم يتم فرض أي رسوم.",
       "retry": "حاول مجدداً",
       "retrying": "جاري المحاولة…",
       "dismiss": "رفض"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "الخطوة {{current}} من {{total}}",
+      "closeLabel": "تخطي الإعداد",
+      "ariaLabel": "إعداد تفعيل Pro",
+      "signedInAs": "تم تسجيل الدخول باسم {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "موجزك اليومي، كل صباح",
+          "body": "موجز استخباراتي منسق في بريدك الوارد كل صباح — إشارات الليل المهمة، مكثفة في قراءة مدتها خمس دقائق.",
+          "confirmCta": "تفعيل موجزي الصباحي",
+          "confirming": "جارٍ التفعيل…",
+          "doneNote": "موجزك الصباحي يعمل بالفعل.",
+          "scheduleNote": "سنحافظ على وقت التسليم الحالي الخاص بك.",
+          "summaryLabel": "الموجز الصباحي",
+          "summaryVerified": "مفعّل — يبدأ مع موجزك الصباحي التالي.",
+          "deliverAt": "التسليم في",
+          "previewLoading": "جارٍ تحضير معاينة لموجزك الأول…",
+          "previewLabel": "موجز هذا الصباح"
+        },
+        "alerts": {
+          "heading": "التنبيهات الحرجة",
+          "body": "احصل على إشعار في متصفحك عند وقوع حدث كبير — تصعيد النزاعات، صدمات السوق، عقوبات جديدة. اضبط وتيرة التنبيهات في أي وقت من الإعدادات.",
+          "confirmCta": "تفعيل التنبيهات",
+          "confirming": "جارٍ التفعيل…",
+          "doneNote": "تنبيهات المتصفح مفعّلة بالفعل.",
+          "blockedNote": "الإشعارات محظورة في متصفحك. فعّلها من إعدادات الموقع في متصفحك لتلقي التنبيهات.",
+          "declinedNote": "لا مشكلة — لن نرسل تنبيهات المتصفح. يمكنك تفعيلها لاحقًا من إعدادات الموقع في متصفحك.",
+          "summaryLabel": "التنبيهات الحرجة",
+          "summaryVerified": "مفعّلة — ستصل الإشارات الحرجة إلى متصفحك."
+        },
+        "power": {
+          "heading": "مجموعة أدوات Pro الخاصة بك",
+          "body": "تم إلغاء قفل الأدوات المخصصة واتصالات MCP والباحث الذكي. ابنِ اللوحة التي تريد مراقبتها فعلاً.",
+          "confirmCta": "استكشاف أدوات Pro",
+          "confirming": "جارٍ الفتح…",
+          "doneNote": "أنت تستخدم أدوات Pro الخاصة بك بالفعل.",
+          "summaryLabel": "مجموعة أدوات Pro",
+          "summaryVerified": "غير مقفلة وجاهزة عندما تكون جاهزًا.",
+          "channelsNote": "تفضّل Telegram أو Slack أو Discord أو webhook؟",
+          "pointers": {
+            "search": "البحث في لوحة المعلومات بالكامل",
+            "widgets": "إنشاء أداة مخصصة",
+            "analyst": "اسأل المحلل الذكي",
+            "mcpClients": "إعداد MCP",
+            "channels": "أعدّها في إعدادات الإشعارات"
+          }
+        }
+      },
+      "status": {
+        "pending": "لم يتم الإعداد",
+        "inFlight": "جارٍ الإعداد…",
+        "verified": "جاهز",
+        "failed": "لم ينجح",
+        "blocked": "محظور",
+        "unavailable": "غير متاح",
+        "blockedNote": "هذا غير متاح حاليًا — يمكنك إعداده لاحقًا من الإعدادات.",
+        "unavailableNote": "هذا غير متاح على جهازك — يمكنك إعداده لاحقًا.",
+        "failedBody": "حدث خطأ ما. يمكنك المحاولة مرة أخرى، أو إعداده لاحقًا من الإعدادات.",
+        "retry": "حاول مجدداً"
+      },
+      "actions": {
+        "skip": "تخطي الآن",
+        "continue": "متابعة"
+      },
+      "summary": {
+        "heading": "كل شيء جاهز",
+        "subVerified": "إليك ما يعمل في حسابك.",
+        "subPending": "يمكنك إنهاء الإعداد في أي وقت من الإعدادات.",
+        "linePending": "لم يتم الإعداد بعد — أنهِه في أي وقت من الإعدادات.",
+        "lineFailed": "لم نتمكن من إعداد هذا — حاول مجددًا من الإعدادات.",
+        "finish": "الانتقال إلى لوحتي"
+      },
+      "chip": {
+        "message": "أنهِ إعداد حساب Pro الخاص بك.",
+        "action": "إنهاء الإعداد",
+        "dismissLabel": "رفض"
+      }
     },
     "frameworkSelector": {
       "label": "إطار التحليل",
@@ -2259,7 +2429,7 @@
     },
     "defensePatents": {
       "title": "إشارة البحث والتطوير",
-      "infoTooltip": "طلبات براءات الاختراع الدفاعية والثنائية الاستخدام الأسبوعية من Raytheon و Lockheed و Huawei و DARPA والمنظمات الاستراتيجية الأخرى. الفئات: H04B (الاتصالات)، H01L (أشباه الموصلات)، F42B (الذخيرة)، G06N (الذكاء الاصطناعي)، C12N (التكنولوجيا الحيوية). المصدر: USPTO PatentsView.",
+      "infoTooltip": "طلبات براءات الاختراع الدفاعية والثنائية الاستخدام الأسبوعية من Raytheon و Lockheed و Huawei و DARPA والمنظمات الاستراتيجية الأخرى. الفئات: H04B (الاتصالات)، H01L (أشباه الموصلات)، F42B (الذخيرة)، G06N (الذكاء الاصطناعي)، C12N (التكنولوجيا الحيوية). المصدر: USPTO Open Data Portal.",
       "loading": "جاري تحميل ملفات البحث والتطوير…",
       "error": "فشل تحميل بيانات براءات الاختراع.",
       "empty": "لا توجد ملفات في هذه الفئة.",
@@ -2370,43 +2540,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "فئات اللوحات"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "حديث",
+        "stale": "قديم",
+        "veryStale": "قديم جداً",
+        "noData": "لا توجد بيانات",
+        "disabled": "معطّل",
+        "error": "خطأ"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "حداثة البيانات: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "آخر تحديث {{time}}",
+      "neverUpdated": "لم يُحدَّث قط",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "تغطية جزئية",
+        "contentStale": "المحتوى قديم",
+        "seedStale": "البذرة قديمة",
+        "noSourceData": "لا توجد بيانات مصدر",
+        "sourceErrorReported": "تم الإبلاغ عن خطأ في المصدر",
+        "freshnessStoreUnavailable": "مخزن الحداثة غير متاح",
+        "freshnessStoreDegraded": "مخزن الحداثة متدهور"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "أبداً",
+        "justNow": "الآن",
+        "minutesAgo": "منذ {{count}}د",
+        "hoursAgo": "منذ {{count}}س",
+        "daysAgo": "منذ {{count}}ي",
+        "compactNow": "الآن",
+        "compactMinutes": "{{count}}د",
+        "compactHours": "{{count}}س",
+        "compactDays": "{{count}}ي"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "سجّل الدخول لتصدير بيانات لوحة التحكم بصيغة CSV أو JSON أو PDF.",
+      "upgradeDesc": "تصدير البيانات (CSV، JSON، PDF) مدرج في Pro Business.",
+      "upgradeCta": "الترقية إلى Pro Business",
+      "lockedAriaLabel": "تصدير البيانات — مقفل. {{reason}}",
+      "unlockedAnnouncement": "تم إلغاء قفل تصدير البيانات.",
+      "preparingPdf": "جارٍ إعداد PDF…",
+      "pdfFailed": "تعذّر إنشاء تقرير PDF. حاول مرة أخرى أو استخدم تصدير JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "مساحات العمل غير المسجّلة محدودة بـ {{cap}} علامة تبويب. سجّل الدخول لإضافة المزيد.",
+      "upgradeDesc": "لقد وصلت إلى حدّك البالغ {{cap}} علامة تبويب.",
+      "upgradeCta": "ترقية للمزيد",
+      "lockedAriaLabel": "إضافة علامة تبويب — مقفل. {{reason}}",
+      "unlockedAnnouncement": "تم رفع حد علامات التبويب."
     }
   },
   "popups": {
@@ -3108,6 +3294,7 @@
     "serverError": "خطأ الخادم: {{status}}",
     "unknownError": "خطأ غير معروف",
     "generatedWidget": "أداة معاد إنشاؤها: {{title}}",
+    "saveFailed": "تعذر حفظ الأداة. حاول مرة أخرى.",
     "checkingConnection": "التحقق من وصول الأداة…",
     "preflightConnected": "تم الاتصال بوكيل الأداة",
     "preflightInvalidKey": "مفتاح الأداة مرفوض. حدّث wm-widget-key وأعد التحميل.",
@@ -3209,16 +3396,16 @@
     "visualizationFailed": "فشل التصور"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "علامات تبويب لوحة التحكم",
+    "defaultName": "الرئيسية",
+    "newTabName": "علامة تبويب جديدة",
+    "newTabCreated": "تم إنشاء علامة تبويب جديدة",
+    "tabDeleted": "تم حذف علامة التبويب \"{{name}}\"",
+    "addTab": "إضافة علامة تبويب",
+    "addTabTitle": "علامة تبويب جديدة (تبدأ بالألواح الافتراضية)",
+    "renameHint": "{{name}} — انقر نقراً مزدوجاً لإعادة التسمية",
+    "deleteTab": "حذف علامة التبويب",
+    "deleteTabAria": "حذف علامة التبويب {{name}}",
+    "tabNameAria": "اسم علامة التبويب"
   }
 }

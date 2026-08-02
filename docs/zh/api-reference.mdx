@@ -1,0 +1,85 @@
+---
+title: "API 参考"
+description: "World Monitor 全部 REST 服务组的完整目录索引，所有端点均严格遵循 /api/<service>/v1/<rpc-name> 路径命名规范，返回统一的响应信封、错误码结构与游标分页格式，方便开发者快速接入官方 SDK、命令行 CLI、MCP 工具生态与自定义自动化脚本。"
+---
+
+WorldMonitor 通过一族带版本号的 REST 服务对外提供数据。每个端点都遵循相同的形式：
+
+```
+https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
+```
+
+`<rpc-name>` 使用 kebab-case（例如 `list-acled-events`、`get-resilience-ranking`）。每个服务的认证方式一致 — 传入用户 API key，例如 `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`、运维签发的企业 key，或在受支持时使用仪表盘的浏览器会话。详见 [身份验证](/zh/usage-auth)。
+
+左侧边栏中的分组页面为已归档的服务分组呈现 OpenAPI 规范 — 请求参数、响应 schema 与在线试用。打包规范仍是完整的机器可读来源。
+
+更喜欢终端？官方的 [`worldmonitor` CLI](/zh/cli) 可访问这些路径中的任意一个（`worldmonitor get /api/<service>/v1/<rpc-name>`），并用 `worldmonitor list` 列出实时目录。
+
+## 机器可读发现
+
+正在构建 agent 或代码生成管道？指向 `https://worldmonitor.app/` 并跟随 `Link:` 响应头 — 通过标准的 `.well-known` 路径，可从一个根 URL 发现所有 OpenAPI 规范、MCP server 卡片、OAuth 端点与 agent-skill 包。完整走查详见 [Agent 发现](/zh/agent-discovery)。
+
+单一打包规范位于 [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — 将其喂给任意 OpenAPI 生成器，即可一次性为全部 35 个生成的服务生成带类型的客户端，包括没有专用侧边栏页面的平台服务。
+
+## 服务目录
+
+**地缘政治** — Conflicts、Military、Unrest、Intelligence、Displacement、Cyber、Sanctions
+
+**自然事件** — Natural Disasters、Seismology、Climate、Wildfires、Radiation、Thermal
+
+**经济与市场** — Economic（FRED / IMF / BIS / 国家宏观）、Markets（报价 / 指数 / 外汇 / 大宗商品）、Trade、Supply Chain、Consumer Prices、Predictions（预测市场）、Forecasts
+
+**基础设施与交通** — Aviation（航空器追踪、航班搜索）、Maritime（船舶、密度区域）、Infrastructure、Resilience（国家韧性评分与排名）
+
+**健康与环境** — Public Health、Imagery、Webcams
+
+**其他** — News（feed 摘要、文章摘要）、Research、Positive Events、Giving、Batch（批量读取扇出）、Leads（联系人及 Pro 候补名单变更记录在平台端点下）
+
+在侧边栏中打开任一分组即可浏览其操作。
+
+## 批量请求
+
+要处理多个条目？`POST /api/batch/v1/execute` 接受一个**操作数组**，在单个请求中并发运行最多 20 个已归档的 GET 端点，返回每个操作的状态与主体：
+
+```bash
+curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
+  -H "X-WorldMonitor-Key: wm_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operations": [
+      { "id": "fear-greed", "path": "/api/market/v1/get-fear-greed-index" },
+      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score" }
+    ]
+  }'
+```
+
+每个操作以批量请求自身的凭证运行，并单独计入你的速率限制 —— 批量节省的是往返次数，而非配额。查询字符串原样透传，因此每个操作的 [`jmespath` 投影](/zh/mcp-jmespath)可保持合并响应精简。每个操作超过 1 MB 的响应会被以 `response_too_large` 拒绝；嵌套批量会被拒绝。
+
+## MCP 等价项
+
+如果你要在 REST 与 [MCP server](/zh/mcp-overview) 之间切换，请将二者视为相关但独立的目录。REST 覆盖范围由 OpenAPI 定义。MCP 覆盖范围更窄：只有当某个工具的注册表 `_apiPaths` 条目中声明了确切的 `METHOD /api/...` 路径时，该端点才是 **MCP 暴露的**。
+
+请将 [MCP API 覆盖表](/zh/mcp-overview#api-coverage)作为面向人类的反向查询。它将每个 MCP 工具映射到其明确服务的 REST 端点。如果某条 REST 路由不在该表中，则作为 API 等价而言它是 REST 专有的，即便某个缓存支撑的 MCP 工具会返回类似的领域数据。
+
+常见形态：
+
+- **声明式 REST 支撑工具** —— 该工具的注册表命名了一个或多个确切的 REST 路径，例如 `get_market_data` 覆盖市场报价与板块端点。
+- **打包缓存读取** —— 该工具读取一个或多个预播种的 Redis 键，可能没有单个 REST 等价项，例如 `get_country_macro`、欧盟宏观工具、`get_aviation_status` 和 `get_cyber_threats`。
+- **实时 / 复合工具** —— 该工具扇出、按地理过滤或调用 LLM 分析；请使用覆盖表查看其所声明的确切 REST 路径。
+
+重要的非等价情形：
+
+| REST 端点 | MCP 状态 |
+|---|---|
+| `GET /api/conflict/v1/list-acled-events` | REST 专有。`get_conflict_events` 覆盖 `list-iran-events`、`list-ucdp-events` 和 `list-unrest-events`，不含 ACLED。 |
+| `GET /api/cyber/v1/list-cyber-threats` | 暂为 REST 专有。`get_cyber_threats` 是一个缓存支撑的 MCP 工具，未声明 REST 路径。 |
+| `GET /api/infrastructure/v1/list-service-statuses` | REST 专有。`get_infrastructure_status` 仅声明 `list-internet-outages`。 |
+| `GET /api/supply-chain/v1/get-critical-minerals` | REST 专有。`get_supply_chain_data` 仅声明运输压力与海关收入。 |
+| `GET /api/research/v1/list-arxiv-papers`、`GET /api/research/v1/list-trending-repos`、`GET /api/research/v1/list-hackernews-items` | REST 专有。`get_research_signals` 仅声明 `list-tech-events`。 |
+| `GET /api/aviation/v1/list-airport-delays`、`GET /api/aviation/v1/get-flight-status` | REST 专有。MCP 航空覆盖通过 `get_airspace`、航班搜索工具以及缓存支撑的 `get_aviation_status` 提供，而非这些路由。 |
+
+请始终对照[打包的 OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)交叉验证 REST 路径名、参数与响应结构，并对照 [MCP API 覆盖](/zh/mcp-overview#api-coverage)验证 MCP 暴露情况。
+
+## 平台端点
+
+Bootstrap、health、version 与 cache-purge 位于按服务划分的目录之外 — 详见 [平台端点](/zh/api-platform)。

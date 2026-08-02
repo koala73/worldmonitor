@@ -1,0 +1,66 @@
+---
+title: "最新简报"
+description: "最新简报面板将 WorldMonitor 每日 AI 情报简报浓缩为仪表盘上的单张精美卡片视图，直观展示头条标题、关键要点摘要与最新发布时间戳，一键跳转至已签名验证的杂志风格全文阅读器，并可生成可分享的公开 URL 链接，便于团队协作分发、社交平台传播与外部引用当日地缘政治情报要闻。"
+---
+
+**Latest Brief** 面板是 WorldMonitor Brief 的仪表盘界面 — 一份 AI 生成的情报摘要，将读者所配置摘要窗口中最重要的事件合成为结构化的、带来源归属的阅读内容。默认产品节奏为每日，但摘要规则也可通过 `digestMode` 产出每日两次或每周的时段。面板只是反映已登录读者在打开仪表盘时最新组合好的简报。
+
+关于权威管道细节，请参见[新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing)。
+
+## 面板显示内容
+
+根据读者和组合器的进度，渲染三种状态：
+
+- **就绪** — 封面卡片缩略图、简报问候语、该期线程数，以及一个 **Read brief →** 按钮在新标签页中打开已签名的杂志 URL。
+- **组合中** — 当组合器尚未产出当前时段时的柔和空状态。面板在下一次用户可见交互时自动刷新；无需手动重试。
+- **已锁定** — 当读者不满足 PRO 门控时，由基础面板框架绘制的 premium 升级覆盖层。
+
+面板 id 为 `latest-brief`；规范组件为 `src/components/LatestBriefPanel.ts`。
+
+## 如何访问
+
+- **Cmd+K** — 输入 *brief*（在命令面板中匹配 "Panel: Latest Brief"）。
+- **按变体的可用性**：在 **full/geopolitical**、**tech**、**finance** 和 **commodity** 变体中注册并默认启用（全部为 `premium: 'locked'`）。在 happy 变体中不存在。来源：`src/config/panels.ts` 中的 `FULL_PANELS`、`TECH_PANELS`、`FINANCE_PANELS`、`COMMODITY_PANELS`。
+
+点击 **Read brief →** 在新标签页中打开完整的杂志风格阅读器。分享简报是一个独立的、显式的操作 — 请参见 [AI Brief Endpoints](/zh/api-brief) 了解分享链接如何生成。
+
+## 数据来源
+
+面板调用 `GET /api/latest-brief`（需要 Clerk JWT，PRO 门控）。响应要么是就绪载荷（`issueDate`、`dateLong`、`greeting`、`threadCount`、`magazineUrl`），要么是 `{ status: "composing", issueDate }` 占位响应。已签名的 `magazineUrl` 在服务端生成 — HMAC 签名密钥永远不会存在于客户端包中。
+
+简报本身由 Railway 作业从以下来源组合：
+
+- 精选新闻聚合和 GDELT 信号
+- 情报、冲突和市场缓存
+- 如果用户已配置偏好，则包含按读者的个性化设置，其中包括仅在相同严重度泳道内重排故事的关注国家提升
+
+**Redis 键结构**（供从后端检查该功能的人参考）：
+
+- 组合器将信封写入 `brief:{userId}:{issueSlot}` — 其中 `issueSlot` 由 `issueSlotInTz(nowMs, userTz)` 计算，因此在不同时段的两次同日组合运行会产生不同的键。
+- 一个**最新指针**被原子性地同时写入：`brief:latest:{userId}` → `{ "issueSlot": "<slot>" }`。读取方（仪表盘面板、分享 URL 端点）通过先读取指针来解析当前简报，然后获取按槽位键化的信封。
+- 两个键的 TTL 均为 7 天；如果指针不存在，读取方将该用户视为没有最近的简报。
+
+参考：`scripts/seed-digest-notifications.mjs`（写入方）和 `api/latest-brief.ts`（读取方）。
+
+## 刷新频率
+
+- **组合器**：当符合条件的用户的 `digestMode` 到期时，Railway 摘要 cron 为其组合。默认为每日；同一写入方也支持每日两次和每周模式。
+- **面板 — 就绪状态**：面板加载时读取；后续读取仅在用户可见刷新触发时发生。简报已显示时无轮询计时器。
+- **面板 — 组合中状态**：安排 60 秒重新轮询（`src/components/LatestBriefPanel.ts` 中的 `COMPOSING_POLL_MS = 60_000`），使面板在组合器的下一次 tick 时从 `composing` 过渡到 `ready`，无需整页刷新。当面板离开组合中状态时轮询计时器被清除。
+
+面板跟随最新时段指针，而非假设严格的按日历每日一期。如果组合器尚未产出当前/请求的时段，面板显示 `composing`，并在组合器写入载荷后自动升级为 `ready`。
+
+## 个性化与编辑排除
+
+关注国家个性化是一种软提升，而非过滤器，也非跨严重度提升。名义上的 `FOLLOWED_BIAS_MULTIPLIER` 为 `1.25` 且可通过 env 调节，但实时组合器将其应用为稳定的严重度泳道内排序：关注国家的故事可在同一泳道内排到非关注故事之前，但较低严重度的故事永远不会跳到较高严重度的故事之上。免费层读者最多可关注 `3` 个国家。
+
+简报排除专栏评论/观点和分析栏目、正能量/生活方式条目，以及诸如“WATCH LIVE”页面之类的临时直播报道预告。这些条目在实时新闻面中可以接受，但延迟简报旨在总结持久的事件驱动情报。
+
+## 层级与门控
+
+Latest Brief 是 **PRO**。面板在 `src/config/panels.ts` 中以 `premium: 'locked'` 注册，因此免费层读者看到升级覆盖层，永远看不到简报正文。验证在 `api/latest-brief.ts` 的服务端运行 — 需要有效的 Clerk JWT 和活动的 PRO 权限；否则端点返回 `403 pro_required`。非 PRO 读者不会通过网络暴露任何内容。
+
+## API 参考
+
+- [AI Brief Endpoints](/zh/api-brief) — 涵盖 `/api/latest-brief`、`/api/brief/share-url`、公开的 `/api/brief/public/{hash}` 读取、按用户按时段读取，以及社交就绪的 PNG 轮播路由。
+- [新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing) — 来源选择、去重、LLM 接地和偏见控制。

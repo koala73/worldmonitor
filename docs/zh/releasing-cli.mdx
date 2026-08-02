@@ -1,0 +1,54 @@
+---
+title: "CLI 发布运行手册"
+description: "维护者如何使用 cli-v* 标签、npm Trusted Publishing 以及发布工作流中的 dry-run 门控，从 cli/ 目录发布 worldmonitor npm CLI 的完整流程 —— 涵盖版本号约定、变更日志、令牌无关的可信发布链路、回滚策略以及针对预发布通道与稳定通道的差异化处理。"
+---
+本运行手册涵盖维护者从 `cli/` 发布官方 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm CLI 的流程。CLI 发布有意与桌面应用发布相互独立：一个 `cli-vX.Y.Z` Git 标签会触发 `.github/workflows/publish-cli.yml`。
+Python、Ruby 和 Go SDK 以相同方式发布，各自使用自己的标签（`py-v*`、`gem-v*`、`sdk/go/v*`）——参见[官方 SDK → 发布](/zh/sdks#releasing-maintainers)。
+
+## 先决条件
+
+- `worldmonitor` 包已存在于 npm 上。
+- npm Trusted Publishing 已针对本仓库和 `.github/workflows/publish-cli.yml` 配置完成。
+- 该工作流保留 `permissions.id-token: write`，以便 npm 能够铸造短期 OIDC 凭证并附加来源证明（provenance）。
+
+当前工作流不需要 `NPM_TOKEN` 仓库密钥。如果未配置 Trusted Publishing，发布步骤将无法通过认证，直到某个 npm 包所有者在 npm 包设置中添加 GitHub Actions 可信发布者。
+
+## 发布步骤
+
+1. 更新 `cli/package.json`，使 `version` 恰好等于你打算发布的版本。
+2. 提交版本号变更，并包含应随该版本一起发布的任何 CLI 文档或更新日志改动。
+3. 当发布提交进入 `main` 或目标发布 ref 后，创建一个名为 `cli-vX.Y.Z` 的标签，其中 `X.Y.Z` 与 `cli/package.json` 完全一致：
+
+   ```bash
+   git tag cli-vX.Y.Z
+   ```
+
+4. 推送标签：
+
+   ```bash
+   git push origin cli-vX.Y.Z
+   ```
+
+5. 观察 `Publish CLI to npm` 工作流。它会运行 CLI 测试，验证标签版本与 `cli/package.json` 一致，并带上来源证明进行发布。
+
+版本匹配保护是严格的：只有当 `cli/package.json` 同样声明 `"version": "0.1.3"` 时，`cli-v0.1.3` 才会发布。
+
+## 试运行（Dry Run）
+
+当你想在不发布的情况下验证打包生成的 tarball 时，使用手动 `workflow_dispatch` 触发器并设置 `dry_run: true`。该工作流从 `cli/` 运行，并执行 `npm pack --dry-run`。
+
+仅当你有意让手动工作流路径进行发布时才使用 `dry_run: false`。标签触发的发布仍是常规路径，因为标签名就是发布契约。
+
+<Warning>
+`dry_run: false` 会跳过版本匹配保护。该检查仅在标签推送时生效（`if: startsWith(github.ref, 'refs/tags/cli-v')`），因此手动 `workflow_dispatch` 发布在运行时**不会**对照任何标签验证 `cli/package.json`——它会发布包当前声明的任何版本。请优先使用上文标签触发的路径，它会强制执行匹配；只有在手动确认版本后，才将手动 `dry_run: false` 作为有意为之的应急出口使用。
+</Warning>
+
+## 故障排查清单
+
+| 症状 | 可能原因 | 修复 |
+|---|---|---|
+| 版本匹配步骤失败 | `cli-v*` 标签与 `cli/package.json` 不匹配 | 删除或替换错误的标签，提升或更正包版本，然后推送匹配的标签 |
+| 发布步骤认证失败 | npm Trusted Publishing 缺失或指向了错误的工作流/仓库 | 为本仓库和 `.github/workflows/publish-cli.yml` 配置包的可信发布者 |
+| CLI 测试失败 | 包尚未达到可发布状态 | 修复 `cli/`，在本地重新运行测试，提交，然后推送一个新的发布标签 |
+
+工作流成功后，确认新版本已出现在 npm 上，且 `npx worldmonitor --version` 解析到已发布的版本。

@@ -156,6 +156,7 @@ export interface GetForecastScorecardResponse {
   degraded: boolean;
   stale: boolean;
   error: string;
+  skill?: ScorecardSkill;
 }
 
 export interface ScorecardTotals {
@@ -212,6 +213,14 @@ export interface ScorecardMarketSkill {
   brierDelta: number;
 }
 
+export interface ScorecardSkill {
+  count: number;
+  brier?: number;
+  logScore?: number;
+  excludedScored: number;
+  excludedOrigins: string[];
+}
+
 export interface GetSimulationPackageRequest {
   runId: string;
 }
@@ -219,7 +228,6 @@ export interface GetSimulationPackageRequest {
 export interface GetSimulationPackageResponse {
   found: boolean;
   runId: string;
-  pkgKey: string;
   schemaVersion: string;
   theaterCount: number;
   generatedAt: number;
@@ -234,7 +242,6 @@ export interface GetSimulationOutcomeRequest {
 export interface GetSimulationOutcomeResponse {
   found: boolean;
   runId: string;
-  outcomeKey: string;
   schemaVersion: string;
   theaterCount: number;
   generatedAt: number;
@@ -242,6 +249,10 @@ export interface GetSimulationOutcomeResponse {
   error: string;
   theaterSummariesJson: string;
   processing: boolean;
+  eligibleTheaterCount: number;
+  failedTheaterCount: number;
+  allTheatersFailed: boolean;
+  completionStatus: string;
 }
 
 export interface TriggerSimulationRequest {

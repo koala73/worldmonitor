@@ -22,6 +22,7 @@ const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
+const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
 const fixtures = buildReleaseGateFixtures();
 
 afterEach(() => {
@@ -32,6 +33,8 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
   if (originalVercelEnv == null) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = originalVercelEnv;
+  if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
 });
 
 function fixtureReader(key: string): Promise<unknown | null> {
@@ -115,6 +118,7 @@ describe('resilience release gate', () => {
   });
 
   it('keeps imputationShare below 0.5 for G20 countries and preserves score sanity anchors', async () => {
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
     installRedisFixtures();
 
     const g20Responses = await Promise.all(

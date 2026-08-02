@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import {
+  buildWesternPacificCycloneSnapshot,
+  fetchHkoWarnings,
+} from './natural/western-pacific-cyclones.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -8,7 +15,9 @@ const EONET_API_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events';
 const GDACS_API = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP';
 const NHC_BASE = 'https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer';
 const CANONICAL_KEY = 'natural:events:v1';
-const CACHE_TTL = 43200; // 12h — 6x the 2h cron interval; was 1h (TTL < maxStaleMin:120 — panel went dark before health alarmed)
+const WESTERN_PACIFIC_CYCLONES_KEY = 'natural:western-pacific-cyclones:v1';
+const HKO_WARNINGS_KEY = 'weather:hko-warnings:v1';
+const CACHE_TTL = 64800; // 18h — 6x the 3h Railway bundle cadence; preserves last-good through health grace.
 
 const DAYS = 30;
 const WILDFIRE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
@@ -42,9 +51,9 @@ function normalizeCategory(id) {
   return NATURAL_EVENT_CATEGORIES.has(c) ? c : 'manmade';
 }
 
-async function fetchEonet(days) {
+async function fetchEonet(days, fetchFn = globalThis.fetch) {
   const url = `${EONET_API_URL}?status=open&days=${days}`;
-  const res = await fetch(url, {
+  const res = await fetchFn(url, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
@@ -139,8 +148,8 @@ function parseGdacsTcFields(props) {
   return fields;
 }
 
-async function fetchGdacs() {
-  const res = await fetch(GDACS_API, {
+async function fetchGdacs(fetchFn = globalThis.fetch) {
+  const res = await fetchFn(GDACS_API, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
@@ -210,9 +219,9 @@ for (const [prefix, base] of Object.entries(BASIN_OFFSETS)) {
   }
 }
 
-async function nhcQuery(layerId) {
+async function nhcQuery(layerId, fetchFn = globalThis.fetch) {
   const url = `${NHC_BASE}/${layerId}/query?where=1%3D1&outFields=*&f=geojson`;
-  const res = await fetch(url, {
+  const res = await fetchFn(url, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
@@ -226,9 +235,9 @@ const NHC_STORM_TYPES = {
   EX: 'Post-Tropical', PT: 'Post-Tropical',
 };
 
-async function fetchNhc() {
+async function fetchNhc(fetchFn = globalThis.fetch) {
   // Query all forecast point layers to find active storms
-  const pointQueries = NHC_STORM_SLOTS.map(s => nhcQuery(s.forecastPoints));
+  const pointQueries = NHC_STORM_SLOTS.map(s => nhcQuery(s.forecastPoints, fetchFn));
   const pointResults = await Promise.allSettled(pointQueries);
 
   const activeSlots = [];
@@ -244,8 +253,8 @@ async function fetchNhc() {
   // Fetch track, cone, past data for active storms only
   const detailQueries = activeSlots.map(async ({ slot, points }) => {
     const [coneRes, pastPtsRes] = await Promise.allSettled([
-      nhcQuery(slot.forecastCone),
-      nhcQuery(slot.pastPoints),
+      nhcQuery(slot.forecastCone, fetchFn),
+      nhcQuery(slot.pastPoints, fetchFn),
     ]);
     return {
       slot, points,
@@ -356,20 +365,71 @@ async function fetchNhc() {
   return events;
 }
 
-async function fetchNaturalEvents() {
-  const [eonetResult, gdacsResult, nhcResult] = await Promise.allSettled([
-    fetchEonet(DAYS),
-    fetchGdacs(),
-    fetchNhc(),
+function isWesternPacificCyclone(event) {
+  return event?.category === 'severeStorms'
+    && Boolean(event.stormName)
+    && Number.isFinite(event.lat) && Number.isFinite(event.lon)
+    && event.lat >= 0 && event.lat <= 50
+    && event.lon >= 100 && event.lon <= 180;
+}
+
+function toWesternPacificObservation(event) {
+  return {
+    agency: 'GDACS',
+    agencyId: event.stormId || event.id,
+    basin: 'WP',
+    aliases: [event.stormName],
+    stormName: event.stormName,
+    lat: event.lat,
+    lon: event.lon,
+    observedAt: event.date,
+    // GDACS does not state an averaging period in this feed. Keep the value
+    // unpaired rather than pretending it is equivalent to an agency advisory.
+    windKt: event.windKt,
+    pressureMb: event.pressureMb,
+    classification: event.classification,
+    sourceName: event.sourceName,
+    sourceUrl: event.sourceUrl,
+    sourceEventId: event.id,
+  };
+}
+
+export async function fetchNaturalEvents({
+  now = Date.now(),
+  fetchFn = globalThis.fetch,
+  fetchHkoWarningsFn = fetchHkoWarnings,
+} = {}) {
+  const [eonetResult, gdacsResult, nhcResult, hkoResult] = await Promise.allSettled([
+    fetchEonet(DAYS, fetchFn),
+    fetchGdacs(fetchFn),
+    fetchNhc(fetchFn),
+    fetchHkoWarningsFn({ now, fetchFn }),
   ]);
 
   const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
   const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : [];
   const nhcEvents = nhcResult.status === 'fulfilled' ? nhcResult.value : [];
+  const hko = hkoResult.status === 'fulfilled'
+    ? hkoResult.value
+    : { warnings: [], dataAvailable: false, sourceDecision: { source: 'HKO warning summary', host: 'data.weather.gov.hk', status: 'blocked', reason: 'FETCH_FAILED', optional: false, requestCount: 1 } };
 
   if (eonetResult.status === 'rejected') console.log('[EONET]', eonetResult.reason?.message);
   if (gdacsResult.status === 'rejected') console.log('[GDACS]', gdacsResult.reason?.message);
   if (nhcResult.status === 'rejected') console.log('[NHC]', nhcResult.reason?.message);
+  if (hkoResult.status === 'rejected') console.log('[HKO]', hkoResult.reason?.message);
+
+  const westernPacificCandidates = gdacsEvents.filter(isWesternPacificCyclone);
+  const westernPacific = buildWesternPacificCycloneSnapshot({
+    storms: westernPacificCandidates.map(toWesternPacificObservation),
+    hkoWarnings: hko.warnings,
+    hkoDataAvailable: hko.dataAvailable,
+    sourceDecisions: [hko.sourceDecision],
+    now,
+  });
+  // A healthy GDACS response is valid coverage even when no named storm is
+  // active. HKO remains independently visible in its own coverage snapshot.
+  westernPacific.dataAvailable = hko.dataAvailable || gdacsResult.status === 'fulfilled';
+  const westernPacificSourceIds = new Set(westernPacificCandidates.map((event) => event.id));
 
   // NHC events take priority for storms (have forecast tracks/cones)
   // Dedup GDACS TC events against NHC by storm name proximity
@@ -388,6 +448,7 @@ async function fetchNaturalEvents() {
 
   // Add GDACS events, skipping TC events that match NHC storms by name
   for (const event of gdacsEvents) {
+    if (westernPacificSourceIds.has(event.id)) continue;
     if (event.category === 'severeStorms' && event.stormName) {
       const gName = event.stormName.toLowerCase();
       const isDupe = nhcStorms.some(n =>
@@ -411,8 +472,28 @@ async function fetchNaturalEvents() {
     }
   }
 
+  // Canonical western-Pacific cyclones replace their raw GDACS members; HKO
+  // local warning events deliberately remain visible even without a storm name.
+  for (const event of westernPacific.events) {
+    const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}-${event.id}`;
+    if (!seenLocations.has(k)) {
+      seenLocations.add(k);
+      merged.push(event);
+    }
+  }
+
   if (merged.length === 0) return null;
-  return { events: merged };
+  return {
+    events: merged,
+    westernPacific,
+    hkoWarnings: {
+      evaluatedAt: westernPacific.evaluatedAt,
+      latestObservationAt: hko.warnings.reduce((latest, warning) => Math.max(latest, Number(warning.observedAt) || 0), 0) || now,
+      dataAvailable: hko.dataAvailable,
+      warnings: hko.warnings,
+      sourceDecisions: [hko.sourceDecision],
+    },
+  };
 }
 
 function validate(data) {
@@ -423,15 +504,38 @@ export function declareRecords(data) {
   return Array.isArray(data?.events) ? data.events.length : 0;
 }
 
-runSeed('natural', 'events', CANONICAL_KEY, fetchNaturalEvents, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'eonet+gdacs+nhc',
-
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 360,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runSeed('natural', 'events', CANONICAL_KEY, fetchNaturalEvents, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'eonet+gdacs+nhc+hko-v2',
+    extraKeys: [
+      {
+        key: WESTERN_PACIFIC_CYCLONES_KEY,
+        ttl: CACHE_TTL,
+        transform: (data) => data.westernPacific,
+        declareRecords: (snapshot) => snapshot?.dataAvailable ? 1 : 0,
+        metaKey: 'seed-meta:natural:western-pacific-cyclones',
+        metaTtlSeconds: CACHE_TTL,
+        metaCritical: true,
+        skipWhenEmpty: true,
+      },
+      {
+        key: HKO_WARNINGS_KEY,
+        ttl: CACHE_TTL,
+        transform: (data) => data.hkoWarnings,
+        declareRecords: (snapshot) => snapshot?.dataAvailable ? 1 : 0,
+        metaKey: 'seed-meta:weather:hko-warnings',
+        metaTtlSeconds: CACHE_TTL,
+        metaCritical: true,
+        skipWhenEmpty: true,
+      },
+    ],
+    declareRecords,
+    schemaVersion: 2,
+    maxStaleMin: 540,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

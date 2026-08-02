@@ -6,23 +6,53 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
+import {
+  renderChinaCorporateDisclosureSignals,
+  type ChinaCorporateDisclosureSnapshot,
+} from './market-disclosures';
+import { composeMarketPanelContent } from './market-panel-content';
+import { openMarketChartModal } from './market-chart-modal';
+import {
+  bindMarketChartActivation,
+  getMarketChartRowAttributes,
+} from './market-chart-interactions';
 
 export class MarketPanel extends Panel {
+  private _markets: MarketData[] = [];
+  private _marketsRateLimited = false;
+  private _disclosures: ChinaCorporateDisclosureSnapshot | null = null;
+
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.header.appendChild(createWatchlistButton());
+
+    // Delegated once on the persistent content element (each render only swaps
+    // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.
+    bindMarketChartActivation(this.content, () => this._markets, openMarketChartModal);
   }
 
   public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
-    if (data.length === 0) {
-      this.showRetrying(rateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'));
-      return;
-    }
+    this._markets = data;
+    this._marketsRateLimited = Boolean(rateLimited);
+    this._renderMarketsAndDisclosures();
+  }
 
-    const html = data
-      .map(
-        (stock) => `
-      <div class="market-item">
+  public renderDisclosures(snapshot: ChinaCorporateDisclosureSnapshot | null | undefined): void {
+    this._disclosures = snapshot ?? null;
+    this._renderMarketsAndDisclosures();
+  }
+
+  private _renderMarketsAndDisclosures(): void {
+    const disclosureHtml = renderChinaCorporateDisclosureSignals(this._disclosures);
+    const marketsHtml = this._markets
+      .map((stock, idx) => {
+        const attrs = getMarketChartRowAttributes(
+          stock,
+          idx,
+          t('components.markets.chart.title', { symbol: stock.display }),
+        );
+        return `
+      <div${attrs}>
         <div class="market-info">
           <span class="market-name">${escapeHtml(stock.name)}</span>
           <span class="market-symbol">${escapeHtml(stock.display)}</span>
@@ -33,11 +63,25 @@ export class MarketPanel extends Panel {
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>
-    `
-      )
+    `;
+      })
       .join('');
-
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    const content = composeMarketPanelContent({
+      hasMarkets: this._markets.length > 0,
+      marketsHtml,
+      disclosureHtml,
+      unavailableMessage: this._marketsRateLimited
+        ? t('common.rateLimitedMarket')
+        : t('common.failedMarketData'),
+    });
+    if (content.kind === 'retry') {
+      this.showRetrying(content.message);
+      return;
+    }
+    this.setSafeContent(unsafeRawHtml(
+      content.html,
+      'legacy Panel.setContent() migration',
+    ));
   }
 }
 

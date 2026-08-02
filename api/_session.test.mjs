@@ -63,17 +63,18 @@ test('validateSessionToken rejects a tampered signature', async () => {
 });
 
 test('validateSessionToken rejects non-canonical base64url (last-char padding-bit flip)', async () => {
-  // Defensive: even if a future test/attacker tries the "flip the last char"
-  // trick, the canonical encoding check inside validateSessionToken rejects it
-  // because re-encoding the decoded bytes yields the canonical form, which
-  // won't match the tampered string.
+  // SHA-256 produces 32 bytes → 43 base64url chars with no padding. The last
+  // char carries only 2 data bits + 4 unused padding bits. Flipping the padding
+  // bits yields a *different* string that decodes to the *same* bytes, so the
+  // HMAC comparison would pass if canonical enforcement were missing.
   const { token } = await issueSessionToken();
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   const last = token.slice(-1);
-  const candidates = ['A', 'B', 'C', 'D', 'E', 'F', 'g', 'h'];
-  const swap = candidates.find(c => c !== last) ?? 'A';
-  const flipped = token.slice(0, -1) + swap;
-  // Either it decodes differently (signature mismatch → false) OR the
-  // canonical-encoding check catches the padding-bit twiddle. Either way, false.
+  const idx = alphabet.indexOf(last);
+  // Same top 2 bits (same decoded bytes), different bottom 4 bits (non-canonical).
+  const altIdx = (idx & ~15) | ((idx + 1) % 16);
+  const flipped = token.slice(0, -1) + alphabet[altIdx];
+  assert.notEqual(flipped, token, 'sanity: flipped token differs');
   assert.equal(await validateSessionToken(flipped), false);
 });
 
@@ -89,8 +90,29 @@ test('validateSessionToken rejects an expired token', async () => {
   assert.equal(await validateSessionToken(expired), false);
 });
 
+test('validateSessionToken rejects exact-boundary and non-finite expirations', async () => {
+  const enc = new TextEncoder();
+  const now = Date.now();
+  const key = await crypto.subtle.importKey('raw', enc.encode(SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+
+  // Exact-boundary: exp equals the current clock must be rejected (not accepted
+  // by a strict > comparison).
+  const boundaryBody = Buffer.from(JSON.stringify({ iat: now - 1000, exp: now, n: 'boundary01' })).toString('base64url');
+  const boundarySigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(boundaryBody));
+  const boundarySig = Buffer.from(new Uint8Array(boundarySigBuf)).toString('base64url');
+  assert.equal(await validateSessionToken(`wms_${boundaryBody}.${boundarySig}`), false);
+
+  // A JSON number that overflows to Infinity must not be treated as never-expiring.
+  // JSON.stringify turns Infinity into null, so we build the literal JSON string
+  // with the unquoted numeric literal 1e309; JSON.parse yields Infinity for it and
+  // exercises the Number.isFinite guard.
+  const infiniteBody = Buffer.from(`{"iat":${now},"exp":1e309,"n":"infinite02"}`).toString('base64url');
+  const infiniteSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(infiniteBody));
+  const infiniteSig = Buffer.from(new Uint8Array(infiniteSigBuf)).toString('base64url');
+  assert.equal(await validateSessionToken(`wms_${infiniteBody}.${infiniteSig}`), false);
+});
+
 test('validateSessionToken rejects garbage input', async () => {
-  assert.equal(await validateSessionToken(''), false);
   assert.equal(await validateSessionToken('not-a-token'), false);
   assert.equal(await validateSessionToken('wms_'), false);
   assert.equal(await validateSessionToken('wms_no-dot'), false);
@@ -118,6 +140,17 @@ test('issueSessionToken throws when WM_SESSION_SECRET is missing/short (fail clo
     process.env.WM_SESSION_SECRET = stash;
   }
   delete process.env.WM_SESSION_SECRET;
+  try {
+    await assert.rejects(() => issueSessionToken(), /WM_SESSION_SECRET/);
+  } finally {
+    process.env.WM_SESSION_SECRET = stash;
+  }
+});
+
+test('issueSessionToken rejects a 31-character secret at the 32-char boundary', async () => {
+  const stash = process.env.WM_SESSION_SECRET;
+  // 31 characters — exactly one under the minimum — must fail closed.
+  process.env.WM_SESSION_SECRET = '1234567890123456789012345678901';
   try {
     await assert.rejects(() => issueSessionToken(), /WM_SESSION_SECRET/);
   } finally {

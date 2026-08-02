@@ -19,6 +19,8 @@ import {
   isLayerExecutable,
   sanitizeLayersForVariant,
 } from '../src/config/map-layer-definitions';
+import { buildForecastInputFetchKeys } from '../scripts/seed-forecasts.mjs';
+import { resolveBootstrapRegistry } from '../shared/bootstrap-tier-keys.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => readFileSync(resolve(repoRoot, p), 'utf8');
@@ -56,7 +58,13 @@ describe('iran-events sunset — backend gates (source guards)', () => {
 
   it('bootstrap.js omits iranEvents from the payload + fast tier when disabled', () => {
     const src = read('api/bootstrap.js');
-    assert.match(src, /if \(!IRAN_EVENTS_ENABLED\) \{[\s\S]*?delete BOOTSTRAP_CACHE_KEYS\.iranEvents;[\s\S]*?FAST_KEYS\.delete\('iranEvents'\);/);
+    assert.match(src, /resolveBootstrapRegistry\(\{\s*iranEventsEnabled:\s*IRAN_EVENTS_ENABLED/);
+    const disabled = resolveBootstrapRegistry({ iranEventsEnabled: false });
+    assert.equal(disabled.cacheKeys.iranEvents, undefined);
+    assert.equal(disabled.tiers.iranEvents, undefined);
+    const enabled = resolveBootstrapRegistry({ iranEventsEnabled: true });
+    assert.equal(enabled.cacheKeys.iranEvents, 'conflict:iran-events:v1');
+    assert.equal(enabled.tiers.iranEvents, 'fast');
   });
 
   it('get-risk-scores.ts gates the iran-events fetch (no CII/risk contribution)', () => {
@@ -87,6 +95,17 @@ describe('iran-events sunset — backend gates (source guards)', () => {
   });
 
   it('seed-forecasts.mjs skips fetching the iran key into the pipeline batch when disabled', () => {
-    assert.match(read('scripts/seed-forecasts.mjs'), /\.\.\.\(iranEventsEnabled\(\) \? \['conflict:iran-events:v1'\] : \[\]\)/);
+    const previousIranEventsEnabled = process.env.IRAN_EVENTS_ENABLED;
+    delete process.env.IRAN_EVENTS_ENABLED;
+    try {
+      assert.ok(!buildForecastInputFetchKeys().includes('conflict:iran-events:v1'));
+      process.env.IRAN_EVENTS_ENABLED = 'true';
+      assert.ok(buildForecastInputFetchKeys().includes('conflict:iran-events:v1'));
+    } finally {
+      if (previousIranEventsEnabled === undefined) delete process.env.IRAN_EVENTS_ENABLED;
+      else process.env.IRAN_EVENTS_ENABLED = previousIranEventsEnabled;
+    }
+
+    assert.match(read('scripts/seed-forecasts.mjs'), /const keys = buildForecastInputFetchKeys\(\);/);
   });
 });

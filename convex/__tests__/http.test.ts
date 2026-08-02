@@ -57,6 +57,24 @@ describe("/api/user-prefs Convex HTTP action", () => {
     expectExposedRateLimitHeaders(res.headers);
   });
 
+  test.each([null, [], "not-an-object", 42, true])(
+    "rejects non-object JSON body (%j) with 400 INVALID_JSON",
+    async (payload) => {
+      const t = convexTest(schema, modules);
+      const res = await t.withIdentity(USER).fetch("/api/user-prefs", {
+        method: "POST",
+        headers: {
+          Origin: "https://worldmonitor.app",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "INVALID_JSON" });
+    },
+  );
+
   test("maps mutation RATE_LIMITED errors to 429 with retry guidance", async () => {
     vi.spyOn(Date, "now").mockReturnValue(TEST_NOW);
     const t = convexTest(schema, modules);

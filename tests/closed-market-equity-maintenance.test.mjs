@@ -33,13 +33,14 @@ describe('closed-market equity key maintenance', () => {
     assert.doesNotMatch(runSeedCall[0], /\.then\(async/);
   });
 
-  it('extends both stock keys and refreshes seed-meta from the last in-process quote count', async () => {
+  it('extends both stock keys and configured companion keys before refreshing seed-meta', async () => {
     const expires = [];
     const writes = [];
 
     const ok = await maintainClosedMarketEquityKeys({
       marketSymbols: ['MSFT', 'AAPL'],
       marketSeedTtl: 7200,
+      preserveKeys: ['market:stock-index:v1:CN'],
       lastEquityQuoteCount: 2,
       upstashExpire: async (key, ttl) => { expires.push([key, ttl]); return true; },
       upstashGet: async () => { throw new Error('should not read meta when last count is present'); },
@@ -51,6 +52,7 @@ describe('closed-market equity key maintenance', () => {
     assert.deepEqual(expires, [
       ['market:quotes:v1:AAPL,MSFT', 7200],
       ['market:stocks-bootstrap:v1', 7200],
+      ['market:stock-index:v1:CN', 7200],
     ]);
     assert.deepEqual(writes, [
       ['seed-meta:market:stocks', { fetchedAt: 123456, recordCount: 2 }, 604800],

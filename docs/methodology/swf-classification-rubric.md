@@ -286,6 +286,3 @@ Out of scope for a manifest PR. A rubric revision requires:
   https://www.swfinstitute.org/research/linaburg-maduell-transparency-index
 - IFSWF member directory: https://www.ifswf.org/members
 - Santiago Principles self-assessments: https://www.ifswf.org/santiago-principles
-- Plan reference:
-  `docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-audit-plan.md`
-  §PR 4

@@ -1,0 +1,173 @@
+---
+title: "高级金融搜索层"
+description: "为高级金融提供支持的定向股票新闻搜索层 —— 详细说明股票代码查询如何在上游供应商之间被分发、按相关性与新鲜度排名，以及如何在 Redis 与内存层之间缓存复用，帮助开发者理解 Premium Finance 搜索延迟、命中率与配额消耗背后的完整数据链路与容错策略。"
+---
+本文档介绍高级金融所使用的**额外**定向股票新闻搜索层。
+
+它被有意与核心高级金融架构分离。
+
+核心高级金融在没有此层的情况下仍可运作。搜索层的存在是为了提升定向股票代码分析的股票新闻发现质量，特别是在仅依赖 feed 覆盖较弱的地方。
+
+核心系统文档参见 [PREMIUM_FINANCE.md](/zh/premium-finance)。
+
+---
+
+## 为何存在此层
+
+WorldMonitor 主要以 feed 为先：
+
+- 精选 RSS feeds
+- 摘要聚合
+- Google News RSS 回退
+
+迁移来源的源仓库使用更广泛的搜索提供商层进行特定股票新闻查找。这为以下场景提供了更好的定向覆盖：
+
+- 单一代码高级分析
+- 较不显眼的股票代码
+- feed 库存中未能充分体现的近期公司特定动态
+
+此层弥补了这一差距，而无需替换项目更广泛的 feed 架构。
+
+---
+
+## 提供商顺序
+
+当前提供商链为：
+
+1. `Tavily`
+2. `Brave`
+3. `SerpAPI`
+4. Google News RSS 回退
+
+`Bocha` 被有意排除，因为当前高级金融方向不聚焦中国。
+
+---
+
+## 实现
+
+主要实现：
+
+- [stock-news-search.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/stock-news-search.ts)
+
+集成点：
+
+- [analyze-stock.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/analyze-stock.ts)
+
+该辅助模块：
+
+- 构建规范化的股票新闻查询
+- 按优先级顺序尝试提供商
+- 在已配置的密钥间轮换
+- 在内存中跟踪临时的提供商/密钥失败
+- 将提供商响应规范化为 `StockAnalysisHeadline`
+- 在 Redis 中缓存搜索结果
+- 当提供商搜索不可用时回退到 Google News RSS
+
+---
+
+## 查询策略
+
+当前查询结构有意镜像源仓库中针对外国股票的股票新闻风格：
+
+`<Company Name> <SYMBOL> stock latest news`
+
+示例：
+
+- `Apple AAPL stock latest news`
+- `Microsoft MSFT stock latest news`
+
+搜索时效性是动态的：
+
+- 周一：3 天
+- 周六/周日：2 天
+- 周二至周五：1 天
+
+这反映了周末空档需要比周中交易日更宽的回溯窗口这一思路。
+
+---
+
+## 运行时密钥
+
+搜索层使用运行时管理的密钥，以适配与项目其余部分相同的桌面/Web 密钥模型。
+
+已配置的密钥：
+
+- `TAVILY_API_KEYS`
+- `BRAVE_API_KEYS`
+- `SERPAPI_API_KEYS`
+
+这些通过以下方式接入：
+
+- [runtime-config.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/runtime-config.ts)
+- [settings-constants.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/settings-constants.ts)
+- [main.rs](https://github.com/koala73/worldmonitor/blob/main/src-tauri/src/main.rs)
+- [local-api-server.mjs](https://github.com/koala73/worldmonitor/blob/main/src-tauri/sidecar/local-api-server.mjs)
+
+这些值是多密钥字符串，以逗号或换行符分隔。
+
+---
+
+## 缓存
+
+搜索结果在 Redis 中以查询派生的 key 缓存。缓存 key 包括：
+
+- symbol
+- 动态天数窗口
+- 结果限制
+- 哈希查询
+
+这避免了当多个用户请求相同的高级股票分析时重复调用提供商。
+
+缓存被有意设为短期，因为基于搜索的金融新闻很快会过时。
+
+---
+
+## 回退行为
+
+如果 `Tavily` 失败，系统会尝试 `Brave`。
+
+如果 `Brave` 失败，系统会尝试 `SerpAPI`。
+
+如果提供商搜索不可用、为空或未配置，系统会回退到 Google News RSS。
+
+这意味着：
+
+- 高级股票分析不硬性依赖付费搜索提供商
+- 提供商密钥提升的是覆盖范围，而非功能可用性
+
+---
+
+## 为何这是一个独立层
+
+此层不是股票分析引擎本身。
+
+它应被视为：
+
+- 定向新闻增强
+- 覆盖质量升级
+- 基于提供商的精确定位查找层
+
+它**不应**被视为：
+
+- 规范的市场/新闻接入架构
+- feed 摘要聚合的替代品
+- 高级金融持久化的权威数据源
+
+这种分离很重要，因为它使高级金融功能保持可理解性：
+
+- 核心金融产品逻辑保持稳定
+- 基于搜索的增强可独立演进
+
+---
+
+## 已知边界
+
+当前实现尚未暴露独立的公共股票新闻搜索 RPC。
+
+目前它是高级股票分析使用的内部后端辅助模块。这是有意为之：
+
+- 它保持接口面较小
+- 它避免过早添加 UI/API 产品接口
+- 它允许提供商行为在冻结为专用外部契约之前演进
+
+如果日后需要，此辅助模块可提升为一级市场 RPC。

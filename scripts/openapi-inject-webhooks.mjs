@@ -80,6 +80,11 @@ const WEBHOOKS_BLOCK = `webhooks:
                 \`secret\` string verbatim as the HMAC key — do not hex-decode it.
                 Reject the delivery if the signatures differ.
 
+                A verifiable signed sample (fixed secret + exact raw body +
+                resulting signature) is published at
+                https://www.worldmonitor.app/.well-known/webhook-sample.json so you
+                can confirm your HMAC verification end-to-end before registering.
+
                 Respond with any 2xx to acknowledge receipt; a non-2xx response or a
                 timeout marks the delivery failed. \`${DELIVERY_ID_HEADER}\` uniquely
                 identifies each delivery for idempotent processing.

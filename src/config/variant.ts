@@ -6,12 +6,20 @@ const buildVariant = (() => {
   }
 })();
 
+function loadStoredVariant(): string | null {
+  try {
+    return localStorage.getItem('worldmonitor-variant');
+  } catch {
+    return null;
+  }
+}
+
 export const SITE_VARIANT: string = (() => {
   if (typeof window === 'undefined') return buildVariant;
 
   const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
   if (isTauri) {
-    const stored = localStorage.getItem('worldmonitor-variant');
+    const stored = loadStoredVariant();
     if (stored === 'tech' || stored === 'full' || stored === 'finance' || stored === 'happy' || stored === 'commodity' || stored === 'energy') return stored;
     return buildVariant;
   }
@@ -24,7 +32,7 @@ export const SITE_VARIANT: string = (() => {
   if (h.startsWith('energy.')) return 'energy';
 
   if (h === 'localhost' || h === '127.0.0.1') {
-    const stored = localStorage.getItem('worldmonitor-variant');
+    const stored = loadStoredVariant();
     if (stored === 'tech' || stored === 'full' || stored === 'finance' || stored === 'happy' || stored === 'commodity' || stored === 'energy') return stored;
     return buildVariant;
   }

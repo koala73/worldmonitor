@@ -1,5 +1,11 @@
 import type { CountryBriefSignals } from '@/types';
-import { getSourcePropagandaRisk, getSourceTier } from '@/config/feeds';
+import {
+  describePropagandaBadge,
+  getSourcePropagandaRisk,
+  getSourceTier,
+  getSourceTierBadgeTitle,
+  getSourceType,
+} from '@/config/feeds';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
@@ -10,7 +16,7 @@ import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
-import { getCSSColor, showToast } from '@/utils';
+import { getCSSColor, isMobileDevice, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
@@ -29,6 +35,9 @@ import type {
   CountryDeepDiveSignalItem,
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveEconomicIndicator,
+  ChinaCountrySummaryData,
+  ChinaCountrySummaryGroup,
+  ChinaCountrySummaryGroupId,
   CountryFactsData,
   CountryEnergyProfileData,
   CountryPortActivityData,
@@ -41,13 +50,16 @@ import type {
   MultiSectorShockResponse,
   MultiSectorShock,
 } from '@/services/supply-chain';
+import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 import { exportCountryEvidenceMarkdown } from '@/utils/export';
 import type { CountryEvidenceBundleInput } from '@/utils/export';
+import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -58,6 +70,7 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
 import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -105,6 +118,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
+  private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
   private onCloseCallback?: () => void;
@@ -125,6 +139,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private militaryBody: HTMLElement | null = null;
   private infrastructureBody: HTMLElement | null = null;
   private economicBody: HTMLElement | null = null;
+  private chinaSummaryBody: HTMLElement | null = null;
   private housingBody: HTMLElement | null = null;
   private marketsBody: HTMLElement | null = null;
   private briefBody: HTMLElement | null = null;
@@ -285,7 +300,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.open();
   }
 
-  public hide(): void {
+  public hide(origin: OverlayCloseOrigin = 'control'): void {
+    if (origin === 'control' && this.historyRegistered) overlayHistory.close('deep-dive');
+    this.historyRegistered = false;
     this.destroyResilienceWidget();
     this.tearDownFollowButton();
     if (this.isMaximizedState) {
@@ -398,9 +415,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const top = this.el('div', 'cdp-news-top');
       const tier = item.tier ?? getSourceTier(item.source);
+      const sourceType = getSourceType(item.source);
       const clampedTier = Math.max(1, Math.min(4, tier));
       const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
-      tierBadge.setAttribute('title', `Source tier ${clampedTier}: reflects publication credibility (1 = top wire services, 4 = specialty/low-reach). Independent of article severity.`);
+      tierBadge.setAttribute(
+        'title',
+        `${getSourceTierBadgeTitle(sourceType)}. Source tier ${clampedTier}; independent of article severity.`,
+      );
       top.append(tierBadge);
 
       const severity = this.toThreatLevel(item.threat?.level);
@@ -411,11 +432,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       top.append(sevBadge);
 
       const risk = getSourcePropagandaRisk(item.source);
-      if (risk.stateAffiliated) {
-        top.append(this.badge(`State-affiliated: ${risk.stateAffiliated}`, 'cdp-state-badge'));
+      const riskDescription = describePropagandaBadge(risk, sourceType);
+      if (riskDescription) {
+        const riskLabel = risk.stateAffiliated
+          ? `${riskDescription.label}: ${risk.stateAffiliated}`
+          : riskDescription.label;
+        const riskBadge = this.badge(
+          riskLabel,
+          `cdp-state-badge propaganda-badge ${riskDescription.risk}`,
+        );
+        riskBadge.setAttribute(
+          'title',
+          risk.stateAffiliated
+            ? `${sourceType === 'gov' ? 'Official government source' : 'State-affiliated'}: ${risk.stateAffiliated}. ${riskDescription.title}`
+            : riskDescription.title,
+        );
+        top.append(riskBadge);
       }
 
-      const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
+      const title = this.el('div', 'cdp-news-title', decodeHtmlEntities(item.title));
       const metaText = extraSources.length > 0
         ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
         : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
@@ -554,6 +589,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateEconomicIndicators(indicators: CountryDeepDiveEconomicIndicator[]): void {
     this.economicIndicators = indicators;
     this.renderEconomicIndicators();
+  }
+
+  public updateChinaCountrySummary(data: ChinaCountrySummaryData): void {
+    if (this.currentCode?.toUpperCase() !== 'CN' || !this.chinaSummaryBody) return;
+    this.renderChinaCountrySummary(data.groups);
   }
 
   public updateCountryFacts(data: CountryFactsData): void {
@@ -2248,7 +2288,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (updatedEl) updatedEl.textContent = `Updated ${score?.lastUpdated ? this.shortDate(score.lastUpdated) : '—'}`;
     }
     if (score) {
-      const band = this.ciiBand(score.score);
+      const band = ciiBandForLevel(score.level);
       const scoreRow = this.el('div', 'cdp-score-row');
       const value = this.el('div', `cdp-score-value cii-${band}`, `${score.score}/100`);
       const trend = this.el('div', 'cdp-trend', `${this.trendArrow(score.trend)} ${score.trend}`);
@@ -2542,7 +2582,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     scoreCard.append(top);
 
     if (score) {
-      const band = this.ciiBand(score.score);
+      const band = ciiBandForLevel(score.level);
       const scoreRow = this.el('div', 'cdp-score-row');
       const value = this.el('div', `cdp-score-value cii-${band}`, `${score.score}/100`);
       const trend = this.el('div', 'cdp-trend', `${this.trendArrow(score.trend)} ${score.trend}`);
@@ -2627,6 +2667,24 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.militaryBody = militaryBody;
     this.infrastructureBody = infraBody;
     this.economicBody = economicBody;
+    let chinaSummaryCard: HTMLElement | null = null;
+    // Drop any body left over from a previous China render so a non-China
+    // country never keeps a detached summary body reachable.
+    this.chinaSummaryBody = null;
+    if (code.toUpperCase() === 'CN') {
+      const [card, body] = this.sectionCard(t('countryBrief.china.title'), t('countryBrief.china.description'));
+      card.classList.add('cdp-china-summary');
+      card.setAttribute('aria-label', t('countryBrief.china.title'));
+      this.chinaSummaryBody = body;
+      this.renderChinaCountrySummary(
+        CHINA_DECISION_SIGNAL_GROUP_IDS.map((id) => ({
+          id,
+          state: 'loading',
+          signals: [],
+        })),
+      );
+      chinaSummaryCard = card;
+    }
     this.housingBody = housingBody;
     this.marketsBody = marketsBody;
     this.briefBody = briefBody;
@@ -2640,7 +2698,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
+    bodyGrid.append(briefCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -2749,6 +2807,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.energyBody = null;
     this.maritimeBody = null;
     this.tradeExposureBody = null;
+    this.chinaSummaryBody = null;
     this.productImportsBody = null;
     this.debtBody = null;
     this.housingBody = null;
@@ -2924,6 +2983,118 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   }
 
+  private renderChinaCountrySummary(groups: ChinaCountrySummaryGroup[]): void {
+    if (!this.chinaSummaryBody) return;
+
+    // The group <section>s are aria-live regions. They must stay in the DOM
+    // across updates — screen readers only announce mutations *inside* an
+    // existing live region, so tearing the sections down and rebuilding them
+    // (the old replaceChildren-the-card approach) meant state transitions
+    // like loading→stale were never announced.
+    let grid = this.chinaSummaryBody.querySelector<HTMLElement>('.cdp-china-summary-grid');
+    if (!grid) {
+      this.chinaSummaryBody.replaceChildren();
+      grid = this.el('div', 'cdp-china-summary-grid');
+      this.chinaSummaryBody.append(grid);
+    }
+
+    for (const group of groups) {
+      let section = grid.querySelector<HTMLElement>(`[data-group-id="${group.id}"]`);
+      if (!section) {
+        section = this.el('section', 'cdp-china-summary-group');
+        section.setAttribute('data-group-id', group.id);
+        section.setAttribute('role', 'status');
+        section.setAttribute('aria-live', 'polite');
+        grid.append(section);
+      }
+
+      // Manager updates push the full five-group snapshot each time any one
+      // group resolves; skip untouched groups so unchanged content is not
+      // re-announced on every sibling resolution.
+      const revision = JSON.stringify(group);
+      if (section.dataset.revision === revision) continue;
+      section.dataset.revision = revision;
+
+      const groupLabel = this.chinaSummaryGroupLabel(group.id);
+      const stateLabel = t(`countryBrief.china.status.${group.state}`);
+      section.className = `cdp-china-summary-group cdp-china-summary-group--${group.state}`;
+      section.setAttribute('aria-label', `${groupLabel}: ${stateLabel}`);
+
+      const heading = this.el('div', 'cdp-china-summary-heading');
+      heading.append(
+        this.el('h4', 'cdp-china-summary-title', groupLabel),
+        this.el('span', 'cdp-china-summary-state', stateLabel),
+      );
+      const children: HTMLElement[] = [heading];
+
+      if (group.signals.length === 0) {
+        children.push(this.el(
+          'div',
+          'cdp-china-summary-empty',
+          group.unavailableReason || t(`countryBrief.china.status.${group.state}`),
+        ));
+      } else {
+        for (const signal of group.signals) {
+          const item = this.el('div', 'cdp-china-summary-signal');
+          if (signal.stale) item.dataset.stale = 'true';
+          item.append(
+            this.el('div', 'cdp-china-summary-signal-label', signal.label),
+            this.el('div', 'cdp-china-summary-signal-value', signal.value),
+          );
+          if (signal.observedAt) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`));
+          }
+          if (signal.publishedAt) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.published')} ${signal.publishedAt}`));
+          }
+          if (signal.effectiveAt) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.effective')} ${signal.effectiveAt}`));
+          }
+          if (signal.sectors?.length) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.sectors')} ${signal.sectors.join(', ')}`));
+          }
+          if (signal.entities?.length) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.entities')} ${signal.entities.join(', ')}`));
+          }
+          if (signal.translationState) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.translation')} ${signal.translationState}`));
+          }
+          const sourceAttribution = this.el('div', 'cdp-china-summary-attribution');
+          const sourcePrefix = `${t('countryBrief.china.source')} `;
+          const safeHref = signal.sourceUrl ? sanitizeUrl(signal.sourceUrl) : '';
+          if (safeHref) {
+            sourceAttribution.append(document.createTextNode(sourcePrefix));
+            const sourceLink = this.el('a', 'cdp-china-summary-source-link', signal.source);
+            sourceLink.setAttribute('href', safeHref);
+            sourceLink.setAttribute('target', '_blank');
+            sourceLink.setAttribute('rel', 'noopener noreferrer');
+            sourceAttribution.append(sourceLink);
+          } else {
+            sourceAttribution.textContent = `${sourcePrefix}${signal.source}`;
+          }
+          item.append(sourceAttribution);
+          children.push(item);
+        }
+        if (group.unavailableReason) {
+          children.push(this.el('div', 'cdp-china-summary-note', group.unavailableReason));
+        }
+      }
+      section.replaceChildren(...children);
+    }
+  }
+
+  private chinaSummaryGroupLabel(id: ChinaCountrySummaryGroupId): string {
+    const keys: Record<ChinaCountrySummaryGroupId, string> = {
+      macro: 'macroSignals',
+      'policy-enforcement': 'policyEvents',
+      'cross-strait-activity': 'crossStraitActivity',
+      'corporate-disclosures': 'corporateDisclosures',
+      'corridor-conditions': 'corridorConditions',
+      'activity-nowcast': 'activityNowcast',
+    };
+    return t(`countryBrief.china.${keys[id]}`);
+  }
+
   private highlightInfrastructure(type: AssetType): void {
     if (!this.map) return;
     const assets = this.infrastructureByType.get(type) ?? [];
@@ -2937,7 +3108,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.panel.classList.add('active');
     this.panel.setAttribute('aria-hidden', 'false');
     document.addEventListener('keydown', this.handleGlobalKeydown);
-    requestAnimationFrame(() => this.closeButton.focus());
+    if (isMobileDevice()) {
+      this.historyRegistered = true;
+      overlayHistory.open('deep-dive', (origin) => this.hide(origin));
+    }
+    requestAnimationFrame(() => {
+      if (this.panel.classList.contains('active')) this.closeButton.focus();
+    });
     this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
   }
 
@@ -3111,24 +3288,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (trend === 'up') return '↑';
     if (trend === 'down') return '↓';
     return '→';
-  }
-
-  private ciiBand(score: number): 'stable' | 'elevated' | 'high' | 'critical' {
-    if (score <= 25) return 'stable';
-    if (score <= 50) return 'elevated';
-    if (score <= 75) return 'high';
-    return 'critical';
-  }
-
-  private decodeEntities(text: string): string {
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#x27;/g, "'")
-      .replace(/&#x2F;/g, '/');
   }
 
   private toThreatLevel(level: string | undefined): ThreatLevel {

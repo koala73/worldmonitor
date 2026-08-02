@@ -1,6 +1,6 @@
 ---
 title: "Shipping v2 API"
-description: "Chokepoint route-intelligence queries and webhook subscriptions for supply-chain disruption alerts."
+description: "Chokepoint route-intelligence queries and webhook subscription management for supply-chain disruption alerts in the Shipping v2 API surface."
 ---
 
 The v2 shipping API is a **PRO-gated** read + webhook-subscription surface on top of WorldMonitor's chokepoint registry and AIS tracking data.
@@ -189,3 +189,12 @@ function verifyWorldMonitorWebhook(rawBody, header, secret) {
 ```
 
 The signature contract is also published machine-readably as the `chokepoint.disruption` entry under `webhooks` in the [OpenAPI spec](https://worldmonitor.app/openapi.json).
+
+#### Test your verification against a signed sample
+
+A ready-to-verify sample delivery is published at [`/.well-known/webhook-sample.json`](https://www.worldmonitor.app/.well-known/webhook-sample.json). It carries a fixed sample `secret`, the exact raw `body` string, and the resulting `signature`. Recompute `sha256=` + `hex(HMAC_SHA256(key=secret, message=body))` over the exact bytes of `body` and confirm it equals `signature` — if it matches, your verification will accept real deliveries. (The sample `secret` is a fixture; each live subscription gets its own `secret` from RegisterWebhook.)
+
+```js
+const s = await (await fetch('https://www.worldmonitor.app/.well-known/webhook-sample.json')).json();
+verifyWorldMonitorWebhook(s.body, s.signature, s.secret); // → true
+```

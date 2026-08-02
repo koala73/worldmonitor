@@ -13,14 +13,48 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SCRIPTS_DIR = new URL('../scripts/', import.meta.url).pathname;
+// The fixture used to be written into the real `scripts/` directory so its
+// `./_seed-utils.mjs` import would resolve. That made this test a source of
+// FLAKY CI failures for every suite that scans that tree: under
+// `--test-concurrency=16`, tests/seed-env-hermeticity.test.mjs globs
+// `scripts/**` and readFileSync's each hit, so a fixture unlinked between the
+// glob yield and the read produced
+// `ENOENT ... scripts/_sigterm-fixture-<ts>.mjs` in an unrelated test.
+// Fixtures now live in a private temp dir and reach the helper by absolute
+// URL, so no scanned tree ever sees them.
+const SEED_UTILS_URL = pathToFileURL(
+  fileURLToPath(new URL('../scripts/_seed-utils.mjs', import.meta.url)),
+).href;
+const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'wm-sigterm-fixture-'));
+
+process.on('exit', () => {
+  try { rmSync(FIXTURE_DIR, { recursive: true, force: true }); } catch { /* best effort */ }
+});
+
+let fixtureSeq = 0;
+
+/**
+ * Writes a fixture into the private temp dir and returns its path.
+ *
+ * Every fixture in this file goes through here — four separate writers used to
+ * hand-roll their own `join(SCRIPTS_DIR, ...)` path, so each was an independent
+ * source of the ENOENT flake described above.
+ */
+function writeFixture(label, bodyJs) {
+  const path = join(FIXTURE_DIR, `${label}-${fixtureSeq++}.mjs`);
+  // Keep the readable relative form at every call site; rewrite it here, since
+  // the fixture no longer sits next to the helper.
+  writeFileSync(path, bodyJs.replaceAll("'./_seed-utils.mjs'", JSON.stringify(SEED_UTILS_URL)));
+  return path;
+}
 
 function runFixture(bodyJs) {
-  const path = join(SCRIPTS_DIR, `_sigterm-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, bodyJs);
+  const path = writeFixture('sigterm', bodyJs);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [path], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -53,7 +87,7 @@ function runFixture(bodyJs) {
   });
 }
 
-test('runSeed releases lock and extends existing TTL on SIGTERM', async () => {
+test('runSeed releases lock and extends existing TTL on SIGTERM', { skip: process.platform === 'win32' }, async () => {
   // Fixture logs every Upstash HTTP call (shape + body) on its own
   // line so the test can assert that the SIGTERM cleanup actually
   // emitted (a) an EVAL DEL-on-match for the lock key, and (b) an
@@ -131,7 +165,7 @@ test('runSeed releases lock and extends existing TTL on SIGTERM', async () => {
     `EXPIRE pipeline must include seed-meta key; stderr:\n${stderr}`);
 });
 
-test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', async () => {
+test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', { skip: process.platform === 'win32' }, async () => {
   // Uses process.once under the hood; verify by emitting SIGTERM twice.
   // A second SIGTERM while the handler is mid-cleanup should not trigger
   // re-entry. If the handler was registered with process.on instead of
@@ -151,8 +185,7 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', asyn
       lockTtlMs: 60_000,
     });
   `;
-  const path = join(SCRIPTS_DIR, `_sigterm-once-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, body);
+  const path = writeFixture('sigterm-once', body);
   try {
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [path], {
@@ -191,7 +224,7 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', asyn
   }
 });
 
-test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor invariant preserved)', async () => {
+test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor invariant preserved)', { skip: process.platform === 'win32' }, async () => {
   // After fetchFn returns, runSeed transitions to publish phase. The
   // SIGTERM handler is now KEPT installed (whole-run scope) so a SIGTERM
   // during atomicPublish/extendExistingTtl/verify still releases the
@@ -259,8 +292,7 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
       lockTtlMs: 60_000,
     });
   `;
-  const path = join(SCRIPTS_DIR, `_sigterm-postfetch-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, body);
+  const path = writeFixture('sigterm-postfetch', body);
   try {
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [path], {
@@ -327,7 +359,7 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
   }
 });
 
-test('SIGTERM during fetch-failure cleanup still triggers handler (no leak window between catch and process.exit)', async () => {
+test('SIGTERM during fetch-failure cleanup still triggers handler (no leak window between catch and process.exit)', { skip: process.platform === 'win32' }, async () => {
   // Pre-fix code path: the fetch-failure catch block did
   //   process.off('SIGTERM', sigTermHandler);
   //   await releaseLock(...);   ← if SIGTERM lands here, no handler
@@ -398,8 +430,7 @@ test('SIGTERM during fetch-failure cleanup still triggers handler (no leak windo
       maxRetries: 0,  // fail fast — no withRetry retries
     });
   `;
-  const path = join(SCRIPTS_DIR, `_sigterm-fetchfail-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, body);
+  const path = writeFixture('sigterm-fetchfail', body);
   try {
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [path], {

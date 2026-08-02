@@ -13,7 +13,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,7 +79,7 @@ const INSTRUCTIONS = [
 
 // Closing fence must be anchored to its own line so values that happen to
 // start with `---` in the body can't prematurely terminate frontmatter.
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 function sha256Hex(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -108,8 +108,9 @@ function collectSkills() {
       throw new Error(`Expected ${skillPath} to exist and be a file`);
     }
     const bytes = readFileSync(skillPath);
-    const md = bytes.toString('utf-8').replace(/\r\n/g, '\n');
-    const fm = parseFrontmatter(md);
+    const md = bytes.toString('utf-8');
+    const lfMd = md.replace(/\r\n/g, '\n');
+    const fm = parseFrontmatter(lfMd);
     if (!fm.description) {
       throw new Error(`${skillPath} missing "description" in frontmatter`);
     }
@@ -125,7 +126,7 @@ function collectSkills() {
       type: 'skill-md',
       description: fm.description,
       url: `${PUBLIC_BASE}/.well-known/agent-skills/${name}/SKILL.md`,
-      digest: `sha256:${sha256Hex(md)}`,
+      digest: `sha256:${sha256Hex(lfMd)}`,
     };
   });
 }
@@ -143,7 +144,7 @@ function main() {
   const content = build();
   const check = process.argv.includes('--check');
   if (check) {
-    const current = readFileSync(INDEX_PATH, 'utf-8');
+    const current = readFileSync(INDEX_PATH, 'utf-8').replace(/\r\n/g, '\n');
     if (current !== content) {
       process.stderr.write(
         'agent-skills index.json is out of date. Run `npm run build:agent-skills`.\n',
@@ -157,6 +158,7 @@ function main() {
   process.stdout.write(`Wrote ${INDEX_PATH}\n`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
   main();
 }

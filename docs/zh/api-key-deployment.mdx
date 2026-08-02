@@ -1,0 +1,155 @@
+---
+title: "API 密钥门控与注册 — 部署指南"
+description: "桌面端云回退由 WORLDMONITOR_API_KEY 门控的部署与配置指南：无密钥时应用自动切换至本地 sidecar 模式仅使用离线数据，注册表单则通过 Convex 数据库收集邮箱以便密钥分发、灰度发布、使用度量、后续 Pro 订阅转化跟踪与用户沟通。"
+---
+## 概述
+
+桌面端云回退受 `WORLDMONITOR_API_KEY` 门控。没有有效密钥时，桌面应用以仅本地模式（sidecar）运行。注册表单通过 Convex DB 收集邮箱，用于未来的密钥分发。
+
+## 架构
+
+```
+Desktop App                          Cloud (Vercel)
+┌──────────────────┐                ┌──────────────────────┐
+│ fetch('/api/...')│                │ api/[domain]/v1/[rpc]│
+│        │         │                │        │              │
+│ ┌──────▼───────┐ │                │ ┌──────▼───────┐      │
+│ │ sidecar try  │ │                │ │ validateApiKey│      │
+│ │ (local-first)│ │                │ │ (origin-aware)│      │
+│ └──────┬───────┘ │                │ └──────┬───────┘      │
+│   fail │         │                │   401 if invalid      │
+│ ┌──────▼───────┐ │   fallback    │                       │
+│ │ WM key check │─┼──────────────►│ ┌──────────────┐      │
+│ │ (gate)       │ │  +header      │ │ route handler │      │
+│ └──────────────┘ │               │ └──────────────┘      │
+└──────────────────┘               └──────────────────────┘
+```
+
+## 必需的环境变量
+
+### Vercel
+
+| 变量 | 描述 | 示例 |
+|----------|-------------|---------|
+| `WORLDMONITOR_VALID_KEYS` | 逗号分隔的有效 API 密钥列表 | `wm_abc123def456,wm_xyz789` |
+| `CONVEX_URL` | Convex 部署 URL（来自 `npx convex deploy`） | `https://xyz-123.convex.cloud` |
+
+### 生成 API 密钥
+
+密钥必须至少 16 个字符（客户端验证）。推荐格式：
+
+```bash
+# 生成密钥
+openssl rand -hex 24 | sed 's/^/wm_/'
+# 示例输出: wm_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6
+```
+
+在 Vercel 仪表盘中添加到 `WORLDMONITOR_VALID_KEYS`（逗号分隔，无空格）。
+
+## Convex 设置
+
+### 首次部署
+
+```bash
+# 1. 安装（已在 package.json 中）
+npm install
+
+# 2. 登录 Convex
+npx convex login
+
+# 3. 初始化项目（创建带 CONVEX_URL 的 .env.local）
+npx convex init
+
+# 4. 部署 schema 和函数
+npx convex deploy
+
+# 5. 将部署 URL 复制到 Vercel 环境变量
+# URL 由 `npx convex deploy` 打印并保存在 .env.local 中
+```
+
+### 验证 Convex 部署
+
+```bash
+# 类型检查 Convex 函数
+npx convex dev --typecheck
+
+# 打开 Convex 仪表盘查看注册情况
+npx convex dashboard
+```
+
+### Schema
+
+`registrations` 表存储：
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `email` | string | 原始邮箱（用于显示） |
+| `normalizedEmail` | string | 小写邮箱（用于去重） |
+| `registeredAt` | number | Unix 时间戳 |
+| `source` | string? | 注册来源 |
+| `appVersion` | string? | 桌面应用版本 |
+
+通过 `normalizedEmail` 建立索引以检测重复。
+
+## 安全模型
+
+### 客户端（桌面应用）
+
+- `installRuntimeFetchPatch()` 在允许云回退之前检查 `WORLDMONITOR_API_KEY`
+- 密钥必须存在且有效（最少 16 个字符）
+- `secretsReady` promise 确保在首次 fetch 之前加载密钥（2 秒超时）
+- 故障关闭：密钥检查中的任何错误都会阻止云回退
+
+### 服务端（Vercel edge）
+
+- `api/_api-key.js` 在 sebuf 路由上验证 `X-WorldMonitor-Key` 头
+- **源感知**：桌面端来源（`tauri.localhost`、`tauri://`、`asset://`）需要密钥
+- Web 来源（`worldmonitor.app`）无需密钥即可通过
+- 非桌面端来源带密钥头：密钥仍会验证
+- 无效密钥返回 `401 { error: "Invalid API key" }`
+
+### CORS
+
+`X-WorldMonitor-Key` 在 `server/cors.ts` 和 `api/_cors.js` 中均被允许。
+
+### 本地 Vercel 环境导出
+
+请勿将 Vercel 环境导出保留在仓库根目录。`.env.vercel-backup`
+和 `.env.vercel-export` 被 Git 忽略，但它们仍然是明文
+生产密钥导出，本地工具、编辑器代理、备份软件或
+依赖安装脚本都可能读取它们。
+
+当任一文件存在时 pre-push 钩子会失败。仅在需要时拉取环境值，
+从短期本地环境文件中操作，并在使用后删除该文件。密钥轮换
+和从开发机器中删除属于运维任务；通过所属供应商仪表盘轮换
+暴露的密钥，优先处理 LLM、支付、认证、Redis 和 Convex
+凭据。
+
+## 验证清单
+
+部署后：
+
+- [ ] 在 Vercel 中设置 `WORLDMONITOR_VALID_KEYS`
+- [ ] 在 Vercel 中设置 `CONVEX_URL`
+- [ ] 运行 `npx convex deploy` 推送 schema
+- [ ] 无密钥的桌面端：云回退被阻止（控制台显示 `cloud fallback blocked`）
+- [ ] 带无效密钥的桌面端：sebuf 请求返回 `401`
+- [ ] 带有效密钥的桌面端：云回退正常工作
+- [ ] Web 访问：无需密钥，正常工作
+- [ ] 注册表单：提交邮箱，检查 Convex 仪表盘
+- [ ] 重复邮箱：显示 "already registered"
+- [ ] 现有设置标签页（LLM、API Keys、Debug）保持不变
+
+## 文件参考
+
+| 文件 | 角色 |
+|------|------|
+| `src/services/runtime.ts` | 客户端密钥门控 + 头附加 |
+| `src/services/runtime-config.ts` | `WORLDMONITOR_API_KEY` 类型、验证、`secretsReady` |
+| `api/_api-key.js` | 服务端密钥验证（源感知） |
+| `api/[domain]/v1/[rpc].ts` | Sebuf 网关 — 调用 `validateApiKey` |
+| `api/register-interest.js` | 注册端点 → Convex |
+| `server/cors.ts` / `api/_cors.js` | 带 `X-WorldMonitor-Key` 的 CORS 头 |
+| `src/components/WorldMonitorTab.ts` | 密钥 + 注册的设置 UI |
+| `convex/schema.ts` | Convex DB schema |
+| `convex/registerInterest.ts` | Convex mutation |

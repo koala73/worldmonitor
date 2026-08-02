@@ -101,7 +101,10 @@ test.describe('public map embed', () => {
   const conflictWindowMs = 30 * 24 * 60 * 60 * 1000;
   const conflictApiPath = '/api/conflict/v1/list-acled-events';
   const publicEmbedApiPaths = [
-    '/api/bootstrap?keys=weatherAlerts',
+    // The marker is part of the tracked key: the response handler below keys
+    // bootstrap responses on the full query string, and the embed's weather
+    // read moved to the CDN-shielded `&public=1` URL in #5386.
+    '/api/bootstrap?keys=weatherAlerts&public=1',
     '/api/natural/v1/list-natural-events',
     '/api/seismology/v1/list-earthquakes',
     '/api/unrest/v1/list-unrest-events',

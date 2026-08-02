@@ -11,6 +11,7 @@ message GetCarrierOpsRequest {
   // IATA airport codes to aggregate carrier metrics from.
   repeated string airports = 1 [
     (sebuf.http.query) = { name: "airports" },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).repeated.min_items = 1,
     (buf.validate.field).repeated.max_items = 20
   ];

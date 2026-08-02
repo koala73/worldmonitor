@@ -1,0 +1,45 @@
+---
+title: "Telegram 情报"
+description: "主题标签页式 Telegram 频道聚合面板 — 通过后端 relay 安全镜像的开源情报，按冲突、金融、科技等主题分组，附实时与近期消息区分、新鲜度指示器以及 relay 连接状态感知，让分析师能够快速评估频道活跃度并区分「暂时无流量」与「relay 中断」两种情形。"
+---
+
+**Telegram Intel** 面板（内部 id `telegram-intel`）将一组精选的开源 Telegram 频道镜像到仪表盘中：按主题分标签页、新鲜度感知和 relay 状态感知，使面板能区分"近期无流量"和"relay 不可用"。
+
+## 面板显示内容
+
+顶部一行主题标签页，下方为源列表：
+
+- **主题标签页** — 来自 `src/services/telegram-intel` 中 `TELEGRAM_TOPICS` 的标签页。默认标签页为 `all`。
+- **源条目** — 活动主题的 `TelegramItem[]`，每条显示频道、消息时间戳和消息正文（对任何链接应用 `sanitizeUrl`）。
+- **实时区分** — 10 分钟以内（`LIVE_THRESHOLD_MS = 600_000`）的条目标记为实时。
+- **Relay 状态** — 当 Telegram relay 不可达时（`relayEnabled = false`），面板指示降级模式而非显示空列表。
+
+面板 id 为 `telegram-intel`；规范组件为 `src/components/TelegramIntelPanel.ts`。标题来自 i18n（`panels.telegramIntel`）；配置名："Telegram Intel"。默认行跨度为 2 — 面板内容密集。
+
+## 如何访问
+
+- **Cmd+K**：输入 *telegram*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`priority: 2`）。full 变体注册在桌面端叠加 `premium: 'locked'`（`_desktop && { premium: 'locked' as const }`），因此该面板在 **Web 端免费**，**桌面端 PRO 锁定**。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS` 的 `'telegram-intel'`。
+
+## 数据来源
+
+- `@/services/telegram-intel` — 由 `/api/telegram-feed` 支持，该端点代理到拉取精选频道集合的 Railway relay。频道覆盖范围是精选的而非用户可配置的。
+
+### 后端端点
+
+| 访问面 | 端点 | 备注 |
+|---|---|---|
+| 面板 relay 路径 | `GET /api/telegram-feed` | 主题标签页式源的当前浏览器路径。 |
+| 生成的服务 RPC | `GET /api/intelligence/v1/list-telegram-feed` | 带 `topic`、`channel` 和 `limit` 查询参数的直接 IntelligenceService RPC；抓取同一 Railway relay。 |
+
+## 刷新频率
+
+由 relay 的轮询周期驱动；面板在挂载和相关外部刷新触发时读取。
+
+## 层级与门控
+
+**Web 端免费；桌面端 PRO 锁定。** Web 路径注册时无 `premium`；桌面变体通过 `_desktop &&` 子句展开 `premium: 'locked'`。
+
+## API 参考
+
+- `/api/telegram-feed` — relay 代理，记录在 [Proxies](/zh/api-proxies) 下。

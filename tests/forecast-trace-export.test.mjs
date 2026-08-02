@@ -64,6 +64,7 @@ import {
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
   computeSimulationLockTtlSeconds,
+  getSimulationCompletionStatus,
   createSimulationWorkerId,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
@@ -71,6 +72,8 @@ import {
   computeSimulationAdjustment,
   applySimulationMerge,
   applyPostSimulationRescore,
+  hasSimulationRescoreOpportunity,
+  SIMULATION_RESCORING_DEMOTION_THRESHOLD,
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
   patchPublishedForecastsWithSimDecorations,
@@ -92,6 +95,8 @@ import {
   normalizeActorName,
   summarizeImpactPathScore,
   tryParseSimulationRoundPayload,
+  runTheaterSimulation,
+  __setForecastLlmCallOverrideForTests,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -534,9 +539,11 @@ describe('forecast trace artifact builder', () => {
 describe('market transmission macro state', () => {
   it('uses live-shaped macro and market payloads to form energy-aware world signals and keep market consequences selective', () => {
     const fredSeries = (seriesId, observations) => ({
-      seriesId,
-      title: seriesId,
-      observations: observations.map(([date, value]) => ({ date, value })),
+      series: {
+        seriesId,
+        title: seriesId,
+        observations: observations.map(([date, value]) => ({ date, value })),
+      },
     });
 
     const conflict = makePrediction('conflict', 'Middle East', 'Hormuz escalation risk', 0.73, 0.64, '7d', [
@@ -652,6 +659,31 @@ describe('market transmission macro state', () => {
     assert.ok((marketConsequences?.internalCount || 0) >= (marketConsequences?.items?.length || 0));
     assert.ok((marketConsequences?.items?.length || 0) <= 6);
     assert.ok((marketConsequences?.blockedCount || 0) >= 1);
+  });
+
+  it('continues accepting legacy flat FRED observations for macro signals', () => {
+    const worldState = buildForecastRunWorldState({
+      predictions: [],
+      inputs: {
+        fredSeries: {
+          VIXCLS: {
+            seriesId: 'VIXCLS',
+            title: 'VIXCLS',
+            observations: [
+              { date: '2026-02-01', value: 17.9 },
+              { date: '2026-03-01', value: 24.2 },
+            ],
+          },
+        },
+      },
+    });
+
+    const vixSignal = (worldState.worldSignals?.signals || []).find((item) => (
+      item.type === 'volatility_shock' &&
+      item.sourceType === 'fred' &&
+      item.sourceKey === 'VIXCLS'
+    ));
+    assert.ok(vixSignal);
   });
 
   it('promotes direct core-bucket market consequences when critical signals are strong even if macro coverage is incomplete', () => {
@@ -5726,10 +5758,48 @@ describe('simulation package export', () => {
     }));
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot(candidates));
     assert.ok(pkg);
-    assert.ok(pkg.selectedTheaters.length <= 3);
+    assert.equal(pkg.selectedTheaters.length, 3, 'selection must apply the hard cap at exactly three theaters');
   });
 
-  it('geo-dedup: Strait of Hormuz (MENA_Gulf) and Red Sea (MENA_RedSea) are distinct groups — both selected', () => {
+  it('selection preserves the top three ranked candidates even when they share a geo group', () => {
+    const redsea = makeCandidate({
+      candidateStateId: 'state-redsea',
+      candidateStateLabel: 'Red Sea blockade',
+      routeFacilityKey: 'Red Sea',
+      dominantRegion: 'Red Sea',
+      rankingScore: 0.95,
+    });
+    const suez = makeCandidate({
+      candidateStateId: 'state-suez',
+      candidateStateLabel: 'Suez Canal closure',
+      routeFacilityKey: 'Suez Canal',
+      dominantRegion: 'Red Sea',
+      rankingScore: 0.93,
+    });
+    const babelMandeb = makeCandidate({
+      candidateStateId: 'state-bab-el-mandeb',
+      candidateStateLabel: 'Bab el-Mandeb transit disruption',
+      routeFacilityKey: 'Bab el-Mandeb',
+      dominantRegion: 'Red Sea',
+      rankingScore: 0.91,
+    });
+    const malacca = makeCandidate({
+      candidateStateId: 'state-malacca-low',
+      candidateStateLabel: 'Strait of Malacca monitoring',
+      routeFacilityKey: 'Strait of Malacca',
+      dominantRegion: 'South China Sea',
+      rankingScore: 0.70,
+    });
+    const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([redsea, suez, babelMandeb, malacca]));
+    assert.ok(pkg, 'package should not be null');
+    assert.deepStrictEqual(
+      pkg.selectedTheaters.map((t) => t.candidateStateId),
+      ['state-redsea', 'state-suez', 'state-bab-el-mandeb'],
+      'geo diversity must not replace a higher-ranked theater under the hard cap',
+    );
+  });
+
+  it('rank-capped selection keeps Hormuz, Red Sea, and Malacca when all rank inside the cap', () => {
     const hormuz = makeCandidate({
       candidateStateId: 'state-hormuz',
       candidateStateLabel: 'Strait of Hormuz disruption',
@@ -5754,14 +5824,14 @@ describe('simulation package export', () => {
     });
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([hormuz, redsea, malacca]));
     assert.ok(pkg, 'package should not be null');
-    assert.equal(pkg.selectedTheaters.length, 3, 'all 3 should be selected — Hormuz (MENA_Gulf), Red Sea (MENA_RedSea), Malacca (AsiaPacific)');
+    assert.equal(pkg.selectedTheaters.length, 3, 'all 3 highest-ranked eligible theaters should be selected');
     const routeKeys = pkg.selectedTheaters.map((t) => t.routeFacilityKey);
     assert.ok(routeKeys.includes('Strait of Hormuz'), 'Hormuz must be selected');
-    assert.ok(routeKeys.includes('Red Sea'), 'Red Sea must be selected — it is a distinct geo group from Hormuz');
+    assert.ok(routeKeys.includes('Red Sea'), 'Red Sea must be selected');
     assert.ok(routeKeys.includes('Strait of Malacca'), 'Malacca must be selected');
   });
 
-  it('geo-dedup: Red Sea and Suez Canal are same MENA_RedSea group — only higher-ranked selected', () => {
+  it('rank-capped selection retains multiple high-ranked candidates from one region', () => {
     const redsea = makeCandidate({
       candidateStateId: 'state-redsea',
       candidateStateLabel: 'Red Sea blockade',
@@ -5778,8 +5848,8 @@ describe('simulation package export', () => {
     });
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([redsea, suez]));
     assert.ok(pkg);
-    assert.equal(pkg.selectedTheaters.length, 1, 'only 1 theater — both are MENA_RedSea');
-    assert.equal(pkg.selectedTheaters[0].routeFacilityKey, 'Red Sea', 'higher-ranked Red Sea wins');
+    assert.equal(pkg.selectedTheaters.length, 2, 'both high-ranked theaters fit inside the cap');
+    assert.deepStrictEqual(pkg.selectedTheaters.map((t) => t.routeFacilityKey), ['Red Sea', 'Suez Canal']);
   });
 
   it('label cleanup: (stateKind) suffix is stripped from theater label', () => {
@@ -6279,6 +6349,7 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
   it('returns null paths when paths array is missing', () => {
     const result = extractSimulationRoundPayload('{"no_paths": true}', 1);
     assert.equal(result.paths, null);
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
   });
 
   it('returns null paths when no valid pathId present', () => {
@@ -6296,9 +6367,57 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
       ],
     });
     const result = extractSimulationRoundPayload(spilloverPayload, 1);
-    assert.ok(result.paths !== null, 'escalation and containment still valid');
-    assert.equal(result.paths.length, 2, 'spillover path should be filtered out, only 2 valid paths remain');
-    assert.ok(!result.paths.some((p) => p.pathId === 'spillover'), 'spillover must not appear in parsed paths');
+    assert.equal(result.paths, null, 'missing market_cascade must fail the round instead of accepting 2 paths');
+  });
+
+  it('rejects Round 2 payloads missing any of escalation, containment, market_cascade', () => {
+    const partialPayload = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: 'Escalation', summary: 'Oil disruption', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.6, timingMarkers: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.4, timingMarkers: [] },
+      ],
+      stabilizers: ['naval escorts normalize flows'],
+      invalidators: ['fresh attack expands disruption'],
+      globalObservations: '',
+      confidenceNotes: '',
+    });
+    const result = extractSimulationRoundPayload(partialPayload, 2);
+    assert.equal(result.paths, null, 'Round 2 must not pass with only 2 archetypes');
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
+  });
+
+  it('rejects Round 2 payloads with required archetypes but empty path content', () => {
+    const emptyPathPayload = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: '', summary: '', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.6, timingMarkers: [] },
+        { pathId: 'containment', label: 'Containment', summary: 'Contained', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.3, timingMarkers: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.1, timingMarkers: [] },
+      ],
+      stabilizers: [],
+      invalidators: [],
+      globalObservations: '',
+      confidenceNotes: '',
+    });
+    const result = extractSimulationRoundPayload(emptyPathPayload, 2);
+    assert.equal(result.paths, null);
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
+  });
+
+  it('rejects Round 2 payloads with non-numeric path confidence', () => {
+    const badConfidencePayload = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: 'Escalation', summary: 'Oil disruption', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: '0.6', timingMarkers: [] },
+        { pathId: 'containment', label: 'Containment', summary: 'Contained', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.3, timingMarkers: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.1, timingMarkers: [] },
+      ],
+      stabilizers: [],
+      invalidators: [],
+      globalObservations: '',
+      confidenceNotes: '',
+    });
+    const result = extractSimulationRoundPayload(badConfidencePayload, 2);
+    assert.equal(result.paths, null);
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
   });
 
   it('uses extractFirstJsonObject fallback for prefix text', () => {
@@ -6328,6 +6447,58 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
     assert.deepStrictEqual(esc.keyActorRoles, ['Commodity traders', 'Shipping operators']);
     const containment = result.paths.find((p) => p.pathId === 'containment');
     assert.deepStrictEqual(containment.keyActorRoles, []);
+  });
+
+  it('runTheaterSimulation fails the theater when Round 2 parses with incomplete archetypes', async () => {
+    const r1 = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: 'Escalate', summary: 'Forces escalate', initialReactions: [] },
+        { pathId: 'containment', label: 'Contain', summary: 'Forces contained', initialReactions: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Oil +$18/bbl, freight +22%', initialReactions: [] },
+      ],
+      dominantReactions: [],
+      note: '',
+    });
+    const incompleteR2 = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: 'Escalation', summary: 'Oil disruption', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.6, timingMarkers: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.4, timingMarkers: [] },
+      ],
+      stabilizers: ['escorts normalize shipping'],
+      invalidators: ['fresh attack expands disruption'],
+      globalObservations: '',
+      confidenceNotes: '',
+    });
+    __setForecastLlmCallOverrideForTests(async (_systemPrompt, _userPrompt, options = {}) => {
+      if (options.stage === 'simulation_round_1') return { text: r1, model: 'test', provider: 'test' };
+      if (options.stage === 'simulation_round_2') return { text: incompleteR2, model: 'test', provider: 'test' };
+      throw new Error(`unexpected LLM stage ${options.stage}`);
+    });
+    try {
+      const result = await runTheaterSimulation(minimalTheater, minimalPkg);
+      assert.equal(result.failed, true);
+      assert.equal(result.reason, 'round2_parse_failed');
+      assert.equal(result.round1?.paths?.length, 3, 'round1 evidence is retained for diagnostics');
+    } finally {
+      __setForecastLlmCallOverrideForTests(null);
+    }
+  });
+
+  it('runTheaterSimulation fails the theater when Round 2 LLM returns no result', async () => {
+    __setForecastLlmCallOverrideForTests(async (_systemPrompt, _userPrompt, options = {}) => {
+      if (options.stage === 'simulation_round_1') return { text: r1Payload, model: 'test', provider: 'test' };
+      if (options.stage === 'simulation_round_2') return null;
+      throw new Error(`unexpected LLM stage ${options.stage}`);
+    });
+    try {
+      const result = await runTheaterSimulation(minimalTheater, minimalPkg);
+      assert.equal(result.failed, true);
+      assert.equal(result.reason, 'round2_llm_failed');
+      assert.equal(result.round1?.paths?.length, 3, 'round1 evidence is retained for diagnostics');
+      assert.equal(result.round2, null);
+    } finally {
+      __setForecastLlmCallOverrideForTests(null);
+    }
   });
 });
 
@@ -6551,6 +6722,13 @@ describe('simulation runner — writeSimulationOutcome', () => {
     assert.notEqual(first, second);
   });
 
+  it('getSimulationCompletionStatus distinguishes all-failed and partial simulation runs', () => {
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 0, theaterCount: 0, failedTheaterCount: 0 }), 'no_eligible_theaters');
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 2, theaterCount: 0, failedTheaterCount: 2 }), 'all_theaters_failed');
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 2, theaterCount: 1, failedTheaterCount: 1 }), 'partial');
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 2, theaterCount: 2, failedTheaterCount: 0 }), 'completed');
+  });
+
   it('writeSimulationOutcome emits an empty-candidateStateId counter for outcome telemetry', async () => {
     const originalWarn = console.warn;
     const originalFetch = globalThis.fetch;
@@ -6594,6 +6772,52 @@ describe('simulation runner — writeSimulationOutcome', () => {
       );
     } finally {
       console.warn = originalWarn;
+      globalThis.fetch = originalFetch;
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('writeSimulationOutcome surfaces all-failed simulation metadata in the Redis pointer', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const target = String(url);
+      if (target.includes('/r2/buckets/')) {
+        return new Response('{}', { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${target}`);
+    };
+    const store = {};
+    __setRedisStoreForTests(store);
+    try {
+      await writeSimulationOutcome(
+        { runId: '1783471835470-allfailed', generatedAt: 1783471835470 },
+        {
+          theaterResults: [],
+          failedTheaters: [
+            { theaterId: 'theater-red-sea', reason: 'round2_parse_failed', diagnostics: { stage: 'invalid_payload', preview: '{"paths":[]}' } },
+          ],
+          eligibleTheaterCount: 1,
+          failedTheaterCount: 1,
+          generatedAt: 1783471835470,
+        },
+        {
+          storageConfig: {
+            mode: 'api',
+            apiBaseUrl: 'https://api.cloudflare.test/client/v4',
+            accountId: 'acct',
+            bucket: 'trace-bucket',
+            apiToken: 'token',
+            basePrefix: 'seed-data/forecast-traces',
+          },
+        },
+      );
+      const pointer = store[SIMULATION_OUTCOME_LATEST_KEY];
+      assert.equal(pointer.theaterCount, 0);
+      assert.equal(pointer.eligibleTheaterCount, 1);
+      assert.equal(pointer.failedTheaterCount, 1);
+      assert.equal(pointer.allTheatersFailed, true);
+      assert.equal(pointer.completionStatus, 'all_theaters_failed');
+    } finally {
       globalThis.fetch = originalFetch;
       __setRedisStoreForTests(null);
     }
@@ -6687,6 +6911,45 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
     assert.equal(adjustment, -0.15);
     assert.equal(details.stabilizerHit, true);
+  });
+
+  it('T4b: invalidator and stabilizer can both fire for -0.27 combined adjustment', () => {
+    const path = makePath('freight', 'shipping_cost_shock', []);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [],
+      invalidators: ['Strait of Hormuz reopened after diplomatic agreement'],
+      stabilizers: ['Strait of Hormuz shipping lanes restored to normal operations'],
+    };
+    const candidatePacket = makeCandidatePacket('Strait of Hormuz', '');
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.27);
+    assert.equal(details.invalidatorHit, true);
+    assert.equal(details.stabilizerHit, true);
+  });
+
+  it('T4c: timing markers add explicit scoring support to a matched simulation path', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [{
+        label: 'Oil supply disruption escalation via Hormuz',
+        summary: 'Crude oil supply disruption',
+        confidence: 1,
+        keyActors: [],
+        timingMarkers: [
+          { event: 'Initial convoy disruption', timing: 'T+6h' },
+          { event: 'Importers bid up spot cargoes', timing: 'T+48h' },
+        ],
+      }],
+      invalidators: [],
+      stabilizers: [],
+    };
+    const candidatePacket = makeCandidatePacket();
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.10);
+    assert.equal(details.timingMarkerCount, 2);
+    assert.equal(details.timingMarkerBonus, 0.02);
   });
 
   it('T5: bucket+channel match (+0.08) plus invalidator (-0.12) gives net -0.04', () => {
@@ -7604,6 +7867,21 @@ describe('phase 3 simulation re-ingestion — matching helpers', () => {
     assert.ok(matchesChannel({ label: 'Regional Conflict & Sovereign Risk Spiral', summary: 'rapid repricing of sovereign risk' }, 'risk_off_rotation'));
     assert.ok(matchesChannel({ label: 'Global Economic Shockwave', summary: '' }, 'risk_off_rotation'));
     assert.ok(matchesChannel({ label: 'Market contagion from India FX crisis', summary: '' }, 'risk_off_rotation'));
+    assert.ok(matchesChannel({ label: 'Sell-off hits global risk assets', summary: '' }, 'risk_off_rotation'));
+  });
+
+  it('matchesBucket avoids substring hits inside unrelated words', () => {
+    assert.ok(!matchesBucket({ label: 'Corporate debt briefing', summary: '' }, 'rates_inflation'));
+    assert.ok(matchesBucket({ label: 'Interest rate shock hits lenders', summary: '' }, 'rates_inflation'));
+  });
+
+  it('matchesChannel avoids bare security keyword over-fires inside broader words', () => {
+    assert.ok(!matchesChannel({ label: 'Paramilitary procurement budget update', summary: '' }, 'security_escalation'));
+    assert.ok(!matchesChannel({ label: 'Cyberattack insurance repricing', summary: '' }, 'security_escalation'));
+    assert.ok(!matchesChannel({ label: 'Military procurement budget update', summary: '' }, 'security_escalation'));
+    assert.ok(!matchesChannel({ label: 'Cyber attack insurance repricing', summary: '' }, 'security_escalation'));
+    assert.ok(matchesChannel({ label: 'Military action expands near the border', summary: '' }, 'security_escalation'));
+    assert.ok(matchesChannel({ label: 'Airstrike on Strait of Hormuz oil infrastructure', summary: '' }, 'security_escalation'));
   });
 
   it('matchesChannel returns false for unrelated text', () => {
@@ -7786,6 +8064,28 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
     const result = await applyPostSimulationRescore('1774800000000-test01', { theaterResults: [] }, { bucket: 'test', basePrefix: 'test' });
     assert.equal(result.skipped, true);
     assert.equal(result.reason, 'missing_params');
+  });
+
+  it('R-2b: rescore guard includes selected paths below 0.77 for combined negative demotion risk', () => {
+    assert.equal(SIMULATION_RESCORING_DEMOTION_THRESHOLD, 0.77);
+    assert.equal(
+      hasSimulationRescoreOpportunity({
+        status: 'completed',
+        selectedPaths: [makeRescorePath('state-risky', 0.76)],
+        rejectedPaths: [],
+      }),
+      true,
+      '0.76 - 0.27 can fall below 0.50 and must not return no_actionable_paths',
+    );
+    assert.equal(
+      hasSimulationRescoreOpportunity({
+        status: 'completed',
+        selectedPaths: [makeRescorePath('state-safe', 0.77)],
+        rejectedPaths: [],
+      }),
+      false,
+      '0.77 - 0.27 lands exactly on 0.50 and is not a demotion risk',
+    );
   });
 
   it('R-3: returns no_path_changes when simulation does not adjust any path', async () => {

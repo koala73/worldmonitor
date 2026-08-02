@@ -1,6 +1,6 @@
 ---
 title: "Pipeline Registry Methodology"
-description: "How World Monitor curates and attributes status for the world's oil and gas pipelines shown on the Energy Atlas."
+description: "How World Monitor curates and attributes operational status for the world's oil and gas pipelines displayed on the Energy Atlas map layer."
 ---
 
 ## Scope
@@ -155,7 +155,7 @@ URL pattern is stable: `globalenergymonitor.org/wp-content/uploads/YYYY/MM/GEM-{
 | Symptom | Cause | Fix |
 |---|---|---|
 | Converter exits with `GEM_GAS_GEOJSON env vars are required` | Env vars not set | Re-run with both `GEM_GAS_GEOJSON` and `GEM_OIL_GEOJSON` pointed at the unzipped `.geojson` files |
-| Many rows dropped on `country:Foo|Bar` | New country name GEM uses isn't in `pycountry` or the alias table | Add the alias to `COUNTRY_ALIASES` in `scripts/_gem-geojson-to-canonical.py` |
+| Many rows dropped on `country:Foo\|Bar` | New country name GEM uses isn't in `pycountry` or the alias table | Add the alias to `COUNTRY_ALIASES` in `scripts/_gem-geojson-to-canonical.py` |
 | Many rows dropped on `no_capacity` with a unit we haven't seen | GEM added a capacity unit | Add the conversion factor to `gas_capacity()` or `oil_capacity()` in the converter |
 | Parser throws `schema drift — pipelines[i] missing column "X"` | GEM renamed a column between releases | The parser will name the missing column; map it back in the converter and re-run |
 | `validateRegistry` rejects the merged registry | Almost always: count below `MIN_PIPELINES_PER_REGISTRY`, or an evidence-source not in the whitelist | Inspect the merged JSON; if the row drop is real, lower the floor; if a row's evidence is malformed, fix the converter |

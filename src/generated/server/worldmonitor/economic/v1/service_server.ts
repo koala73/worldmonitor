@@ -142,6 +142,120 @@ export interface MacroMeta {
   qqqSparkline: number[];
 }
 
+export interface GetChinaMacroSnapshotRequest {
+}
+
+export interface GetChinaMacroSnapshotResponse {
+  countryCode: string;
+  generatedAt: string;
+  status: string;
+  launchReady: boolean;
+  contentObservationDate: string;
+  latestObservationDate: string;
+  indicators: ChinaMacroIndicator[];
+  sourceDecisions: ChinaMacroSourceDecision[];
+  releaseEvents: ChinaReleaseEvent[];
+  unavailable: boolean;
+  schemaVersion: number;
+  pillars: ChinaMacroPillarPulse[];
+}
+
+export interface ChinaMacroIndicator {
+  id: string;
+  label: string;
+  category: string;
+  value: number;
+  hasValue: boolean;
+  priorValue: number;
+  hasPriorValue: boolean;
+  unit: string;
+  observationDate: string;
+  source: string;
+  sourceUrl: string;
+  stale: boolean;
+  unavailableReason: string;
+  contextOnly: boolean;
+  geography: string;
+  seasonalAdjustment: string;
+  periodKind: string;
+  observationPeriod: string;
+  releaseTime: string;
+  retrievalTime: string;
+  direction: string;
+  directionReason: string;
+  comparisonBasis: string;
+  comparisonValue: number;
+  hasComparisonValue: boolean;
+  revisionState: string;
+  vintageId: string;
+  revisionSequence: number;
+  provenanceJson: string;
+  vintages: ChinaMacroVintage[];
+  transportStatus: string;
+  transportFailureReason: string;
+}
+
+export interface ChinaMacroVintage {
+  vintageId: string;
+  sequence: number;
+  state: string;
+  value: number;
+  hasValue: boolean;
+  observationPeriod: string;
+  periodKind: string;
+  releaseTime: string;
+  retrievalTime: string;
+  supersededBy: string;
+  provenanceJson: string;
+}
+
+export interface ChinaMacroSourceDecision {
+  source: string;
+  host: string;
+  status: string;
+  reason: string;
+  checkedAt: string;
+  optional: boolean;
+  requestCount: number;
+  publisherId: string;
+  redirectBehavior: string;
+  requestBudget: number;
+  robotsStatus: string;
+  termsStatus: string;
+  sourceUrl: string;
+}
+
+export interface ChinaReleaseEvent {
+  id: string;
+  event: string;
+  countryCode: string;
+  releaseDate: string;
+  releaseTime: string;
+  timezone: string;
+  kind: string;
+  status: string;
+  source: string;
+  sourceUrl: string;
+}
+
+export interface ChinaMacroPillarPulse {
+  pillar: string;
+  direction: string;
+  reason: string;
+  observationIds: string[];
+}
+
+export interface GetChinaActivityNowcastRequest {
+}
+
+export interface GetChinaActivityNowcastResponse {
+  generatedAt: string;
+  methodVersion: string;
+  comparisonState: string;
+  upstreamUnavailable: boolean;
+  payloadJson: string;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -691,6 +805,88 @@ export interface EnergyCrisisPolicy {
   status: string;
 }
 
+export interface ListGlobalTendersRequest {
+  country: string;
+  countries: string[];
+  region: string;
+  source: string;
+  status: string;
+  deadlineFrom: string;
+  deadlineTo: string;
+  minValue: number;
+  maxValue: number;
+  currency: string;
+  category: string;
+  query: string;
+  pageSize: number;
+  cursor: string;
+  sort: string;
+  buyer: string;
+  publishedFrom: string;
+  publishedTo: string;
+  minAutomationScore: number;
+}
+
+export interface ListGlobalTendersResponse {
+  tenders: GlobalTender[];
+  nextCursor: string;
+  fetchedAt: string;
+  dataAvailable: boolean;
+  availability: string;
+  sourceStatuses: TenderSourceStatus[];
+  total: number;
+  appliedFilters: string[];
+  countryCoverage: string;
+}
+
+export interface GlobalTender {
+  id: string;
+  source: string;
+  sourceNoticeId: string;
+  officialUrl: string;
+  countryCode?: string;
+  region?: string;
+  title: string;
+  description?: string;
+  buyer?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  deadline?: string;
+  status: string;
+  noticeType?: string;
+  money?: TenderMoney;
+  categoryCodes: string[];
+  sectors: string[];
+  eligibilityRequirements: string[];
+  submissionUrls: string[];
+  participationMode: string;
+  automationFit?: AutomationFit;
+}
+
+export interface TenderMoney {
+  amount?: number;
+  currency?: string;
+}
+
+export interface AutomationFit {
+  level: string;
+  score: number;
+  classificationVersion: string;
+  matchReasons: string[];
+  evidence: string[];
+}
+
+export interface TenderSourceStatus {
+  source: string;
+  state: string;
+  recordCount: number;
+  fetchedAt: string;
+  error?: string;
+  lastSuccessfulAt: string;
+  stale: boolean;
+  paced: boolean;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -740,6 +936,8 @@ export interface EconomicServiceHandler {
   listWorldBankIndicators(ctx: ServerContext, req: ListWorldBankIndicatorsRequest): Promise<ListWorldBankIndicatorsResponse>;
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
+  getChinaMacroSnapshot(ctx: ServerContext, req: GetChinaMacroSnapshotRequest): Promise<GetChinaMacroSnapshotResponse>;
+  getChinaActivityNowcast(ctx: ServerContext, req: GetChinaActivityNowcastRequest): Promise<GetChinaActivityNowcastResponse>;
   getEnergyCapacity(ctx: ServerContext, req: GetEnergyCapacityRequest): Promise<GetEnergyCapacityResponse>;
   getBisPolicyRates(ctx: ServerContext, req: GetBisPolicyRatesRequest): Promise<GetBisPolicyRatesResponse>;
   getBisExchangeRates(ctx: ServerContext, req: GetBisExchangeRatesRequest): Promise<GetBisExchangeRatesResponse>;
@@ -763,6 +961,7 @@ export interface EconomicServiceHandler {
   getOilStocksAnalysis(ctx: ServerContext, req: GetOilStocksAnalysisRequest): Promise<GetOilStocksAnalysisResponse>;
   getOilInventories(ctx: ServerContext, req: GetOilInventoriesRequest): Promise<GetOilInventoriesResponse>;
   getEnergyCrisisPolicies(ctx: ServerContext, req: GetEnergyCrisisPoliciesRequest): Promise<GetEnergyCrisisPoliciesResponse>;
+  listGlobalTenders(ctx: ServerContext, req: ListGlobalTendersRequest): Promise<ListGlobalTendersResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -932,6 +1131,80 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getMacroSignals(ctx, body);
           return new Response(JSON.stringify(result as GetMacroSignalsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-china-macro-snapshot",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaMacroSnapshotRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaMacroSnapshot(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaMacroSnapshotResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-china-activity-nowcast",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaActivityNowcastRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaActivityNowcast(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaActivityNowcastResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
@@ -1833,6 +2106,71 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEnergyCrisisPolicies(ctx, body);
           return new Response(JSON.stringify(result as GetEnergyCrisisPoliciesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/list-global-tenders",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListGlobalTendersRequest = {
+            country: params.get("country") ?? "",
+            countries: params.getAll("countries"),
+            region: params.get("region") ?? "",
+            source: params.get("source") ?? "",
+            status: params.get("status") ?? "",
+            deadlineFrom: params.get("deadline_from") ?? "",
+            deadlineTo: params.get("deadline_to") ?? "",
+            minValue: Number(params.get("min_value") ?? "0"),
+            maxValue: Number(params.get("max_value") ?? "0"),
+            currency: params.get("currency") ?? "",
+            category: params.get("category") ?? "",
+            query: params.get("query") ?? "",
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            sort: params.get("sort") ?? "",
+            buyer: params.get("buyer") ?? "",
+            publishedFrom: params.get("published_from") ?? "",
+            publishedTo: params.get("published_to") ?? "",
+            minAutomationScore: Number(params.get("min_automation_score") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listGlobalTenders", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listGlobalTenders(ctx, body);
+          return new Response(JSON.stringify(result as ListGlobalTendersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

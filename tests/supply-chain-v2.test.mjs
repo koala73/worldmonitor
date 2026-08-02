@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -151,26 +152,15 @@ describe('OpenAPI spec includes aisDisruptions', () => {
 // ========================================================================
 
 describe('Cache keys bumped to v2', () => {
-  const bootstrapSrc = readSrc('api/bootstrap.js');
-  const cacheKeysSrc = readSrc('server/_shared/cache-keys.ts');
   const chokepointSrc = readSrc('server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts');
   const mineralsSrc = readSrc('server/worldmonitor/supply-chain/v1/get-critical-minerals.ts');
 
   it('bootstrap.js chokepoints key is v4', () => {
-    assert.match(bootstrapSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
+    assert.equal(BOOTSTRAP_CACHE_KEYS.chokepoints, 'supply_chain:chokepoints:v4');
   });
 
   it('bootstrap.js minerals key is v2', () => {
-    assert.match(bootstrapSrc, /minerals:\s*'supply_chain:minerals:v2'/);
-  });
-
-  it('cache-keys.ts chokepoints key is v4', () => {
-    // BOOTSTRAP_CACHE_KEYS must keep the raw string literal (bootstrap.test.mjs enforces string-literal values)
-    assert.match(cacheKeysSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
-  });
-
-  it('cache-keys.ts minerals key is v2', () => {
-    assert.match(cacheKeysSrc, /minerals:\s*'supply_chain:minerals:v2'/);
+    assert.equal(BOOTSTRAP_CACHE_KEYS.minerals, 'supply_chain:minerals:v2');
   });
 
   it('chokepoint handler uses CHOKEPOINT_STATUS_KEY constant', () => {
@@ -183,10 +173,9 @@ describe('Cache keys bumped to v2', () => {
   });
 
   it('no v1 cache keys remain for chokepoints or minerals', () => {
-    assert.doesNotMatch(bootstrapSrc, /supply_chain:chokepoints:v1/);
-    assert.doesNotMatch(bootstrapSrc, /supply_chain:minerals:v1/);
-    assert.doesNotMatch(cacheKeysSrc, /supply_chain:chokepoints:v1/);
-    assert.doesNotMatch(cacheKeysSrc, /supply_chain:minerals:v1/);
+    const registry = JSON.stringify(BOOTSTRAP_CACHE_KEYS);
+    assert.doesNotMatch(registry, /supply_chain:chokepoints:v1/);
+    assert.doesNotMatch(registry, /supply_chain:minerals:v1/);
   });
 });
 

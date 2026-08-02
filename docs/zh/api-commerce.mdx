@@ -1,0 +1,149 @@
+---
+title: "商务端点"
+description: "World Monitor 计费与商业化 API 完整参考：涵盖结账流程、客户门户、产品目录、优惠券与推荐奖励端点，基于 Convex 数据库与 Dodo Payments 构建的轻量边缘代理层，为 Pro 订阅、API 密钥额度、团队席位与年度计划提供安全的支付集成。"
+---
+
+WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅，并使用 [Convex](https://convex.dev) 作为权益的事实来源。这些边缘端点是轻量的认证代理 —— 它们验证 Clerk JWT，然后通过 `RELAY_SHARED_SECRET` 转发到 Convex HTTP actions。
+
+## 结账
+
+### `POST /api/create-checkout`
+
+创建 Dodo 结账会话并返回托管结账 URL。
+
+- **认证**：Clerk bearer（必需）
+- **请求体**：
+  ```json
+  { "productId": "pro-monthly", "returnUrl": "https://www.worldmonitor.app/pro/success" }
+  ```
+- **响应**：`{ "checkoutUrl": "https://checkout.dodopayments.com/..." }`
+- **幂等性**：支持可选的 `Idempotency-Key`，在成功响应后 10 分钟内有效。使用相同键重试并附带相同请求体会重放原始结账响应，而非创建另一次结账尝试。
+- **returnUrl** 会在 Convex 侧根据白名单进行验证。
+
+### `POST /api/customer-portal`
+
+为现有订阅者创建 Dodo 客户门户会话（更新卡片、取消、查看发票）。
+
+- **认证**：Clerk bearer + 活跃权益
+- **响应**：`{ "portalUrl": "..." }`
+- **幂等性**：支持可选的 `Idempotency-Key`。使用相同键重试会重放原始门户响应，而非创建另一次门户尝试。
+
+## 产品目录
+
+### `GET /api/product-catalog`
+
+返回 `/pro` 定价页使用的分层视图模型。在 Redis 中以 `product-catalog:v3` 为键缓存 1 小时；缓存未命中时，从 Dodo Payments 获取实时价格，若 Dodo 不可达则回退到 `_product-fallback-prices.js`。响应携带 `X-Product-Catalog-Source` 头，以便探针区分缓存命中与实时获取。
+
+**响应**（分层顺序为 `free`、`pro`、`pro_business`、`api_starter`、`api_business`、`enterprise`）：
+
+```json
+{
+  "tiers": [
+    {
+      "name": "Free",
+      "localeKey": "free",
+      "description": "Get started with the essentials",
+      "features": ["Core dashboard panels", "..."],
+      "cta": "Get Started",
+      "href": "https://worldmonitor.app",
+      "highlighted": false,
+      "price": 0,
+      "period": "forever"
+    },
+    {
+      "name": "Pro",
+      "localeKey": "pro",
+      "description": "Full intelligence dashboard",
+      "features": ["..."],
+      "highlighted": true,
+      "monthlyPrice": 39.99,
+      "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
+      "annualPrice": 359.99,
+      "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ"
+    },
+    {
+      "name": "Pro Business",
+      "localeKey": "proBusiness",
+      "description": "The Pro dashboard, licensed for work",
+      "features": ["..."],
+      "highlightFeatures": ["Commercial license included"],
+      "highlighted": false,
+      "monthlyPrice": 49.99,
+      "monthlyProductId": "pdt_...",
+      "annualPrice": 449.99,
+      "annualProductId": "pdt_..."
+    },
+    {
+      "name": "API Starter",
+      "localeKey": "api",
+      "description": "Build internal tools on live intelligence data",
+      "features": ["..."],
+      "highlighted": false,
+      "monthlyPrice": 99.99,
+      "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
+      "annualPrice": 899.99,
+      "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV"
+    },
+    {
+      "name": "API Business",
+      "localeKey": "apiBusiness",
+      "description": "Launch your own product on WorldMonitor data",
+      "features": ["..."],
+      "highlighted": false,
+      "monthlyPrice": 299.99,
+      "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius"
+    },
+    {
+      "name": "Enterprise",
+      "localeKey": "enterprise",
+      "description": "Custom solutions for organizations",
+      "features": ["..."],
+      "cta": "Contact Sales",
+      "href": "mailto:enterprise@worldmonitor.app",
+      "highlighted": false,
+      "price": null
+    }
+  ],
+  "fetchedAt": 1751799600000,
+  "cachedUntil": 1751803200000,
+  "priceSource": "dodo"
+}
+```
+
+说明：
+
+- 价格字段直接放在分层对象上。付费分层始终暴露 `monthlyPrice` / `monthlyProductId`，仅当存在年度变体时才添加 `annualPrice` / `annualProductId` —— API Business 仅为月度，因此这些字段在其上不存在。Free 使用 `price: 0, period: "forever"`；Enterprise 使用 `price: null`。
+- `highlightFeatures` 是可选数组，用于许可 / 商用说明，在定价页上与 `features` 分开渲染。没有此类说明的分层会省略该字段。
+- 价格单位为美元（Dodo 返回分；处理程序除以 100）。已发布目录的货币隐式为 USD。
+
+### `DELETE /api/product-catalog`
+
+清除缓存的目录。需要 `Authorization: Bearer $RELAY_SHARED_SECRET`。内部使用。
+
+## 推荐
+
+### `GET /api/referral/me`
+
+返回调用者的确定性推荐码（Clerk userId 的 8 字符 HMAC，在账户生命周期内保持稳定）和预构建的分享 URL。需要 Clerk bearer。处理程序还会触发一个尽力而为的 `ctx.waitUntil` Convex 绑定，以便未来的 `/pro?ref=<code>` 注册可以归因 —— 这绝不会阻塞响应。
+
+```json
+{
+  "code": "a1b2c3d4",
+  "shareUrl": "https://worldmonitor.app/pro?ref=a1b2c3d4"
+}
+```
+
+错误：
+
+- `401 UNAUTHENTICATED` —— 缺少或无效的 Clerk JWT。
+- `503 service_unavailable` —— 未配置 `BRIEF_URL_SIGNING_SECRET`（推荐码 HMAC 复用该密钥）。
+
+目前不返回 `referrals` 计数或 `rewardMonths` —— Dodo 的 `affonso_referral` 归因尚未流入 Convex，且仅暴露候补名单侧的计数会造成误导。
+
+`affonso_referral` 是 Dodo 转发给 Affonso 推荐追踪 webhook 的供应商契约元数据键。该键名是承载性的 —— 重命名它（为 `wm_referral`、`ref` 等）会静默破坏 Dodo→Affonso 归因。写入/读取调用点见 `convex/payments/checkout.ts` 和 `convex/payments/subscriptionHelpers.ts`。
+
+## 候补名单
+
+### `POST /api/leads/v1/register-interest`
+
+将邮箱捕获到 Convex 候补名单表中。经 Turnstile 验证（桌面来源绕过），按 IP 限速。属于 `LeadsService` 的一部分；请求结构见[平台端点](/zh/api-platform)。

@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'workers/api-cors-preflight/**'
+      - 'api/_bootstrap-public-tier.js'
       - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
@@ -29,14 +30,14 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
       - name: Install
         run: npm install --no-audit --no-fund
       - name: Run unit tests
-        run: node --test index.test.mjs
+        run: npm test
 
   deploy:
     name: Wrangler deploy
@@ -46,12 +47,33 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
       - name: Install
         run: npm install --no-audit --no-fund
+      # The KV shadow (BOOTSTRAP_KV_SHADOW=1) emits to Axiom; the Worker reads AXIOM_API_TOKEN
+      # as a secret. Set it before deploy. Absent secret => the shadow no-ops silently
+      # (warnDeliveryFailure 'missing_token'), never an error — so a missing secret can't
+      # break the CORS deploy.
+      - name: Set Axiom secret
+        # Must never gate the CORS deploy. A secret-put that fails (token lacks the
+        # Workers-secret scope, transient CF error) would otherwise fail the job and skip
+        # Deploy below — coupling the fragile CORS deploy to Axiom telemetry, the exact
+        # invariant this path promises not to break. On failure the shadow just no-ops
+        # (missing_token); the failure still surfaces in the job log.
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AXIOM_API_TOKEN: ${{ secrets.AXIOM_API_TOKEN }}
+        run: |
+          if [ -n "$AXIOM_API_TOKEN" ]; then
+            printf '%s' "$AXIOM_API_TOKEN" | npx wrangler secret put AXIOM_API_TOKEN
+          else
+            echo "AXIOM_API_TOKEN not set — KV shadow telemetry no-ops (measured silently)"
+          fi
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -63,7 +85,7 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'

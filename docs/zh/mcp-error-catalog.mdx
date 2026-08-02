@@ -1,0 +1,370 @@
+---
+title: "MCP 错误目录"
+description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的完整目录：JSON-RPC 错误代码、HTTP 状态码与软行为响应信封，每一项均附具体触发条件、示例负载结构、客户端处理建议与重试与退避策略，帮助集成方稳健实现异常处理、可观测性告警、故障恢复与优雅降级流程。"
+---
+
+{/*
+  权威参考 —— 当 handler 迁移时请保持本注释同步。
+  本页中的每个 code/envelope 都应对应到下面某一行；下面的每个
+  emission 站点也都应出现在本页中。
+
+  - JSON-RPC envelope helpers           api/mcp/rpc.ts (rpcOk, rpcError)
+  - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
+  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
+  - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
+  - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
+  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
+  - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
+  - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
+  - _jmespath_error envelope            api/mcp/jmespath.ts (applyJmespath)
+  - JMESPath caps                       api/mcp/constants.ts (JMESPATH_LIMITS)
+  - Prompts -32602                      api/mcp/prompts/index.ts (listPrompts, getPrompt)
+  - Resources -32602 / -32603           api/mcp/resources/index.ts (listResources, readResource)
+*/}
+
+本页是实用参考：收到一个负载后，你可以查阅它，从而知道下一步该怎么做。服务器在三个独立层面发出失败信号 —— **HTTP 状态码**、**JSON-RPC `error.code`**，以及 **`result.content[0].text` 中的软行为信封** —— 一次失败可能触及其中一个、两个或全部三个层面。请由外向内排查：HTTP 状态码 → JSON-RPC 代码 → 软信封。
+
+关于投影语法本身，请参阅 [JMESPath 指南](/zh/mcp-jmespath)。关于各工具的参数与新鲜度预算，请参阅 [工具参考](/zh/mcp-tools-reference)。
+
+## 快速指引
+
+- **HTTP 状态码**是传输层的回答。大多数 JSON-RPC 回复 —— 无论成功还是错误 —— 按 JSON-RPC 2.0 惯例都会以 **HTTP 200** 返回。只有当失败属于通用 HTTP 客户端必须响应的情况（鉴权、每日上限、服务不可用）且受益于 `Retry-After` / `WWW-Authenticate` 头时，handler 才会升级状态码。
+- **JSON-RPC `error.code`** 是应用层的回答。共使用六个代码：`-32001`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。handler 不会发出其他代码 —— 如果你看到了其他代码，请将其视为协议 bug 并提交 issue。
+- **软行为信封**是高频失败模式。`tools/call` 在 JSON-RPC 层成功（HTTP 200，无 `error` 字段），但位于 `result.content[0].text` 中的 JSON 携带了一个 `_budget_exceeded` 或 `_jmespath_error` 判别字段。只检查 JSON-RPC 信封的客户端会默默地把这些当作成功 —— 请解析 `result.content[0].text`，并在将该负载作为数据消费前检查是否存在前导下划线 `_` 键。
+- **已执行的调用仍计费。** `_budget_exceeded`、`_jmespath_error` 和工具执行错误（`-32603`）都发生在工具已运行之后，因此它们会消耗 Pro 每日配额槽位。只有预分发失败（如每日上限拒绝或配额预留服务失败）才不消耗槽位。
+- **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向 `/.well-known/oauth-protected-resource` 的 `resource_metadata` 指针。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。
+
+## JSON-RPC 错误代码
+
+| 代码      | 含义（本服务器）                                                      | 配对 HTTP 状态码        | 恢复方式                                                              |
+|-----------|------------------------------------------------------------------------|---------------------------|-----------------------------------------------------------------------|
+| `-32001`  | 未鉴权、令牌无效或订阅未激活             | **401**                   | 通过 OAuth 重新鉴权，或修正 `X-WorldMonitor-Key` 头      |
+| `-32029`  | 被限流 —— 每分钟节流或 Pro 每日配额上限              | **200**（每分钟）/ **429**（每日） | 遵循 `Retry-After`；对于 200/每分钟，退避约 1 秒                    |
+| `-32600`  | 格式错误的 JSON-RPC 请求信封                                    | **200**                   | 修正请求编码器；这是客户端 bug                         |
+| `-32601`  | 方法未找到                                                       | **200**                   | 使用 initialize 结果中 `capabilities` 所宣告的方法     |
+| `-32602`  | 参数无效 —— 缺失/未知的工具、提示或资源 URI         | **200**                   | 修正参数；查阅 `tools/list`、`prompts/list` 或 `resources/list` |
+| `-32603`  | 内部错误 —— 鉴权服务 / 配额 / 工具执行失败         | **200**（工具）/ **503**（基础设施） | 退避重试；若持续，提交 issue                      |
+
+下面的小节给出每个代码的字面负载、触发站点以及应对方式。
+
+### `-32001` —— 未鉴权 / 凭证无效
+
+在 `api/mcp/auth.ts` 的六个发出站点触发，总是配对 HTTP **401** 和 `WWW-Authenticate` 头。这些站点归并为五个用户可见的触发点，按客户端命中顺序排列如下：
+
+1. **既无 `Authorization` bearer 也无 `X-WorldMonitor-Key`** —— 客户端在调用 `/mcp` 时未携带任何凭证。
+2. **`Authorization: Bearer <token>` 但 `<token>` 无效或已过期** —— 令牌无法解析到上下文（被撤销 / TTL 过期 / 从未由 `/api/oauth/token` 签发）。
+3. **`X-WorldMonitor-Key: <key>` 但 `<key>` 不在有效集合中** —— API key 错误。
+4. **OAuth 令牌可解析但 Pro MCP 令牌行缺失或跨绑定** —— `mcpTokenId` 不再映射到该 userId。通常是 Settings → Connected MCP clients 中的撤销操作所致。
+5. **OAuth 令牌可解析但订阅已失效** —— 权益重新检查发现 `tier < 1`、`mcpAccess !== true` 或 `validUntil < now`。包括权益服务不可用时的故障关闭路径。
+
+示例线上负载（情况 1）：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": {
+    "code": -32001,
+    "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header."
+  }
+}
+```
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"
+Content-Type: application/json
+```
+
+**如何处理。** 重新走一遍 OAuth 流程（`/api/oauth/token` 使用新的授权码，或用有效 refresh token 做刷新授权）。对于 API key 客户端，复核 `X-WorldMonitor-Key` 头 —— 用户签发的 `wm_` key 与运维签发的企业 key 必须放在该头中，**而不是**作为 `Authorization: Bearer`。`WWW-Authenticate` 头中的 `resource_metadata` 指针是从零开始发起发现流程的权威入口。
+
+### `-32029` —— 被限流（每分钟或每日）
+
+每分钟与每日上限触发条件共用此代码；由 HTTP 状态码区分。
+
+**每分钟节流 —— HTTP 200。** 滑动窗口限流器为 **60 次请求 / 分钟**，按 API key（Starter 及以上）、按 Pro 用户（该用户所有令牌合计）或按 IP（用于匿名公开发现）键控。已鉴权请求在鉴权之后受限。无凭证的公开发现方法（`initialize`、`notifications/initialized`、`tools/list`、`resources/list`、`resources/templates/list`）与匿名公开资源读取无需鉴权即可服务，但仍会经过匿名发现限流器。无凭证的数据 / 配额方法，或该公开集合之外的元数据方法，**不**使用匿名发现 —— 它们以 `-32001` / HTTP 401 故障关闭。以 HTTP 200 内的 JSON-RPC 错误返回，因为限流器位于任何按 id 关联的上游。在 Upstash 瞬时错误时**故障开放** —— 限流器后端的偶发延迟尖峰不会拖垮整个 API。
+
+当每分钟限流器拒绝时，handler 会发出一条持久的 `mcp.rate_limit_hit` 遥测事件，其身份形态经过允许列表过滤。套餐限制扫描器用该事件做持续突发通知；它不会从原始 Upstash 限流器内部推断面向客户的 MCP 突发通知。
+
+`message` 文本标识了是哪个限流器触发。有三种不同字符串：
+
+| 鉴权上下文                              | `message`                                                                           | 站点                                                    |
+|-------------------------------------------|-------------------------------------------------------------------------------------|---------------------------------------------------------|
+| `X-WorldMonitor-Key`                      | `Rate limit exceeded. Max 60 requests per minute per API key.`                      | `api/mcp/auth.ts` `applyPerMinuteLimit` API-key 分支  |
+| Pro OAuth bearer                          | `Rate limit exceeded. Max 60 requests per minute per Pro user.`                     | `api/mcp/auth.ts` `applyPerMinuteLimit` Pro 分支      |
+| 匿名发现路径上无凭证 | `Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.` | `api/mcp/auth.ts` `applyAnonDiscoveryLimit`             |
+
+示例负载（Pro 变体 —— env_key 客户端得到相同信封形状，但使用 API-key 的 message 字符串）：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": {
+    "code": -32029,
+    "message": "Rate limit exceeded. Max 60 requests per minute per Pro user."
+  }
+}
+```
+
+**Pro/OAuth 每日上限 —— HTTP 429 + `Retry-After`。** 硬性每日上限（默认 **50 次配额消耗调用 / UTC 日**）由工具运行**之前**的原子 Redis 预留执行，因此恰好跨越边界的那次调用会被拒绝。只有 `tools/call` 和对数据承载 **URI 模板实例化**的 `resources/read`（鉴权对称的 resources 路径）计数。`wm_…` API-key MCP 调用者不进入此 MCP 每日预留路径；它们在此由 60 次请求 / 分钟 / 密钥限流器保护，而更宽泛的 REST/API 套餐额度在 MCP handler 之外强制执行。**豁免 Pro/OAuth 每日上限：** `describe_tool`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`initialize`、`notifications/initialized`、`ping`，以及对**公开**（具体、仅元数据）资源的 `resources/read`，例如 `worldmonitor://seed-meta/freshness`。（这些方法仍计入上面的每分钟限制 —— 每日与每分钟的豁免集合不同。）
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32029,
+    "message": "Daily MCP quota exceeded (50/day). Resets at next UTC midnight."
+  }
+}
+```
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 41200
+Content-Type: application/json
+```
+
+**如何处理。** 对于 HTTP 200 / 每分钟：退避约 1 秒后重试。限流器是滑动窗口而非令牌桶 —— 持续 60 rpm 没问题；任意 60 秒窗口内超过 60 的突发会被拒绝。对于 HTTP 429 / 每日：遵循 `Retry-After`（该值为 `距 UTC 午夜的秒数`）。若 Pro/OAuth 每日上限是批量工作的瓶颈约束，请在合适时使用 API-key 或 REST/API 路径，或联系 Enterprise 获取自定义 MCP 限制。
+
+付费套餐客户还会在持续用量越过套餐阈值时收到账户通知与有界节奏的邮件。这些通知绝不意味着自动升级、自动超额收费或自动迁入 API Business；支持或结账动作是显式的。
+
+### `-32600` —— 请求信封无效
+
+当请求体不是合法 JSON，或是合法 JSON 但缺少字符串类型的 `method` 字段时触发。位于 `api/mcp/handler.ts` 的两个站点。严格来说是客户端编码器 bug —— 格式良好的 JSON-RPC 客户端在生产中永远不会看到它。
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": { "code": -32600, "message": "Invalid request: missing method" }
+}
+```
+
+**如何处理。** 审查请求编码器。请求体必须是 JSON 对象，含字符串类型的 `method`，以及（除 `notifications/*` 外的任何方法都需要的）`id` 字段。如果你从已知良好的客户端库看到 `-32600`，请针对本服务器提交 issue —— 它不应到达你这一侧。
+
+### `-32601` —— 方法未找到
+
+`method` 字段是字符串但未匹配到任何 handler。本服务器支持的方法：`initialize`、`notifications/initialized`、`ping`、`tools/list`、`tools/call`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`resources/read`、`logging/setLevel`。
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "error": { "code": -32601, "message": "Method not found: tools/run" }
+}
+```
+
+**如何处理。** 使用你的 `initialize` 响应中 `capabilities` 块里存在的方法。注意 `resources/subscribe` **未**实现（initialize 握手明确宣告 `resources.subscribe: false`）—— 尝试调用它的客户端会得到 `-32601`。
+
+### `-32602` —— 参数无效
+
+最常见的错误代码，跨 `tools/call`、`prompts/get`、`resources/read` 和 `logging/setLevel` 共用。六种具体触发条件：
+
+| 触发条件                                                | 站点                              | 示例 `message`                                                          |
+|--------------------------------------------------------|-----------------------------------|----------------------------------------------------------------------------|
+| `tools/call` 缺少或 `name` 非字符串                 | `api/mcp/dispatch.ts` `dispatchToolsCall` 参数守卫 | `Invalid params: missing tool name`                                        |
+| `tools/call` 的 `name` 不在注册表中    | `api/mcp/dispatch.ts` `dispatchToolsCall` 注册表查找 | `Unknown tool: get_foo`                                                    |
+| `prompts/get` 缺少或 `name` 非字符串                | `api/mcp/handler.ts` `prompts/get` 分支          | `Invalid params: missing prompt name`                                      |
+| `prompts/get` 名称未知或缺少必填参数 | `api/mcp/prompts/index.ts` `buildPromptResponse`   | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
+| `resources/read` 缺少/未知/格式错误的 `uri`       | `api/mcp/resources/index.ts`（`buildPublicResourceResponse` / `buildResourceResponse`）  | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
+| `logging/setLevel` 级别非字符串或不在集合内 | `api/mcp/handler.ts` `logging/setLevel` 分支          | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "error": { "code": -32602, "message": "Unknown tool: get_marekt_data" }
+}
+```
+
+**如何处理。** 阅读 `message` —— 它总是告诉你缺少或错误了什么。对于工具，名称在 `tools/list` 中。对于提示，名称 + 参数 schema 在 `prompts/list` 中。对于资源，具体 URI 在 `resources/list` 中，参数化 URI 模板在 `resources/templates/list` 中。对于 `logging/setLevel`，有效级别是上面列出的 [RFC 5424 子集](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1)。
+
+### `-32603` —— 内部错误
+
+三种不同条件共用此代码；HTTP 状态码区分重试是否合理。
+
+**HTTP 200 —— 工具执行失败。** 工具分发器抛出异常。最常见情形：工具读取的每个 Redis key 都返回 null（`cache_all_null` —— 瞬时 Redis 抖动或仍在预热的种子程序），或一个同侪内部抓取在调用中途失败。Pro 配额不会回滚：工具已执行，因此重试会再消耗一个槽位。
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "error": { "code": -32603, "message": "Internal error: data fetch failed" }
+}
+```
+
+**HTTP 503 + `Retry-After: 5` —— 服务不可用。** 要么 OAuth 解析服务抛出（Convex 瞬时抖动），要么部署中未设置 `MCP_INTERNAL_HMAC_SECRET`（配置错误 —— 没有它 Pro 工具调用无法签名其下游请求），要么 Pro 每日配额预留的 Redis pipeline 因 `cap-exceeded` 以外的错误失败。
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": { "code": -32603, "message": "Auth service temporarily unavailable. Try again." }
+}
+```
+
+```http
+HTTP/1.1 503 Service Unavailable
+Retry-After: 5
+Content-Type: application/json
+```
+
+`message` 文本标识了触发条件。三个站点发出 503；有两种不同字符串：
+
+| 触发条件                                         | `message`                                              | 站点                              |
+|-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
+| OAuth 解析服务抛出（Convex 抖动）    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts` `resolveAuthContext` bearer 分支 |
+| `MCP_INTERNAL_HMAC_SECRET` 未设置（Pro 路径）     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts` `runProPreChecks` 密钥预检 |
+| Pro 配额预留 Redis 失败（非上限）   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts` `dispatchToolsCall` 配额预留 |
+
+三种情况的客户端恢复方式一致（遵循 `Retry-After: 5`）；message 仅用于日志分析时的区分。
+
+**HTTP 200 —— `resources/read` 负载为空或不可解析。** `resources/read` 内部的防御性检查，针对内部 `tools/call` 分发器返回的 `content[0].text` 为空或非 JSON 文本的不应发生情形。
+
+**如何处理。** 对于 HTTP 200 工具错误：约 1 秒后重试一次；若某个工具持续返回 `-32603`，请在 [status.worldmonitor.app](https://status.worldmonitor.app) 查看相关种子程序。对于 HTTP 503：遵循 `Retry-After`。对于 `resources/read` 防御性情形：提交 issue —— 它表明你调用上游存在分发器契约违规。
+
+## HTTP 状态码
+
+MCP handler 可能返回的每个状态码。大多数 JSON-RPC 回复 —— 包括大多数错误 —— 按惯例是 HTTP 200；下表标出 handler 升级状态码的情况。
+
+| 状态码 | 主体形状                | JSON-RPC 代码 | 原因                                                                 |
+|--------|---------------------------|------------------|-----------------------------------------------------------------------|
+| **200** | JSON-RPC 信封         | 成功 或 `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | 任意成功调用，或不需要传输层升级的应用层错误 |
+| **202** | 空                     | n/a              | `notifications/initialized` —— 按规范，JSON-RPC 通知不返回响应体 |
+| **204** | 空                     | n/a              | `OPTIONS` 预检                                                  |
+| **401** | JSON-RPC 信封         | `-32001`         | 凭证缺失/无效/过期、Pro MCP 令牌被撤销、订阅未激活。设置了 `WWW-Authenticate` 头。 |
+| **405** | 空                     | n/a              | 请求方法不是 `POST`、`GET`、`HEAD` 或 `OPTIONS`（或无 `Last-Event-ID` 的裸 `GET`）。设置了 `Allow: POST, GET, HEAD, OPTIONS` 头。 |
+| **429** | JSON-RPC 信封         | `-32029`         | **仅 Pro 每日上限超限。** 设置了 `Retry-After: <距 UTC 午夜的秒数>`。（每分钟节流在 HTTP 200 内返回 `-32029` —— 见上文 `-32029`。） |
+| **503** | JSON-RPC 信封         | `-32603`         | 鉴权服务不可用、`MCP_INTERNAL_HMAC_SECRET` 配置错误，或配额预留 Redis 失败。`Retry-After: 5`。 |
+
+有一个 HTTP 状态码不属于 JSON-RPC 错误：
+
+- **405 携带空主体**来自 JSON-RPC **之前**的方法校验。handler 接受 `POST`（JSON-RPC 路径）、`GET`（独立 SSE 流 / `Last-Event-ID` 重放通道）、`HEAD`（以 200 ack 携带 `Content-Type: application/json`，供可用性探测使用）和 `OPTIONS`（CORS 预检）。无 `Last-Event-ID` 的裸 `GET` 也返回 405（不提供独立流）。其他方法得到 405 + `Allow: POST, GET, HEAD, OPTIONS`。该端点不强制 `Origin` 允许列表：它通告通配 CORS，并通过显式 `Authorization` / `X-WorldMonitor-Key` 头鉴权，因此浏览器来源客户端（任意来源）均被接受。
+
+## 软行为信封
+
+软信封是高频失败模式，也是只检查 JSON-RPC 层的客户端最常遇到的解析 bug。`tools/call` 返回 **HTTP 200** 且**没有 `error` 字段**，`result.content[0].text` 可解析为 JSON，所得对象带有一个前导下划线判别键。务必：
+
+1. 将 `result.content[0].text` 解析为 JSON。
+2. 检查解析后的对象顶层是否含有 `_budget_exceeded` 或 `_jmespath_error` 键。若有，视为错误，不要将同侪字段当作数据消费。
+3. 否则，将解析后的对象视为该工具的正常响应（缓存工具会将其包成 `{ cached_at, stale, data }`；RPC 工具返回其声明的形状）。
+
+### `_budget_exceeded` —— 响应超出每工具预算
+
+每个工具声明一个每工具输出预算（`_outputBudgetBytes`），其大小设定为使响应能容纳在典型 agent 上下文窗口内。当序列化响应在所有每工具过滤器、`summary` 和 JMESPath 都已应用**之后**仍超出该预算时，分发器会用此信封替换超限负载 —— 仍在正常 MCP result 中，仍为 HTTP 200，仍无 `isError`：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"_budget_exceeded\":true,\"budget_bytes\":65536,\"actual_bytes\":142337,\"hint\":\"Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.\"}"
+      }
+    ]
+  }
+}
+```
+
+解码后的 `text` 负载：
+
+```json
+{
+  "_budget_exceeded": true,
+  "budget_bytes": 65536,
+  "actual_bytes": 142337,
+  "hint": "Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set."
+}
+```
+
+字段：
+
+- `_budget_exceeded: true` —— 判别字段。始终字面为 `true`；绝不会出现在成功响应中。
+- `budget_bytes: number` —— 响应所对照检查的每工具预算。
+- `actual_bytes: number` —— 所有收窄后序列化响应的 UTF-8 字节长度。
+- `hint: string` —— 恢复建议。文本因调用者是否已传入 `jmespath` 参数而异；两种措辞都要求你收窄结果。
+
+**配额。** Pro 每日配额槽位不会回滚。工具在服务端度量序列化输出大小之前已执行，因此即便响应是错误信封，槽位仍计费。
+
+**恢复。** 让投影更具选择性，叠加一个工具级过滤器（`country`、`since`、`limit`），或两者并用。[JMESPath 指南](/zh/mcp-jmespath) 有投影的示例。`summary: true` 标志（每个缓存工具都接受）返回一个服务端构建的计数与样本摘要，始终在预算以内。
+
+### `_jmespath_error` —— 投影失败
+
+三种失败类型，都以相同信封形状返回。`_jmespath_error` 的值是一个**字符串**（不是对象）；其内容为 `<kind>: <details>`。判别依据是第一个 `:` **之前的开头 kind 词元**。
+
+```json
+{
+  "_jmespath_error": "invalid_expression: Parse error at column 32: …",
+  "original_keys": ["stocks-bootstrap", "commodities-bootstrap", "crypto", "sectors", "etf-flows", "gulf-quotes", "fear-greed"]
+}
+```
+
+`original_keys` 是未投影响应的顶层键（上限 50 项，截断时带有 `...<N more>` 哨兵）。其存在正是为了让 LLM 能在下一次 `tools/call` 时自我纠正而无需重新抓取 —— 投影失败了，但工具抓取本身是成功的。
+
+**配额。** Pro 每日配额槽位**不**回滚。工具抓取已成功；失败的是用户提供的投影。一个错误表达式每次尝试消耗一个配额槽位，这正是 `original_keys` 存在的原因 —— 让重试在额外一次调用内自我纠正，而非在 N 次调用上盲目猜测。
+
+三种类型：
+
+#### `expression_too_long`
+
+JMESPath 表达式本身超过 **1024 个 UTF-8 字节**（`JMESPATH_MAX_EXPR_BYTES`）。此上限有意设得宽松 —— 真实表达式通常为 50–200 字节 —— 而一个 1024+ 字节的表达式几乎总是意味着误把整个负载复制粘贴进了参数。
+
+```json
+{
+  "_jmespath_error": "expression_too_long: 1156 > 1024",
+  "original_keys": ["stocks-bootstrap", "commodities-bootstrap", "crypto"]
+}
+```
+
+**恢复。** 缩短表达式。如果你确实需要 >1KB 的投影，将工作拆分到多次调用中。
+
+#### `invalid_expression`
+
+JMESPath 引擎解析表达式时抛出 —— 语法错误、未闭合的方括号、未知函数。kind 词元之后的 `details` 是解析器错误信息的逐字内容。
+
+```json
+{
+  "_jmespath_error": "invalid_expression: Parse error at column 32: expected one of [LBRACKET, DOT]",
+  "original_keys": ["ucdp-events"]
+}
+```
+
+**恢复。** 修正表达式。两种最常见的 bug 是：(a) 在字符串字面量两端用了双引号（`[?country == "Iraq"]`），而 JMESPath 要求单引号（`[?country == 'Iraq']`）；(b) 用了裸数字字面量（`[?deathsBest > 0]`），而 JMESPath 要求反引号（`[?deathsBest > \`0\`]`）。[JMESPath 指南](/zh/mcp-jmespath) 涵盖了这两个坑。
+
+#### `projection_too_large`
+
+表达式解析并运行成功，但投影输出在字符串化后超过 **256 KB**（`JMESPATH_MAX_OUTPUT_BYTES`）。几乎总是表明一个失控的 multiselect-hash 或 multiselect-list 在大型数组上重复复制字段。
+
+```json
+{
+  "_jmespath_error": "projection_too_large: 412338 > 262144",
+  "original_keys": ["ucdp-events"]
+}
+```
+
+**恢复。** 使用更精简的 multiselect-hash（丢弃字段），先过滤输入数组（`[?...]`），或对结果切片（`[0:N]`）。管道组合子（见 [JMESPath 指南](/zh/mcp-jmespath) 示例 12）在此组合良好。
+
+### 其他工具专属信封
+
+少数工具在 `content[0].text` 内返回自己的应用层错误信封，而非通过 JSON-RPC `-32602`。这些在 [工具参考](/zh/mcp-tools-reference) 中按工具记录 —— 本目录列出它们以便客户端识别该模式：
+
+- **`describe_tool`** 返回 `{ "error": "missing_tool_name", "hint": "..." }` 或 `{ "error": "unknown_tool", "requested": "...", "available": [...] }`。配额豁免 —— 错误输入不消耗配额槽位。见 [工具参考 → `describe_tool`](/zh/mcp-tools-reference#describe_tool)。
+
+若你要构建通用信封检测器，对目录类信封以前导下划线（`_budget_exceeded`、`_jmespath_error`）为键，对每工具信封以顶层 `error: string` 为键。
+
+## 路线图
+
+- **预算超限时自动摘要。** 未来的协议修订可能让 `_budget_exceeded` 响应在信封之外内联附带一个服务端构建的摘要（一个带注解的内容块），适用于摘要定义良好的那部分工具。推迟到生产遥测数据能证明每工具权衡合理之时。
+
+## 另请参阅
+
+- [MCP Server 概览](/zh/mcp-overview) —— 端点、鉴权模式、OAuth 配置、套餐与配额。
+- [JMESPath 投影指南](/zh/mcp-jmespath) —— 投影语法 + 12 个示例；学习如何修复 `_jmespath_error` 以及从 `_budget_exceeded` 恢复的正确去处。
+- [MCP 工具参考](/zh/mcp-tools-reference) —— 每工具参数、响应形状及每工具软信封（例如 `describe_tool`）。
+- [MCP 快速入门](/zh/mcp-quickstart) —— 五分钟从零到首次调用的入门。
+- [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification) —— 本目录通篇引用的线上信封形状。
+- [RFC 9728 —— OAuth 2.0 Protected Resource Metadata](https://www.rfc-editor.org/rfc/rfc9728) —— `WWW-Authenticate` 的 `resource_metadata` 指针的含义。

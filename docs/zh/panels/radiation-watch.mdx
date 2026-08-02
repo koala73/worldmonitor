@@ -1,0 +1,58 @@
+---
+title: "辐射监测"
+description: "辐射监测面板整合美国 EPA RadNet 政府监测网络与 Safecast 公民科学众包平台的全球辐射剂量读数，与本地历史基线自动对比并计算实时异常评分，附多源数据的来源置信度综合评估，用于识别核事故、核试验、核潜艇泄漏与工业辐射泄漏事件的早期信号，为公共卫生安全与环境风险评估决策提供数据支撑。"
+---
+
+**Radiation Watch** 面板一眼回答三个问题：什么是**正常的**，什么是**升高的**，哪些异常是**已确认的**而非**初步的**。它从官方和公民科学网络拉取观测级读数，将每个站点与其自身基线比较，并用置信度评估标记异常，该评估协调来源之间的一致（或冲突）。
+
+## 面板显示内容
+
+一个辐射观测列表，包含：
+
+- **站点读数** — 观测值和单位，旁边显示基线。
+- **差值** — 当前读数与站点基线的比较（绝对值和 z 分数）。
+- **每行状态徽章** — 每个观测可以内联显示以下徽章：**confirmed**（跨来源确认）、**conflict**（与附近读数不一致）和 **CPM-derived**（值原本以每分钟计数表示，已转换 为面板显示单位）。
+
+面板顶部的摘要栏渲染六个计数卡片：
+
+| 卡片 | 支持字段 |
+|---|---|
+| 异常 | `anomalyCount` |
+| 升高 | `elevatedCount` |
+| 已确认 | `corroboratedCount` |
+| 低置信度 | `lowConfidenceCount` |
+| 冲突 | `conflictingCount` |
+| 峰值 | `spikeCount` |
+
+CPM 衍生观测仅按行显示（作为徽章），不在摘要栏中。
+
+**行交互**：
+- 点击一行将地图跳转到该站点的坐标（需要当前变体中已挂载地图）。
+
+面板 id 为 `radiation-watch`；规范组件为 `src/components/RadiationWatchPanel.ts`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *radiation*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中的 `FULL_PANELS`。
+
+## 数据来源
+
+根据面板内的信息工具提示，Radiation Watch 的种子来自：
+
+- **EPA RadNet** — 美国环境保护署的辐射监测网络。
+- **Safecast** — 开放公民科学辐射网络。
+
+单个 RPC 支持该面板：`GET /api/radiation/v1/list-radiation-observations`。后端种子器获取两个上游，应用基线比较 + 置信度综合，将聚合结果写入 Redis 中的 `radiation:observations:v1`。
+
+## 刷新频率
+
+种子器是短间隔作业。该键在 `api/health.js` 中允许最多 **30 分钟**（`maxStaleMin: 30`）后健康面才会升级。实际上这是平台上刷新最快的种子之一。
+
+## 层级与门控
+
+Radiation Watch 是**免费的**。`src/config/panels.ts` 中无 `premium` 标志；RPC 是公开的。
+
+## API 参考
+
+- [Radiation service](/api/RadiationService.openapi.yaml) — `list-radiation-observations`。

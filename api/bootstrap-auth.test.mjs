@@ -17,7 +17,14 @@ function snapshotEnv(names) {
   };
 }
 
-async function withMockedBootstrapAuth({ entitlement, userKeyResponse = 'valid', rateLimitResults, rateLimitStatus }, fn) {
+async function withMockedBootstrapAuth({
+  entitlement,
+  userKeyResponse = 'valid',
+  rateLimitResults,
+  rateLimitStatus,
+  bootstrapPipelineStatus,
+  bootstrapPipelineBody,
+}, fn) {
   const restoreEnv = snapshotEnv([
     'CONVEX_SITE_URL',
     'CONVEX_SERVER_SHARED_SECRET',
@@ -55,7 +62,19 @@ async function withMockedBootstrapAuth({ entitlement, userKeyResponse = 'valid',
         });
       }
       if (commands[0]?.[0] === 'GET') {
-        return new Response(JSON.stringify([{ result: null }]), {
+        if (bootstrapPipelineBody !== undefined) {
+          return new Response(JSON.stringify(bootstrapPipelineBody), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (bootstrapPipelineStatus) {
+          return new Response(JSON.stringify({ error: 'redis unavailable' }), {
+            status: bootstrapPipelineStatus,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify(commands.map(() => ({ result: null }))), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -156,6 +175,43 @@ function makeWeatherBootstrapRequest(headers = {}) {
     method: 'GET',
     headers,
   });
+}
+
+function makePublicWeatherBootstrapRequest(headers = {}) {
+  return new Request('https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1', {
+    method: 'GET',
+    headers,
+  });
+}
+
+function makeTierBootstrapRequest(tier = 'fast', headers = {}) {
+  return new Request(`https://api.worldmonitor.app/api/bootstrap?tier=${tier}`, {
+    method: 'GET',
+    headers,
+  });
+}
+
+function makePublicTierBootstrapRequest(tier = 'fast', headers = {}) {
+  return new Request(`https://api.worldmonitor.app/api/bootstrap?tier=${tier}&public=1`, {
+    method: 'GET',
+    headers,
+  });
+}
+
+function assertSharedCacheHeaders(resp) {
+  // Tier responses intentionally avoid public/s-maxage in Cache-Control (CF in
+  // front of api.worldmonitor.app would mispin ACAO) and shield via Vercel's
+  // CDN-Cache-Control instead.
+  assert.ok(resp.headers.get('cdn-cache-control'));
+  assert.match(resp.headers.get('cdn-cache-control') || '', /\b(public|s-maxage)\b/i);
+}
+
+function assertPublicCorsHeaders(resp) {
+  // Public seed payload → ACAO:* with no Vary: Origin and no credentials, so the
+  // shared CDN stores one entry per URL and no origin can pin an echoed ACAO.
+  assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  assert.equal(resp.headers.get('vary'), null);
 }
 
 function assertNonSharedCacheHeaders(resp) {
@@ -284,6 +340,61 @@ test('revoked wm_ user key returns generic non-cacheable 401 without leaking gat
   });
 });
 
+test('billing-verification lapse on a wm_ user key exposes a machine-readable code', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: {
+      planKey: 'free',
+      validUntil: 0,
+      features: { apiAccess: false },
+      billingStatus: 'subscription_lapsed',
+    },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 403);
+    assert.equal(resp.headers.get('x-billing-verification'), 'subscription_lapsed');
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(body.error, 'API access subscription lapsed');
+    assert.equal(body.code, 'subscription_lapsed');
+  });
+});
+
+test('retryable billing verification on a wm_ user key keeps Retry-After and code on the wire', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: {
+      planKey: 'free',
+      validUntil: 0,
+      features: { apiAccess: false },
+      billingStatus: 'renewal_verification_pending',
+      retryAfterSeconds: 19,
+    },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('retry-after'), '19');
+    assert.equal(body.code, 'renewal_verification_pending');
+  });
+});
+
+test('current API access keeps wm_ bootstrap usable while a stronger renewal is pending', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: {
+      ...activeApiEntitlement(),
+      billingStatus: 'renewal_verification_pending',
+      retryAfterSeconds: 19,
+    },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
 test('malformed wm_ user key is rejected before Redis or Convex validation', async () => {
   await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
     const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': 'wm_notcanonical' }));
@@ -390,16 +501,330 @@ test('key-auth response with an empty cache batch stays no-store (never shared-c
   });
 });
 
-test('anonymous weather-only bootstrap (no key header) keeps the shared public cache posture', async () => {
-  // Guards the inverse of the no-store path: a no-credential weather request
-  // must stay publicly cacheable. A regression flipping the isKeyAuth predicate
-  // would either break this or, worse, make a key-auth response shared-cacheable.
+test('anonymous weather-only bootstrap serves the public payload but never enters a shared cache', async () => {
+  // #5386: the bare `?keys=weatherAlerts` URL is the SAME URL a credentialed
+  // caller uses, and a CDN hit precedes handler auth. While it was
+  // shared-cacheable, a warm entry answered an invalid-key request with the
+  // cached anonymous 200 instead of the 401 the test below asserts — the origin
+  // and the edge disagreed about the same URL. The anonymous payload and its
+  // ACAO:* posture are unchanged; only the shared-cache shield moves to the
+  // explicitly-marked `&public=1` URL.
   await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
     const resp = await handler(makeWeatherBootstrapRequest());
 
     assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertPublicCorsHeaders(resp);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('explicit public weather bootstrap is CDN-cacheable', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicWeatherBootstrapRequest());
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+    // weatherAlerts rides the fast tier: shield at the fast s-maxage, not the
+    // slow-tier default the other single-key public URLs inherit.
+    assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=600/);
+    // Browser Cache-Control carries public/s-maxage here, unlike the
+    // `?tier=...&public=1` siblings which deliberately keep those tokens out
+    // (CF would mispin an echoed ACAO on those). Safe — and required — here
+    // because this response is ACAO:* for every caller. The live sweep's
+    // assertPublicCacheable() greps this header for `public`
+    // (tests/live-api-cache-auth-regression.test.mjs), so the divergence is
+    // load-bearing, not accidental: pin it.
     assert.match(resp.headers.get('cache-control') || '', /\bpublic\b/);
-    assert.match(resp.headers.get('cache-control') || '', /s-maxage/);
-    assert.ok(resp.headers.get('cdn-cache-control'));
+    assert.match(resp.headers.get('cache-control') || '', /s-maxage=600/);
+    // Public path short-circuits before any key/entitlement validation.
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('explicit public weather bootstrap ignores attached credentials by design', async () => {
+  // The marked URL has ONE response contract for every caller, exactly like
+  // `?tier=fast&public=1`: a CDN hit precedes handler auth, so a credential-
+  // dependent answer here could never be honored. Callers that need their key
+  // validated use the bare URL, which is no-store and always reaches the origin.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicWeatherBootstrapRequest({ 'X-WorldMonitor-Key': 'wm_notcanonical' }));
+
+    assert.equal(resp.status, 200);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+  });
+});
+
+test('explicit public weather bootstrap answers a VALID entitled key identically', async () => {
+  // "One response contract for every caller" is the property that makes this URL
+  // safe to cache at all — a CDN hit precedes auth, so if an entitled caller
+  // could ever get something different here, the cache would hand that
+  // difference to everyone. The invalid-key case above is only half the proof;
+  // this is the half that would actually leak if the short-circuit regressed.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicWeatherBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+
+    assert.equal(resp.status, 200);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('explicit public weather bootstrap answers a session cookie identically', async () => {
+  // The shape the dashboard produces if `credentials: 'omit'` is ever dropped
+  // from src/services/weather.ts. It must still be the shared public response —
+  // otherwise a signed-in browser could mint a session-flavoured entry at the
+  // shared cache key.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const { token } = await issueSessionToken();
+    const resp = await handler(makePublicWeatherBootstrapRequest({ Cookie: `wm-session=${token}` }));
+
+    assert.equal(resp.status, 200);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+  });
+});
+
+test('disallowed-Origin rejection is never cacheable on a public URL', async () => {
+  // The 403 is decided by the Origin header, which no cache layer here keys on.
+  // On a `&public=1` URL — shared by every caller — a cacheable 403 minted by one
+  // disallowed origin is a rejection a shared cache can replay to legitimate
+  // callers. Assert both URL shapes.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    for (const req of [
+      makePublicWeatherBootstrapRequest({ Origin: 'https://evil.example' }),
+      makeWeatherBootstrapRequest({ Origin: 'https://evil.example' }),
+    ]) {
+      const resp = await handler(req);
+
+      assert.equal(resp.status, 403);
+      assert.equal(resp.headers.get('cache-control'), 'no-store', new URL(req.url).search);
+      assert.equal(resp.headers.get('cdn-cache-control'), null);
+    }
+  });
+});
+
+test('HEAD on the public weather URL is not the public path', async () => {
+  // Mirrors the tier rule: the marked public URLs are GET-only, so a HEAD falls
+  // through to credentialed validation rather than minting a cacheable entry.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(
+      new Request('https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1', { method: 'HEAD' }),
+    );
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+  });
+});
+
+test('explicit public fast-tier bootstrap is CDN-cacheable — restores the #5249 shield', async () => {
+  // The regression: dashboard boots carry an anonymous wm-session cookie, so
+  // successful tier reads returned no-store and every boot re-read the full
+  // registry from Upstash. A credential-less tier read serves the shared public
+  // seed payload and MUST carry the CDN shared-cache shield.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicTierBootstrapRequest('fast'));
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertSharedCacheHeaders(resp);
+    assertPublicCorsHeaders(resp);
+    // fast tier shields at s-maxage=600; browser Cache-Control stays private
+    // (max-age only — no public/s-maxage) to avoid CF ACAO mispinning.
+    assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=600/);
+    assert.doesNotMatch(resp.headers.get('cache-control') || '', /\bpublic\b/);
+    // Public path short-circuits before any key/entitlement validation.
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('HEAD tier bootstrap is not the public path (no unshielded Redis read)', async () => {
+  // A HEAD read must not qualify for the cacheable public-tier path, or it would
+  // run the full registry Redis pipeline to build a body it cannot return.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(
+      new Request('https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1', { method: 'HEAD' }),
+    );
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    // Rejected before any Redis GET pipeline runs.
+    assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test')), false);
+  });
+});
+
+test('explicit public slow-tier bootstrap is CDN-cacheable with the slow TTL', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makePublicTierBootstrapRequest('slow'));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+    assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=7200/);
+  });
+});
+
+test('legacy anonymous tier URL remains credentialed and non-cacheable', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeTierBootstrapRequest('fast'));
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('explicit public tier URL keeps public semantics even when credentials are attached', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicTierBootstrapRequest('fast', {
+      'X-WorldMonitor-Key': ENTERPRISE_KEY,
+    }));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+    assertPublicCorsHeaders(resp);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+  });
+});
+
+test('public tier Redis outage returns retryable 503 without a CDN cache header', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: activeApiEntitlement(),
+    bootstrapPipelineStatus: 500,
+  }, async () => {
+    const resp = await handler(makePublicTierBootstrapRequest('fast'));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('retry-after'), '5');
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(resp.headers.get('cdn-cache-control'), null);
+    assert.equal(resp.headers.get('vercel-cdn-cache-control'), null);
+    assertPublicCorsHeaders(resp);
+    assert.equal(body.error, 'Bootstrap service temporarily unavailable');
+  });
+});
+
+for (const [label, bootstrapPipelineBody] of [
+  ['truncated response', []],
+  ['per-command error', [{ error: 'upstream command failed' }]],
+]) {
+  test(`public tier Redis ${label} returns retryable 503 without a CDN cache header`, async () => {
+    await withMockedBootstrapAuth({
+      entitlement: activeApiEntitlement(),
+      bootstrapPipelineBody,
+    }, async () => {
+      const resp = await handler(makePublicTierBootstrapRequest('fast'));
+
+      assert.equal(resp.status, 503);
+      assert.equal(resp.headers.get('cache-control'), 'no-store');
+      assert.equal(resp.headers.get('cdn-cache-control'), null);
+      assertPublicCorsHeaders(resp);
+    });
+  });
+}
+
+test('session-cookie legacy tier bootstrap stays no-store', async () => {
+  // The legacy tier URL remains credentialed and cannot share the explicit
+  // public=1 cache entry.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const { token } = await issueSessionToken();
+    const resp = await handler(makeTierBootstrapRequest('fast', { Cookie: `wm-session=${token}` }));
+
+    assert.equal(resp.status, 200);
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('enterprise-key legacy tier bootstrap stays no-store (key auth is never shared-cacheable)', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeTierBootstrapRequest('fast', { 'X-WorldMonitor-Key': ENTERPRISE_KEY }));
+
+    assert.equal(resp.status, 200);
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('tier bootstrap with extra params is not treated as the public path', async () => {
+  // Only the two fixed tier shapes qualify; an arbitrary extra param must fall
+  // back to key auth (401 here) so we never widen the cacheable key space.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(
+      new Request('https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1&keys=marketQuotes', { method: 'GET' }),
+    );
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+  });
+});
+
+test('unknown tier value does not qualify for the public path', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makePublicTierBootstrapRequest('bogus'));
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+  });
+});
+
+// ── On-demand keys: the per-key public URL (#5300) ──────────────────────────
+// `cyberThreats` no longer rides in the slow tier — its layer is off by default
+// in every variant, so the tier was shipping 364 KB to every visitor that no
+// default visitor ever read. It now has its own CDN-shielded per-key URL,
+// fetched only by the clients that actually turn the layer on.
+
+function makePublicOnDemandRequest(keys = 'cyberThreats', headers = {}) {
+  return new Request(`https://api.worldmonitor.app/api/bootstrap?keys=${keys}&public=1`, {
+    method: 'GET',
+    headers,
+  });
+}
+
+test('public on-demand key URL is CDN-shielded and anonymous', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makePublicOnDemandRequest('cyberThreats'));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+    assertPublicCorsHeaders(resp);
+  });
+});
+
+test('public on-demand URL keeps ONE contract even when credentials are attached', async () => {
+  // A CDN hit precedes handler auth, so the response must not vary by caller —
+  // same invariant the tier URLs carry (#5250).
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makePublicOnDemandRequest('cyberThreats', { Cookie: 'wm-session=whatever' }));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+  });
+});
+
+test('public on-demand URL does not widen into a CDN-amplification vector', async () => {
+  // Every shape below must fall through to the credentialed, no-store path. A
+  // multi-key or unlisted-key public URL would make the CDN key space
+  // combinatorial, and each distinct miss re-reads the registry from Redis —
+  // the exact amplification the public URLs exist to prevent (#5259).
+  await withMockedBootstrapAuth({ entitlement: null }, async () => {
+    for (const keys of [
+      'cyberThreats,marketQuotes',   // multi-key
+      'marketQuotes',                // a real key, but not on-demand
+      'wildfires',                   // slow-tier key, not on-demand
+      'notARealKey',                 // unknown
+      '',                            // empty
+    ]) {
+      const resp = await handler(makePublicOnDemandRequest(keys));
+      assert.equal(resp.status, 401, `keys=${keys} must not qualify for the public path`);
+      assert.equal(resp.headers.get('cache-control'), 'no-store', `keys=${keys} must stay no-store`);
+    }
   });
 });

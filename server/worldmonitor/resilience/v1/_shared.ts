@@ -47,10 +47,9 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 // Phase 2 T2.3 activation: feature flag that switches `overallScore`
 // from the 6-domain weighted aggregate (legacy compensatory form) to
 // the 3-pillar combined form with the min-pillar penalty term defined
-// by `penalizedPillarScore` below. Default is `false` so activation is
-// an explicit operator action; the sensitivity + current-vs-proposed
-// comparison in `docs/snapshots/resilience-pillar-sensitivity-*.json`
-// is the input for that decision. When flipped to `true`:
+// by `penalizedPillarScore` below. The published and production methodology
+// is pillar-combined, so unset defaults to `true`; explicit `false` retains
+// the legacy 6-domain form as an emergency rollback. When enabled:
 //   - `overallScore` = penalizedPillarScore(pillars), α=0.5 (pillar
 //     weights 0.40 / 0.35 / 0.25 per the plan).
 //   - Published numbers drop ~13 points on average across the
@@ -61,13 +60,13 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 // re-importing the module. Under Node production the env does not
 // change mid-process so the per-call read is a couple of instructions.
 //
-// Cache invalidation: the score cache prefix is bumped on every
-// flag-visible behavior change (see RESILIENCE_SCORE_CACHE_PREFIX
-// above). Do not flip this flag without also bumping the cache
-// prefix or waiting for the 6h TTL to expire — otherwise legacy
-// 6-domain scores will be served from cache after activation.
+// Exact normalized `false` is the only disabling value; unset and values such
+// as `0`, `no`, and `off` keep the pillar-combined formula enabled. Cache
+// admission compares each payload's `_formula` tag, so a flag flip cannot
+// reuse scores from the other formula. Bump RESILIENCE_SCORE_CACHE_PREFIX only
+// when scorer behavior changes without changing that formula tag.
 export function isPillarCombineEnabled(): boolean {
-  return (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  return process.env.RESILIENCE_PILLAR_COMBINE_ENABLED?.trim().toLowerCase() !== 'false';
 }
 
 // PR 1 of the resilience repair plan (docs/plans/2026-04-22-001-fix-

@@ -22,9 +22,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Shared scanner/resolver (comment-stripping tokenizer + edge extraction) —
+// one home for the machinery this guard previously copied from the relay
+// test; see tests/_lib/import-graph-walk.mjs (#5231 review follow-up).
+import { collectRelativeImports, parseDockerfileCopy, resolveNodeRelative } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -49,27 +53,13 @@ const TRACKED_PREFIXES = ['scripts/', 'shared/', 'server/_shared/', 'api/'];
  * @returns {{ files: Set<string>, directories: Set<string> }}
  */
 function readCoverage(dockerfilePath) {
-  const src = readFileSync(dockerfilePath, 'utf-8');
-  const files = new Set();
-  const directories = new Set();
-
-  // Split each COPY line, take all source args (everything but the
-  // trailing destination), and bucket into file/directory coverage.
-  const lineRe = /^COPY\s+(.+?)\s+\.\/[^\n]*$/gm;
-  for (const m of src.matchAll(lineRe)) {
-    const args = m[1].split(/\s+/);
-    for (const arg of args) {
-      // Skip non-tracked prefixes (e.g. package.json, node_modules
-      // would never appear here but defensive).
-      if (!TRACKED_PREFIXES.some((p) => arg.startsWith(p))) continue;
-      if (arg.endsWith('/')) {
-        directories.add(arg.replace(/\/$/, ''));
-      } else {
-        files.add(arg);
-      }
-    }
-  }
-  return { files, directories };
+  // The COPY grammar itself is parsed by the shared tests/_lib parser so all
+  // three container guards read Dockerfiles identically; this guard then
+  // scopes coverage to its tracked prefixes (e.g. package.json COPYs are
+  // runtime-resolved, not import-graph coverage).
+  const parsed = parseDockerfileCopy(readFileSync(dockerfilePath, 'utf-8'));
+  const tracked = (set) => new Set([...set].filter((p) => TRACKED_PREFIXES.some((prefix) => p.startsWith(prefix))));
+  return { files: tracked(parsed.files), directories: tracked(parsed.directories) };
 }
 
 /**
@@ -85,31 +75,9 @@ function isCovered(coverage, relPath) {
   return false;
 }
 
-/**
- * Collect relative imports from a JS/TS source file. Same scanner the
- * relay test uses (covers ESM import/export-from + CJS require + CJS
- * createRequire).
- */
-function collectRelativeImports(filePath) {
-  const src = readFileSync(filePath, 'utf-8');
-  const imports = new Set();
-  const esmRe = /(?:^|\s|;)(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"]/g;
-  for (const m of src.matchAll(esmRe)) imports.add(m[1]);
-  const cjsRe = /(?:^|[^a-zA-Z0-9_$])require\s*\(\s*['"](\.[^'"]+)['"]/g;
-  for (const m of src.matchAll(cjsRe)) imports.add(m[1]);
-  const createRequireRe = /createRequire\s*\([^)]*\)\s*\(\s*['"](\.[^'"]+)['"]/g;
-  for (const m of src.matchAll(createRequireRe)) imports.add(m[1]);
-  return imports;
-}
-
-function resolveImport(fromFile, relImport) {
-  const abs = resolve(dirname(fromFile), relImport);
-  if (existsSync(abs) && !statSync(abs).isDirectory()) return abs;
-  for (const ext of ['.mjs', '.cjs', '.js', '.ts']) {
-    if (existsSync(abs + ext)) return abs + ext;
-  }
-  return null;
-}
+// Extension candidates for this image: the digest cron's graph spans .ts
+// modules under server/_shared/, unlike the relay's .mjs/.cjs-only graph.
+const DIGEST_RESOLVE_EXTS = ['.mjs', '.cjs', '.js', '.ts'];
 
 describe('Dockerfile.digest-notifications — transitive-import closure', () => {
   const dockerfile = resolve(root, 'Dockerfile.digest-notifications');
@@ -180,7 +148,7 @@ describe('Dockerfile.digest-notifications — transitive-import closure', () => 
       visited.add(file);
       if (!existsSync(file)) continue;
       for (const rel of collectRelativeImports(file)) {
-        const resolved = resolveImport(file, rel);
+        const resolved = resolveNodeRelative(file, rel, DIGEST_RESOLVE_EXTS);
         if (!resolved) continue;
         const relToRoot = resolved.startsWith(root + '/')
           ? resolved.slice(root.length + 1)

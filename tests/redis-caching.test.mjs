@@ -242,6 +242,246 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
+  it('skips a gated cache miss without hiding positive cache hits or writing a sentinel', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map([
+      ['meta:test:gated-hit', JSON.stringify({ value: 'cached-data' })],
+    ]);
+    let setCalls = 0;
+    let fetcherCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({ result: store.get(key) });
+      }
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    const fetcher = async () => {
+      fetcherCalls += 1;
+      return { value: 'fresh-data' };
+    };
+
+    try {
+      const hit = await redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-hit',
+        60,
+        fetcher,
+        120,
+        { shouldFetch: () => false },
+      );
+      assert.deepEqual(hit, {
+        data: { value: 'cached-data' },
+        source: 'cache',
+        leader: false,
+      });
+
+      const skipped = await redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-miss',
+        60,
+        fetcher,
+        120,
+        { shouldFetch: () => false },
+      );
+      assert.deepEqual(skipped, { data: null, source: 'skipped', leader: false });
+      assert.equal(fetcherCalls, 0, 'the provider-local fetcher must remain gated');
+      assert.equal(setCalls, 0, 'a gated miss must not become a shared negative sentinel');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('joins an existing fetch before applying a caller-local gate', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let resolveLeader;
+    const leaderResult = new Promise((resolve) => {
+      resolveLeader = resolve;
+    });
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const leader = redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-inflight',
+        60,
+        async () => leaderResult,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      let followerFetcherCalled = false;
+      const follower = redis.cachedFetchJsonWithMeta(
+        'meta:test:gated-inflight',
+        60,
+        async () => {
+          followerFetcherCalled = true;
+          return { value: 'wrong' };
+        },
+        120,
+        { shouldFetch: () => false },
+      );
+
+      resolveLeader({ value: 'coalesced' });
+      assert.deepEqual(await leader, {
+        data: { value: 'coalesced' },
+        source: 'fresh',
+        leader: true,
+      });
+      assert.deepEqual(await follower, {
+        data: { value: 'coalesced' },
+        source: 'fresh',
+        leader: false,
+      });
+      assert.equal(followerFetcherCalled, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('isolates in-flight providers while sharing their positive cache key', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let resolvePrimary;
+    const primaryResult = new Promise((resolve) => {
+      resolvePrimary = resolve;
+    });
+    let setCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const primary = redis.cachedFetchJsonWithMeta(
+        'meta:test:provider-shared',
+        60,
+        async () => primaryResult,
+        120,
+        { cacheFailures: false, inflightKey: 'provider:primary' },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const fallback = await redis.cachedFetchJsonWithMeta(
+        'meta:test:provider-shared',
+        60,
+        async () => ({ value: 'fallback-success' }),
+        120,
+        { cacheFailures: false, inflightKey: 'provider:fallback' },
+      );
+      assert.deepEqual(fallback, {
+        data: { value: 'fallback-success' },
+        source: 'fresh',
+        leader: true,
+      });
+
+      resolvePrimary(null);
+      assert.deepEqual(await primary, { data: null, source: 'fresh', leader: true });
+
+      let recoveryCalls = 0;
+      const recovered = await redis.cachedFetchJsonWithMeta(
+        'meta:test:provider-shared',
+        60,
+        async () => {
+          recoveryCalls += 1;
+          return { value: 'primary-recovered' };
+        },
+        120,
+        { cacheFailures: false, inflightKey: 'provider:primary' },
+      );
+      assert.deepEqual(recovered.data, { value: 'primary-recovered' });
+      assert.equal(recoveryCalls, 1, 'a settled custom in-flight key must be reusable');
+      assert.equal(setCalls, 2, 'only the two positive results should be cached');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does not negative-cache a no-store payload when failure caching is disabled', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let setCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const unavailable = await redis.cachedFetchJsonWithMeta(
+        'meta:test:no-store-positive-only',
+        60,
+        async () => ({ upstreamUnavailable: true }),
+        120,
+        { cacheFailures: false },
+      );
+      assert.deepEqual(unavailable.data, { upstreamUnavailable: true });
+      assert.equal(setCalls, 0, 'the no-store payload must not write a sentinel');
+
+      const recovered = await redis.cachedFetchJsonWithMeta(
+        'meta:test:no-store-positive-only',
+        60,
+        async () => ({ value: 'recovered' }),
+        120,
+        { cacheFailures: false },
+      );
+      assert.deepEqual(recovered.data, { value: 'recovered' });
+      assert.equal(setCalls, 1, 'the later positive result remains cacheable');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('reports source=fresh on cache miss', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
@@ -549,6 +789,142 @@ describe('negative-result caching', { concurrency: 1 }, () => {
       const second = await redis2.cachedFetchJson('neg:test:throw', 300, throwingFetcher);
       assert.equal(second, null, 'subsequent call should resolve from the cooldown sentinel');
       assert.equal(fetcherCalls, 1, 'fetcher should NOT run again while the sentinel is live');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('retries fetcher errors when error negative caching is disabled', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    let setCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({ result: store.get(key) ?? undefined });
+      }
+      if (isSetRequest(url, init)) {
+        const { key, value } = parseSetRequest(url, init);
+        setCalls += 1;
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        if (fetcherCalls === 1) throw new Error('upstream unavailable');
+        return { value: 'recovered' };
+      };
+
+      await assert.rejects(() => redis.cachedFetchJson(
+        'neg:test:no-error-cache',
+        300,
+        fetcher,
+        60,
+        { cacheFetcherErrors: false },
+      ));
+      assert.equal(setCalls, 0, 'fetcher errors must not write a negative sentinel');
+
+      // Short isolate-local unavailable backoff suppresses re-fan-out.
+      await assert.rejects(
+        () => redis.cachedFetchJson(
+          'neg:test:no-error-cache',
+          300,
+          fetcher,
+          60,
+          { cacheFetcherErrors: false },
+        ),
+        /unavailable backoff/,
+      );
+      assert.equal(fetcherCalls, 1, 'backoff must not re-hit the fetcher');
+
+      redis.__clearLocalUnavailableBackoffForTests();
+      const recovered = await redis.cachedFetchJson(
+        'neg:test:no-error-cache',
+        300,
+        fetcher,
+        60,
+        { cacheFetcherErrors: false },
+      );
+      assert.deepEqual(recovered, { value: 'recovered' });
+      assert.equal(fetcherCalls, 2, 'after backoff clear the next call should retry the fetcher');
+      assert.equal(setCalls, 1, 'only the recovered positive result should be cached');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('honors cacheFetcherErrors:false on cachedFetchJsonWithMeta without writing NEG_SENTINEL', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    let setCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({ result: store.get(key) ?? undefined });
+      }
+      if (isSetRequest(url, init)) {
+        const { key, value } = parseSetRequest(url, init);
+        setCalls += 1;
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        if (fetcherCalls === 1) throw new Error('upstream unavailable');
+        return { value: 'meta-recovered' };
+      };
+
+      await assert.rejects(() => redis.cachedFetchJsonWithMeta(
+        'neg:test:no-error-cache-meta',
+        300,
+        fetcher,
+        60,
+        { cacheFetcherErrors: false },
+      ));
+      assert.equal(setCalls, 0, 'WithMeta must not write a negative sentinel when errors are not cached');
+
+      redis.__clearLocalUnavailableBackoffForTests();
+      const recovered = await redis.cachedFetchJsonWithMeta(
+        'neg:test:no-error-cache-meta',
+        300,
+        fetcher,
+        60,
+        { cacheFetcherErrors: false },
+      );
+      assert.deepEqual(recovered.data, { value: 'meta-recovered' });
+      assert.equal(recovered.source, 'fresh');
+      assert.equal(fetcherCalls, 2);
+      assert.equal(setCalls, 1);
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -1348,6 +1724,15 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     neLon: 11,
   };
 
+  function cachedMilitaryFlight(id, latitude, longitude) {
+    return {
+      id,
+      callsign: id,
+      hexCode: id,
+      location: { latitude, longitude },
+    };
+  }
+
   it('fetches expanded quantized bbox but returns only flights inside the requested bbox', async () => {
     const { module, cleanup } = await importListMilitaryFlights();
     const restoreEnv = withEnv({
@@ -1443,6 +1828,287 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       globalThis.fetch = originalFetch;
       restoreEnv();
     }
+  });
+
+  it('filters before pagination and reuses one cached result across page sizes and cursors', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    const liveCacheKeys = [];
+    let openskyCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key.startsWith('military:flights:v1')) liveCacheKeys.push(key);
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) {
+        const { key, value } = parseSetRequest(url, init);
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('opensky-network.org/api/states/all')) {
+        openskyCalls += 1;
+        return jsonResponse({
+          states: [
+            ['first', 'RCH101', null, null, null, 10.1, 10.1, 20000, false, 300, 90],
+            ['outside', 'RCH102', null, null, null, 10.2, 9.9, 21000, false, 300, 90],
+            ['second', 'RCH103', null, null, null, 10.3, 10.3, 22000, false, 300, 90],
+            ['third', 'RCH104', null, null, null, 10.4, 10.4, 23000, false, 300, 90],
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const first = await module.listMilitaryFlights(ctx, {
+        ...request,
+        pageSize: 2,
+        cursor: '',
+        operator: '',
+        aircraftType: '',
+      });
+      const second = await module.listMilitaryFlights(ctx, {
+        ...request,
+        pageSize: 1,
+        cursor: first.pagination?.nextCursor ?? '',
+        operator: '',
+        aircraftType: '',
+      });
+
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['FIRST', 'SECOND']);
+      assert.deepEqual(first.pagination, { nextCursor: '2', totalCount: 3 });
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['THIRD']);
+      assert.deepEqual(second.pagination, { nextCursor: '', totalCount: 3 });
+      assert.equal(openskyCalls, 1, 'page size and cursor must not create new upstream/cache results');
+      assert.equal(new Set(liveCacheKeys).size, 1, 'all pages must read the same unpaginated bbox cache key');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('paginates a pre-populated quantized-cell cache after exact bbox filtering', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const cached = {
+      flights: [
+        cachedMilitaryFlight('cache-first', 10.1, 10.1),
+        cachedMilitaryFlight('cache-outside', 9.9, 10.2),
+        cachedMilitaryFlight('cache-second', 10.3, 10.3),
+        cachedMilitaryFlight('cache-third', 10.4, 10.4),
+      ],
+      clusters: [],
+      pagination: undefined,
+    };
+    let openskyCalls = 0;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: JSON.stringify(cached) });
+      if (raw.includes('opensky')) openskyCalls += 1;
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const first = await module.listMilitaryFlights(ctx, { ...request, pageSize: 2, cursor: '' });
+      const second = await module.listMilitaryFlights(ctx, {
+        ...request,
+        pageSize: 1,
+        cursor: first.pagination?.nextCursor ?? '',
+      });
+
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['cache-first', 'cache-second']);
+      assert.deepEqual(first.pagination, { nextCursor: '2', totalCount: 3 });
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['cache-third']);
+      assert.deepEqual(second.pagination, { nextCursor: '', totalCount: 3 });
+      assert.equal(openskyCalls, 0);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('applies strict cursor parsing and bounded integer page-size defaults', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const cached = {
+      flights: Array.from({ length: 101 }, (_, index) => cachedMilitaryFlight(`flight-${index}`, 10.5, 10.5)),
+      clusters: [],
+    };
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: JSON.stringify(cached) });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const pageSizeCases = [
+        { value: 0, expected: 100, label: 'zero uses the default' },
+        { value: 1, expected: 1, label: 'minimum integer is accepted' },
+        { value: 100, expected: 100, label: 'maximum integer is accepted' },
+        { value: Number.NaN, expected: 100, label: 'malformed values use the default' },
+        { value: -1, expected: 100, label: 'negative values use the default' },
+        { value: 1.5, expected: 100, label: 'fractional values use the default' },
+        { value: 101, expected: 100, label: 'values above the maximum are capped' },
+      ];
+      for (const testCase of pageSizeCases) {
+        const result = await module.listMilitaryFlights(ctx, {
+          ...request,
+          pageSize: testCase.value,
+          cursor: '',
+        });
+        assert.equal(result.flights.length, testCase.expected, testCase.label);
+        assert.equal(result.pagination?.totalCount, 101, testCase.label);
+      }
+
+      for (const cursor of ['', 'malformed', '-1', '1.5']) {
+        const result = await module.listMilitaryFlights(ctx, { ...request, pageSize: 1, cursor });
+        assert.equal(result.flights[0]?.id, 'flight-0', `invalid/default cursor ${JSON.stringify(cursor)} starts at zero`);
+      }
+      const final = await module.listMilitaryFlights(ctx, { ...request, pageSize: 1, cursor: '100' });
+      assert.deepEqual(final.flights.map((flight) => flight.id), ['flight-100']);
+      assert.deepEqual(final.pagination, { nextCursor: '', totalCount: 101 });
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('paginates populated stale fallback rows after exact bbox filtering', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    module._resetStaleNegativeCacheForTests();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const stalePayload = {
+      flights: [
+        { id: 'stale-first', callsign: 'RCH201', lat: 10.1, lon: 10.1 },
+        { id: 'stale-outside', callsign: 'RCH202', lat: 9.9, lon: 10.2 },
+        { id: 'stale-second', callsign: 'RCH203', lat: 10.3, lon: 10.3 },
+        { id: 'stale-third', callsign: 'RCH204', lat: 10.4, lon: 10.4 },
+      ],
+    };
+    const store = new Map();
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:stale:v1') {
+          return jsonResponse({ result: JSON.stringify(stalePayload) });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) {
+        const { key, value } = parseSetRequest(url, init);
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const first = await module.listMilitaryFlights(ctx, { ...request, pageSize: 2, cursor: '' });
+      const second = await module.listMilitaryFlights(ctx, {
+        ...request,
+        pageSize: 1,
+        cursor: first.pagination?.nextCursor ?? '',
+      });
+
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['STALE-FIRST', 'STALE-SECOND']);
+      assert.deepEqual(first.pagination, { nextCursor: '2', totalCount: 3 });
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['STALE-THIRD']);
+      assert.deepEqual(second.pagination, { nextCursor: '', totalCount: 3 });
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('returns identical empty pagination metadata for empty and error paths', async () => {
+    const results = [];
+
+    const missingBbox = await importListMilitaryFlights();
+    try {
+      results.push(await missingBbox.module.listMilitaryFlights({}, {
+        swLat: 0,
+        swLon: 0,
+        neLat: 0,
+        neLon: 0,
+        pageSize: 2,
+        cursor: '',
+      }));
+    } finally {
+      missingBbox.cleanup();
+    }
+
+    const failedUpstream = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: undefined,
+      UPSTASH_REDIS_REST_TOKEN: undefined,
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error('simulated OpenSky failure');
+    };
+    try {
+      results.push(await failedUpstream.module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        { ...request, pageSize: 2, cursor: '' },
+      ));
+    } finally {
+      failedUpstream.cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+
+    const expected = { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } };
+    assert.deepEqual(results, [expected, expected]);
   });
 
   // #3277 — fetchStaleFallback NEG_TTL parity with the legacy
@@ -1677,4 +2343,3 @@ describe('getHashFieldsBatch empty-string handling (#3530)', { concurrency: 1 },
     }
   });
 });
-

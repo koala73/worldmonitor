@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -121,5 +122,41 @@ describe('OpenAPI webhooks contract', () => {
   it('webhooks live at the top level, not under paths (no phantom REST op)', () => {
     assert.ok(!('/webhooks/chokepoint.disruption' in (bundle.paths ?? {})));
     assert.equal(Object.keys(bundle.webhooks).length, 1);
+  });
+});
+
+// The published, verifiable sample delivery (public/.well-known/webhook-sample.json)
+// lets an agent confirm its HMAC verification end-to-end BEFORE registering a live
+// webhook (orank Usability — "webhook signature verification"). This guards it
+// against drift: the committed signature MUST be the genuine HMAC of the committed
+// body+secret, and the scheme must match the documented + worker contract.
+describe('webhook verification fixture (/.well-known/webhook-sample.json)', () => {
+  const fixture = JSON.parse(
+    readFileSync(resolve(root, 'public/.well-known/webhook-sample.json'), 'utf8'),
+  );
+
+  it('the committed signature is the genuine HMAC-SHA256 of body keyed by secret', () => {
+    const expected = 'sha256=' + createHmac('sha256', fixture.secret).update(fixture.body).digest('hex');
+    assert.equal(fixture.signature, expected, 'fixture signature is stale — recompute it from body+secret');
+  });
+
+  it('the sample matches the documented signing scheme', () => {
+    assert.equal(fixture.algorithm, 'HMAC-SHA256');
+    assert.equal(fixture.signatureHeader, SIGNATURE_HEADER);
+    assert.equal(fixture.event, WEBHOOK_EVENT);
+    // Same shape the OpenAPI signature-header schema constrains (^sha256=[0-9a-f]{64}$).
+    assert.match(fixture.signature, /^sha256=[0-9a-f]{64}$/);
+    // Sample secret uses the real registration format (raw 64-char lowercase hex).
+    assert.match(fixture.secret, /^[0-9a-f]{64}$/);
+  });
+
+  it('the signature does NOT match if the body is tampered (guards the recipe)', () => {
+    const tampered = fixture.body.replace('"score":72', '"score":99');
+    const forged = 'sha256=' + createHmac('sha256', fixture.secret).update(tampered).digest('hex');
+    assert.notEqual(fixture.signature, forged, 'a mutated body must not verify against the sample signature');
+  });
+
+  it('the echoed X-WM-Signature header equals the top-level signature', () => {
+    assert.equal(fixture.headers?.['X-WM-Signature'], fixture.signature);
   });
 });

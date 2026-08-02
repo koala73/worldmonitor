@@ -32,6 +32,8 @@ const JSON_MEDIA = 'application/json';
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
+const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
+const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
 
 // ── Curated per-parameter example overrides ───────────────────────────────
 // The field-name heuristic in stringExample() picks structurally-valid but
@@ -56,6 +58,10 @@ function readRepoText(rel) {
     return '';
   }
 }
+
+const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
+  readRepoText('scripts/shared/giving-published-estimate-claims.json'),
+);
 
 // chokepointId / chokepointIds: get-bypass-options & siblings (SupplyChain) and
 // register-webhook (ShippingV2) validate against the chokepoint registry
@@ -146,7 +152,10 @@ const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
 })();
 
 const GDELT_TOPIC_EXAMPLE_ID = (() => {
-  const src = readRepoText('scripts/seed-gdelt-intel.mjs');
+  // Sourced from the ACTIVE producer (#5864): scripts/seed-gdelt-intel.mjs no
+  // longer runs on any Railway service after the #5843 materializer cutover,
+  // so reading its topic ids would silently drift from what is published.
+  const src = readRepoText('scripts/_gdelt-bulk-materializer.mjs');
   const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
   return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
 })();
@@ -309,6 +318,109 @@ function getScenarioStatusExample() {
   };
 }
 
+function getGivingSummaryExample() {
+  const generatedAt = '2026-07-24T12:00:00.000Z';
+  const annualizedPlatformValueUsd = (claim) => {
+    if (
+      !claim.platform
+      || !claim.includedInHighlightedAggregate
+      || claim.status !== 'verified'
+      || claim.reportedUnit !== 'USD'
+      || !Number.isFinite(claim.reportedValue)
+      || claim.reportedValue <= 0
+    ) {
+      return 0;
+    }
+    if (claim.denominator === 'year') return claim.reportedValue;
+    if (claim.denominator === 'week') return claim.reportedValue * 52;
+    return 0;
+  };
+  const platforms = [
+    ['GoFundMe', 'annual'],
+    ['GlobalGiving', 'annual'],
+    ['JustGiving', 'cumulative'],
+  ].map(([platform, dataFreshness]) => {
+    const platformClaims = GIVING_PUBLISHED_ESTIMATE_CLAIMS
+      .filter((claim) => claim.platform === platform);
+    const annualizedUsd = platformClaims
+      .reduce((total, claim) => total + annualizedPlatformValueUsd(claim), 0);
+    const lastUpdated = platformClaims.find((claim) =>
+      claim.status === 'verified' && claim.sourcePublishedAt?.trim())?.sourcePublishedAt ?? '';
+    return {
+      platform,
+      dailyVolumeUsd: annualizedUsd / 365,
+      dataFreshness,
+      lastUpdated,
+    };
+  });
+  const verifiedContextValue = (metric) => {
+    const claim = GIVING_PUBLISHED_ESTIMATE_CLAIMS.find((entry) =>
+      entry.contextMetric === metric && entry.status === 'verified');
+    return claim?.reportedValue ?? 0;
+  };
+  const publicProvenance = GIVING_PUBLISHED_ESTIMATE_CLAIMS.map((claim) =>
+    Object.fromEntries(
+      Object.entries(claim).filter(([key]) => key !== 'platform' && key !== 'contextMetric'),
+    ));
+  const oecdOdaAnnualUsdBn = verifiedContextValue('oecd_oda_usd_bn');
+  const dataMode = GIVING_PUBLISHED_ESTIMATE_CLAIMS.some((claim) =>
+    claim.status === 'unverified' || claim.status === 'partially_verified')
+    ? 'partial_estimate'
+    : 'published_estimate';
+  const categories = [
+    'Medical & Health',
+    'Disaster Relief',
+    'Education',
+    'Community',
+    'Memorials',
+    'Animals & Pets',
+    'Environment',
+    'Hunger & Food',
+    'Other',
+  ].map((category) => ({
+    category,
+    share: 0,
+    change24h: 0,
+    activeCampaigns: 0,
+    trending: false,
+  }));
+
+  return {
+    summary: {
+      generatedAt,
+      activityIndex: 0,
+      trend: 'stable',
+      estimatedDailyFlowUsd: platforms.reduce(
+        (total, platform) => total + platform.dailyVolumeUsd,
+        0,
+      ),
+      platforms,
+      categories,
+      crypto: {
+        dailyInflowUsd: 0,
+        trackedWallets: 0,
+        transactions24h: 0,
+        topReceivers: [],
+        pctOfTotal: 0,
+      },
+      institutional: {
+        oecdOdaAnnualUsdBn,
+        oecdDataYear: oecdOdaAnnualUsdBn > 0 ? 2023 : 0,
+        cafWorldGivingIndex: 0,
+        cafDataYear: 0,
+        candidGrantsTracked: verifiedContextValue('candid_grants'),
+        dataLag: 'Annual published context',
+      },
+      dataMode,
+      trendAvailable: false,
+      provenance: publicProvenance,
+      activityIndexAvailable: false,
+    },
+    fetchedAt: Date.parse(generatedAt),
+    dataAvailable: true,
+  };
+}
+
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -379,6 +491,19 @@ function patternString(pattern, key) {
 function stringExample(name, schema = {}, context = {}) {
   const key = normalizeKey(name || context.name || context.operationId);
   const description = String(schema.description ?? context.description ?? '').toLowerCase();
+  const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+  // The ODP Patent File Wrapper source cannot populate this compatibility
+  // field. Keep the generated response example truthful instead of emitting
+  // the generic non-empty string placeholder.
+  if (key === 'abstract' && (where.includes('listdefensepatents') || where.includes('list-defense-patents'))) return '';
+  // Intel-history scope: `domain` collides with web-domain params on other
+  // ops, so anchor on the exact accepted-values pattern instead of the name.
+  // If the contract's pattern ever changes this falls through to the generic
+  // heuristic and the schema-validity check reds — the correct failure mode.
+  if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  // get-similar-events `situation` enforces min_len 10; the generic
+  // placeholder is shorter and produces an un-runnable request sample.
+  if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
   if (shouldUseDescriptionClosedValue(context)) {
@@ -473,16 +598,86 @@ function mergeObjects(a, b) {
     : b;
 }
 
+function getCompanyEnrichmentExample() {
+  return {
+    company: {
+      name: 'Apple Inc.',
+      domain: 'apple.com',
+      description: 'Electronic Computers',
+      location: 'Cupertino, CA',
+      website: 'https://www.apple.com',
+      founded: 0,
+      cik: '0000320193',
+      ticker: 'AAPL',
+    },
+    // Deprecated compatibility collections are intentionally empty. `github`
+    // is omitted because the handler serializes its undefined value away.
+    techStack: [],
+    secFilings: {
+      totalFilings: 120,
+      recentFilings: [{
+        form: '8-K',
+        fileDate: '2026-07-24',
+        description: 'Results of Operations and Financial Condition',
+        url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000070/0000320193-26-000070-index.htm',
+        items: ['2.02'],
+      }],
+    },
+    hackerNewsMentions: [],
+    enrichedAtMs: 1784908800000,
+    sources: ['sec_edgar', 'finnhub', 'news'],
+    market: {
+      exchange: 'NASDAQ NMS - GLOBAL MARKET',
+      industry: 'Technology',
+      marketCapMusd: 3200000,
+      ipoDate: '1980-12-12',
+      logoUrl: 'https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png',
+      country: 'US',
+      currency: 'USD',
+    },
+    earningsSurprises: [{
+      period: '2026-06-30',
+      actualEps: 1.57,
+      estimateEps: 1.43,
+      surprise: 0.14,
+      surprisePercent: 9.79,
+      year: 2026,
+      quarter: 3,
+    }],
+    newsMentions: [{
+      title: 'Apple reports quarterly results',
+      url: 'https://example.com/apple-results',
+      source: 'example.com',
+      publishedAtMs: 1784905200000,
+    }],
+    unavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGivingSummaryExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getscenariostatus'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getScenarioStatusExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getcompanyenrichment'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getCompanyEnrichmentExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -541,7 +736,14 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);
-  if (type === 'boolean') return true;
+  if (type === 'boolean') {
+    // Success-path examples must not teach outage envelopes. `unavailable` on
+    // corporate-intel (and similar) RPCs means the upstream seed/registry was
+    // unreadable — a 200 example with unavailable:true is a contract footgun.
+    const key = normalizeKey(name || context.name || '');
+    if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    return true;
+  }
   return stringExample(name, schema, context);
 }
 
@@ -614,6 +816,11 @@ function injectSpecExamples(spec) {
       if (responses.length > 0) responseOperations++;
       for (const [, response] of responses) {
         const media = response.content[JSON_MEDIA];
+        // This response carries a canonical JSON document inside payloadJson.
+        // Its dedicated injector owns a representative decoded example; keep
+        // that curated example stable when the generic examples pass is
+        // re-run or checked after code generation.
+        if ((path === CHINA_CORRIDOR_PATH || path === CHINA_DECISION_SIGNALS_PATH) && media.example !== undefined) continue;
         const example = exampleForSchema(media.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Response`,

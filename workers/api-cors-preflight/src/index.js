@@ -17,6 +17,9 @@
 //      ~/.claude/skills/worldmonitor-architecture-gotchas/reference/
 //        cloudflare-worker-overrides-vercel-cors-for-preflight.md
 
+import { maybeShadowKvRead } from './kv-shadow.js';
+import { maybeServeBootstrapFromKv } from './kv-serve.js';
+
 // Keep in sync with api/_cors.js#ALLOWED_ORIGIN_PATTERNS and
 // server/cors.ts#PRODUCTION_PATTERNS. The Worker's allowlist must be a
 // superset of (or identical to) the function-side allowlist; if it's narrower,
@@ -38,7 +41,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -110,9 +113,64 @@ export function buildCorsHeaders(origin) {
   };
 }
 
+function mergeHeaderNames(...values) {
+  const seen = new Set();
+  const merged = [];
+  for (const value of values) {
+    for (const name of (value || '').split(',')) {
+      const trimmed = name.trim();
+      const normalized = trimmed.toLowerCase();
+      if (!trimmed || seen.has(normalized)) continue;
+      seen.add(normalized);
+      merged.push(trimmed);
+    }
+  }
+  return merged.join(', ');
+}
+
+// The single origin path: fetch Vercel, stamp the Worker's canonical CORS onto the response, and
+// preserve the bootstrap route's function-owned exposed headers. Shared by the normal pass-through
+// AND the U-K4 hedge, so there is exactly one origin+CORS implementation to keep correct.
+async function passThroughToOrigin(request, url, corsHeaders) {
+  try {
+    const response = await fetch(request);
+    const newHeaders = new Headers(response.headers);
+    const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
+    for (const [k, v] of Object.entries(corsHeaders)) {
+      newHeaders.set(k, v);
+    }
+    // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
+    // Preserve only that route's function-owned additions while retaining
+    // the Worker's canonical baseline. Replacing this header outright made
+    // those diagnostics invisible to browser JavaScript in production.
+    if (url.pathname === '/api/bootstrap' && originExposedHeaders) {
+      newHeaders.set(
+        'Access-Control-Expose-Headers',
+        mergeHeaderNames(EXPOSE_HEADERS, originExposedHeaders),
+      );
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders,
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+}
+
 export default {
-  async fetch(request) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // KV shadow measurement (U-K2, #5338). Self-gating: no-op unless BOOTSTRAP_KV_SHADOW==='1'
+    // and this is a public-tier bootstrap GET. Runs in ctx.waitUntil — never touches the
+    // response or the CORS logic below. Kept entirely in kv-shadow.js so CORS stays untouched.
+    maybeShadowKvRead(request, url, env, ctx);
+
     if (!url.pathname.startsWith('/api/')) {
       return fetch(request);
     }
@@ -136,26 +194,20 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // All other methods — pass through to Vercel, then stamp CORS headers
-    // onto the response on the way back. The .set() loop intentionally
-    // overrides any function-set CORS headers so the Worker is the single
-    // source of truth.
-    try {
-      const response = await fetch(request);
-      const newHeaders = new Headers(response.headers);
-      for (const [k, v] of Object.entries(corsHeaders)) {
-        newHeaders.set(k, v);
-      }
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders,
-      });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
+    // The single origin path for this request. maybeServeBootstrapFromKv (U-K4) may invoke it once
+    // internally when it hedges/falls back; every other request runs it directly below. Either way
+    // origin is fetched at most once.
+    const fetchOrigin = () => passThroughToOrigin(request, url, corsHeaders);
+
+    // KV serving (U-K4, #5338): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE on, serve
+    // the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged against
+    // origin and any non-servable outcome uses the origin response — strictly additive (KTD3), so
+    // the worst case is today's behaviour. Returns null for non-servable requests (flag off, not a
+    // bootstrap GET), which then run the normal pass-through. Inert until the flag is flipped.
+    const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders, fetchOrigin);
+    if (bootstrapKv) return bootstrapKv;
+
+    // All other methods/paths — pass through to Vercel with the Worker's canonical CORS stamped.
+    return fetchOrigin();
   },
 };

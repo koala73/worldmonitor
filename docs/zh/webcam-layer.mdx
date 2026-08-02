@@ -1,0 +1,184 @@
+---
+title: "网络摄像头图层"
+description: "World Monitor 的全球网络摄像头覆盖图层 —— 支持延时回放、固定摄像头面板、地图标记聚类以及面向实时影像的多源集成路线图，聚合公开摄像头、交通监控与港口视频源，帮助分析师在地缘事件、极端天气与关键基础设施监控场景下叠加视觉验证与现场态势感知能力。"
+---
+网络摄像头图层通过在地图上叠加网络摄像头位置来提供全球视觉情报，交互式工具提示显示预览图像，并提供固定的网络摄像头面板用于持久监控关键位置。
+
+## 数据源：Windy Webcams API v3
+
+主要数据源是 [Windy Webcams API](https://api.windy.com/webcams/api/v3/docs)，提供全球约 65,000 个摄像头位置。
+
+| 属性 | 值 |
+|-----------|-------|
+| **提供商** | Windy Webcams API v3 |
+| **覆盖范围** | 全球约 65,000 个摄像头 |
+| **更新频率** | 摄像头定期采集图像（每 5-15 分钟） |
+| **播种器** | `scripts/seed-webcams.mjs` — 区域边界框抓取，采用自适应象限分割 |
+| **API 密钥** | 必需（`WINDY_API_KEY`）；可在 [api.windy.com](https://api.windy.com) 获取免费层 |
+| **署名要求** | 免费层必需 |
+
+### API 提供的内容
+
+**播种时字段**（批量抓取，使用 `include=location,categories`）：
+
+| 字段 | 说明 |
+|-------|-------------|
+| `webcamId` | 唯一摄像头标识符 |
+| `title` | 摄像头名称/描述 |
+| `location.latitude` / `location.longitude` | 地理坐标 |
+| `location.country` | 国家名称 |
+| `location.region` | 地区/州 |
+| `categories` | 摄像头类别（交通、风景、城市等） |
+| `status` | 摄像头状态（active/inactive） |
+
+**按需字段**（单摄像头抓取，使用 `include=images,urls`）：
+
+| 字段 | 说明 |
+|-------|-------------|
+| `images.current.preview` | 最新采集的静态图像 URL |
+| `images.current.thumbnail` | 较小的缩略图 URL |
+| `urls.player` | 可嵌入的延时播放器 URL |
+| `lastUpdatedOn` | 最近一次图像采集的时间戳 |
+
+### 免费层限制
+
+- 图像令牌 URL 在 10 分钟后过期
+- 边界框查询每次请求上限为 10,000 条结果（播种器使用自适应象限分割来规避此限制）
+- 适用速率限制（播种器使用顺序区域抓取）
+
+### API 密钥配置
+
+网络摄像头图层需要 `WINDY_API_KEY` 环境变量。可在 [api.windy.com](https://api.windy.com) 获取免费密钥。
+
+| 环境 | 设置位置 | 使用方 |
+|-------------|-------------|---------|
+| **Vercel**（生产） | Project Settings > Environment Variables | `get-webcam-image.ts`（按需图像/播放器 URL 抓取） |
+| **Railway**（cron 播种器） | Service Variables | `seed-webcams.mjs`（批量元数据抓取） |
+| **Tauri sidecar**（桌面） | Keychain via Settings > API Keys | 通过 sidecar 按需抓取图像 |
+| **本地开发** | `.env` 文件 | 播种器和开发服务器均使用 |
+
+缺少密钥时：
+- **播种器** 优雅退出，提示 "WINDY_API_KEY not set, skipping webcam seed"
+- **图像处理器** 返回 `{ error: 'unavailable' }`，工具提示显示 "Preview unavailable"
+- **地图图层** 仍会根据缓存的地理数据渲染标记（如果先前已播种），但图像预览不可用
+
+## 架构
+
+```
+Seed (periodic):
+  Windy API → seed-webcams.mjs → Redis (geo index + metadata hash)
+
+Runtime:
+  Browser map viewport → listWebcams RPC → Redis geo search → clustered response
+  User clicks marker → getWebcamImage RPC → Windy API (cached 5 min) → tooltip with preview
+  User pins webcam → localStorage → PinnedWebcamsPanel (2x2 iframe grid)
+```
+
+### 服务端聚类
+
+`listWebcams` 处理器根据缩放级别执行服务端空间聚类。低缩放级别下，附近的摄像头会被分组成显示计数的聚类标记。更高缩放级别下，会出现单独的标记。即使视图中存在数千个摄像头，这也能保持地图的高性能。
+
+### 缓存
+
+三层缓存协同工作以最小化延迟和外部 API 调用：
+
+| 层 | 范围 | TTL | 键 |
+|-------|-------|-----|-----|
+| **Redis — 地理 + 元数据** | 播种的摄像头索引 | 24 小时 | `webcam:cameras:geo:{version}`, `webcam:cameras:meta:{version}` |
+| **Redis — 视口响应** | 每个地图视图的聚类结果 | 24 小时 | `webcam:resp:{version}:{zoom}:{quantizedBbox}` |
+| **Redis — 图像查询** | 每个网络摄像头的图像/播放器 URL | 5 分钟 | `webcam:image:{webcamId}` |
+| **客户端 — 图像缓存** | 浏览器内存中的 Map | 9 分钟 | webcamId |
+| **客户端 — 固定存储** | localStorage（永久） | 无（用户管理） | `wm-pinned-webcams` |
+
+### 预期延迟行为
+
+在容器启动后的首次交互中，由于缓存为冷状态，会有明显的延迟：
+
+1. **地图视口切换** → `listWebcams` RPC → 服务器执行 Redis 地理搜索，构建聚类响应，并缓存。后续相同视口会立即从 Redis 缓存返回（24h TTL）。
+2. **首次点击网络摄像头标记** → `getWebcamImage` RPC → 服务器调用 Windy API（到外部服务的网络往返），服务器端缓存响应 5 分钟。客户端也会缓存 9 分钟 — 因此在 9 分钟内重新点击同一网络摄像头是即时的，无需服务器调用。
+3. **固定网络摄像头** → 播放器 iframe 从 Windy 的 CDN 加载（嵌入页面的又一次外部往返）。我们不缓存此项 — 由浏览器处理 iframe 缓存。
+
+一旦缓存预热完成，仅对最近 5-9 分钟内未查看的网络摄像头进行外部调用。
+
+### Redis 数据是临时的
+
+Redis 数据在容器重建后不会保留。重建堆栈后，必须重新运行播种器（`scripts/seed-webcams.mjs`）以重新填充地理索引和元数据。没有播种数据，网络摄像头图层将不显示任何标记。视口响应缓存和图像缓存会随着用户与地图交互而自然重建。
+
+### 无自动重新播种（已知缺口）
+
+**这是一个已知限制，需要在后续 PR 中解决。**
+
+播种器将地理和元数据键写入 Redis，TTL 为 24 小时，但当这些键过期时没有任何机制触发重新播种。24 小时内未手动重新播种，网络摄像头图层会悄无声息地变为空白。
+
+当前重新播种的方式：
+- 从主机运行 `scripts/seed-webcams.mjs`
+- 运行 `scripts/run-seeders.sh`（运行包括网络摄像头在内的所有播种器）
+- **Railway cron**（推荐）：将 `seed-webcams.mjs` 作为 Railway cron 服务每 12-18 小时调度一次，以领先于 24 小时 TTL 过期
+
+## 固定网络摄像头面板
+
+用户可以从地图工具提示中将网络摄像头固定到持久侧边面板。该面板以 2x2 网格形式同时显示最多 4 个嵌入式 Windy 播放器 iframe。
+
+### 功能
+
+- **2x2 iframe 网格**：同时可见四个活动的网络摄像头播放器
+- **开关切换**：网络摄像头可在活动（在网格中显示）和非活动（仅在列表中）之间切换
+- **溢出列表**：当固定超过 4 个网络摄像头时，网格下方会出现一个可滚动列表，用于管理所有固定项
+- **从任何渲染器固定**：固定按钮出现在所有三种地图渲染器（SVG、Globe、DeckGL）的网络摄像头工具提示中
+- **持久化**：固定的网络摄像头通过 localStorage 在页面刷新后保留
+- **自定义事件**：当固定项从任何来源发生变化时，面板会响应式更新
+
+### 存储
+
+固定的网络摄像头数据存储在 `localStorage` 的 `wm-pinned-webcams` 键下。每个条目包含：
+
+```
+webcamId, title, lat, lng, category, country, playerUrl, active (boolean), pinnedAt (timestamp)
+```
+
+最多可有 4 个网络摄像头同时处于活动状态（在网格中显示）。固定的网络摄像头总数不受限制。
+
+## 当前限制
+
+### 非实时视频
+
+**这是需要理解的最重要的限制。** Windy 播放器不显示实时视频流。Windy 网络中的大多数摄像头以周期性间隔（每 5-15 分钟）采集静态图像。嵌入的播放器将这些静态图像编译成延时回放，通常显示最近 24-72 小时的采集内容。
+
+这意味着：
+- "播放器"是近期快照的延时回放，而非实时流
+- 无法通过 Windy API 筛选实时流摄像头
+- 实时态势感知仅限于最近采集的图像（在工具提示预览中可见）
+
+### 免费层不存在实时视频 API
+
+带有结构化 API 的真实实时视频网络摄像头流的免费来源目前并不存在。实时视频需要流式传输基础设施（RTSP/HLS/WebRTC），运营成本高昂。已知的实时来源要么是付费的、仅限合作伙伴的，要么没有 API：
+
+| 来源 | 状态 |
+|--------|--------|
+| YouTube Live | 已集成（Live YouTube 面板）但未按位置索引 |
+| EarthCam | 仅限合作伙伴，无公开 API |
+| SkylineWebcams | 无 API |
+| TrafficLand | 25K 摄像头支持 HLS，但需要商务协调 |
+| Insecam | 存在法律责任（未受保护的摄像头），不可行 |
+
+### 其他限制
+
+- **免费层署名**：Windy 在使用免费 API 层时要求署名
+- **图像令牌过期**：来自 Windy 的预览图像 URL 约 10 分钟后过期；对于过期的工具提示需要重新抓取
+- **播种覆盖范围**：播种器将每个区域边界框的摄像头上限设为 10K；自适应象限分割可缓解此问题，但非常密集的区域可能仍会遗漏摄像头
+- **无状态筛选**：非活动/离线摄像头可能以预览损坏的形式出现在地图上
+- **iframe 沙箱**：播放器 iframe 使用 `allow-scripts allow-same-origin allow-popups` 沙箱策略
+
+## 未来阶段
+
+### 第 2 阶段：US DOT 511 州 API
+
+横跨 20 多个美国州的数万个交通摄像头。每个州免费提供开发者密钥。这些也是周期性静态图像（每 30-60 秒刷新），而非实时视频，但更新频率高于 Windy 摄像头。
+
+目标州：NY (511ny.org)、CA (511.org)、GA (511ga.org)、AZ (az511.com)、UT。
+
+挑战：每个州的 schema 略有不同，需要归一化适配器。
+
+### 第 3 阶段：OpenWebcamDB
+
+补充来源，约 2,052 个精选摄像头。免费层每日限 50 次请求。REST API 规范，但数据集较小。需要激进的缓存策略。

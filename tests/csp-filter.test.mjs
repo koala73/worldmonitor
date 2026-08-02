@@ -406,9 +406,16 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'frame-src', 'https://toolytics.pa.clients6.google.com', '', false, FIRST_PARTY_CONVEX));
     });
 
+    it('suppresses frame-src for h5player userscript vendor frame (WORLDMONITOR-HT)', () => {
+      // Tampermonkey "h5player" video-enhancement userscript frames its own
+      // vendor host into every page. Origin-only blockedURI, exact host.
+      assert.ok(suppress('enforce', 'frame-src', 'https://h5player.anzz.site', '', false, FIRST_PARTY_CONVEX));
+    });
+
     it('does NOT suppress frame-src for lookalike filter-vendor hosts', () => {
       assert.ok(!suppress('enforce', 'frame-src', 'https://netstar-inc.com.evil.com', '', false, FIRST_PARTY_CONVEX));
       assert.ok(!suppress('enforce', 'frame-src', 'https://clients6.google.com.evil.com', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://h5player.anzz.site.evil.com', '', false, FIRST_PARTY_CONVEX));
     });
 
     it('does NOT suppress frame-src for arbitrary third-party hosts (rotating extension long tail stays surfaced)', () => {

@@ -16,6 +16,7 @@ loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
 const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
 const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-overrides.json');
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -129,17 +130,38 @@ function checkIeaAvailability(ieaStocks) {
     (ieaStocks.daysOfCover != null && ieaStocks.anomaly !== true);
 }
 
+function readPath(value, path) {
+  return path.split('.').reduce((current, part) => {
+    if (current == null || typeof current !== 'object') return undefined;
+    return current[part];
+  }, value);
+}
+
+function hasFiniteMeasurementAtPaths(value, paths) {
+  return paths.some((path) => Number.isFinite(readPath(value, path)));
+}
+
+function checkJodiOilAvailability(jodiOil) {
+  if (!jodiOil) return false;
+  return hasFiniteMeasurementAtPaths(jodiOil, JODI_MEASUREMENT_FIELDS.oil);
+}
+
+function checkJodiGasAvailability(jodiGas) {
+  if (!jodiGas) return false;
+  return hasFiniteMeasurementAtPaths(jodiGas, JODI_MEASUREMENT_FIELDS.gas);
+}
+
 function buildOilFields(jodiOil, ieaStocks, hasIeaStocks) {
   return {
-    crudeImportsKbd: jodiOil ? (jodiOil.crude?.importsKbd ?? 0) : 0,
-    gasolineDemandKbd: jodiOil ? (jodiOil.gasoline?.demandKbd ?? 0) : 0,
-    gasolineImportsKbd: jodiOil ? (jodiOil.gasoline?.importsKbd ?? 0) : 0,
-    dieselDemandKbd: jodiOil ? (jodiOil.diesel?.demandKbd ?? 0) : 0,
-    dieselImportsKbd: jodiOil ? (jodiOil.diesel?.importsKbd ?? 0) : 0,
-    jetDemandKbd: jodiOil ? (jodiOil.jet?.demandKbd ?? 0) : 0,
-    jetImportsKbd: jodiOil ? (jodiOil.jet?.importsKbd ?? 0) : 0,
-    lpgDemandKbd: jodiOil ? (jodiOil.lpg?.demandKbd ?? 0) : 0,
-    lpgImportsKbd: jodiOil ? (jodiOil.lpg?.importsKbd ?? 0) : 0,
+    crudeImportsKbd: jodiOil?.crude?.importsKbd ?? null,
+    gasolineDemandKbd: jodiOil?.gasoline?.demandKbd ?? null,
+    gasolineImportsKbd: jodiOil?.gasoline?.importsKbd ?? null,
+    dieselDemandKbd: jodiOil?.diesel?.demandKbd ?? null,
+    dieselImportsKbd: jodiOil?.diesel?.importsKbd ?? null,
+    jetDemandKbd: jodiOil?.jet?.demandKbd ?? null,
+    jetImportsKbd: jodiOil?.jet?.importsKbd ?? null,
+    lpgDemandKbd: jodiOil?.lpg?.demandKbd ?? null,
+    lpgImportsKbd: jodiOil?.lpg?.importsKbd ?? null,
     daysOfCover: hasIeaStocks ? (ieaStocks.daysOfCover ?? 0) : 0,
     netExporter: ieaStocks?.netExporter === true,
     belowObligation: ieaStocks?.belowObligation === true,
@@ -147,12 +169,12 @@ function buildOilFields(jodiOil, ieaStocks, hasIeaStocks) {
 }
 
 function buildGasFields(jodiGas) {
-  if (!jodiGas) return { lngImportsTj: 0, pipeImportsTj: 0, totalDemandTj: 0, lngShareOfImports: 0 };
+  if (!jodiGas) return { lngImportsTj: null, pipeImportsTj: null, totalDemandTj: null, lngShareOfImports: null };
   return {
-    lngImportsTj: jodiGas.lngImportsTj ?? 0,
-    pipeImportsTj: jodiGas.pipeImportsTj ?? 0,
-    totalDemandTj: jodiGas.totalDemandTj ?? 0,
-    lngShareOfImports: jodiGas.lngShareOfImports ?? 0,
+    lngImportsTj: jodiGas.lngImportsTj ?? null,
+    pipeImportsTj: jodiGas.pipeImportsTj ?? null,
+    totalDemandTj: jodiGas.totalDemandTj ?? null,
+    lngShareOfImports: jodiGas.lngShareOfImports ?? null,
   };
 }
 
@@ -196,8 +218,8 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember 
   }
 
   const hasMix = mix != null;
-  const hasJodiOil = jodiOil != null;
-  const hasJodiGas = jodiGas != null;
+  const hasJodiOil = checkJodiOilAvailability(jodiOil);
+  const hasJodiGas = checkJodiGasAvailability(jodiGas);
   const hasIeaStocks = checkIeaAvailability(ieaStocks);
   const hasEmber = ember != null && typeof ember.fossilShare === 'number';
 

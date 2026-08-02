@@ -1,0 +1,52 @@
+---
+title: "以色列警报"
+description: "以色列警报面板直接接入 OREF 以色列后方司令部官方警报源，实时展示全境范围内的火箭弹、无人机与弹道导弹来袭警报，提供最近 24 小时完整历史记录、按攻击波次自动分组的态势视图，并高亮当前正在鸣响的活动警报区域，用于持续监测中东冲突升级动向、平民防空响应与区域安全形势变化。"
+---
+
+**Israel Sirens** 面板（内部 id `oref-sirens`）实时展示 OREF（以色列后方司令部 / Pikud HaOref）民防警报源。当警报活动时，面板显示受影响的地区；当无活动时，显示按波次分组的 24 小时历史，让分析师一眼看到近期模式。
+
+## 面板显示内容
+
+单个面板框架下的两种状态：
+
+- **活动警报状态** — 当前 `OrefAlert[]`，含受影响区域和威胁标签。
+- **历史状态** — 过去 24 小时的警报活动按波次分组（`historyWaves: OrefHistoryEntry[]`）。计数徽章显示视图中的总波次数（`MAX_HISTORY_WAVES = 50`）。
+
+摘要计数器在面板中展示：
+
+- **24 小时计数** — 过去 24 小时内的警报波次数。
+- **总历史计数** — 完整保留的波次。
+- **配置状态** — 当 OREF relay 未配置时，面板渲染显式的 "not configured" 空状态而非静默零值。
+
+3 分钟客户端缓存（`HISTORY_TTL = 3 * 60 * 1000`）和进行中标志（`historyFetchInFlight`）防止面板重新渲染时的惊群式重复获取。
+
+面板 id 为 `oref-sirens`；规范组件为 `src/components/OrefSirensPanel.ts`。标题来自 i18n（`panels.orefSirens`）；配置名："Israel Sirens"。
+
+## 如何访问
+
+- **Cmd+K**：输入 *siren* 或 *oref*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`priority: 2`）。full 变体注册在桌面端叠加 `premium: 'locked'`（`_desktop && { premium: 'locked' as const }`），因此该面板在 **Web 端免费**，**桌面端 PRO 锁定**。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS` 的 `'oref-sirens'`。
+
+## 数据来源
+
+- `@/services/oref-alerts` 中的 `fetchOrefHistory()` — 由 `/api/oref-alerts`（镜像 OREF 源的 Railway relay；记录在 [Proxies](/zh/api-proxies) 下）支持。
+- 实时警报通过同一 relay 单独传递；面板的 `setData()` 路径接受带 `configured` 标志 + 活动警报列表的 `OrefAlertsResponse`。
+
+### 后端端点
+
+| 访问面 | 端点 | 备注 |
+|---|---|---|
+| 面板 relay 路径 | `GET /api/oref-alerts` | 活动警报和历史记录的当前浏览器路径。 |
+| 生成的服务 RPC | `GET /api/intelligence/v1/list-oref-alerts` | `mode=MODE_HISTORY` 提供 Redis 历史；实时模式尝试 relay 并回退到缓存计数。 |
+
+## 刷新频率
+
+实时警报实时传输。历史客户端缓存 3 分钟以缓解重新渲染时的重复获取。
+
+## 层级与门控
+
+**Web 端免费；桌面端 PRO 锁定。** Web 路径注册时无 `premium`；桌面变体通过 `_desktop &&` 子句展开 `premium: 'locked'`。
+
+## API 参考
+
+- `/api/oref-alerts` — relay 代理，记录在 [Proxies](/zh/api-proxies) 下。

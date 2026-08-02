@@ -2,12 +2,70 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  resolveR2StorageConfig,
   getR2JsonObject,
   putR2JsonObject,
   withSettleTimeout,
   __setS3ClientForTests,
   __setR2S3TimeoutForTests,
 } from '../scripts/_r2-storage.mjs';
+
+describe('resolveR2StorageConfig bootstrap profile', () => {
+  it('uses only the dedicated bootstrap credentials and derives the R2 endpoint', () => {
+    const config = resolveR2StorageConfig({
+      R2_ACCOUNT_ID: 'bootstrap-account',
+      R2_BOOTSTRAP_BUCKET: 'bootstrap-origin',
+      R2_BOOTSTRAP_ACCESS_KEY_ID: 'bootstrap-key',
+      R2_BOOTSTRAP_SECRET_ACCESS_KEY: 'bootstrap-secret',
+      CLOUDFLARE_R2_ACCOUNT_ID: 'legacy-account',
+      CLOUDFLARE_R2_BUCKET: 'legacy-bucket',
+      CLOUDFLARE_R2_ACCESS_KEY_ID: 'legacy-key',
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'legacy-secret',
+      CLOUDFLARE_API_TOKEN: 'generic-token',
+    }, { profile: 'bootstrap' });
+
+    assert.deepEqual(config, {
+      mode: 's3',
+      accountId: 'bootstrap-account',
+      bucket: 'bootstrap-origin',
+      endpoint: 'https://bootstrap-account.r2.cloudflarestorage.com',
+      region: 'auto',
+      credentials: {
+        accessKeyId: 'bootstrap-key',
+        secretAccessKey: 'bootstrap-secret',
+      },
+      forcePathStyle: true,
+      basePrefix: '',
+    });
+  });
+
+  it('honors the optional dedicated endpoint', () => {
+    const config = resolveR2StorageConfig({
+      R2_ACCOUNT_ID: 'bootstrap-account',
+      R2_ENDPOINT: 'https://r2.example.test',
+      R2_BOOTSTRAP_BUCKET: 'bootstrap-origin',
+      R2_BOOTSTRAP_ACCESS_KEY_ID: 'bootstrap-key',
+      R2_BOOTSTRAP_SECRET_ACCESS_KEY: 'bootstrap-secret',
+    }, { profile: 'bootstrap' });
+
+    assert.equal(config?.endpoint, 'https://r2.example.test');
+  });
+
+  it('does not fall back to legacy credentials or generic API tokens', () => {
+    const config = resolveR2StorageConfig({
+      R2_ACCOUNT_ID: 'bootstrap-account',
+      R2_BOOTSTRAP_BUCKET: 'bootstrap-origin',
+      CLOUDFLARE_R2_ACCOUNT_ID: 'legacy-account',
+      CLOUDFLARE_R2_BUCKET: 'legacy-bucket',
+      CLOUDFLARE_R2_ACCESS_KEY_ID: 'legacy-key',
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'legacy-secret',
+      CLOUDFLARE_R2_TOKEN: 'legacy-r2-token',
+      CLOUDFLARE_API_TOKEN: 'generic-token',
+    }, { profile: 'bootstrap' });
+
+    assert.equal(config, null);
+  });
+});
 
 // s3-mode config (mode !== 'api' → S3-SDK branch). getR2StorageClient returns
 // the injected fake client, so no real network / credentials are touched.

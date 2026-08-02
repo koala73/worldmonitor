@@ -125,6 +125,12 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         tokensPrompt: json.usage?.prompt_tokens ?? 0,
         tokensCompletion: json.usage?.completion_tokens ?? 0,
       };
+      if (json.choices?.[0]?.finish_reason === 'length') {
+        console.warn(`[llm-chain] ${provider.name}: length-limited response, trying next provider`);
+        record(false, { ...usage, reason: 'length' });
+        continue;
+      }
+
       const rawText = json.choices?.[0]?.message?.content?.trim();
       if (!rawText) {
         console.warn(`[llm-chain] ${provider.name}: empty response`);

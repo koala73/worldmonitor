@@ -41,7 +41,11 @@ export function updateMetaTagsForStory(meta: StoryMeta): void {
   setMetaTag('twitter:url', storyUrl);
   setMetaTag('twitter:image', imageUrl);
 
-  sessionStorage.setItem('storyMeta', JSON.stringify(meta));
+  try {
+    sessionStorage.setItem('storyMeta', JSON.stringify(meta));
+  } catch {
+    // Story metadata remains correct for the current document without persistence.
+  }
 }
 
 export function resetMetaTags(): void {
@@ -59,7 +63,11 @@ export function resetMetaTags(): void {
   setMetaTag('twitter:url', CANONICAL_URL);
   setMetaTag('twitter:image', DEFAULT_IMAGE);
 
-  sessionStorage.removeItem('storyMeta');
+  try {
+    sessionStorage.removeItem('storyMeta');
+  } catch {
+    // Resetting the current document must not depend on storage availability.
+  }
 }
 
 function generateDescription(
@@ -99,7 +107,7 @@ function setMetaTag(property: string, content: string): void {
   if (existing) existing.remove();
 
   const meta = document.createElement('meta');
-  if (property.startsWith('og:') || property.startsWith('twitter:')) {
+  if (property.startsWith('og:')) {
     meta.setAttribute('property', property);
   } else {
     meta.setAttribute('name', property);

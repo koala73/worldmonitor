@@ -144,4 +144,39 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
       message: 'Dodo checkout temporarily failed',
     });
   });
+
+  it('preserves relay 429 and Retry-After without logging it as an unexpected failure', async () => {
+    const mod = await importFreshCreateCheckout();
+    const consoleError = mock.method(console, 'error', () => {});
+    const relayFetch = mock.fn(async () =>
+      Response.json(
+        {
+          error: 'CHECKOUT_RATE_LIMITED',
+          message: 'Checkout is temporarily rate limited. Retry shortly.',
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': '10' },
+        },
+      ),
+    );
+
+    mod.__setCreateCheckoutDepsForTests({
+      validateBearerToken: async () => ({
+        valid: true,
+        userId: 'user_rate_limited',
+      }),
+      fetch: relayFetch,
+    });
+
+    const res = await mod.default(makeCheckoutRequest());
+
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('Retry-After'), '10');
+    assert.deepEqual(await res.json(), {
+      error: 'CHECKOUT_RATE_LIMITED',
+      message: 'Checkout is temporarily rate limited. Retry shortly.',
+    });
+    assert.equal(consoleError.mock.calls.length, 0);
+  });
 });
