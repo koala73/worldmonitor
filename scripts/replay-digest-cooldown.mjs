@@ -43,11 +43,26 @@
  */
 
 import process from 'node:process';
+import { randomUUID } from 'node:crypto';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
+import { REPLAY_WINDOW_DAYS } from './lib/brief-replay-constants.mjs';
 
-const DEFAULT_REPLAY_DAYS = 14;
+export const DEFAULT_REPLAY_DAYS = REPLAY_WINDOW_DAYS;
 const REPLAY_KEY_PREFIX = 'digest:replay-log:v1';
 const SCAN_PAGE_SIZE = 200;
+const REPLAY_REST_USER_AGENT = 'worldmonitor-digest/1.0';
+const REPLAY_REQUEST_TIMEOUT_MS = 10_000;
+const SNAPSHOT_TTL_SECONDS = 15 * 60;
+
+function replayRequestInit(token) {
+  return {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'User-Agent': REPLAY_REST_USER_AGENT,
+    },
+    signal: AbortSignal.timeout(REPLAY_REQUEST_TIMEOUT_MS),
+  };
+}
 
 /**
  * Entries per LRANGE page. Upstash's max-request-size limit counts a
@@ -498,38 +513,93 @@ Output:
  * @param {object} [opts]
  * @param {typeof fetch} [opts.fetchImpl]    injectable for tests
  * @param {number} [opts.pageSize]           entries per request
+ * @param {string} [opts.snapshotKey]        deterministic key for tests
+ * @param {(...args: unknown[]) => void} [opts.warn] cleanup warning sink
  * @returns {Promise<string[]>}              raw JSON strings, list order
  */
 export async function readReplayListPaged(url, token, key, opts = {}) {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const pageSize = opts.pageSize ?? LRANGE_PAGE_SIZE;
+  const warn = opts.warn ?? ((...args) => console.warn(...args));
   // A non-positive page size makes `stop` land on -1, i.e. the exact
   // unbounded `LRANGE key 0 -1` this function exists to avoid — and the
   // short-page check could never terminate. Fail loudly instead.
   if (!Number.isInteger(pageSize) || pageSize < 1) {
     throw new TypeError(`readReplayListPaged: pageSize must be a positive integer, got ${pageSize}`);
   }
+  const snapshotKey = opts.snapshotKey ?? `${key}:read-snapshot:${randomUUID()}`;
+  let snapshotCreated = false;
   /** @type {string[]} */
   const out = [];
-  let start = 0;
-  for (;;) {
-    const stop = start + pageSize - 1;
-    const res = await fetchImpl(`${url}/lrange/${encodeURIComponent(key)}/${start}/${stop}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      throw new Error(`LRANGE ${key} [${start}..${stop}] failed: HTTP ${res.status}`);
+  try {
+    const copyRes = await fetchImpl(
+      `${url}/copy/${encodeURIComponent(key)}/${encodeURIComponent(snapshotKey)}`,
+      replayRequestInit(token),
+    );
+    if (!copyRes.ok) {
+      throw new Error(`COPY ${key} -> ${snapshotKey} failed: HTTP ${copyRes.status}`);
     }
-    const body = await res.json();
-    if (body?.error) {
-      throw new Error(`LRANGE ${key} [${start}..${stop}] rejected by Upstash: ${body.error}`);
+    const copyBody = await copyRes.json();
+    if (copyBody?.error) {
+      throw new Error(`COPY ${key} -> ${snapshotKey} rejected by Upstash: ${copyBody.error}`);
     }
-    const items = Array.isArray(body?.result) ? body.result : [];
-    out.push(...items);
-    // A short page is the end of the list. An exact-multiple list costs
-    // one extra empty page, which is cheaper than an LLEN round-trip.
-    if (items.length < pageSize) return out;
-    start += pageSize;
+    if (copyBody?.result === 0 || copyBody?.result === '0') return out;
+    if (copyBody?.result !== 1 && copyBody?.result !== '1') {
+      throw new Error(`COPY ${key} -> ${snapshotKey} returned an unexpected result`);
+    }
+    snapshotCreated = true;
+
+    const expireRes = await fetchImpl(
+      `${url}/expire/${encodeURIComponent(snapshotKey)}/${SNAPSHOT_TTL_SECONDS}`,
+      replayRequestInit(token),
+    );
+    if (!expireRes.ok) {
+      throw new Error(`EXPIRE ${snapshotKey} failed: HTTP ${expireRes.status}`);
+    }
+    const expireBody = await expireRes.json();
+    if (expireBody?.error || (expireBody?.result !== 1 && expireBody?.result !== '1')) {
+      throw new Error(`EXPIRE ${snapshotKey} rejected by Upstash: ${expireBody?.error ?? 'unexpected result'}`);
+    }
+
+    let start = 0;
+    for (;;) {
+      const stop = start + pageSize - 1;
+      const res = await fetchImpl(`${url}/lrange/${encodeURIComponent(snapshotKey)}/${start}/${stop}`, {
+        ...replayRequestInit(token),
+      });
+      if (!res.ok) {
+        throw new Error(`LRANGE ${snapshotKey} [${start}..${stop}] failed: HTTP ${res.status}`);
+      }
+      const body = await res.json();
+      if (body?.error) {
+        throw new Error(`LRANGE ${snapshotKey} [${start}..${stop}] rejected by Upstash: ${body.error}`);
+      }
+      const items = Array.isArray(body?.result) ? body.result : [];
+      out.push(...items);
+      // A short page is the end of the snapshot. An exact-multiple list
+      // costs one extra empty page, which is cheaper than an LLEN round-trip.
+      if (items.length < pageSize) return out;
+      start += pageSize;
+    }
+  } finally {
+    if (snapshotCreated) {
+      try {
+        const deleteRes = await fetchImpl(
+          `${url}/del/${encodeURIComponent(snapshotKey)}`,
+          replayRequestInit(token),
+        );
+        if (!deleteRes.ok) {
+          warn(`[replay] failed to delete read snapshot ${snapshotKey}: HTTP ${deleteRes.status}`);
+        } else {
+          const deleteBody = await deleteRes.json();
+          if (deleteBody?.error) {
+            warn(`[replay] failed to delete read snapshot ${snapshotKey}: ${deleteBody.error}`);
+          }
+        }
+      } catch (err) {
+        warn(`[replay] failed to delete read snapshot ${snapshotKey}: ${err?.message ?? err}`);
+      }
+    }
   }
 }
 
@@ -541,14 +611,17 @@ export async function readReplayListPaged(url, token, key, opts = {}) {
  * @param {object} args  — output of parseArgs
  * @returns {Promise<ReplayRecord[]>}
  */
-async function fetchRecords(args) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+export async function fetchRecords(args, opts = {}) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const url = opts.url ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = opts.token ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+  const warn = opts.warn ?? ((...args) => console.warn(...args));
+  const nowMs = opts.nowMs ?? Date.now();
   if (!url || !token) {
     throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set');
   }
 
-  const cutoffMs = Date.now() - args.days * 24 * 60 * 60 * 1000;
+  const cutoffMs = nowMs - args.days * 24 * 60 * 60 * 1000;
   const matchPattern = args.rule
     ? `${REPLAY_KEY_PREFIX}:${args.rule}:*`
     : `${REPLAY_KEY_PREFIX}:*`;
@@ -557,13 +630,16 @@ async function fetchRecords(args) {
   const allKeys = [];
   let cursor = '0';
   do {
-    const scanRes = await fetch(`${url}/scan/${cursor}/match/${encodeURIComponent(matchPattern)}/count/${SCAN_PAGE_SIZE}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const scanRes = await fetchImpl(`${url}/scan/${cursor}/match/${encodeURIComponent(matchPattern)}/count/${SCAN_PAGE_SIZE}`, {
+      ...replayRequestInit(token),
     });
     if (!scanRes.ok) {
       throw new Error(`SCAN failed: ${scanRes.status} ${scanRes.statusText}`);
     }
     const body = await scanRes.json();
+    if (body?.error) {
+      throw new Error(`SCAN rejected by Upstash: ${body.error}`);
+    }
     const result = Array.isArray(body?.result) ? body.result : null;
     if (!result || result.length < 2) break;
     cursor = String(result[0]);
@@ -592,14 +668,14 @@ async function fetchRecords(args) {
     /** @type {string[]} */
     let list;
     try {
-      list = await readReplayListPaged(url, token, key);
+      list = await readReplayListPaged(url, token, key, { fetchImpl, warn });
     } catch (err) {
       // Keep the legacy per-key skip so one bad day doesn't abort a run,
       // but the message now carries the real reason (previously an
       // oversized-result rejection arrived as HTTP 200 and was silently
       // read as an empty day).
       failedKeys++;
-      console.warn(`[replay] ${err?.message ?? err}; continuing`);
+      warn(`[replay] ${err?.message ?? err}; continuing`);
       continue;
     }
     for (const item of list) {
@@ -607,7 +683,7 @@ async function fetchRecords(args) {
         const parsed = JSON.parse(item);
         records.push(parsed);
       } catch (err) {
-        console.warn(`[replay] failed to parse record in ${key}: ${err?.message ?? err}`);
+        warn(`[replay] failed to parse record in ${key}: ${err?.message ?? err}`);
       }
     }
   }
@@ -615,7 +691,7 @@ async function fetchRecords(args) {
     // Without this the caller's "no records returned. Verify
     // DIGEST_DEDUP_REPLAY_LOG=1" message blames the flag for what is
     // actually a read failure.
-    console.warn(
+    warn(
       `[replay] ${failedKeys} of ${eligibleKeys.length} day keys failed to read — `
       + 'coverage below is incomplete and NOT evidence the flag was off',
     );

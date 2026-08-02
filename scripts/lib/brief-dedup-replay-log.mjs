@@ -24,6 +24,7 @@
 
 import { cacheKeyFor, normalizeForEmbedding } from './brief-embedding.mjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
+import { REPLAY_WINDOW_DAYS } from './brief-replay-constants.mjs';
 
 const KEY_PREFIX = 'digest:replay-log:v1';
 
@@ -38,7 +39,7 @@ const KEY_PREFIX = 'digest:replay-log:v1';
  * Raising this again means raising DEFAULT_REPLAY_DAYS first; the TTL
  * exists to cover the harness's window, not the other way round.
  */
-const TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days — the U6 harness window
+const TTL_SECONDS = REPLAY_WINDOW_DAYS * 24 * 60 * 60;
 
 /**
  * Per-day list cap, anchored to Upstash's 50MiB **per-command** limit.

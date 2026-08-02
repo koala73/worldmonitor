@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import {
   aggregateReplayDecisions,
   clusterIdFromRecord,
+  fetchRecords,
   parseArgs,
   readReplayListPaged,
   renderMarkdownSummary,
@@ -470,10 +471,19 @@ describe('readReplayListPaged', () => {
   /** Fake Upstash that serves `total` entries and records every URL hit. */
   function mockUpstash(total) {
     const urls = [];
+    const lrangeUrls = [];
+    const requests = [];
     return {
       urls,
-      impl: async (url) => {
+      lrangeUrls,
+      requests,
+      impl: async (url, init) => {
         urls.push(url);
+        requests.push({ url, init });
+        if (url.includes('/copy/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+        if (url.includes('/expire/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+        if (url.includes('/del/')) return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+        lrangeUrls.push(url);
         const [, start, stop] = url.match(/\/lrange\/[^/]+\/(-?\d+)\/(-?\d+)$/).map(Number);
         const from = start;
         const to = Math.min(stop, total - 1);
@@ -487,8 +497,8 @@ describe('readReplayListPaged', () => {
   it('never issues an unbounded 0/-1 range', async () => {
     const up = mockUpstash(2_500);
     await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
-    assert.ok(up.urls.length > 0, 'at least one range request');
-    for (const url of up.urls) {
+    assert.ok(up.lrangeUrls.length > 0, 'at least one range request');
+    for (const url of up.lrangeUrls) {
       assert.ok(!url.endsWith('/0/-1'), `unbounded LRANGE issued: ${url}`);
     }
   });
@@ -499,24 +509,67 @@ describe('readReplayListPaged', () => {
     assert.equal(out.length, 2_500);
     assert.equal(JSON.parse(out[0]).storyHash, 'h-0');
     assert.equal(JSON.parse(out[2_499]).storyHash, 'h-2499');
-    assert.equal(up.urls.length, 3, '1000 + 1000 + 500 → three pages');
-    assert.ok(up.urls[0].endsWith('/0/999'));
-    assert.ok(up.urls[1].endsWith('/1000/1999'));
-    assert.ok(up.urls[2].endsWith('/2000/2999'));
+    assert.equal(up.lrangeUrls.length, 3, '1000 + 1000 + 500 -> three pages');
+    assert.ok(up.lrangeUrls[0].endsWith('/0/999'));
+    assert.ok(up.lrangeUrls[1].endsWith('/1000/1999'));
+    assert.ok(up.lrangeUrls[2].endsWith('/2000/2999'));
   });
 
   it('stops on a short page without an extra probe request', async () => {
     const up = mockUpstash(400);
     const out = await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
     assert.equal(out.length, 400);
-    assert.equal(up.urls.length, 1, 'a short first page ends the loop');
+    assert.equal(up.lrangeUrls.length, 1, 'a short first page ends the loop');
   });
 
   it('throws on an exact-multiple list only after the empty terminator page', async () => {
     const up = mockUpstash(2_000);
     const out = await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
     assert.equal(out.length, 2_000);
-    assert.equal(up.urls.length, 3, 'full page, full page, then an empty page terminates');
+    assert.equal(up.lrangeUrls.length, 3, 'full page, full page, then an empty page terminates');
+  });
+
+  it('sends the repository User-Agent on every snapshot and page request', async () => {
+    const up = mockUpstash(1);
+    await readReplayListPaged('https://u', 't', 'k', { fetchImpl: up.impl, pageSize: 1_000 });
+    assert.ok(up.requests.length > 0);
+    for (const { init } of up.requests) {
+      assert.equal(init.headers['User-Agent'], 'worldmonitor-digest/1.0');
+      assert.ok(init.signal instanceof AbortSignal);
+      assert.equal(init.signal.aborted, false);
+    }
+  });
+
+  it('pages a stable snapshot while the live list is appended and trimmed', async () => {
+    const original = Array.from({ length: 5 }, (_, i) => JSON.stringify({ storyHash: 'h-' + i }));
+    let live = [...original];
+    let snapshot = null;
+    const impl = async (url) => {
+      if (url.includes('/copy/')) {
+        snapshot = [...live];
+        live = [...live.slice(2), JSON.stringify({ storyHash: 'h-new-0' }), JSON.stringify({ storyHash: 'h-new-1' })];
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      if (url.includes('/expire/') || url.includes('/del/')) {
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      const parts = url.split('/');
+      const start = Number(parts.at(-2));
+      const stop = Number(parts.at(-1));
+      const values = snapshot ?? live;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ result: values.slice(start, Math.min(stop + 1, values.length)) }),
+      };
+    };
+
+    const out = await readReplayListPaged('https://u', 't', 'k', {
+      fetchImpl: impl,
+      pageSize: 2,
+      snapshotKey: 'snapshot-key',
+    });
+    assert.deepEqual(out, original, 'paging must observe the copied list, not post-copy mutations');
   });
 
   // The load-bearing one: an HTTP 200 carrying a per-command error must
@@ -560,5 +613,51 @@ describe('readReplayListPaged — pageSize guard', () => {
       );
     }
     assert.equal(called, 0, 'guard must fire before any network call');
+  });
+});
+
+describe('fetchRecords mixed-success path', () => {
+  it('returns successful records but warns when one eligible day fails', async () => {
+    const failedKey = 'digest:replay-log:v1:full:en:high:2026-08-01';
+    const goodKey = 'digest:replay-log:v1:full:en:high:2026-08-02';
+    const goodRecord = { storyHash: 'good', ruleId: 'full:en:high', tsMs: Date.UTC(2026, 7, 2, 12) };
+    const warnings = [];
+    const impl = async (url) => {
+      if (url.includes('/scan/')) {
+        return { ok: true, status: 200, json: async () => ({ result: ['0', [failedKey, goodKey]] }) };
+      }
+      if (url.includes('/copy/')) {
+        if (decodeURIComponent(url).includes(failedKey)) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ error: 'ERR max request size exceeded' }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      if (url.includes('/expire/') || url.includes('/del/')) {
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      if (url.includes('/lrange/')) {
+        return { ok: true, status: 200, json: async () => ({ result: [JSON.stringify(goodRecord)] }) };
+      }
+      throw new Error('unexpected test URL: ' + url);
+    };
+
+    const records = await fetchRecords(
+      { days: 1, rule: null },
+      {
+        url: 'https://u',
+        token: 't',
+        fetchImpl: impl,
+        nowMs: Date.UTC(2026, 7, 2, 12),
+        warn: (line) => warnings.push(String(line)),
+      },
+    );
+
+    assert.deepEqual(records, [goodRecord]);
+    assert.ok(warnings.some((line) => line.includes('max request size exceeded')));
+    assert.ok(warnings.some((line) => line.includes('1 of 2 day keys failed')));
   });
 });

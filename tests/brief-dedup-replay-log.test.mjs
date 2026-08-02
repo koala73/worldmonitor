@@ -30,6 +30,7 @@ import {
   writeReplayLog,
 } from '../scripts/lib/brief-dedup-replay-log.mjs';
 import { cacheKeyFor, normalizeForEmbedding } from '../scripts/lib/brief-embedding.mjs';
+import { DEFAULT_REPLAY_DAYS } from '../scripts/replay-digest-cooldown.mjs';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -417,10 +418,9 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(ltrimCmd[3], '-1', 'end index is -1 (last element)');
     assert.equal(expireCmd[0], 'EXPIRE');
     assert.equal(expireCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
-    // 14d, not 30d: DEFAULT_REPLAY_DAYS in scripts/replay-digest-cooldown.mjs
-    // is 14 and the harness hard-aborts below that coverage, so days 15-30
-    // served no consumer (measured 2026-08-02: 3.93GB of 7.24GB).
-    assert.equal(expireCmd[2], String(14 * 24 * 60 * 60));
+    // The writer and harness share REPLAY_WINDOW_DAYS; this assertion
+    // catches a future retention drift at the command boundary.
+    assert.equal(expireCmd[2], String(DEFAULT_REPLAY_DAYS * 24 * 60 * 60));
     // Each pushed value is a JSON-stringified record.
     const rec0 = JSON.parse(rpushCmd[2]);
     const rec1 = JSON.parse(rpushCmd[3]);
