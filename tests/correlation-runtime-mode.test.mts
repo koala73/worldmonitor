@@ -50,10 +50,26 @@ describe('#5983 correlation runtime mode contract', () => {
     assert.equal(CORRELATION_RUNTIME_MODE_ENDPOINT, '/api/correlation-runtime-mode');
   });
 
+  // The edge function cannot import shared/ (each api/*.js is bundled as a
+  // self-contained Vercel Edge Function), so it keeps its own copies of the key
+  // and the mode set. The byte-identical mirror guards cover shared/ <->
+  // scripts/shared/ only, so without these assertions a drifted edge copy would
+  // read the wrong control forever while every other test stayed green.
+  it('pins the edge-local key and mode set to the canonical constants', () => {
+    assert.equal(apiTesting.CORRELATION_RUNTIME_MODE_KEY, CORRELATION_RUNTIME_MODE_KEY);
+    assert.deepEqual([...apiTesting.VALID_MODES].sort(), [...CORRELATION_RUNTIME_MODES].sort());
+  });
+
   it('fails closed for absent, malformed, and unknown configuration', () => {
     for (const [value, expected] of MODE_CASES) {
       assert.equal(resolveCorrelationRuntimeMode(value), expected, JSON.stringify(value));
       assert.equal(apiTesting.resolveMode(value), expected, `edge mirror: ${JSON.stringify(value)}`);
+    }
+    // Drive the accepted set off the canonical constant rather than a hand-kept
+    // list, so adding a mode to shared/ cannot leave the edge copy behind.
+    for (const mode of CORRELATION_RUNTIME_MODES) {
+      assert.equal(resolveCorrelationRuntimeMode({ mode }), mode);
+      assert.equal(apiTesting.resolveMode({ mode }), mode, `edge mirror accepts ${mode}`);
     }
   });
 
@@ -69,6 +85,11 @@ describe('#5983 correlation runtime mode contract', () => {
     assert.equal(calls[0]?.input, CORRELATION_RUNTIME_MODE_ENDPOINT);
     assert.equal(calls[0]?.init?.cache, 'no-store');
     assert.equal(calls[0]?.init?.credentials, 'omit');
+    // Load-bearing: this read is awaited inside the correlation refresh
+    // callback, and RefreshScheduler clears its in-flight latch only in a
+    // `finally`. An unbounded fetch that never settles would latch that lane
+    // forever and silently stop all future correlation refreshes.
+    assert.ok(calls[0]?.init?.signal, 'control-plane read must be time-bounded');
 
     const failure = await fetchCorrelationRuntimeMode(async () => {
       throw new Error('control plane unavailable');
@@ -80,8 +101,11 @@ describe('#5983 correlation runtime mode contract', () => {
     ));
     assert.equal(malformed, 'legacy');
 
+    // The payload deliberately carries an ACTIVATING mode: with an inert body
+    // this assertion would pass even with the `!response.ok` guard deleted,
+    // because the body would resolve to 'legacy' anyway.
     const unavailable = await fetchCorrelationRuntimeMode(async () => (
-      new Response('{}', { status: 503 })
+      new Response(JSON.stringify({ mode: 'exact' }), { status: 503 })
     ));
     assert.equal(unavailable, 'legacy');
   });
@@ -119,10 +143,15 @@ describe('#5983 correlation runtime mode contract', () => {
       }),
       'legacy',
     );
+    // Activating payload on purpose: with an inert body this case would pass
+    // even with the seeder's `!response.ok` guard deleted.
     assert.equal(
       await readCorrelationRuntimeMode({
         env,
-        fetchImpl: async () => new Response('{}', { status: 503 }),
+        fetchImpl: async () => new Response(
+          JSON.stringify({ result: JSON.stringify({ mode: 'exact' }) }),
+          { status: 503 },
+        ),
       }),
       'legacy',
     );
@@ -171,6 +200,45 @@ describe('#5983 correlation runtime mode contract', () => {
     }
   });
 
+  it('guards the Edge route: rejects foreign origins and non-GET methods', async () => {
+    const originalFetch = globalThis.fetch;
+    // Any Redis result at all -- these branches must short-circuit before the
+    // read, so a successful stub proves the guard rather than masking it.
+    globalThis.fetch = async () => redisResponse(JSON.stringify({ mode: 'exact' }));
+
+    try {
+      const forbidden = await correlationRuntimeModeHandler(
+        new Request('https://api.worldmonitor.app/api/correlation-runtime-mode', {
+          headers: { Origin: 'https://evil.example' },
+        }),
+      );
+      assert.equal(forbidden.status, 403);
+      assert.equal(forbidden.headers.get('Cache-Control'), 'no-store');
+      assert.equal(await forbidden.text(), 'Forbidden');
+
+      const preflight = await correlationRuntimeModeHandler(
+        new Request('https://api.worldmonitor.app/api/correlation-runtime-mode', {
+          method: 'OPTIONS',
+          headers: { Origin: 'https://worldmonitor.app' },
+        }),
+      );
+      assert.equal(preflight.status, 204);
+      assert.equal(preflight.headers.get('Cache-Control'), 'no-store');
+
+      const wrongMethod = await correlationRuntimeModeHandler(
+        new Request('https://api.worldmonitor.app/api/correlation-runtime-mode', {
+          method: 'POST',
+          headers: { Origin: 'https://worldmonitor.app' },
+        }),
+      );
+      assert.equal(wrongMethod.status, 405);
+      assert.equal(wrongMethod.headers.get('Cache-Control'), 'no-store');
+      assert.deepEqual(await wrongMethod.json(), { error: 'Method not allowed' });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('refreshes the browser decision at startup and before each scheduled correlation run', () => {
     const appSource = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf8');
     const runnerStart = appSource.indexOf('private async runCorrelationEngine(): Promise<void>');
@@ -179,10 +247,29 @@ describe('#5983 correlation runtime mode contract', () => {
     assert.match(runner, /fetchCorrelationRuntimeMode\(\)/);
     assert.match(runner, /engine\.run\(this\.state, runtimeMode\)/);
 
-    const initialCall = appSource.lastIndexOf('await this.runCorrelationEngine();', runnerStart);
-    const refreshCall = appSource.indexOf('await this.runCorrelationEngine();', runnerStart);
-    assert.ok(initialCall > 0 && initialCall < runnerStart, 'startup must run through the mode-aware runner');
-    assert.ok(refreshCall > runnerStart, 'scheduled refresh must run through the mode-aware runner');
+    // Count LIVE call sites (commented-out lines excluded) rather than asserting
+    // mere presence/ordering. A presence-and-ordering guard passes when the real
+    // call is deleted but a comment mentions it, or when the call is moved into
+    // an unreachable method -- both verified bypasses of the earlier shape.
+    const lines = appSource.split('\n');
+    const callLines = lines
+      .map((line, index) => [line.trim(), index] as const)
+      .filter(([line]) => !line.startsWith('//') && line.includes('await this.runCorrelationEngine();'))
+      .map(([, index]) => index);
+    assert.equal(callLines.length, 2, 'exactly two live runCorrelationEngine() call sites must exist');
+
+    const runnerLine = lines.findIndex(line => line.includes('private async runCorrelationEngine('));
+    assert.ok(callLines[0]! < runnerLine, 'startup must run through the mode-aware runner');
+    assert.ok(callLines[1]! > runnerLine, 'scheduled refresh must run through the mode-aware runner');
+
+    // Bind the second call site to the scheduler registration itself, so
+    // relocating it into an unrelated or dead method fails the guard.
+    const schedulerLine = lines.findIndex(line => line.includes("'correlation-engine',"));
+    assert.notEqual(schedulerLine, -1, 'correlation-engine refresh registration must exist');
+    assert.ok(
+      callLines[1]! > schedulerLine && callLines[1]! - schedulerLine <= 4,
+      'the scheduled call must sit inside the correlation-engine refresh registration',
+    );
 
     const seederSource = readFileSync(resolve(repoRoot, 'scripts/seed-correlation.mjs'), 'utf8');
     const computeStart = seederSource.indexOf('async function computeCorrelation()');

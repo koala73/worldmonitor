@@ -52,8 +52,18 @@ export class CorrelationEngine {
     this.previousClusters.set(adapter.domain, []);
   }
 
-  async run(ctx: AppContext, runtimeMode: CorrelationRuntimeMode = 'legacy'): Promise<void> {
-    if (this.running) return;
+  /**
+   * Returns true when this call actually computed, false when it was skipped
+   * because a run was already in flight.
+   *
+   * The skip is not reachable today — this method's body contains no `await`,
+   * so `running` is never true across a yield point. The return value exists so
+   * the contract stays correct if that ever changes: callers must not publish
+   * `getCards()` after a skipped run, because on a first-run overlap the card
+   * map still holds its initial empty arrays and would blank live panels.
+   */
+  async run(ctx: AppContext, runtimeMode: CorrelationRuntimeMode = 'legacy'): Promise<boolean> {
+    if (this.running) return false;
     this.runtimeMode = runtimeMode;
     this.running = true;
     try {
@@ -91,6 +101,7 @@ export class CorrelationEngine {
     } finally {
       this.running = false;
     }
+    return true;
   }
 
   getCards(domain: string): ConvergenceCard[] {

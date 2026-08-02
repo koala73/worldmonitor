@@ -73,7 +73,10 @@ export async function readCorrelationRuntimeMode({
       },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!response.ok) return 'legacy';
+    if (!response.ok) {
+      console.warn(`  [Correlation] control plane returned HTTP ${response.status}; using legacy`);
+      return 'legacy';
+    }
 
     const payload = await response.json();
     if (
@@ -88,7 +91,8 @@ export async function readCorrelationRuntimeMode({
       ? JSON.parse(payload.result)
       : payload.result;
     return resolveCorrelationRuntimeMode(raw);
-  } catch {
+  } catch (error) {
+    console.warn('  [Correlation] control-plane read failed; using legacy:', error?.message || error);
     return 'legacy';
   }
 }

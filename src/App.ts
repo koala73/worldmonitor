@@ -1339,8 +1339,12 @@ export class App {
     const runtimeMode = await fetchCorrelationRuntimeMode();
     if (this.state.isDestroyed) return;
 
-    await engine.run(this.state, runtimeMode);
-    if (this.state.isDestroyed) return;
+    // run() reports false when it skipped because a run was already in flight.
+    // Not reachable today (run() never yields), but this diff put two awaits in
+    // front of it, so honour the contract rather than publishing getCards() —
+    // which on a first-run overlap would write empty cards into live panels.
+    const didRun = await engine.run(this.state, runtimeMode);
+    if (!didRun || this.state.isDestroyed) return;
     for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
       const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
       panel?.updateCards(engine.getCards(domain));
