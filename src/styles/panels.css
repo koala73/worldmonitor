@@ -84,6 +84,534 @@
 }
 
 /* ----------------------------------------------------------
+   China Intelligence Panels
+   Keep the China surfaces on the same compact, source-led rhythm
+   as the rest of the dashboard. The panels still expose their
+   methodology, but operational state leads the reading order.
+   ---------------------------------------------------------- */
+.china-corridor-panel,
+.china-nowcast-view {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.panel-content:has(.china-corridor-panel) {
+  padding-top: 8px;
+}
+
+.panel-content > .china-corridor-panel:has(.china-corridor-filters) {
+  margin-inline: 0;
+}
+
+.china-corridor-compare {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.china-corridor-compare button {
+  display: block;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.china-corridor-compare button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.china-corridor-compare button[aria-selected="true"] {
+  padding-left: 7px;
+  border-left: 2px solid var(--accent);
+  border-color: var(--accent);
+  background: var(--overlay-subtle);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.china-corridor-compare strong,
+.china-corridor-compare small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-compare strong {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.china-corridor-compare small {
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.china-corridor-filters.panel-tabs {
+  min-width: 0;
+  padding: 2px 0 0;
+  background: transparent;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.china-corridor-filter.panel-tab {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 10px;
+  transition-property: color, background-color, border-color;
+}
+
+.china-corridor-detail__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 0 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.china-corridor-detail__heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.china-corridor-description {
+  max-width: 72ch;
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.china-corridor-status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.china-corridor-status--available {
+  color: var(--semantic-normal);
+}
+
+.china-corridor-status--partial,
+.china-corridor-status--stale {
+  color: var(--semantic-elevated);
+}
+
+.china-corridor-status--unavailable {
+  color: var(--text-dim);
+}
+
+.china-corridor-renderer-hint {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--semantic-elevated);
+  font-size: 10px;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent);
+  border-left: 2px solid var(--semantic-elevated);
+}
+
+.china-corridor-conditions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.china-corridor-condition {
+  min-width: 0;
+  padding: 8px;
+  background: var(--overlay-subtle);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border);
+  border-radius: 3px;
+}
+
+.china-corridor-condition[data-availability="available"] {
+  border-left-color: var(--semantic-normal);
+}
+
+.china-corridor-condition[data-availability="partial"],
+.china-corridor-condition[data-availability="stale"] {
+  border-left-color: var(--semantic-elevated);
+}
+
+.china-corridor-condition[data-availability="unavailable"] {
+  border-left-color: var(--text-dim);
+}
+
+.china-corridor-condition header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.china-corridor-condition h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.china-corridor-provider {
+  margin-top: 5px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-sources {
+  display: grid;
+  gap: 6px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.china-corridor-source {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.china-corridor-source__summary {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-source__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 8px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-source__meta a {
+  color: var(--accent);
+}
+
+.china-corridor-missing {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+  background: var(--overlay-subtle);
+  border-left: 2px solid var(--border);
+}
+
+.china-nowcast-summary,
+.china-nowcast-official,
+.china-nowcast-method {
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.china-nowcast-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, .38fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-left: 3px solid var(--text-muted);
+}
+
+.china-nowcast-summary--agreement {
+  border-left-color: var(--semantic-normal);
+}
+
+.china-nowcast-summary--proxy_leading_divergence,
+.china-nowcast-summary--official_leading_divergence {
+  border-left-color: var(--semantic-elevated);
+}
+
+.china-nowcast-summary--mixed_signals {
+  border-left-color: var(--semantic-info);
+}
+
+.china-nowcast-summary--insufficient_data {
+  border-left-color: var(--text-muted);
+}
+
+.china-nowcast-eyebrow,
+.china-nowcast-family {
+  display: block;
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.china-nowcast-summary h3 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.china-nowcast-summary p,
+.china-nowcast-official p,
+.china-nowcast-contribution p,
+.china-nowcast-method p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.china-nowcast-confidence {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--surface-hover);
+  border-left: 2px solid var(--border-strong);
+}
+
+.china-nowcast-confidence > span {
+  width: max-content;
+  padding: 2px 6px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+}
+
+.china-nowcast-confidence strong {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.china-nowcast-confidence small {
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.china-nowcast-official {
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent);
+}
+
+.china-nowcast-official h4,
+.china-nowcast-contribution h4,
+.china-nowcast-method h4 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.china-nowcast-official dl,
+.china-nowcast-contribution dl {
+  margin: 7px 0 0;
+}
+
+.china-nowcast-official dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px 14px;
+}
+
+.china-nowcast-official dl div,
+.china-nowcast-contribution dl div {
+  min-width: 0;
+}
+
+.china-nowcast-official dt,
+.china-nowcast-contribution dt {
+  color: var(--text-dim);
+  font-size: 8px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.china-nowcast-official dd,
+.china-nowcast-contribution dd {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.china-nowcast-contributions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.china-nowcast-contribution {
+  min-width: 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border);
+  border-radius: 3px;
+}
+
+.china-nowcast-contribution--strengthening {
+  border-left-color: var(--semantic-normal);
+}
+
+.china-nowcast-contribution--weakening {
+  border-left-color: var(--semantic-critical);
+}
+
+.china-nowcast-contribution--unchanged {
+  border-left-color: var(--semantic-info);
+}
+
+.china-nowcast-contribution--excluded {
+  border-left-color: var(--text-muted);
+  opacity: .82;
+}
+
+.china-nowcast-contribution__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .9fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.china-nowcast-contribution__state {
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.3;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.china-nowcast-contribution dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+.china-nowcast-contribution a {
+  color: var(--accent);
+}
+
+.china-nowcast-method {
+  overflow: hidden;
+}
+
+.china-nowcast-method summary {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.china-nowcast-method__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.china-nowcast-method ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+.china-nowcast-method li {
+  margin: 3px 0;
+  line-height: 1.35;
+}
+
+.china-nowcast-method li span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+@media (max-width: 900px) {
+  .china-corridor-compare {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .china-nowcast-contributions,
+  .china-nowcast-method__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .china-corridor-detail__heading {
+    display: block;
+  }
+
+  .china-corridor-detail__heading .china-corridor-status {
+    margin-top: 6px;
+  }
+
+  .china-nowcast-summary,
+  .china-nowcast-contributions,
+  .china-nowcast-method__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .china-nowcast-contribution__heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .china-nowcast-contribution__state {
+    text-align: left;
+  }
+
+  .china-nowcast-official dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ----------------------------------------------------------
    Satellite Fires Panel
    ---------------------------------------------------------- */
 .fires-panel-content {
