@@ -10692,6 +10692,10 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+.macro-tiles-tabpanel .macro-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
 .macro-summary-card,
 .energy-summary-card {
   display: flex;
@@ -10735,6 +10739,122 @@ a.prediction-link:hover {
 .macro-summary-change.neutral,
 .energy-summary-change.neutral {
   color: var(--text-dim);
+}
+
+.macro-summary-value--unavailable {
+  color: var(--text-dim);
+}
+
+.macro-summary-state {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font: 600 9px/1.2 var(--font-mono, monospace);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.macro-summary-state--positive {
+  color: var(--semantic-normal);
+}
+
+.macro-summary-state--warning {
+  color: var(--semantic-elevated);
+}
+
+.macro-summary-state--negative {
+  color: var(--semantic-critical);
+}
+
+.macro-summary-state--neutral {
+  color: var(--text-dim);
+}
+
+.macro-summary-meta,
+.macro-summary-source {
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.macro-summary-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.macro-summary-source {
+  margin-top: auto;
+}
+
+.macro-summary-empty {
+  padding: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.macro-quality-note {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--semantic-elevated) 55%, var(--border));
+  background: color-mix(in srgb, var(--semantic-elevated) 7%, transparent);
+  color: var(--semantic-elevated);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.macro-release-calendar {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.macro-release-calendar__heading {
+  margin-bottom: 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.macro-release-calendar__event {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.macro-release-calendar__event span:first-child {
+  color: var(--text-secondary);
+}
+
+.macro-release-calendar__empty {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+@media (max-width: 420px) {
+  .macro-tiles-tabpanel .macro-summary-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .macro-summary-state {
+    max-width: none;
+    text-align: left;
+  }
+
+  .macro-release-calendar__event {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1px;
+  }
 }
 
 .energy-unit {
