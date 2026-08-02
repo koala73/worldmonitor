@@ -18839,7 +18839,23 @@ a.prediction-link:hover {
   flex: 1;
 }
 
-/* #4921 cited per-story brief lines + freshness footer */
+/* #4921 cited per-story brief lines stay behind a disclosure so the lead is
+   the default reading path; the evidence remains one click away. */
+.insights-brief-details {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.insights-brief-details summary {
+  cursor: pointer;
+  padding: 6px 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.insights-brief-details[open] summary {
+  color: var(--text);
+}
 .insights-brief-lines {
   margin: 8px 0 4px;
   padding-left: 18px;

@@ -1596,7 +1596,8 @@
       "sources_many": "{{count}} źródeł",
       "provenanceTitle": "Pochodzenie zasięgu: ile pozyskanych artykułów i odrębnych źródeł wybrano dla tego briefu",
       "compiledFrom": "Zebrane z {{stories}} artykułów z {{sources}} źródeł",
-      "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h"
+      "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",

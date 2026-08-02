@@ -1352,7 +1352,8 @@
       "newsSignals": "{{news}} haber • {{signals}} sinyal",
       "compiledFrom": "{{stories}} hikaye ve {{sources}} kaynaktan derlenmiştir",
       "provenanceTitle": "Kapsam kaynağı: bu özet için kaç alınan hikaye ve farklı kaynaktan seçildiği",
-      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski"
+      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Ayarları Dışa Aktar",

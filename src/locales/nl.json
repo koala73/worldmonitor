@@ -1279,7 +1279,8 @@
       "newsSignals": "{{news}} nieuws • {{signals}} signalen",
       "provenanceTitle": "Dekking herkomst: hoeveel opgenomen verhalen en verschillende bronnen deze samenvatting is geselecteerd uit",
       "compiledFrom": "Samengesteld uit {{stories}} verhalen uit {{sources}} bronnen",
-      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud"
+      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."

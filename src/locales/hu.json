@@ -1493,7 +1493,8 @@
       "newsSignals": "{{news}} hír • {{signals}} szignál",
       "provenanceTitle": "Lefedettség eredete: hány feldolgozott történetből és különálló forrásból választotta ki ezt az összefoglalót",
       "compiledFrom": "{{stories}} történetből és {{sources}} forrásból összeállítva",
-      "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi"
+      "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",

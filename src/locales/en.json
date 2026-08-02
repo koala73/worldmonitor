@@ -1482,6 +1482,7 @@
       "briefCommodity": "COMMODITY BRIEF",
       "briefEnergy": "ENERGY BRIEF",
       "briefWorld": "WORLD BRIEF",
+      "briefStoryDetails": "Story details ({{count}})",
       "mlDetected": "ML DETECTED",
       "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
       "focalPoints": "FOCAL POINTS",

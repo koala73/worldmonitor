@@ -1352,7 +1352,8 @@
       "newsSignals": "{{news}} 条新闻 • {{signals}} 个信号",
       "compiledFrom": "编译自 {{stories}} 条故事和 {{sources}} 个来源",
       "provenanceTitle": "覆盖来源：此摘要选自多少条摄取的故事和不同的来源",
-      "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前"
+      "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "导出设置",

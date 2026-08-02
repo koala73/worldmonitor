@@ -1673,7 +1673,8 @@
       "newsSignals": "{{news}} Nachrichten • {{signals}} Signale",
       "provenanceTitle": "Abdeckungsherkunft: Anzahl der erfassten Stories und unterschiedlichen Quellen, aus denen dieser Brief ausgewählt wurde",
       "compiledFrom": "Zusammengestellt aus {{stories}} Geschichten über {{sources}} Quellen",
-      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt"
+      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "ETF-Daten vorübergehend nicht verfügbar",

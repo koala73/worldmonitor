@@ -1355,7 +1355,8 @@
       "sources_few": "{{count}} surse",
       "provenanceTitle": "Proveniență acoperire: câte articole ingerate și surse distincte din care a fost selectat acest rezumat",
       "compiledFrom": "Compilat din {{stories}} povești din {{sources}} surse",
-      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime"
+      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Exportare setări",

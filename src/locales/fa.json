@@ -1493,7 +1493,8 @@
       "newsSignals": "{{news}} news • {{signals}} signals",
       "compiledFrom": "گردآوری‌شده از {{stories}} خبر از {{sources}} منبع",
       "provenanceTitle": "شفافیت پوشش: این گزیده از چه تعداد خبر دریافتی و چند منبع مجزا انتخاب شده است",
-      "briefFreshness": "تولید شده {{minutes}}m پیش · جدیدترین منبع {{hours}}h قدیمی"
+      "briefFreshness": "تولید شده {{minutes}}m پیش · جدیدترین منبع {{hours}}h قدیمی",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Export Settings",
