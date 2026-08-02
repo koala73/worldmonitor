@@ -13,6 +13,7 @@ function extractMethods(): new () => {
   state: { layers: MapLayers; zoom: number };
   container: { querySelector: () => null };
   layerZoomOverrides: Record<string, boolean>;
+  canToggleLayer: (layer: keyof MapLayers, currentlyEnabled: boolean | undefined) => boolean;
   onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: string) => void;
   scheduleRender(): void;
   render(): void;
@@ -47,18 +48,12 @@ function extractMethods(): new () => {
     { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None } },
   ).outputText;
   return new Function(
-    'isLayerToggleAllowed',
-    'getAuthState',
-    'hasPremiumAccess',
     `${js}\nreturn MapHarness;`,
-  )(
-    isLayerToggleAllowed,
-    () => ({}),
-    () => tier.premium,
-  ) as new () => {
+  )() as new () => {
     state: { layers: MapLayers; zoom: number };
     container: { querySelector: () => null };
     layerZoomOverrides: Record<string, boolean>;
+    canToggleLayer: (layer: keyof MapLayers, currentlyEnabled: boolean | undefined) => boolean;
     onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: string) => void;
     scheduleRender(): void;
     render(): void;
@@ -78,6 +73,7 @@ function makeMap(initialLayers: Partial<MapLayers> = {}) {
   };
   map.container = { querySelector: () => null };
   map.layerZoomOverrides = {};
+  map.canToggleLayer = (layer, currentlyEnabled) => isLayerToggleAllowed(layer, currentlyEnabled === true, tier.premium);
   map.onLayerChange = (layer, enabled, source) => changes.push([layer, enabled, source]);
   map.scheduleRender = () => {};
   map.render = () => {};

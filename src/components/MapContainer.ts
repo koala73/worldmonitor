@@ -7,12 +7,13 @@
 import { isMobileDevice } from '@/utils';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import {
+  isLayerToggleAllowed,
   isLayerEntitled,
   sanitizeLockedLayers,
   shouldSanitizeLockedLayers,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
-import type { MapComponent } from './Map';
+import type { MapComponent, MapComponentOptions } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
 import type {
@@ -147,6 +148,7 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
   private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
@@ -226,6 +228,11 @@ export class MapContainer {
     this.container = container;
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.svgLayerToggleGuard = (layer, currentlyEnabled) => isLayerToggleAllowed(
+      layer,
+      currentlyEnabled === true,
+      hasPremiumAccess(getAuthState()),
+    );
     this.isFreeTierFallbackActive = options.isFreeTierFallbackActive ?? null;
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
@@ -485,7 +492,11 @@ export class MapContainer {
     this.prepareRendererDom('svg-mode');
     // DeckGLMap mutates DOM early during construction. If initialization throws,
     // clear partial WebGL nodes before creating the SVG fallback.
-    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome, isMobile: this.isMobile });
+    this.svgMap = new MapComponent(this.container, this.initialState, {
+      chrome: this.chrome,
+      isMobile: this.isMobile,
+      canToggleLayer: this.svgLayerToggleGuard,
+    });
     this.rehydrateActiveMap();
     this.rendererReady = true;
     this.replayPendingChokepointOpen();
