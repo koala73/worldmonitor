@@ -90,7 +90,7 @@ World Monitor works as:
 - A **native desktop app** via Tauri for macOS, Windows, and Linux
 - Fully **mobile-optimized** with touch gestures, pinch-to-zoom, and bottom-sheet panels
 
-It supports **25 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 25 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+It supports **26 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 26 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 
 ## Open Source, No Strings
 

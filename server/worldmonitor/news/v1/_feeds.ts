@@ -44,6 +44,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml' },
       { name: 'The Hill', url: 'https://thehill.com/news/feed' },
       { name: 'Axios', url: 'https://api.axios.com/feed/' },
+      // Canada + North America key-country pack (#5960)
+      { name: 'CBC News', url: 'https://www.cbc.ca/webfeed/rss/rss-world' },
+      { name: 'Globe and Mail', url: 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml' },
+      { name: 'Global News', url: 'https://globalnews.ca/feed/' },
     ],
     europe: [
       { name: 'France 24', url: 'https://www.france24.com/en/rss' },
@@ -54,6 +58,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'ANSA', url: 'https://www.ansa.it/sito/ansait_rss.xml', lang: 'it' },
       { name: 'NOS Nieuws', url: 'https://feeds.nos.nl/nosnieuwsalgemeen', lang: 'nl' },
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
+      // Arctic / Nordic security pack (#5960). Unscoped so EN digests can include
+      // them when enabled (no/da/fi are not UI locales). Yle + Arctic Today are EN.
+      { name: 'Yle News', url: 'https://yle.fi/rss/news' },
+      { name: 'NRK', url: 'https://www.nrk.no/nyheter/siste.rss' },
+      { name: 'Aftenposten', url: 'https://www.aftenposten.no/rss' },
+      { name: 'DR Nyheder', url: 'https://www.dr.dk/nyheder/service/feeds/allenyheder' },
+      { name: 'Arctic Today', url: gn('site:arctictoday.com when:14d') },
       // Hungarian (HU) — V4 / CEE coverage. Mirrors src/config/feeds.ts europe block.
       { name: 'Telex', url: 'https://telex.hu/rss', lang: 'hu' },
       { name: 'Index.hu', url: 'https://index.hu/24ora/rss', lang: 'hu' },
@@ -81,11 +92,18 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // from EN digests; strategic defaults explicitly bypass that filter.
       { name: 'Kyiv Independent', url: gn('site:kyivindependent.com when:3d') },
       // Ukraine depth pack (#5951) — local institutional + independent sources
+      // (server keeps EN URLs; client multi-URL adds uk variants for UI locale).
       { name: 'Ukrinform', url: gn('site:ukrinform.net when:3d') },
       { name: 'Suspilne', url: gn('site:suspilne.media when:2d') },
       { name: 'Ukrainska Pravda EN', url: gn('site:euromaidanpress.com when:2d') },
       { name: 'NV EN', url: gn('site:english.nv.ua when:2d') },
       { name: 'Hromadske EN', url: gn('site:hromadske.ua when:3d') },
+      // Ukrainian (uk) native pack for uk digests (#5959)
+      { name: 'Ukrainska Pravda', url: gnLocale('site:pravda.com.ua when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Hromadske', url: gnLocale('site:hromadske.ua when:3d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Bihus.Info', url: gnLocale('site:bihus.info when:7d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Slidstvo.Info', url: gnLocale('site:slidstvo.info when:7d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'ZN.UA', url: gnLocale('site:zn.ua when:3d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
       // Google News returned HTTP 200 with no items for these site queries;
       // use the outlets' live native RSS feeds for the EN digest path too.
       { name: 'TVN24', url: 'https://tvn24.pl/swiat.xml' },
@@ -101,7 +119,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Armenpress', url: gn('site:armenpress.am when:3d') },
       // Belarus / Moldova (#5953)
       { name: 'Zerkalo', url: gn('site:zerkalo.io when:2d') },
-      { name: 'NewsMaker', url: 'https://newsmaker.md/en/feed/' },
+      // NewsMaker removed its English feed; retain the live Russian feed only
+      // for Russian-language digests instead of serving a 404 to EN.
+      { name: 'NewsMaker', url: 'https://newsmaker.md/feed', lang: 'ru' },
       { name: 'Ziarul de Gardă', url: 'https://www.zdg.md/feed/', lang: 'ro' },
       // Baltic states — Eastern flank (#5952). English-language, no lang tag,
       // so EN digests include them.
@@ -119,10 +139,19 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
       { name: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+      // Theater coverage preset (#5956) - English regional sources.
+      { name: 'Al Arabiya', url: gn('site:english.alarabiya.net when:2d') },
       { name: 'Guardian ME', url: 'https://www.theguardian.com/world/middleeast/rss' },
-      { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
       { name: 'BBC Persian', url: 'https://feeds.bbci.co.uk/persian/rss.xml', lang: 'fa' },
+      { name: 'Iran International', url: gn('site:iranintl.com when:2d') },
+      { name: 'Haaretz', url: gn('site:haaretz.com when:7d') },
+      { name: 'Jerusalem Post', url: 'https://www.jpost.com/rss/rssfeedsheadlines.aspx' },
+      { name: 'Ynetnews', url: 'https://www.ynetnews.com/Integration/StoryRss3089.xml' },
+      { name: 'Arab News', url: gn('site:arabnews.com when:7d') },
       { name: 'The National', url: 'https://www.thenationalnews.com/arc/outboundfeeds/rss/?outputType=xml' },
+      { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
+      { name: 'Asharq Business', url: 'https://asharqbusiness.com/rss.xml' },
+      { name: 'Rudaw', url: gn('site:rudaw.net when:7d') },
     ],
     tech: [
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
@@ -182,10 +211,17 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     africa: [
       { name: 'BBC Africa', url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
+      // Theater coverage preset (#5956) - Sahel and West Africa sources.
+      { name: 'Africa News', url: gn('(Africa OR Nigeria OR Kenya OR "South Africa" OR Ethiopia) when:2d') },
+      { name: 'Sahel Crisis', url: gn('(Sahel OR Mali OR Niger OR "Burkina Faso" OR Wagner) when:3d') },
       { name: 'News24', url: 'https://feeds.news24.com/articles/news24/TopStories/rss' },
       { name: 'Africanews', url: 'https://www.africanews.com/feed/' },
       { name: 'Jeune Afrique', url: 'https://www.jeuneafrique.com/feed/', lang: 'fr', strategicDefault: true },
       { name: 'Premium Times', url: 'https://www.premiumtimesng.com/feed' },
+      { name: 'Vanguard Nigeria', url: 'https://www.vanguardngr.com/feed/' },
+      { name: 'Channels TV', url: 'https://www.channelstv.com/feed/' },
+      { name: 'Daily Trust', url: 'https://dailytrust.com/feed/' },
+      { name: 'ThisDay', url: 'https://www.thisdaylive.com/feed' },
       // Horn of Africa
       { name: 'Radio Tamazuj', url: 'https://www.radiotamazuj.org/en/feed' },
       { name: 'The Reporter Ethiopia', url: 'https://www.thereporterethiopia.com/feed/' },
@@ -214,6 +250,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     asia: [
       { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
       { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
+      // Theater coverage preset (#5956) - Indo-Pacific sources.
+      { name: 'Reuters Asia', url: gn('site:reuters.com (China OR Japan OR Taiwan OR Korea) when:3d') },
+      { name: 'Japan Today', url: 'https://japantoday.com/feed/atom' },
       { name: 'Nikkei Asia', url: gn('site:asia.nikkei.com when:3d') },
       { name: 'CNA', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
       { name: 'NDTV', url: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
@@ -233,22 +272,23 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'NDTV India', url: 'https://feeds.feedburner.com/ndtvkhabar-latest', lang: 'hi' },
       { name: 'Amar Ujala', url: 'https://www.amarujala.com/rss/national.xml', lang: 'hi' },
 // Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
-      { name: 'Eurasianet', url: 'https://eurasianet.org/feed/' },
+      { name: 'Eurasianet', url: 'https://eurasianet.org/rss' },
       { name: 'RFE/RL Central Asia', url: gn('site:rferl.org Central+Asia when:3d') },
       { name: 'The Astana Times', url: 'https://astanatimes.com/feed/' },
       { name: 'The Times of Central Asia', url: 'https://timesca.com/feed/' },
       // Taiwan (#5954)
-      { name: 'Focus Taiwan', url: 'https://focustaiwan.tw/search/simple/all/1/rss' },
-      { name: 'Taipei Times', url: 'https://www.taipeitimes.com/feeds/front.xml' },
-      { name: 'Taiwan News', url: 'https://www.taiwannews.com.tw/rss' },
+      { name: 'Focus Taiwan', url: gn('site:focustaiwan.tw when:3d') },
+      { name: 'Taipei Times', url: gn('site:taipeitimes.com when:3d') },
+      { name: 'Taiwan News', url: gn('site:taiwannews.com.tw when:3d') },
       // Pakistan (#5954)
       { name: 'Dawn', url: 'https://www.dawn.com/feeds/home/' },
       { name: 'Geo News', url: gn('site:geo.tv when:2d') },
       // SE Asia security (#5954)
-      { name: 'Jakarta Post', url: 'https://www.thejakartapost.com/rss/news.xml' },
+      { name: 'Jakarta Post', url: gn('site:thejakartapost.com when:3d') },
       { name: 'Rappler', url: 'https://www.rappler.com/feed/' },
-      { name: 'The Star (Malaysia)', url: 'https://www.thestar.com.my/rss/editors-pick' },
+      { name: 'The Star (Malaysia)', url: gn('site:thestar.com.my when:3d') },
       { name: 'Irrawaddy', url: 'https://www.irrawaddy.com/feed/' },
+      { name: 'Island Times (Palau)', url: 'https://islandtimes.org/feed/' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

@@ -1,5 +1,38 @@
 [
   {
+    "entry": "Dockerfile.umami",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.umami",
+    "service": "umami",
+    "requiredEnv": [
+      "APP_SECRET",
+      "DATABASE_URL"
+    ],
+    "watchPatterns": [],
+    "cronSchedule": null,
+    "documentedAt": "docs/analytics-collector-operations.md#patched-runtime-image"
+  },
+  {
+    "entry": "scripts/umami-retention.sql",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.umami-retention",
+    "service": "umami-retention",
+    "lifecycle": "planned",
+    "requiredEnv": [
+      "PGHOST",
+      "PGPORT",
+      "PGDATABASE",
+      "PGUSER",
+      "PGPASSWORD"
+    ],
+    "watchPatterns": [
+      "scripts/umami-retention.sql",
+      "Dockerfile.umami-retention"
+    ],
+    "cronSchedule": "7,22,37,52 * * * *",
+    "documentedAt": "docs/analytics-collector-operations.md#retention-runner"
+  },
+  {
     "entry": "scripts/seed-digest-notifications.mjs",
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.digest-notifications",

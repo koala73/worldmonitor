@@ -43,10 +43,35 @@ export function isOnDemandProblem(problem) {
   return problem?.onDemand === true && ON_DEMAND_SOFT_STATUSES.has(problem?.status);
 }
 
-export function findOperationalProblems(payload) {
+// #6059 — a schema whose producer has not reached its first scheduled run yet.
+// Softened for the SAME reason as on-demand (absence is explained, not a
+// fault), but on strictly tighter terms: /api/health emits the deadline it
+// compiled into the payload, and this gate re-checks it against the wall clock
+// rather than trusting the status string. So it fails CLOSED three ways —
+// a missing/unparseable deadline, an already-expired one, and a compact
+// snapshot cached from before the deadline all report the problem normally.
+// That is why this does not need a baseline entry with an owner and expiry:
+// the expiry is in the payload and this function enforces it.
+// One complete daily scrape/aggregate/publish window, the longest rollout the
+// health registry is allowed to declare. Bounding it HERE too is deliberate
+// defence in depth: this gate consumes a payload over the network, so it must
+// not accept an arbitrarily distant deadline as a licence to stay quiet. Without
+// this, a single bad `rolloutPendingUntil` — a registry bug, a bad merge, a
+// tampered response — would silence these keys in CI effectively forever.
+const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function isRolloutPendingProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'ROLLOUT_PENDING') return false;
+  const until = Date.parse(problem?.rolloutPendingUntil ?? '');
+  if (!Number.isFinite(until)) return false;
+  if (until - now > MAX_ROLLOUT_WINDOW_MS) return false;
+  return now < until;
+}
+
+export function findOperationalProblems(payload, now = Date.now()) {
   validateCompactHealthPayload(payload);
   return Object.entries(payload.problems ?? {})
-    .filter(([, problem]) => !isOnDemandProblem(problem))
+    .filter(([, problem]) => !isOnDemandProblem(problem) && !isRolloutPendingProblem(problem, now))
     .map(([name, problem]) => ({
       name,
       status: problem?.status ?? 'UNKNOWN',

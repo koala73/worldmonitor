@@ -101,6 +101,15 @@ describe('cloud prefs panel sync guardrails', () => {
       /if \(!reconciledPanelSettings\) \{/,
       'a cloud snapshot that skipped reconciliation must still be applied to the mounted dashboard',
     );
+    const cloudApplyHandler = appSrc.slice(
+      cloudApplyStart,
+      appSrc.indexOf('private isPanelNearViewport', cloudApplyStart),
+    );
+    assert.match(
+      cloudApplyHandler,
+      /if \(!freeTierLimitsInvoked\) this\.enforceFreeTierLimits\(cloudSyncVersion\);[\s\S]*?this\.state\.disabledSources = new Set\(loadFromStorage<string\[\]>\(STORAGE_KEYS\.disabledFeeds, \[\]\)\);/,
+      'a disabled-feeds-only cloud generation must re-run the free source cap and then reload the enforced state',
+    );
     // The legacy sweep must stay one-shot per browser: it cannot tell pre-marker
     // gate damage from a deliberate hide, so re-arming it on cloud snapshots
     // (which land on effectively every multi-device sign-in) silently re-enables
@@ -148,6 +157,20 @@ describe('cloud prefs panel sync guardrails', () => {
       clampBlock,
       /this\.state\.unifiedSettings\?\.refreshPanelToggles\(\);/,
       'a delayed clamp must refresh the visible panel controls',
+    );
+  });
+
+  it('updates the live disabled-source set when a delayed cap persists changes', () => {
+    const appSrc = readSrc('src/App.ts');
+    const capStart = appSrc.indexOf('if (totalEligible > FREE_MAX_SOURCES) {');
+    const capEnd = appSrc.indexOf('return panelsChanged;', capStart);
+    assert.ok(capStart >= 0 && capEnd > capStart, 'free-tier source-cap block must exist');
+    const capBlock = appSrc.slice(capStart, capEnd);
+
+    assert.match(
+      capBlock,
+      /saveToStorage\(STORAGE_KEYS\.disabledFeeds, Array\.from\(disabledSources\)\);\s*this\.state\.disabledSources = new Set\(disabledSources\);/,
+      'a cap reached from delayed auth or entitlement settlement must update the running app state',
     );
   });
 

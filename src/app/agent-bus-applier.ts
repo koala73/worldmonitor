@@ -1,6 +1,13 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
-import { getAllowedLayerKeys, isLayerExecutable, LAYER_REGISTRY, type MapRenderer, type MapVariant } from '@/config/map-layer-definitions';
+import {
+  getAllowedLayerKeys,
+  isLayerEntitled,
+  isLayerExecutable,
+  LAYER_REGISTRY,
+  type MapRenderer,
+  type MapVariant,
+} from '@/config/map-layer-definitions';
 import type { AppContext } from './app-context';
 import type { MapLayers, PanelConfig } from '@/types';
 import {
@@ -175,16 +182,15 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
       continue;
     }
 
-    const definition = LAYER_REGISTRY[rawKey];
-    if (definition.premium && !isPremium) {
+    if (enabled && !isLayerEntitled(rawKey, isPremium)) {
       targets.push({ target: rawKey, status: 'denied', reason: 'layer_not_entitled' });
       continue;
     }
-    if (rawKey === 'resilienceScore' && !isDeckGLActive) {
+    if (enabled && rawKey === 'resilienceScore' && !isDeckGLActive) {
       targets.push({ target: rawKey, status: 'denied', reason: 'layer_not_executable' });
       continue;
     }
-    if (!isLayerExecutable(rawKey, renderer, isDeckGLActive)) {
+    if (enabled && !isLayerExecutable(rawKey, renderer, isDeckGLActive)) {
       targets.push({ target: rawKey, status: 'denied', reason: 'layer_not_executable' });
       continue;
     }

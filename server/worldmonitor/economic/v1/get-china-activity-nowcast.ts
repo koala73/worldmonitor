@@ -244,17 +244,34 @@ function corridorProxyObservations(
     signal.selectorId === 'supply_chain:shipping:v2:CCFI'
     || signal.id.startsWith('signal:ccfi:'));
   if (ccfi) {
+    // Only the publisher's own period-over-period move counts (#6066). The
+    // current level and the legacy fabricable `changePct` are never read, so a
+    // level cannot be reinterpreted as a change or a neutral contribution.
+    const periodChange = finiteNumber(ccfi.metrics.periodChangePct);
+    // A signal that never arrived is not the same exclusion as one that arrived
+    // with a level but no comparable prior; naming the wrong one would overstate
+    // what the source actually published.
+    const exclusion = periodChange !== null
+      ? null
+      : ccfi.availability === 'available'
+        ? 'missing_comparable_prior'
+        : 'source_signal_unavailable';
     observations.push(corridorObservation({
       evaluatedAt,
       seriesId: 'ccfi_freight_rate_change',
       observationId: `ccfi-change:${corridors.generatedAt}`,
       signals: [ccfi],
-      // #5578 currently publishes the current level only. A level must not be
-      // reinterpreted as a change or a neutral contribution.
-      value: null,
+      value: periodChange,
       provenance: corridorProvenance([ccfi], {
         currentLevel: finiteNumber(ccfi.metrics.currentValue),
-        exclusion: 'period_change_not_published',
+        priorPeriodLevel: finiteNumber(ccfi.metrics.priorPeriodValue),
+        priorPeriodDate: typeof ccfi.metrics.priorPeriodDate === 'string'
+          ? ccfi.metrics.priorPeriodDate
+          : null,
+        periodChangeBasis: typeof ccfi.metrics.periodChangeBasis === 'string'
+          ? ccfi.metrics.periodChangeBasis
+          : null,
+        ...(exclusion === null ? {} : { exclusion }),
       }),
     }));
   }

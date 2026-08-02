@@ -1,10 +1,20 @@
 import { escapeHtml } from '@/utils/sanitize';
-import { shuffle, debounce } from '@/utils';
+import { debounce } from '@/utils';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  ALL_CHANNEL_TIP_KEYS,
+  SEARCH_SCOPES,
+  commandMatchesSearchScope,
+  idleChipCommandIds,
+  panelCommandTargetId,
+  resolveIdleSelectionTerm,
+  resultMatchesSearchScope,
+  type SearchScope,
+} from '@/components/search-scope';
 import {
   overlayHistory,
   type OverlayCloseOrigin,
@@ -28,11 +38,6 @@ const CATEGORY_KEYS: Record<string, string> = {
 
 function kebabToCamel(s: string): string {
   return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-}
-
-function panelCommandTargetId(commandId: string): string | null {
-  if (!commandId.startsWith('panel:')) return null;
-  return commandId.slice(6).split('@')[0] || null;
 }
 
 function resolveCommandLabel(cmd: Command): string {
@@ -97,12 +102,29 @@ interface SearchModalOptions {
 // coalesce fast typing, short enough to feel responsive on settle.
 const SEARCH_DEBOUNCE_MS = 180;
 
+const SCOPE_ICONS: Record<SearchScope, string> = {
+  all: '\u2318',
+  signals: '\u25C9',
+  map: '\u2316',
+  panels: '\u25A6',
+  actions: '\u26A1',
+};
+
+const SCOPE_LABELS: Record<SearchScope, string> = {
+  all: 'All intel',
+  signals: 'Signals',
+  map: 'Map',
+  panels: 'Panels',
+  actions: 'Actions',
+};
+
 export class SearchModal {
   private container: HTMLElement;
   private overlay: HTMLElement | null = null;
   private input: HTMLInputElement | null = null;
   private resultsList: HTMLElement | null = null;
   private chipsContainer: HTMLElement | null = null;
+  private scopeContainer: HTMLElement | null = null;
   private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
   // Invalidates deferred mobile list population when the sheet closes before
   // its first paint (or is immediately reopened).
@@ -148,6 +170,8 @@ export class SearchModal {
   private isMobile: boolean;
   /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
   private showingAllCommands = false;
+  private activeScope: SearchScope = 'all';
+  private quickLaunchExamples: string[] = [];
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
@@ -163,6 +187,7 @@ export class SearchModal {
     } else {
       this.sources.push({ type, items });
     }
+    this.updateIndexMetrics();
   }
 
   public setOnSelect(callback: (result: SearchResult) => void): void {
@@ -187,10 +212,12 @@ export class SearchModal {
 
   public setActivePanels(panelIds: string[]): void {
     this.activePanelIds = new Set(panelIds);
+    this.updateIndexMetrics();
   }
 
   public setAvailablePanels(panelIds: string[]): void {
     this.availablePanelIds = new Set(panelIds);
+    this.updateIndexMetrics();
   }
 
   /** A panel command is shown iff enabled OR available-to-add (back-compat: active-only when no available set). */
@@ -207,6 +234,7 @@ export class SearchModal {
 
   public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
     this.layerExecutableFn = fn;
+    this.updateIndexMetrics();
   }
 
   public open(replaceOverlayId?: OverlayId): void {
@@ -215,6 +243,16 @@ export class SearchModal {
       this.closeTimeoutId = null;
       this.overlay?.remove();
       this.overlay = null;
+      // remove() deferred state reset never ran — clear selection/results now
+      // so a mid-close reopen does not inherit the prior session index.
+      this.input = null;
+      this.resultsList = null;
+      this.chipsContainer = null;
+      this.scopeContainer = null;
+      this.results = [];
+      this.commandResults = [];
+      this.selectedIndex = 0;
+      this.lastSearchedQuery = '';
     }
     if (this.overlay) return;
     this.isMobile = isMobileDevice();
@@ -223,6 +261,10 @@ export class SearchModal {
     if (flightIdx >= 0) this.sources[flightIdx] = { type: 'flight', items: [] };
     this.currentFlightCallsign = null;
     this.flightSearchFired = false;
+    this.selectedIndex = 0;
+    this.lastSearchedQuery = '';
+    this.activeScope = 'all';
+    this.quickLaunchExamples = [];
     this.createModal();
     this.input?.focus();
     this.showingAllCommands = false;
@@ -253,6 +295,7 @@ export class SearchModal {
         this.input = null;
         this.resultsList = null;
         this.chipsContainer = null;
+        this.scopeContainer = null;
         this.results = [];
         this.commandResults = [];
         this.selectedIndex = 0;
@@ -308,17 +351,24 @@ export class SearchModal {
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
+    this.overlay.setAttribute('aria-label', 'World Monitor intelligence command deck');
+    this.overlay.dataset.searchScope = this.activeScope;
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
       setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
+          <div class="search-mobile-ident">
+            <span>WM // COMMAND DECK</span>
+            <span class="search-index-state"><i></i> LIVE</span>
+          </div>
           <div class="search-sheet-header">
-            <span class="search-sheet-icon">\u{1F50D}</span>
+            <span class="search-sheet-icon" aria-hidden="true"></span>
             <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
             <button class="search-sheet-cancel" aria-label="Close">\u00D7</button>
           </div>
+          ${this.renderScopeMarkup()}
           <div class="search-sheet-chips"></div>
           <div class="search-results"></div>
         </div>
@@ -348,13 +398,26 @@ export class SearchModal {
       this.overlay.className = 'search-overlay';
       setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-modal">
+          <div class="search-command-topline">
+            <div class="search-command-ident">
+              <span class="search-command-mark" aria-hidden="true"><i></i></span>
+              <span>WM // INTELLIGENCE COMMAND DECK</span>
+              <span class="search-index-state"><i></i> INDEX ONLINE</span>
+            </div>
+            <div class="search-command-metrics" aria-label="Search index status">
+              <span><strong data-search-entity-count>${this.getIndexedEntityCount()}</strong> SIGNALS</span>
+              <span><strong data-search-command-count>${this.getVisibleCommandCount()}</strong> OPS</span>
+            </div>
+          </div>
           <div class="search-header">
-            <span class="search-icon">\u2318</span>
+            <span class="search-icon" aria-hidden="true"></span>
             <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
             <kbd class="search-kbd">ESC</kbd>
           </div>
+          ${this.renderScopeMarkup()}
           <div class="search-results"></div>
           <div class="search-footer">
+            <span class="search-footer-ready"><i></i> READY FOR TASKING</span>
             <span><kbd>\u2191\u2193</kbd> ${t('modals.search.navigate')}</span>
             <span><kbd>\u21B5</kbd> ${t('modals.search.select')}</span>
             <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
@@ -371,15 +434,78 @@ export class SearchModal {
 
     this.input = this.overlay.querySelector('.search-input');
     this.resultsList = this.overlay.querySelector('.search-results');
+    this.scopeContainer = this.overlay.querySelector('.search-scope-rail');
 
     this.input?.addEventListener('input', () => this.debouncedSearch());
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
+    this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const scope = button.dataset.searchScope as SearchScope | undefined;
+        if (scope && SEARCH_SCOPES.includes(scope)) this.setActiveScope(scope);
+      });
+    });
+  }
+
+  private renderScopeMarkup(): string {
+    const buttons = SEARCH_SCOPES.map((scope) => `
+      <button
+        type="button"
+        class="search-scope${scope === this.activeScope ? ' active' : ''}"
+        data-search-scope="${scope}"
+        aria-pressed="${scope === this.activeScope}"
+      ><span aria-hidden="true">${SCOPE_ICONS[scope]}</span>${escapeHtml(SCOPE_LABELS[scope])}</button>
+    `).join('');
+
+    return `<div class="search-scope-rail" role="toolbar" aria-label="Filter intelligence search">${buttons}</div>`;
+  }
+
+  private setActiveScope(scope: SearchScope): void {
+    if (this.activeScope === scope) return;
+    this.activeScope = scope;
+    this.showingAllCommands = false;
+    this.selectedIndex = 0;
+    this.quickLaunchExamples = [];
+    this.debouncedSearch.cancel();
+    // Invalidate deferred mobile initial population so it cannot repaint the
+    // previous channel after the operator already switched scopes.
+    if (this.isMobile) this.mobileInitialPopulationGeneration += 1;
+    if (this.overlay) this.overlay.dataset.searchScope = scope;
+    this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
+      const active = button.dataset.searchScope === scope;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+
+    if (this.input?.value.trim()) this.handleSearch();
+    else this.showRecentOrEmpty();
+    if (this.isMobile) this.renderChips(this.input?.value.trim());
+  }
+
+  private getIndexedEntityCount(): number {
+    return this.sources.reduce((count, source) => count + source.items.length, 0);
+  }
+
+  private getVisibleCommandCount(): number {
+    return getAllCommands().filter((command) => {
+      const panelId = panelCommandTargetId(command.id);
+      if (panelId && !this.isPanelCommandVisible(panelId)) return false;
+      if (command.id.startsWith('layer:') && !this.layerExecutableFn(command.id.slice(6))) return false;
+      return true;
+    }).length;
+  }
+
+  private updateIndexMetrics(): void {
+    const entityCount = this.overlay?.querySelector<HTMLElement>('[data-search-entity-count]');
+    const commandCount = this.overlay?.querySelector<HTMLElement>('[data-search-command-count]');
+    if (entityCount) entityCount.textContent = String(this.getIndexedEntityCount());
+    if (commandCount) commandCount.textContent = String(this.getVisibleCommandCount());
   }
 
   private matchCommands(query: string): CommandResult[] {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
     for (const cmd of getAllCommands()) {
+      if (!commandMatchesSearchScope(this.activeScope, cmd.category)) continue;
       const panelId = panelCommandTargetId(cmd.id);
       if (panelId) {
         if (!this.isPanelCommandVisible(panelId)) continue;
@@ -422,6 +548,11 @@ export class SearchModal {
     if (!query) {
       this.showingAllCommands = false;
       this.commandResults = [];
+      // Drop flight trigger state so Enter on the idle deck cannot re-fire a
+      // prior "flight …" search after the operator cleared the input.
+      this.currentFlightCallsign = null;
+      this.flightSearchFired = false;
+      this.selectedIndex = 0;
       this.showRecentOrEmpty();
       if (this.isMobile) this.renderChips();
       return;
@@ -433,9 +564,14 @@ export class SearchModal {
 
     // "flight {callsign}" prefix: bypass command matching entirely — "flight ek36" contains
     // substrings like "light" that spuriously match unrelated commands (e.g. "Switch to light mode").
+    // Honor exclusive channels: panels/actions never surface flight entities.
     this.currentFlightCallsign = null;
     this.flightSearchFired = false;
-    if (rawInput.startsWith('flight ') && this.onFlightSearch) {
+    const flightPrefixAllowed =
+      rawInput.startsWith('flight ')
+      && !!this.onFlightSearch
+      && resultMatchesSearchScope(this.activeScope, 'flight');
+    if (flightPrefixAllowed) {
       const callsign = rawInput.slice(7).trim().toUpperCase();
       if (callsign.length > 0) {
         this.currentFlightCallsign = callsign;
@@ -459,6 +595,7 @@ export class SearchModal {
     }
 
     for (const source of this.sources) {
+      if (!resultMatchesSearchScope(this.activeScope, source.type)) continue;
       for (const item of source.items) {
         const titleLower = item.title.toLowerCase();
         const subtitleLower = item.subtitle?.toLowerCase() || '';
@@ -485,7 +622,9 @@ export class SearchModal {
       'news', 'prediction', 'market', 'earthquake', 'outage',
       'conflict', 'hotspot', 'country',
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
-      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'
+      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator',
+      // Map-channel finance entities (must stay in sync with MAP_RESULT_TYPES).
+      'exchange', 'financialcenter', 'centralbank', 'commodityhub',
     ];
 
     const maxResults = this.isMobile ? 5 : MAX_RESULTS;
@@ -501,19 +640,24 @@ export class SearchModal {
 
     trackSearchUsed(query.length, this.results.length + this.commandResults.length);
     this.selectedIndex = 0;
+    this.quickLaunchExamples = [];
     this.renderResults();
     if (this.isMobile) this.renderChips(query);
   }
 
   private showRecentOrEmpty(): void {
     this.results = [];
+    this.commandResults = [];
+    this.quickLaunchExamples = [];
+    // Keep keyboard highlight aligned with the freshly painted idle list.
+    this.selectedIndex = 0;
 
     if (this.showingAllCommands) {
       this.renderAllCommandsList();
       return;
     }
 
-    if (this.recentSearches.length > 0) {
+    if (this.activeScope === 'all' && this.recentSearches.length > 0) {
       this.renderRecent();
     } else {
       this.renderEmpty();
@@ -532,7 +676,7 @@ export class SearchModal {
 
       const icon = document.createElement('span');
       icon.className = 'search-result-icon';
-      icon.textContent = '🕐';
+      icon.textContent = '\u{1F553}';
 
       const title = document.createElement('span');
       title.className = 'search-result-title';
@@ -542,8 +686,7 @@ export class SearchModal {
       item.appendChild(title);
 
       item.addEventListener('click', () => {
-        if (this.input) this.input.value = term;
-        this.handleSearch();
+        this.applyProgrammaticQuery(term);
       });
 
       this.resultsList?.appendChild(item);
@@ -555,46 +698,90 @@ export class SearchModal {
   private renderEmpty(): void {
     if (!this.resultsList) return;
 
-    const tips: { icon: string; key: string; exampleKey: string }[] = [
-      { icon: '\u{1F30D}', key: 'commands.tips.map', exampleKey: 'commands.tips.mapExample' },
-      { icon: '\u{1F4CB}', key: 'commands.tips.panel', exampleKey: 'commands.tips.panelExample' },
-      { icon: '\u{1F4C4}', key: 'commands.tips.brief', exampleKey: 'commands.tips.briefExample' },
-      { icon: '\u{1F6E1}\uFE0F', key: 'commands.tips.layers', exampleKey: 'commands.tips.layersExample' },
-      { icon: '\u23F1\uFE0F', key: 'commands.tips.time', exampleKey: 'commands.tips.timeExample' },
-      { icon: '\u2699\uFE0F', key: 'commands.tips.settings', exampleKey: 'commands.tips.settingsExample' },
-    ];
-    if (this.sources.some(s => s.type === 'flight')) {
-      tips.push({ icon: '\u2708\uFE0F', key: 'commands.tips.flight', exampleKey: 'commands.tips.flightExample' });
-    }
+    // All-channel tips are driven by ALL_CHANNEL_TIP_KEYS (pre-deck inventory).
+    // Channel scopes keep a narrower, task-focused set.
+    const hasFlight = this.sources.some((source) => source.type === 'flight');
+    const tipMeta: Record<string, { icon: string }> = {
+      'commands.tips.map': { icon: '\u2316' },
+      'commands.tips.panel': { icon: '\u25A6' },
+      'commands.tips.brief': { icon: '\u25C9' },
+      'commands.tips.layers': { icon: '\u26A1' },
+      'commands.tips.time': { icon: '\u23F1\uFE0F' },
+      'commands.tips.settings': { icon: '\u2699\uFE0F' },
+      'commands.tips.flight': { icon: '\u2708\uFE0F' },
+    };
+    const toTip = (key: string) => ({
+      icon: tipMeta[key]?.icon ?? '\u2022',
+      key,
+      exampleKey: `${key}Example`,
+    });
+    const flightTip = hasFlight ? [toTip('commands.tips.flight')] : [];
+    const allChannelTips = ALL_CHANNEL_TIP_KEYS
+      .filter((key) => key !== 'commands.tips.flight' || hasFlight)
+      .map((key) => toTip(key));
+    const allTips: Record<SearchScope, { icon: string; key: string; exampleKey: string }[]> = {
+      all: allChannelTips,
+      signals: [
+        toTip('commands.tips.brief'),
+        ...flightTip,
+      ],
+      map: [
+        toTip('commands.tips.map'),
+        { icon: '\u25C8', key: 'commands.tips.layers', exampleKey: 'commands.tips.layersExample' },
+      ],
+      panels: [
+        toTip('commands.tips.panel'),
+      ],
+      actions: [
+        toTip('commands.tips.time'),
+        toTip('commands.tips.settings'),
+      ],
+    };
+    // All shows the full pre-deck pool (up to 7 with flight). Scoped channels stay compact.
+    const tipLimit = this.activeScope === 'all'
+      ? (this.isMobile ? 3 : 7)
+      : (this.isMobile ? 2 : 4);
+    const tips = allTips[this.activeScope].slice(0, tipLimit);
+    this.quickLaunchExamples = tips.map((tip) => t(tip.exampleKey));
 
-    const shuffled = shuffle(tips).slice(0, this.isMobile ? 2 : 4);
-
-    let html = `<div class="search-section-header">${t('modals.search.empty')}</div>`;
-    shuffled.forEach((tip, i) => {
+    let html = `
+      <div class="search-section-header search-launch-header">
+        <span>${t('modals.search.empty')}</span>
+        <span>${escapeHtml(SCOPE_LABELS[this.activeScope])} channel</span>
+      </div>
+      <div class="search-launch-grid">`;
+    tips.forEach((tip, i) => {
       const example = t(tip.exampleKey);
       html += `
-        <div class="search-result-item tip-item${i === 0 ? ' selected' : ''}" data-tip-example="${escapeHtml(example)}">
-          <span class="search-result-icon">${tip.icon}</span>
+        <div class="search-result-item tip-item${i === this.selectedIndex ? ' selected' : ''}" data-tip-example="${escapeHtml(example)}">
+          <span class="search-result-icon" aria-hidden="true">${tip.icon}</span>
           <div class="search-result-content">
             <div class="search-result-title">${escapeHtml(t(tip.key))}</div>
+            <div class="search-result-subtitle">${escapeHtml(example)}</div>
           </div>
-          <kbd class="search-tip-example">${escapeHtml(example)}</kbd>
+          <span class="search-launch-arrow" aria-hidden="true">\u2192</span>
         </div>`;
     });
+    html += '</div>';
 
     setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.tip-item').forEach((el) => {
       el.addEventListener('click', () => {
         const example = (el as HTMLElement).dataset.tipExample || '';
-        if (this.input) {
-          this.input.value = example;
-          this.handleSearch();
-        }
+        this.applyProgrammaticQuery(example);
       });
     });
 
     this.appendSeeAllCommandsLink();
+  }
+
+  /** Apply a tip/chip/recent term without letting a pending keystroke debounce race it. */
+  private applyProgrammaticQuery(term: string): void {
+    if (!this.input) return;
+    this.debouncedSearch.cancel();
+    this.input.value = term;
+    this.handleSearch();
   }
 
   private appendSeeAllCommandsLink(): void {
@@ -623,11 +810,13 @@ export class SearchModal {
    */
   private renderAllCommandsList(): void {
     if (!this.resultsList) return;
+    this.quickLaunchExamples = [];
 
     const allCommands = getAllCommands();
     const commands = allCommands.filter(cmd => {
-      if (cmd.id.startsWith('panel:')) {
-        const panelId = cmd.id.slice(6);
+      if (!commandMatchesSearchScope(this.activeScope, cmd.category)) return false;
+      const panelId = panelCommandTargetId(cmd.id);
+      if (panelId) {
         if (!this.isPanelCommandVisible(panelId)) return false;
       }
       if (cmd.id.startsWith('layer:')) {
@@ -701,6 +890,7 @@ export class SearchModal {
 
   private renderResults(): void {
     if (!this.resultsList) return;
+    this.quickLaunchExamples = [];
 
     if (this.commandResults.length === 0 && this.results.length === 0) {
       if (this.currentFlightCallsign && this.onFlightSearch) {
@@ -836,17 +1026,16 @@ export class SearchModal {
       return;
     }
 
-    const chips: { label: string; value: string }[] = [];
     const commands = getAllCommands();
-    const navCmds = commands.filter(c => c.id.startsWith('country:'));
-    for (const cmd of navCmds.slice(0, 6)) {
-      chips.push({ label: cmd.label, value: cmd.label.toLowerCase() });
-    }
-    const actionCmds = commands.filter(c => c.category === 'actions' || c.category === 'view');
-    for (const cmd of actionCmds.slice(0, 4)) {
-      const label = resolveCommandLabel(cmd);
-      chips.push({ label, value: label.toLowerCase() });
-    }
+    const byId = new Map(commands.map((cmd) => [cmd.id, cmd]));
+    // All Intel restores the pre-deck country-first + view/actions mix; other
+    // channels stay scoped via idleChipCommandIds.
+    const chips = idleChipCommandIds(this.activeScope, commands).flatMap((id) => {
+      const cmd = byId.get(id);
+      if (!cmd) return [];
+      const label = cmd.id.startsWith('country:') ? cmd.label : resolveCommandLabel(cmd);
+      return [{ label, value: label.toLowerCase() }];
+    });
 
     setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
@@ -855,10 +1044,7 @@ export class SearchModal {
     this.chipsContainer.querySelectorAll('.search-chip').forEach(el => {
       el.addEventListener('click', () => {
         const val = (el as HTMLElement).dataset.value || '';
-        if (this.input) {
-          this.input.value = val;
-          this.handleSearch();
-        }
+        this.applyProgrammaticQuery(val);
       });
     });
   }
@@ -902,8 +1088,14 @@ export class SearchModal {
       case 'Enter':
         e.preventDefault();
         if (this.currentFlightCallsign && this.onFlightSearch && this.results.length === 0 && this.commandResults.length === 0) {
-          this.triggerFlightSearch(this.currentFlightCallsign);
-          return;
+          // Only auto-trigger flight when the input still holds a flight prefix;
+          // after clear, fall through to idle launch/recent selection instead.
+          const stillFlightPrefix = (this.input?.value.toLowerCase() || '').trim().startsWith('flight ');
+          if (stillFlightPrefix) {
+            this.triggerFlightSearch(this.currentFlightCallsign);
+            return;
+          }
+          this.currentFlightCallsign = null;
         }
         this.selectResult(this.selectedIndex);
         break;
@@ -915,7 +1107,10 @@ export class SearchModal {
   }
 
   private moveSelection(delta: number): void {
-    const max = this.totalResultCount || this.recentSearches.length;
+    const idleItemCount = this.activeScope === 'all' && this.recentSearches.length > 0
+      ? this.recentSearches.length
+      : this.quickLaunchExamples.length;
+    const max = this.totalResultCount || idleItemCount;
     if (max === 0) return;
 
     this.selectedIndex = (this.selectedIndex + delta + max) % max;
@@ -934,18 +1129,23 @@ export class SearchModal {
   }
 
   private selectResult(index: number): void {
-    if (this.totalResultCount === 0 && this.recentSearches.length > 0) {
-      const term = this.recentSearches[index];
-      if (term && this.input) {
-        this.input.value = term;
-        this.handleSearch();
-      }
+    if (this.totalResultCount === 0) {
+      const inputEmpty = !(this.input?.value.trim());
+      const term = resolveIdleSelectionTerm(
+        this.activeScope,
+        this.recentSearches,
+        this.quickLaunchExamples,
+        index,
+        inputEmpty,
+      );
+      if (term) this.applyProgrammaticQuery(term);
       return;
     }
 
     if (index < this.commandResults.length) {
       const cmd = this.commandResults[index]?.command;
       if (cmd) {
+        this.saveRecentSearch(this.input?.value.trim() || '');
         this.close();
         this.onCommand?.(cmd);
         return;

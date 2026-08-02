@@ -58,7 +58,7 @@
 - **本地 AI** — 通过 Ollama 运行全部功能，无需 API 密钥
 - **6 个站点变体**，均来自同一代码库（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor、Energy Monitor）
 - **原生桌面应用**（Tauri 2），支持 macOS、Windows 和 Linux
-- **25 种语言**，提供本地语言信息流和 RTL 支持
+- **26 种语言**，提供本地语言信息流和 RTL 支持
 
 完整的功能清单、架构、数据源和算法，请参阅**[文档](https://www.worldmonitor.app/docs/zh/documentation)**。
 

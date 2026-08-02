@@ -462,6 +462,24 @@ function computeStats() {
   const registryBlock = mld.slice(mld.indexOf('LAYER_REGISTRY'), mld.indexOf('VARIANT_LAYER_ORDER'));
   const layerDefinitions = (registryBlock.match(/^\s+\w+:\s+def\(/gm) || []).length;
 
+  // Web-locked premium layers: literal 'locked' in the def() call. Desktop-only
+  // locks use the `_desktop ? 'locked' : undefined` ternary and stay free on web,
+  // so they are excluded — plan copy describes the web product.
+  //
+  // Deliberately NOT derived here: a "free layer count". `layerDefinitions -
+  // lockedLayerKeys.length` overstates it, because a registry entry can also be
+  // unreachable for everyone (`isSunsetLayer` drops iranAttacks unless
+  // VITE_ENABLE_IRAN_ATTACKS=true; App.ts hides cyberThreats unless
+  // VITE_ENABLE_CYBER_LAYER=true) and VARIANT_LAYER_ORDER means no single site
+  // shows the whole registry. Plan copy therefore names the Pro-only layer
+  // instead of quoting a free total — see validatePlanLayerEntitlementCopy.
+  const lockedLayerKeys = registryBlock
+    .split('\n')
+    .filter((line) => line.includes("'locked'") && !line.includes("? 'locked'"))
+    .map((line) => line.match(/^\s+(\w+):/)?.[1])
+    .filter(Boolean);
+  const lockedLayerDefinitions = lockedLayerKeys.length;
+
   const variantBlock = mld.slice(mld.indexOf('VARIANT_LAYER_ORDER'), mld.indexOf('export function getLayersForVariant'));
   const variantLayers = {};
   for (const m of variantBlock.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
@@ -554,6 +572,21 @@ function computeStats() {
   }
   const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).length;
 
+  // ---- CII Tier-1 countries (src/config/countries.ts) ----
+  const countriesSource = read('src/config/countries.ts');
+  const tier1Match = countriesSource.match(/export const TIER1_COUNTRIES[^=]*=\s*\{([\s\S]*?)\n\};/);
+  if (!tier1Match) {
+    throw new Error('docs-stats: could not find TIER1_COUNTRIES in src/config/countries.ts');
+  }
+  const tier1Countries = (tier1Match[1].match(/^\s+[A-Z]{2}:/gm) || []).length;
+
+  // ---- CRI rankable universe (scripts/shared/sovereign-status.json) ----
+  const sovereignStatus = parseJson('scripts/shared/sovereign-status.json');
+  if (!Array.isArray(sovereignStatus?.entries) || sovereignStatus.entries.length === 0) {
+    throw new Error('docs-stats: could not read entries from scripts/shared/sovereign-status.json');
+  }
+  const rankableUniverseCountries = sovereignStatus.entries.length;
+
   // Table moved to the shared client/server core in #5696. Fail closed like
   // LEADER_NAMES above: the previous `: 0` fallback silently zeroed the
   // published claim when the file moved, turning a stale doc number into an
@@ -569,6 +602,10 @@ function computeStats() {
   return {
     _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
     layerDefinitions,
+    lockedLayerDefinitions,
+    lockedLayerKeys,
+    tier1Countries,
+    rankableUniverseCountries,
     variantLayers,
     variantCount,
     componentTopLevelTsFiles,
@@ -677,6 +714,46 @@ function claims(s) {
     { file: 'docs/api-reference.mdx', re: /all (\d+)\s+generated services/, value: s.protoServices },
 
     { file: 'docs/mcp-overview.mdx', re: /same (\d+)\s+tools/, value: s.mcpToolCount },
+
+    // ---- MCP tool count on public agent-discovery and marketing surfaces (#5389) ----
+    { file: 'public/home.md', re: /(\d+)-tool MCP server/, value: s.mcpToolCount },
+    { file: 'public/agents.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/developers.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
+    { file: 'public/agent.txt', re: /(\d+)\s+tools; tools\/list for the live inventory/, value: s.mcpToolCount },
+    { file: 'public/pricing.md', re: /MCP access and (\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'docs/pricing.mdx', re: /MCP access \((\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /any of the (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /every one of the (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /for all (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'docs/mcp-quickstart.mdx', re: /one of (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+MCP tools — risk scores/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /One key\. (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /SDKs — (\d+)\s+tools under one key/, value: s.mcpToolCount },
+
+    // ---- Map layers in plan copy (#5387) ----
+    // Plan copy quotes the registry TOTAL and names the Pro-only layer; it never
+    // quotes a free total (see the lockedLayerKeys comment in computeStats).
+    // validatePlanLayerEntitlementCopy asserts the naming half.
+    { file: 'public/home.md', re: /(\d+)\s+data layers and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
+    { file: 'public/pricing.md', re: /Includes: (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
+    { file: 'public/pricing.md', re: /"(\d+)\s+map layers \(Resilience is Pro\)"/, value: s.layerDefinitions },
+    { file: 'docs/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
+    { file: 'docs/accounts.mdx', re: /(\d+)\s+map layers \(all but the Pro-only Resilience layer\)/, value: s.layerDefinitions },
+    { file: 'docs/zh/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s*个地图图层/, value: s.layerDefinitions },
+    { file: 'docs/zh/accounts.mdx', re: /Free 套餐下列出的所有功能 — (\d+)\s*个地图图层/, value: s.layerDefinitions },
+
+    // ---- CII vs CRI country coverage (#5391) ----
+    { file: 'public/home.md', re: /CII v8 for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'public/home.md', re: /(\d+)-country resilience scores/, value: s.rankableUniverseCountries },
+    { file: 'README.md', re: /CII v8 stress scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'docs/country-instability-index.mdx', re: /CII v8 stability scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'public/llms-full.txt', re: /resilience scores for the (\d+)-country public rankable universe/, value: s.rankableUniverseCountries },
+
     { file: 'docs/mcp-apps.mdx', re: /current fleet ships (\d+)\s+MCP Apps/, value: s.mcpAppCount },
     { file: 'docs/mcp-quickstart.mdx', re: /WorldMonitor exposes (\d+)\s+live tools/, value: s.mcpToolCount },
     { file: 'docs/mcp-quickstart.mdx', re: /receives (\d+)\s+compressed tool descriptions/, value: s.mcpToolCount },
@@ -1000,6 +1077,55 @@ function validateBootstrapCacheDocs(stats, docs = null, keyTiers = parseBootstra
   return failures;
 }
 
+/**
+ * Plan copy names the Pro-only map layer rather than quoting a free-layer count
+ * (#5387). That phrasing is only true while `resilienceScore` is the ONLY
+ * web-locked entry in LAYER_REGISTRY: lock a second layer and every surface
+ * below silently starts over-promising again, exactly the way "all 56 map
+ * layers" did. A count pin cannot catch that — the total does not move when a
+ * layer flips to `premium: 'locked'` — so assert the identity of the locked set
+ * and re-point the author at the copy that names it.
+ */
+export const PLAN_LAYER_COPY_SURFACES = [
+  'public/pricing.md',
+  'docs/pricing.mdx',
+  'docs/accounts.mdx',
+  'docs/zh/pricing.mdx',
+  'docs/zh/accounts.mdx',
+  'pro-test/src/locales/en.json',
+  'pro-test/welcome.html',
+];
+
+/** The single web-locked layer the copy above is written around. */
+export const PLAN_LAYER_PRO_ONLY_KEY = 'resilienceScore';
+const PLAN_LAYER_PRO_ONLY_LABEL = 'Resilience';
+
+export function validatePlanLayerEntitlementCopy(stats, readFile = read) {
+  const failures = [];
+  const locked = stats.lockedLayerKeys ?? [];
+
+  if (locked.join(',') !== PLAN_LAYER_PRO_ONLY_KEY) {
+    failures.push(
+      `src/config/map-layer-definitions.ts: plan copy names ${PLAN_LAYER_PRO_ONLY_LABEL} as the only Pro-only map layer, but LAYER_REGISTRY web-locks [${locked.join(', ')}] — update the free-tier copy in ${PLAN_LAYER_COPY_SURFACES.join(', ')} before changing the lock set`,
+    );
+    return failures;
+  }
+
+  for (const file of PLAN_LAYER_COPY_SURFACES) {
+    let text;
+    try {
+      text = readFile(file);
+    } catch {
+      failures.push(`${file}: file not found`);
+      continue;
+    }
+    if (!text.includes(PLAN_LAYER_PRO_ONLY_LABEL)) {
+      failures.push(`${file}: free-tier copy must name the Pro-only "${PLAN_LAYER_PRO_ONLY_LABEL}" map layer (#5387)`);
+    }
+  }
+  return failures;
+}
+
 // The --check validator set. Exported and iterated rather than called as four
 // separate lines in main() so the wiring is data a test can assert: every
 // validator here is unit-tested against its own fixtures, but nothing caught a
@@ -1010,6 +1136,7 @@ const DOC_VALIDATORS = [
   validateSupportedLanguagesRegistry,
   validateMcpAppsDocs,
   validateBootstrapCacheDocs,
+  validatePlanLayerEntitlementCopy,
 ];
 
 function main() {

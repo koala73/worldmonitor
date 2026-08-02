@@ -18,7 +18,11 @@ import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
-import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
+import {
+  sanitizeLayersForVariant,
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import {
@@ -32,7 +36,7 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser, loadWidgets } from '@/services/widget-store';
+import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -86,9 +90,9 @@ import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetai
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
 import {
+  CANADA_ARCTIC_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
-  computePreStrategicDefaultDisabledSources,
   FEEDS,
   FREE_CAP_PROTECTED_SOURCES,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
@@ -102,6 +106,10 @@ import {
   findFullyDisabledCategories,
   selectSourcesUnderCap,
 } from '@/services/source-cap';
+import {
+  buildPreStrategicDefaultDisabledStates,
+  buildRegionalFeedRolloutMigrationTargets,
+} from '@/services/regional-feed-rollout';
 import {
   cancelBootstrapSlowTier,
   fetchBootstrapData,
@@ -144,6 +152,8 @@ import {
 import {
   migrateFrontlineEuropeDefaultsV3,
   migrateStrategicDefaultsV4,
+  migrateRegionalFeedRolloutDefaultsV5,
+  migrateCanadaArcticOptInsV6,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -233,6 +243,7 @@ export class App {
   private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
+  private viewportHydrationReady = false;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
@@ -242,10 +253,19 @@ export class App {
       showToast('Anonymous data is temporarily unavailable. Check your cookie settings, then reload.');
     }
   };
-  private readonly handleViewportPrime = (): void => {
+  private readonly handleViewportPrime = (event?: Event): void => {
+    if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    if (
+      event?.type === 'scroll' &&
+      event.target instanceof Element &&
+      !event.target.matches('.main-content, .panels-grid')
+    ) {
+      return;
+    }
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
+      markLcpDebug('wm:hydration:viewport-trigger');
       void this.primeVisiblePanelData();
       // loadAllData covers panels primeVisiblePanelData does not (news,
       // markets, intelligence, fred, …). Now that bootstrap runs with
@@ -282,6 +302,7 @@ export class App {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
+    let freeTierLimitsInvoked = false;
     invalidatePanelStorageCacheForKeys(keys);
 
     if (keySet.has(STORAGE_KEYS.panels)) {
@@ -303,6 +324,7 @@ export class App {
       // then just re-renders the snapshot, which is all this handler did
       // before reconciliation moved here.
       const reconciledPanelSettings = this.enforceFreeTierLimits(cloudSyncVersion);
+      freeTierLimitsInvoked = true;
       if (!reconciledPanelSettings) {
         this.panelLayout.applyPanelSettings();
         this.state.unifiedSettings?.refreshPanelToggles();
@@ -315,13 +337,17 @@ export class App {
     }
 
     if (keySet.has(STORAGE_KEYS.mapLayers) && !this.state.initialUrlState?.layers) {
-      const nextLayers = normalizeExclusiveChoropleths(
+      let nextLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
           loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, this.state.mapLayers),
           SITE_VARIANT as MapVariant,
         ),
         this.state.mapLayers,
       );
+      // #6045 — clear locked premium layers once free-tier is settled.
+      // Skip while entitlement is still resolving so Pro users don't lose
+      // resilienceScore during the Clerk/Convex boot window.
+      nextLayers = this.sanitizeMapLayersForTier(nextLayers);
       if (!CYBER_LAYER_ENABLED) nextLayers.cyberThreats = false;
       this.state.mapLayers = nextLayers;
       this.state.map?.setLayers(nextLayers);
@@ -335,6 +361,10 @@ export class App {
     }
 
     if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+      // A cloud generation can contain only source preferences. Re-run the
+      // cap even when no panel snapshot arrived, then reload storage because
+      // enforcement may have persisted additional auto-disabled sources.
+      if (!freeTierLimitsInvoked) this.enforceFreeTierLimits(cloudSyncVersion);
       this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
     }
 
@@ -752,6 +782,10 @@ export class App {
           currentVariant as MapVariant,
         ), null,
       );
+      // #6045 — heal stuck locked layers from pre-gate localStorage once free
+      // tier is settled. Do not run while Pro status is still resolving.
+      // Persist immediately so dirty storage doesn't reintroduce the layer.
+      mapLayers = this.sanitizeMapLayersForTier(mapLayers);
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         DEFAULT_PANELS
@@ -945,6 +979,8 @@ export class App {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant), null,
       );
+      // #6045 — URL layer deep-links also cannot force locked layers on for free users.
+      mapLayers = this.sanitizeMapLayersForTier(mapLayers);
       initialUrlState.layers = mapLayers;
     }
     if (!CYBER_LAYER_ENABLED) {
@@ -960,6 +996,9 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
+      let explicitLocale = '';
+      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
+      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
       // #5949 — re-enable Ukraine/Poland frontline sources for profiles that
       // still have the untouched pre-#5949 default disabled set. An exact-set
       // guard is important here: a customized disabledFeeds set is user
@@ -996,19 +1035,13 @@ export class App {
       // be rewritten by a startup migration.
       const strategicKey = 'worldmonitor-strategic-defaults-enable-v1';
       if (!localStorage.getItem(strategicKey)) {
-        const legacyStrategicDefaults = new Set(computePreStrategicDefaultDisabledSources());
-        const legacyStrategicCap = computeCapDisabledSources(
-          FEEDS,
-          INTEL_SOURCES,
-          legacyStrategicDefaults,
-          FREE_MAX_SOURCES,
-        );
         const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
         const migrated = migrateStrategicDefaultsV4(
           { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
-          legacyStrategicDefaults,
+          new Set(),
           getStrategicDefaultSources(),
-          legacyStrategicCap,
+          new Set(),
+          buildPreStrategicDefaultDisabledStates(FREE_MAX_SOURCES, userLang),
         );
         const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
         if (updated.length !== current.length) {
@@ -1018,6 +1051,50 @@ export class App {
           );
         }
         localStorage.setItem(strategicKey, 'done');
+      }
+      // #5975/#5976/#5977/#5980 — reconcile the regional feed wave for
+      // returning denylist profiles. Exact historical default/cap states are
+      // the only eligible inputs; any source customization skips the migration.
+      const regionalRolloutKey = 'worldmonitor-regional-feed-rollout-reconcile-v1';
+      if (!localStorage.getItem(regionalRolloutKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateRegionalFeedRolloutDefaultsV5(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          buildRegionalFeedRolloutMigrationTargets(FREE_MAX_SOURCES, userLang),
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (JSON.stringify(updated) !== JSON.stringify(current)) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log('[App] Regional feed rollout: restored declared defaults and opt-in boundaries for an untouched profile');
+        }
+        localStorage.setItem(regionalRolloutKey, 'done');
+      }
+      // #5960 — Canada + Arctic/Nordic pack: denylist is additive-only, so newly
+      // cataloged opt-in names would be implicitly enabled for every returner.
+      // Insert opt-ins into any existing denylist once. CBC is intentionally
+      // omitted so default-on can enable it for returners (not in old denylist).
+      const canadaArcticKey = 'worldmonitor-canada-arctic-optin-v1';
+      if (!localStorage.getItem(canadaArcticKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCanadaArcticOptInsV6({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CANADA_ARCTIC_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Canada/Arctic opt-in (#5960): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(canadaArcticKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
@@ -1029,9 +1106,6 @@ export class App {
       // for any subsequent locale choice). Direct localStorage read because
       // i18next isn't initialized yet here in the constructor — `initI18n()` is
       // called later inside `init()`.
-      let explicitLocale = '';
-      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
-      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
       const localeKey = `worldmonitor-locale-boost-${userLang}`;
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
@@ -1138,6 +1212,10 @@ export class App {
         void this.openSearch();
       },
       loadAllData: () => this.dataLoader.loadAllData(),
+      primeVisiblePanelData: () => {
+        if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+        void this.primeVisiblePanelData();
+      },
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
@@ -1160,6 +1238,7 @@ export class App {
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
+      isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
 
     // Wire cross-module callback: DataLoader → SearchManager
@@ -1445,7 +1524,7 @@ export class App {
     const ogLocaleMap: Record<string, string> = {
       en: 'en_US', bg: 'bg_BG', cs: 'cs_CZ', fr: 'fr_FR', de: 'de_DE', el: 'el_GR',
       es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
-      nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
+      nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', uk: 'uk_UA', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
       ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
       hi: 'hi_IN',
     };
@@ -1599,6 +1678,11 @@ export class App {
         // after sign-out, expiry, or downgrade.
         void this.dataLoader.clearGlobalTenders();
       }
+      // #6045 — when free-tier is settled, strip locked layers from map state
+      // (heals stuck checked+disabled checkbox from pre-gate CMD+K, and clears
+      // layers on Pro→free downgrade). The fallback deadline is an explicit
+      // settled-free signal when Clerk never resolves.
+      if (!nowPremium) this.healLockedMapLayers(this.freeTierGate.authSettleDeadlineExceeded);
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
@@ -1867,12 +1951,6 @@ export class App {
     this.dataLoader.syncDataFreshnessWithLayers();
     const slowTierReady = this.waitForSlowBootstrapCheckpoint();
     if (this.state.isDestroyed) return;
-    // Prime panel-specific data concurrently with bulk loading.
-    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
-    // are NOT part of loadAllData. Running them in parallel prevents those
-    // panels from being blocked when a loadAllData batch is slow.
-    window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
-    window.addEventListener('resize', this.handleViewportPrime);
     // forceAll=false at bootstrap: data-loader's existing per-panel
     // viewport gate (shouldLoad(id) = forceAll || isPanelNearViewport(id))
     // now actually fires, cutting the ~80-request fan-out down to the
@@ -1889,6 +1967,20 @@ export class App {
     // (3.5 s browser / 8.5 s desktop). (#4512)
     await slowTierReady;
     if (this.state.isDestroyed) return;
+    this.viewportHydrationReady = true;
+    // Register viewport triggers only after the slow bootstrap tier settles.
+    // Scrolls before this point are covered by the initial fan-out below, which
+    // scans the current viewport after readiness. Registering earlier lets a
+    // captured descendant scroll consume hydration keys before they arrive.
+    window.addEventListener('scroll', this.handleViewportPrime, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener('resize', this.handleViewportPrime);
+    // Prime panel-specific data concurrently with bulk loading.
+    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
+    // are NOT part of loadAllData. Running them in parallel prevents those
+    // panels from being blocked when a loadAllData batch is slow.
     // Snapshot whether precision geometry was already loaded BEFORE the fan-out
     // (the map renderer triggers the memoized fetch early). If so, the fan-out's
     // geometry-dependent CII ingests already attributed correctly and the
@@ -1947,7 +2039,49 @@ export class App {
   private readonly freeTierGate = new FreeTierGate(() => {
     this.enforceFreeTierLimits();
     this.panelLayout.healStoredTabSnapshots();
+    // Clerk can remain pending forever when its script or key is unavailable.
+    // The gate's deadline is the explicit free-tier answer in that case, so
+    // heal stale locked map-layer state as well as panel/source state.
+    this.healLockedMapLayers(true);
   });
+
+  /**
+   * Sanitize a map-layer snapshot only after the entitlement answer is safe to
+   * treat as free. The fallback argument is deliberately explicit: pending
+   * auth is not evidence that a paying user is free, but the bounded gate is.
+   */
+  private sanitizeMapLayersForTier(
+    layers: MapLayers,
+    fallbackActive = this.freeTierGate.authSettleDeadlineExceeded,
+  ): MapLayers {
+    if (!shouldSanitizeLockedLayers(
+      hasPremiumAccess(),
+      isProTierResolved(),
+      fallbackActive,
+    )) return layers;
+
+    const healed = sanitizeLockedLayers(layers, false);
+    if (healed !== layers) saveToStorage(STORAGE_KEYS.mapLayers, healed);
+    return healed;
+  }
+
+  /** Heal the live map and persisted state after a downgrade or free fallback. */
+  private healLockedMapLayers(
+    fallbackActive = this.freeTierGate.authSettleDeadlineExceeded,
+  ): void {
+    const initialUrlLayers = this.state.initialUrlState?.layers;
+    if (initialUrlLayers) {
+      const healedUrlLayers = this.sanitizeMapLayersForTier(initialUrlLayers, fallbackActive);
+      if (healedUrlLayers !== initialUrlLayers && this.state.initialUrlState) {
+        this.state.initialUrlState.layers = healedUrlLayers;
+      }
+    }
+    const healed = this.sanitizeMapLayersForTier(this.state.mapLayers, fallbackActive);
+    if (healed === this.state.mapLayers) return;
+    this.state.mapLayers = healed;
+    this.state.map?.setLayers(healed);
+    this.dataLoader.syncDataFreshnessWithLayers();
+  }
 
   /**
    * Put back the custom widgets the free-tier gate hid, now that we know the
@@ -2072,12 +2206,12 @@ export class App {
       return this.restoreProGatedCustomWidgets(cloudSyncVersion);
     }
 
-    // Pro/free is NOT knowable yet on a normal page load. initAuthState()
+    // Pro/free is NOT knowable yet on an auth-enabled page load. initAuthState()
     // deliberately does not await Clerk (2.98 MB, loaded on requestIdleCallback
     // with a 4 s timeout) and the Convex entitlement snapshot lands later
-    // still, so getAuthState() is `{ user: null, isPending: true }` here on
-    // every boot — a signed-in Pro user is indistinguishable from an anonymous
-    // one at this point.
+    // still, so getAuthState() is `{ user: null, isPending: true }` here — a
+    // signed-in Pro user is indistinguishable from an anonymous one at this
+    // point. Builds without Clerk settle anonymous synchronously instead.
     //
     // That matters because the clamp below is a PERSISTED write and
     // enforceFreePanelLimit disables every cw-* custom widget on the free
@@ -2090,9 +2224,9 @@ export class App {
     //
     // Deferring is free: firePremiumLoaders() re-runs this on the Clerk auth
     // event and on every Convex entitlement snapshot. The fallback timer
-    // covers the one case where neither ever arrives — Clerk's script fails
-    // to load or VITE_CLERK_PUBLISHABLE_KEY is unset, where isPending stays
-    // true forever and the free-tier caps would otherwise never be enforced.
+    // covers the one case where neither ever arrives — a configured Clerk
+    // script fails to load and isPending stays true, so the free-tier caps
+    // would otherwise never be enforced.
     //
     // The same blindness recurs after Clerk settles: the auth callback runs
     // firePremiumLoaders() before initEntitlementSubscription() rebinds, so
@@ -2208,6 +2342,7 @@ export class App {
         if (!keep.has(name)) disabledSources.add(name);
       }
       saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
+      this.state.disabledSources = new Set(disabledSources);
       console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
     }
     return panelsChanged;
@@ -2215,8 +2350,9 @@ export class App {
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    this.viewportHydrationReady = false;
     cancelBootstrapSlowTier();
-    window.removeEventListener('scroll', this.handleViewportPrime);
+    window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);

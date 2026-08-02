@@ -1673,7 +1673,8 @@
       "newsSignals": "{{news}} Nachrichten • {{signals}} Signale",
       "provenanceTitle": "Abdeckungsherkunft: Anzahl der erfassten Stories und unterschiedlichen Quellen, aus denen dieser Brief ausgewählt wurde",
       "compiledFrom": "Zusammengestellt aus {{stories}} Geschichten über {{sources}} Quellen",
-      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt"
+      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "ETF-Daten vorübergehend nicht verfügbar",
@@ -3335,5 +3336,31 @@
     "deleteTab": "Tab löschen",
     "deleteTabAria": "Tab {{name}} löschen",
     "tabNameAria": "Tab-Name"
+  },
+  "theaterPresets": {
+    "label": "Abdeckungspakete",
+    "applied": "{{preset}}-Paket angewendet: {{count}} Quellen aktiviert",
+    "alreadyApplied": "Das {{preset}}-Paket ist bereits angewendet",
+    "ukraineWar": {
+      "label": "Ukraine-Krieg",
+      "description": "Ukrainische Primärmedien, unabhängige russische Presse und Quellen zur Frontbewertung aktivieren"
+    },
+    "indoPacific": {
+      "label": "Indopazifik / Taiwan",
+      "description": "Sicherheitsquellen zu Taiwan, Pakistan und Südostasien aktivieren"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel und Westafrika",
+      "description": "Lokale Quellen aus dem Sahel, Nigeria und Westafrika aktivieren"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus und Zentralasien",
+      "description": "Regionale Quellen aus dem Südkaukasus und Zentralasien aktivieren"
+    },
+    "middleEastFlashpoints": {
+      "label": "Krisenherde im Nahen Osten",
+      "description": "Quellen zu Iran, Israel, dem Golf und kurdischen Regionen aktivieren"
+    },
+    "unavailable": "Das {{preset}}-Paket ist mit den aktuellen Panels nicht verfügbar"
   }
 }

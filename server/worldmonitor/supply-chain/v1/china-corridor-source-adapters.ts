@@ -698,8 +698,16 @@ function adaptTrade(
       transportFreshness: transportFreshness(snapshots.shippingMeta, 420, assessedAt),
       contentFreshness: contentFreshness(observedAt, 28 * 1_440, assessedAt),
       summary: 'China Containerized Freight Index observation.',
+      // `periodChangePct` is the publisher's own period-over-period move and is
+      // absent unless the seeder proved a comparable prior (#6066). The legacy
+      // `changePct` field stays unpublished: it fabricates 0 when no prior
+      // exists, so a level would silently become a change.
       metrics: metrics([
         ['currentValue', numberValue(ccfi.currentValue)],
+        ['periodChangePct', numberValue(ccfi.periodChangePct)],
+        ['periodChangeBasis', stringValue(ccfi.periodChangeBasis)],
+        ['priorPeriodValue', numberValue(ccfi.priorPeriodValue)],
+        ['priorPeriodDate', stringValue(ccfi.priorPeriodDate)],
         ['unit', stringValue(ccfi.unit)],
       ]),
     }));

@@ -11,6 +11,12 @@ import {
   buildOverviewSnapshot,
   buildRetailerSpreadSnapshot,
 } from '../snapshots/worldmonitor.js';
+import { buildCoverageSnapshot } from '../snapshots/coverage.js';
+import {
+  COVERAGE_ACTIVATION_SCHEMA_VERSION,
+  coverageActivationKey,
+  isActivatingCoverage,
+} from '../ops/coverage.js';
 import { loadAllBasketConfigs, loadAllRetailerConfigs } from '../config/loader.js';
 import { closePool } from '../db/client.js';
 
@@ -78,7 +84,14 @@ async function writeSnapshot(
   data: unknown,
   ttlSeconds: number,
   advanceSeedMeta = true,
-  coverage?: { pagesOk: number; pagesFailed: number; rejectedCount: number },
+  coverage?: {
+    status?: string;
+    pagesOk: number;
+    pagesFailed: number;
+    rejectedCount: number;
+    completionRatio?: number | null;
+    retailers?: unknown[];
+  },
 ): Promise<void> {
   const count = recordCount(data);
   // Envelope the canonical payload. Legacy seed-meta:<key> is still written
@@ -89,14 +102,16 @@ async function writeSnapshot(
   if (advanceSeedMeta) {
     const meta: Record<string, unknown> = { fetchedAt: Date.now(), recordCount: count };
     if (coverage) {
-      const completionRatio = coverage.pagesOk + coverage.pagesFailed > 0
+      const completionRatio = coverage.completionRatio ?? (coverage.pagesOk + coverage.pagesFailed > 0
         ? Number((coverage.pagesOk / (coverage.pagesOk + coverage.pagesFailed)).toFixed(4))
-        : 0;
+        : 0);
       meta.coverage = {
+        ...(coverage.status ? { status: coverage.status } : {}),
         completedPages: coverage.pagesOk,
         failedPages: coverage.pagesFailed,
         completionRatio,
         rejectedCount: coverage.rejectedCount,
+        ...(coverage.retailers ? { retailers: coverage.retailers } : {}),
       };
     }
     await upstashCommand(url, token, [
@@ -147,6 +162,61 @@ export async function publishAll() {
 
     let pagesOk = 0;
     let pagesFailed = 0;
+
+    try {
+      const coverage = await buildCoverageSnapshot(marketCode);
+      await writeSnapshot(
+        url,
+        token,
+        makeKey(['consumer-prices', 'coverage', marketCode]),
+        coverage,
+        TTL,
+        advanceSeedMeta,
+        {
+          pagesOk: coverage.completedPages,
+          pagesFailed: coverage.failedPages,
+          rejectedCount: coverage.rejectedCount,
+          completionRatio: coverage.completionRatio,
+          status: coverage.status,
+          retailers: coverage.retailers,
+        },
+      );
+      pagesOk++;
+      // #6059 activation handshake. Written AFTER the snapshot lands and only
+      // for real coverage, so WorldMonitor health leaves its bounded
+      // ROLLOUT_PENDING window for this market and becomes strict forever.
+      // Durable by design: no EX, so it outlives the 7d seed-meta TTL and a
+      // publisher that ran once and then died can never read as
+      // pending-activation again.
+      //
+      // Its own try/catch: a marker write failure must not be logged as a
+      // coverage failure (the coverage snapshot already published) and must not
+      // abort the market's remaining snapshots. The next run retries, and the
+      // compiled rollout deadline bounds the window regardless.
+      if (isActivatingCoverage(coverage)) {
+        try {
+          await upstashCommand(url, token, [
+            'SET',
+            coverageActivationKey(marketCode),
+            JSON.stringify({
+              schemaVersion: COVERAGE_ACTIVATION_SCHEMA_VERSION,
+              marketCode,
+              activatedAt: Date.now(),
+              attemptedPages: coverage.attemptedPages,
+            }),
+          ]);
+        } catch (err) {
+          logger.error(`coverage-activation:${marketCode} failed: ${err}`);
+        }
+      } else {
+        logger.warn(
+          `coverage:${marketCode} published without attempted pages — activation marker withheld`,
+        );
+      }
+    } catch (err) {
+      pagesFailed++;
+      logger.error(`coverage:${marketCode} failed: ${err}`);
+    }
 
     try {
       const overview = await buildOverviewSnapshot(marketCode);

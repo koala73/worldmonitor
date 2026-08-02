@@ -1312,7 +1312,8 @@
       "sources_many": "{{count}} sources",
       "provenanceTitle": "Provenance de la couverture : nombre d'articles ingérés et de sources distinctes à partir desquels ce résumé a été sélectionné",
       "compiledFrom": "Compilé à partir de {{stories}} articles provenant de {{sources}} sources",
-      "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h"
+      "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Exporter les paramètres",
@@ -3353,5 +3354,31 @@
     "deleteTab": "Supprimer l'onglet",
     "deleteTabAria": "Supprimer l'onglet {{name}}",
     "tabNameAria": "Nom de l'onglet"
+  },
+  "theaterPresets": {
+    "label": "Packs de couverture",
+    "applied": "Pack {{preset}} appliqué : {{count}} sources activées",
+    "alreadyApplied": "Le pack {{preset}} est déjà appliqué",
+    "ukraineWar": {
+      "label": "Guerre en Ukraine",
+      "description": "Activer les médias ukrainiens de référence, la presse russe indépendante et les sources d'évaluation du front"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacifique / Taïwan",
+      "description": "Activer les sources de sécurité de Taïwan, du Pakistan et de l'Asie du Sud-Est"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel et Afrique de l'Ouest",
+      "description": "Activer les sources locales du Sahel, du Nigeria et de l'Afrique de l'Ouest"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucase et Asie centrale",
+      "description": "Activer les sources régionales du Caucase du Sud et de l'Asie centrale"
+    },
+    "middleEastFlashpoints": {
+      "label": "Foyers de tension au Moyen-Orient",
+      "description": "Activer les sources sur l'Iran, Israël, le Golfe et les régions kurdes"
+    },
+    "unavailable": "Le pack {{preset}} n'est pas disponible avec vos panneaux actuels"
   }
 }

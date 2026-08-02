@@ -40,7 +40,7 @@ function dataEntries(doc, fileLabel) {
 }
 
 /**
- * Bundle src/config/feeds.ts into a temp dir and import it.
+ * Bundle the feed catalog plus theater presets into a temp dir and import it.
  * Returns { feeds, cleanup } — caller MUST run cleanup() when done.
  */
 async function bundleFeedsModule(repoRoot) {
@@ -69,7 +69,15 @@ async function bundleFeedsModule(repoRoot) {
   };
   try {
     const result = await build({
-      entryPoints: [join(repoRoot, 'src/config/feeds.ts')],
+      stdin: {
+        contents: [
+          "export * from './src/config/feeds.ts';",
+          "export { THEATER_PRESETS } from './src/config/theater-presets.ts';",
+        ].join('\n'),
+        resolveDir: repoRoot,
+        sourcefile: 'geo-coverage-config-entry.ts',
+        loader: 'ts',
+      },
       bundle: true,
       format: 'esm',
       platform: 'neutral',
@@ -152,8 +160,8 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths 
 
     const sourceGeography = new Map(
       dataEntries(sourceGeographyDoc, 'source-geography.json').map(([name, countries]) => {
-        if (!Array.isArray(countries) || countries.length === 0) {
-          throw new Error(`source-geography.json: "${name}" must map to a non-empty ISO2 array`);
+        if (!Array.isArray(countries)) {
+          throw new Error(`source-geography.json: "${name}" must map to an ISO2 array`);
         }
         return [name, countries];
       }),
@@ -164,6 +172,14 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths 
       ...feeds.INTEL_SOURCES.map((f) => f.name),
     ]);
     const defaultEnabled = getEnglishDefaultEnabledSources(feeds);
+    const requiredMappedSourceNames = new Set([
+      ...feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...feeds.REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...feeds.REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES,
+      ...feeds.CANADA_EN_DEFAULT_SOURCES,
+      ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES,
+      ...feeds.THEATER_PRESETS.flatMap((preset) => preset.sourceNames),
+    ]);
     const validIso2 = new Set([...Object.keys(iso2ToRegion), ...byIso.keys()]);
 
     return {
@@ -173,6 +189,7 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths 
       policy,
       catalogNames,
       defaultEnabled,
+      requiredMappedSourceNames,
       validIso2,
       catalogSize: catalogNames.size,
       defaultEnabledSize: defaultEnabled.size,
@@ -189,7 +206,12 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths 
  * Structural integrity of the curated map against the catalog and geography.
  * Returns a list of problems (empty = clean).
  */
-export function validateSourceGeography({ sourceGeography, catalogNames, validIso2 }) {
+export function validateSourceGeography({
+  sourceGeography,
+  catalogNames,
+  validIso2,
+  requiredMappedSourceNames = new Set(),
+}) {
   const problems = [];
   for (const [name, countries] of sourceGeography) {
     if (!catalogNames.has(name)) {
@@ -207,6 +229,13 @@ export function validateSourceGeography({ sourceGeography, catalogNames, validIs
       if (!validIso2.has(iso2)) {
         problems.push(`source-geography.json: "${name}" tags unknown ISO2 "${iso2}"`);
       }
+    }
+  }
+  for (const name of [...requiredMappedSourceNames].sort((a, b) => a.localeCompare(b))) {
+    if (!sourceGeography.has(name)) {
+      problems.push(
+        `source-geography.json: required source "${name}" has no geography classification`,
+      );
     }
   }
   return problems;

@@ -141,6 +141,54 @@ async function fetchShippingRates() {
 
 // ─── Container Indices (Shanghai Shipping Exchange) ───
 
+function finiteOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+// Parse one Shanghai Shipping Exchange `currentIndex` envelope (issue #6066).
+//
+// `changePct` / `previousValue` are the legacy display fields and are DELIBERATELY
+// left fabricating (0 / the current level) so the supply-chain UI keeps rendering.
+// They must never be consumed as evidence of a period-over-period move: they cannot
+// distinguish "SSE published an unchanged week" from "SSE published no prior at all".
+//
+// `periodChangePct` is the decision-grade field and fails CLOSED — it is null unless
+// SSE itself published either its own percentage or a comparable prior-period level,
+// and `periodChangeBasis` names which of the two it came from. A single index level
+// never becomes a change.
+export function parseSseIndexResponse(json, indexId, dataItemType, displayName, unit) {
+  const lines = json?.data?.lineDataList;
+  if (!Array.isArray(lines)) return [];
+  const composite = lines.find(l => l.dataItemTypeName === dataItemType);
+  if (!composite) return [];
+  const currentValue = composite.currentContent;
+  const previousValue = composite.lastContent;
+  if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return [];
+  const changePct = typeof composite.percentage === 'number' ? composite.percentage
+    : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
+
+  const publishedChangePct = finiteOrNull(composite.percentage);
+  const priorPeriodValue = finiteOrNull(previousValue);
+  const derivedChangePct = publishedChangePct === null && priorPeriodValue !== null
+    && priorPeriodValue !== 0
+    ? ((currentValue - priorPeriodValue) / Math.abs(priorPeriodValue)) * 100
+    : null;
+  const periodChangePct = publishedChangePct ?? derivedChangePct;
+  const periodChangeBasis = publishedChangePct !== null
+    ? 'publisher_reported'
+    : derivedChangePct !== null
+      ? 'derived_from_prior_period_level'
+      : null;
+
+  const observationDate = json.data?.currentDate || new Date().toISOString().slice(0, 10);
+  return [{
+    indexId, name: displayName, currentValue, previousValue: previousValue ?? currentValue,
+    changePct, periodChangePct, periodChangeBasis, priorPeriodValue,
+    priorPeriodDate: typeof json.data?.lastDate === 'string' ? json.data.lastDate : null,
+    unit, history: [], spikeAlert: false, _observationDate: observationDate,
+  }];
+}
+
 async function fetchSSEIndex(indexName, indexId, dataItemType, displayName, unit) {
   try {
     const resp = await fetch(`https://en.sse.net.cn/currentIndex?indexName=${indexName}`, {
@@ -149,20 +197,13 @@ async function fetchSSEIndex(indexName, indexId, dataItemType, displayName, unit
     });
     if (!resp.ok) { console.warn(`  SSE ${indexName}: HTTP ${resp.status}`); return []; }
     const json = await resp.json();
-    const lines = json?.data?.lineDataList;
-    if (!Array.isArray(lines)) { console.warn(`  SSE ${indexName}: no lineDataList`); return []; }
-    const composite = lines.find(l => l.dataItemTypeName === dataItemType);
-    if (!composite) { console.warn(`  SSE ${indexName}: ${dataItemType} not found`); return []; }
-    const currentValue = composite.currentContent;
-    const previousValue = composite.lastContent;
-    if (typeof currentValue !== 'number') return [];
-    const changePct = typeof composite.percentage === 'number' ? composite.percentage
-      : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
-    const observationDate = json.data?.currentDate || new Date().toISOString().slice(0, 10);
-    return [{
-      indexId, name: displayName, currentValue, previousValue: previousValue ?? currentValue,
-      changePct, unit, history: [], spikeAlert: false, _observationDate: observationDate,
-    }];
+    if (!Array.isArray(json?.data?.lineDataList)) {
+      console.warn(`  SSE ${indexName}: no lineDataList`);
+      return [];
+    }
+    const parsed = parseSseIndexResponse(json, indexId, dataItemType, displayName, unit);
+    if (parsed.length === 0) console.warn(`  SSE ${indexName}: ${dataItemType} not usable`);
+    return parsed;
   } catch (e) {
     console.warn(`  SSE ${indexName}: ${e.message}`);
     return [];

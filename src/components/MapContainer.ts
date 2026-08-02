@@ -6,7 +6,14 @@
  */
 import { isMobileDevice } from '@/utils';
 import { markLcpDebug } from '@/utils/lcp-debug';
-import type { MapComponent } from './Map';
+import {
+  isLayerToggleAllowed,
+  isLayerEntitled,
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
+import { isProTierResolved } from '@/services/widget-store';
+import type { MapComponent, MapComponentOptions } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
 import type {
@@ -106,6 +113,7 @@ export interface MapContainerState {
 
 export interface MapContainerOptions {
   chrome?: boolean;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 interface TechEventMarker {
@@ -140,6 +148,8 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
+  private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
   private rendererDemandCleanup: (() => void) | null = null;
@@ -218,6 +228,12 @@ export class MapContainer {
     this.container = container;
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.svgLayerToggleGuard = (layer, currentlyEnabled) => isLayerToggleAllowed(
+      layer,
+      currentlyEnabled === true,
+      hasPremiumAccess(getAuthState()),
+    );
+    this.isFreeTierFallbackActive = options.isFreeTierFallbackActive ?? null;
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
@@ -476,7 +492,11 @@ export class MapContainer {
     this.prepareRendererDom('svg-mode');
     // DeckGLMap mutates DOM early during construction. If initialization throws,
     // clear partial WebGL nodes before creating the SVG fallback.
-    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome, isMobile: this.isMobile });
+    this.svgMap = new MapComponent(this.container, this.initialState, {
+      chrome: this.chrome,
+      isMobile: this.isMobile,
+      canToggleLayer: this.svgLayerToggleGuard,
+    });
     this.rehydrateActiveMap();
     this.rendererReady = true;
     this.replayPendingChokepointOpen();
@@ -806,7 +826,16 @@ export class MapContainer {
   }
 
   public setLayers(layers: MapLayers): void {
-    const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
+    // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.
+    let sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(getAuthState()),
+      isProTierResolved(),
+      this.isFreeTierFallbackActive?.() === true,
+    )) {
+      sanitized = sanitizeLockedLayers(sanitized, false);
+    }
     this.initialState = { ...this.initialState, layers: sanitized };
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
@@ -1296,6 +1325,8 @@ export class MapContainer {
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
     if (layer === 'resilienceScore' && !this.useDeckGL) return;
+    // #6045 — don't stamp initialState or enable locked premium layers for free users.
+    if (!isLayerEntitled(layer, hasPremiumAccess(getAuthState()))) return;
     this.initialState = {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },

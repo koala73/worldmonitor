@@ -55,9 +55,26 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 }
 ```
 
-`summary` 字段：`total` 是每个探测键的一个条目（目前约 194 个，并随面板增加而增长）。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 是 `warn` 的一个**子集**（种子器新鲜但上游订阅源停止推进）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
+`summary` 字段：`total` 是每个探测键的一个条目（目前约 194 个，并随面板增加而增长）。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 是 `warn` 的一个**子集**（种子器新鲜但上游订阅源停止推进），`rolloutPending` 是 `warn` 的另一个**子集**（新部署的 schema 仍处于其有界的「部署先于定时任务」窗口内）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
 
 使用 `?compact=1` 时，`checks` 对象会被 `problems` 替换，仅包含非 OK 的键。
+
+### 消费价格来源覆盖率
+
+consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `consumer-prices:coverage:<market>`，并把汇总完成率放入 `seed-meta`，因此 `/api/health` 能区分「一次新鲜的部分运行」和「生产者已停止」。部分结果仍可发布；被校验器拒绝的观测值绝不会仅仅为了提高覆盖率数字而被接纳。
+
+#### 覆盖率 schema 上线握手
+
+Edge 健康注册表随 PR 合并即刻部署，但它读取的键只能在 consumer-prices-core 的下一次每日抓取（02:00 UTC）→ 聚合（02:15）→ 发布（02:30）窗口之后才会出现。[#6059](https://github.com/koala73/worldmonitor/issues/6059) 用两道彼此独立、缺一不可的关卡关闭这个窗口：
+
+1. **激活（持久、单向）。** 每日发布器（`consumer-prices-core/src/jobs/publish.ts`，且仅限它）为某市场写入「确实尝试过页面」的覆盖率快照后，才会以**无 TTL** 的方式 `SET` `seed-activated:consumer-prices:coverage:v1:<market>`。手动兜底脚本 `scripts/seed-consumer-prices.mjs` 刻意**不会**写入该标记：它的覆盖率键只有 30 分钟 TTL，用一个 30 分钟的产物换取永久激活，会在数据过期后把该市场永久卡在无法恢复的 `EMPTY`（严重）状态。该标记一旦存在，该市场即永久转为严格判定——缺失、为空、过期或低于阈值的覆盖率，其分类与没有本握手时完全一致。真实但为空的快照（无启用零售商，或零售商从未运行）**不会**激活。键名中的 `v1` 是覆盖率 schema 版本，因此未来的 schema 变更会开启各自独立评审的新窗口，而不会继承旧形态已获得的激活。
+2. **截止时间（有界）。** 无论生产者是否运行过，软化都会在编译进 `api/health.js` 的每市场墙钟时间戳处停止。因此错过或失败的首次运行会在一个完整的抓取/聚合/发布周期内自行升级为 `EMPTY`（严重）。
+
+八个覆盖率检查在**所有**状态下都会附带 `activated` 字段（持久标记存在时为 true），因此上线进度可直接从响应体审计，无需手动探测 Redis 即可区分「已激活后损坏」与「从未运行」。
+
+仅当覆盖率键**完全缺失**时才会被软化。键一旦存在即说明生产者已运行，因此 `EMPTY_DATA`、`COVERAGE_DEGRADED`、`COVERAGE_PARTIAL` 与 `STALE_SEED` 均保持严格——覆盖率计数绝不合成，成功状态也绝不从无关的规范键推断。`scripts/check-seed-freshness.mjs` 会用墙钟时间重新校验每个 `rolloutPendingUntil`，而非信任状态字符串，因此已过期或无法解析的截止时间（以及缓存过旧的 compact 快照）都会照常上报问题。
+
+在窗口期内 `overall` 会变为 `WARNING`（绝不会是 `UNHEALTHY`）。
 
 ### 键分类
 
@@ -79,6 +96,8 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 | `STALE_SEED` | 警告 | 数据存在但 `seed-meta` 年龄超过 `maxStaleMin` |
 | `STALE_CONTENT` | 警告 | 种子器新鲜但上游内容停止推进（冻结的订阅源）；计入 `summary.staleContent` |
 | `COVERAGE_PARTIAL` | 警告 | 总记录数或必需子组低于该键声明的覆盖率下限（例如 139/174 个 PortWatch 国家，或某个预测市场池为空） |
+| `COVERAGE_DEGRADED` | 警告 | 生产者自身的覆盖率诊断缺失，或其完成率低于该键的 `minSuccessRate`（例如某个消费价格市场仅完成 12 个零售商页面中的 4 个） |
+| `ROLLOUT_PENDING` | 警告 | 新部署的 schema，其生产者尚未到达首次计划运行。**有界**：该条目携带编译在 `api/health.js` 中的 `rolloutPendingUntil` 截止时间；一旦该时间过去，或生产者写入其持久激活标记，状态即变为 `EMPTY`（严重）。计入 `summary.rolloutPending` |
 | `SEED_ERROR` | 警告 | `seed-meta` 报告上次种子运行的 `status: "error"` |
 | `REDIS_PARTIAL` | 警告 | 该键的 STRLEN/GET 上出现单个每命令 Redis 错误（非完全中断） |
 | `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |

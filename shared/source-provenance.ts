@@ -39,9 +39,11 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'NHK World': 'mainstream', 'Nikkei Asia': 'market',
   // Independent RU exile / UA English primary (default-eligible under #5950 balance rule)
   'Meduza': 'mainstream', 'Moscow Times': 'mainstream', 'Kyiv Independent': 'mainstream',
-  // Ukraine depth pack (#5951)
+  // Ukraine depth pack (#5951) + uk native pack (#5959)
   'Ukrinform': 'wire', 'Suspilne': 'mainstream',
   'Ukrainska Pravda EN': 'mainstream', 'NV EN': 'mainstream', 'Hromadske EN': 'mainstream', 'ISW': 'intel',
+  'Ukrainska Pravda': 'mainstream', 'Hromadske': 'mainstream',
+  'Bihus.Info': 'intel', 'Slidstvo.Info': 'intel', 'ZN.UA': 'mainstream',
 
   // Mainstream outlets
   'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
@@ -74,6 +76,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
+  // Canada + Arctic/Nordic pack (#5960)
+  'CBC News': 'mainstream', 'Globe and Mail': 'mainstream', 'Global News': 'mainstream',
+  'Yle News': 'mainstream', 'NRK': 'mainstream', 'Aftenposten': 'mainstream',
+  'DR Nyheder': 'mainstream', 'Arctic Today': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
 
@@ -263,6 +269,12 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Ukrainska Pravda EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Independent Ukrainian outlet, high-signal English edition' },
   'NV EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'New Voice of Ukraine English edition, independent' },
   'Hromadske EN': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian independent public broadcaster (English)' },
+  // Ukrainian native outlets (#5959) — locale-boosted for uk UI
+  'Ukrainska Pravda': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Independent Ukrainian outlet, Ukrainian-language edition' },
+  'Hromadske': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian independent public broadcaster (Ukrainian)' },
+  'Bihus.Info': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian investigative anti-corruption outlet' },
+  'Slidstvo.Info': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian investigative journalism project (Radio Free Europe partnership)' },
+  'ZN.UA': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Dzerkalo Tyzhnia — Ukrainian weekly analytical newspaper' },
   'ISW': { risk: 'low', note: 'Institute for the Study of War, nonpartisan research nonprofit, daily frontline assessments' },
   'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent English-language Russian outlet, critical of Kremlin' },
   // Independent RU exile press — not state media; eligible for EN defaults (#5950)
@@ -278,6 +290,15 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'ERR News': { risk: 'low', note: 'Estonian Public Broadcasting English service' },
   'LRT English': { risk: 'low', note: 'Lithuanian Public Broadcasting English service' },
   'LSM English': { risk: 'low', note: 'Latvian Public Broadcasting English service' },
+  // Canada + Arctic/Nordic pack (#5960)
+  'CBC News': { risk: 'medium', stateAffiliated: 'Canada', note: 'Canadian public broadcaster (CBC/Radio-Canada), editorially independent charter' },
+  'Globe and Mail': { risk: 'low', note: 'Canadian newspaper of record' },
+  'Global News': { risk: 'low', note: 'Canadian national news network (Corus Entertainment)' },
+  'Yle News': { risk: 'medium', stateAffiliated: 'Finland', note: 'Finnish public broadcaster English service (Yle)' },
+  'NRK': { risk: 'medium', stateAffiliated: 'Norway', note: 'Norwegian public broadcaster' },
+  'Aftenposten': { risk: 'low', note: 'Norwegian newspaper of record (Schibsted)' },
+  'DR Nyheder': { risk: 'medium', stateAffiliated: 'Denmark', note: 'Danish public broadcaster (DR)' },
+  'Arctic Today': { risk: 'low', note: 'Independent High North / Arctic security and business news' },
   'Daily Sabah': { risk: 'medium', stateAffiliated: 'Turkey', note: 'Turkish pro-government daily, English edition' },
   'Seznam Zprávy': { risk: 'low', note: 'Czech independent online news outlet' },
   'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },
@@ -297,7 +318,7 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Armenpress': { risk: 'high', stateAffiliated: 'Armenia', note: 'Armenian state news agency' },
   // Periphery packs (#5953) — Belarus / Moldova
   'Zerkalo': { risk: 'low', note: 'Independent Belarusian exile news outlet (formerly TUT.BY)' },
-  'NewsMaker': { risk: 'medium', note: 'Moldovan independent news outlet, English/Romanian' },
+  'NewsMaker': { risk: 'medium', note: 'Moldovan independent news outlet; configured Russian-language feed' },
   'Ziarul de Gardă': { risk: 'medium', note: 'Moldovan investigative journalism outlet, Romanian-language' },
   // Periphery packs (#5953) — Central Asia
   'Eurasianet': { risk: 'medium', note: 'Nonprofit regional news covering Eurasia, Carnegie-funded' },

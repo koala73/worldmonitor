@@ -1,4 +1,5 @@
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
+import { THEATER_PRESETS, getTheaterPreset, getTheaterPresetEnableList, resolveTheaterPresetSources, type TheaterPreset } from '@/config/theater-presets';
 import {
   PANEL_CATEGORY_MAP,
   ALL_PANELS,
@@ -286,6 +287,12 @@ export class UnifiedSettings {
         this.config.setSourcesEnabled(visible, true);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        return;
+      }
+
+      const presetChip = target.closest<HTMLElement>('.unified-settings-preset-chip');
+      if (presetChip?.dataset.presetId) {
+        this.applyCoveragePreset(presetChip.dataset.presetId);
         return;
       }
 
@@ -655,6 +662,7 @@ export class UnifiedSettings {
     ];
     this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
     const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
+    const applicablePresets = this.getApplicableTheaterPresets();
 
     setTrustedHtml(this.overlay, trustedHtml(`
       <div class="modal unified-settings-modal">
@@ -701,6 +709,14 @@ export class UnifiedSettings {
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usRegionBar"></div>
           </div>
+          ${applicablePresets.length > 0 ? `
+          <div class="unified-settings-presets" id="usCoveragePresets">
+            <span class="unified-settings-presets-label">${t('theaterPresets.label')}</span>
+            ${applicablePresets.map(preset =>
+              `<button type="button" class="unified-settings-region-pill unified-settings-preset-chip" data-preset-id="${preset.id}" title="${escapeHtml(t(preset.descriptionKey))}">${escapeHtml(t(preset.labelKey))}</button>`
+            ).join('')}
+          </div>
+          ` : ''}
           <div class="sources-search">
             <input type="text" placeholder="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
           </div>
@@ -1227,6 +1243,56 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  /**
+   * Presets with at least one source that resolves in the runtime-known
+   * source set. Narrow variants (or disabled news panels) can leave a preset
+   * with nothing to enable — those chips are dead, so don't offer them.
+   */
+  private getApplicableTheaterPresets(): readonly TheaterPreset[] {
+    const known = new Set(this.config.getAllSourceNames());
+    return THEATER_PRESETS.filter((preset) => resolveTheaterPresetSources(preset, known).length > 0);
+  }
+
+  /**
+   * Theater coverage preset (#5956): additively enable the preset's sources.
+   * Uses the same bulk primitive as select-all, so persistence, the free
+   * source cap, and cloud sync behave identically; unrelated sources are
+   * never touched.
+   */
+  private applyCoveragePreset(presetId: string): void {
+    const preset = getTheaterPreset(presetId);
+    if (!preset) return;
+
+    const known = new Set(this.config.getAllSourceNames());
+    const resolvable = resolveTheaterPresetSources(preset, known);
+    const toEnable = getTheaterPresetEnableList(preset, this.config.getDisabledSources(), known);
+    const label = t(preset.labelKey);
+
+    // Zero resolvable sources (narrow variant or unloaded panels) is not the
+    // same as "already applied" — say so. Normally unreachable because the
+    // chips row only renders applicable presets; kept as a defensive guard.
+    if (resolvable.length === 0) {
+      showToast(t('theaterPresets.unavailable', { preset: label }));
+      return;
+    }
+
+    if (toEnable.length === 0) {
+      showToast(t('theaterPresets.alreadyApplied', { preset: label }));
+      return;
+    }
+
+    // setSourcesEnabled no-ops (with its own free-cap toast) when the free
+    // source cap would be exceeded — only re-render and claim success when
+    // state actually changed.
+    const disabledSizeBefore = this.config.getDisabledSources().size;
+    this.config.setSourcesEnabled(toEnable, true);
+    if (this.config.getDisabledSources().size !== disabledSizeBefore) {
+      this.renderSourcesGrid();
+      this.updateSourcesCounter();
+      showToast(t('theaterPresets.applied', { preset: label, count: String(toEnable.length) }));
+    }
   }
 
   private async loadPlanLimitNotices(): Promise<void> {

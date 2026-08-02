@@ -30,13 +30,13 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 
-export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
+export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'uk', 'vi', 'zh'];
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
   es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
   ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
-  vi: 'Vietnamese', zh: 'Simplified Chinese',
+  uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Simplified Chinese',
 };
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';

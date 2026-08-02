@@ -57,12 +57,12 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 
 | Directory | Purpose |
 |---|---|
-| `src/components/` | UI components — 179 top-level TypeScript component files |
+| `src/components/` | UI components — 181 top-level TypeScript component files |
 | `src/services/` | Data fetching modules — sebuf client wrappers, AI, signal analysis |
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
 | `src/types/` | TypeScript type definitions |
-| `src/locales/` | i18n JSON files (25 languages) |
+| `src/locales/` | i18n JSON files (26 languages) |
 | `src/workers/` | Web Workers for analysis |
 | `server/` | Sebuf handler implementations for all 35 server handler domains |
 | `api/` | Vercel Edge Functions (sebuf gateway + legacy endpoints) |

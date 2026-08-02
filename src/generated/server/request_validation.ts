@@ -412,7 +412,7 @@ export const GENERATED_MESSAGE_RULES = {
         "kind": "string",
         "repeated": true,
         "repeatedMinItems": 1,
-        "repeatedMaxItems": 10
+        "repeatedMaxItems": 20
       }
     }
   },

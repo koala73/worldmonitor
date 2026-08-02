@@ -29589,10 +29589,10 @@ components:
                     type: array
                     items:
                         type: string
-                        maxItems: 10
+                        maxItems: 20
                         minItems: 1
-                        description: FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 10.
-                    maxItems: 10
+                        description: FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 20.
+                    maxItems: 20
                     minItems: 1
                 limit:
                     type: integer

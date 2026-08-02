@@ -1279,7 +1279,8 @@
       "newsSignals": "{{news}} nieuws • {{signals}} signalen",
       "provenanceTitle": "Dekking herkomst: hoeveel opgenomen verhalen en verschillende bronnen deze samenvatting is geselecteerd uit",
       "compiledFrom": "Samengesteld uit {{stories}} verhalen uit {{sources}} bronnen",
-      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud"
+      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."
@@ -3335,5 +3336,31 @@
     "deleteTab": "Tabblad verwijderen",
     "deleteTabAria": "Tabblad {{name}} verwijderen",
     "tabNameAria": "Tabbladnaam"
+  },
+  "theaterPresets": {
+    "label": "Dekkingspresets",
+    "applied": "Preset {{preset}} toegepast: {{count}} bronnen ingeschakeld",
+    "alreadyApplied": "Preset {{preset}} is al toegepast",
+    "ukraineWar": {
+      "label": "Oorlog in Oekraïne",
+      "description": "Oekraïense hoofdmedia, onafhankelijke Russische pers en bronnen voor frontbeoordeling inschakelen"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Veiligheidsbronnen over Taiwan, Pakistan en Zuidoost-Azië inschakelen"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel en West-Afrika",
+      "description": "Lokale bronnen uit de Sahel, Nigeria en West-Afrika inschakelen"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus en Centraal-Azië",
+      "description": "Regionale bronnen uit de Zuidelijke Kaukasus en Centraal-Azië inschakelen"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spanningshaarden in het Midden-Oosten",
+      "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
+    },
+    "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
   }
 }

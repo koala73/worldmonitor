@@ -17,6 +17,11 @@ import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
 import { getBasketItemId, getPinnedUrlsForRetailer, getDisabledPinsForRecovery, upsertProductMatch } from '../db/queries/matches.js';
 import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
+import {
+  classifyValidatorOutcome,
+  createScrapeRunStatement,
+  updateScrapeRunStatement,
+} from './scrape-coverage.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
@@ -42,11 +47,8 @@ async function getOrCreateRetailer(slug: string, config: ReturnType<typeof loadR
 }
 
 async function createScrapeRun(retailerId: string): Promise<string> {
-  const result = await query<{ id: string }>(
-    `INSERT INTO scrape_runs (retailer_id, started_at, status, trigger_type, pages_attempted, pages_succeeded, errors_count, config_version)
-     VALUES ($1, NOW(), 'running', 'scheduled', 0, 0, 0, '1') RETURNING id`,
-    [retailerId],
-  );
+  const statement = createScrapeRunStatement(retailerId);
+  const result = await query<{ id: string }>(statement.sql, statement.params);
   return result.rows[0].id;
 }
 
@@ -56,11 +58,17 @@ async function updateScrapeRun(
   pagesAttempted: number,
   pagesSucceeded: number,
   errorsCount: number,
+  rejectedCount: number,
 ) {
-  await query(
-    `UPDATE scrape_runs SET status=$2, finished_at=NOW(), pages_attempted=$3, pages_succeeded=$4, errors_count=$5 WHERE id=$1`,
-    [runId, status, pagesAttempted, pagesSucceeded, errorsCount],
-  );
+  const statement = updateScrapeRunStatement({
+    runId,
+    status,
+    pagesAttempted,
+    pagesSucceeded,
+    errorsCount,
+    rejectedCount,
+  });
+  await query(statement.sql, statement.params);
 }
 
 // Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
@@ -131,6 +139,7 @@ export async function scrapeRetailer(slug: string) {
   let pagesAttempted = 0;
   let pagesSucceeded = 0;
   let errorsCount = 0;
+  let rejectedCount = 0;
 
   const delay = config.rateLimit?.delayBetweenRequestsMs ?? 2_000;
 
@@ -165,21 +174,22 @@ export async function scrapeRetailer(slug: string) {
         // as a second opinion that specifically catches pins that have
         // drifted onto the wrong product (e.g. "White Sugar 1kg" now
         // resolving to "mango sugar baby india"). If the validator
-        // disagrees, skip the observation entirely and route this target
-        // through the existing pin-error counter so the pin soft-disables
-        // after repeated failures. Aggregates never see the bad price.
-        if (wasDirectHit) {
-          const v = product.rawPayload.validator as ValidatorResult | undefined;
-          if (v && !v.ok) {
-            logger.warn(
-              `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${v.reasons.join(',')} score=${v.score.toFixed(2)} title="${product.rawTitle}"`,
-            );
-            errorsCount++;
-            if (pinnedProductId && pinnedMatchId) {
-              await handlePinError(pinnedProductId, pinnedMatchId, target.id);
-            }
-            continue;
+        // disagrees, count the rejection for coverage. Direct-pin rejects
+        // still skip the observation entirely and route this target through
+        // the existing pin-error counter so the pin soft-disables after
+        // repeated failures. Aggregates never see the bad price.
+        const validator = product.rawPayload.validator as ValidatorResult | undefined;
+        const validatorOutcome = classifyValidatorOutcome(validator, wasDirectHit);
+        rejectedCount += validatorOutcome.rejectedCount;
+        if (validatorOutcome.skipObservation) {
+          logger.warn(
+            `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${validator?.reasons?.join(',') || 'unknown'} score=${validator?.score?.toFixed(2) || '0.00'} title="${product.rawTitle}"`,
+          );
+          errorsCount += validatorOutcome.errorCount;
+          if (pinnedProductId && pinnedMatchId) {
+            await handlePinError(pinnedProductId, pinnedMatchId, target.id);
           }
+          continue;
         }
 
         const productId = await upsertRetailerProduct({
@@ -295,8 +305,8 @@ export async function scrapeRetailer(slug: string) {
   }
 
   const status = errorsCount === 0 ? 'completed' : pagesSucceeded > 0 ? 'partial' : 'failed';
-  await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount);
-  logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages)`);
+  await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount, rejectedCount);
+  logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount})`);
 
   const parseSuccessRate = pagesAttempted > 0 ? (pagesSucceeded / pagesAttempted) * 100 : 0;
   const isSuccess = status === 'completed' || status === 'partial';

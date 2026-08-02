@@ -1596,7 +1596,8 @@
       "sources_many": "{{count}} źródeł",
       "provenanceTitle": "Pochodzenie zasięgu: ile pozyskanych artykułów i odrębnych źródeł wybrano dla tego briefu",
       "compiledFrom": "Zebrane z {{stories}} artykułów z {{sources}} źródeł",
-      "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h"
+      "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",
@@ -3371,5 +3372,31 @@
     "deleteTab": "Usuń kartę",
     "deleteTabAria": "Usuń kartę {{name}}",
     "tabNameAria": "Nazwa karty"
+  },
+  "theaterPresets": {
+    "label": "Presety zasięgu",
+    "applied": "Zastosowano preset {{preset}}: włączono {{count}} źródeł",
+    "alreadyApplied": "Preset {{preset}} jest już zastosowany",
+    "ukraineWar": {
+      "label": "Wojna w Ukrainie",
+      "description": "Włącz ukraińskie media głównego nurtu, niezależną prasę rosyjską i źródła oceny sytuacji na froncie"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacyfik / Tajwan",
+      "description": "Włącz źródła bezpieczeństwa dotyczące Tajwanu, Pakistanu i Azji Południowo-Wschodniej"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel i Afryka Zachodnia",
+      "description": "Włącz lokalne źródła z Sahelu, Nigerii i Afryki Zachodniej"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukaz i Azja Centralna",
+      "description": "Włącz źródła regionalne z Kaukazu Południowego i Azji Centralnej"
+    },
+    "middleEastFlashpoints": {
+      "label": "Punkty zapalne na Bliskim Wschodzie",
+      "description": "Włącz źródła dotyczące Iranu, Izraela, Zatoki i regionów kurdyjskich"
+    },
+    "unavailable": "Preset {{preset}} nie jest dostępny przy obecnych panelach"
   }
 }

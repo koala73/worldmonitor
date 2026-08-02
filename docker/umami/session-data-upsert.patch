@@ -1,0 +1,189 @@
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index dd6b20e3..97436ca1 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -208,6 +208,7 @@ model SessionData {
+   @@index([sessionId])
+   @@index([sessionId, createdAt])
+   @@index([websiteId, createdAt, dataKey])
++  @@unique([sessionId, dataKey])
+   @@map("session_data")
+ }
+ 
+diff --git a/src/queries/sql/sessions/saveSessionData.ts b/src/queries/sql/sessions/saveSessionData.ts
+index ec902025..61ad0e3a 100644
+--- a/src/queries/sql/sessions/saveSessionData.ts
++++ b/src/queries/sql/sessions/saveSessionData.ts
+@@ -30,7 +30,7 @@ export async function relationalQuery({
+   distinctId,
+   createdAt,
+ }: SaveSessionDataArgs) {
+-  const { client } = prisma;
++  const { writeRawQuery } = prisma;
+ 
+   const jsonKeys = flattenJSON(sessionData);
+   const normalizedDistinctId = truncateString(distinctId, FIELD_LENGTH.distinctId);
+@@ -49,24 +49,69 @@ export async function relationalQuery({
+   }));
+ 
+   for (const data of flattenedData) {
+-    const { sessionId, dataKey, ...props } = data;
++    const {
++      id,
++      websiteId,
++      sessionId,
++      dataKey,
++      stringValue,
++      numberValue,
++      dateValue,
++      dataType,
++      distinctId,
++      createdAt,
++    } = data;
+ 
+-    const updateResult = await client.sessionData.updateMany({
+-      where: {
++    await writeRawQuery(
++      `
++      insert into session_data (
++        session_data_id,
++        website_id,
++        session_id,
++        data_key,
++        string_value,
++        number_value,
++        date_value,
++        data_type,
++        distinct_id,
++        created_at
++      )
++      values (
++        {{id}},
++        {{websiteId}},
++        {{sessionId}},
++        {{dataKey}},
++        {{stringValue}},
++        {{numberValue}},
++        {{dateValue}},
++        {{dataType}},
++        {{distinctId}},
++        coalesce({{createdAt}}, now())
++      )
++      on conflict (session_id, data_key)
++      do update set
++        website_id = excluded.website_id,
++        string_value = excluded.string_value,
++        number_value = excluded.number_value,
++        date_value = excluded.date_value,
++        data_type = excluded.data_type,
++        distinct_id = excluded.distinct_id,
++        created_at = coalesce({{createdAt}}, session_data.created_at)
++      `,
++      {
++        id,
++        websiteId,
+         sessionId,
+         dataKey,
++        stringValue,
++        numberValue,
++        dateValue,
++        dataType,
++        distinctId,
++        createdAt,
+       },
+-      data: {
+-        ...props,
+-      },
+-    });
+-
+-    // If no record was updated, create a new one
+-    if (updateResult.count === 0) {
+-      await client.sessionData.create({
+-        data,
+-      });
+-    }
++      'saveSessionData',
++    );
+   }
+ }
+ 
+diff --git a/src/queries/sql/sessions/saveSessionData.test.ts b/src/queries/sql/sessions/saveSessionData.test.ts
+new file mode 100644
+index 00000000..eacc271e
+--- /dev/null
++++ b/src/queries/sql/sessions/saveSessionData.test.ts
+@@ -0,0 +1,74 @@
++import { beforeEach, describe, expect, test, vi } from 'vitest';
++import { DATA_TYPE } from '@/lib/constants';
++import { relationalQuery } from './saveSessionData';
++
++const { writeRawQueryMock } = vi.hoisted(() => ({
++  writeRawQueryMock: vi.fn(),
++}));
++
++vi.mock('@/lib/prisma', () => ({
++  default: {
++    writeRawQuery: writeRawQueryMock,
++  },
++}));
++
++describe('relationalQuery', () => {
++  beforeEach(() => {
++    writeRawQueryMock.mockReset();
++    writeRawQueryMock.mockResolvedValue(undefined);
++  });
++
++  test('writes session data with a Postgres upsert keyed by sessionId and dataKey', async () => {
++    const createdAt = new Date('2026-07-30T10:00:00.000Z');
++
++    await relationalQuery({
++      websiteId: 'website-1',
++      sessionId: 'session-1',
++      sessionData: { plan: 'pro' },
++      distinctId: 'distinct-1',
++      createdAt,
++    });
++
++    expect(writeRawQueryMock).toHaveBeenCalledTimes(1);
++
++    const [query, params, tag] = writeRawQueryMock.mock.calls[0];
++
++    expect(query).toContain('insert into session_data');
++    expect(query).toContain('on conflict (session_id, data_key)');
++    expect(query).toContain('do update set');
++    expect(query).toContain('coalesce({{createdAt}}, now())');
++    expect(query).toContain('created_at = coalesce({{createdAt}}, session_data.created_at)');
++    expect(query).toContain('{{id}}');
++    expect(query).toContain('{{websiteId}}');
++    expect(query).toContain('{{sessionId}}');
++    expect(query).toContain('{{dataKey}}');
++    expect(params).toEqual({
++      id: expect.any(String),
++      websiteId: 'website-1',
++      sessionId: 'session-1',
++      dataKey: 'plan',
++      stringValue: 'pro',
++      numberValue: null,
++      dateValue: null,
++      dataType: DATA_TYPE.string,
++      distinctId: 'distinct-1',
++      createdAt,
++    });
++    expect(tag).toBe('saveSessionData');
++  });
++
++  test('preserves default and existing createdAt behavior when createdAt is omitted', async () => {
++    await relationalQuery({
++      websiteId: 'website-1',
++      sessionId: 'session-1',
++      sessionData: { plan: 'pro' },
++      distinctId: 'distinct-1',
++    });
++
++    const [query, params] = writeRawQueryMock.mock.calls[0];
++
++    expect(query).toContain('coalesce({{createdAt}}, now())');
++    expect(query).toContain('created_at = coalesce({{createdAt}}, session_data.created_at)');
++    expect(params.createdAt).toBeUndefined();
++  });
++});
