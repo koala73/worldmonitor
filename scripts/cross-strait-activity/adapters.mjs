@@ -40,6 +40,7 @@ const MND_LIST_URL = 'https://www.mnd.gov.tw/en/news/plaactlist';
  */
 const JMOD_INDEX_URL = 'https://www.mod.go.jp/js/';
 const JMOD_ENGLISH_INDEX_URL = 'https://www.mod.go.jp/js/press/index-en.html';
+const JMOD_ENGLISH_DOCUMENT_PATH_PATTERN = /^\/js\/pdf\/\d{4}\/p\d{8}_\d{2}e\.pdf$/;
 /**
  * The homepage news list links first-party Japanese releases as
  * `/js/pdf/<year>/p<YYYYMMDD>_<NN>.pdf`. Anchoring on that exact shape drops the
@@ -1538,6 +1539,23 @@ export function parseJapanModIndex(html) {
   return [...new Map(rows.map((row) => [row.sourceUrl, row])).values()];
 }
 
+function isUsableJapanEnglishIndex(html) {
+  const contract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
+  return scanHtmlAnchors(html).some((anchor) => {
+    const href = quotedHtmlAttribute(anchor.openingTag, 'href');
+    if (!href) return false;
+    let url;
+    try {
+      url = new URL(href, contract.shadowIndexUrl);
+    } catch {
+      return false;
+    }
+    return isAllowedSourceUrl(url.href, contract)
+      && JMOD_ENGLISH_DOCUMENT_PATH_PATTERN.test(url.pathname)
+      && decodeHtml(anchor.body).length > 0;
+  });
+}
+
 export async function readBoundedTextResponse(response, maxBytes) {
   if (!response?.ok) throw new Error(`HTTP_${response?.status ?? 'UNKNOWN'}`);
   const length = Number(response.headers?.get?.('content-length'));
@@ -1575,12 +1593,18 @@ function boundedHtmlRequestInit(sourceContract) {
   };
 }
 
-async function fetchBoundedText(fetchFn, url, sourceContract) {
+async function fetchBoundedTextWithStatus(fetchFn, url, sourceContract) {
   if (!isAllowedSourceUrl(url, sourceContract)) {
     throw new Error('UNSAFE_SOURCE_URL');
   }
   const response = await fetchFn(url, boundedHtmlRequestInit(sourceContract));
-  return readBoundedTextResponse(response, sourceContract.maxResponseBytes);
+  const text = await readBoundedTextResponse(response, sourceContract.maxResponseBytes);
+  return { text, status: response.status };
+}
+
+async function fetchBoundedText(fetchFn, url, sourceContract) {
+  const { text } = await fetchBoundedTextWithStatus(fetchFn, url, sourceContract);
+  return text;
 }
 
 function shouldProxyJapanModFailure(error) {
@@ -1656,8 +1680,8 @@ async function fetchJapanModViaConfiguredProxy(input, init, {
  * and it was gone. The Japanese homepage only enumerates the Japanese release
  * series, so it says nothing at all about a reviewed English document — which
  * every currently reviewed row is. Reporting those as "not observed" would read
- * as a withdrawal by the publisher, so a document the current index cannot
- * enumerate gets its own state instead.
+ * as a withdrawal by the publisher, so the schema-v1 wire field stays `unknown`
+ * and `japanIndexCoverage` carries the finer `not_covered` distinction.
  */
 export function japanIndexPresence(sourceUrl, availableJapanUrls) {
   if (availableJapanUrls.has(sourceUrl)) return 'present';
@@ -1665,10 +1689,23 @@ export function japanIndexPresence(sourceUrl, availableJapanUrls) {
   try {
     pathname = new URL(sourceUrl).pathname;
   } catch {
-    return 'not_covered_by_current_index';
+    return 'unknown';
   }
   return JMOD_DOCUMENT_PATH_PATTERN.test(pathname)
     ? 'not_observed_in_current_index'
+    : 'unknown';
+}
+
+export function japanIndexCoverage(sourceUrl, availableJapanUrls) {
+  if (availableJapanUrls.has(sourceUrl)) return 'covered_by_current_index';
+  let pathname;
+  try {
+    pathname = new URL(sourceUrl).pathname;
+  } catch {
+    return 'not_covered_by_current_index';
+  }
+  return JMOD_DOCUMENT_PATH_PATTERN.test(pathname)
+    ? 'covered_by_current_index'
     : 'not_covered_by_current_index';
 }
 
@@ -1897,6 +1934,7 @@ export function constrainCrossStraitActivitySnapshotSize(snapshot) {
 export function buildCrossStraitActivitySnapshot({
   generatedAt,
   previousSnapshot,
+  previousSourceHealth = null,
   mndOutcome,
   japanOutcome,
 }) {
@@ -1924,18 +1962,37 @@ export function buildCrossStraitActivitySnapshot({
   );
   const hasCurrentJapanIndex = japanOutcome?.ok === true;
   const availableJapanUrls = new Set(japanOutcome?.availableDocumentUrls ?? []);
-  const japan = REVIEWED_JAPAN_MOD_OBSERVATIONS.map((row) => ({
-    ...structuredClone(row),
-    indexPresence: hasCurrentJapanIndex
+  const japan = REVIEWED_JAPAN_MOD_OBSERVATIONS.map((row) => {
+    const previous = previousJapanById.get(row.id);
+    const previousPresence = previous?.indexPresence;
+    const indexPresence = hasCurrentJapanIndex
       ? japanIndexPresence(row.sourceUrl, availableJapanUrls)
-      : (previousJapanById.get(row.id)?.indexPresence ?? 'unknown'),
-  }));
+      : (previousPresence === 'present'
+        || previousPresence === 'not_observed_in_current_index'
+        || previousPresence === 'unknown'
+        ? previousPresence
+        : 'unknown');
+    const indexCoverage = hasCurrentJapanIndex
+      ? japanIndexCoverage(row.sourceUrl, availableJapanUrls)
+      : (previous?.indexCoverage === 'covered_by_current_index'
+        || previous?.indexCoverage === 'not_covered_by_current_index'
+        ? previous.indexCoverage
+        : previousPresence === 'not_covered_by_current_index'
+          ? 'not_covered_by_current_index'
+          : undefined);
+    return {
+      ...structuredClone(row),
+      indexPresence,
+      ...(indexCoverage ? { indexCoverage } : {}),
+    };
+  });
   const observations = [...mnd, ...japan];
   const usableMndReportingDays = new Set(mnd.map((row) => row.reportingDay)).size;
   const mndContract = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd;
   const japanContract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
   const previousJapanSource = previousSnapshot?.sources
-    ?.find((source) => source?.id === japanContract.id);
+    ?.find((source) => source?.id === japanContract.id)
+    ?? (previousSourceHealth?.id === japanContract.id ? previousSourceHealth : null);
   const unreviewedCandidateCount = hasCurrentJapanIndex
     ? Math.max(
         0,
@@ -1991,7 +2048,7 @@ export function buildCrossStraitActivitySnapshot({
       errorCodes: japanOutcome?.errorCodes ?? [],
       lastSuccessAt: japanOutcome?.ok
         ? generatedAt
-        : latestSourceSuccess(previousSnapshot, 'japan-mod'),
+        : previousJapanSource?.lastSuccessAt ?? latestSourceSuccess(previousSnapshot, 'japan-mod'),
       admittedDocumentCount: REVIEWED_JAPAN_MOD_OBSERVATIONS.length,
       ...(Number.isInteger(unreviewedCandidateCount)
         ? { unreviewedCandidateCount }
@@ -2199,8 +2256,28 @@ async function probeJapanEnglishIndex(fetchFn, sleepFn, { now, previousProbe }) 
   };
   try {
     await sleepFn(REQUEST_CADENCE_MS);
-    await fetchBoundedText(fetchFn, contract.shadowIndexUrl, contract);
-    return { ...observation, status: 'reachable', httpStatus: 200, errorCode: null };
+    const { text, status } = await fetchBoundedTextWithStatus(
+      fetchFn,
+      contract.shadowIndexUrl,
+      contract,
+    );
+    if (status !== 200) {
+      return {
+        ...observation,
+        status: 'error',
+        httpStatus: status,
+        errorCode: 'JMOD_ENGLISH_INDEX_NON_200',
+      };
+    }
+    if (!isUsableJapanEnglishIndex(text)) {
+      return {
+        ...observation,
+        status: 'error',
+        httpStatus: status,
+        errorCode: 'JMOD_ENGLISH_INDEX_UNUSABLE',
+      };
+    }
+    return { ...observation, status: 'reachable', httpStatus: status, errorCode: null };
   } catch (error) {
     const code = errorCode(error);
     const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
@@ -2373,6 +2450,7 @@ export async function fetchCrossStraitActivitySnapshot({
   now = Date.now(),
   nowFn = monotonicNow,
   previousSnapshot = null,
+  previousSourceHealth = null,
   mndListUrl = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   proxyUrl = process.env.JAPAN_MOD_PROXY_URL || process.env.PROXY_URL || '',
@@ -2404,13 +2482,16 @@ export async function fetchCrossStraitActivitySnapshot({
         proxyConnectFn,
       })))
     : null;
+  const previousJapanSource = previousSnapshot?.sources
+    ?.find((source) => source?.id === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.id)
+    ?? (previousSourceHealth?.id === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.id
+      ? previousSourceHealth
+      : null);
   const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn, {
     proxyFetchFn: resolvedJapanProxyFetchFn,
     proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
     now,
-    previousShadowIndexProbe: previousSnapshot?.sources
-      ?.find((source) => source?.id === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.id)
-      ?.shadowIndexProbe ?? null,
+    previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
   });
   let discoveredCount = 0;
   let requestCount = 0;
@@ -2521,6 +2602,7 @@ export async function fetchCrossStraitActivitySnapshot({
   return buildCrossStraitActivitySnapshot({
     generatedAt,
     previousSnapshot,
+    previousSourceHealth,
     mndOutcome,
     japanOutcome,
   });

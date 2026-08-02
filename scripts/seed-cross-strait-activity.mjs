@@ -27,6 +27,8 @@ export const CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS = 320_000;
 export const CROSS_STRAIT_ACTIVITY_BOOTSTRAP_KEY = 'military:cross-strait-activity-bootstrap:v1';
 export const CROSS_STRAIT_ACTIVITY_BOOTSTRAP_META_KEY = 'seed-meta:military:cross-strait-activity-bootstrap';
 export const CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY = 'seed-meta:military:cross-strait-activity:complete';
+export const CROSS_STRAIT_ACTIVITY_JAPAN_SOURCE_HEALTH_KEY =
+  `${CROSS_STRAIT_ACTIVITY_KEY}:source:japan-mod`;
 export const CROSS_STRAIT_ACTIVITY_BOOTSTRAP_MAX_BYTES = 128 * 1024;
 
 if (CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS <= (
@@ -183,16 +185,32 @@ export function crossStraitActivityContentMeta(snapshot) {
     .map((row) => row.reportingPeriod?.end));
 }
 
-async function fetchSnapshot() {
+/**
+ * A rejected first publication can leave source health with the only durable
+ * Japan candidate/probe cursor. Keep that cursor available for the next tick
+ * when the canonical archive was never published.
+ */
+export async function fetchCrossStraitActivitySeedSnapshot({
+  readSnapshot = readSeedSnapshot,
+  fetchSnapshot: fetchSnapshotFn = fetchCrossStraitActivitySnapshot,
+  writeHealth = writeSourceHealth,
+} = {}) {
   // This seed accumulates a staged 90-day backfill and revision history.
   // A failed Redis read must abort instead of replacing that state with a
   // first-run partial snapshot.
-  const previousSnapshot = await readSeedSnapshot(CROSS_STRAIT_ACTIVITY_KEY, { strict: true });
-  const snapshot = await fetchCrossStraitActivitySnapshot({ previousSnapshot });
+  const previousSnapshot = await readSnapshot(CROSS_STRAIT_ACTIVITY_KEY, { strict: true });
+  const previousSourceHealth = previousSnapshot
+    ? null
+    : await readSnapshot(CROSS_STRAIT_ACTIVITY_JAPAN_SOURCE_HEALTH_KEY);
+  const snapshot = await fetchSnapshotFn({ previousSnapshot, previousSourceHealth });
   // A first-run MND failure cannot publish the durable archive, but its source
   // health still needs to tell operators why no archive exists yet.
-  if (!validateCrossStraitActivitySnapshot(snapshot)) await writeSourceHealth(snapshot);
+  if (!validateCrossStraitActivitySnapshot(snapshot)) await writeHealth(snapshot);
   return snapshot;
+}
+
+async function fetchSnapshot() {
+  return fetchCrossStraitActivitySeedSnapshot();
 }
 
 // Which country's ministry reported the observation, for the history store's

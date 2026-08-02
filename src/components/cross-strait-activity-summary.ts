@@ -1,5 +1,9 @@
 import {
   CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
+  CROSS_STRAIT_COMPANION_RESOLUTIONS,
+  CROSS_STRAIT_INDEX_COVERAGE_VALUES,
+  CROSS_STRAIT_INDEX_PRESENCE_VALUES,
+  CROSS_STRAIT_TRANSPORT_MODES,
   type CrossStraitActivitySourceHealth,
   type CrossStraitActivitySnapshot,
   type CrossStraitBaselineWindow,
@@ -110,6 +114,10 @@ function isDateOnlyString(value: unknown): boolean {
 
 function isNullableString(value: unknown): boolean {
   return value === null || typeof value === 'string';
+}
+
+function isAllowedStringValue(values: readonly string[], value: unknown): value is string {
+  return typeof value === 'string' && values.includes(value);
 }
 
 function isProxyFailureDetail(value: unknown): boolean {
@@ -233,10 +241,11 @@ function isObservation(value: unknown): boolean {
       && JAPAN_CATEGORY_KEYS.every((key) => isNullableNonNegativeInteger(categories[key]))
       && (
         value.indexPresence === undefined
-        || value.indexPresence === 'present'
-        || value.indexPresence === 'not_observed_in_current_index'
-        || value.indexPresence === 'not_covered_by_current_index'
-        || value.indexPresence === 'unknown'
+        || isAllowedStringValue(CROSS_STRAIT_INDEX_PRESENCE_VALUES, value.indexPresence)
+      )
+      && (
+        value.indexCoverage === undefined
+        || isAllowedStringValue(CROSS_STRAIT_INDEX_COVERAGE_VALUES, value.indexCoverage)
       );
   }
   return false;
@@ -269,10 +278,13 @@ function isSourceHealth(value: unknown): boolean {
       || value.proxyControlProbe === 'reachable'
       || value.proxyControlProbe === 'unreachable'
     )
-    && (value.transportMode === undefined || typeof value.transportMode === 'string')
+    && (
+      value.transportMode === undefined
+      || isAllowedStringValue(CROSS_STRAIT_TRANSPORT_MODES, value.transportMode)
+    )
     && (
       value.companionResolution === undefined
-      || typeof value.companionResolution === 'string'
+      || isAllowedStringValue(CROSS_STRAIT_COMPANION_RESOLUTIONS, value.companionResolution)
     )
     && (
       value.candidates === undefined
