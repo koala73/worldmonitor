@@ -1,0 +1,48 @@
+diff --git a/src/lib/prisma.ts b/src/lib/prisma.ts
+index 6cdb33c..89c418b 100644
+--- a/src/lib/prisma.ts
++++ b/src/lib/prisma.ts
+@@ -439,6 +439,37 @@ async function rawQuery(sql: string, data: Record<string, any>, name?: string):
+   return client.$queryRawUnsafe(query, ...params);
+ }
+ 
++// v3.2.0 compatibility shim. Upstream's session-data upsert fix (7c030e4c)
++// calls `prisma.writeRawQuery`, which exists on upstream's dev branch but not
++// in the v3.2.0 release this image pins. This copy is derived mechanically
++// from the file's own rawQuery above (see Dockerfile.umami) with exactly one
++// semantic change: the DATABASE_REPLICA_URL branch is removed, because a
++// write must never be routed to `$replica()`.
++async function writeRawQuery(sql: string, data: Record<string, any>, name?: string): Promise<any> {
++  if (process.env.LOG_QUERY) {
++    log('QUERY:\n', sql);
++    log('PARAMETERS:\n', data);
++    log('NAME:\n', name);
++  }
++  const params = [];
++  const schema = getSchema();
++
++  if (schema) {
++    await client.$executeRawUnsafe(`SET search_path TO "${schema}";`);
++  }
++
++  const query = sql?.replaceAll(/\{\{\s*(\w+)(::\w+)?\s*}}/g, (...args) => {
++    const [, name, type] = args;
++
++    const value = data[name];
++
++    params.push(value);
++
++    return `$${params.length}${type ?? ''}`;
++  });
++
++  return client.$queryRawUnsafe(query, ...params);
++}
+ async function pagedQuery<T>(model: string, criteria: T, filters?: QueryFilters) {
+   const { page = 1, pageSize, orderBy, sortDescending = false, search } = filters || {};
+   const size = +pageSize || DEFAULT_PAGE_SIZE;
+@@ -613,4 +644,5 @@ export default {
+   pagedRawQuery,
+   parseFilters,
+   rawQuery,
++  writeRawQuery,
+ };

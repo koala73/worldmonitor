@@ -84,7 +84,7 @@ jobs:
             /^Dockerfile\.umami-retention$/ { count++ }
             /^docker\/umami\// { count++ }
             /^scripts\/umami-retention\.sql$/ { count++ }
-            /^tests\/umami-(runtime-remediation\.test|postgres-integration)\.mjs$/ { count++ }
+            /^tests\/umami-(runtime-remediation\.test|postgres-integration|runtime-write-probe)\.mjs$/ { count++ }
             /^\.github\/workflows\/test\.yml$/ { count++ }
             END { print count + 0 }
           ')
@@ -271,6 +271,10 @@ jobs:
         env:
           UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
         run: node tests/umami-postgres-integration.mjs
+      - name: Probe the running image's write path (identify, concurrent upsert, event)
+        env:
+          UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
+        run: node tests/umami-runtime-write-probe.mjs
 
   sidecar:
     needs: changes
