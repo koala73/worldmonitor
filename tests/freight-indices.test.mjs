@@ -183,6 +183,20 @@ describe('SSE period-over-period change contract (#6066)', () => {
     assert.equal(index.priorPeriodValue, 100);
   });
 
+  it('keeps the derived direction correct against a negative prior level', () => {
+    // The denominator is |prior| (matching the evaluator's own percentage_change
+    // convention in shared/china-activity-nowcast.ts), so a rise off a negative
+    // prior stays a rise. Without the guard the sign inverts and a strengthening
+    // week would be reported as weakening.
+    const rising = parse({ currentContent: -50, lastContent: -100 });
+    assert.ok(rising.periodChangePct > 0, `rise off a negative prior: ${rising.periodChangePct}`);
+    assert.ok(Math.abs(rising.periodChangePct - 50) < 1e-9, `got ${rising.periodChangePct}`);
+
+    const falling = parse({ currentContent: -150, lastContent: -100 });
+    assert.ok(falling.periodChangePct < 0, `fall off a negative prior: ${falling.periodChangePct}`);
+    assert.ok(Math.abs(falling.periodChangePct + 50) < 1e-9, `got ${falling.periodChangePct}`);
+  });
+
   it('keeps a published zero move directional-eligible rather than treating it as missing', () => {
     const index = parse({ currentContent: 900, lastContent: 900, percentage: 0 });
     assert.equal(index.periodChangePct, 0);
