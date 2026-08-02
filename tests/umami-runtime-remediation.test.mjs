@@ -97,6 +97,10 @@ describe('Umami runtime remediation (#6024)', () => {
       migration,
       /CREATE UNIQUE INDEX "session_data_session_id_data_key_key"\s+ON "session_data"\("session_id", "data_key"\)/m,
     );
+    assert.match(migration, /^BEGIN;$/m);
+    assert.match(migration, /^SET LOCAL lock_timeout = '5s';$/m);
+    assert.match(migration, /^SET LOCAL statement_timeout = '45min';$/m);
+    assert.match(migration, /^COMMIT;$/m);
     assert.doesNotMatch(migration, /\bTRUNCATE\b/i);
   });
 
@@ -112,6 +116,7 @@ describe('Umami runtime remediation (#6024)', () => {
       dockerfile,
       /^COPY --chmod=0444 scripts\/umami-retention\.sql \/app\/umami-retention\.sql$/m,
     );
+    assert.match(dockerfile, /^ENV PGCONNECT_TIMEOUT=10$/m);
     assert.match(
       dockerfile,
       /^CMD \["psql", "-X", "--set=ON_ERROR_STOP=1", "--file=\/app\/umami-retention\.sql"\]$/m,
@@ -120,6 +125,27 @@ describe('Umami runtime remediation (#6024)', () => {
     assert.match(executableSql, /LIMIT 10000/);
     assert.match(executableSql, /pg_advisory_xact_lock/);
     assert.doesNotMatch(executableSql, /\bTRUNCATE\b/i);
+  });
+
+  it('keeps the concurrent upsert in a stable fixture verified by the image build', () => {
+    const fixture = read('docker/umami/runtime/session-data-upsert.sql');
+    const dockerfile = read('Dockerfile.umami');
+    const integration = read('tests/umami-postgres-integration.mjs');
+
+    assert.match(fixture, /insert into session_data/i);
+    assert.match(fixture, /on conflict \(session_id, data_key\)/i);
+    assert.match(fixture, /do update set/i);
+    assert.match(fixture, /\{\{createdAt\}\}/);
+    assert.match(
+      dockerfile,
+      /^COPY docker\/umami\/runtime\/session-data-upsert\.sql \/tmp\/session-data-upsert\.sql$/m,
+    );
+    assert.match(dockerfile, /session-data-upsert\.sql/);
+    assert.match(
+      integration,
+      /docker\/umami\/runtime\/session-data-upsert\.sql/,
+    );
+    assert.doesNotMatch(integration, /session-data-upsert\.patch/);
   });
 
   it('registers the patched collector and a capacity-sufficient retention cron', () => {

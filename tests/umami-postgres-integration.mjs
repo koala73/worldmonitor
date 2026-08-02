@@ -39,10 +39,10 @@ function psql(sql) {
   }).trim();
 }
 
-function psqlFile(path) {
+function psqlFile(path, stdio = ['ignore', 'inherit', 'inherit']) {
   execFileSync('psql', [...psqlArgs, '--file', resolve(repoRoot, path)], {
     env: psqlEnv,
-    stdio: ['ignore', 'inherit', 'inherit'],
+    stdio,
   });
 }
 
@@ -69,18 +69,11 @@ function psqlConcurrent(sql) {
   });
 }
 
-function extractCommittedUpsert() {
-  const patch = readFileSync(resolve(repoRoot, 'docker/umami/session-data-upsert.patch'), 'utf8');
-  const lines = patch.split('\n');
-  const start = lines.indexOf('+      `');
-  const end = lines.indexOf('+      `,', start + 1);
-
-  assert.ok(start >= 0 && end > start, 'could not extract the committed saveSessionData SQL');
-  const sql = lines.slice(start + 1, end).map((line) => {
-    assert.ok(line.startsWith('+'), `upsert SQL contains a non-added patch line: ${line}`);
-    return line.slice(1);
-  }).join('\n');
-
+function readUpsertFixture() {
+  const sql = readFileSync(
+    resolve(repoRoot, 'docker/umami/runtime/session-data-upsert.sql'),
+    'utf8',
+  ).trim();
   assert.match(sql, /on conflict \(session_id, data_key\)/i);
   return sql;
 }
@@ -111,36 +104,66 @@ function renderUpsert(template, writer) {
   return sql;
 }
 
-psql(`
-  DROP SCHEMA IF EXISTS wm_umami_integration CASCADE;
-  CREATE SCHEMA wm_umami_integration;
-  CREATE TABLE session_data (
-    session_data_id uuid PRIMARY KEY,
-    website_id uuid NOT NULL,
-    session_id uuid NOT NULL,
-    data_key varchar(500) NOT NULL,
-    string_value varchar(500),
-    number_value numeric,
-    date_value timestamptz,
-    data_type integer NOT NULL,
-    distinct_id varchar(500),
-    created_at timestamptz
-  );
-  INSERT INTO session_data (
-    session_data_id, website_id, session_id, data_key,
-    string_value, data_type, created_at
-  ) VALUES
-    ('00000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001',
-     '30000000-0000-0000-0000-000000000010', 'plan', 'older', 1, '2026-08-01T00:00:00Z'),
-    ('00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001',
-     '30000000-0000-0000-0000-000000000010', 'plan', 'newer-by-time', 1, '2026-08-02T00:00:00Z'),
-    ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000001',
-     '30000000-0000-0000-0000-000000000010', 'plan', 'null-is-last', 1, NULL),
-    ('00000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001',
-     '30000000-0000-0000-0000-000000000011', 'tier', 'lower-id', 1, '2026-08-02T00:00:00Z'),
-    ('00000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001',
-     '30000000-0000-0000-0000-000000000011', 'tier', 'higher-id-tiebreak', 1, '2026-08-02T00:00:00Z');
-`);
+function createSessionDataFixture() {
+  psql(`
+    DROP SCHEMA IF EXISTS wm_umami_integration CASCADE;
+    CREATE SCHEMA wm_umami_integration;
+    CREATE TABLE session_data (
+      session_data_id uuid PRIMARY KEY,
+      website_id uuid NOT NULL,
+      session_id uuid NOT NULL,
+      data_key varchar(500) NOT NULL,
+      string_value varchar(500),
+      number_value numeric,
+      date_value timestamptz,
+      data_type integer NOT NULL,
+      distinct_id varchar(500),
+      created_at timestamptz
+    );
+    INSERT INTO session_data (
+      session_data_id, website_id, session_id, data_key,
+      string_value, data_type, created_at
+    ) VALUES
+      ('00000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001',
+       '30000000-0000-0000-0000-000000000010', 'plan', 'older', 1, '2026-08-01T00:00:00Z'),
+      ('00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001',
+       '30000000-0000-0000-0000-000000000010', 'plan', 'newer-by-time', 1, '2026-08-02T00:00:00Z'),
+      ('00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000001',
+       '30000000-0000-0000-0000-000000000010', 'plan', 'null-is-last', 1, NULL),
+      ('00000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001',
+       '30000000-0000-0000-0000-000000000011', 'tier', 'lower-id', 1, '2026-08-02T00:00:00Z'),
+      ('00000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001',
+       '30000000-0000-0000-0000-000000000011', 'tier', 'higher-id-tiebreak', 1, '2026-08-02T00:00:00Z');
+  `);
+}
+
+createSessionDataFixture();
+psql('CREATE INDEX "session_data_session_id_data_key_key" ON session_data (session_id);');
+
+let failedMigration;
+try {
+  psqlFile('docker/umami/21_update_session_data/migration.sql', ['ignore', 'pipe', 'pipe']);
+} catch (error) {
+  failedMigration = error;
+}
+assert.ok(failedMigration, 'migration must fail when its unique-index name is already occupied');
+assert.equal(
+  psql('SELECT (count(*) - count(DISTINCT (session_id, data_key)))::text FROM session_data;'),
+  '3',
+  'failed migration must roll back duplicate deletion',
+);
+assert.equal(
+  psql(`
+    SELECT count(*)::text
+    FROM pg_indexes
+    WHERE schemaname = current_schema()
+      AND indexname = 'session_data_session_id_data_key_key';
+  `),
+  '1',
+  'failed migration must leave the pre-existing index intact',
+);
+
+createSessionDataFixture();
 
 psqlFile('docker/umami/21_update_session_data/migration.sql');
 
@@ -172,7 +195,7 @@ const indexState = psql(`
 assert.match(indexState, /^1\|1\|1\|CREATE UNIQUE INDEX /);
 assert.match(indexState, /\(session_id, data_key\)$/);
 
-const upsert = extractCommittedUpsert();
+const upsert = readUpsertFixture();
 await Promise.all(
   Array.from({ length: 24 }, (_, index) => psqlConcurrent(renderUpsert(upsert, index + 1))),
 );

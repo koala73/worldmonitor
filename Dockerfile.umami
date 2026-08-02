@@ -14,6 +14,7 @@ FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a55
 RUN apk add --no-cache git
 WORKDIR /upstream
 COPY docker/umami/session-data-upsert.patch /tmp/session-data-upsert.patch
+COPY docker/umami/runtime/session-data-upsert.sql /tmp/session-data-upsert.sql
 COPY docker/umami/21_update_session_data/migration.sql /tmp/21_update_session_data.sql
 COPY docker/umami/runtime/upstream-23-update-session-data.sql /tmp/upstream-23-update-session-data.sql
 COPY docker/umami/runtime/21-update-session-data-prefix.sql /tmp/21-update-session-data-prefix.sql
@@ -58,6 +59,14 @@ RUN git init \
   && test "$(git rev-parse HEAD)" = "2f6e2b5ff256862a081d9e74bed18a42ebf795e3" \
   && git apply --check /tmp/session-data-upsert.patch \
   && git apply /tmp/session-data-upsert.patch \
+  && node --input-type=module -e '\
+    import { readFileSync } from "node:fs"; \
+    const normalizeSql = (value) => value.trim().split("\n").map((line) => line.trim()).join("\n"); \
+    const source = readFileSync("src/queries/sql/sessions/saveSessionData.ts", "utf8"); \
+    const fixture = readFileSync("/tmp/session-data-upsert.sql", "utf8").trim(); \
+    const match = source.match(/writeRawQuery\(\s*`([\s\S]*?)`\s*,/); \
+    if (!match || normalizeSql(match[1]) !== normalizeSql(fixture)) throw new Error("session-data upsert fixture does not match the applied source"); \
+  ' \
   && mkdir -p prisma/migrations/21_update_session_data \
   && cp /tmp/21_update_session_data.sql prisma/migrations/21_update_session_data/migration.sql
 

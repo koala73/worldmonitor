@@ -53,6 +53,10 @@ function normalizeRootDirectory(value) {
   return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
 }
 
+function normalizeDockerfilePath(value) {
+  return typeof value === 'string' ? value.replace(/^\/+/, '') : '';
+}
+
 // deployMode is the registry's claim about where Railway roots the build. It
 // decides which build inputs and which shared-config prefix belong in a
 // service's dependency closure, so a registry entry that claims the wrong mode
@@ -83,6 +87,13 @@ function assertRegistryEntry(entry) {
     throw new Error(
       `${name} declares unknown deployMode ${JSON.stringify(entry.deployMode)}; expected one of ${Object.keys(ROOT_DIRECTORY_BY_DEPLOY_MODE).join(', ')}`,
     );
+  }
+  if (hasOwn(entry, 'dockerfile')
+    && (typeof entry.dockerfile !== 'string' || normalizeDockerfilePath(entry.dockerfile).length === 0)) {
+    throw new Error(`${name} dockerfile must be a non-empty string`);
+  }
+  if (entry.deployMode === 'dockerfile' && !hasOwn(entry, 'dockerfile')) {
+    throw new Error(`${name} deployMode dockerfile requires a dockerfile path`);
   }
   if (hasOwn(entry, 'watchPatterns')) {
     if (!Array.isArray(entry.watchPatterns)
@@ -256,6 +267,14 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         && actualRootDirectory !== expectedRootDirectory
         ? { actual: actualRootDirectory, expected: expectedRootDirectory }
         : null;
+      const expectedDockerfilePath = hasOwn(entry, 'dockerfile')
+        ? normalizeDockerfilePath(entry.dockerfile)
+        : undefined;
+      const actualDockerfilePath = normalizeDockerfilePath(service?.build?.dockerfilePath);
+      const dockerfilePath = expectedDockerfilePath !== undefined
+        && actualDockerfilePath !== expectedDockerfilePath
+        ? { actual: actualDockerfilePath, expected: expectedDockerfilePath }
+        : null;
       const missingRequiredEnv = unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables);
       const expectedWatchPatterns = entry.watchPatterns;
       const actualWatchPatterns = service?.build?.watchPatterns ?? [];
@@ -275,7 +294,7 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         ? { actual: actualCronSchedule, expected: expectedCronSchedule }
         : null;
 
-      if (!watchPatterns && !cronSchedule && !rootDirectory
+      if (!watchPatterns && !cronSchedule && !rootDirectory && !dockerfilePath
         && !missingWatchPatterns && missingRequiredEnv.length === 0) return [];
       return [{
         service: entry.service,
@@ -284,6 +303,7 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         watchPatterns,
         cronSchedule,
         ...(rootDirectory ? { rootDirectory } : {}),
+        ...(dockerfilePath ? { dockerfilePath } : {}),
         ...(missingWatchPatterns ? { missingWatchPatterns } : {}),
         ...(missingRequiredEnv.length > 0 ? { missingRequiredEnv } : {}),
       }];
@@ -327,8 +347,14 @@ export function buildRailwayServiceConfigPatch(drift) {
   const services = {};
   for (const entry of drift) {
     const patch = {};
-    if (entry.watchPatterns) {
-      patch.build = { watchPatterns: entry.watchPatterns.expected };
+    if (entry.watchPatterns || entry.dockerfilePath) {
+      patch.build = {};
+      if (entry.watchPatterns) {
+        patch.build.watchPatterns = entry.watchPatterns.expected;
+      }
+      if (entry.dockerfilePath) {
+        patch.build.dockerfilePath = entry.dockerfilePath.expected;
+      }
     }
     if (entry.cronSchedule) {
       patch.deploy = { cronSchedule: entry.cronSchedule.expected };
@@ -429,7 +455,7 @@ export async function waitForRailwayServiceConfigConvergence(
 
 function printAudit(drift) {
   if (drift.length === 0) {
-    console.log('Railway operational-config audit passed: registry-managed cron schedules and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
+    console.log('Railway operational-config audit passed: registry-managed Dockerfile paths, cron schedules, and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
     return;
   }
 
@@ -463,6 +489,11 @@ function printAudit(drift) {
     if (entry.rootDirectory) {
       details.push(
         `rootDirectory ${JSON.stringify(entry.rootDirectory.actual)} != ${JSON.stringify(entry.rootDirectory.expected)}`,
+      );
+    }
+    if (entry.dockerfilePath) {
+      details.push(
+        `dockerfilePath ${JSON.stringify(entry.dockerfilePath.actual)} != ${JSON.stringify(entry.dockerfilePath.expected)}`,
       );
     }
     if (entry.cronSchedule) {

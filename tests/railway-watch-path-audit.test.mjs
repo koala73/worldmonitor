@@ -23,12 +23,16 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function service({
   cronSchedule = '0 * * * *',
+  dockerfilePath,
   variables = {},
   watchPatterns = [],
 } = {}) {
   return {
     source: { repo: 'koala73/worldmonitor', rootDirectory: 'scripts' },
-    build: { watchPatterns },
+    build: {
+      watchPatterns,
+      ...(dockerfilePath === undefined ? {} : { dockerfilePath }),
+    },
     deploy: { cronSchedule, startCommand: 'node seed-example.mjs' },
     variables,
   };
@@ -362,6 +366,63 @@ describe('Railway operational-config audit', () => {
     const matching = [{ ...managedRegistry[0], deployMode: 'nixpacks-root-scripts' }];
     assert.deepEqual(auditRailwayServiceConfig(config, serviceIds, matching), []);
   });
+
+  it('audits and patches a managed Dockerfile path with slash normalization', () => {
+    const registry = [{
+      ...managedRegistry[0],
+      deployMode: 'dockerfile',
+      dockerfile: 'Dockerfile.example',
+      watchPatterns: [],
+      cronSchedule: null,
+    }];
+    const ids = new Map([['seed-example', 'svc-example']]);
+    const live = service({
+      cronSchedule: null,
+      dockerfilePath: 'Dockerfile.wrong',
+      watchPatterns: [],
+    });
+    live.source.rootDirectory = '';
+
+    const drift = auditRailwayServiceConfig(
+      { services: { 'svc-example': live } },
+      ids,
+      registry,
+    );
+    assert.deepEqual(drift[0].dockerfilePath, {
+      actual: 'Dockerfile.wrong',
+      expected: 'Dockerfile.example',
+    });
+    assert.deepEqual(buildRailwayServiceConfigPatch(drift), {
+      services: {
+        'svc-example': {
+          build: { dockerfilePath: 'Dockerfile.example' },
+        },
+      },
+    });
+
+    const normalized = service({
+      cronSchedule: null,
+      dockerfilePath: '/Dockerfile.example',
+      watchPatterns: [],
+    });
+    normalized.source.rootDirectory = '';
+    assert.deepEqual(
+      auditRailwayServiceConfig({ services: { 'svc-example': normalized } }, ids, registry),
+      [],
+    );
+
+    const missing = service({ cronSchedule: null, watchPatterns: [] });
+    missing.source.rootDirectory = '';
+    const missingDrift = auditRailwayServiceConfig(
+      { services: { 'svc-example': missing } },
+      ids,
+      registry,
+    );
+    assert.deepEqual(missingDrift[0].dockerfilePath, {
+      actual: '',
+      expected: 'Dockerfile.example',
+    });
+  });
 });
 
 // The registry is hand-edited JSON with no runtime schema, and every field the
@@ -418,12 +479,32 @@ describe('registry shape validation', () => {
       /invalid requiredEnv name/,
     );
   });
+
+  it('rejects malformed Dockerfile declarations', () => {
+    assert.throws(
+      () => auditRailwayServiceConfig(
+        liveConfig,
+        serviceIds,
+        [{ ...managedRegistry[0], deployMode: 'dockerfile' }],
+      ),
+      /deployMode dockerfile requires a dockerfile path/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(
+        liveConfig,
+        serviceIds,
+        [{ ...managedRegistry[0], dockerfile: 42 }],
+      ),
+      /dockerfile must be a non-empty string/,
+    );
+  });
 });
 
 describe('planned Railway service lifecycle', () => {
   const planned = {
     service: 'umami-retention',
     deployMode: 'dockerfile',
+    dockerfile: 'Dockerfile.umami-retention',
     lifecycle: 'planned',
     requiredEnv: ['PGHOST'],
     watchPatterns: ['scripts/umami-retention.sql', 'Dockerfile.umami-retention'],
@@ -742,6 +823,7 @@ describe('critical ingestion Railway registry contract', () => {
 
     const liveCollector = service({
       cronSchedule: null,
+      dockerfilePath: 'Dockerfile.umami',
       watchPatterns: [],
       variables: { DATABASE_URL: 'postgres://configured' },
     });
