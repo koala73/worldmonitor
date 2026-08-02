@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseSseIndexResponse } from '../scripts/seed-supply-chain-trade.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
@@ -58,22 +60,9 @@ function parseBDIFromHtml(html) {
   return indices;
 }
 
-// Extract SSE parser logic into a testable function
-function parseSSEResponse(json, indexId, dataItemType, displayName, unit) {
-  const lines = json?.data?.lineDataList;
-  if (!Array.isArray(lines)) return [];
-  const composite = lines.find(l => l.dataItemTypeName === dataItemType);
-  if (!composite) return [];
-  const currentValue = composite.currentContent;
-  const previousValue = composite.lastContent;
-  if (typeof currentValue !== 'number') return [];
-  const changePct = typeof composite.percentage === 'number' ? composite.percentage
-    : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
-  return [{
-    indexId, name: displayName, currentValue, previousValue: previousValue ?? currentValue,
-    changePct, unit, history: [], spikeAlert: false,
-  }];
-}
+// The SSE parser is the REAL exported seeder function, not a re-implementation —
+// a mirrored copy drifts silently from production (#6066).
+const parseSSEResponse = parseSseIndexResponse;
 
 // ─── SSE (SCFI/CCFI) parser tests with fixture data ───
 
@@ -157,6 +146,63 @@ describe('CCFI parser (functional)', () => {
     assert.equal(result[0].currentValue, 1072.16);
     assert.equal(result[0].changePct, 1.69);
     assert.equal(result[0].unit, 'index');
+  });
+});
+
+// ─── Decision-grade period change (#6066) ───
+//
+// `periodChangePct` feeds the China activity-nowcast freight family, so it must
+// fail closed: published-or-derived from SSE's own envelope, never fabricated.
+
+describe('SSE period-over-period change contract (#6066)', () => {
+  const parse = (line, data = {}) => parseSseIndexResponse(
+    { data: { lineDataList: [{ dataItemTypeName: 'CCFI_T', ...line }], ...data } },
+    'CCFI', 'CCFI_T', 'CCFI - China Container Freight', 'index',
+  )[0];
+
+  it('publishes the exchange percentage with its basis and prior period', () => {
+    const index = parseSSEResponse(CCFI_FIXTURE, 'CCFI', 'CCFI_T', 'test', 'index')[0];
+    assert.equal(index.periodChangePct, 1.69);
+    assert.equal(index.periodChangeBasis, 'publisher_reported');
+    assert.equal(index.priorPeriodValue, 1054.38);
+    assert.equal(index.priorPeriodDate, '2026-03-06');
+  });
+
+  it('derives the change from the published prior level when SSE omits its percentage', () => {
+    const index = parse({ currentContent: 110, lastContent: 100 });
+    assert.ok(Math.abs(index.periodChangePct - 10) < 1e-9, `got ${index.periodChangePct}`);
+    assert.equal(index.periodChangeBasis, 'derived_from_prior_period_level');
+    assert.equal(index.priorPeriodValue, 100);
+  });
+
+  it('keeps a published zero move directional-eligible rather than treating it as missing', () => {
+    const index = parse({ currentContent: 900, lastContent: 900, percentage: 0 });
+    assert.equal(index.periodChangePct, 0);
+    assert.equal(index.periodChangeBasis, 'publisher_reported');
+  });
+
+  it('publishes no change when SSE ships a level with no comparable prior', () => {
+    for (const line of [
+      { currentContent: 900 },
+      { currentContent: 900, lastContent: null },
+      { currentContent: 900, lastContent: 0 },
+      { currentContent: 900, lastContent: 'n/a' },
+      { currentContent: 900, percentage: 'n/a' },
+    ]) {
+      const index = parse(line);
+      assert.equal(index.periodChangePct, null, JSON.stringify(line));
+      assert.equal(index.periodChangeBasis, null, JSON.stringify(line));
+      // The legacy display field still fabricates a flat 0 — which is exactly
+      // why the decision path must not consume it.
+      assert.equal(index.changePct, 0, JSON.stringify(line));
+    }
+  });
+
+  it('reports no prior period when SSE ships a non-numeric prior level', () => {
+    for (const lastContent of [undefined, null, 'n/a', Number.NaN]) {
+      assert.equal(parse({ currentContent: 900, lastContent }).priorPeriodValue, null,
+        String(lastContent));
+    }
   });
 });
 

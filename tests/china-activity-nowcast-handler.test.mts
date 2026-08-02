@@ -150,7 +150,14 @@ function corridorSnapshot(): ChinaCorridorControlTowerResponse {
         ]),
         condition('trade', [
           {
-            ...signal('ccfi', 'trade', { currentValue: 900, unit: 'index' }),
+            ...signal('ccfi', 'trade', {
+              currentValue: 1072.16,
+              periodChangePct: 1.69,
+              periodChangeBasis: 'publisher_reported',
+              priorPeriodValue: 1054.38,
+              priorPeriodDate: '2026-07-18',
+              unit: 'index',
+            }),
             selectorId: 'supply_chain:shipping:v2:CCFI',
           },
         ]),
@@ -202,14 +209,24 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       [
         'portwatch_tanker_calls_trend',
         'aviation_hub_disruption_balance',
+        'ccfi_freight_rate_change',
         'china_input_commodity_change',
         'sse_composite_week_change',
       ],
     );
-    assert.equal(
-      inputs.proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change')?.value,
-      null,
-    );
+    const freight = inputs.proxyObservations
+      .find((item) => item.seriesId === 'ccfi_freight_rate_change');
+    assert.equal(freight?.value, 1.69);
+    assert.deepEqual(freight?.provenance, {
+      sourceSignalIds: ['ccfi'],
+      publishers: [{ id: 'publisher:trade', name: 'Reviewed trade publisher', type: 'official' }],
+      sourceUrls: ['https://example.test/trade'],
+      observationTimes: ['2026-07-25T10:00:00.000Z'],
+      currentLevel: 1072.16,
+      priorPeriodLevel: 1054.38,
+      priorPeriodDate: '2026-07-18',
+      periodChangeBasis: 'publisher_reported',
+    });
     assert.equal(
       inputs.proxyObservations.find((item) => item.seriesId === 'china_energy_demand_change')?.value,
       null,
@@ -236,13 +253,121 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       raw: true,
     }]);
     assert.equal(response.state, 'agreement');
-    assert.equal(response.confidence.eligibleFamilies, 4);
+    assert.equal(response.confidence.eligibleFamilies, 5);
     assert.equal(response.historicalEvaluation.available, false);
     assert.match(response.historicalEvaluation.reason, /historical proxy ledger/i);
+    // Freight is no longer structurally missing: it is included whenever the
+    // Shanghai Shipping Exchange contract publishes a period change (#6066).
     assert.deepEqual(
       response.missingInputs.map((item) => item.family),
-      ['freight', 'energy', 'corridor'],
+      ['energy', 'corridor'],
     );
+    assert.equal(
+      response.contributions.find((item) => item.family === 'freight')?.direction,
+      'strengthening',
+    );
+  });
+
+  it('excludes freight with its exact reason when only a CCFI level is published (#6066)', () => {
+    const levelOnly = corridorSnapshot();
+    const trade = levelOnly.corridors[0]!.conditions
+      .find((item) => item.family === 'trade')!;
+    trade.sourceSignals[0]!.metrics = { currentValue: 1072.16, unit: 'index' };
+
+    const inputs = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: levelOnly,
+      marketValues: marketValues(),
+    });
+    const freight = inputs.proxyObservations
+      .find((item) => item.seriesId === 'ccfi_freight_rate_change');
+    assert.equal(freight?.value, null);
+    assert.equal(
+      (freight?.provenance as Record<string, unknown>).exclusion,
+      'missing_comparable_prior',
+    );
+    assert.equal((freight?.provenance as Record<string, unknown>).currentLevel, 1072.16);
+  });
+
+  it('names an unavailable CCFI signal instead of claiming a missing prior (#6066)', () => {
+    const unavailable = corridorSnapshot();
+    const signal = unavailable.corridors[0]!.conditions
+      .find((item) => item.family === 'trade')!.sourceSignals[0]!;
+    signal.availability = 'unavailable';
+    signal.metrics = {};
+
+    const freight = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: unavailable,
+      marketValues: marketValues(),
+    }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
+    assert.equal(freight?.value, null);
+    assert.equal(
+      (freight?.provenance as Record<string, unknown>).exclusion,
+      'source_signal_unavailable',
+    );
+  });
+
+  it('never lets a CCFI level or a fabricable display change become a freight move (#6066)', () => {
+    // Each mutation is a metrics shape a weakened guard would happily read as a
+    // directional change. The published `periodChangePct` is the only input that
+    // may produce one.
+    const mutations: Array<[string, CorridorSourceSignal['metrics']]> = [
+      ['level only', { currentValue: 1072.16, unit: 'index' }],
+      ['legacy fabricated flat change', { currentValue: 1072.16, changePct: 0 }],
+      ['legacy non-flat display change', { currentValue: 1072.16, changePct: 1.69 }],
+      ['prior level without a published change', {
+        currentValue: 1072.16,
+        priorPeriodValue: 1054.38,
+      }],
+      ['basis asserted without a change', {
+        currentValue: 1072.16,
+        periodChangeBasis: 'publisher_reported',
+      }],
+      ['non-finite change', { currentValue: 1072.16, periodChangePct: Number.NaN }],
+      ['stringified change', { currentValue: 1072.16, periodChangePct: '1.69' as never }],
+      ['boolean change', { currentValue: 1072.16, periodChangePct: true }],
+    ];
+
+    for (const [label, metrics] of mutations) {
+      const mutated = corridorSnapshot();
+      mutated.corridors[0]!.conditions
+        .find((item) => item.family === 'trade')!.sourceSignals[0]!.metrics = metrics;
+      const inputs = buildChinaActivityNowcastInputs({
+        evaluatedAt: EVALUATED_AT,
+        macro: macroSnapshot() as never,
+        corridors: mutated,
+        marketValues: marketValues(),
+      });
+      const freight = inputs.proxyObservations
+        .find((item) => item.seriesId === 'ccfi_freight_rate_change');
+      assert.equal(freight?.value, null, label);
+      assert.equal(
+        (freight?.provenance as Record<string, unknown>).exclusion,
+        'missing_comparable_prior',
+        label,
+      );
+    }
+
+    // The guard is not vacuous: an explicit published zero is a real unchanged
+    // week and must survive it.
+    const flat = corridorSnapshot();
+    flat.corridors[0]!.conditions
+      .find((item) => item.family === 'trade')!.sourceSignals[0]!.metrics = {
+        currentValue: 1072.16,
+        periodChangePct: 0,
+        periodChangeBasis: 'publisher_reported',
+      };
+    const flatFreight = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: flat,
+      marketValues: marketValues(),
+    }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
+    assert.equal(flatFreight?.value, 0);
+    assert.equal((flatFreight?.provenance as Record<string, unknown>).exclusion, undefined);
   });
 
   it('does not positively cache an insufficient response and preserves truthful degradation', async () => {
