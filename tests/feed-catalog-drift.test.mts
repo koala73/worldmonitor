@@ -51,6 +51,8 @@ interface FeedsModule {
   DEFAULT_ENABLED_INTEL: string[];
   FREE_CAP_PROTECTED_SOURCES: readonly string[];
   FRONTLINE_EUROPE_PROTECTED_SOURCES: readonly string[];
+  CANADA_EN_DEFAULT_SOURCES: readonly string[];
+  CANADA_ARCTIC_OPT_IN_SOURCES: readonly string[];
   REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES: readonly string[];
   REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES: readonly string[];
   INTEL_SOURCES: FeedEntry[];
@@ -663,7 +665,7 @@ describe('feed catalog drift', () => {
   it('keeps both Eastern-flank EN defaults under the production free cap (#5952)', () => {
     assert.deepEqual(
       [...feeds.FREE_CAP_PROTECTED_SOURCES].sort(),
-      [...FRONTLINE_EUROPE, ...REGIONAL_ROLLOUT_DEFAULTS].sort(),
+      [...FRONTLINE_EUROPE, ...REGIONAL_ROLLOUT_DEFAULTS, ...feeds.CANADA_EN_DEFAULT_SOURCES].sort(),
       'free-cap protected defaults must match the editorially protected sets',
     );
 
@@ -928,6 +930,146 @@ describe('feed catalog drift', () => {
         false,
         `${hostname} is not fetched directly and must not expand the RSS proxy allowlist`,
       );
+    }
+  });
+
+  // Issue #5960 — Canada + Arctic/Nordic security pack for North America keyCountry CA
+  // and High North coverage beyond Sweden-only SVT.
+  const CANADA_CATALOG = [
+    'CBC News',
+    'Globe and Mail',
+    'Global News',
+  ] as const;
+  const NORDIC_ARCTIC_CATALOG = [
+    'Yle News',
+    'NRK',
+    'Aftenposten',
+    'DR Nyheder',
+    'Arctic Today',
+  ] as const;
+  const CANADA_NORDIC_DIRECT_URLS: Record<string, string> = {
+    'CBC News': 'https://www.cbc.ca/webfeed/rss/rss-world',
+    'Globe and Mail': 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml',
+    'Global News': 'https://globalnews.ca/feed/',
+    'Yle News': 'https://yle.fi/rss/news',
+    'NRK': 'https://www.nrk.no/nyheter/siste.rss',
+    'Aftenposten': 'https://www.aftenposten.no/rss',
+    'DR Nyheder': 'https://www.dr.dk/nyheder/service/feeds/allenyheder',
+  };
+
+  it('catalogs ≥2 Canadian sources and default-enables CBC News (#5960)', () => {
+    const us = feeds.FEEDS.us ?? [];
+    const byName = new Map(us.map((f) => [f.name, f]));
+    for (const name of CANADA_CATALOG) {
+      assert.ok(byName.has(name), `${name} must be in FEEDS.us catalog`);
+    }
+    assert.ok(CANADA_CATALOG.length >= 2, 'need ≥2 Canadian sources');
+
+    const usDefaults = feeds.DEFAULT_ENABLED_SOURCES.us ?? [];
+    assert.ok(usDefaults.includes('CBC News'), 'CBC News must be DEFAULT_ENABLED us');
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    assert.ok(enabled.has('CBC News'), 'CBC News must be default-enabled');
+    assert.ok(!disabledEn.has('CBC News'), 'CBC News must not be disabled for fresh EN');
+
+    // Globe / Global News remain opt-in (noise control on US-heavy panel).
+    for (const optIn of ['Globe and Mail', 'Global News'] as const) {
+      assert.ok(!enabled.has(optIn), `${optIn} must remain catalog opt-in`);
+      assert.ok(disabledEn.has(optIn), `${optIn} must start disabled for fresh EN`);
+    }
+  });
+
+  it('catalogs ≥1 Nordic beyond Sweden and EN-reachable High North sources (#5960)', () => {
+    const europe = feeds.FEEDS.europe ?? [];
+    const byName = new Map(europe.map((f) => [f.name, f]));
+    // Beyond SVT (already present): at least one of FI/NO/DK pack.
+    const nordicBeyondSweden = NORDIC_ARCTIC_CATALOG.filter((n) => byName.has(n));
+    assert.ok(
+      nordicBeyondSweden.length >= 1,
+      'need ≥1 Nordic/Arctic source beyond Sweden (SVT)',
+    );
+    for (const name of NORDIC_ARCTIC_CATALOG) {
+      const feed = byName.get(name);
+      assert.ok(feed, `${name} must be in FEEDS.europe catalog`);
+      // no/da/fi are not UI locales — pack is unscoped so EN can enable it.
+      assert.ok(
+        !feed.lang || feed.lang === 'en',
+        `${name} must be EN-reachable (got lang=${feed.lang ?? 'none'})`,
+      );
+    }
+
+    // Not jammed into europe defaults (optional catalog for High North depth).
+    const enabled = feeds.getAllDefaultEnabledSources();
+    for (const name of NORDIC_ARCTIC_CATALOG) {
+      assert.ok(!enabled.has(name), `${name} stays catalog opt-in (not EN default-on)`);
+    }
+  });
+
+  it('mirrors Canada + Arctic/Nordic feeds on the server digest catalog (#5960)', () => {
+    const clientUs = new Map((feeds.FEEDS.us ?? []).map((f) => [f.name, f]));
+    const clientEu = new Map((feeds.FEEDS.europe ?? []).map((f) => [f.name, f]));
+    const serverUs = new Map((serverFeeds.VARIANT_FEEDS.full?.us ?? []).map((f) => [f.name, f]));
+    const serverEu = new Map((serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((f) => [f.name, f]));
+
+    for (const name of CANADA_CATALOG) {
+      assert.ok(serverUs.has(name), `server us catalog must include ${name}`);
+      const clientUrl = typeof clientUs.get(name)?.url === 'string' ? clientUs.get(name)!.url as string : '';
+      assert.equal(serverUs.get(name)?.url, clientUrl, `${name} client/server URL must match`);
+    }
+    for (const name of NORDIC_ARCTIC_CATALOG) {
+      assert.ok(serverEu.has(name), `server europe catalog must include ${name}`);
+      if (name === 'Arctic Today') {
+        assert.match(
+          serverEu.get(name)!.url,
+          /news\.google\.com\/rss\/search/,
+          'Arctic Today server URL must use Google News',
+        );
+        continue;
+      }
+      const clientUrl = typeof clientEu.get(name)?.url === 'string' ? clientEu.get(name)!.url as string : '';
+      assert.equal(serverEu.get(name)?.url, clientUrl, `${name} client/server URL must match`);
+    }
+  });
+
+  it('allowlists Canada + Nordic direct RSS hosts and reviews provenance (#5960)', () => {
+    for (const [name, url] of Object.entries(CANADA_NORDIC_DIRECT_URLS)) {
+      const hostname = new URL(url).hostname;
+      assert.ok(isAllowedDomain(hostname), `${name} host ${hostname} must be RSS-allowlisted`);
+      const risk = feeds.SOURCE_PROPAGANDA_RISK[name];
+      assert.ok(risk, `${name} must have SOURCE_PROPAGANDA_RISK`);
+      assert.notEqual(risk.risk, 'unknown', `${name} must be reviewed`);
+      assert.ok(feeds.SOURCE_TYPES[name], `${name} must have SOURCE_TYPES`);
+    }
+    const arctic = feeds.SOURCE_PROPAGANDA_RISK['Arctic Today'];
+    assert.ok(arctic && arctic.risk !== 'unknown', 'Arctic Today must be reviewed');
+    assert.ok(feeds.SOURCE_TYPES['Arctic Today'], 'Arctic Today must have SOURCE_TYPES');
+  });
+
+  it('keeps CBC News under the production free cap (#5960)', () => {
+    assert.ok(
+      feeds.FREE_CAP_PROTECTED_SOURCES.includes('CBC News'),
+      'CBC News must be FREE_CAP_PROTECTED so free-tier round-robin cannot strip it',
+    );
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const { keep, autoDisabled } = selectSourcesUnderCap(
+      feeds.FEEDS,
+      feeds.INTEL_SOURCES,
+      disabledEn,
+      80,
+      new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
+    );
+    assert.ok(keep.has('CBC News'), 'CBC News must survive the free source cap');
+    assert.ok(!autoDisabled.has('CBC News'), 'CBC News must not be auto-disabled by the free source cap');
+  });
+
+  it('treats Canada/Arctic catalog companions as opt-in for fresh EN profiles (#5960)', () => {
+    assert.deepEqual(
+      [...feeds.CANADA_ARCTIC_OPT_IN_SOURCES].sort(),
+      [...CANADA_CATALOG, ...NORDIC_ARCTIC_CATALOG].filter((n) => n !== 'CBC News').sort(),
+    );
+    const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of feeds.CANADA_ARCTIC_OPT_IN_SOURCES) {
+      assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
     }
   });
 

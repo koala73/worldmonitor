@@ -76,6 +76,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
+  // Canada + Arctic/Nordic pack (#5960)
+  'CBC News': 'mainstream', 'Globe and Mail': 'mainstream', 'Global News': 'mainstream',
+  'Yle News': 'mainstream', 'NRK': 'mainstream', 'Aftenposten': 'mainstream',
+  'DR Nyheder': 'mainstream', 'Arctic Today': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
 
@@ -286,6 +290,15 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'ERR News': { risk: 'low', note: 'Estonian Public Broadcasting English service' },
   'LRT English': { risk: 'low', note: 'Lithuanian Public Broadcasting English service' },
   'LSM English': { risk: 'low', note: 'Latvian Public Broadcasting English service' },
+  // Canada + Arctic/Nordic pack (#5960)
+  'CBC News': { risk: 'medium', stateAffiliated: 'Canada', note: 'Canadian public broadcaster (CBC/Radio-Canada), editorially independent charter' },
+  'Globe and Mail': { risk: 'low', note: 'Canadian newspaper of record' },
+  'Global News': { risk: 'low', note: 'Canadian national news network (Corus Entertainment)' },
+  'Yle News': { risk: 'medium', stateAffiliated: 'Finland', note: 'Finnish public broadcaster English service (Yle)' },
+  'NRK': { risk: 'medium', stateAffiliated: 'Norway', note: 'Norwegian public broadcaster' },
+  'Aftenposten': { risk: 'low', note: 'Norwegian newspaper of record (Schibsted)' },
+  'DR Nyheder': { risk: 'medium', stateAffiliated: 'Denmark', note: 'Danish public broadcaster (DR)' },
+  'Arctic Today': { risk: 'low', note: 'Independent High North / Arctic security and business news' },
   'Daily Sabah': { risk: 'medium', stateAffiliated: 'Turkey', note: 'Turkish pro-government daily, English edition' },
   'Seznam Zprávy': { risk: 'low', note: 'Czech independent online news outlet' },
   'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },

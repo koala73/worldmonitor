@@ -44,6 +44,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml' },
       { name: 'The Hill', url: 'https://thehill.com/news/feed' },
       { name: 'Axios', url: 'https://api.axios.com/feed/' },
+      // Canada + North America key-country pack (#5960)
+      { name: 'CBC News', url: 'https://www.cbc.ca/webfeed/rss/rss-world' },
+      { name: 'Globe and Mail', url: 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml' },
+      { name: 'Global News', url: 'https://globalnews.ca/feed/' },
     ],
     europe: [
       { name: 'France 24', url: 'https://www.france24.com/en/rss' },
@@ -54,6 +58,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'ANSA', url: 'https://www.ansa.it/sito/ansait_rss.xml', lang: 'it' },
       { name: 'NOS Nieuws', url: 'https://feeds.nos.nl/nosnieuwsalgemeen', lang: 'nl' },
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
+      // Arctic / Nordic security pack (#5960). Unscoped so EN digests can include
+      // them when enabled (no/da/fi are not UI locales). Yle + Arctic Today are EN.
+      { name: 'Yle News', url: 'https://yle.fi/rss/news' },
+      { name: 'NRK', url: 'https://www.nrk.no/nyheter/siste.rss' },
+      { name: 'Aftenposten', url: 'https://www.aftenposten.no/rss' },
+      { name: 'DR Nyheder', url: 'https://www.dr.dk/nyheder/service/feeds/allenyheder' },
+      { name: 'Arctic Today', url: gn('site:arctictoday.com when:14d') },
       // Hungarian (HU) — V4 / CEE coverage. Mirrors src/config/feeds.ts europe block.
       { name: 'Telex', url: 'https://telex.hu/rss', lang: 'hu' },
       { name: 'Index.hu', url: 'https://index.hu/24ora/rss', lang: 'hu' },

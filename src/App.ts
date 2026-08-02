@@ -86,6 +86,7 @@ import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetai
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
 import {
+  CANADA_ARCTIC_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -1042,6 +1043,28 @@ export class App {
           console.log('[App] Regional feed rollout: restored declared defaults and opt-in boundaries for an untouched profile');
         }
         localStorage.setItem(regionalRolloutKey, 'done');
+      }
+      // #5960 — Canada + Arctic/Nordic pack: denylist is additive-only, so newly
+      // cataloged opt-in names would be implicitly enabled for every returner.
+      // Insert opt-ins into any existing denylist once. CBC is intentionally
+      // omitted so default-on can enable it for returners (not in old denylist).
+      const canadaArcticKey = 'worldmonitor-canada-arctic-optin-v1';
+      if (!localStorage.getItem(canadaArcticKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        if (current.length > 0) {
+          const before = new Set(current);
+          const updated = [...current];
+          for (const name of CANADA_ARCTIC_OPT_IN_SOURCES) {
+            if (!before.has(name)) updated.push(name);
+          }
+          if (updated.length !== current.length) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Canada/Arctic opt-in (#5960): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(canadaArcticKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →

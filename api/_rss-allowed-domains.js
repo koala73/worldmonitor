@@ -369,5 +369,12 @@ export default [
   "www.radiookapi.net",
   "www.myjoyonline.com",
   "lequotidien.sn",
-  "www.rfi.fr"
+  "www.rfi.fr",
+  "www.cbc.ca",
+  "www.theglobeandmail.com",
+  "globalnews.ca",
+  "yle.fi",
+  "www.nrk.no",
+  "www.aftenposten.no",
+  "www.dr.dk",
 ];
