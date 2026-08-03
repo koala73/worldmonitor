@@ -1352,7 +1352,7 @@ async function main() {
     await redisSet(url, token, THEATER_POSTURE_LIVE_KEY, posturePayload, THEATER_POSTURE_LIVE_TTL);
     await redisSet(url, token, THEATER_POSTURE_STALE_KEY, posturePayload, THEATER_POSTURE_STALE_TTL);
     await redisSet(url, token, THEATER_POSTURE_BACKUP_KEY, posturePayload, THEATER_POSTURE_BACKUP_TTL);
-    await redisSet(url, token, 'seed-meta:theater-posture', { fetchedAt: assessedAt, recordCount: theaterFlights.length, sourceVersion: source || '' }, 604800);
+    await redisSet(url, token, 'seed-meta:theater-posture', { fetchedAt: assessedAt, recordCount: theaterFlights.length, sourceVersion: source || '', producer: 'seed-military-flights' }, 604800);
     const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
     console.log(`  Theater posture: ${theaters.length} theaters (${elevated} elevated)`);
 

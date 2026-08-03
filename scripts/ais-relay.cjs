@@ -4460,8 +4460,10 @@ async function seedTheaterPosture() {
   const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
   const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
   // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
-  // key, so both writers expose which upstream fed the published record.
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels, sourceVersion: flightSource }, 604800);
+  // key; `producer` disambiguates the two writers, whose source vocabularies
+  // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
+  // last-resort fallback).
+  const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay' }, 604800);
   theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
   theaterPostureLastRun = {
     seededAt: new Date().toISOString(),
@@ -4469,10 +4471,14 @@ async function seedTheaterPosture() {
     flightCount: flights.length,
     vesselCount: totalVessels,
     redisOk: ok1 && ok2 && ok3,
+    // Reported separately from redisOk: health gates staleness on the
+    // seed-meta key, so a failed attribution write must not hide behind
+    // three green envelope writes.
+    seedMetaOk,
   };
   const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
+  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
 }
 
 function startTheaterPostureSeedLoop() {
@@ -7112,12 +7118,16 @@ function getRelayRollingMetrics() {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
     },
-    // Which upstream fed each theater-posture publication. Kept separate from
-    // the opensky route counters above so healthy fallback publication
-    // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945).
+    // Which upstream fed each theater-posture publication cycle. Kept separate
+    // from the opensky route counters above so healthy fallback publication
+    // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945). Unlike
+    // the sibling sections these are NOT rolling-window: the seed cadence
+    // (~10 min) exceeds the metrics window, so bucketed counts would read
+    // all-zero — sourceCountsSinceBoot is process-lifetime and lastRun
+    // (with seededAt) is the current-state signal.
     theaterPosture: {
       lastRun: theaterPostureLastRun,
-      sourceCounts: { ...theaterPostureSourceCounts },
+      sourceCountsSinceBoot: { ...theaterPostureSourceCounts },
     },
     googleFlights: {
       requests: rollup.googleFlightsRequests,
