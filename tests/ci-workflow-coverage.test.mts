@@ -495,6 +495,39 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('routes Tauri config edits into the job that runs the one-binary gate (#5908)', () => {
+    // Executes the real awk from test.yml rather than string-matching it: a
+    // regex typo in the carve-out would silently exempt Tauri-config changes
+    // from CI while a source-text assertion stayed green — the same drift class
+    // #5908 was filed to fix. tests/desktop-one-binary-model.test.mjs runs in
+    // `unit`, which is gated on this `code` output.
+    const awkBlock = shellAwkAssignmentBlock('CODE');
+    const program = awkBlock.slice(awkBlock.indexOf("awk '") + 5, awkBlock.lastIndexOf("'"));
+    const codeFilterSays = (path: string) => {
+      const out = execFileSync('awk', [program], { input: `${path}\n`, encoding: 'utf8' });
+      return Number(out.trim()) > 0;
+    };
+
+    for (const path of [
+      'src-tauri/tauri.conf.json',
+      'src-tauri/tauri.tech.conf.json',
+      'src-tauri/profiles/commodity.json',
+      'api/download.js',
+      'src/config/variant.ts',
+      'scripts/desktop-package.mjs',
+      'package.json',
+      '.github/workflows/build-desktop.yml',
+    ]) {
+      assert.ok(codeFilterSays(path), `${path} must set code=true so the one-binary gate runs`);
+    }
+
+    // The carve-out must stay a carve-out: Rust and capability edits are still
+    // covered by desktop-config/desktop-rust, not by the full unit suite.
+    for (const path of ['src-tauri/Cargo.toml', 'src-tauri/src/main.rs', 'README.md', 'docs/desktop-app.mdx']) {
+      assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
+    }
+  });
+
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
       testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
@@ -629,12 +662,12 @@ describe('CI workflow coverage', () => {
     // per-variant scripts keeps this from silently covering less than it did —
     // a reintroduced `desktop:build:tech` would otherwise never be gate-checked.
     assert.match(
-      packageScripts['desktop:build'] ?? '',
+      packageScripts['desktop:tauri:build'] ?? '',
       /npm run desktop:check-env/,
-      'desktop:build must run the local desktop env gate',
+      'desktop:tauri:build must run the local desktop env gate',
     );
     assert.deepEqual(
-      Object.keys(packageScripts).filter((name) => name.startsWith('desktop:build:')),
+      Object.keys(packageScripts).filter((name) => /^desktop:(tauri:)?build:/.test(name)),
       [],
       'per-variant desktop build scripts were retired with the one-binary model (#5908)',
     );

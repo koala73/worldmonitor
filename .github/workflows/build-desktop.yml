@@ -142,6 +142,22 @@ jobs:
       - name: Check version consistency
         run: npm run version:check
 
+      - name: Pushed tag matches the version being built (#5908)
+        # The release tag comes from package.json (`tagName: v__VERSION__`), not
+        # from the pushed ref, while the trigger matches any `v*`. Pushing
+        # `v2.11.0` or a leftover `v2.11.0-tech` while package.json still says
+        # 2.10.0 would rebuild and overwrite the LIVE v2.10.0 release rather
+        # than cutting a new one. Fail before anything is uploaded.
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION}. This build would publish to v${VERSION} and overwrite that release. Bump the version and retag, or delete the stray tag."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package.json ${VERSION}"
+
       - name: Rust dependency security floors (#5518)
         # The release build is the artifact users install, so verify the
         # lockfile it is about to compile still clears every recorded advisory
@@ -256,7 +272,12 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'World Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
+          # Always upload into a DRAFT release (#5908). With fail-fast: false and
+          # five platforms, a non-draft first leg would make v__VERSION__ the
+          # live "latest" before the other platforms finish — clients would be
+          # offered an update whose asset for their OS does not exist yet.
+          # update-release-notes publishes it once every leg has succeeded.
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
           retryAttempts: 1
@@ -284,7 +305,12 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'World Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
+          # Always upload into a DRAFT release (#5908). With fail-fast: false and
+          # five platforms, a non-draft first leg would make v__VERSION__ the
+          # live "latest" before the other platforms finish — clients would be
+          # offered an update whose asset for their OS does not exist yet.
+          # update-release-notes publishes it once every leg has succeeded.
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
           retryAttempts: 1
@@ -401,7 +427,11 @@ jobs:
           SECONDS=$((ELAPSED % 60))
           echo "Build duration for ${{ matrix.label }}: ${MINUTES}m ${SECONDS}s"
 
-  # ── Update release notes with changelog after all builds complete ──
+  # ── Notes + atomic publish, once every platform leg has succeeded ──
+  # `needs.build-tauri.result` is one value for the whole matrix, so this runs
+  # only when all five platforms succeeded. Every leg uploads into a DRAFT
+  # release; publishing happens here so `/releases/latest` never advertises a
+  # release that is missing a platform's asset (#5908).
   update-release-notes:
     needs: build-tauri
     if: always() && contains(needs.build-tauri.result, 'success')
@@ -439,3 +469,40 @@ jobs:
 
           gh release edit "$TAG" --notes "$BODY"
           echo "Updated release notes for $TAG"
+
+      - name: Publish the release
+        # The one place a desktop release goes live. Every advertised platform
+        # asset must exist first: `/api/download` maps each platform to exactly
+        # one suffix, so a missing asset is a 302 to the releases page for every
+        # user on that OS, and the updater would still have offered them the
+        # upgrade (#5908).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_DRAFT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.draft }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          TAG="v${VERSION}"
+
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          echo "Assets on $TAG:"; printf '  %s\n' $ASSETS
+
+          MISSING=""
+          # Mirrors PLATFORM_PATTERNS in api/download.js — every platform the
+          # download endpoint and README advertise.
+          for suffix in '_x64-setup\.exe$' '_x64_en-US\.msi$' '_aarch64\.dmg$' '_x64\.dmg$' '_amd64\.AppImage$' '_aarch64\.AppImage$'; do
+            printf '%s\n' "$ASSETS" | grep -qE "$suffix" || MISSING="$MISSING $suffix"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Refusing to publish $TAG — no asset matches:$MISSING. The release stays a draft; investigate the failed platform before publishing."
+            exit 1
+          fi
+
+          if [ "$KEEP_DRAFT" = "true" ]; then
+            echo "::notice::$TAG left as a draft by request. It is NOT served by /api/version or /api/download until published."
+            exit 0
+          fi
+
+          gh release edit "$TAG" --draft=false
+          echo "Published $TAG"

@@ -371,11 +371,12 @@ test.describe('desktop runtime routing guardrails', () => {
       const updaterProto = DesktopUpdater.prototype as unknown as {
         resolveUpdateDownloadUrl: (releaseUrl: string) => Promise<string>;
         mapDesktopDownloadPlatform: (os: string, arch: string) => string | null;
-        getDesktopBuildVariant: () => 'full' | 'tech' | 'finance';
       };
       const fakeApp = {
         mapDesktopDownloadPlatform: updaterProto.mapDesktopDownloadPlatform,
-        getDesktopBuildVariant: () => 'full' as const,
+        // resolveUpdateDownloadUrl logs when the runtime probe fails, so the
+        // stub needs it or the fallback path throws instead of falling back.
+        logUpdaterOutcome: () => {},
       };
 
       try {
@@ -401,9 +402,20 @@ test.describe('desktop runtime routing guardrails', () => {
             invoke: async () => ({ os: 'linux', arch: 'x86_64' }),
           },
         };
-        const linuxFallback = await updaterProto.resolveUpdateDownloadUrl.call(fakeApp, releaseUrl);
+        const linuxX64 = await updaterProto.resolveUpdateDownloadUrl.call(fakeApp, releaseUrl);
 
-        return { macArm, windowsX64, linuxFallback };
+        // The real fallback is an unavailable runtime probe, not an unsupported
+        // OS — Linux x64 has had an AppImage target for some time.
+        globalWindow.__TAURI__ = {
+          core: {
+            invoke: async () => {
+              throw new Error('runtime info unavailable');
+            },
+          },
+        };
+        const probeFailureFallback = await updaterProto.resolveUpdateDownloadUrl.call(fakeApp, releaseUrl);
+
+        return { macArm, windowsX64, linuxX64, probeFailureFallback };
       } finally {
         if (previousTauri === undefined) {
           delete globalWindow.__TAURI__;
@@ -413,9 +425,16 @@ test.describe('desktop runtime routing guardrails', () => {
       }
     });
 
-    expect(result.macArm).toBe('https://worldmonitor.app/api/download?platform=macos-arm64&variant=full');
-    expect(result.windowsX64).toBe('https://worldmonitor.app/api/download?platform=windows-exe&variant=full');
-    expect(result.linuxFallback).toBe('https://github.com/koala73/worldmonitor/releases/latest');
+    // No `variant` under the one-binary model (#5908): one published binary, so
+    // OS/arch fully determines the asset. Host and platform id below match what
+    // the updater actually emits — the previous expectations asserted
+    // `worldmonitor.app` and `windows-exe` while the code had long produced
+    // `api.worldmonitor.app` and `windows-msi`; this spec is in no workflow, so
+    // nothing caught the drift.
+    expect(result.macArm).toBe('https://api.worldmonitor.app/api/download?platform=macos-arm64');
+    expect(result.windowsX64).toBe('https://api.worldmonitor.app/api/download?platform=windows-msi');
+    expect(result.linuxX64).toBe('https://api.worldmonitor.app/api/download?platform=linux-appimage');
+    expect(result.probeFailureFallback).toBe('https://github.com/koala73/worldmonitor/releases/latest');
   });
 
   test('MapContainer paints a mobile shell before heavy map renderer resources', async ({ page }) => {

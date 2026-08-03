@@ -1,6 +1,10 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { parseDesktopVersion, isNewerDesktopVersion } from '../src/utils/desktop-version.ts';
+import {
+  parseDesktopVersion,
+  isNewerDesktopVersion,
+  decideUpdateOutcome,
+} from '../src/utils/desktop-version.ts';
 
 // #5908: `remote.split('.').map(Number)` turned "2.10.0-tech" into [2, 10, NaN].
 // Every comparison against NaN is false, so isNewerVersion returned false and the
@@ -64,4 +68,38 @@ test('surfaces an unparseable version as null rather than a silent false', () =>
   assert.equal(isNewerDesktopVersion('2.10.0-tech', 'garbage'), null);
   assert.equal(isNewerDesktopVersion('garbage', '2.10.0'), null);
   assert.equal(isNewerDesktopVersion('', '2.10.0'), null);
+});
+
+// The updater's decision itself — #5908 was a two-outcome mapping where the
+// unreadable case fell into "up to date". These pin the third outcome so a
+// regression that collapses it fails here instead of silently stranding every
+// installed client.
+
+test('decides update_available for a newer remote version', () => {
+  assert.equal(decideUpdateOutcome('2.11.0', '2.10.0'), 'update_available');
+  assert.equal(decideUpdateOutcome('2.10.1', '2.10.0'), 'update_available');
+});
+
+test('decides no_update for an equal or older remote version', () => {
+  assert.equal(decideUpdateOutcome('2.10.0', '2.10.0'), 'no_update');
+  assert.equal(decideUpdateOutcome('2.9.0', '2.10.0'), 'no_update');
+});
+
+test('decides version_unparsable instead of no_update for an unreadable version', () => {
+  // The regression guard: every one of these returned `no_update` before the
+  // fix, which is why the failure went unnoticed for months.
+  for (const remote of ['', '   ', 'latest', 'nightly-2.11.0', '2.x.0']) {
+    assert.equal(
+      decideUpdateOutcome(remote, '2.10.0'),
+      'version_unparsable',
+      `remote=${JSON.stringify(remote)} must not be reported as up to date`
+    );
+  }
+  assert.equal(decideUpdateOutcome('2.11.0', 'garbage'), 'version_unparsable');
+});
+
+test('a suffixed remote tag still offers the update rather than stalling', () => {
+  // The literal #5908 payload: `2.11.0-tech` reaching a 2.10.0 client.
+  assert.equal(decideUpdateOutcome('2.11.0-tech', '2.10.0'), 'update_available');
+  assert.equal(decideUpdateOutcome('2.10.0-tech', '2.10.0'), 'no_update');
 });

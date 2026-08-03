@@ -43,6 +43,35 @@ test('resolves the platform asset when no variant is supplied', async () => {
   assert.equal(response.headers.get('location'), WORLD_APPIMAGE);
 });
 
+test('applies the World Monitor identity filter even with no variant supplied', async () => {
+  // The desktop updater stopped sending `variant` under the one-binary model,
+  // so the no-variant path is the app's own download path. A stray branded
+  // asset ordered first must not win it.
+  const response = await download('platform=linux-appimage', [
+    {
+      name: 'Tech-Monitor_2.5.7_amd64.AppImage',
+      browser_download_url: 'https://downloads.example/Tech-Monitor_2.5.7_amd64.AppImage',
+    },
+    ...worldMonitorAssets(),
+  ]);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), WORLD_APPIMAGE);
+});
+
+test('does not treat inherited Object properties as known platforms', async () => {
+  // `PLATFORM_PATTERNS['constructor']` is truthy AND callable, so a bare lookup
+  // passed the guard and then matched every asset name.
+  for (const platform of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    const response = await download(`platform=${encodeURIComponent(platform)}`);
+    assert.equal(response.status, 302);
+    assert.equal(
+      response.headers.get('location'),
+      RELEASES_PAGE,
+      `platform=${platform} must not resolve to an asset`
+    );
+  }
+});
+
 // #5908: one published desktop binary, variants switch in-app. Every supported
 // variant must resolve to that same artifact — the old per-variant identifiers
 // advertised `techmonitor`/`financemonitor` assets no pipeline has ever built,
@@ -55,6 +84,21 @@ for (const variant of ['full', 'world', 'tech', 'finance', 'commodity', 'energy'
     assert.equal(response.headers.get('location'), WORLD_APPIMAGE);
   });
 }
+
+test('treats an empty variant the same as omitting it', async () => {
+  // `variant=` is falsy, so it skips the supported-set check. It must still get
+  // the identity filter — that is now unconditional precisely so no path can
+  // resolve a non-World-Monitor asset.
+  const response = await download('platform=linux-appimage&variant=', [
+    {
+      name: 'Tech-Monitor_2.5.7_amd64.AppImage',
+      browser_download_url: 'https://downloads.example/Tech-Monitor_2.5.7_amd64.AppImage',
+    },
+    ...worldMonitorAssets(),
+  ]);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), WORLD_APPIMAGE);
+});
 
 test('is case-insensitive about the variant', async () => {
   const response = await download('platform=linux-appimage&variant=TECH');

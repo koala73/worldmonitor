@@ -52,3 +52,19 @@ export function isNewerDesktopVersion(remote: string, current: string): boolean 
   }
   return false;
 }
+
+export type UpdateDecision = 'update_available' | 'no_update' | 'version_unparsable';
+
+/**
+ * The updater's three-way decision, extracted so it is directly testable.
+ *
+ * #5908's damage came from this decision having only two outcomes: an
+ * unreadable version fell into "no_update" and the failure became invisible.
+ * Keeping the mapping here means a regression that collapses the third outcome
+ * fails a unit test instead of silently stranding every installed client.
+ */
+export function decideUpdateOutcome(remote: string, current: string): UpdateDecision {
+  const newer = isNewerDesktopVersion(remote, current);
+  if (newer === null) return 'version_unparsable';
+  return newer ? 'update_available' : 'no_update';
+}

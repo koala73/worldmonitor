@@ -52,7 +52,10 @@ export default async function handler(req) {
   const platform = url.searchParams.get('platform');
   const variant = (url.searchParams.get('variant') || '').toLowerCase();
 
-  if (!platform || !PLATFORM_PATTERNS[platform]) {
+  // `Object.hasOwn`, not a bare lookup: `?platform=constructor` inherits a
+  // truthy, callable value from Object.prototype, which passed the guard and
+  // then matched every asset name.
+  if (!platform || !Object.hasOwn(PLATFORM_PATTERNS, platform)) {
     return Response.redirect(RELEASES_PAGE, 302);
   }
 
@@ -70,9 +73,11 @@ export default async function handler(req) {
 
     const matcher = PLATFORM_PATTERNS[platform];
     const assets = Array.isArray(release.assets) ? release.assets : [];
-    const asset = variant
-      ? findDesktopAsset(assets, matcher)
-      : assets.find((a) => matcher(String(a?.name || '')));
+    // Identity-filtered on every path, with or without `variant`. The desktop
+    // updater stopped sending `variant` once one binary served all variants, so
+    // a variant-only filter would have left the app's own download — the single
+    // most important caller — matching any asset that fit the platform suffix.
+    const asset = findDesktopAsset(assets, matcher);
 
     if (!asset) {
       return Response.redirect(RELEASES_PAGE, 302);

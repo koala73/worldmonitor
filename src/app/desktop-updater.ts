@@ -4,7 +4,7 @@ import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/se
 import { escapeHtml } from '@/utils/sanitize';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { isNewerDesktopVersion } from '@/utils/desktop-version';
+import { decideUpdateOutcome } from '@/utils/desktop-version';
 
 
 interface DesktopRuntimeInfo {
@@ -80,17 +80,14 @@ export class DesktopUpdater implements AppModule {
       }
 
       const current = __APP_VERSION__;
-      const newer = isNewerDesktopVersion(remote, current);
-      if (newer === null) {
-        // #5908: never treat an unreadable version as "up to date". The old
-        // `Number('0-tech')` -> NaN path did exactly that and logged `no_update`,
-        // so a single malformed release stopped every client updating with no
-        // trace. Refusing to guess keeps the defect visible in the logs.
-        this.logUpdaterOutcome('version_unparsable', { current, remote });
-        return;
-      }
-      if (!newer) {
-        this.logUpdaterOutcome('no_update', { current, remote });
+      // #5908: three outcomes, not two. An unreadable version must never fall
+      // into "up to date" — the old `Number('0-tech')` -> NaN path did exactly
+      // that and logged `no_update`, so one malformed release stopped every
+      // client updating with no trace. The mapping lives in
+      // `decideUpdateOutcome` so a regression that collapses it fails a test.
+      const decision = decideUpdateOutcome(remote, current);
+      if (decision !== 'update_available') {
+        this.logUpdaterOutcome(decision, { current, remote });
         return;
       }
 
@@ -150,8 +147,14 @@ export class DesktopUpdater implements AppModule {
         // releases page.
         return `https://api.worldmonitor.app/api/download?platform=${platform}`;
       }
-    } catch {
-      // Silent fallback to release page when desktop runtime info is unavailable.
+    } catch (error) {
+      // Falls back to the release page, but says so: this is the same silent
+      // class as #5908 — the user still gets a link, so a broken runtime probe
+      // would otherwise degrade every download to the generic page unnoticed.
+      this.logUpdaterOutcome('fetch_failed', {
+        reason: 'runtime_info_unavailable',
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
     return releaseUrl;
   }
