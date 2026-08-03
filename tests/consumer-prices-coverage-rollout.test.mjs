@@ -61,7 +61,12 @@ const BEFORE_DEADLINE = US_UNTIL - 60_000;
 const AT_DEADLINE = US_UNTIL;
 const AFTER_DEADLINE = US_UNTIL + 60_000;
 
-// Same ctx shape the handler builds (api/health.js), plus `activatedNames`.
+// Same ctx shape the handler builds (api/health.js), plus `activationStates`.
+// That map is three-valued (#6095): every registered marker gets an entry here
+// because a clean sweep reads them all, and only a marker whose EXISTS command
+// FAILED is absent from the map. Modelling it as "listed = true, everything
+// else = false" rather than "listed = true, everything else missing" keeps
+// these fixtures on the production path instead of the unread-marker one.
 function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, activated = [], now } = {}) {
   return {
     keyStrens: new Map(Object.entries(strens)),
@@ -70,7 +75,9 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, a
       Object.entries(metaValues).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]),
     ),
     keyMetaErrors: new Map(Object.entries(metaErrors)),
-    activatedNames: new Set(activated),
+    activationStates: new Map(
+      Object.keys(ACTIVATION_MARKERS).map((name) => [name, activated.includes(name)]),
+    ),
     now,
   };
 }

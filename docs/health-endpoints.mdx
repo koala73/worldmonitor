@@ -251,6 +251,13 @@ published the field at least once, tracked by the durable marker
 covers **absence only** — a block that is present is always evaluated, and once
 the marker exists a block that disappears fails closed.
 
+The grace also needs **positive proof**, not merely the lack of a marker. The
+`EXISTS` read is three-valued: read-and-present revokes the softening,
+read-and-absent grants it, and a read that *failed* is unknown state and grants
+nothing. A grace given on the absence of evidence would never expire, so an
+evicted, renamed, or unreadable marker would otherwise disable this alarm
+permanently.
+
 The seeder reserves cold-fetch slots for the decision-critical countries so they
 refresh every run they are a cache miss. Without that reservation the rotation
 period (`ceil(174 / 30)` runs at a 12-hour cadence ~ 72 hours) equals the
@@ -288,16 +295,13 @@ asserted field-for-field against this config rather than left to a comment, and
 both surfaces read the activation marker as an `EXISTS`, so its stored value
 can never make them disagree.
 
-The surfaces differ in exactly one input class, deliberately. This endpoint
-cannot tell a marker it failed to read from one that is genuinely absent — both
-land in the same bucket — so a read error still grants the grace. MCP treats an
-unreadable marker as *unknown* and fails closed, because a grace granted on the
-absence of evidence never expires: an evicted or renamed marker would otherwise
-disable the alarm permanently. So for a pre-activation key whose marker read
-errors, this endpoint reports `OK` while MCP reports `stale: true`. The
-disagreement only ever runs in that direction — MCP over-alarming — and never
-the direction that hides stale content. Aligning this endpoint is tracked in
-[#6095](https://github.com/koala73/worldmonitor/issues/6095).
+`/api/seed-health` mirrors the same contract on its own `supply_chain:portwatch-ports`
+entry, reporting `coverage_degraded` where this endpoint reports
+`COVERAGE_DEGRADED` and `stale_content` where it reports `STALE_CONTENT`. All
+three surfaces read the marker three-valued and grant the grace only on a
+read-and-absent result, so there is no input class on which they answer
+differently — a single test loop asserts every marker outcome against every
+block shape on all three at once.
 
 An MCP caller still sees a single boolean: `stale` does not say *which*
 dimension failed, so `/api/health` remains the surface that names the stale

@@ -1265,16 +1265,35 @@ function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
 function classifyKey(name, redisKey, opts, ctx) {
   const { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now } = ctx;
   const seedCfg = SEED_META[name];
+  // #6095 audited this grace and DELIBERATELY kept it soft when the marker read
+  // failed, unlike the content-freshness grace below. What it gates is why:
+  //   1. It downgrades exactly the two "no records" verdicts — EMPTY (key
+  //      absent) and EMPTY_DATA (key present, zero records), both crit — to
+  //      EMPTY_ON_DEMAND. Resolving unknown to "activated" would manufacture a
+  //      crit for a key that may genuinely never have run, which is the
+  //      deployment-order noise ON_DEMAND_KEYS exists to remove.
+  //   2. It never softens a FAULT. Every fault branch is decided above these
+  //      two, so an on-demand key that HAS data and goes stale or errors still
+  //      falls through to STALE_SEED/SEED_ERROR (see the ON_DEMAND_KEYS policy
+  //      block). A marker blip therefore cannot hide a live producer failure —
+  //      only the emptiness of a key nobody has requested yet.
+  //   3. `entry.onDemand` is emitted for every status, so the softening is
+  //      always legible in the payload rather than silently applied.
+  // The content-freshness grace below has none of those bounds, which is why it
+  // takes the opposite policy on the same unknown state.
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
-    && !(ctx.activatedNames && ctx.activatedNames.has(name));
+    && ctx.activationStates?.get(name) !== true;
   // #6059 rollout bridge — see ROLLOUT_PENDING_UNTIL_MS. Unlike ON_DEMAND this
   // needs no per-registry opt-in (`allowOnDemand`): the window is bounded by a
   // compiled deadline and revoked by a durable marker, so it cannot rot into a
   // silent permanent exemption the way a registry-wide soften could.
+  // Soft on an unreadable marker for the same reasons as ON_DEMAND above, plus
+  // the deadline: an unknown state can delay strictness only until
+  // `rolloutPendingUntil`, so it can never grant a grace that never expires.
   const rolloutPendingUntil = ROLLOUT_PENDING_UNTIL_MS[name];
   const isRolloutPending = rolloutPendingUntil != null
     && now < rolloutPendingUntil
-    && !(ctx.activatedNames && ctx.activatedNames.has(name));
+    && ctx.activationStates?.get(name) !== true;
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
 
@@ -1310,12 +1329,23 @@ function classifyKey(name, redisKey, opts, ctx) {
   // block, so this deployment simply predates the feature. Softened only for
   // ABSENCE — a block that is present is always evaluated, and once the marker
   // exists a disappearing block is a regression that fails closed.
+  //
+  // Grace requires POSITIVE proof (#6095): the marker was READ and came back
+  // absent. An unreadable marker is unknown state, not evidence of a producer
+  // that never ran, and earns nothing — the same rule api/mcp/freshness.ts and
+  // api/seed-health.js apply, so the three surfaces cannot answer differently
+  // for one input class. The opposite policy from the ON_DEMAND grace above,
+  // and for a reason: this one suppresses an alarm on a key that HAS data and
+  // IS running, and its strict verdict is COVERAGE_DEGRADED — "cannot prove
+  // content freshness", which an unread marker makes literally true. A grace
+  // granted on the absence of evidence never expires, so an evicted, renamed,
+  // or unreadable marker would silently disable the alarm for good.
   const contentFreshnessPending = Boolean(
     seedCfg?.requireContentFreshness
     && contentFreshness
     && !contentFreshness.fieldPresent
     && seedCfg.contentFreshnessActivation
-    && !ctx.activatedNames?.has(seedCfg.contentFreshnessActivation),
+    && ctx.activationStates?.get(seedCfg.contentFreshnessActivation) === false,
   );
 
   // When the data key is gone the meta count is meaningless; force records=0
@@ -1429,9 +1459,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // NOT activated, so on its own it can never answer "which markets have gone
   // live?". Without this, auditing rollout progress (or telling
   // "activated-then-broke" apart from "never ran") means EXISTS-probing Redis by
-  // hand. ctx.activatedNames already holds the answer at classify time.
+  // hand. ctx.activationStates already holds the answer at classify time.
+  // Reported as "read AND present", so an unreadable marker publishes `false` —
+  // the same soft-on-unknown reading `isRolloutPending` takes above, kept
+  // aligned so this flag can never contradict the status it accompanies.
   if (rolloutPendingUntil != null) {
-    entry.activated = Boolean(ctx.activatedNames && ctx.activatedNames.has(name));
+    entry.activated = ctx.activationStates?.get(name) === true;
   }
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
@@ -2017,18 +2050,23 @@ export default async function handler(req, ctx) {
     if (r?.error) keyMetaErrors.set(allMetaKeys[i], r.error);
     keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
-  // activatedNames: keys whose durable activation marker exists — these
-  // leave ON_DEMAND softening permanently (#4927 re-review P1). A marker
-  // read error degrades to not-activated (soft), never to a false alarm.
-  const activatedNames = new Set();
+  // activationStates: health name -> whether its durable activation marker
+  // exists. THREE-valued on purpose (#6095, matching api/mcp/freshness.ts): an
+  // entry is present ONLY when the EXISTS command itself succeeded. `true` =
+  // read and present (the key has left ON_DEMAND softening permanently, #4927
+  // re-review P1); `false` = read and absent (the producer has demonstrably
+  // never published); a MISSING entry = the read failed, so the state is
+  // unknown. Which way "unknown" resolves is the consumer's call and the two
+  // policies differ deliberately — see classifyKey.
+  const activationStates = new Map();
   for (let i = 0; i < activationEntries.length; i++) {
     const r = results[allDataKeys.length + allMetaKeys.length + i];
-    if (!r?.error && Number(r?.result) === 1) activatedNames.add(activationEntries[i][0]);
+    if (!r?.error) activationStates.set(activationEntries[i][0], Number(r?.result) === 1);
   }
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
 
-  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activatedNames, now };
+  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activationStates, now };
   const checks = {};
   const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0 };
   let totalChecks = 0;

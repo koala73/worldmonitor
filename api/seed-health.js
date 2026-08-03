@@ -411,13 +411,22 @@ async function getSeedBatch(entries) {
   for (const slot of probeSlots) {
     probeMap.set(slot.domain, data[slot.index]?.result ?? null);
   }
+  // Both maps are THREE-valued (#6095, matching api/health.js and
+  // api/mcp/freshness.ts): an entry exists only when the EXISTS command itself
+  // succeeded. Upstash reports per-command failures as `error` inside an
+  // otherwise-successful 200, so a domain missing from these maps means "the
+  // read failed and the state is unknown" — distinguishable from a marker that
+  // was read and came back absent. Each consumer below decides which way
+  // unknown resolves, and they deliberately differ.
   const activatedMap = new Map();
   for (const slot of activationSlots) {
-    activatedMap.set(slot.domain, Number(data[slot.index]?.result) === 1);
+    const entry = data[slot.index];
+    if (entry && !entry.error) activatedMap.set(slot.domain, Number(entry.result) === 1);
   }
   const contentFreshnessActivatedMap = new Map();
   for (const slot of contentFreshnessActivationSlots) {
-    contentFreshnessActivatedMap.set(slot.domain, Number(data[slot.index]?.result) === 1);
+    const entry = data[slot.index];
+    if (entry && !entry.error) contentFreshnessActivatedMap.set(slot.domain, Number(entry.result) === 1);
   }
   return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
@@ -456,12 +465,19 @@ export default async function handler(req) {
     const maxStalenessMs = cfg.intervalMin * 2 * 60 * 1000;
 
     if (!meta) {
-      if (cfg.activationKey && !activatedMap.get(domain)) {
+      if (cfg.activationKey && activatedMap.get(domain) !== true) {
         // Never seeded (durable marker absent) AND operator-activation-
         // gated: healthy pending state, not an alarm (#4927 review P1).
         // Once the marker exists, missing meta falls through to
         // 'missing' — a publisher that ran once and died must alarm
         // (#4927 re-review P1).
+        // #6095 audited this grace and kept it soft on an UNREADABLE marker,
+        // unlike the content-freshness grace below, and mirrors the same call
+        // api/health.js makes for ON_DEMAND: the strict verdict here is
+        // 'missing' (which drives `overall: degraded` and HTTP 503), so
+        // resolving unknown to "activated" would turn a marker blip into a
+        // hard-down page for a domain that may genuinely never have run.
+        // There is no meta to be wrong about — absence is the whole input.
         seeds[domain] = { status: 'pending-activation', fetchedAt: null, recordCount: null, stale: false };
         continue;
       }
@@ -506,11 +522,21 @@ export default async function handler(req) {
       cfg.requireContentFreshness,
       now,
     );
+    // Grace requires POSITIVE proof (#6095): the marker was READ and came back
+    // absent. An unreadable marker is unknown state, not evidence of a producer
+    // that never ran — the same rule api/health.js and api/mcp/freshness.ts
+    // apply, so the three surfaces cannot answer differently for one input
+    // class. The opposite policy from the activation grace above, and for a
+    // reason: this one suppresses an alarm on a domain that HAS meta and IS
+    // running, and its strict verdict is 'coverage_degraded' — "cannot prove
+    // content freshness", which an unread marker makes literally true. A grace
+    // granted on the absence of evidence never expires, so an evicted, renamed,
+    // or unreadable marker would silently disable the alarm for good.
     const contentFreshnessPending = Boolean(
       contentFreshness
       && !contentFreshness.fieldPresent
       && cfg.contentFreshnessActivationKey
-      && !contentFreshnessActivatedMap.get(domain),
+      && contentFreshnessActivatedMap.get(domain) === false,
     );
     const contentFreshnessInvalid = Boolean(
       cfg.requireContentFreshness
