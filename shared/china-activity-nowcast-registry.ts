@@ -209,13 +209,13 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
       id: 'corridor_activity_breadth_change',
       label: 'China corridor activity-breadth change',
       family: 'corridor',
-      decisionRationale: 'Change in the count of directionally observed corridor families can show broadening or narrowing, while a one-time availability count is explicitly rejected as activity.',
+      decisionRationale: 'Change in signed source-derived activity across corridor families can show broadening or narrowing, while directional availability transitions are explicitly excluded as activity.',
       unit: 'family-count change',
       frequency: 'daily',
       transformation: {
         kind: 'signed_value',
         direction: 'same',
-        description: 'Use a measured change versus a prior comparable corridor snapshot; availability alone is not a value.',
+        description: 'Use the change in strengthening-family count minus weakening-family count versus a prior comparable snapshot; availability alone is never a value.',
       },
       lagRule: {
         days: 0,

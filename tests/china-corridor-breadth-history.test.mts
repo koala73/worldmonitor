@@ -4,20 +4,26 @@ import { describe, it } from 'node:test';
 import {
   CHINA_CORRIDOR_DIRECTIONAL_HISTORY_KEY,
   CHINA_CORRIDOR_DIRECTIONAL_HISTORY_LIMIT,
+  CHINA_CORRIDOR_DIRECTIONAL_HISTORY_MAX_PRIOR_AGE_SECONDS,
   CHINA_CORRIDOR_DIRECTIONAL_HISTORY_TTL_SECONDS,
+  compareChinaCorridorDirectionalSnapshots,
   mergeChinaCorridorDirectionalHistory,
   persistChinaCorridorDirectionalSnapshot,
   readChinaCorridorDirectionalHistory,
+  selectPriorChinaCorridorDirectionalSnapshot,
   type ChinaCorridorDirectionalSnapshot,
 } from '../server/worldmonitor/economic/v1/china-corridor-breadth-history';
 
 function snapshot(index: number): ChinaCorridorDirectionalSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     generatedAt: new Date(Date.UTC(2026, 6, 1, index)).toISOString(),
     corridorIds: ['china-yangtze-river-delta'],
     familyKeys: ['china-yangtze-river-delta:port'],
     directionalFamilies: ['port'],
+    directionalSelectorKeys: ['china-yangtze-river-delta:port:port1188'],
+    strengtheningFamilies: ['port'],
+    weakeningFamilies: [],
   };
 }
 
@@ -47,7 +53,13 @@ describe('China corridor breadth snapshot history (#6068)', () => {
       { length: CHINA_CORRIDOR_DIRECTIONAL_HISTORY_LIMIT + 3 },
       (_, index) => snapshot(index),
     );
-    const current = { ...snapshot(23), directionalFamilies: [] };
+    const current = {
+      ...snapshot(23),
+      directionalFamilies: [],
+      directionalSelectorKeys: [],
+      strengtheningFamilies: [],
+      weakeningFamilies: [],
+    };
     const merged = mergeChinaCorridorDirectionalHistory(current, existing);
     assert.equal(merged.length, CHINA_CORRIDOR_DIRECTIONAL_HISTORY_LIMIT);
     assert.deepEqual(merged[0], current);
@@ -87,6 +99,116 @@ describe('China corridor breadth snapshot history (#6068)', () => {
     assert.deepEqual(
       stored.map((item) => item.generatedAt),
       [snapshot(2), snapshot(1), snapshot(0)].map((item) => item.generatedAt),
+    );
+  });
+
+  it('excludes a directional availability transition instead of publishing activity', () => {
+    const prior = snapshot(0);
+    const current = {
+      ...snapshot(1),
+      directionalFamilies: [],
+      strengtheningFamilies: [],
+      weakeningFamilies: [],
+    };
+
+    assert.deepEqual(compareChinaCorridorDirectionalSnapshots(current, prior), {
+      value: null,
+      priorValue: 1,
+      exclusion: 'directional_observations_not_available',
+    });
+
+    const currentWithAnotherFamily = {
+      ...snapshot(1),
+      directionalFamilies: ['port', 'trade'] as ChinaCorridorDirectionalSnapshot['directionalFamilies'],
+      directionalSelectorKeys: [
+        'china-yangtze-river-delta:port:port1188',
+        'china-yangtze-river-delta:trade:ccfi',
+      ],
+      strengtheningFamilies: ['port', 'trade'] as ChinaCorridorDirectionalSnapshot['strengtheningFamilies'],
+      weakeningFamilies: [],
+      familyKeys: [
+        'china-yangtze-river-delta:port',
+        'china-yangtze-river-delta:trade',
+      ],
+    };
+    const priorWithAnotherFamily = {
+      ...snapshot(0),
+      directionalFamilies: ['port', 'trade'] as ChinaCorridorDirectionalSnapshot['directionalFamilies'],
+      directionalSelectorKeys: [
+        'china-yangtze-river-delta:port:port1188',
+        'china-yangtze-river-delta:trade:ccfi',
+      ],
+      strengtheningFamilies: ['port'] as ChinaCorridorDirectionalSnapshot['strengtheningFamilies'],
+      weakeningFamilies: ['trade'] as ChinaCorridorDirectionalSnapshot['weakeningFamilies'],
+      familyKeys: [
+        'china-yangtze-river-delta:port',
+        'china-yangtze-river-delta:trade',
+      ],
+    };
+
+    assert.deepEqual(
+      compareChinaCorridorDirectionalSnapshots(
+        currentWithAnotherFamily,
+        priorWithAnotherFamily,
+      ),
+      {
+        value: 2,
+        priorValue: 0,
+        exclusion: null,
+      },
+    );
+
+    const priorDirectionalDrift = {
+      ...priorWithAnotherFamily,
+      directionalFamilies: ['port'] as ChinaCorridorDirectionalSnapshot['directionalFamilies'],
+      directionalSelectorKeys: ['china-yangtze-river-delta:port:port1188'],
+      strengtheningFamilies: ['port'] as ChinaCorridorDirectionalSnapshot['strengtheningFamilies'],
+      weakeningFamilies: [],
+      familyKeys: [
+        'china-yangtze-river-delta:port',
+        'china-yangtze-river-delta:trade',
+      ],
+    };
+    assert.deepEqual(
+      compareChinaCorridorDirectionalSnapshots(
+        currentWithAnotherFamily,
+        priorDirectionalDrift,
+      ),
+      {
+        value: null,
+        priorValue: 1,
+        exclusion: 'directional_family_set_changed',
+      },
+    );
+  });
+
+  it('rejects priors older than the corridor freshness budget at the boundary', () => {
+    const current = {
+      ...snapshot(0),
+      generatedAt: '2026-07-04T00:00:00.000Z',
+    };
+    const atBoundary = {
+      ...snapshot(1),
+      generatedAt: new Date(
+        Date.parse(current.generatedAt)
+          - CHINA_CORRIDOR_DIRECTIONAL_HISTORY_MAX_PRIOR_AGE_SECONDS * 1000,
+      ).toISOString(),
+    };
+    const beyondBoundary = {
+      ...snapshot(2),
+      generatedAt: new Date(
+        Date.parse(current.generatedAt)
+          - (CHINA_CORRIDOR_DIRECTIONAL_HISTORY_MAX_PRIOR_AGE_SECONDS + 1) * 1000,
+      ).toISOString(),
+    };
+
+    assert.deepEqual(
+      selectPriorChinaCorridorDirectionalSnapshot(current, [beyondBoundary, atBoundary]),
+      atBoundary,
+    );
+    assert.equal(
+      selectPriorChinaCorridorDirectionalSnapshot(current, [beyondBoundary]),
+      null,
     );
   });
 });

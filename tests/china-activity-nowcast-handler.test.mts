@@ -8,6 +8,7 @@ import {
   composeChinaActivityNowcastSnapshot,
   projectChinaActivityNowcastWireResponse,
   resolveChinaActivityNowcastSnapshot,
+  type ChinaActivityNowcastCache,
 } from '../server/worldmonitor/economic/v1/get-china-activity-nowcast';
 import {
   parseChinaActivityNowcastWirePayload,
@@ -72,7 +73,7 @@ function macroSnapshot() {
     sourceDecisions: [],
     releaseEvents: [],
     unavailable: false,
-    schemaVersion: 2,
+    schemaVersion: 3,
     pillars: [],
   };
 }
@@ -174,10 +175,10 @@ function corridorSnapshot(): ChinaCorridorControlTowerResponse {
 
 function priorCorridorDirectionalSnapshot(
   directionalFamilies: ChinaCorridorDirectionalSnapshot['directionalFamilies'] =
-    ['aviation', 'port'],
+    ['aviation', 'port', 'trade'],
 ): ChinaCorridorDirectionalSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     generatedAt: '2026-07-24T12:00:00.000Z',
     corridorIds: ['china-yangtze-river-delta'],
     familyKeys: [
@@ -187,6 +188,16 @@ function priorCorridorDirectionalSnapshot(
       'china-yangtze-river-delta:trade',
     ],
     directionalFamilies,
+    directionalSelectorKeys: [
+      'china-yangtze-river-delta:aviation:aviation:can',
+      'china-yangtze-river-delta:aviation:aviation:hkg',
+      'china-yangtze-river-delta:aviation:aviation:pvg',
+      'china-yangtze-river-delta:port:port:ningbo',
+      'china-yangtze-river-delta:port:port:shanghai',
+      'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+    ],
+    strengtheningFamilies: directionalFamilies.filter((family) => family !== 'trade'),
+    weakeningFamilies: [],
   };
 }
 
@@ -239,10 +250,32 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       generatedAt: EVALUATED_AT,
       priorGeneratedAt: '2026-07-24T12:00:00.000Z',
       directionalFamilies: ['aviation', 'port', 'trade'],
-      priorDirectionalFamilies: ['aviation', 'port'],
+      priorDirectionalFamilies: ['aviation', 'port', 'trade'],
+      directionalSelectorKeys: [
+        'china-yangtze-river-delta:aviation:aviation:can',
+        'china-yangtze-river-delta:aviation:aviation:hkg',
+        'china-yangtze-river-delta:aviation:aviation:pvg',
+        'china-yangtze-river-delta:port:port:ningbo',
+        'china-yangtze-river-delta:port:port:shanghai',
+        'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+      ],
+      priorDirectionalSelectorKeys: [
+        'china-yangtze-river-delta:aviation:aviation:can',
+        'china-yangtze-river-delta:aviation:aviation:hkg',
+        'china-yangtze-river-delta:aviation:aviation:pvg',
+        'china-yangtze-river-delta:port:port:ningbo',
+        'china-yangtze-river-delta:port:port:shanghai',
+        'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+      ],
       directionalFamilyCount: 3,
-      priorDirectionalFamilyCount: 2,
-      aggregation: 'directional_family_count_change',
+      priorDirectionalFamilyCount: 3,
+      strengtheningFamilies: ['aviation', 'port', 'trade'],
+      priorStrengtheningFamilies: ['aviation', 'port'],
+      weakeningFamilies: [],
+      priorWeakeningFamilies: [],
+      activityBreadthValue: 3,
+      priorActivityBreadthValue: 2,
+      aggregation: 'signed_activity_family_count_change',
     });
   });
 
@@ -326,6 +359,54 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal(
       (breadth?.provenance as Record<string, unknown>).exclusion,
       'directional_observations_not_available',
+    );
+  });
+
+  it('excludes a family that loses directional availability while structure stays fixed (#6083)', () => {
+    const unavailableTrade = corridorSnapshot();
+    const trade = unavailableTrade.corridors[0]!.conditions
+      .find((item) => item.family === 'trade')!.sourceSignals[0]!;
+    trade.availability = 'unavailable';
+    trade.transportFreshness = 'stale';
+    trade.contentFreshness = 'stale';
+    trade.metrics = {};
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: unavailableTrade,
+      marketValues: marketValues(),
+      priorCorridorSnapshot: priorCorridorDirectionalSnapshot(['aviation', 'port', 'trade']),
+    }).proxyObservations.find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'directional_family_set_changed',
+    );
+  });
+
+  it('excludes partial selector coverage changes inside a still-directional family (#6083)', () => {
+    const partiallyUnavailable = corridorSnapshot();
+    const port = partiallyUnavailable.corridors[0]!.conditions
+      .find((item) => item.family === 'port')!.sourceSignals[0]!;
+    port.availability = 'unavailable';
+    port.transportFreshness = 'stale';
+    port.contentFreshness = 'stale';
+    port.metrics = {};
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: partiallyUnavailable,
+      marketValues: marketValues(),
+      priorCorridorSnapshot: priorCorridorDirectionalSnapshot(),
+    }).proxyObservations.find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'directional_observation_set_changed',
     );
   });
 
@@ -422,7 +503,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       raw: true,
     }]);
     assert.deepEqual(writes, [{
-        schemaVersion: 1,
+        schemaVersion: 3,
         generatedAt: EVALUATED_AT,
         corridorIds: ['china-yangtze-river-delta'],
         familyKeys: [
@@ -432,6 +513,16 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
           'china-yangtze-river-delta:trade',
         ],
         directionalFamilies: ['aviation', 'port', 'trade'],
+        directionalSelectorKeys: [
+          'china-yangtze-river-delta:aviation:aviation:can',
+          'china-yangtze-river-delta:aviation:aviation:hkg',
+          'china-yangtze-river-delta:aviation:aviation:pvg',
+          'china-yangtze-river-delta:port:port:ningbo',
+          'china-yangtze-river-delta:port:port:shanghai',
+          'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+        ],
+        strengtheningFamilies: ['aviation', 'port', 'trade'],
+        weakeningFamilies: [],
     }]);
     assert.equal(response.state, 'agreement');
     assert.equal(response.confidence.eligibleFamilies, 6);
@@ -561,7 +652,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       assert.equal(ttlSeconds, CHINA_ACTIVITY_NOWCAST_TTL_SECONDS);
       const value = await fetcher();
       cacheFetcherResult = value?.state ?? 'null';
-      return value;
+      return { data: value, source: 'fresh', leader: true };
     });
 
     assert.equal(cacheFetcherResult, 'null');
@@ -569,6 +660,41 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal(response.confidence.level, 'insufficient');
     assert.equal(response.contributions.every((item) =>
       item.direction === null && item.included === false), true);
+  });
+
+  it('does not read or persist corridor history on a negative-cache hit (#6083)', async () => {
+    let cacheCalls = 0;
+    let historyReads = 0;
+    let historyWrites = 0;
+    const dependencies = {
+      getMacro: async () => ({ ...macroSnapshot(), unavailable: true, indicators: [] }) as never,
+      getCorridors: async () => corridorSnapshot(),
+      readMarketBatch: async () => new Map(),
+      readCorridorHistory: async () => {
+        historyReads += 1;
+        return [];
+      },
+      persistCorridorSnapshot: async () => {
+        historyWrites += 1;
+        return true;
+      },
+    };
+    const cache: ChinaActivityNowcastCache =
+      async (_key, _ttlSeconds, fetcher) => {
+        cacheCalls += 1;
+        if (cacheCalls === 1) {
+          return { data: await fetcher(), source: 'fresh', leader: true };
+        }
+        return { data: null, source: 'cache', leader: false };
+      };
+
+    const first = await resolveChinaActivityNowcastSnapshot(EVALUATED_AT, dependencies, cache);
+    const second = await resolveChinaActivityNowcastSnapshot(EVALUATED_AT, dependencies, cache);
+
+    assert.equal(first.state, 'insufficient_data');
+    assert.equal(second.state, 'insufficient_data');
+    assert.equal(historyReads, 1);
+    assert.equal(historyWrites, 1);
   });
 
   it('isolates rejected dependencies and distinguishes partial from total upstream loss', async () => {

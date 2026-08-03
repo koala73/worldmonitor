@@ -18,7 +18,7 @@ import type {
   CorridorSourceSignal,
 } from '../../../../shared/china-corridor-control-towers';
 import { chinaMacroObservationDateMs } from '../../../../shared/china-macro-contract.js';
-import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, getCachedJsonBatch } from '../../../_shared/redis';
 import { CHINA_ACTIVITY_NOWCAST_KEY } from '../../../_shared/cache-keys';
 import { resolveChinaCorridorSnapshot } from '../../supply-chain/v1/get-china-corridor-control-towers';
 import {
@@ -61,7 +61,11 @@ export type ChinaActivityNowcastCache = (
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<ChinaActivityNowcastResponse | null>,
-) => Promise<ChinaActivityNowcastResponse | null>;
+) => Promise<{
+  data: ChinaActivityNowcastResponse | null;
+  source: 'cache' | 'fresh' | 'skipped';
+  leader: boolean;
+}>;
 
 function record(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -343,10 +347,24 @@ function corridorProxyObservations(
       }),
       directionalFamilies: currentCorridorSnapshot?.directionalFamilies ?? [],
       priorDirectionalFamilies: priorCorridorSnapshot?.directionalFamilies ?? [],
+      directionalSelectorKeys: currentCorridorSnapshot?.directionalSelectorKeys ?? [],
+      priorDirectionalSelectorKeys: priorCorridorSnapshot?.directionalSelectorKeys ?? [],
       directionalFamilyCount: currentCorridorSnapshot?.directionalFamilies.length ?? 0,
       priorDirectionalFamilyCount: priorCorridorSnapshot?.directionalFamilies.length ?? 0,
+      strengtheningFamilies: currentCorridorSnapshot?.strengtheningFamilies ?? [],
+      priorStrengtheningFamilies: priorCorridorSnapshot?.strengtheningFamilies ?? [],
+      weakeningFamilies: currentCorridorSnapshot?.weakeningFamilies ?? [],
+      priorWeakeningFamilies: priorCorridorSnapshot?.weakeningFamilies ?? [],
+      activityBreadthValue: currentCorridorSnapshot === null
+        ? null
+        : currentCorridorSnapshot.strengtheningFamilies.length
+          - currentCorridorSnapshot.weakeningFamilies.length,
+      priorActivityBreadthValue: priorCorridorSnapshot === null
+        ? null
+        : priorCorridorSnapshot.strengtheningFamilies.length
+          - priorCorridorSnapshot.weakeningFamilies.length,
       ...(breadth.exclusion === null
-        ? { aggregation: 'directional_family_count_change' }
+        ? { aggregation: 'signed_activity_family_count_change' }
         : { exclusion: breadth.exclusion }),
     },
   });
@@ -522,6 +540,16 @@ export async function composeChinaActivityNowcastSnapshot(
   return response;
 }
 
+function insufficientChinaActivityNowcast(
+  evaluatedAt: string,
+): ChinaActivityNowcastResponse {
+  return evaluateChinaActivityNowcast({
+    evaluatedAt,
+    officialObservations: [],
+    proxyObservations: [],
+  });
+}
+
 const defaultDependencies = (
   evaluatedAt: string,
   ctx: ServerContext,
@@ -534,7 +562,7 @@ const defaultDependencies = (
 });
 
 const defaultCache: ChinaActivityNowcastCache =
-  (key, ttlSeconds, fetcher) => cachedFetchJson(key, ttlSeconds, fetcher);
+  (key, ttlSeconds, fetcher) => cachedFetchJsonWithMeta(key, ttlSeconds, fetcher);
 
 export async function resolveChinaActivityNowcastSnapshot(
   evaluatedAt: string,
@@ -555,12 +583,15 @@ export async function resolveChinaActivityNowcastSnapshot(
         return composed;
       },
     );
-    if (cached !== null) return cached;
+    if (cached.data !== null) return cached.data;
   } catch {
-    // Recompose below so cache transport failures never become a positive state.
+    // Cache transport failures never become a positive state.
   }
   if (insufficientCacheMiss !== null) return insufficientCacheMiss;
-  return composeChinaActivityNowcastSnapshot(evaluatedAt, dependencies);
+  // A null cache result can be a Redis NEG_SENTINEL hit. Do not recompose: that
+  // would reread and rewrite corridor history on every request in the negative
+  // cache window. The empty response is deliberately fail-closed.
+  return insufficientChinaActivityNowcast(evaluatedAt);
 }
 
 export function projectChinaActivityNowcastWireResponse(
@@ -589,11 +620,7 @@ export async function getChinaActivityNowcast(
     );
   } catch {
     return projectChinaActivityNowcastWireResponse(
-      evaluateChinaActivityNowcast({
-        evaluatedAt,
-        officialObservations: [],
-        proxyObservations: [],
-      }),
+      insufficientChinaActivityNowcast(evaluatedAt),
     );
   }
 }

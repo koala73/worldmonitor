@@ -18,15 +18,31 @@ import {
 export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_KEY = SHARED_HISTORY_KEY;
 export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_LIMIT = 16;
 export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_TTL_SECONDS = 14 * 24 * 60 * 60;
+/** Must match the corridor proxy's 72-hour freshness budget. */
+export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_MAX_PRIOR_AGE_SECONDS = 72 * 60 * 60;
+
+const CHINA_CORRIDOR_ACTIVITY_DIRECTIONS = [
+  'strengthening',
+  'weakening',
+  'unchanged',
+] as const;
+
+type ChinaCorridorActivityDirection = (typeof CHINA_CORRIDOR_ACTIVITY_DIRECTIONS)[number];
 
 export interface ChinaCorridorDirectionalSnapshot {
-  schemaVersion: 1;
+  schemaVersion: 3;
   generatedAt: string;
   corridorIds: string[];
   /** Canonical `<corridor-id>:<family>` membership used for comparability. */
   familyKeys: string[];
   /** Families with an explicit, fresh directional observation in this snapshot. */
   directionalFamilies: ChinaCorridorSignalFamily[];
+  /** Stable `<corridor-id>:<family>:<selector-id>` coverage of directional inputs. */
+  directionalSelectorKeys: string[];
+  /** Families whose source-derived activity state is strengthening. */
+  strengtheningFamilies: ChinaCorridorSignalFamily[];
+  /** Families whose source-derived activity state is weakening. */
+  weakeningFamilies: ChinaCorridorSignalFamily[];
 }
 
 export type ChinaCorridorBreadthExclusion =
@@ -34,6 +50,8 @@ export type ChinaCorridorBreadthExclusion =
   | 'corridor_history_read_failed'
   | 'corridor_set_changed'
   | 'corridor_family_set_changed'
+  | 'directional_family_set_changed'
+  | 'directional_observation_set_changed'
   | 'directional_observations_not_available';
 
 export interface ChinaCorridorBreadthComparison {
@@ -91,18 +109,37 @@ function membershipForKey(
   return validFamilies.has(family) ? { corridorId, family } : null;
 }
 
+function directionalSelectorMembershipForKey(
+  key: string,
+  corridorIds: readonly string[],
+): { corridorId: string; family: string } | null {
+  const corridorId = corridorIds.find((candidate) => key.startsWith(`${candidate}:`));
+  if (corridorId === undefined) return null;
+  const remainder = key.slice(corridorId.length + 1);
+  const family = CHINA_CORRIDOR_SIGNAL_FAMILIES.find((candidate) =>
+    remainder.startsWith(`${candidate}:`));
+  if (family === undefined || remainder.slice(family.length + 1).length === 0) return null;
+  return { corridorId, family };
+}
+
 function parseSnapshot(value: unknown): ChinaCorridorDirectionalSnapshot | null {
   const candidate = record(value);
-  if (candidate?.schemaVersion !== 1) return null;
+  if (candidate?.schemaVersion !== 3) return null;
   const generatedAt = canonicalTimestamp(candidate.generatedAt);
   const corridorIds = canonicalStringSet(candidate.corridorIds);
   const familyKeys = canonicalStringSet(candidate.familyKeys);
   const directionalFamilies = canonicalStringSet(candidate.directionalFamilies, true);
+  const directionalSelectorKeys = canonicalStringSet(candidate.directionalSelectorKeys, true);
+  const strengtheningFamilies = canonicalStringSet(candidate.strengtheningFamilies, true);
+  const weakeningFamilies = canonicalStringSet(candidate.weakeningFamilies, true);
   if (
     generatedAt === null
     || corridorIds === null
     || familyKeys === null
     || directionalFamilies === null
+    || directionalSelectorKeys === null
+    || strengtheningFamilies === null
+    || weakeningFamilies === null
   ) return null;
 
   const presentFamilies = new Set<string>();
@@ -115,13 +152,29 @@ function parseSnapshot(value: unknown): ChinaCorridorDirectionalSnapshot | null 
   }
   if (corridorsWithFamilies.size !== corridorIds.length) return null;
   if (directionalFamilies.some((family) => !presentFamilies.has(family))) return null;
+  const directionalSet = new Set(directionalFamilies);
+  const selectorFamilies = new Set<string>();
+  for (const key of directionalSelectorKeys) {
+    const membership = directionalSelectorMembershipForKey(key, corridorIds);
+    if (membership === null || !directionalSet.has(membership.family)) return null;
+    selectorFamilies.add(membership.family);
+  }
+  if (directionalFamilies.some((family) => !selectorFamilies.has(family))) return null;
+  if (
+    strengtheningFamilies.some((family) => !directionalSet.has(family))
+    || weakeningFamilies.some((family) => !directionalSet.has(family))
+    || weakeningFamilies.some((family) => strengtheningFamilies.includes(family))
+  ) return null;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     generatedAt,
     corridorIds,
     familyKeys,
     directionalFamilies: directionalFamilies as ChinaCorridorSignalFamily[],
+    directionalSelectorKeys,
+    strengtheningFamilies: strengtheningFamilies as ChinaCorridorSignalFamily[],
+    weakeningFamilies: weakeningFamilies as ChinaCorridorSignalFamily[],
   };
 }
 
@@ -159,6 +212,72 @@ function hasDirectionalMetric(signal: CorridorSourceSignal): boolean {
   }
 }
 
+function activityDirection(value: number): ChinaCorridorActivityDirection {
+  if (value > 0) return 'strengthening';
+  if (value < 0) return 'weakening';
+  return 'unchanged';
+}
+
+function averageMetric(
+  signals: readonly CorridorSourceSignal[],
+  metric: string,
+): number | null {
+  const values = signals
+    .filter(hasDirectionalMetric)
+    .map((signal) => signal.metrics[metric])
+    .filter((value): value is number => finiteMetric(value));
+  return values.length === 0
+    ? null
+    : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function activityDirectionForFamily(
+  family: ChinaCorridorSignalFamily,
+  signals: readonly CorridorSourceSignal[],
+): ChinaCorridorActivityDirection | null {
+  const directionalSignals = signals.filter(hasDirectionalMetric);
+  if (directionalSignals.length === 0) return null;
+
+  switch (family) {
+    case 'port': {
+      const value = averageMetric(directionalSignals, 'trendDelta');
+      return value === null ? null : activityDirection(value);
+    }
+    case 'aviation': {
+      const normal = directionalSignals.filter((signal) =>
+        signal.metrics.providerStatus === 'normal').length;
+      const disruption = directionalSignals.filter((signal) =>
+        signal.metrics.providerStatus === 'disruption').length;
+      return activityDirection(normal - disruption);
+    }
+    case 'trade': {
+      const value = averageMetric(directionalSignals, 'periodChangePct');
+      return value === null ? null : activityDirection(value);
+    }
+    case 'power_energy': {
+      const value = averageMetric(directionalSignals, 'demandChangePercent');
+      return value === null ? null : activityDirection(value);
+    }
+    case 'hazard':
+    case 'strategic_industry':
+      return null;
+  }
+}
+
+function signalsForFamily(
+  response: ChinaCorridorControlTowerResponse,
+  family: ChinaCorridorSignalFamily,
+): CorridorSourceSignal[] {
+  const byId = new Map<string, CorridorSourceSignal>();
+  for (const corridor of response.corridors) {
+    const condition = corridor.conditions.find((item) => item.family === family);
+    for (const signal of condition?.sourceSignals ?? []) {
+      if (!byId.has(signal.id)) byId.set(signal.id, signal);
+    }
+  }
+  return [...byId.values()];
+}
+
 export function createChinaCorridorDirectionalSnapshot(
   response: ChinaCorridorControlTowerResponse,
 ): ChinaCorridorDirectionalSnapshot | null {
@@ -170,16 +289,30 @@ export function createChinaCorridorDirectionalSnapshot(
     corridor.conditions.map((condition) => `${corridor.id}:${condition.family}`)))].sort();
   if (familyKeys.length === 0) return null;
 
-  const directionalFamilies = [...new Set(response.corridors.flatMap((corridor) =>
-    corridor.conditions.flatMap((condition) =>
-      condition.sourceSignals.some(hasDirectionalMetric) ? [condition.family] : [])))].sort();
+  const directionalFamilies = CHINA_CORRIDOR_SIGNAL_FAMILIES
+    .filter((family) => signalsForFamily(response, family).some(hasDirectionalMetric))
+    .sort();
+  const directionalSelectorKeys = [...new Set(response.corridors.flatMap((corridor) =>
+    corridor.conditions.flatMap((condition) => condition.sourceSignals
+      .filter(hasDirectionalMetric)
+      .map((signal) => `${corridor.id}:${condition.family}:${signal.selectorId}`))))].sort();
+  const strengtheningFamilies: ChinaCorridorSignalFamily[] = [];
+  const weakeningFamilies: ChinaCorridorSignalFamily[] = [];
+  for (const family of directionalFamilies) {
+    const direction = activityDirectionForFamily(family, signalsForFamily(response, family));
+    if (direction === 'strengthening') strengtheningFamilies.push(family);
+    if (direction === 'weakening') weakeningFamilies.push(family);
+  }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     generatedAt,
     corridorIds,
     familyKeys,
     directionalFamilies,
+    directionalSelectorKeys,
+    strengtheningFamilies,
+    weakeningFamilies,
   };
 }
 
@@ -188,11 +321,15 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
     && left.every((value, index) => value === right[index]);
 }
 
+function activityBreadthValue(snapshot: ChinaCorridorDirectionalSnapshot): number {
+  return snapshot.strengtheningFamilies.length - snapshot.weakeningFamilies.length;
+}
+
 /**
- * Snapshots are comparable only when the prior is older and both the reviewed
- * corridor set and every per-corridor family membership are identical. A
- * missing directional set on either side is an exclusion, never an implicit
- * zero; no forward fill or interpolation is performed.
+ * Snapshots are comparable only when the prior is older, the reviewed corridor
+ * and family membership is identical, and the stable directional observation
+ * domain is identical. A missing or changed directional set is an exclusion,
+ * never an implicit zero; no forward fill or interpolation is performed.
  */
 export function compareChinaCorridorDirectionalSnapshots(
   current: ChinaCorridorDirectionalSnapshot,
@@ -232,9 +369,23 @@ export function compareChinaCorridorDirectionalSnapshots(
       exclusion: 'directional_observations_not_available',
     };
   }
+  if (!sameStrings(current.directionalFamilies, prior.directionalFamilies)) {
+    return {
+      value: null,
+      priorValue: activityBreadthValue(prior),
+      exclusion: 'directional_family_set_changed',
+    };
+  }
+  if (!sameStrings(current.directionalSelectorKeys, prior.directionalSelectorKeys)) {
+    return {
+      value: null,
+      priorValue: activityBreadthValue(prior),
+      exclusion: 'directional_observation_set_changed',
+    };
+  }
   return {
-    value: current.directionalFamilies.length - prior.directionalFamilies.length,
-    priorValue: prior.directionalFamilies.length,
+    value: activityBreadthValue(current) - activityBreadthValue(prior),
+    priorValue: activityBreadthValue(prior),
     exclusion: null,
   };
 }
@@ -264,8 +415,13 @@ export function selectPriorChinaCorridorDirectionalSnapshot(
   current: ChinaCorridorDirectionalSnapshot,
   history: readonly ChinaCorridorDirectionalSnapshot[],
 ): ChinaCorridorDirectionalSnapshot | null {
-  return normalizeHistory(history).find((candidate) =>
-    Date.parse(candidate.generatedAt) < Date.parse(current.generatedAt)) ?? null;
+  const currentMs = Date.parse(current.generatedAt);
+  if (!Number.isFinite(currentMs)) return null;
+  const maxAgeMs = CHINA_CORRIDOR_DIRECTIONAL_HISTORY_MAX_PRIOR_AGE_SECONDS * 1000;
+  return normalizeHistory(history).find((candidate) => {
+    const candidateMs = Date.parse(candidate.generatedAt);
+    return candidateMs < currentMs && currentMs - candidateMs <= maxAgeMs;
+  }) ?? null;
 }
 
 export async function readChinaCorridorDirectionalHistory(
