@@ -19,6 +19,7 @@ import { __testing__ } from '../api/health.js';
 import { evaluateFreshness } from '../api/mcp/freshness.ts';
 import { executeTool } from '../api/mcp/dispatch.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const { classifyKey, SEED_META, ACTIVATION_MARKERS } = __testing__;
 
@@ -118,12 +119,14 @@ function portwatchCheck() {
   return check;
 }
 
+// `activated: null` models "the marker was never read, or the read failed" —
+// the third state the map deliberately distinguishes from a read absence.
 function mcpStale(meta, { activated = true } = {}) {
   return evaluateFreshness(
     [portwatchCheck()],
     [meta],
     NOW,
-    new Set(activated ? [ACTIVATION_KEY] : []),
+    activated === null ? new Map() : new Map([[ACTIVATION_KEY, activated]]),
   ).stale;
 }
 
@@ -219,6 +222,41 @@ describe('#6080 — deployment-order grace matches health exactly', () => {
   // Grace covers ABSENCE only. A present block is always evaluated, so the
   // rollout window can never be used to smuggle a broken block past either
   // surface.
+  // Grace is earned by evidence, not by the absence of evidence. If the marker
+  // was never read — an unreadable key, or a caller that supplies no state at
+  // all — MCP must not infer "pre-activation" from its own ignorance, or a
+  // Redis blip (or a future call site that forgets the argument) silently
+  // disables the alarm for good.
+  it('refuses grace when the marker state is unknown rather than read-absent', () => {
+    assert.equal(
+      mcpStale(NO_BLOCK_META, { activated: null }),
+      true,
+      'an unread marker must fail closed, not grant an unbounded grace',
+    );
+  });
+
+  it('refuses grace when no activation state is supplied at all', () => {
+    assert.equal(
+      evaluateFreshness([portwatchCheck()], [NO_BLOCK_META], NOW).stale,
+      true,
+      'a caller that cannot supply activation state gets the fail-closed answer',
+    );
+  });
+
+  // The registry test above asserts every content contract names a marker.
+  // This is the runtime half of that pair: a contract WITHOUT one can never be
+  // graced, so the two guards together make "grace" unreachable except through
+  // a marker that was actually read.
+  it('never graces a content contract that declares no activation marker', () => {
+    const { contentFreshnessActivationKey: _none, ...unmarked } = portwatchCheck();
+
+    assert.equal(
+      evaluateFreshness([unmarked], [NO_BLOCK_META], NOW, new Map()).stale,
+      true,
+      'no marker to read means no evidence of pre-activation',
+    );
+  });
+
   it('evaluates a malformed block even before activation', () => {
     // The producer narrows its declared scope to CN, dropping HK — an attempt
     // to shrink the alarm set from the side that is being alarmed on.
@@ -257,12 +295,32 @@ describe('#6080 — the mirror claim in cache-tools.ts is enforced', () => {
   });
 
   // Acceptance: "confirm no other tool's `stale` flips as a side effect".
-  it('is the only check that opts into the content dimension', () => {
-    const optedIn = CACHE_TOOLS.flatMap((tool) => (tool._freshnessChecks ?? [])
+  // Walks the WHOLE registry, not just CACHE_TOOLS: the RPC and analysis tools
+  // build their own FreshnessCheck arrays and call evaluateFreshness without
+  // activation state, so a content contract declared there would be evaluated
+  // with no marker to read.
+  it('is the only check in the whole registry that opts into the content dimension', () => {
+    const optedIn = TOOL_REGISTRY.flatMap((tool) => (tool._freshnessChecks ?? [])
       .filter((check) => check.requireContentFreshness)
       .map((check) => `${tool.name}:${check.key}`));
 
     assert.deepEqual(optedIn, [`get_chokepoint_status:${PORTWATCH_META_KEY}`]);
+  });
+
+  // Belt and braces for the same hole: a check that opts in without naming its
+  // activation marker can never be graced, so it would alarm for a full cron
+  // interval after any deploy that precedes the producer.
+  it('pairs the content contract with an activation marker', () => {
+    for (const tool of TOOL_REGISTRY) {
+      for (const check of tool._freshnessChecks ?? []) {
+        if (!check.requireContentFreshness) continue;
+        assert.equal(
+          typeof check.contentFreshnessActivationKey,
+          'string',
+          `${tool.name}:${check.key} declares a content contract with no activation marker`,
+        );
+      }
+    }
   });
 });
 
@@ -272,15 +330,31 @@ describe('#6080 — the mirror claim in cache-tools.ts is enforced', () => {
 describe('#6080 — executeTool reads the activation marker', () => {
   const CHOKEPOINT = CACHE_TOOLS.find((tool) => tool.name === 'get_chokepoint_status');
 
-  async function runWithRedis(stored, { throwOnKey = null } = {}) {
+  // Speaks both Upstash shapes executeTool uses: `GET /get/<key>` for payloads
+  // and metas, and `POST /pipeline` carrying EXISTS commands for the activation
+  // markers. `markers` is the set of marker keys that exist in Redis.
+  async function runWithRedis(
+    stored,
+    { markers = [], failActivationRead = false, activationEntryError = false } = {},
+  ) {
     const originalFetch = globalThis.fetch;
     const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
     const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-    globalThis.fetch = async (url) => {
+    const present = new Set(markers);
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/pipeline')) {
+        if (failActivationRead) throw new TypeError('fetch failed');
+        const commands = JSON.parse(init.body);
+        return new Response(
+          JSON.stringify(commands.map(([, key]) => (activationEntryError
+            ? { error: 'ERR max request size exceeded' }
+            : { result: present.has(key) ? 1 : 0 }))),
+          { status: 200 },
+        );
+      }
       const key = decodeURIComponent(String(url).split('/get/')[1] ?? '');
-      if (throwOnKey !== null && key === throwOnKey) throw new TypeError('fetch failed');
       const value = Object.hasOwn(stored, key) ? stored[key] : null;
       return new Response(JSON.stringify({ result: value }), { status: 200 });
     };
@@ -346,60 +420,101 @@ describe('#6080 — executeTool reads the activation marker', () => {
     };
   }
 
+  const blockLessMeta = () => JSON.stringify({
+    fetchedAt: Date.now() - 60_000,
+    recordCount: 174,
+  });
+
   it('flags stale content end-to-end through the tool', async () => {
-    const result = await runWithRedis({
-      ...baseKeys(liveMeta({ criticalAgeHours: 98 })),
-      [ACTIVATION_KEY]: '1',
-    });
+    const result = await runWithRedis(
+      baseKeys(liveMeta({ criticalAgeHours: 98 })),
+      { markers: [ACTIVATION_KEY] },
+    );
     assert.equal(result.stale, true);
   });
 
   it('stays fresh end-to-end when critical content is inside budget', async () => {
-    const result = await runWithRedis({
-      ...baseKeys(liveMeta({ criticalAgeHours: 6 })),
-      [ACTIVATION_KEY]: '1',
-    });
+    const result = await runWithRedis(
+      baseKeys(liveMeta({ criticalAgeHours: 6 })),
+      { markers: [ACTIVATION_KEY] },
+    );
     assert.equal(result.stale, false);
   });
 
   // Proves the marker is actually READ, not just accepted as a parameter: the
   // identical block-less meta answers differently either side of the marker.
   it('lets the marker decide a block-less run, proving the read is wired', async () => {
-    const blockLess = JSON.stringify({ fetchedAt: Date.now() - 60_000, recordCount: 174 });
+    const preActivation = await runWithRedis(baseKeys(blockLessMeta()));
+    assert.equal(preActivation.stale, false, 'marker read and absent — still in grace');
 
-    const preActivation = await runWithRedis(baseKeys(blockLess));
-    assert.equal(preActivation.stale, false, 'no marker in Redis — still in grace');
-
-    const postActivation = await runWithRedis({
-      ...baseKeys(blockLess),
-      [ACTIVATION_KEY]: '1',
-    });
+    const postActivation = await runWithRedis(
+      baseKeys(blockLessMeta()),
+      { markers: [ACTIVATION_KEY] },
+    );
     assert.equal(postActivation.stale, true, 'marker present — the missing block is a fault');
   });
 
-  // The marker is a freshness hint, not an input the tool depends on. Health
-  // degrades an errored marker read to not-activated rather than to a false
-  // alarm (api/health.js: "if (!r?.error && ...)"); MCP must do the same, and
-  // must not convert a Redis blip on that one key into a tool-execution
-  // failure that returns no data at all.
-  it('degrades an unreadable marker to not-activated instead of failing the call', async () => {
+  // The marker read must not be able to take the tool down: it is a freshness
+  // hint, and the payload reads all succeeded.
+  it('still returns the payload when the marker read fails', async () => {
     const result = await runWithRedis(
-      { ...baseKeys(liveMeta({ criticalAgeHours: 6 })), [ACTIVATION_KEY]: '1' },
-      { throwOnKey: ACTIVATION_KEY },
+      baseKeys(liveMeta({ criticalAgeHours: 6 })),
+      { markers: [ACTIVATION_KEY], failActivationRead: true },
     );
 
-    assert.equal(result.stale, false, 'a readable, in-budget block still answers fresh');
     assert.ok(result.data, 'the tool must still return its payload');
+    assert.equal(result.stale, false, 'a readable, in-budget block still answers fresh');
   });
 
-  // ...but an unreadable marker must not become a way to launder a stale
-  // block past the check: the block itself is still evaluated.
   it('still flags stale content when the marker read fails', async () => {
     const result = await runWithRedis(
-      { ...baseKeys(liveMeta({ criticalAgeHours: 98 })), [ACTIVATION_KEY]: '1' },
-      { throwOnKey: ACTIVATION_KEY },
+      baseKeys(liveMeta({ criticalAgeHours: 98 })),
+      { markers: [ACTIVATION_KEY], failActivationRead: true },
     );
 
     assert.equal(result.stale, true, 'grace only ever covers an ABSENT block');
+  });
+
+  // The fail-open both review models found: post-activation, a block-less meta
+  // is a producer regression, and a blip on the marker key must not be able to
+  // relabel it as deploy lag.
+  it('does not let a failed marker read launder a missing block into grace', async () => {
+    const result = await runWithRedis(
+      baseKeys(blockLessMeta()),
+      { markers: [ACTIVATION_KEY], failActivationRead: true },
+    );
+
+    assert.equal(
+      result.stale,
+      true,
+      'unknown activation state must fail closed, not re-enter an expired grace',
+    );
+  });
+
+  // Upstash reports per-command failures inside a 200 pipeline response, so a
+  // transport-level success can still carry an unusable entry. That entry is
+  // not evidence of absence and must not be read as one.
+  it('does not treat a per-command pipeline error as a read absence', async () => {
+    const result = await runWithRedis(
+      baseKeys(blockLessMeta()),
+      { markers: [ACTIVATION_KEY], activationEntryError: true },
+    );
+
+    assert.equal(
+      result.stale,
+      true,
+      'an errored EXISTS entry is unknown state, not a marker that is absent',
+    );
+  });
+
+  // EXISTS answers presence, so the marker's stored VALUE is irrelevant — the
+  // property that keeps MCP agreeing with health, whose read is also EXISTS.
+  it('keys grace on marker presence, not on the value the writer stored', async () => {
+    const result = await runWithRedis(
+      { ...baseKeys(blockLessMeta()), [ACTIVATION_KEY]: '2026-08-03T10:00:00Z' },
+      { markers: [ACTIVATION_KEY] },
+    );
+
+    assert.equal(result.stale, true, 'a non-JSON marker value still reads as activated');
   });
 });

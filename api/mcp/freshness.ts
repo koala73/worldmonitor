@@ -11,17 +11,19 @@ function parseFiniteRecordCount(raw: unknown): number | null {
   return null;
 }
 
-// `activatedKeys` holds the content-freshness activation markers that were
-// found present at read time (see FreshnessCheck.contentFreshnessActivationKey).
-// Callers that declare no content contract can omit it. Omitting it while a
-// check DOES declare one is the safe direction: the check reads as
-// pre-activation, so an absent block is graced — but a present-and-broken block
-// is still evaluated and still fails closed.
+// `activationStates` maps a content-freshness activation key (see
+// FreshnessCheck.contentFreshnessActivationKey) to whether that marker exists.
+// It is deliberately THREE-valued: an entry is present only when the marker was
+// actually read. `false` means "read, and the producer has never published" —
+// the only state that earns deployment-order grace. A missing entry means
+// unknown (never read, or the read failed) and earns nothing, so a caller that
+// cannot supply the state, or a Redis blip on the marker key, fails closed
+// instead of granting a grace that never expires.
 export function evaluateFreshness(
   checks: FreshnessCheck[],
   metas: unknown[],
   now = Date.now(),
-  activatedKeys?: ReadonlySet<string>,
+  activationStates?: ReadonlyMap<string, boolean>,
 ): { cached_at: string | null; stale: boolean } {
   let stale = false;
   let oldestFetchedAt = Number.POSITIVE_INFINITY;
@@ -61,11 +63,14 @@ export function evaluateFreshness(
         check.requireContentFreshness,
         now,
       );
+      // Grace requires positive proof the producer has never published: the
+      // marker was read AND came back absent. Anything else — unread, errored,
+      // or present — evaluates the block normally.
       const pendingActivation = Boolean(
         assessment
         && !assessment.fieldPresent
         && check.contentFreshnessActivationKey
-        && !activatedKeys?.has(check.contentFreshnessActivationKey),
+        && activationStates?.get(check.contentFreshnessActivationKey) === false,
       );
       if (!pendingActivation) {
         stale ||= !assessment?.usable || assessment.contentStale;

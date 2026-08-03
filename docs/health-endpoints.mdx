@@ -276,9 +276,14 @@ too. `get_chokepoint_status` declares the identical pinned scope, budget, and
 activation marker, so an MCP consumer cannot read `stale: false` for a key this
 endpoint calls `STALE_CONTENT`. Both surfaces re-age the observation at read
 time and share one assessor (`api/_content-freshness.js`), and the parity is
-asserted field-for-field against this config rather than left to a comment. An
-MCP caller still sees a single boolean — `stale` does not say *which* dimension
-failed, so `/api/health` remains the surface that names the stale country.
+asserted field-for-field against this config rather than left to a comment.
+Both also read the activation marker as an `EXISTS`, so its stored value can
+never make the two disagree. MCP additionally treats an *unreadable* marker as
+unknown rather than absent — grace is granted only when the marker was read and
+found missing, so a Redis blip cannot silently extend a rollout window that has
+already closed. An MCP caller still sees a single boolean: `stale` does not say
+*which* dimension failed, so `/api/health` remains the surface that names the
+stale country.
 
 Named entities are operator-only. `contentFreshness` and the
 `chinaDecisionSignals` group breakdown are stripped from the anonymous

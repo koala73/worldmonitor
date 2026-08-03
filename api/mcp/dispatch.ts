@@ -1,4 +1,4 @@
-import { readJsonFromUpstash } from '../_upstash-json.js';
+import { readJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
@@ -46,31 +46,46 @@ export async function executeTool(
     : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
-  // for this read, so it is one extra key on get_chokepoint_status and zero on
-  // every other tool. The marker is written with `SET <key> '1'` and no TTL, so
-  // a present marker parses to 1 and an absent one to null.
+  // for this read, so it is one extra command on get_chokepoint_status and
+  // none at all on every other tool.
   const activationKeys = [...new Set(
     freshnessChecks
       .map((check) => check.contentFreshnessActivationKey)
       .filter((key): key is string => typeof key === 'string' && key !== ''),
   )];
-  // A marker read error degrades to not-activated (soft), never to a false
-  // alarm — the same handling api/health.js applies to its own activation
-  // pipeline ("if (!r?.error && Number(r?.result) === 1)"). Without the catch
-  // an unreadable marker would reject inside the Promise.all below and turn a
-  // freshness hint into a hard tool-execution failure.
-  const activationReads = activationKeys.map(
-    (key) => readJsonFromUpstash(key).catch(() => null),
-  );
-  const [results, metas, activationValues] = await Promise.all([
+  // EXISTS, not GET — the marker's meaning is presence, and both health
+  // surfaces read it that way (api/health.js: `Number(r?.result) === 1`;
+  // api/seed-health.js likewise). Reading it as JSON instead would make MCP
+  // disagree with them for any marker value that is not valid JSON, which is
+  // the same class of cross-surface divergence #6080 exists to close.
+  // redisPipeline never rejects — it returns null on any failure — so this
+  // cannot turn a freshness hint into a hard tool-execution failure.
+  const activationRead = activationKeys.length > 0
+    ? redisPipeline(activationKeys.map((key) => ['EXISTS', key]))
+    : Promise.resolve([]);
+  const [results, metas, activationResults] = await Promise.all([
     Promise.all(reads),
     Promise.all(metaReads),
-    Promise.all(activationReads),
+    activationRead,
   ]);
-  const activatedKeys = new Set(
-    activationKeys.filter((_key, i) => activationValues[i] != null),
-  );
-  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas, Date.now(), activatedKeys);
+  // Three-valued on purpose: only a marker we actually read and found ABSENT
+  // earns the deployment-order grace. An unreadable marker stays out of the
+  // map, so evaluateFreshness evaluates the block and fails closed rather than
+  // granting a grace that would never expire.
+  const activationStates = new Map<string, boolean>();
+  if (activationKeys.length > 0) {
+    if (!Array.isArray(activationResults)) {
+      captureSilentError(new Error('mcp activation marker read failed'), {
+        tags: { route: 'api/mcp', step: 'activation-marker', tool: tool.name },
+      });
+    } else {
+      activationKeys.forEach((key, i) => {
+        const entry = activationResults[i] as { result?: unknown; error?: unknown } | undefined;
+        if (entry && !entry.error) activationStates.set(key, Number(entry.result) === 1);
+      });
+    }
+  }
+  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas, Date.now(), activationStates);
 
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient
