@@ -9,7 +9,17 @@
 // year-over-year comparison is published as an activity-bearing change.
 export const DEMAND_CHANGE_BASIS = 'year_over_year';
 
+// The downstream nowcast consumes this as a percentage, while the component
+// totals remain explicitly labelled in kbd for auditability.
+export const DEMAND_CHANGE_UNIT = '% change';
+
 export const DEMAND_CHANGE_LOOKBACK_MONTHS = 12;
+
+// A national direction needs a real basket rather than one surviving product,
+// and the bounded product catalogue currently has five secondary products.
+export const MIN_DEMAND_CHANGE_PRODUCTS = 3;
+export const MAX_DEMAND_CHANGE_PRODUCTS = 5;
+export const MAX_DEMAND_CHANGE_PERCENT = 50;
 
 /** Canonical parse of a JODI `YYYY-MM` observation period into a month ordinal. */
 export function monthIndex(month) {

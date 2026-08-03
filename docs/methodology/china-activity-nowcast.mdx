@@ -53,9 +53,12 @@ contract publishes the required directional observation.
 
 ## Alignment and missingness
 
-The default comparison window is 90 days. The method selects the latest
-point-in-window observation for each registry entry after its documented lag
-has elapsed.
+The standalone evaluator defaults to a 90-day comparison window. The live API
+uses a 210-day window so the monthly energy series can honor its documented
+210-day freshness budget after the demand period is dated truthfully; the
+individual freshness budget still applies to every family. The method selects
+the latest point-in-window observation for each registry entry after its
+documented lag has elapsed.
 
 Forward-filling and interpolation are disabled for every family. The method
 does not fall back to an older observation when the newest point is stale,

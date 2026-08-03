@@ -35,7 +35,7 @@ function makeMix(overrides = {}) {
 
 function makeJodiOil(overrides = {}) {
   return {
-    dataMonth: '2026-02',
+    dataMonth: '2026-04',
     crude: { importsKbd: 950 },
     gasoline: { demandKbd: 120, importsKbd: 10 },
     diesel: { demandKbd: 310, importsKbd: 50 },
@@ -215,7 +215,7 @@ describe('buildSpineEntry — full data', () => {
       ieaStocks: makeIeaStocks(),
     });
     assert.equal(spine.sources.mixYear, 2024);
-    assert.equal(spine.sources.jodiOilMonth, '2026-02');
+    assert.equal(spine.sources.jodiOilMonth, '2026-04');
     assert.equal(spine.sources.jodiGasMonth, '2026-02');
     assert.equal(spine.sources.ieaStocksMonth, '2026-02');
   });
@@ -303,8 +303,8 @@ describe('buildDemandChangeEntry', () => {
       priorObservationPeriod: '2025-04',
       periodEnd: '2026-04-30T23:59:59.999Z',
       priorPeriodEnd: '2025-04-30T23:59:59.999Z',
-      products: ['diesel', 'gasoline'],
-      unit: 'kbd',
+      products: ['diesel', 'gasoline', 'jet'],
+      unit: '% change',
       currentDemandKbd: 1100,
       priorDemandKbd: 1000,
       percentChange: 10,
@@ -320,8 +320,11 @@ describe('buildDemandChangeEntry', () => {
       priorObservationPeriod: '2025-04',
       periodEnd: '2026-04-30T23:59:59.999Z',
       priorPeriodEnd: '2025-04-30T23:59:59.999Z',
-      unit: 'kbd',
-      productCount: 2,
+      unit: '% change',
+      products: ['diesel', 'gasoline', 'jet'],
+      productCount: 3,
+      currentDemandKbd: 1100,
+      priorDemandKbd: 1000,
       percentChange: 10,
     });
   });
@@ -355,6 +358,11 @@ describe('buildDemandChangeEntry', () => {
       makeDemandChange({ priorObservationPeriod: '2025' }),
       makeDemandChange({ products: [] }),
       makeDemandChange({ products: 'diesel' }),
+      makeDemandChange({ unit: 'kbd' }),
+      makeDemandChange({ currentDemandKbd: 900, priorDemandKbd: 1000 }),
+      makeDemandChange({ products: ['diesel', 'gasoline'] }),
+      makeDemandChange({ products: ['diesel', 'gasoline', 'jet', 'fuelOil', 'lpg', 'extra'] }),
+      makeDemandChange({ periodEnd: '2026-03-31T23:59:59.999Z' }),
       // The basis label must agree with the arithmetic: a payload claiming
       // year-over-year while spanning some other distance is not it.
       makeDemandChange({
@@ -376,6 +384,14 @@ describe('buildDemandChangeEntry', () => {
         `should reject ${JSON.stringify(demandChange)}`,
       );
     }
+    assert.equal(
+      buildDemandChangeEntry(makeJodiOil({
+        dataMonth: '2026-03',
+        demandChange: makeDemandChange(),
+      })),
+      null,
+      'a change from a different data vintage must not reach the spine',
+    );
   });
 
   it('reports the change through coverage without letting coverage stand in for it', () => {

@@ -8,6 +8,7 @@ import {
   parseObsValue,
   extractCountryData,
   buildAllCountries,
+  assessOilDemandChange,
   computeOilDemandChange,
   jodiSourceYears,
   validateCoverage,
@@ -355,7 +356,7 @@ describe('computeOilDemandChange', () => {
     assert.equal(change.periodEnd, '2026-04-30T23:59:59.999Z');
     assert.equal(change.priorPeriodEnd, '2025-04-30T23:59:59.999Z');
     assert.deepEqual(change.products, ['diesel', 'gasoline', 'jet']);
-    assert.equal(change.unit, 'kbd');
+    assert.equal(change.unit, '% change');
     assert.equal(change.currentDemandKbd, 1200);
     assert.equal(change.priorDemandKbd, 1200);
     assert.equal(change.percentChange, 0);
@@ -509,6 +510,23 @@ describe('computeOilDemandChange', () => {
       ], 'CN', '2026-04').percentChange,
       -40,
     );
+  });
+
+  it('explains why a refused comparison was not published', () => {
+    const assessment = assessOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 3000, GASOLINE: 3000, JETKERO: 3000 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+    ], 'CN', '2026-04');
+    assert.equal(assessment.change, null);
+    assert.match(assessment.reason, /exceeds ±50%/);
+
+    const missingPrior = assessOilDemandChange(
+      demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+      'CN',
+      '2026-04',
+    );
+    assert.equal(missingPrior.change, null);
+    assert.match(missingPrior.reason, /baskets differ/);
   });
 
   it('ignores other countries and non-KBD rows', () => {

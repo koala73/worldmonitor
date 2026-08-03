@@ -19,7 +19,10 @@ import {
 } from './shared/jodi-content-age.mjs';
 import {
   DEMAND_CHANGE_BASIS,
+  DEMAND_CHANGE_UNIT,
   DEMAND_CHANGE_LOOKBACK_MONTHS,
+  MAX_DEMAND_CHANGE_PERCENT,
+  MIN_DEMAND_CHANGE_PRODUCTS,
   monthPeriodEnd,
   shiftMonth,
 } from './shared/jodi-demand-change.mjs';
@@ -36,17 +39,6 @@ const LOCK_DOMAIN = 'energy:jodi-oil';
 const LOCK_TTL_MS = 10 * 60 * 1000;
 const MIN_VALID_COUNTRIES = 40;
 const ANOMALY_DEMAND_KBD = 10_000;
-// A national demand direction must rest on a real basket. A single surviving
-// product (the rest suppressed as assessment code 3) is that product's move,
-// not the country's, so it is refused rather than published.
-const MIN_DEMAND_CHANGE_PRODUCTS = 3;
-// China's year-over-year oil-product demand moves in single digits; even a
-// pandemic-scale collapse stayed well inside this. Anything beyond it is a unit
-// or reporting glitch that the per-product ANOMALY_DEMAND_KBD cap let through,
-// and its sign would be consumed directly as an activity direction. Bounded on
-// both sides: a ratio can never fall past -100%, so an upper-only cap would
-// leave every fabricated collapse unguarded.
-const MAX_DEMAND_CHANGE_PERCENT = 50;
 
 const JODI_BASE = 'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/';
 
@@ -148,42 +140,78 @@ function monthProductDemand(monthRows, iso2) {
  * change is not observable — an absent change is never a zero.
  */
 export function computeOilDemandChange(allRows, iso2, dataMonth) {
+  return assessOilDemandChange(allRows, iso2, dataMonth).change;
+}
+
+/**
+ * Explain a refused demand comparison for the operator log without changing
+ * the public null-on-refusal data contract.
+ */
+export function assessOilDemandChange(allRows, iso2, dataMonth) {
   return oilDemandChangeFromMonths(rowsByMonth(allRows, iso2), iso2, dataMonth);
+}
+
+function refusedDemandChange(reason) {
+  return { change: null, reason };
 }
 
 function oilDemandChangeFromMonths(byMonth, iso2, dataMonth) {
   const priorMonth = shiftMonth(dataMonth, -DEMAND_CHANGE_LOOKBACK_MONTHS);
-  if (priorMonth === null) return null;
+  if (priorMonth === null) {
+    return refusedDemandChange(`invalid comparison period ${dataMonth ?? 'missing'}`);
+  }
 
   const current = monthProductDemand(byMonth.get(dataMonth) ?? [], iso2);
   const prior = monthProductDemand(byMonth.get(priorMonth) ?? [], iso2);
-  if (current.size < MIN_DEMAND_CHANGE_PRODUCTS) return null;
+  if (current.size < MIN_DEMAND_CHANGE_PRODUCTS) {
+    return refusedDemandChange(
+      `current basket has ${current.size} comparable product(s); need >=${MIN_DEMAND_CHANGE_PRODUCTS}`,
+    );
+  }
 
   const products = [...current.keys()].sort();
-  if (prior.size !== current.size || products.some(product => !prior.has(product))) return null;
+  if (prior.size !== current.size || products.some(product => !prior.has(product))) {
+    return refusedDemandChange(
+      `current/prior comparable baskets differ (${products.length} vs ${prior.size} product(s))`,
+    );
+  }
 
   const currentDemandKbd = products.reduce((sum, product) => sum + current.get(product), 0);
   const priorDemandKbd = products.reduce((sum, product) => sum + prior.get(product), 0);
-  if (!Number.isFinite(currentDemandKbd) || !(priorDemandKbd > 0)) return null;
+  if (!Number.isFinite(currentDemandKbd) || currentDemandKbd < 0 || !(priorDemandKbd > 0)) {
+    return refusedDemandChange('current demand is non-finite/negative or prior demand is non-positive');
+  }
 
   const percentChange = ((currentDemandKbd - priorDemandKbd) / priorDemandKbd) * 100;
-  if (Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT) return null;
+  if (!Number.isFinite(percentChange)) {
+    return refusedDemandChange('percentage change is non-finite');
+  }
+  if (Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT) {
+    return refusedDemandChange(
+      `absolute percentage change ${percentChange.toFixed(2)} exceeds ±${MAX_DEMAND_CHANGE_PERCENT}%`,
+    );
+  }
 
   const periodEnd = monthPeriodEnd(dataMonth);
   const priorPeriodEnd = monthPeriodEnd(priorMonth);
-  if (periodEnd === null || priorPeriodEnd === null) return null;
+  if (periodEnd === null || priorPeriodEnd === null) {
+    return refusedDemandChange(`invalid period end for ${dataMonth} or ${priorMonth}`);
+  }
 
   return {
-    basis: DEMAND_CHANGE_BASIS,
-    observationPeriod: dataMonth,
-    priorObservationPeriod: priorMonth,
-    periodEnd,
-    priorPeriodEnd,
-    products,
-    unit: 'kbd',
-    currentDemandKbd,
-    priorDemandKbd,
-    percentChange,
+    reason: null,
+    change: {
+      basis: DEMAND_CHANGE_BASIS,
+      observationPeriod: dataMonth,
+      priorObservationPeriod: priorMonth,
+      periodEnd,
+      priorPeriodEnd,
+      products,
+      unit: DEMAND_CHANGE_UNIT,
+      currentDemandKbd,
+      priorDemandKbd,
+      percentChange,
+    },
   };
 }
 
@@ -258,7 +286,7 @@ export function extractCountryData(allRows, iso2) {
       importsKbd:        crudeImportsKbd,
       exportsKbd:        crudeExportsKbd,
     },
-    demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth),
+    demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
     seededAt,
   };
 }
@@ -401,7 +429,7 @@ async function main() {
   }
 
   try {
-    console.log('  Fetching JODI CSV data (4 files)...');
+    console.log('  Fetching JODI CSV data (5 files)...');
     const allRows = await withRetry(fetchAllRows, 2, 3000);
 
     if (!allRows.length) {
@@ -422,11 +450,19 @@ async function main() {
         chinaCoverage,
       });
       console.error(`  COVERAGE GATE FAILED: ${reason}`);
-      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
-      const prevCountryKeys = Array.isArray(prevIso2List)
-        ? prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`)
-        : countries.map(c => `${COUNTRY_KEY_PREFIX}${c.iso2}`);
-      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], JODI_TTL);
+      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
+      if (Array.isArray(prevIso2List) && prevIso2List.length > 0) {
+        const prevCountryKeys = prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`);
+        const preserved = await extendExistingTtl(
+          [CANONICAL_KEY, META_KEY, ...prevCountryKeys],
+          JODI_TTL,
+        );
+        if (!preserved) {
+          throw new Error('Coverage gate could not verify preservation of the last-good snapshot');
+        }
+      } else {
+        console.warn('  COVERAGE GATE: no last-good snapshot exists to preserve');
+      }
       return;
     }
 
@@ -435,12 +471,15 @@ async function main() {
     // published one. Say which it is, once, for the only country the activity
     // nowcast consumes.
     const china = countries.find(c => c.iso2 === 'CN');
-    console.log(china?.demandChange
-      ? `  China demand change: ${china.demandChange.percentChange.toFixed(2)}% `
-        + `${china.demandChange.observationPeriod} vs ${china.demandChange.priorObservationPeriod} `
-        + `(${china.demandChange.products.length} products)`
+    const chinaDemandAssessment = china?.demandChange
+      ? { change: china.demandChange, reason: null }
+      : assessOilDemandChange(allRows, 'CN', chinaCoverage.dataMonth);
+    console.log(chinaDemandAssessment.change
+      ? `  China demand change: ${chinaDemandAssessment.change.percentChange.toFixed(2)}% `
+        + `${chinaDemandAssessment.change.observationPeriod} vs ${chinaDemandAssessment.change.priorObservationPeriod} `
+        + `(${chinaDemandAssessment.change.products.length} products)`
       : `  China demand change: not published for dataMonth=${chinaCoverage.dataMonth ?? 'missing'} `
-        + `(no comparable ${DEMAND_CHANGE_BASIS} basket)`);
+        + `(${chinaDemandAssessment.reason ?? 'no comparable basket'})`);
 
     const iso2List = countries.map(c => c.iso2);
     const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length, chinaDataMonth: chinaCoverage.dataMonth };

@@ -124,6 +124,23 @@ describe('China corridor source adapters (#5578)', () => {
     assert.equal(signal?.contentFreshness, 'current');
   });
 
+  it('does not treat a preserved spine snapshot as fresh after a failed refresh', () => {
+    const signal = buildChinaCorridorSourceBundle({
+      energySpine: {
+        updatedAt: '2026-07-25T11:00:00.000Z',
+        sources: { jodiOilMonth: '2026-04' },
+        coverage: { hasJodiOil: true },
+      },
+      energySpineMeta: {
+        fetchedAt: Date.parse('2026-07-25T11:59:00.000Z'),
+        status: 'error',
+      },
+    }, ASSESSED_AT).families.power_energy.signals[0];
+
+    assert.equal(signal?.transportFreshness, 'stale');
+    assert.equal(signal?.retrievalTime, null);
+  });
+
   it('preserves energy source precision and rejects malformed numeric timestamps', () => {
     const annual = buildChinaCorridorSourceBundle({
       energySpine: {
@@ -162,8 +179,11 @@ describe('China corridor source adapters (#5578)', () => {
           priorObservationPeriod: '2025-04',
           periodEnd: '2026-04-30T23:59:59.999Z',
           priorPeriodEnd: '2025-04-30T23:59:59.999Z',
-          unit: 'kbd',
+          unit: '% change',
+          products: '["diesel","fuelOil","gasoline","jet"]',
           productCount: 4,
+          currentDemandKbd: 103.4,
+          priorDemandKbd: 100,
           percentChange: 3.4,
         },
       },
@@ -172,12 +192,18 @@ describe('China corridor source adapters (#5578)', () => {
 
     assert.equal(published?.metrics.demandChangePercent, 3.4);
     assert.equal(published?.metrics.demandChangeBasis, 'year_over_year');
-    assert.equal(published?.metrics.demandChangeUnit, 'kbd');
+    assert.equal(published?.metrics.demandChangeUnit, '% change');
     assert.equal(published?.metrics.demandChangeCurrentMonth, '2026-04');
     assert.equal(published?.metrics.demandChangePriorMonth, '2025-04');
     assert.equal(published?.metrics.demandChangePeriodEnd, '2026-04-30T23:59:59.999Z');
     assert.equal(published?.metrics.demandChangePriorPeriodEnd, '2025-04-30T23:59:59.999Z');
     assert.equal(published?.metrics.demandChangeProductCount, 4);
+    assert.equal(
+      published?.metrics.demandChangeProducts,
+      '["diesel","fuelOil","gasoline","jet"]',
+    );
+    assert.equal(published?.metrics.demandChangeCurrentDemandKbd, 103.4);
+    assert.equal(published?.metrics.demandChangePriorDemandKbd, 100);
     assert.equal(published?.publisher.id, 'publisher:worldmonitor-energy-spine');
     assert.equal(published?.retrievalTime, '2026-07-25T11:30:00.000Z');
   });
@@ -199,8 +225,11 @@ describe('China corridor source adapters (#5578)', () => {
       priorObservationPeriod: '2025-04',
       periodEnd: '2026-04-30T23:59:59.999Z',
       priorPeriodEnd: '2025-04-30T23:59:59.999Z',
-      unit: 'kbd',
+      unit: '% change',
+      products: '["diesel","fuelOil","gasoline","jet"]',
       productCount: 4,
+      currentDemandKbd: 103.4,
+      priorDemandKbd: 100,
       percentChange: 3.4,
     };
 
@@ -220,6 +249,13 @@ describe('China corridor source adapters (#5578)', () => {
       // A prior period at or after the current one is not a comparison.
       { ...published, priorPeriodEnd: '2026-05-31T23:59:59.999Z' },
       { ...published, priorPeriodEnd: published.periodEnd },
+      { ...published, unit: 'kbd' },
+      { ...published, productCount: 2 },
+      { ...published, products: '["diesel","gasoline"]' },
+      { ...published, currentDemandKbd: 104 },
+      { ...published, percentChange: 51 },
+      { ...published, periodEnd: '2026-04-29T23:59:59.999Z' },
+      { ...published, observationPeriod: '2026-03' },
       // A seasonal comparison wearing the reviewed name is not the reviewed
       // comparison, whatever the label says.
       { ...published, basis: 'month_over_month' },

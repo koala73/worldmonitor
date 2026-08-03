@@ -165,14 +165,14 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
         window: 'latest_point_in_window',
         forwardFill: false,
         interpolate: false,
-        description: 'Use a released monthly change inside the window; do not fill absent months.',
+        description: 'Use the latest released monthly change inside the live 210-day window; do not fill absent months.',
       },
       freshnessBudgetMinutes: 210 * 24 * 60,
       source: {
         publisherId: 'publisher:worldmonitor-energy-spine',
         publisherName: 'WorldMonitor energy spine',
         url: 'https://www.worldmonitor.app/docs/data-sources',
-        provenance: 'Consumed only when the reviewed #5578 energy condition exposes a directional observed metric.',
+        provenance: 'Consumed only when the reviewed #5578 energy condition exposes a directional observed metric. The value sums TOTDEMO for the available GASOLINE, GASDIES, JETKERO, RESFUEL, and LPG products; at least three matching products are required and absolute changes above 50% are refused.',
       },
     }),
     proxyDefinition({

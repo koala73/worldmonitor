@@ -27,6 +27,11 @@ import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 export const CHINA_ACTIVITY_NOWCAST_CACHE_KEY =
   CHINA_ACTIVITY_NOWCAST_KEY;
 export const CHINA_ACTIVITY_NOWCAST_TTL_SECONDS = 15 * 60;
+// JODI China data can be reported several months after the observation month.
+// The energy registry's 210-day freshness budget is the honest live comparison
+// window; the generic evaluator keeps its narrower 90-day default for callers
+// that do not opt into this source-specific production contract.
+export const CHINA_ACTIVITY_NOWCAST_COMPARISON_WINDOW_DAYS = 210;
 export const CHINA_ACTIVITY_NOWCAST_MARKET_KEYS = Object.freeze({
   commodities: 'market:commodities-bootstrap:v1',
   commoditiesMeta: 'seed-meta:market:commodities',
@@ -205,19 +210,53 @@ function metricString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
+function metricStringArray(value: unknown): string[] | null {
+  const serialized = metricString(value);
+  if (serialized === null) return null;
+  try {
+    const parsed = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) return null;
+    const values = [...new Set(parsed
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim()))].sort();
+    return values.length === parsed.length ? values : null;
+  } catch {
+    return null;
+  }
+}
+
 // The reviewed comparison, pinned independently of the Railway seeder that
 // writes it (the runtimes share no code). `tests/china-energy-demand-change-
 // parity.test.mts` asserts the literals stay equal across the boundary.
 const ENERGY_DEMAND_CHANGE_BASIS = 'year_over_year';
+const ENERGY_DEMAND_CHANGE_UNIT = '% change';
+const ENERGY_DEMAND_CHANGE_LOOKBACK_MONTHS = 12;
+const MIN_DEMAND_CHANGE_PRODUCTS = 3;
+const MAX_DEMAND_CHANGE_PRODUCTS = 5;
+const MAX_DEMAND_CHANGE_PERCENT = 50;
+
+function observationMonthIndex(value: string | null): number | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value ?? '');
+  return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : null;
+}
+
+function monthPeriodEnd(value: string | null): string | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value ?? '');
+  if (!match) return null;
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]), 1) - 1).toISOString();
+}
 
 interface PublishedEnergyDemandChange {
   percentChange: number;
   basis: string;
-  unit: string | null;
+  unit: string;
   observationPeriod: string;
-  priorObservationPeriod: string | null;
-  priorPeriodEnd: string | null;
-  productCount: number | null;
+  priorObservationPeriod: string;
+  priorPeriodEnd: string;
+  products: string[];
+  productCount: number;
+  currentDemandKbd: number;
+  priorDemandKbd: number;
   signalId: string;
   times: ObservationTimes;
 }
@@ -240,26 +279,74 @@ function publishedEnergyDemandChange(
   for (const signal of signals) {
     const percentChange = finiteNumber(signal.metrics[keys.percent]);
     const observationPeriod = metricString(signal.metrics[keys.currentMonth]);
+    const priorObservationPeriod = metricString(signal.metrics[keys.priorMonth]);
     const periodEnd = timestamp(metricString(signal.metrics[keys.changePeriodEnd]));
+    const priorPeriodEnd = timestamp(metricString(signal.metrics[keys.changePriorPeriodEnd]));
+    const currentPeriodIndex = observationMonthIndex(observationPeriod);
+    const priorPeriodIndex = observationMonthIndex(priorObservationPeriod);
+    const expectedPeriodEnd = monthPeriodEnd(observationPeriod);
+    const expectedPriorPeriodEnd = monthPeriodEnd(priorObservationPeriod);
+    const products = metricStringArray(signal.metrics[keys.products]);
+    const productCount = finiteNumber(signal.metrics[keys.productCount]);
+    const currentDemandKbd = finiteNumber(signal.metrics[keys.currentDemandKbd]);
+    const priorDemandKbd = finiteNumber(signal.metrics[keys.priorDemandKbd]);
+    const expectedPercentChange = currentDemandKbd !== null
+      && priorDemandKbd !== null
+      && priorDemandKbd > 0
+      ? ((currentDemandKbd - priorDemandKbd) / priorDemandKbd) * 100
+      : null;
+    const percentTolerance = expectedPercentChange === null
+      ? null
+      : 1e-9 * Math.max(1, Math.abs(expectedPercentChange), Math.abs(percentChange ?? 0));
+    const arithmeticMatches = percentChange !== null
+      && expectedPercentChange !== null
+      && percentTolerance !== null
+      && Math.abs(expectedPercentChange - percentChange) <= percentTolerance;
     // Pin the reviewed basis here too: the corridor payload crosses a cache
     // this runtime does not own, and a seasonal comparison must not be read as
     // an activity direction just because it arrived in the right field.
     if (
       percentChange === null
       || signal.metrics[keys.basis] !== ENERGY_DEMAND_CHANGE_BASIS
+      || signal.metrics[keys.unit] !== ENERGY_DEMAND_CHANGE_UNIT
       || observationPeriod === null
+      || priorObservationPeriod === null
       || periodEnd === null
+      || priorPeriodEnd === null
+      || currentPeriodIndex === null
+      || priorPeriodIndex === null
+      || currentPeriodIndex - priorPeriodIndex !== ENERGY_DEMAND_CHANGE_LOOKBACK_MONTHS
+      || expectedPeriodEnd === null
+      || expectedPriorPeriodEnd === null
+      || Date.parse(periodEnd) !== Date.parse(expectedPeriodEnd)
+      || Date.parse(priorPeriodEnd) !== Date.parse(expectedPriorPeriodEnd)
+      || products === null
+      || productCount === null
+      || !Number.isInteger(productCount)
+      || productCount < MIN_DEMAND_CHANGE_PRODUCTS
+      || productCount > MAX_DEMAND_CHANGE_PRODUCTS
+      || products.length !== productCount
+      || currentDemandKbd === null
+      || currentDemandKbd < 0
+      || priorDemandKbd === null
+      || priorDemandKbd <= 0
+      || !arithmeticMatches
+      || Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT
+      || Date.parse(priorPeriodEnd) >= Date.parse(periodEnd)
     ) continue;
     const times = energyObservationTimes(signal, periodEnd, evaluatedAtMs);
     if (times === null) continue;
     return {
       percentChange,
       basis: ENERGY_DEMAND_CHANGE_BASIS,
-      unit: metricString(signal.metrics[keys.unit]),
+      unit: ENERGY_DEMAND_CHANGE_UNIT,
       observationPeriod,
-      priorObservationPeriod: metricString(signal.metrics[keys.priorMonth]),
-      priorPeriodEnd: timestamp(metricString(signal.metrics[keys.changePriorPeriodEnd])),
-      productCount: finiteNumber(signal.metrics[keys.productCount]),
+      priorObservationPeriod,
+      priorPeriodEnd,
+      products,
+      productCount,
+      currentDemandKbd,
+      priorDemandKbd,
       signalId: signal.id,
       times,
     };
@@ -434,7 +521,10 @@ function corridorProxyObservations(
           priorObservationPeriod: energyChange.priorObservationPeriod,
           periodEnd: energyChange.times.observedAt,
           priorPeriodEnd: energyChange.priorPeriodEnd,
+          products: energyChange.products,
           productCount: energyChange.productCount,
+          currentDemandKbd: energyChange.currentDemandKbd,
+          priorDemandKbd: energyChange.priorDemandKbd,
           directionalSignalId: energyChange.signalId,
         }),
     }));
@@ -588,6 +678,7 @@ export async function composeChinaActivityNowcastSnapshot(
   });
   return evaluateChinaActivityNowcast({
     evaluatedAt,
+    comparisonWindowDays: CHINA_ACTIVITY_NOWCAST_COMPARISON_WINDOW_DAYS,
     officialObservations: inputs.officialObservations,
     proxyObservations: inputs.proxyObservations,
   });

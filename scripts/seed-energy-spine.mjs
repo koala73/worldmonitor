@@ -13,9 +13,14 @@ import {
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import {
   DEMAND_CHANGE_BASIS,
+  DEMAND_CHANGE_UNIT,
   DEMAND_CHANGE_LOOKBACK_MONTHS,
+  MAX_DEMAND_CHANGE_PERCENT,
+  MAX_DEMAND_CHANGE_PRODUCTS,
+  MIN_DEMAND_CHANGE_PRODUCTS,
   monthIndex,
   monthPeriodEnd,
+  shiftMonth,
 } from './shared/jodi-demand-change.mjs';
 
 loadEnvFile(import.meta.url);
@@ -224,21 +229,53 @@ export function buildDemandChangeEntry(jodiOil) {
   if (change == null || typeof change !== 'object' || Array.isArray(change)) return null;
   if (change.basis !== DEMAND_CHANGE_BASIS) return null;
 
+  const dataMonth = observationMonth(jodiOil?.dataMonth);
   const percentChange = finiteNumber(change.percentChange);
   const periodEnd = isoInstant(change.periodEnd);
   const priorPeriodEnd = isoInstant(change.priorPeriodEnd);
   const observationPeriod = observationMonth(change.observationPeriod);
   const priorObservationPeriod = observationMonth(change.priorObservationPeriod);
   const products = Array.isArray(change.products)
-    ? change.products.filter(product => typeof product === 'string' && product.length > 0)
+    ? [...new Set(change.products
+      .filter(product => typeof product === 'string' && product.trim().length > 0)
+      .map(product => product.trim()))].sort()
     : [];
+  const currentDemandKbd = finiteNumber(change.currentDemandKbd);
+  const priorDemandKbd = finiteNumber(change.priorDemandKbd);
+  const expectedPriorObservationPeriod = dataMonth === null
+    ? null
+    : shiftMonth(dataMonth, -DEMAND_CHANGE_LOOKBACK_MONTHS);
+  const expectedPeriodEnd = monthPeriodEnd(observationPeriod);
+  const expectedPriorPeriodEnd = monthPeriodEnd(priorObservationPeriod);
+  const expectedPercentChange = currentDemandKbd !== null && priorDemandKbd !== null && priorDemandKbd > 0
+    ? ((currentDemandKbd - priorDemandKbd) / priorDemandKbd) * 100
+    : null;
+  const percentTolerance = expectedPercentChange === null
+    ? null
+    : 1e-9 * Math.max(1, Math.abs(expectedPercentChange), Math.abs(percentChange ?? 0));
   if (
-    percentChange === null
+    dataMonth === null
+    || percentChange === null
+    || change.unit !== DEMAND_CHANGE_UNIT
+    || currentDemandKbd === null
+    || currentDemandKbd < 0
+    || priorDemandKbd === null
+    || priorDemandKbd <= 0
     || periodEnd === null
     || priorPeriodEnd === null
     || observationPeriod === null
     || priorObservationPeriod === null
-    || products.length === 0
+    || observationPeriod !== dataMonth
+    || priorObservationPeriod !== expectedPriorObservationPeriod
+    || expectedPeriodEnd === null
+    || expectedPriorPeriodEnd === null
+    || Date.parse(periodEnd) !== Date.parse(expectedPeriodEnd)
+    || Date.parse(priorPeriodEnd) !== Date.parse(expectedPriorPeriodEnd)
+    || products.length < MIN_DEMAND_CHANGE_PRODUCTS
+    || products.length > MAX_DEMAND_CHANGE_PRODUCTS
+    || expectedPercentChange === null
+    || Math.abs(expectedPercentChange - percentChange) > percentTolerance
+    || Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT
     || Date.parse(priorPeriodEnd) >= Date.parse(periodEnd)
     // Corroborate the basis label with the arithmetic: a payload claiming
     // year-over-year while spanning some other distance is not the reviewed
@@ -253,8 +290,11 @@ export function buildDemandChangeEntry(jodiOil) {
     priorObservationPeriod,
     periodEnd,
     priorPeriodEnd,
-    unit: 'kbd',
+    unit: DEMAND_CHANGE_UNIT,
+    products,
     productCount: products.length,
+    currentDemandKbd,
+    priorDemandKbd,
     percentChange,
   };
 }

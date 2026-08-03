@@ -90,11 +90,20 @@ describe('China energy-demand change crosses every runtime seam (#6067)', () => 
     // Seeder -> spine
     assert.equal(spine.coverage.hasDemandChange, true);
     assert.equal(spine.demandChange.basis, DEMAND_CHANGE_BASIS);
+    assert.equal(spine.demandChange.unit, '% change');
+    assert.deepEqual(spine.demandChange.products, ['diesel', 'fuelOil', 'gasoline', 'jet', 'lpg']);
+    assert.equal(spine.demandChange.currentDemandKbd, 1100);
+    assert.equal(spine.demandChange.priorDemandKbd, 1000);
     assert.equal(Math.round(spine.demandChange.percentChange * 1e6) / 1e6, 10);
     assert.equal(spine.demandPeriodEnd, '2026-04-30T23:59:59.999Z');
 
     // Spine -> corridor condition
     assert.equal(signal?.metrics[CHINA_ENERGY_DEMAND_METRIC_KEYS.percent], 10);
+    assert.equal(signal?.metrics[CHINA_ENERGY_DEMAND_METRIC_KEYS.unit], '% change');
+    assert.equal(
+      signal?.metrics[CHINA_ENERGY_DEMAND_METRIC_KEYS.products],
+      '["diesel","fuelOil","gasoline","jet","lpg"]',
+    );
     assert.equal(
       signal?.metrics[CHINA_ENERGY_DEMAND_METRIC_KEYS.changePeriodEnd],
       '2026-04-30T23:59:59.999Z',

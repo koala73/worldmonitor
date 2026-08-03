@@ -86,7 +86,9 @@ function ageMinutes(timestamp: string, assessedAt: string): number {
 }
 
 function metaTimestamp(meta: unknown): string | null {
-  return isoTimestamp(record(meta)?.fetchedAt);
+  const metadata = record(meta);
+  if (metadata?.status !== undefined && metadata.status !== 'ok') return null;
+  return isoTimestamp(metadata?.fetchedAt);
 }
 
 function transportFreshness(
@@ -94,6 +96,8 @@ function transportFreshness(
   maxAgeMinutes: number,
   assessedAt: string,
 ): CorridorSourceSignal['transportFreshness'] {
+  const status = record(meta)?.status;
+  if (status !== undefined && status !== 'ok') return 'stale';
   const fetchedAt = metaTimestamp(meta);
   if (fetchedAt === null) return 'missing';
   return ageMinutes(fetchedAt, assessedAt) > maxAgeMinutes ? 'stale' : 'fresh';
@@ -501,11 +505,43 @@ function latestEnergySourceObservation(
 // two runtimes share no code, and `tests/china-energy-demand-change-parity`
 // asserts the literals stay equal.
 const ENERGY_DEMAND_CHANGE_BASIS = 'year_over_year';
+const ENERGY_DEMAND_CHANGE_UNIT = '% change';
 const ENERGY_DEMAND_CHANGE_LOOKBACK_MONTHS = 12;
+const MIN_DEMAND_CHANGE_PRODUCTS = 3;
+const MAX_DEMAND_CHANGE_PRODUCTS = 5;
+const MAX_DEMAND_CHANGE_PERCENT = 50;
 
 function observationMonthIndex(value: unknown): number | null {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(stringValue(value) ?? '');
   return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : null;
+}
+
+function monthPeriodEnd(value: unknown): string | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(stringValue(value) ?? '');
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  return new Date(Date.UTC(year, month, 1) - 1).toISOString();
+}
+
+function jsonStringArray(value: unknown): string[] | null {
+  let parsed: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(parsed)) return null;
+  try {
+    const values = [...new Set(parsed
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim()))].sort();
+    return values.length === parsed.length ? values : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -519,32 +555,75 @@ function observationMonthIndex(value: unknown): number | null {
  */
 function energyDemandChangeMetrics(
   value: unknown,
+  sourceDataMonth: unknown,
 ): [string, string | number | boolean | null][] {
   const change = record(value);
   const percentChange = numberValue(change?.percentChange);
   const observationPeriod = observationMonthIndex(change?.observationPeriod);
   const priorObservationPeriod = observationMonthIndex(change?.priorObservationPeriod);
+  const observationPeriodLabel = stringValue(change?.observationPeriod);
+  const priorObservationPeriodLabel = stringValue(change?.priorObservationPeriod);
   const periodEnd = isoTimestamp(stringValue(change?.periodEnd));
   const priorPeriodEnd = isoTimestamp(stringValue(change?.priorPeriodEnd));
+  const expectedPeriodEnd = monthPeriodEnd(observationPeriodLabel);
+  const expectedPriorPeriodEnd = monthPeriodEnd(priorObservationPeriodLabel);
+  const sourceDataMonthLabel = stringValue(sourceDataMonth);
+  const sourceDataMonthIndex = observationMonthIndex(sourceDataMonthLabel);
+  const products = jsonStringArray(change?.products);
+  const productCount = numberValue(change?.productCount);
+  const currentDemandKbd = numberValue(change?.currentDemandKbd);
+  const priorDemandKbd = numberValue(change?.priorDemandKbd);
+  const expectedPercentChange = currentDemandKbd !== null && priorDemandKbd !== null && priorDemandKbd > 0
+    ? ((currentDemandKbd - priorDemandKbd) / priorDemandKbd) * 100
+    : null;
+  const percentTolerance = expectedPercentChange === null
+    ? null
+    : 1e-9 * Math.max(1, Math.abs(expectedPercentChange), Math.abs(percentChange ?? 0));
+  const arithmeticMatches = percentChange !== null
+    && expectedPercentChange !== null
+    && percentTolerance !== null
+    && Math.abs(expectedPercentChange - percentChange) <= percentTolerance;
   if (
     percentChange === null
     || change?.basis !== ENERGY_DEMAND_CHANGE_BASIS
+    || change?.unit !== ENERGY_DEMAND_CHANGE_UNIT
     || observationPeriod === null
     || priorObservationPeriod === null
     || observationPeriod - priorObservationPeriod !== ENERGY_DEMAND_CHANGE_LOOKBACK_MONTHS
+    || sourceDataMonthIndex === null
+    || observationPeriod !== sourceDataMonthIndex
     || periodEnd === null
     || priorPeriodEnd === null
+    || expectedPeriodEnd === null
+    || expectedPriorPeriodEnd === null
+    || Date.parse(periodEnd) !== Date.parse(expectedPeriodEnd)
+    || Date.parse(priorPeriodEnd) !== Date.parse(expectedPriorPeriodEnd)
+    || products === null
+    || productCount === null
+    || !Number.isInteger(productCount)
+    || productCount < MIN_DEMAND_CHANGE_PRODUCTS
+    || productCount > MAX_DEMAND_CHANGE_PRODUCTS
+    || products.length !== productCount
+    || currentDemandKbd === null
+    || currentDemandKbd < 0
+    || priorDemandKbd === null
+    || priorDemandKbd <= 0
+    || !arithmeticMatches
+    || Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT
     || Date.parse(priorPeriodEnd) >= Date.parse(periodEnd)
   ) return [];
   return [
     [CHINA_ENERGY_DEMAND_METRIC_KEYS.percent, percentChange],
     [CHINA_ENERGY_DEMAND_METRIC_KEYS.basis, ENERGY_DEMAND_CHANGE_BASIS],
-    [CHINA_ENERGY_DEMAND_METRIC_KEYS.unit, stringValue(change?.unit)],
-    [CHINA_ENERGY_DEMAND_METRIC_KEYS.currentMonth, stringValue(change?.observationPeriod)],
-    [CHINA_ENERGY_DEMAND_METRIC_KEYS.priorMonth, stringValue(change?.priorObservationPeriod)],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.unit, ENERGY_DEMAND_CHANGE_UNIT],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.currentMonth, observationPeriodLabel],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.priorMonth, priorObservationPeriodLabel],
     [CHINA_ENERGY_DEMAND_METRIC_KEYS.changePeriodEnd, periodEnd],
     [CHINA_ENERGY_DEMAND_METRIC_KEYS.changePriorPeriodEnd, priorPeriodEnd],
-    [CHINA_ENERGY_DEMAND_METRIC_KEYS.productCount, numberValue(change?.productCount)],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.productCount, productCount],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.products, JSON.stringify(products)],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.currentDemandKbd, currentDemandKbd],
+    [CHINA_ENERGY_DEMAND_METRIC_KEYS.priorDemandKbd, priorDemandKbd],
   ];
 }
 
@@ -578,7 +657,10 @@ function adaptEnergy(
   const coverage = record(payload.coverage);
   // The observed demand change carries its own period end so a consumer never
   // has to date it from the family's latest source timestamp.
-  const demandChangeMetrics = energyDemandChangeMetrics(payload.demandChange);
+  const demandChangeMetrics = energyDemandChangeMetrics(
+    payload.demandChange,
+    record(payload.sources)?.jodiOilMonth,
+  );
   return family('china-energy-spine', [sourceSignal({
     id: `signal:energy-spine:CN:${observedAt ?? 'timestamp-unknown'}`,
     family: 'power_energy',

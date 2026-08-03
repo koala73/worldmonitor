@@ -112,6 +112,9 @@ export const CHINA_ENERGY_DEMAND_METRIC_KEYS = Object.freeze({
   changePeriodEnd: 'demandChangePeriodEnd',
   changePriorPeriodEnd: 'demandChangePriorPeriodEnd',
   productCount: 'demandChangeProductCount',
+  products: 'demandChangeProducts',
+  currentDemandKbd: 'demandChangeCurrentDemandKbd',
+  priorDemandKbd: 'demandChangePriorDemandKbd',
 } as const);
 
 export interface CorridorFamilySource {

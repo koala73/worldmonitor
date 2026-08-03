@@ -155,11 +155,15 @@ function publishedDemandChangeMetrics(
     demandPeriodEnd: '2026-04-30T23:59:59.999Z',
     demandChangePercent: 3.4,
     demandChangeBasis: 'year_over_year',
+    demandChangeUnit: '% change',
     demandChangeCurrentMonth: '2026-04',
     demandChangePriorMonth: '2025-04',
     demandChangePeriodEnd: '2026-04-30T23:59:59.999Z',
     demandChangePriorPeriodEnd: '2025-04-30T23:59:59.999Z',
     demandChangeProductCount: 4,
+    demandChangeProducts: '["diesel","fuelOil","gasoline","jet"]',
+    demandChangeCurrentDemandKbd: 103.4,
+    demandChangePriorDemandKbd: 100,
     ...overrides,
   };
   return Object.fromEntries(
@@ -182,7 +186,7 @@ function coverageOnlyMetrics(
 }
 
 function corridorSnapshot(
-  energy: CorridorSourceSignal = energySignal(publishedDemandChangeMetrics()),
+  energy: CorridorSourceSignal,
 ): ChinaCorridorControlTowerResponse {
   return {
     generatedAt: EVALUATED_AT,
@@ -273,7 +277,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     const inputs = buildChinaActivityNowcastInputs({
       evaluatedAt: EVALUATED_AT,
       macro: macroSnapshot() as never,
-      corridors: corridorSnapshot(),
+      corridors: corridorSnapshot(energySignal(publishedDemandChangeMetrics())),
       marketValues: marketValues(),
     });
 
@@ -327,10 +331,17 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal(provenance.priorPeriodEnd, '2025-04-30T23:59:59.999Z');
     assert.equal(provenance.observationPeriod, '2026-04');
     assert.equal(provenance.priorObservationPeriod, '2025-04');
+    assert.equal(provenance.demandChangeUnit, '% change');
+    assert.deepEqual(provenance.products, ['diesel', 'fuelOil', 'gasoline', 'jet']);
+    assert.equal(provenance.currentDemandKbd, 103.4);
+    assert.equal(provenance.priorDemandKbd, 100);
     assert.equal(provenance.exclusion, undefined);
 
     const weakening = energyContribution(corridorSnapshot(energySignal(
-      publishedDemandChangeMetrics({ demandChangePercent: -2.1 }),
+      publishedDemandChangeMetrics({
+        demandChangePercent: -2.1,
+        demandChangeCurrentDemandKbd: 97.9,
+      }),
     )));
     assert.equal(weakening?.included, true);
     assert.equal(weakening?.direction, 'weakening');
@@ -345,6 +356,33 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       (coverageOnly?.provenance as Record<string, unknown>).exclusion,
       'directional_demand_change_not_published',
     );
+  });
+
+  it('keeps the three-family floor honest when energy coverage has no direction (#6067)', () => {
+    const directionalSeries = new Set([
+      'portwatch_tanker_calls_trend',
+      'ccfi_freight_rate_change',
+      'china_energy_demand_change',
+    ]);
+    const selectFloor = (corridors: ChinaCorridorControlTowerResponse) => {
+      const inputs = energyInputs(corridors);
+      return {
+        officialObservations: inputs.officialObservations,
+        proxyObservations: inputs.proxyObservations
+          .filter((item) => directionalSeries.has(item.seriesId)),
+      };
+    };
+
+    const coverageOnly = selectFloor(corridorSnapshot(energySignal(coverageOnlyMetrics())));
+    const withheld = evaluateChinaActivityNowcast({ evaluatedAt: EVALUATED_AT, ...coverageOnly });
+    assert.equal(withheld.state, 'insufficient_data');
+    assert.equal(withheld.confidence.eligibleFamilies, 2);
+    assert.match(withheld.confidence.reason, /3 non-flat proxy families/i);
+
+    const published = selectFloor(corridorSnapshot(energySignal(publishedDemandChangeMetrics())));
+    const restored = evaluateChinaActivityNowcast({ evaluatedAt: EVALUATED_AT, ...published });
+    assert.equal(restored.state, 'agreement');
+    assert.equal(restored.confidence.eligibleFamilies, 3);
   });
 
   it('keeps lag_not_elapsed and missing_directional_value distinguishable (#6067)', () => {
@@ -447,6 +485,32 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       {
         label: 'non-numeric percentage',
         signal: energySignal(publishedDemandChangeMetrics({ demandChangePercent: 'up' })),
+      },
+      {
+        label: 'volume unit on percentage',
+        signal: energySignal(publishedDemandChangeMetrics({ demandChangeUnit: 'kbd' })),
+      },
+      {
+        label: 'too-small product basket',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangeProductCount: 2,
+          demandChangeProducts: '["diesel","gasoline"]',
+        })),
+      },
+      {
+        label: 'implausible percentage',
+        signal: energySignal(publishedDemandChangeMetrics({ demandChangePercent: 51 })),
+      },
+      {
+        label: 'arithmetic mismatch',
+        signal: energySignal(publishedDemandChangeMetrics({ demandChangeCurrentDemandKbd: 104 })),
+      },
+      {
+        label: 'period label/timestamp mismatch',
+        signal: energySignal(publishedDemandChangeMetrics({
+          demandChangeCurrentMonth: '2026-03',
+          demandChangePeriodEnd: '2026-04-30T23:59:59.999Z',
+        })),
       },
       {
         label: 'unparseable period end',
@@ -563,7 +627,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     const reads: Array<{ keys: string[]; raw: boolean | undefined }> = [];
     const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
       getMacro: async () => macroSnapshot() as never,
-      getCorridors: async () => corridorSnapshot(),
+      getCorridors: async () => corridorSnapshot(energySignal(publishedDemandChangeMetrics())),
       readMarketBatch: async (keys, raw) => {
         reads.push({ keys, raw });
         return marketValues();
@@ -575,6 +639,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       raw: true,
     }]);
     assert.equal(response.state, 'agreement');
+    assert.equal(response.comparisonWindow.days, 210);
     // Neither freight (#6066) nor energy (#6067) is structurally missing any
     // more; only the corridor breadth change still has no comparable prior.
     assert.equal(response.confidence.eligibleFamilies, 6);
@@ -603,8 +668,27 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     );
   });
 
+  it('keeps a delayed monthly energy observation inside the live source window', async () => {
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => corridorSnapshot(energySignal(publishedDemandChangeMetrics({
+        demandChangeCurrentMonth: '2026-01',
+        demandChangePriorMonth: '2025-01',
+        demandChangePeriodEnd: '2026-01-31T23:59:59.999Z',
+        demandChangePriorPeriodEnd: '2025-01-31T23:59:59.999Z',
+      }))),
+      readMarketBatch: async () => marketValues(),
+    });
+
+    assert.equal(response.comparisonWindow.days, 210);
+    assert.equal(
+      response.contributions.find((item) => item.seriesId === 'china_energy_demand_change')?.included,
+      true,
+    );
+  });
+
   it('excludes freight with its exact reason when only a CCFI level is published (#6066)', () => {
-    const levelOnly = corridorSnapshot();
+    const levelOnly = corridorSnapshot(energySignal(coverageOnlyMetrics()));
     const trade = levelOnly.corridors[0]!.conditions
       .find((item) => item.family === 'trade')!;
     trade.sourceSignals[0]!.metrics = { currentValue: 1072.16, unit: 'index' };
@@ -626,7 +710,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
   });
 
   it('names an unavailable CCFI signal instead of claiming a missing prior (#6066)', () => {
-    const unavailable = corridorSnapshot();
+    const unavailable = corridorSnapshot(energySignal(coverageOnlyMetrics()));
     const signal = unavailable.corridors[0]!.conditions
       .find((item) => item.family === 'trade')!.sourceSignals[0]!;
     signal.availability = 'unavailable';
@@ -667,7 +751,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     ];
 
     for (const [label, metrics] of mutations) {
-      const mutated = corridorSnapshot();
+      const mutated = corridorSnapshot(energySignal(coverageOnlyMetrics()));
       mutated.corridors[0]!.conditions
         .find((item) => item.family === 'trade')!.sourceSignals[0]!.metrics = metrics;
       const inputs = buildChinaActivityNowcastInputs({
@@ -688,7 +772,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
 
     // The guard is not vacuous: an explicit published zero is a real unchanged
     // week and must survive it.
-    const flat = corridorSnapshot();
+    const flat = corridorSnapshot(energySignal(coverageOnlyMetrics()));
     flat.corridors[0]!.conditions
       .find((item) => item.family === 'trade')!.sourceSignals[0]!.metrics = {
         currentValue: 1072.16,
@@ -756,7 +840,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
   it('serializes the canonical API payload and reports upstream unavailability honestly', async () => {
     const available = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
       getMacro: async () => macroSnapshot() as never,
-      getCorridors: async () => corridorSnapshot(),
+      getCorridors: async () => corridorSnapshot(energySignal(publishedDemandChangeMetrics())),
       readMarketBatch: async () => marketValues(),
     });
     const availableWire = projectChinaActivityNowcastWireResponse(available);
@@ -781,7 +865,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
           direction: 'unchanged',
         })),
       }) as never,
-      getCorridors: async () => corridorSnapshot(),
+      getCorridors: async () => corridorSnapshot(energySignal(publishedDemandChangeMetrics())),
       readMarketBatch: async () => marketValues(),
     });
     assert.equal(unchanged.state, 'insufficient_data');
