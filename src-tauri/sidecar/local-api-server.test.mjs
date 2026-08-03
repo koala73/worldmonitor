@@ -852,6 +852,120 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
   }
 });
 
+test('allows only Docker mode to fetch configured private LLM origins', async () => {
+  const envSnapshot = {
+    LLM_API_URL: process.env.LLM_API_URL,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    UNCONFIGURED_PRIVATE_URL: process.env.UNCONFIGURED_PRIVATE_URL,
+  };
+  let handlerHits = 0;
+
+  const upstreams = [];
+  const warnings = [];
+  async function createProbeOrigin() {
+    const upstream = createServer((req, res) => {
+      if (req.headers['x-sidecar-test-probe'] === '1') handlerHits += 1;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    upstreams.push(upstream);
+    const port = await listen(upstream);
+    return `http://127.0.0.1:${port}/v1/chat/completions`;
+  }
+
+  const [privateLlmUrl, privateOllamaUrl, unconfiguredPrivateUrl] = await Promise.all([
+    createProbeOrigin(),
+    createProbeOrigin(),
+    createProbeOrigin(),
+  ]);
+
+  const localApi = await setupApiDir({
+    'llm-probe.js': `
+      export default async function handler(request) {
+        const envKey = new URL(request.url).searchParams.get('envKey');
+        const upstream = await fetch(process.env[envKey], {
+          headers: { 'x-sidecar-test-probe': '1' },
+        });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  async function runProbes(mode, envKeys) {
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      mode,
+      logger: { log() { }, warn(message) { warnings.push(message); }, error() { } },
+    });
+    const { port } = await app.start();
+    try {
+      return await Promise.all(
+        envKeys.map((envKey) => authFetch(
+          `http://127.0.0.1:${port}/api/llm-probe?envKey=${encodeURIComponent(envKey)}`,
+        )),
+      );
+    } finally {
+      await app.close();
+    }
+  }
+
+  try {
+    process.env.LLM_API_URL = privateLlmUrl;
+    process.env.OLLAMA_API_URL = privateOllamaUrl;
+    process.env.UNCONFIGURED_PRIVATE_URL = unconfiguredPrivateUrl;
+    const envKeys = ['LLM_API_URL', 'OLLAMA_API_URL', 'UNCONFIGURED_PRIVATE_URL'];
+    const dockerResponses = await runProbes('docker', envKeys);
+    for (const [index, envKey] of envKeys.entries()) {
+      const dockerResponse = dockerResponses[index];
+      if (index < 2) {
+        assert.equal(dockerResponse.status, 200, envKey);
+        assert.deepEqual(await dockerResponse.json(), { ok: true });
+      } else {
+        assert.equal(dockerResponse.status, 502, envKey);
+        const dockerBody = await dockerResponse.json();
+        assert.equal(dockerBody.error, 'Local handler error');
+        assert.match(dockerBody.reason, /SSRF blocked/);
+      }
+    }
+
+    const desktopResponses = await runProbes('desktop-sidecar', envKeys);
+    for (const [index, envKey] of envKeys.entries()) {
+      const desktopResponse = desktopResponses[index];
+      assert.equal(desktopResponse.status, 502, envKey);
+      const desktopBody = await desktopResponse.json();
+      assert.equal(desktopBody.error, 'Local handler error');
+      assert.match(desktopBody.reason, /SSRF blocked/);
+    }
+    assert.equal(handlerHits, 2, 'only Docker handler probes should reach the upstream');
+
+    process.env.LLM_API_URL = 'not-a-url';
+    process.env.OLLAMA_API_URL = '://also-not-a-url';
+    const malformedResponses = await runProbes('docker', ['LLM_API_URL', 'OLLAMA_API_URL']);
+    for (const [index, envKey] of ['LLM_API_URL', 'OLLAMA_API_URL'].entries()) {
+      assert.equal(malformedResponses[index].status, 502, envKey);
+      const malformedBody = await malformedResponses[index].json();
+      assert.equal(malformedBody.error, 'Local handler error');
+      assert.match(malformedBody.reason, /(?:parse URL|Invalid URL)/i);
+    }
+    assert.ok(warnings.some((message) => message.includes('LLM_API_URL is not a valid URL')));
+    assert.ok(warnings.some((message) => message.includes('OLLAMA_API_URL is not a valid URL')));
+  } finally {
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await localApi.cleanup();
+    await Promise.all(upstreams.map((upstream) => new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    })));
+  }
+});
+
 test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
   const originalHttpRequest = http.request;
   const blockedUrls = [
