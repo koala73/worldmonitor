@@ -32,13 +32,30 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "indices":
-                                    - "changePct": 1.5
-                                      "currentValue": 1.5
+                                    - "changePct": 1.69
+                                      "currentValue": 1072.16
                                       "history":
                                           - "date": "2026-01-15"
-                                            "value": 1.5
-                                      "indexId": "example-id"
-                                      "name": "WorldMonitor Analyst"
+                                            "value": 1072.16
+                                      "indexId": "CCFI"
+                                      "name": "CCFI - China Container Freight"
+                                      "periodChangeBasis": "publisher_reported"
+                                      "periodChangePct": 1.69
+                                      "previousValue": 1054.38
+                                      "priorPeriodDate": "2026-01-08"
+                                      "priorPeriodValue": 1054.38
+                                      "spikeAlert": false
+                                      "unit": "index"
+                                    - "changePct": 0
+                                      "currentValue": 1972
+                                      "history":
+                                          - "date": "2026-01-15"
+                                            "value": 1972
+                                      "indexId": "BDI"
+                                      "name": "BDI - Baltic Dry Index"
+                                      "previousValue": 1972
+                                      "spikeAlert": false
+                                      "unit": "index"
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetShippingRatesResponse'
@@ -3640,9 +3657,17 @@ components:
                 previousValue:
                     type: number
                     format: double
+                    description: |-
+                        Legacy display field. For the Shanghai Shipping Exchange indices (SCFI,
+                         CCFI) this DELIBERATELY falls back to the current level when the exchange
+                         published no comparable prior, so it cannot distinguish "unchanged week"
+                         from "no prior at all". Use prior_period_value for decision work.
                 changePct:
                     type: number
                     format: double
+                    description: |-
+                        Legacy display field with the same fail-OPEN fallback as previous_value
+                         (a flat 0 when no prior exists). Use period_change_pct for decision work.
                 unit:
                     type: string
                 history:
@@ -3651,6 +3676,41 @@ components:
                         $ref: '#/components/schemas/ShippingRatePoint'
                 spikeAlert:
                     type: boolean
+                periodChangePct:
+                    type: number
+                    format: double
+                    description: |-
+                        Decision-grade period-over-period move in percent (#6066). Optional so a
+                         missing reading is ABSENT from the response rather than collapsing to 0,
+                         which would render identically to a real unchanged period. Fails CLOSED:
+                         present only when the publisher reported its own percentage or a
+                         comparable prior-period level. A single index level never becomes a
+                         change. The endpoint normalizes a missing reading to ABSENT (canonical
+                         ProtoJSON: serializers omit, parsers treat null as unset) — a plain JSON
+                         client can still tell absent from null, so read absence, not null.
+                periodChangeBasis:
+                    type: string
+                    enum:
+                        - PERIOD_CHANGE_BASIS_UNSPECIFIED
+                        - publisher_reported
+                        - derived_from_prior_period_level
+                    description: |-
+                        Basis for the decision-grade period-over-period change. The custom JSON
+                         values preserve the lowercase strings already present in Redis and consumed
+                         by downstream matchers while exposing a closed taxonomy to generated clients
+                         and OpenAPI.
+                priorPeriodValue:
+                    type: number
+                    format: double
+                    description: |-
+                        The publisher's own prior-period index level that period_change_pct was
+                         measured against. Absent when the publisher shipped no comparable prior.
+                priorPeriodDate:
+                    type: string
+                    description: |-
+                        Observation date (YYYY-MM-DD) of prior_period_value, as published. Absent
+                         whenever prior_period_value is absent, or when the publisher dated the
+                         level only implicitly.
         ShippingRatePoint:
             type: object
             properties:

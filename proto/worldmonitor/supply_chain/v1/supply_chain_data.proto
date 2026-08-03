@@ -2,20 +2,59 @@ syntax = "proto3";
 
 package worldmonitor.supply_chain.v1;
 
+import "sebuf/http/annotations.proto";
+
 message ShippingRatePoint {
   string date = 1;
   double value = 2;
+}
+
+// Basis for the decision-grade period-over-period change. The custom JSON
+// values preserve the lowercase strings already present in Redis and consumed
+// by downstream matchers while exposing a closed taxonomy to generated clients
+// and OpenAPI.
+enum PeriodChangeBasis {
+  PERIOD_CHANGE_BASIS_UNSPECIFIED = 0;
+  PERIOD_CHANGE_BASIS_PUBLISHER_REPORTED = 1 [(sebuf.http.enum_value) = "publisher_reported"];
+  PERIOD_CHANGE_BASIS_DERIVED_FROM_PRIOR_PERIOD_LEVEL = 2 [(sebuf.http.enum_value) = "derived_from_prior_period_level"];
 }
 
 message ShippingIndex {
   string index_id = 1;
   string name = 2;
   double current_value = 3;
+  // Legacy display field. For the Shanghai Shipping Exchange indices (SCFI,
+  // CCFI) this DELIBERATELY falls back to the current level when the exchange
+  // published no comparable prior, so it cannot distinguish "unchanged week"
+  // from "no prior at all". Use prior_period_value for decision work.
   double previous_value = 4;
+  // Legacy display field with the same fail-OPEN fallback as previous_value
+  // (a flat 0 when no prior exists). Use period_change_pct for decision work.
   double change_pct = 5;
   string unit = 6;
   repeated ShippingRatePoint history = 7;
   bool spike_alert = 8;
+  // Decision-grade period-over-period move in percent (#6066). Optional so a
+  // missing reading is ABSENT from the response rather than collapsing to 0,
+  // which would render identically to a real unchanged period. Fails CLOSED:
+  // present only when the publisher reported its own percentage or a
+  // comparable prior-period level. A single index level never becomes a
+  // change. The endpoint normalizes a missing reading to ABSENT (canonical
+  // ProtoJSON: serializers omit, parsers treat null as unset) — a plain JSON
+  // client can still tell absent from null, so read absence, not null.
+  optional double period_change_pct = 9;
+  // Provenance of period_change_pct: "publisher_reported" when the exchange
+  // published the percentage itself, or "derived_from_prior_period_level"
+  // when it was computed from prior_period_value. Absent whenever
+  // period_change_pct is absent.
+  optional PeriodChangeBasis period_change_basis = 10;
+  // The publisher's own prior-period index level that period_change_pct was
+  // measured against. Absent when the publisher shipped no comparable prior.
+  optional double prior_period_value = 11;
+  // Observation date (YYYY-MM-DD) of prior_period_value, as published. Absent
+  // whenever prior_period_value is absent, or when the publisher dated the
+  // level only implicitly.
+  optional string prior_period_date = 12;
 }
 
 message FlowEstimate {

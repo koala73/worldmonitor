@@ -79,7 +79,16 @@ export function buildContentFreshnessReport({
   for (const [iso2, payload] of entries) {
     const isCritical = critical.has(iso2);
     if (isCritical) criticalSeen++;
-    const observedAt = typeof payload?.fetchedAt === 'string'
+    // Age the CONTENT clock, not the retrieval one (#6060). `fetchedAt` resets
+    // on every successful fetch, including the forced refetch once a country's
+    // cache passes MAX_CACHE_AGE_MS — which returns an UNCHANGED upstream
+    // `asof`. Ageing that greens this alarm for one budget window out of every
+    // cache lifetime while upstream stays frozen. `contentAsOfChangedAt`
+    // advances only when upstream's own max(date) advances; `fetchedAt` remains
+    // the fallback for payloads written before that field existed.
+    const observedAt = Number.isFinite(payload?.contentAsOfChangedAt)
+      ? payload.contentAsOfChangedAt
+      : typeof payload?.fetchedAt === 'string'
       ? Date.parse(payload.fetchedAt)
       : Number.NaN;
     if (!Number.isFinite(observedAt)) {
@@ -153,4 +162,45 @@ export function buildPortActivityMetaPayload({ countryData, coverage, now = Date
     coverage,
     contentFreshness: buildContentFreshnessReport({ countryData, now }),
   };
+}
+
+/**
+ * The content clock for a freshly-fetched payload (#6060).
+ *
+ * Advances only when the upstream's own max(date) advances. A forced refetch
+ * that returns an UNCHANGED `asof` carries the prior clock forward, so a frozen
+ * upstream cannot reset it and green the content-freshness alarm.
+ *
+ * With no prior clock — every payload written before this field existed — seed
+ * from the upstream observation date rather than the refetch moment. Stamping
+ * "now" would report a frozen upstream as fresh for one whole budget window
+ * after rollout: the alarm would look fixed, then appear to regress days later
+ * with no code change. Once upstream advances, the carry-forward branch takes
+ * over and the clock becomes publication-lag independent.
+ */
+export function contentClockFor(priorPayload, upstreamMaxDate, refreshedAt) {
+  const prior = priorPayload && typeof priorPayload === 'object' ? priorPayload : null;
+  const asofUnchanged = prior !== null
+    && upstreamMaxDate != null
+    && prior.asof === upstreamMaxDate;
+
+  // Upstream advanced: we observed new content now. Anchoring to `refreshedAt`
+  // rather than the observation date is what makes this clock independent of
+  // publication lag — a feed that is steadily N days behind still advances its
+  // clock every run, so only an actual FREEZE ages it.
+  if (prior !== null && !asofUnchanged) return refreshedAt;
+
+  // Same upstream date and a clock already recorded: carry it forward, so a
+  // forced refetch of frozen data cannot reset it.
+  if (asofUnchanged && Number.isFinite(prior.contentAsOfChangedAt)) {
+    return prior.contentAsOfChangedAt;
+  }
+
+  // No clock yet — a legacy payload, or a country's first fetch. Seed from the
+  // upstream observation date, which is truthful on day one; stamping "now"
+  // would report an already-frozen upstream as fresh for a full budget window.
+  const upstreamAt = typeof upstreamMaxDate === 'string'
+    ? Date.parse(`${upstreamMaxDate}T23:59:59.999Z`)
+    : Number.NaN;
+  return Number.isFinite(upstreamAt) ? upstreamAt : refreshedAt;
 }

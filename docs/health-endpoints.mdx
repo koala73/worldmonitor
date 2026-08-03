@@ -218,7 +218,7 @@ check verdict is:
 | Condition | Status |
 | --- | --- |
 | Every decision-critical country inside the 72-hour content budget | `OK` |
-| A decision-critical country past budget, future-dated, missing a usable timestamp, or absent from the run | `STALE_CONTENT` |
+| A decision-critical country past budget, future-dated, or absent from the run | `STALE_CONTENT` |
 | The block is absent, its counts are missing or arithmetically incoherent, or the producer's declared country set does not cover the set health pins | `COVERAGE_DEGRADED` |
 
 The verdict keys on the **decision-critical** countries — currently `CN` and
@@ -256,6 +256,14 @@ refresh every run they are a cache miss. Without that reservation the rotation
 period (`ceil(174 / 30)` runs at a 12-hour cadence ~ 72 hours) equals the
 content budget, and the alarm would measure the rotation rather than an
 incident.
+
+The reservation only reaches a country that is a cache **miss**. A country stays
+a cache hit while the upstream `max(date)` it already holds is unchanged, so
+when the upstream feed itself freezes, the decision-critical countries never
+enter the refresh queue and no amount of slot reservation makes their content
+current. In that state the check is doing its job precisely by staying
+`STALE_CONTENT`: the content is genuinely old, the seeder cannot fix it, and the
+alarm is reporting an upstream outage rather than an internal one.
 Fleet-wide content staleness is normal by construction: the seeder refreshes at
 most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
 tail of the rotation is routinely past budget. Alarming on that would produce a
@@ -294,6 +302,16 @@ separately.
 An MCP caller still sees a single boolean: `stale` does not say *which*
 dimension failed, so `/api/health` remains the surface that names the stale
 country.
+
+Both sides age the same clock, and it is not the retrieval timestamp. They read
+`contentAsOfChangedAt`, which advances only when the upstream's own `max(date)`
+advances, falling back to `fetchedAt` only for payloads written before that
+field existed. This matters because the seeder force-refetches every country
+once its cache passes `MAX_CACHE_AGE_MS`, and that refetch resets `fetchedAt`
+while returning unchanged content. Ageing `fetchedAt` would therefore have
+admitted a frozen observation as current for one budget window out of every
+cache lifetime — the same transport-for-content substitution this check exists
+to end, one layer below it.
 
 Named entities are operator-only. `contentFreshness` and the
 `chinaDecisionSignals` group breakdown are stripped from the anonymous

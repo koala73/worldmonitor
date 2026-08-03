@@ -625,6 +625,32 @@ describe('#6080 — both surfaces agree across the unusable state space', () => 
     });
   }
 
+  const REASON_CASES = [
+    ['stale_count_unusable', { staleCount: 'unknown' }],
+    ['unknown_count_unusable', { unknownCount: 'unknown' }],
+    ['critical_fresh_exceeds_covered', {
+      coveredCount: 1,
+      freshCount: 1,
+      staleCount: 0,
+      unknownCount: 0,
+      criticalFreshCount: 2,
+    }],
+  ];
+
+  for (const [reason, overrides] of REASON_CASES) {
+    it(`names the shared fail-closed reason on both surfaces: ${reason}`, () => {
+      const meta = completeRun(contentFreshnessOf(overrides));
+      const health = healthVerdict(meta);
+
+      assert.equal(health.status, 'COVERAGE_DEGRADED');
+      assert.ok(
+        health.contentFreshness.unusableReasons.includes(reason),
+        `health must expose ${reason}`,
+      );
+      assert.equal(mcpStale(meta), true, `MCP must fail closed for ${reason}`);
+    });
+  }
+
   // Clock skew: an observation dated in the future is an upstream clock error
   // or a forecast mislabelled as an observation — never evidence of freshness.
   it('fails closed on both surfaces for a future-dated observation', () => {

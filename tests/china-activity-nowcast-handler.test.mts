@@ -8,6 +8,7 @@ import {
   composeChinaActivityNowcastSnapshot,
   projectChinaActivityNowcastWireResponse,
   resolveChinaActivityNowcastSnapshot,
+  type ChinaActivityNowcastCache,
 } from '../server/worldmonitor/economic/v1/get-china-activity-nowcast';
 import {
   parseChinaActivityNowcastWirePayload,
@@ -18,6 +19,9 @@ import type {
   ChinaCorridorCondition,
   CorridorSourceSignal,
 } from '../shared/china-corridor-control-towers';
+import type {
+  ChinaCorridorDirectionalSnapshot,
+} from '../server/worldmonitor/economic/v1/china-corridor-breadth-history';
 
 const EVALUATED_AT = '2026-07-25T12:00:00.000Z';
 
@@ -69,7 +73,7 @@ function macroSnapshot() {
     sourceDecisions: [],
     releaseEvents: [],
     unavailable: false,
-    schemaVersion: 2,
+    schemaVersion: 3,
     pillars: [],
   };
 }
@@ -169,6 +173,34 @@ function corridorSnapshot(): ChinaCorridorControlTowerResponse {
   };
 }
 
+function priorCorridorDirectionalSnapshot(
+  directionalFamilies: ChinaCorridorDirectionalSnapshot['directionalFamilies'] =
+    ['aviation', 'port', 'trade'],
+): ChinaCorridorDirectionalSnapshot {
+  return {
+    schemaVersion: 3,
+    generatedAt: '2026-07-24T12:00:00.000Z',
+    corridorIds: ['china-yangtze-river-delta'],
+    familyKeys: [
+      'china-yangtze-river-delta:aviation',
+      'china-yangtze-river-delta:port',
+      'china-yangtze-river-delta:power_energy',
+      'china-yangtze-river-delta:trade',
+    ],
+    directionalFamilies,
+    directionalSelectorKeys: [
+      'china-yangtze-river-delta:aviation:aviation:can',
+      'china-yangtze-river-delta:aviation:aviation:hkg',
+      'china-yangtze-river-delta:aviation:aviation:pvg',
+      'china-yangtze-river-delta:port:port:ningbo',
+      'china-yangtze-river-delta:port:port:shanghai',
+      'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+    ],
+    strengtheningFamilies: directionalFamilies.filter((family) => family !== 'trade'),
+    weakeningFamilies: [],
+  };
+}
+
 function marketValues() {
   return new Map<string, unknown>([
     [CHINA_ACTIVITY_NOWCAST_MARKET_KEYS.commodities, {
@@ -194,6 +226,217 @@ function marketValues() {
 }
 
 describe('China activity nowcast cache/API composition (#5579)', () => {
+  it('computes corridor breadth only from two comparable directional snapshots (#6068)', () => {
+    const inputs = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: corridorSnapshot(),
+      marketValues: marketValues(),
+      priorCorridorSnapshot: priorCorridorDirectionalSnapshot(),
+    } as never);
+
+    const breadth = inputs.proxyObservations
+      .find((item) => item.seriesId === 'corridor_activity_breadth_change');
+    assert.equal(breadth?.value, 1);
+    assert.equal(breadth?.priorValue, 2);
+    assert.deepEqual(breadth?.provenance, {
+      corridorIds: ['china-yangtze-river-delta'],
+      familyKeys: [
+        'china-yangtze-river-delta:aviation',
+        'china-yangtze-river-delta:port',
+        'china-yangtze-river-delta:power_energy',
+        'china-yangtze-river-delta:trade',
+      ],
+      generatedAt: EVALUATED_AT,
+      priorGeneratedAt: '2026-07-24T12:00:00.000Z',
+      directionalFamilies: ['aviation', 'port', 'trade'],
+      priorDirectionalFamilies: ['aviation', 'port', 'trade'],
+      directionalSelectorKeys: [
+        'china-yangtze-river-delta:aviation:aviation:can',
+        'china-yangtze-river-delta:aviation:aviation:hkg',
+        'china-yangtze-river-delta:aviation:aviation:pvg',
+        'china-yangtze-river-delta:port:port:ningbo',
+        'china-yangtze-river-delta:port:port:shanghai',
+        'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+      ],
+      priorDirectionalSelectorKeys: [
+        'china-yangtze-river-delta:aviation:aviation:can',
+        'china-yangtze-river-delta:aviation:aviation:hkg',
+        'china-yangtze-river-delta:aviation:aviation:pvg',
+        'china-yangtze-river-delta:port:port:ningbo',
+        'china-yangtze-river-delta:port:port:shanghai',
+        'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+      ],
+      directionalFamilyCount: 3,
+      priorDirectionalFamilyCount: 3,
+      strengtheningFamilies: ['aviation', 'port', 'trade'],
+      priorStrengtheningFamilies: ['aviation', 'port'],
+      weakeningFamilies: [],
+      priorWeakeningFamilies: [],
+      activityBreadthValue: 3,
+      priorActivityBreadthValue: 2,
+      aggregation: 'signed_activity_family_count_change',
+    });
+  });
+
+  it('keeps a first corridor snapshot excluded with the truthful prior reason (#6068)', () => {
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: corridorSnapshot(),
+      marketValues: marketValues(),
+    }).proxyObservations.find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'comparable_prior_snapshot_not_available',
+    );
+  });
+
+  it('rejects a changed corridor set instead of silently rebasing breadth (#6068)', () => {
+    const prior = priorCorridorDirectionalSnapshot();
+    prior.corridorIds = ['china-greater-bay-area'];
+    prior.familyKeys = prior.familyKeys.map((key) =>
+      key.replace('china-yangtze-river-delta', 'china-greater-bay-area'));
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: corridorSnapshot(),
+      marketValues: marketValues(),
+      priorCorridorSnapshot: prior,
+    } as never).proxyObservations
+      .find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'corridor_set_changed',
+    );
+  });
+
+  it('rejects a family missing from either snapshot instead of calling it unchanged (#6068)', () => {
+    const prior = priorCorridorDirectionalSnapshot(['aviation', 'port']);
+    prior.familyKeys = prior.familyKeys.filter((key) => !key.endsWith(':trade'));
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: corridorSnapshot(),
+      marketValues: marketValues(),
+      priorCorridorSnapshot: prior,
+    } as never).proxyObservations
+      .find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'corridor_family_set_changed',
+    );
+  });
+
+  it('never mutates availability or coverage booleans into corridor activity (#6068)', () => {
+    const coverageOnly = corridorSnapshot();
+    for (const condition of coverageOnly.corridors[0]!.conditions) {
+      condition.availability = 'available';
+      for (const sourceSignal of condition.sourceSignals) {
+        sourceSignal.metrics = { available: true, coverageComplete: true };
+      }
+    }
+    coverageOnly.corridors[0]!.availability = 'available';
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: coverageOnly,
+      marketValues: marketValues(),
+      priorCorridorSnapshot: priorCorridorDirectionalSnapshot(['aviation']),
+    } as never).proxyObservations
+      .find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'directional_observations_not_available',
+    );
+  });
+
+  it('excludes a family that loses directional availability while structure stays fixed (#6083)', () => {
+    const unavailableTrade = corridorSnapshot();
+    const trade = unavailableTrade.corridors[0]!.conditions
+      .find((item) => item.family === 'trade')!.sourceSignals[0]!;
+    trade.availability = 'unavailable';
+    trade.transportFreshness = 'stale';
+    trade.contentFreshness = 'stale';
+    trade.metrics = {};
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: unavailableTrade,
+      marketValues: marketValues(),
+      priorCorridorSnapshot: priorCorridorDirectionalSnapshot(['aviation', 'port', 'trade']),
+    }).proxyObservations.find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'directional_family_set_changed',
+    );
+  });
+
+  it('excludes partial selector coverage changes inside a still-directional family (#6083)', () => {
+    const partiallyUnavailable = corridorSnapshot();
+    const port = partiallyUnavailable.corridors[0]!.conditions
+      .find((item) => item.family === 'port')!.sourceSignals[0]!;
+    port.availability = 'unavailable';
+    port.transportFreshness = 'stale';
+    port.contentFreshness = 'stale';
+    port.metrics = {};
+
+    const breadth = buildChinaActivityNowcastInputs({
+      evaluatedAt: EVALUATED_AT,
+      macro: macroSnapshot() as never,
+      corridors: partiallyUnavailable,
+      marketValues: marketValues(),
+      priorCorridorSnapshot: priorCorridorDirectionalSnapshot(),
+    }).proxyObservations.find((item) => item.seriesId === 'corridor_activity_breadth_change');
+
+    assert.equal(breadth?.value, null);
+    assert.equal(
+      (breadth?.provenance as Record<string, unknown>).exclusion,
+      'directional_observation_set_changed',
+    );
+  });
+
+  it('does not overwrite retained corridor evidence when the history read fails (#6068)', async () => {
+    let persistCalls = 0;
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => corridorSnapshot(),
+      readMarketBatch: async () => marketValues(),
+      readCorridorHistory: async () => {
+        throw new Error('redis unavailable');
+      },
+      persistCorridorSnapshot: async () => {
+        persistCalls += 1;
+        return true;
+      },
+    });
+
+    assert.equal(persistCalls, 0);
+    assert.equal(
+      response.contributions.find((item) => item.family === 'corridor')?.included,
+      false,
+    );
+    assert.equal(
+      (response.contributions.find((item) => item.family === 'corridor')
+        ?.provenance as Record<string, unknown>).exclusion,
+      'corridor_history_read_failed',
+    );
+  });
+
   it('adapts official, corridor, commodity, and market contracts without inventing unavailable changes', () => {
     const inputs = buildChinaActivityNowcastInputs({
       evaluatedAt: EVALUATED_AT,
@@ -237,8 +480,10 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     );
   });
 
-  it('reads market inputs in one raw batch and produces an inspectable agreement response', async () => {
+  it('reads the persisted prior corridor plus market inputs and persists the current snapshot (#6068)', async () => {
     const reads: Array<{ keys: string[]; raw: boolean | undefined }> = [];
+    const prior = priorCorridorDirectionalSnapshot();
+    const writes: unknown[] = [];
     const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
       getMacro: async () => macroSnapshot() as never,
       getCorridors: async () => corridorSnapshot(),
@@ -246,21 +491,48 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
         reads.push({ keys, raw });
         return marketValues();
       },
+      readCorridorHistory: async () => [prior],
+      persistCorridorSnapshot: async (current) => {
+        writes.push(current);
+        return true;
+      },
     });
 
     assert.deepEqual(reads, [{
       keys: Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
       raw: true,
     }]);
+    assert.deepEqual(writes, [{
+        schemaVersion: 3,
+        generatedAt: EVALUATED_AT,
+        corridorIds: ['china-yangtze-river-delta'],
+        familyKeys: [
+          'china-yangtze-river-delta:aviation',
+          'china-yangtze-river-delta:port',
+          'china-yangtze-river-delta:power_energy',
+          'china-yangtze-river-delta:trade',
+        ],
+        directionalFamilies: ['aviation', 'port', 'trade'],
+        directionalSelectorKeys: [
+          'china-yangtze-river-delta:aviation:aviation:can',
+          'china-yangtze-river-delta:aviation:aviation:hkg',
+          'china-yangtze-river-delta:aviation:aviation:pvg',
+          'china-yangtze-river-delta:port:port:ningbo',
+          'china-yangtze-river-delta:port:port:shanghai',
+          'china-yangtze-river-delta:trade:supply_chain:shipping:v2:CCFI',
+        ],
+        strengtheningFamilies: ['aviation', 'port', 'trade'],
+        weakeningFamilies: [],
+    }]);
     assert.equal(response.state, 'agreement');
-    assert.equal(response.confidence.eligibleFamilies, 5);
+    assert.equal(response.confidence.eligibleFamilies, 6);
     assert.equal(response.historicalEvaluation.available, false);
     assert.match(response.historicalEvaluation.reason, /historical proxy ledger/i);
     // Freight is no longer structurally missing: it is included whenever the
     // Shanghai Shipping Exchange contract publishes a period change (#6066).
     assert.deepEqual(
       response.missingInputs.map((item) => item.family),
-      ['energy', 'corridor'],
+      ['energy'],
     );
     assert.equal(
       response.contributions.find((item) => item.family === 'freight')?.direction,
@@ -290,24 +562,59 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal((freight?.provenance as Record<string, unknown>).currentLevel, 1072.16);
   });
 
-  it('names an unavailable CCFI signal instead of claiming a missing prior (#6066)', () => {
-    const unavailable = corridorSnapshot();
-    const signal = unavailable.corridors[0]!.conditions
-      .find((item) => item.family === 'trade')!.sourceSignals[0]!;
-    signal.availability = 'unavailable';
-    signal.metrics = {};
+  it('names each way of having no CCFI change for what it is (#6066)', () => {
+    // A signal that never arrived, one that arrived but is stale, and one that
+    // arrived timely with only a level are three different facts.
+    const cases: Array<[CorridorSourceSignal['availability'], string]> = [
+      ['unavailable', 'source_signal_unavailable'],
+      ['stale', 'source_signal_stale'],
+      ['available', 'missing_comparable_prior'],
+    ];
 
-    const freight = buildChinaActivityNowcastInputs({
-      evaluatedAt: EVALUATED_AT,
-      macro: macroSnapshot() as never,
-      corridors: unavailable,
-      marketValues: marketValues(),
-    }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
-    assert.equal(freight?.value, null);
-    assert.equal(
-      (freight?.provenance as Record<string, unknown>).exclusion,
-      'source_signal_unavailable',
-    );
+    for (const [availability, expected] of cases) {
+      const snapshot = corridorSnapshot();
+      const signal = snapshot.corridors[0]!.conditions
+        .find((item) => item.family === 'trade')!.sourceSignals[0]!;
+      signal.availability = availability;
+      signal.metrics = { currentValue: 1072.16, unit: 'index' };
+
+      const freight = buildChinaActivityNowcastInputs({
+        evaluatedAt: EVALUATED_AT,
+        macro: macroSnapshot() as never,
+        corridors: snapshot,
+        marketValues: marketValues(),
+      }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
+      assert.equal(freight?.value, null, availability);
+      assert.equal(
+        (freight?.provenance as Record<string, unknown>).exclusion,
+        expected,
+        availability,
+      );
+    }
+  });
+
+  it('names stale CCFI freshness even when availability remains available', () => {
+    for (const field of ['transportFreshness', 'contentFreshness'] as const) {
+      const snapshot = corridorSnapshot();
+      const signal = snapshot.corridors[0]!.conditions
+        .find((item) => item.family === 'trade')!.sourceSignals[0]!;
+      signal.availability = 'available';
+      signal[field] = 'stale';
+      signal.metrics = { currentValue: 1072.16, unit: 'index' };
+
+      const freight = buildChinaActivityNowcastInputs({
+        evaluatedAt: EVALUATED_AT,
+        macro: macroSnapshot() as never,
+        corridors: snapshot,
+        marketValues: marketValues(),
+      }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
+      assert.equal(freight?.value, null, field);
+      assert.equal(
+        (freight?.provenance as Record<string, unknown>).exclusion,
+        'source_signal_stale',
+        field,
+      );
+    }
   });
 
   it('never lets a CCFI level or a fabricable display change become a freight move (#6066)', () => {
@@ -380,7 +687,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
       assert.equal(ttlSeconds, CHINA_ACTIVITY_NOWCAST_TTL_SECONDS);
       const value = await fetcher();
       cacheFetcherResult = value?.state ?? 'null';
-      return value;
+      return { data: value, source: 'fresh', leader: true };
     });
 
     assert.equal(cacheFetcherResult, 'null');
@@ -388,6 +695,41 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal(response.confidence.level, 'insufficient');
     assert.equal(response.contributions.every((item) =>
       item.direction === null && item.included === false), true);
+  });
+
+  it('does not read or persist corridor history on a negative-cache hit (#6083)', async () => {
+    let cacheCalls = 0;
+    let historyReads = 0;
+    let historyWrites = 0;
+    const dependencies = {
+      getMacro: async () => ({ ...macroSnapshot(), unavailable: true, indicators: [] }) as never,
+      getCorridors: async () => corridorSnapshot(),
+      readMarketBatch: async () => new Map(),
+      readCorridorHistory: async () => {
+        historyReads += 1;
+        return [];
+      },
+      persistCorridorSnapshot: async () => {
+        historyWrites += 1;
+        return true;
+      },
+    };
+    const cache: ChinaActivityNowcastCache =
+      async (_key, _ttlSeconds, fetcher) => {
+        cacheCalls += 1;
+        if (cacheCalls === 1) {
+          return { data: await fetcher(), source: 'fresh', leader: true };
+        }
+        return { data: null, source: 'cache', leader: false };
+      };
+
+    const first = await resolveChinaActivityNowcastSnapshot(EVALUATED_AT, dependencies, cache);
+    const second = await resolveChinaActivityNowcastSnapshot(EVALUATED_AT, dependencies, cache);
+
+    assert.equal(first.state, 'insufficient_data');
+    assert.equal(second.state, 'insufficient_data');
+    assert.equal(historyReads, 1);
+    assert.equal(historyWrites, 1);
   });
 
   it('isolates rejected dependencies and distinguishes partial from total upstream loss', async () => {

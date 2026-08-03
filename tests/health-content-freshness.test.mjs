@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 import { jsonResponse } from '../api/_json-response.js';
+import { buildContentFreshnessAssessment } from '../api/_content-freshness.js';
 
 const {
   readSeedMeta,
@@ -299,6 +300,21 @@ describe('portwatchPortActivity classification', () => {
     assert.deepEqual(reasonsFor({ criticalFreshCount: 3 }), [
       'critical_fresh_exceeds_declared',
     ]);
+    assert.deepEqual(reasonsFor({ staleCount: 'unknown' }), [
+      'stale_count_unusable',
+    ]);
+    assert.deepEqual(reasonsFor({ unknownCount: 'unknown' }), [
+      'unknown_count_unusable',
+    ]);
+    assert.deepEqual(reasonsFor({
+      coveredCount: 1,
+      freshCount: 1,
+      staleCount: 0,
+      unknownCount: 0,
+      criticalFreshCount: 2,
+    }), [
+      'critical_fresh_exceeds_covered',
+    ]);
     // Independent conditions accumulate rather than short-circuiting to one.
     // criticalFreshCount is dropped to 0 so the empty declared set does not
     // also trip `critical_fresh_exceeds_declared` and muddy the assertion.
@@ -306,6 +322,17 @@ describe('portwatchPortActivity classification', () => {
       reasonsFor({ coveredCount: null, criticalCountries: [], criticalFreshCount: 0 }),
       ['covered_count_unusable', 'declared_scope_narrowed'],
     );
+  });
+
+  it('fails closed when the consumer budget is unusable', () => {
+    const assessment = buildContentFreshnessAssessment(
+      { contentFreshness: contentFreshnessOf() },
+      { countries: ['CN', 'HK'], budgetMinutes: 0 },
+      NOW,
+    );
+
+    assert.equal(assessment.usable, false);
+    assert.deepEqual(assessment.unusableReasons, ['expected_budget_unusable']);
   });
 
   it('publishes the fields that separate absent-from-run from present-but-stale', () => {
