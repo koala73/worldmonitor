@@ -1349,6 +1349,12 @@ async function main() {
       assessedAt,
     }));
     const posturePayload = { theaters };
+    // Derived from `theaters`, which is already in scope here, so it must NOT live inside the
+    // theater-posture lock block below: `forecastInputsPayload.stats` reads it unconditionally,
+    // including on the lock-skipped branch. #6092 wrapped the publish in `else { try { … } }` and
+    // carried this declaration in with it, leaving the consumer referencing a block-scoped const
+    // -> `PUBLISH FAILED: elevated is not defined` on 100% of runs.
+    const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
     const theaterPostureLockResult = await acquireLockSafely('theater-posture', runId, 120_000, { label: 'theater-posture' });
     if (theaterPostureLockResult.skipped || !theaterPostureLockResult.locked) {
       console.log(`  SKIPPED: theater posture publication (${theaterPostureLockResult.skipped ? 'Redis unavailable during lock acquisition' : 'another producer in progress'})`);
@@ -1368,7 +1374,6 @@ async function main() {
         await redisSet(url, token, THEATER_POSTURE_STALE_KEY, postureEnvelope, THEATER_POSTURE_STALE_TTL);
         await redisSet(url, token, THEATER_POSTURE_BACKUP_KEY, postureEnvelope, THEATER_POSTURE_BACKUP_TTL);
         await redisSet(url, token, 'seed-meta:theater-posture', { fetchedAt: assessedAt, recordCount: theaterFlights.length, sourceVersion: source || '', producer: 'seed-military-flights', publicationId }, 604800);
-        const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
         console.log(`  Theater posture: ${theaters.length} theaters (${elevated} elevated)`);
       } finally {
         await releaseLock('theater-posture', runId);
