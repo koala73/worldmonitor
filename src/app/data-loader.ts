@@ -193,9 +193,12 @@ import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
-import { getTopActiveGeoHubs } from '@/services/geo-activity';
-// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
-// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+import {
+  hydrateGeoHubPanelFromClusters,
+  hydrateTechHubPanelFromClusters,
+} from '@/app/hub-activity-hydration';
+// Tech activity remains lazy-imported by hub-activity-hydration so the
+// tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
 // dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
@@ -1963,8 +1966,11 @@ export class DataLoaderManager implements AppModule {
         void threatTimelinePanel?.refresh(this.ctx.latestClusters);
       }
 
-      (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-        ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+      hydrateGeoHubPanelFromClusters(
+        this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
+        this.ctx.latestClusters,
+        { allowEmpty: true },
+      );
       this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
@@ -4009,9 +4015,7 @@ export class DataLoaderManager implements AppModule {
   private applyTechHubActivities(): void {
     const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
     if (!techHubsPanel) return;
-    const clusters = this.ctx.latestClusters;
-    void import('@/services/tech-activity')
-      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
+    void hydrateTechHubPanelFromClusters(techHubsPanel, this.ctx.latestClusters, { allowEmpty: true })
       .catch(() => { /* non-critical */ });
   }
 
@@ -4027,8 +4031,10 @@ export class DataLoaderManager implements AppModule {
         ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
         this.refreshCiiAndBrief();
-        (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-          ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+        hydrateGeoHubPanelFromClusters(
+          this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
+          this.ctx.latestClusters,
+        );
         this.applyTechHubActivities();
       }
 
