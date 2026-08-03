@@ -314,6 +314,21 @@ A translated value whose English source has changed since the translation was ma
 
 Distinct from a *missing* translation, which has no value at all, and from an *orphaned* one, which is a value the current English no longer has a key for. The distinction is load-bearing because only the stale class is fixable by retranslation — no translation of a source string that no longer exists can be correct, so orphans must be pruned instead. Inserting an element into an English list makes every later entry stale at once, since each index then points at a different source string; removing the last element produces an orphan instead, leaving every earlier index matching so nothing registers as stale. See also: Translation Provenance.
 
+## Military Aviation Posture
+
+### Theater Posture
+
+An aggregated military-activity assessment for a named geographic theater, derived from live military flights and tracked naval vessels inside the theater's bounds and published as a posture level per theater.
+
+Theater posture has two independent producers on different schedules — a loop inside the AIS relay and the military-flights seeder — and each acquires flights through its own ordered source chain, falling from its primary source to alternates when a tier fails or returns nothing. A cycle that publishes through an alternate source is still a healthy publication; what it must never be read as is recovery of the primary source. See also: Publication Source.
+
+### Publication Source
+
+The upstream that actually fed a published theater-posture cycle, recorded with the publication rather than inferred from which sources are configured.
+
+Each cycle attributes exactly one winning source (or a vessels-only outcome when no flight source contributed), and per-source cycle counts accumulate for the life of the producer process. The attribution answers "who fed this record", not "which sources are healthy" — a primary source that answered healthily with zero relevant traffic is a quiet primary, not a failed one, and its health is judged from its own request counters, never from the attribution. Because the two Theater Posture producers use different vocabularies for their sources, every attribution also names its producer. See also: Theater Posture.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
+- *"wingbits"* as a publication source means opposite things from the two Theater Posture producers — the military-flights seeder's normal first-choice tier, but the relay loop's last-resort fallback. The recorded producer disambiguates which reading applies; never compare the token across producers.
