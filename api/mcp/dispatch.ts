@@ -82,7 +82,8 @@ export async function executeTool(
       activationKeys.forEach((key, i) => {
         // api/_upstash-json.d.ts declares only `result`, but Upstash reports
         // per-command failures as `error` inside an otherwise-successful 200 —
-        // every JS consumer branches on it (api/health.js:2026). Cast locally
+        // every JS consumer branches on it (api/health.js, the activationStates
+        // loop; api/seed-health.js, getSeedBatch). Cast locally
         // rather than widening the shared declaration, which PipelineFn and
         // api/mcp/quota.ts also depend on.
         const entry = activationResults[i] as { result?: unknown; error?: unknown } | undefined;

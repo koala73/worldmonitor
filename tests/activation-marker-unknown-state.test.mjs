@@ -219,6 +219,17 @@ describe('#6095 — /api/seed-health treats an unreadable activation marker as u
       'an errored marker read is unknown state, not proof of a producer that never ran',
     );
     assert.equal(entry?.stale, true);
+    // Pins the flag on the has-meta path, not just the pending-activation
+    // branch: this is the entry an operator actually triages, and without the
+    // flag it is identical to a producer that genuinely stopped publishing.
+    assert.equal(entry?.activationUnknown, true);
+  });
+
+  it('leaves the flag off when the marker was read cleanly', async () => {
+    for (const outcome of [ABSENT, PRESENT]) {
+      const entry = await portwatchSeedHealthEntry(outcome);
+      assert.equal(entry?.activationUnknown, undefined);
+    }
   });
 });
 
@@ -247,6 +258,29 @@ describe('#6095 — the ON_DEMAND grace deliberately keeps the opposite policy',
       'EMPTY_ON_DEMAND',
       'ON_DEMAND stays soft: its strict verdict is EMPTY (crit) for a key that may genuinely never have run',
     );
+
+    // The softening above is only defensible because it is VISIBLE. Without
+    // this flag an operator cannot tell a key softened on evidence from one
+    // softened on a Redis blip — and for an already-activated key the blip
+    // downgrades EMPTY (crit) to a status check-seed-freshness.mjs excuses.
+    assert.equal(checks.newsFeedHealth?.activationUnknown, true);
+    assert.equal(checks.portwatchPortActivity?.activationUnknown, true);
+  });
+
+  it('marks only the checks whose marker was actually unreadable', async () => {
+    const checks = await healthChecks({ [FEED_HEALTH_MARKER]: ERRORED });
+
+    assert.equal(checks.newsFeedHealth?.activationUnknown, true);
+    assert.equal(
+      checks.portwatchPortActivity?.activationUnknown,
+      undefined,
+      'a cleanly-read marker must not be reported as unknown',
+    );
+    assert.equal(
+      checks.chinaCoverage?.activationUnknown,
+      undefined,
+      'nor may the flag leak across checks sharing the sweep',
+    );
   });
 
   it('still revokes the ON_DEMAND softening on a marker read cleanly present', async () => {
@@ -270,6 +304,11 @@ describe('#6095 — the ON_DEMAND grace deliberately keeps the opposite policy',
       seeds[FEED_HEALTH_DOMAIN]?.status,
       'pending-activation',
       'the strict verdict here is "missing", which drives overall degraded and HTTP 503',
+    );
+    assert.equal(
+      seeds[FEED_HEALTH_DOMAIN]?.activationUnknown,
+      true,
+      'seed-health must mark the same window /api/health marks',
     );
   });
 
@@ -309,6 +348,24 @@ describe('#6095 — every activation marker is claimed by exactly one policy', (
       Object.entries(claims).filter(([, p]) => p.length > 1).map(([n, p]) => `${n}: ${p.join(' + ')}`),
       [],
       'two gates with different unknown-state policies would answer differently for one marker read',
+    );
+  });
+
+  // The inverse hole. The partition above walks ACTIVATION_MARKERS outward; a
+  // seed config naming a contentFreshnessActivation that ACTIVATION_MARKERS
+  // does not register is never EXISTS-probed, so its state is permanently
+  // unknown — with the fail-closed policy that means permanent
+  // COVERAGE_DEGRADED, and nothing above would go red.
+  it('registers every content-freshness marker a seed config names', () => {
+    const unregistered = Object.entries(SEED_META)
+      .filter(([, cfg]) => cfg.contentFreshnessActivation)
+      .filter(([, cfg]) => !ACTIVATION_MARKERS[cfg.contentFreshnessActivation])
+      .map(([name, cfg]) => `${name} -> ${cfg.contentFreshnessActivation}`);
+
+    assert.deepEqual(
+      unregistered,
+      [],
+      'a marker no sweep probes can never be read, so its check can never leave COVERAGE_DEGRADED',
     );
   });
 });

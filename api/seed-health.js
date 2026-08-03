@@ -463,6 +463,14 @@ export default async function handler(req) {
   for (const [domain, cfg] of entries) {
     const meta = metaMap.get(cfg.key);
     const maxStalenessMs = cfg.intervalMin * 2 * 60 * 1000;
+    // #6095 review: mirrors api/health.js's `activationUnknown`. A verdict
+    // reached from an UNREADABLE marker is otherwise byte-identical to one
+    // reached from evidence, so an operator cannot tell "the EXISTS command
+    // failed" from "the producer genuinely never published" — different
+    // remediations. Reports which evidence the verdict rests on; softens and
+    // hardens nothing on its own.
+    const activationUnknown = (cfg.activationKey && !activatedMap.has(domain))
+      || (cfg.contentFreshnessActivationKey && !contentFreshnessActivatedMap.has(domain));
 
     if (!meta) {
       if (cfg.activationKey && activatedMap.get(domain) !== true) {
@@ -479,6 +487,7 @@ export default async function handler(req) {
         // hard-down page for a domain that may genuinely never have run.
         // There is no meta to be wrong about — absence is the whole input.
         seeds[domain] = { status: 'pending-activation', fetchedAt: null, recordCount: null, stale: false };
+        if (activationUnknown) seeds[domain].activationUnknown = true;
         continue;
       }
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
@@ -530,8 +539,12 @@ export default async function handler(req) {
     // reason: this one suppresses an alarm on a domain that HAS meta and IS
     // running, and its strict verdict is 'coverage_degraded' — "cannot prove
     // content freshness", which an unread marker makes literally true. A grace
-    // granted on the absence of evidence never expires, so an evicted, renamed,
-    // or unreadable marker would silently disable the alarm for good.
+    // granted on the absence of evidence never expires, so an UNREADABLE marker
+    // would otherwise disable the alarm for good.
+    //
+    // Closes the unreadable arm ONLY: a marker that was evicted, renamed, or
+    // restored into an empty Redis returns a clean EXISTS=0 — the read-and-
+    // absent arm — and still grants the grace indefinitely. Tracked in #6111.
     const contentFreshnessPending = Boolean(
       contentFreshness
       && !contentFreshness.fieldPresent
@@ -591,6 +604,7 @@ export default async function handler(req) {
     };
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
+    if (activationUnknown) seeds[domain].activationUnknown = true;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;
     if (contentFreshness && !contentFreshnessPending) {
       seeds[domain].contentFreshness = projectContentFreshnessForWire(contentFreshness);

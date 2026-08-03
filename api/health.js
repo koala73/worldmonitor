@@ -1272,13 +1272,17 @@ function classifyKey(name, redisKey, opts, ctx) {
   //      EMPTY_ON_DEMAND. Resolving unknown to "activated" would manufacture a
   //      crit for a key that may genuinely never have run, which is the
   //      deployment-order noise ON_DEMAND_KEYS exists to remove.
-  //   2. It never softens a FAULT. Every fault branch is decided above these
-  //      two, so an on-demand key that HAS data and goes stale or errors still
-  //      falls through to STALE_SEED/SEED_ERROR (see the ON_DEMAND_KEYS policy
-  //      block). A marker blip therefore cannot hide a live producer failure —
-  //      only the emptiness of a key nobody has requested yet.
-  //   3. `entry.onDemand` is emitted for every status, so the softening is
-  //      always legible in the payload rather than silently applied.
+  //   2. It never softens a fault that has DATA behind it. Every fault branch is
+  //      decided above these two, so an on-demand key that HAS data and goes
+  //      stale or errors still falls through to STALE_SEED/SEED_ERROR (see the
+  //      ON_DEMAND_KEYS policy block).
+  //   3. It is not free, and the cost is bounded rather than absent. For a key
+  //      whose marker is ALREADY present, an unreadable marker re-enters the
+  //      softening and downgrades EMPTY (crit — #4927's "ran once and died"
+  //      alarm) to EMPTY_ON_DEMAND, which scripts/check-seed-freshness.mjs then
+  //      excuses. That lasts only as long as the marker is unreadable, and
+  //      `entry.activationUnknown` marks every entry softened on unknown state
+  //      so the window is visible instead of silent.
   // The content-freshness grace below has none of those bounds, which is why it
   // takes the opposite policy on the same unknown state.
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
@@ -1294,6 +1298,19 @@ function classifyKey(name, redisKey, opts, ctx) {
   const isRolloutPending = rolloutPendingUntil != null
     && now < rolloutPendingUntil
     && ctx.activationStates?.get(name) !== true;
+  // #6095 review: without this the verdict produced from an UNREADABLE marker is
+  // byte-identical to the one produced from evidence, so an operator cannot tell
+  // "the EXISTS command failed" from "the producer genuinely never published" —
+  // two different remediations. This file already treats a failed read as
+  // information ops needs (a data/meta read error becomes REDIS_PARTIAL rather
+  // than "key missing"); the marker commands are the one read with no status of
+  // their own, so they get a flag instead. Emitted for every status, like
+  // `onDemand`, and covers BOTH markers a check can consult: its own, and the
+  // separate content-freshness marker its seed config names.
+  const activationUnknown = Boolean(ctx.activationStates) && [
+    ACTIVATION_MARKERS[name] ? name : null,
+    seedCfg?.contentFreshnessActivation ?? null,
+  ].some((markerName) => markerName !== null && !ctx.activationStates.has(markerName));
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
 
@@ -1338,8 +1355,14 @@ function classifyKey(name, redisKey, opts, ctx) {
   // and for a reason: this one suppresses an alarm on a key that HAS data and
   // IS running, and its strict verdict is COVERAGE_DEGRADED — "cannot prove
   // content freshness", which an unread marker makes literally true. A grace
-  // granted on the absence of evidence never expires, so an evicted, renamed,
-  // or unreadable marker would silently disable the alarm for good.
+  // granted on the absence of evidence never expires, so an UNREADABLE marker
+  // would otherwise disable the alarm for good.
+  //
+  // Scope, stated because the hazard is wider than the fix: this closes the
+  // unreadable arm ONLY. A marker that was evicted, renamed, or restored into
+  // an empty Redis returns a clean EXISTS=0 — the read-and-absent arm above —
+  // and still grants the grace indefinitely. Bounding that needs a compiled
+  // deadline the way ROLLOUT_PENDING_UNTIL_MS does; tracked in #6111.
   const contentFreshnessPending = Boolean(
     seedCfg?.requireContentFreshness
     && contentFreshness
@@ -1450,6 +1473,9 @@ function classifyKey(name, redisKey, opts, ctx) {
   // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
   // ON_DEMAND_KEYS policy block above exists to prevent).
   if (isOnDemand) entry.onDemand = true;
+  // See the activationUnknown derivation above. Never softens or hardens
+  // anything by itself — it only says which evidence the verdict rests on.
+  if (activationUnknown) entry.activationUnknown = true;
   // Publish the deadline with the state so the softening is auditable from the
   // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
   // exactly when this key stops being excused without reading api/health.js.

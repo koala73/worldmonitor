@@ -247,6 +247,36 @@ test('deploy-before-cron: absent coverage key inside the window is ROLLOUT_PENDI
   );
 });
 
+// #6095 kept ROLLOUT_PENDING soft when the marker read FAILS, deliberately and
+// for a different reason than the content-freshness gate (which fails closed).
+// makeCtx models a clean sweep, so every marker gets an entry and the unknown
+// state is unreachable from it — this drives the third state directly, since a
+// policy asserted only in a comment is a policy nothing defends.
+test('an unreadable marker keeps rollout softening, and says so in the payload', () => {
+  const ctx = makeCtx({ now: BEFORE_DEADLINE });
+  ctx.activationStates.delete(US); // the EXISTS command failed for this market only
+
+  const entry = classifyKey(US, BOOTSTRAP_KEYS[US], { allowOnDemand: false }, ctx);
+
+  assert.equal(
+    entry.status,
+    'ROLLOUT_PENDING',
+    'unknown must not manufacture a crit for a market that may genuinely never have run',
+  );
+  assert.equal(entry.activated, false, '`activated` reports read-AND-present, so unknown reads false');
+  assert.equal(
+    entry.activationUnknown,
+    true,
+    'and the flag distinguishes it from a market whose marker was read and found absent',
+  );
+
+  // The neighbouring market read cleanly, so it must carry no flag — otherwise
+  // the assertion above would pass on a sweep that lost every marker.
+  const clean = classifyKey(SG, BOOTSTRAP_KEYS[SG], { allowOnDemand: false }, ctx);
+  assert.equal(clean.status, 'ROLLOUT_PENDING');
+  assert.equal(clean.activationUnknown, undefined);
+});
+
 test('activation state is readable from the payload in every status, not just while pending', () => {
   // `rolloutPendingUntil` exists exactly when the market has NOT activated, so on
   // its own it can never answer "which markets have gone live?". Without a field

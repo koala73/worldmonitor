@@ -430,8 +430,9 @@ describe('portwatchPortActivity classification', () => {
 
   // #6095 — the grace is earned by evidence, never by the absence of evidence.
   // A marker health could not read says nothing about whether the producer ever
-  // published, and a grace granted on that never expires: an evicted, renamed,
-  // or unreadable marker would disable the content alarm permanently.
+  // published, and a grace granted on that never expires: an UNREADABLE marker
+  // would disable the content alarm permanently. (An evicted or renamed marker
+  // reads as a clean absence and still earns the grace — see #6111.)
   it('refuses grace when the marker state is unknown rather than read-absent', () => {
     const entry = classifyPortwatch(completeRun(undefined), { activated: null });
     assert.equal(

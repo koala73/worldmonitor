@@ -21,9 +21,10 @@ import { executeTool } from '../api/mcp/dispatch.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
-// Static imports are hoisted, so the operator key and Upstash credentials the
-// seed-health handler gates on must be set before it is loaded — hence the
-// dynamic import below.
+// The seed-health handler is imported dynamically so the env below is set
+// first. Its credential reads are lazy today, so a static import would also
+// work — this keeps the file independent of that, since a module-scope read
+// added later would fail confusingly against hoisted static imports.
 const SEED_HEALTH_OPERATOR_KEY = 'test-parity-operator-key';
 process.env.UPSTASH_REDIS_REST_URL ??= 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN ??= 'token';
@@ -640,7 +641,7 @@ describe('#6095 — health, seed-health, and MCP agree on every marker outcome',
   // /api/seed-health has no classifier seam, so the only way to ask it the
   // question is through the handler — which also proves the pipeline-result
   // loop that builds its activation map, not just the gate it feeds.
-  async function seedHealthAlarms(build, markerEntry) {
+  async function seedHealthStatus(build, markerEntry) {
     const realFetch = globalThis.fetch;
     globalThis.fetch = async (_url, init) => {
       const liveNow = Date.now();
@@ -659,7 +660,7 @@ describe('#6095 — health, seed-health, and MCP agree on every marker outcome',
       }));
       const entry = (await res.json()).seeds?.[PORTWATCH_SEED_DOMAIN];
       assert.ok(entry, 'seed-health must publish the PortWatch entry');
-      return entry.status !== 'ok';
+      return entry.status;
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -671,13 +672,20 @@ describe('#6095 — health, seed-health, and MCP agree on every marker outcome',
         const expected = alarms(outcome);
         const frozenMeta = build(NOW);
 
-        assert.equal(
-          healthVerdict(frozenMeta, { activated }).status !== 'OK',
-          expected,
-          '/api/health',
-        );
+        const healthStatus = healthVerdict(frozenMeta, { activated }).status;
+        assert.equal(healthStatus !== 'OK', expected, '/api/health');
         assert.equal(mcpStale(frozenMeta, { activated }), expected, 'MCP freshness envelope');
-        assert.equal(await seedHealthAlarms(build, entry), expected, '/api/seed-health');
+
+        // Not just "both alarm" — the SAME verdict, by name. The two endpoints
+        // publish the same vocabulary in different case (OK/ok,
+        // COVERAGE_DEGRADED/coverage_degraded, STALE_CONTENT/stale_content),
+        // which docs/health-endpoints.mdx states as a contract; agreement on a
+        // boolean would let them alarm for different reasons and still pass.
+        assert.equal(
+          await seedHealthStatus(build, entry),
+          healthStatus.toLowerCase(),
+          '/api/seed-health must reach the same verdict, not merely also alarm',
+        );
       });
     }
   }
