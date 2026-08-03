@@ -67,6 +67,10 @@ console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).to
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Actual bound port, resolved at listen time. Self-requests must use this:
+// with PORT=0 (ephemeral bind, used by tests) the env value is not the port
+// the server listens on, and `http://localhost:0` fails outright.
+let relayBoundPort = PORT;
 const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
 
 if (!API_KEY) {
@@ -4226,7 +4230,7 @@ async function fetchTheaterFlightsFromOpenSky() {
   const allFlights = [];
   for (const region of THEATER_QUERY_REGIONS) {
     const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-    const resp = await fetch(`http://localhost:${PORT}/opensky?${params}`, {
+    const resp = await fetch(`http://localhost:${relayBoundPort}/opensky?${params}`, {
       headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
       signal: AbortSignal.timeout(20_000),
     });
@@ -4409,11 +4413,26 @@ function calculateTheaterPostures(flights) {
     };
   });
 }
+// Which upstream actually produced the published theater flights. OpenSky is
+// heavily 429-throttled in production (#5945): a healthy publication served by
+// adsb.lol/Wingbits must stay attributable so fallback operation is never
+// mistaken for OpenSky recovery.
+const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
+  opensky: 'opensky',
+  'adsb.lol': 'adsbLol',
+  wingbits: 'wingbits',
+  'vessel-only': 'vesselOnly',
+});
+const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
+let theaterPostureLastRun = null;
+
 async function seedTheaterPosture() {
   const t0 = Date.now();
   let flights = [];
+  let flightSource = 'vessel-only';
   try {
     flights = await fetchTheaterFlightsFromOpenSky();
+    if (flights.length > 0) flightSource = 'opensky';
   } catch (e) {
     console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
   }
@@ -4422,9 +4441,13 @@ async function seedTheaterPosture() {
     if (adsbLol !== null) {
       // null = fetch error (fall through to Wingbits); [] = success, no theater traffic (stop here)
       flights = adsbLol;
+      if (flights.length > 0) flightSource = 'adsb.lol';
     } else {
       const wb = await fetchTheaterFlightsFromWingbits();
-      if (wb && wb.length > 0) flights = wb;
+      if (wb && wb.length > 0) {
+        flights = wb;
+        flightSource = 'wingbits';
+      }
     }
   }
   if (flights.length === 0) {
@@ -4436,10 +4459,20 @@ async function seedTheaterPosture() {
   const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
   const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
   const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels }, 604800);
+  // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
+  // key, so both writers expose which upstream fed the published record.
+  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels, sourceVersion: flightSource }, 604800);
+  theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+  theaterPostureLastRun = {
+    seededAt: new Date().toISOString(),
+    source: flightSource,
+    flightCount: flights.length,
+    vesselCount: totalVessels,
+    redisOk: ok1 && ok2 && ok3,
+  };
   const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights, ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
+  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
 }
 
 function startTheaterPostureSeedLoop() {
@@ -7078,6 +7111,13 @@ function getRelayRollingMetrics() {
     aviation: {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
+    },
+    // Which upstream fed each theater-posture publication. Kept separate from
+    // the opensky route counters above so healthy fallback publication
+    // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945).
+    theaterPosture: {
+      lastRun: theaterPostureLastRun,
+      sourceCounts: { ...theaterPostureSourceCounts },
     },
     googleFlights: {
       requests: rollup.googleFlightsRequests,
@@ -9901,6 +9941,14 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
+    // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
+    // so tests trigger a single theater-posture cycle explicitly.
+    await seedTheaterPosture();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
   } else if (pathname.startsWith('/ais/snapshot')) {
     incrementRelayMetric('aisSnapshotRequests');
     // Aggregated AIS snapshot for server-side fanout — serve pre-serialized + pre-gzipped
@@ -11963,6 +12011,7 @@ const wss = new WebSocketServer({ server });
 
 server.listen(PORT, () => {
   const listeningPort = server.address()?.port || PORT;
+  relayBoundPort = listeningPort;
   console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
   if (RELAY_TEST_MODE) {
     console.log('[Relay] Test mode enabled — background seed loops are disabled');

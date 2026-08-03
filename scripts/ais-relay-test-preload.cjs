@@ -58,8 +58,9 @@ function request({ callback, statusCode, body = '', headers = {}, error = null }
 }
 
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async (url) => {
-  if (String(url).includes('FlightsFrontendService')) {
+globalThis.fetch = async (url, options) => {
+  const target = String(url);
+  if (target.includes('FlightsFrontendService')) {
     const status = nextValue(googleStatuses, 200);
     return {
       status,
@@ -67,7 +68,24 @@ globalThis.fetch = async (url) => {
       text: async () => '',
     };
   }
-  if (typeof originalFetch === 'function') return originalFetch(url);
+  if (target.includes('api.adsb.lol')) {
+    // Theater-posture fallback chain: adsb.lol is down, forcing Wingbits.
+    return { status: 503, ok: false, statusText: 'Service Unavailable', text: async () => '', json: async () => ({}) };
+  }
+  if (target.includes('customer-api.wingbits.com')) {
+    // One military-callsign flight inside iran-theater bounds.
+    return {
+      status: 200,
+      ok: true,
+      statusText: 'OK',
+      text: async () => '',
+      json: async () => ([{
+        alias: 'iran-theater',
+        data: [{ h: 'ae1234', f: 'RCH123', la: 30, lo: 45, ab: 30000, th: 90, gs: 400 }],
+      }]),
+    };
+  }
+  if (typeof originalFetch === 'function') return originalFetch(url, options);
   throw new Error(`Unexpected test fetch: ${url}`);
 };
 
