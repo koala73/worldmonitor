@@ -13,6 +13,25 @@ import {
   httpsProxyFetchRaw,
 } from './_seed-utils.mjs';
 import { createCountryResolvers } from './_country-resolver.mjs';
+import {
+  buildPortActivityMetaPayload,
+  contentClockFor,
+  isCriticalContentRefreshDue,
+  orderColdFetchQueue,
+  PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+} from './_portwatch-content-freshness.mjs';
+
+export {
+  buildContentFreshnessReport,
+  buildPortActivityMetaPayload,
+  contentClockFor,
+  isCriticalContentRefreshDue,
+  orderColdFetchQueue,
+  PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+  PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+  PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  PORTWATCH_MAX_REPORTED_STALE_COUNTRIES,
+} from './_portwatch-content-freshness.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -873,6 +892,10 @@ export async function publishPortActivitySnapshot(
   if (canonicalAdvances) {
     commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
     commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
+    // No EX: "this producer can publish content freshness" must survive the
+    // 3-day payload TTL, otherwise health would silently re-enter its
+    // pending-activation grace every time a run is skipped.
+    commands.push(['SET', PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY, '1']);
   }
   if (commands.length === 0) return [];
 
@@ -944,21 +967,6 @@ async function redisMgetJson(keys) {
 // attempt sweep in ceil(174 / 30) = 6 runs, independent of process restarts.
 // ISO2 is the deterministic tie-breaker so equal-age cohorts do not depend on
 // ArcGIS row order. Pure + exported for unit testing.
-export function orderColdFetchQueue(needsFetch) {
-  const lastAttemptAt = (item) => {
-    const prev = item?.prevPayload;
-    if (!prev || typeof prev !== 'object') return Number.NEGATIVE_INFINITY;
-    if (Number.isFinite(prev.refreshAttemptedAt)) return prev.refreshAttemptedAt;
-    if (Number.isFinite(prev.cacheWrittenAt)) return prev.cacheWrittenAt;
-    return Number.NEGATIVE_INFINITY;
-  };
-  const stableId = (item) => String(item?.iso2 || item?.iso3 || '');
-  return [...needsFetch].sort((a, b) => {
-    const ageOrder = lastAttemptAt(a) - lastAttemptAt(b);
-    return ageOrder || stableId(a).localeCompare(stableId(b));
-  });
-}
-
 export function classifyDeferredPayload(
   prevPayload,
   now = Date.now(),
@@ -1116,7 +1124,13 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     const iso2 = iso3ToIso2.get(iso3);
     const upstreamMaxDate = maxDates[i];
     const prev = prevPayloads[i];
-    const cacheFresh = prev && typeof prev === 'object'
+    const criticalRefreshDue = isCriticalContentRefreshDue({
+      iso2,
+      prevPayload: prev,
+      now,
+    });
+    const cacheFresh = !criticalRefreshDue
+      && prev && typeof prev === 'object'
       && prev.asof === upstreamMaxDate
       && upstreamMaxDate != null
       && typeof prev.cacheWrittenAt === 'number'
@@ -1280,6 +1294,13 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
         iso2,
         ports,
         fetchedAt: new Date(refreshedAt).toISOString(),
+        // Content clock (#6060): advances only when upstream's own max(date)
+        // advances, so a forced refetch of FROZEN upstream data cannot reset it
+        // and green the content-freshness alarm. Seeded from the upstream
+        // observation date when no prior clock exists — stamping `refreshedAt`
+        // there would report a frozen upstream as fresh for a full budget
+        // window after rollout, since every payload predates this field.
+        contentAsOfChangedAt: contentClockFor(batch[j].prevPayload, upstreamMaxDate, refreshedAt),
         // Cache fields. `asof` may be null if preflight failed; that's fine —
         // next run will always be a miss (null !== any string) so we'll
         // re-fetch and repopulate.
@@ -1599,11 +1620,7 @@ async function main() {
       capTriggered,
       upstreamContactCount,
     });
-    const metaPayload = {
-      fetchedAt: Date.now(),
-      recordCount: countryData.size,
-      coverage,
-    };
+    const metaPayload = buildPortActivityMetaPayload({ countryData, coverage });
 
     if (!canonicalAdvances) {
       // Per-country data and attempt state persist, but canonical + seed-meta

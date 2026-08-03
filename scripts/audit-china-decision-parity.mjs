@@ -11,6 +11,7 @@ import {
 import { isMainModule } from './lib/main-module.mjs';
 import { readChinaDecisionSignalWireContract } from './lib/openapi-codegen.mjs';
 import {
+  CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE,
   chinaDecisionSignalGroupDiagnostics,
   summarizeChinaDecisionGroups,
   validateChinaDecisionSignalSnapshot,
@@ -69,20 +70,65 @@ const REQUIRED_REGISTRATIONS = Object.freeze([
 // asks whether the value is a member of it, so every mutation above reads as a
 // finding instead of a pass. Each `verify` is a pure function of source text so
 // its truth table can be exercised against mutated sources in tests.
+// Both Edge functions keep literal copies of the group manifest because they
+// may only import from `api/_*.js`. `verifyGroupIdMirror` is shared so adding
+// the next Edge copy is one more check row, not another hand-rolled parser.
+function verifyGroupIdMirror(source) {
+  const body = extractDelimitedBlock(source, 'const CHINA_DECISION_SIGNAL_GROUP_IDS', '[', ']');
+  if (body === null) return 'the CHINA_DECISION_SIGNAL_GROUP_IDS array literal is missing or was renamed';
+  const groupIds = [...body.matchAll(/'([^']+)'/g)].map(([, groupId]) => groupId);
+  if (groupIds.length !== GROUP_IDS.length || groupIds.some((groupId, index) => groupId !== GROUP_IDS[index])) {
+    return `CHINA_DECISION_SIGNAL_GROUP_IDS is ${JSON.stringify(groupIds)}, expected ${JSON.stringify(GROUP_IDS)}`;
+  }
+  return null;
+}
+
+// Anchored at start-of-line so a commented-out declaration reads as MISSING
+// rather than matching — the whole point is that a disabled mirror must fail.
+function declaredStringConstant(source, name) {
+  const match = new RegExp(`^\\s*const\\s+${name}\\s*=\\s*'([^']*)'\\s*;`, 'm').exec(source);
+  return match === null ? null : match[1];
+}
+
+// #6060: `healthy_quiet_window` is the one unavailable cause that still counts
+// as operational coverage, so a rename at the producer that misses either Edge
+// copy would silently stop crediting a quiet disclosure window — re-opening the
+// 4/6 this issue closed, with no test failure anywhere.
+function verifyHealthyQuietCauseMirror(source) {
+  const declared = declaredStringConstant(source, 'CHINA_DECISION_HEALTHY_QUIET_CAUSE');
+  if (declared === null) {
+    return 'the CHINA_DECISION_HEALTHY_QUIET_CAUSE constant is missing, renamed, or commented out';
+  }
+  if (declared !== CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE) {
+    return `CHINA_DECISION_HEALTHY_QUIET_CAUSE is '${declared}', expected '${CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE}'`;
+  }
+  return null;
+}
+
 export const CHINA_DECISION_STRUCTURAL_CHECKS = Object.freeze([
   Object.freeze({
     id: 'edge-seed-health-group-ids',
     file: 'api/seed-health.js',
     intent: 'seed-health keeps its Edge-local China decision group mirror in canonical order',
-    verify(source) {
-      const body = extractDelimitedBlock(source, 'const CHINA_DECISION_SIGNAL_GROUP_IDS', '[', ']');
-      if (body === null) return 'the CHINA_DECISION_SIGNAL_GROUP_IDS array literal is missing or was renamed';
-      const groupIds = [...body.matchAll(/'([^']+)'/g)].map(([, groupId]) => groupId);
-      if (groupIds.length !== GROUP_IDS.length || groupIds.some((groupId, index) => groupId !== GROUP_IDS[index])) {
-        return `CHINA_DECISION_SIGNAL_GROUP_IDS is ${JSON.stringify(groupIds)}, expected ${JSON.stringify(GROUP_IDS)}`;
-      }
-      return null;
-    },
+    verify: verifyGroupIdMirror,
+  }),
+  Object.freeze({
+    id: 'edge-health-group-ids',
+    file: 'api/health.js',
+    intent: 'health keeps its Edge-local China decision group mirror in canonical order',
+    verify: verifyGroupIdMirror,
+  }),
+  Object.freeze({
+    id: 'edge-health-quiet-cause',
+    file: 'api/health.js',
+    intent: 'health credits the same healthy-quiet cause string the producer counts as covered',
+    verify: verifyHealthyQuietCauseMirror,
+  }),
+  Object.freeze({
+    id: 'edge-seed-health-quiet-cause',
+    file: 'api/seed-health.js',
+    intent: 'seed-health credits the same healthy-quiet cause string the producer counts as covered',
+    verify: verifyHealthyQuietCauseMirror,
   }),
   Object.freeze({
     id: 'gateway-cache-tier',

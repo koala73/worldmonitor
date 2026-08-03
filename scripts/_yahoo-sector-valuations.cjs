@@ -7,7 +7,9 @@ const YAHOO_COOKIE_URL = 'https://fc.yahoo.com';
 const YAHOO_CRUMB_URL = 'https://query1.finance.yahoo.com/v1/test/getcrumb';
 const YAHOO_SUMMARY_BASE_URL = 'https://query1.finance.yahoo.com/v10/finance/quoteSummary';
 const YAHOO_V7_QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
-const YAHOO_SUMMARY_MODULES = 'summaryDetail,defaultKeyStatistics';
+// `price.symbol` is the identity-bearing field for ETF quoteSummary payloads;
+// the valuation modules alone return valid fields without any symbol identity.
+const YAHOO_SUMMARY_MODULES = 'price,summaryDetail,defaultKeyStatistics';
 const LAST_GOOD_KEY = 'market:sectors:valuations:last-good';
 const LAST_GOOD_TTL = 7 * 24 * 3600;
 const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;

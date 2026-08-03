@@ -15,8 +15,40 @@ import { unwrapEnvelope } from './_seed-envelope.js';
 import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
+import {
+  projectChinaDecisionGroupDiagnostics,
+} from './_china-decision-health.js';
+import {
+  buildContentFreshnessAssessment,
+  projectContentFreshnessForWire,
+} from './_content-freshness.js';
 
 export const config = { runtime: 'edge' };
+
+// Kept literal, mirroring api/seed-health.js: this Edge function imports only
+// from api/_*.js, so it cannot reach shared/china-decision-signal-manifest.ts.
+// Registry parity across the three literal copies is enforced by
+// scripts/audit-china-decision-parity.mjs.
+const CHINA_DECISION_SIGNAL_GROUP_IDS = Object.freeze([
+  'macro',
+  'policy-enforcement',
+  'cross-strait-activity',
+  'corporate-disclosures',
+  'corridor-conditions',
+  'activity-nowcast',
+]);
+const CHINA_DECISION_SIGNAL_STATES = new Set([
+  'available',
+  'partial',
+  'stale',
+  'unavailable',
+]);
+// The one unavailable cause that still counts as operational source coverage:
+// the upstream answered and had nothing qualifying to report. Must stay in
+// lockstep with CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE in
+// scripts/seed-china-decision-signals.mjs, which computes the record count
+// this projection explains.
+const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
 
 // HTTP responses stay `no-store`, but the expensive Redis-wide verdict is
 // shared briefly at the origin. At the measured browser poll rate this turns
@@ -437,7 +469,18 @@ const SEED_META = {
   crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
   crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
   chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
-  chinaDecisionSignals: { key: 'seed-meta:intelligence:china-decision-signals', maxStaleMin: 60, minRecordCount: 6 },
+  // decisionGroups (#6060): the seeder's afterPublish diagnostics name which
+  // groups are quiet, stale, or unavailable, so a shortfall is actionable
+  // rather than a bare 4/6. minRecordCount stays the verdict — it counts
+  // operationally covered groups, which now includes a healthy quiet
+  // disclosure window (the exchanges answered; there was nothing to report)
+  // but no other unavailable cause.
+  chinaDecisionSignals: {
+    key: 'seed-meta:intelligence:china-decision-signals',
+    maxStaleMin: 60,
+    minRecordCount: 6,
+    decisionGroups: CHINA_DECISION_SIGNAL_GROUP_IDS,
+  },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -518,7 +561,19 @@ const SEED_META = {
   correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 30 }, // 5min cron (seed-bundle-derived-signals); 30min = 6× interval. Was 15 (3× = gold-standard floor) — overnight UptimeRobot flips when bundle jitter spaced two consecutive runs ~9-10min apart, producing 15-19min gaps that tripped STALE_SEED briefly. See WM 2026-05-10 health:failure-log.
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
   portwatchDisruptions: { key: 'seed-meta:portwatch:disruptions',             maxStaleMin: 150 },
-  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174 }, // 12h cron; 36h = 3x interval; #3613 requires full 174-country coverage before OK.
+  // 12h cron; 36h = 3x interval; #3613 requires full 174-country coverage before OK.
+  // requireContentFreshness (#6060): cardinality and transport freshness alone
+  // let a 174/174 run report healthy while China's cached observation was 98h
+  // old — past the 72h budget the China corridor adapter and activity-nowcast
+  // enforce. The seeder publishes contentFreshness; a missing block is
+  // COVERAGE_DEGRADED, a stale country is STALE_CONTENT.
+  //
+  // The value is the country set health REQUIRES the producer to cover, not a
+  // bare `true`: it mirrors PORTWATCH_DECISION_CRITICAL_COUNTRIES in
+  // scripts/seed-portwatch-port-activity.mjs and CHINA_CORRIDOR_KEYS in
+  // get-china-corridor-control-towers.ts, and it exists so a producer-side
+  // change cannot narrow the alarm scope without health noticing.
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
@@ -791,6 +846,12 @@ const ACTIVATION_MARKERS = {
   intelHistoryIngestConflictAcled: 'seed-activated:intel-history:conflict:acled-intel',
   intelHistoryIngestMilitaryCrossStrait: 'seed-activated:intel-history:military:cross-strait-activity',
   intelHistoryIngestEnergyIntelligence: 'seed-activated:intel-history:energy:intelligence',
+  // #6060 deployment-order softening. This Edge function redeploys within
+  // minutes of merge; the producer is a 12h Railway cron. The marker is written
+  // on the first run that publishes a contentFreshness block, so "the producer
+  // has never shipped this field" reads as pending rather than as a fault —
+  // while a block that DISAPPEARS after activation still fails closed.
+  portwatchContentFreshness: 'seed-activated:supply_chain:portwatch-ports:content-freshness',
 };
 
 // #6059 — consumer-price coverage rollout handshake.
@@ -1021,6 +1082,8 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       metaCount,
       poolCounts,
       contentAge: null,
+      contentFreshness: null,
+      decisionGroups: null,
       coverage: null,
       errorCode,
       synthesisFailure: null,
@@ -1077,6 +1140,31 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
+  // The shared assessment owns validation, fail-closed activation semantics,
+  // and exact millisecond re-aging. This endpoint keeps only its status and
+  // response-shaping concerns local.
+  const contentFreshness = buildContentFreshnessAssessment(
+    meta,
+    seedCfg.requireContentFreshness,
+    now,
+  );
+  const decisionDiagnostics = seedCfg.decisionGroups
+    ? projectChinaDecisionGroupDiagnostics(meta, {
+      groupIds: seedCfg.decisionGroups,
+      allowedStates: CHINA_DECISION_SIGNAL_STATES,
+      healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
+    })
+    : null;
+  const decisionGroups = decisionDiagnostics
+    ? {
+      ...decisionDiagnostics.groupCounts,
+      groupStates: decisionDiagnostics.groupStates,
+      quietGroups: decisionDiagnostics.quietGroups,
+      partialGroups: decisionDiagnostics.partialGroups,
+      staleGroups: decisionDiagnostics.staleGroups,
+      unavailableGroups: decisionDiagnostics.unavailableGroups,
+    }
+    : null;
   // Per-market coverage: optional { status, completedPages, failedPages, completionRatio, rejectedCount, retailers }
   // written by consumer-prices publish.ts and other seeders that track partial completion.
   // null when the seeder didn't write coverage fields.
@@ -1153,6 +1241,8 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     metaCount,
     poolCounts,
     contentAge,
+    contentFreshness,
+    decisionGroups,
     coverage,
     errorCode,
     synthesisFailure,
@@ -1209,10 +1299,24 @@ function classifyKey(name, redisKey, opts, ctx) {
     metaCount,
     poolCounts,
     contentAge,
+    contentFreshness,
+    decisionGroups,
     coverage,
     errorCode,
     synthesisFailure,
   } = meta;
+
+  // Pending activation: the producer has never published a contentFreshness
+  // block, so this deployment simply predates the feature. Softened only for
+  // ABSENCE — a block that is present is always evaluated, and once the marker
+  // exists a disappearing block is a regression that fails closed.
+  const contentFreshnessPending = Boolean(
+    seedCfg?.requireContentFreshness
+    && contentFreshness
+    && !contentFreshness.fieldPresent
+    && seedCfg.contentFreshnessActivation
+    && !ctx.activatedNames?.has(seedCfg.contentFreshnessActivation),
+  );
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -1269,6 +1373,14 @@ function classifyKey(name, redisKey, opts, ctx) {
   // falls below minSuccessRate. Fires after COVERAGE_PARTIAL so record-count
   // shortfalls take precedence.
   else if (seedCfg?.requireCoverage && !coverage) status = 'COVERAGE_DEGRADED';
+  // Per-entity content freshness (#6060). Fails closed BEFORE the staleness
+  // verdict is read: a check that declares requireContentFreshness but whose
+  // producer wrote no usable block cannot prove anything about its content,
+  // and "cannot prove" must never resolve to OK — that is exactly the
+  // fresh-transport/complete-cardinality mask this branch exists to remove.
+  else if (seedCfg?.requireContentFreshness && !contentFreshness?.usable && !contentFreshnessPending) {
+    status = 'COVERAGE_DEGRADED';
+  }
   else if (
     seedCfg?.minSuccessRate != null
     && coverage
@@ -1288,6 +1400,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // meta.maxContentAgeMin); legacy seeders without it skip this branch.
   // 2026-05-04 health-readiness plan, Sprint 1.
   else if (contentAge && contentAge.contentStale) status = 'STALE_CONTENT';
+  // Shares STALE_CONTENT with the newestItemAt branch above: both mean "the
+  // producer is healthy and correctly sized, but the data itself is older than
+  // its content budget". Here the stale unit is a country rather than the
+  // whole corpus, and the named entities are on the wire so an operator sees
+  // the stale source family instead of a generic warning.
+  else if (contentFreshness?.contentStale) status = 'STALE_CONTENT';
   else status = 'OK';
 
   const entry = { status, records };
@@ -1329,6 +1447,13 @@ function classifyKey(name, redisKey, opts, ctx) {
     entry.contentAgeMin = contentAge.contentAgeMin;          // null when contentMeta returned null
     entry.maxContentAgeMin = contentAge.maxContentAgeMin;
   }
+  // Publish the per-entity block whenever the check requires it — including
+  // the unusable case, so "the producer stopped writing this" is diagnosable
+  // from the health response rather than only from a bare COVERAGE_DEGRADED.
+  if (contentFreshness && !contentFreshnessPending) {
+    entry.contentFreshness = projectContentFreshnessForWire(contentFreshness);
+  }
+  if (decisionGroups) entry.decisionGroups = decisionGroups;
   if (synthesisFailure) {
     entry.consecutiveFailures = synthesisFailure.consecutiveFailures;
     if (synthesisFailure.lastAttemptAt != null) entry.lastAttemptAt = synthesisFailure.lastAttemptAt;
@@ -1625,6 +1750,17 @@ function healthResponseBody(snapshot, compact) {
   // projection. Strip it again at the response boundary so a cached value
   // cannot leak source freshness details to anonymous status readers.
   delete problems.chinaDecisionSignals;
+  // Same rule, applied per field rather than per check (#6060): a check's
+  // STATUS is public, but its named entities are operator-only. `staleCountries`
+  // and the decision-group breakdown identify WHICH source is degraded, which
+  // is exactly what the chinaDecisionSignals carve-out above exists to
+  // withhold. Runs on both shapes so a cached compact snapshot written before
+  // this rule is scrubbed on the way out too.
+  for (const [name, check] of Object.entries(problems)) {
+    if (check?.contentFreshness === undefined && check?.decisionGroups === undefined) continue;
+    const { contentFreshness: _detail, decisionGroups: _groups, ...publicFields } = check;
+    problems[name] = publicFields;
+  }
   if (Object.keys(problems).length > 0) body.problems = problems;
   return body;
 }

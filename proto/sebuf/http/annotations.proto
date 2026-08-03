@@ -95,3 +95,10 @@ extend google.protobuf.FieldOptions {
   // accepted-but-ignored/no-op behavior so generated OpenAPI stays honest.
   bool unimplemented = 50011;
 }
+
+// Custom JSON strings for enum values. The sebuf generators use this to keep
+// generated TypeScript and OpenAPI contracts aligned with a wire value that
+// intentionally differs from the proto symbol.
+extend google.protobuf.EnumValueOptions {
+  optional string enum_value = 50012;
+}

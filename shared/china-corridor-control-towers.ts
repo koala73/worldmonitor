@@ -406,17 +406,41 @@ function provenanceBindingMatches(
   }
   const claims = record(provenance.claims);
   if (claims === null) return true;
-  const expectedInputIds = signals
-    .filter((signal) => signal.availability !== 'unavailable')
-    .map((signal) => signal.id);
-  for (const dimension of ['corroboration', 'derivation'] as const) {
-    const claim = record(claims[dimension]);
-    if (claim?.status !== 'known') continue;
-    const claimValue = record(claim.value);
-    const inputIds = dimension === 'corroboration'
-      ? claimValue?.sourceSignalIds
-      : claimValue?.inputSignalIds;
-    if (!sameStringSet(inputIds, expectedInputIds)) return false;
+  const usableSignals = signals.filter((signal) => signal.availability !== 'unavailable');
+  const expectedInputIds = usableSignals.map((signal) => signal.id);
+  const expectedInputIdSet = new Set(expectedInputIds);
+  const expectedPublisherIds = new Set(usableSignals.map((signal) => signal.publisher.id));
+  const corroboration = record(claims.corroboration);
+  if (corroboration?.status === 'known') {
+    const corroborationValue = record(corroboration.value);
+    const sourceSignalIds = corroborationValue?.sourceSignalIds;
+    const expectedState = expectedPublisherIds.size > 1
+      ? 'multi_source'
+      : 'single_source';
+    if (
+      corroborationValue?.state !== expectedState
+      || !Array.isArray(sourceSignalIds)
+      || sourceSignalIds.length === 0
+      || !sourceSignalIds.every((id) =>
+        typeof id === 'string' && expectedInputIdSet.has(id))
+      || (
+        expectedPublisherIds.size > 1
+          ? !sameStringSet(sourceSignalIds, expectedInputIds)
+          : sourceSignalIds.length !== 1
+      )
+    ) {
+      return false;
+    }
+  }
+  const derivation = record(claims.derivation);
+  if (
+    derivation?.status === 'known'
+    && !sameStringSet(
+      record(derivation.value)?.inputSignalIds,
+      expectedInputIds,
+    )
+  ) {
+    return false;
   }
   return true;
 }
