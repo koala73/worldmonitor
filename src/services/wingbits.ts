@@ -7,6 +7,7 @@
  */
 
 import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
+import { AIRCRAFT_DETAILS_BATCH_LIMIT } from '../../server/_shared/aircraft-details-batch';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { dataFreshness } from './data-freshness';
 import { isFeatureAvailable } from './runtime-config';
@@ -55,12 +56,38 @@ const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => 
 //   - generated request validation rejects the call outright above 20 keys
 //     (icao24s repeated.max_items = 20), which is what a full flight set used
 //     to trip with an HTTP 400;
-//   - the server handler then processes at most the first 10 anyway
-//     (toUniqueSortedLimited(normalized, 10) in get-aircraft-details-batch.ts).
-// Sending more than 10 is therefore wasted work at best and a rejected request
-// at worst. tests/wingbits-batch.test.mts pins this value against the
-// validator's own max_items so the two cannot drift apart silently.
-const MAX_AIRCRAFT_DETAILS_BATCH = 10;
+//   - the server handler then processes at most AIRCRAFT_DETAILS_BATCH_LIMIT
+//     anyway (toUniqueSortedLimited in get-aircraft-details-batch.ts).
+// Sending more is therefore wasted work at best and a rejected request at
+// worst. The bound is imported rather than copied so client and server cannot
+// drift; tests/wingbits-batch.test.mts additionally pins it against the
+// validator's own max_items and against the handler's use of the same import.
+const MAX_AIRCRAFT_DETAILS_BATCH = AIRCRAFT_DETAILS_BATCH_LIMIT;
+
+// Rotation cursor: the last ICAO24 this module attempted. Each call resumes
+// after it and wraps, so a flight set larger than one batch is swept end to end
+// instead of re-attempting the same lexicographic head every refresh. Without
+// it, keys expiring from localCache after LOCAL_CACHE_TTL reclaim every slot on
+// expiry and permanently strand everything past roughly
+// (LOCAL_CACHE_TTL / refresh interval) * MAX_AIRCRAFT_DETAILS_BATCH keys.
+// Advanced on attempt, not on success, so a persistent upstream failure rotates
+// fairly instead of pinning the same keys forever.
+let batchRotationCursor = '';
+
+/**
+ * Pick the next slice of pending keys, resuming after the last attempted key.
+ * `sortedPending` must be sorted ascending; the returned batch is re-sorted so
+ * the payload order still matches the server's own normalization, which the
+ * negative-cache prefix accounting below relies on.
+ */
+function selectBatchKeys(sortedPending: string[], limit: number): string[] {
+  if (sortedPending.length <= limit) return [...sortedPending];
+  const start = sortedPending.findIndex((key) => key > batchRotationCursor);
+  const rotated = start > 0
+    ? [...sortedPending.slice(start), ...sortedPending.slice(0, start)]
+    : sortedPending;
+  return rotated.slice(0, limit).sort();
+}
 
 // Client-side cache for aircraft details
 const localCache = new Map<string, { data: WingbitsAircraftDetails; timestamp: number }>();
@@ -273,7 +300,10 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
   }
 
   try {
-    const batchKeys = toFetch.slice(0, MAX_AIRCRAFT_DETAILS_BATCH);
+    const batchKeys = selectBatchKeys(toFetch, MAX_AIRCRAFT_DETAILS_BATCH);
+    // Advance before the call: an attempt counts even if it fails, so a broken
+    // upstream cannot pin the rotation on one slice.
+    batchRotationCursor = batchKeys[batchKeys.length - 1] ?? batchRotationCursor;
     if (toFetch.length > batchKeys.length) {
       // Deferred, not failed — the tail is retried on the next refresh once
       // these keys are cached. Logged so "why is this aircraft unenriched?"
@@ -431,6 +461,7 @@ export function getWingbitsStatus(): { configured: boolean | null; cacheSize: nu
 export function clearWingbitsCache(): void {
   localCache.clear();
   lastCacheSweep = 0;
+  batchRotationCursor = '';
 }
 
 /**

@@ -4,11 +4,16 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { transformSync } from 'esbuild';
 
+import { AIRCRAFT_DETAILS_BATCH_LIMIT } from '../server/_shared/aircraft-details-batch.ts';
 import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation.ts';
 import { validateGeneratedRequest } from '../server/request-validator.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const serviceSource = readFileSync(resolve(root, 'src/services/wingbits.ts'), 'utf8');
+const handlerSource = readFileSync(
+  resolve(root, 'server/worldmonitor/military/v1/get-aircraft-details-batch.ts'),
+  'utf8',
+);
 let moduleCounter = 0;
 
 function replaceRequired(source: string, search: string | RegExp, replacement: string, label: string): string {
@@ -27,6 +32,15 @@ async function loadWingbits(capture: (request: { icao24s: string[] }) => unknown
     `const createCircuitBreaker = () => ({ execute: async () => null });
     const toUniqueSortedLowercase = (values: string[]) => [...new Set(values.map((value) => value.toLowerCase()))].sort();`,
     'utilities',
+  );
+  // Inject the real shared bound, not a hand-written copy: a data: URL module
+  // cannot resolve relative imports, but substituting the value the test read
+  // from server/_shared keeps the module under test bound to the real constant.
+  patched = replaceRequired(
+    patched,
+    "import { AIRCRAFT_DETAILS_BATCH_LIMIT } from '../../server/_shared/aircraft-details-batch';",
+    `const AIRCRAFT_DETAILS_BATCH_LIMIT = ${AIRCRAFT_DETAILS_BATCH_LIMIT};`,
+    'shared batch limit',
   );
   patched = replaceRequired(
     patched,
@@ -122,21 +136,68 @@ describe('Wingbits aircraft-details batching', () => {
     }
   });
 
-  it('keeps the client cap at or below the bound the generated validator enforces', () => {
+  it('keeps the shared batch bound at or below what the generated validator enforces', () => {
     const maxItems = GENERATED_MESSAGE_RULES[
       'worldmonitor.military.v1.GetAircraftDetailsBatchRequest'
     ]?.fields?.icao24s?.repeatedMaxItems;
 
     assert.equal(typeof maxItems, 'number', 'generated rules must still declare icao24s.repeatedMaxItems');
-
-    const capMatch = serviceSource.match(/const MAX_AIRCRAFT_DETAILS_BATCH = (\d+);/);
-    assert.ok(capMatch, 'MAX_AIRCRAFT_DETAILS_BATCH must stay a literal the drift guard can read');
-    const cap = Number(capMatch[1]);
-
     assert.ok(
-      cap <= (maxItems as number),
-      `MAX_AIRCRAFT_DETAILS_BATCH (${cap}) exceeds the validator's max_items (${maxItems}); the browser would emit requests the RPC validator rejects with HTTP 400`,
+      AIRCRAFT_DETAILS_BATCH_LIMIT <= (maxItems as number),
+      `AIRCRAFT_DETAILS_BATCH_LIMIT (${AIRCRAFT_DETAILS_BATCH_LIMIT}) exceeds the validator's max_items (${maxItems}); the browser would emit requests the RPC validator rejects with HTTP 400`,
     );
+  });
+
+  it('derives both the client cap and the server work bound from the one shared constant', () => {
+    // A literal on either side is how these drifted apart in the first place.
+    assert.match(
+      serviceSource,
+      /const MAX_AIRCRAFT_DETAILS_BATCH = AIRCRAFT_DETAILS_BATCH_LIMIT;/,
+      'the browser cap must derive from the shared bound, not a copied literal',
+    );
+    assert.match(
+      serviceSource,
+      /import \{ AIRCRAFT_DETAILS_BATCH_LIMIT \} from '\.\.\/\.\.\/server\/_shared\/aircraft-details-batch';/,
+      'the browser must import the shared bound',
+    );
+    assert.match(
+      handlerSource,
+      /toUniqueSortedLimited\(normalized, AIRCRAFT_DETAILS_BATCH_LIMIT\)/,
+      'the handler work bound must derive from the shared constant, not a copied literal',
+    );
+  });
+
+  it('rotates to unattempted keys on the next refresh even when nothing got cached', async () => {
+    // The starvation case: the RPC fails, so no key is positively or negatively
+    // cached and `toFetch` is identical on the next refresh. Without a rotation
+    // cursor the same lexicographic head is retried forever and every key past
+    // the first batch is stranded. Failing (rather than succeeding) is what
+    // isolates rotation from the ordinary cache-advances-the-queue path.
+    const calls: Array<{ icao24s: string[] }> = [];
+    const { module, cleanup } = await loadWingbits((request) => {
+      calls.push(request);
+      throw new Error('upstream down');
+    });
+
+    try {
+      const input = Array.from({ length: 25 }, (_, index) => (0xabc000 + index).toString(16).toUpperCase());
+      const sorted = input.map((value) => value.toLowerCase()).sort();
+
+      await module.getAircraftDetailsBatch(input);
+      await module.getAircraftDetailsBatch(input);
+      await module.getAircraftDetailsBatch(input);
+
+      assert.equal(calls.length, 3);
+      assert.deepEqual(calls[0]?.icao24s, sorted.slice(0, 10));
+      assert.deepEqual(calls[1]?.icao24s, sorted.slice(10, 20), 'second refresh must advance past the first batch');
+      // 5 remaining, then wrap to the head of the ring.
+      assert.deepEqual(calls[2]?.icao24s, [...sorted.slice(20, 25), ...sorted.slice(0, 5)].sort());
+
+      const attempted = new Set(calls.flatMap((call) => call.icao24s));
+      assert.equal(attempted.size, 25, 'every key must be attempted within one sweep of the ring');
+    } finally {
+      cleanup();
+    }
   });
 
   it('only negative-caches the keys it actually sent when the response omits a requested count', async () => {
