@@ -624,13 +624,20 @@ describe('CI workflow coverage', () => {
       () => runReleasePreflight(releasePreflight, 'push', '', 'configured'),
       'populated tag releases must pass the client env preflight',
     );
-    for (const variant of ['full', 'tech', 'finance'] as const) {
-      assert.match(
-        packageScripts[`desktop:build:${variant}`] ?? '',
-        /npm run desktop:check-env/,
-        `desktop:build:${variant} must run the local desktop env gate`,
-      );
-    }
+    // #5908: one published desktop binary means exactly one local build script,
+    // so the env gate has one place to live. Asserting the absence of the
+    // per-variant scripts keeps this from silently covering less than it did —
+    // a reintroduced `desktop:build:tech` would otherwise never be gate-checked.
+    assert.match(
+      packageScripts['desktop:build'] ?? '',
+      /npm run desktop:check-env/,
+      'desktop:build must run the local desktop env gate',
+    );
+    assert.deepEqual(
+      Object.keys(packageScripts).filter((name) => name.startsWith('desktop:build:')),
+      [],
+      'per-variant desktop build scripts were retired with the one-binary model (#5908)',
+    );
     const releasePostProcess = workflowStepBlock(desktopBuildWorkflow, 'Strip GPU libraries from AppImage');
     assert.match(
       releasePostProcess,
