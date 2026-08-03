@@ -9,11 +9,17 @@ import {
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
 
-// A dotted acronym ("U.S.", "U.N.", "D.O.J.") followed by a lowercase word.
-// Sentences start with a capital, so this run is necessarily mid-clause and its
-// periods are not sentence boundaries. Deliberately narrow — see the sentence
-// split in composeSynthesizedBrief for why the ambiguous cases must not match.
-const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+\p{Ll})/gu;
+// A dotted acronym ("U.S.", "U.N.", "D.O.J.") followed by either a lowercase
+// word or its own citation marker. Sentences start with a capital and none
+// starts with "[7]", so both runs are necessarily mid-clause and their periods
+// are not sentence boundaries. Deliberately narrow — see the sentence split in
+// composeSynthesizedBrief for why the ambiguous cases must not match.
+//
+// #5947: the citation alternative matters because the model writes the acronym
+// as the sentence's OBJECT ("...not with the U.S. [5].") whenever the story is
+// about a country rather than by it. Without it the split stranded an uncited
+// fragment and orphaned "[5]." into a pseudo-sentence, rejecting the brief.
+const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+(?:\p{Ll}|\[\d{1,3}\]))/gu;
 
 /**
  * Choose which clustered story to summarize for the WORLD BRIEF.
@@ -74,6 +80,8 @@ Rules:
 - Use ONLY facts present in the numbered story text. Do not add names, places, dates, numbers, or context that are not explicitly there.
 - Do not invent proper nouns (people, organizations, countries) that are not in the story text.
 - Two numbered stories can describe the SAME event in different words. A lead claim may combine them, but it MUST carry the citation of EVERY story it drew from — write [3][7], not just [3]. Any name, place, or number you take from a story you did not cite counts as invented.
+- Write acronyms WITHOUT periods: "US", "UN", "EU", "UK" — never "U.S.", "U.N.". A trailing period there reads as the end of a sentence.
+- Refer to an actor by the name the story uses. Do not swap in a capital city, nickname, or synonym for it — write "US", not "Washington"; "Iran", not "Tehran" — unless that word is in the story text.
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.`;
 }
 

@@ -247,3 +247,69 @@ describe('composeSynthesizedBrief acronym boundaries fail closed (#5947 review)'
     assert.equal(composeSynthesizedBrief(terminalAcronym, topStories, { validatorMode: 'enforce' }), null);
   });
 });
+
+// #5947 (still degraded after #6019/#6030): a clause ENDING in a dotted acronym
+// carries its citation after the acronym — "not with the U.S. [2]." — which is
+// how the model writes it whenever the acronym is the object of the sentence.
+// The lowercase-only lookahead did not fire (the follower is '['), so the split
+// cut at the acronym, stranding an uncited fragment AND orphaning "[2]." into a
+// pseudo-sentence of its own. Measured against the live 2026-08-03T12:33Z
+// digest: 4 of 5 gate rejections in a 12-sample run had exactly this shape.
+//
+// A citation marker cannot begin a sentence, so this is provably mid-clause —
+// the same class of proof as the lowercase rule, NOT a relaxation of the
+// fail-closed policy above. Merging is also citation-neutral here: the fragment
+// is joined to its OWN trailing citation, never to another sentence's, so the
+// #4928 union hazard is not re-opened.
+describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () => {
+  const topStories = [
+    {
+      primaryTitle: 'GCC condemns Iranian attacks on Kuwait',
+      primarySource: 'The National',
+      primaryLink: 'http://gcc',
+      sources: ['The National', 'Reuters'],
+      memberTitles: ['GCC condemns Iranian attacks on Kuwait'],
+    },
+    {
+      primaryTitle: 'U.S. Embassies Urge Citizens to Consider Leaving the Region',
+      primarySource: 'The Hindu',
+      primaryLink: 'http://embassies',
+      sources: ['The Hindu', 'AP News'],
+      memberTitles: ['U.S. Embassies Urge Citizens to Consider Leaving the Region'],
+    },
+  ];
+  const lines = [
+    { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+    { n: 2, text: 'U.S. Embassies urge citizens to consider leaving the region [2]' },
+  ];
+
+  it('accepts a sentence whose citation follows a terminal dotted acronym', () => {
+    const citedAcronym = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave the region by the U.S. [2].',
+      lines,
+    });
+    const composed = composeSynthesizedBrief(citedAcronym, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'the clause owns the [2] that follows its acronym — it is not uncited');
+    assert.match(composed.lead, /U\.S\. \[2\]/, 'the published lead keeps its original punctuation');
+  });
+
+  it('still rejects an uncited sentence after an acronym that carries its citation', () => {
+    // The merge must join the fragment to its OWN citation only. A following
+    // sentence with no citation of its own stays a separate unit and rejects.
+    const trailingUncited = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave by the U.S. [2]. Analysts expect further escalation soon.',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(trailingUncited, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('still scopes proper nouns to the citation that follows the acronym', () => {
+    // "U.S." attributed to [1], which never mentions the US. Collapsing the
+    // acronym must not let it ground against story 2's title.
+    const misattributed = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [1]. GCC states condemned Iranian attacks on Kuwait [1].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }), null);
+  });
+});
