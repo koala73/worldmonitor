@@ -274,6 +274,47 @@ describe('#6080 — deployment-order grace matches health exactly', () => {
   });
 });
 
+// Every assertion in this file is only as good as the fixture it runs on. If
+// the hand-built block drifts from what the seeder actually publishes, the
+// suite keeps passing while proving nothing about production.
+describe('#6080 — the fixture is the shape the producer really publishes', () => {
+  it('matches buildContentFreshnessReport field for field', async () => {
+    const { buildContentFreshnessReport } = await import(
+      '../scripts/_portwatch-content-freshness.mjs'
+    );
+    const real = buildContentFreshnessReport({
+      countryData: new Map([
+        ['CN', { fetchedAt: new Date(NOW - 60 * MINUTE_MS).toISOString() }],
+        ['HK', { fetchedAt: new Date(NOW - 60 * MINUTE_MS).toISOString() }],
+      ]),
+      now: NOW,
+    });
+
+    assert.deepEqual(
+      Object.keys(contentFreshnessOf()).sort(),
+      Object.keys(real).sort(),
+      'fixture and producer must publish the same field set',
+    );
+    // Types matter as much as names — the assessor parses counts with an
+    // integer guard and timestamps with a finite-number guard, so a fixture
+    // that swapped a count for an array would sail past a key-set check.
+    for (const key of Object.keys(real)) {
+      const fixtureValue = contentFreshnessOf()[key];
+      if (real[key] === null || fixtureValue === null) continue;
+      assert.equal(
+        Array.isArray(fixtureValue),
+        Array.isArray(real[key]),
+        `${key}: fixture and producer disagree on array-ness`,
+      );
+      assert.equal(
+        typeof fixtureValue,
+        typeof real[key],
+        `${key}: fixture and producer disagree on type`,
+      );
+    }
+  });
+});
+
 describe('#6080 — the mirror claim in cache-tools.ts is enforced', () => {
   it('matches api/health.js::SEED_META field for field', () => {
     const check = portwatchCheck();
