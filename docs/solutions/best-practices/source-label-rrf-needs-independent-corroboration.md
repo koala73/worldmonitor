@@ -23,7 +23,7 @@ This record makes the discovery result durable. It does not implement ranking, a
 
 The affected surface is the delayed WorldMonitor Brief/digest ranking that feeds the user's capped story cards and digest notifications. The ranking is supposed to keep high-importance, fresh developments visible while grouping related stories.
 
-The failure mode is **syndication being counted as independent corroboration**. In the fixed sample, a Spain–Morocco story has 18 hydrated feed labels and 42 merged title variants, but zero entity corroboration. A raw source-label vote treats that breadth as ranking evidence and moves it from baseline position 12 to RRF position 3. The same candidate removes a fresh 2.26-hour-old score-63 story and a 5.17-hour-old score-69 story from the top 12. That is a user-visible freshness and quality regression, not evidence that the Spain–Morocco event deserves promotion.
+The failure mode is **syndication being counted as independent corroboration**. In the fixed sample, a Spain–Morocco story has 18 hydrated feed labels and 42 merged title variants, but `entityCorroborationCount=0` because the configured entity-level heuristic did not fire. A raw source-label vote treats that breadth as ranking evidence and moves it from baseline position 12 to RRF position 3. The same candidate removes a fresh 2.26-hour-old score-63 story and a 5.17-hour-old score-69 story from the top 12. That is a user-visible freshness and quality regression, not evidence that the Spain–Morocco event deserves promotion.
 
 ## Evaluation contract
 
@@ -45,7 +45,7 @@ The comparison was rerun read-only on 2026-08-02 against the retained production
 | Topic-grouped baseline | 14 topics, 3 multi-member topics, 17 reps with cached vectors |
 | User-facing cap under evaluation | 12 stories (`DIGEST_MAX_STORIES_PER_USER=12`) |
 
-The replay record fixes the tick, representative set, source labels, merged hashes, scores, and cached embeddings. The record does not persist `publishedAt`; the publication ages below are therefore a read-only join to the current `story:track:v1` rows for those fixed hashes. They are evidence for this rerun, not immutable replay fields.
+The replay record fixes the tick, representative set, source labels, merged hashes, scores, and embedding cache keys/availability. It does not persist vector payloads or a vector digest: the current harness stores `embeddingCacheKey` and `hasEmbedding`, then hydrates whatever vector is currently available under that key. The comparison is therefore reproducible only within the cache-backed rerun window; a durable replay needs a vector snapshot or digest, or an explicit statement that the comparison is scoped to that window. The record does not persist `publishedAt`; the publication ages below are therefore a read-only join to the current `story:track:v1` rows for those fixed hashes. They are evidence for this rerun, not immutable replay fields.
 
 ### Baseline top 12
 
@@ -74,13 +74,13 @@ The sample has three different signals that must not be collapsed into one vote:
 
 - `sources` in the replay record are hydrated feed labels such as `BBC World`, `Reuters World`, or `AP News`. They are not a publisher-family or ownership map, and several labels can represent the same wire story or syndication chain.
 - `mergedHashes` are the title-identity members already merged into one representative. A large value is evidence of repeated identity variants, not independent reporting.
-- `entityCorroborationCount` is the existing narrow cross-title actor/location/action signal within its freshness window. It is closer to independent event corroboration, but it is not a complete publisher-independence truth set.
+- `entityCorroborationCount` is the existing narrow entity-level signal. Within the 24-hour freshness window, it fires only for configured diplomacy/flashpoint entity-action pairs or the generic diplomacy-flashpoint key, and only when at least two distinct feed sources hit the same key. It is closer to independent event corroboration, but it is not a complete publisher-independence truth set: zero means the configured heuristic did not fire, not that independent reporting is absent.
 
 For the two diagnostic cases:
 
 | Story | Feed labels | Merged variants | Entity corr. | Baseline → RRF | Interpretation |
 | --- | ---: | ---: | ---: | --- | --- |
-| Spain–Morocco border clashes | 18 | 42 | 0 | 12 → 3 | Syndication breadth is being mistaken for corroboration. |
+| Spain–Morocco border clashes | 18 | 42 | 0 | 12 → 3 | Syndication breadth is being mistaken for corroboration; the configured entity-level heuristic did not fire (`0`), which is not evidence that independent reporting is absent. |
 | Gaza / Board of Peace claim | 18 | 30 | 2 | 8 → 2 | Existing corroboration exists, but the candidate also promotes a 24.36-hour-old story. |
 
 ## Candidate comparison
@@ -91,7 +91,7 @@ The candidate is intentionally naive standard RRF with `k=60`:
 RRF(story) = Σ over feed labels L of 1 / (60 + rank of story within L)
 ```
 
-Each feed-label list ranks the 17 score-floor representatives by the existing current score. This is an offline comparison only; no runtime path uses it.
+Each feed-label list ranks the 17 score-floor representatives by a deterministic order: `currentScore` descending, then stable `repHash` ascending; ranks are 1-based before applying RRF. The fixed tick was rerun read-only with this order; all 17 representatives had cached vectors, and the reported top 12 and metrics below remain unchanged. This is an offline comparison only; no runtime path uses it.
 
 | Metric | Existing topic-grouped baseline | Naive source-label RRF | Delta |
 | --- | ---: | ---: | ---: |
@@ -126,10 +126,11 @@ Reject a source-label RRF candidate when any of these are true:
 Reconsider only after all of the following are available:
 
 1. A source-to-publisher-family/syndication map or an equivalent existing project signal that can distinguish independent reporting from repeated distribution.
-2. Replay records that preserve publication time and the source-independence fields needed by the comparison, with the existing replay harness's required multi-day coverage rather than one selected tick.
+2. Replay records that preserve publication time, the source-independence fields needed by the comparison, and either immutable vector snapshots/digests or an explicit cache-backed validity window, with the existing replay harness's required multi-day coverage rather than one selected tick.
 3. Labeled story-ranking outcomes or an existing user-quality signal. Do not substitute invented thresholds, hand-picked stories, or source-label counts.
-4. A held-out comparison against the current topic-grouped baseline covering score, freshness, independent corroboration, and labeled quality, with non-regression rules declared before the run.
+4. A held-out comparison against the current topic-grouped baseline covering score, freshness, independent corroboration, and labeled quality, with non-regression rules and the deterministic ranking/tie contract declared before the run.
 5. A separate outcome review before any runtime or configuration proposal. This discovery record does not authorize such a proposal.
+6. An operationally verified shadow or equivalent validation lane for the candidate, with deployment health, error/freshness monitoring, comparison-output availability, and rollback criteria recorded. If the lane or any required evidence is absent, fail closed and do not propose a runtime or configuration change.
 
 ## Final decision
 
