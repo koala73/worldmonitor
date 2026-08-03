@@ -102,7 +102,7 @@ export interface FlowEstimate {
   baselineMbd: number;
   flowRatio: number;
   disrupted: boolean;
-  source: string;
+  source: FlowSource;
   hazardAlertLevel: string;
   hazardAlertName: string;
 }
@@ -649,6 +649,8 @@ export interface GetChinaCorridorControlTowersResponse {
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
+
+export type FlowSource = "FLOW_SOURCE_UNSPECIFIED" | "portwatch-dwt" | "portwatch-counts";
 
 export type PeriodChangeBasis = "PERIOD_CHANGE_BASIS_UNSPECIFIED" | "publisher_reported" | "derived_from_prior_period_level";
 
