@@ -278,12 +278,22 @@ endpoint calls `STALE_CONTENT`. Both surfaces re-age the observation at read
 time and share one assessor (`api/_content-freshness.js`), and the parity is
 asserted field-for-field against this config rather than left to a comment.
 Both also read the activation marker as an `EXISTS`, so its stored value can
-never make the two disagree. MCP additionally treats an *unreadable* marker as
-unknown rather than absent — grace is granted only when the marker was read and
-found missing, so a Redis blip cannot silently extend a rollout window that has
-already closed. An MCP caller still sees a single boolean: `stale` does not say
-*which* dimension failed, so `/api/health` remains the surface that names the
-stale country.
+never make the two disagree.
+
+The surfaces differ in exactly one input class, deliberately. This endpoint
+cannot tell a marker it failed to read from one that is genuinely absent — both
+land in the same bucket — so a read error still grants the grace. MCP treats an
+unreadable marker as *unknown* and fails closed, because a grace granted on the
+absence of evidence never expires: an evicted or renamed marker would otherwise
+disable the alarm permanently. So for a pre-activation key whose marker read
+errors, this endpoint reports `OK` while MCP reports `stale: true`. The
+disagreement only ever runs in that direction — MCP over-alarming — and never
+the direction that hides stale content. Aligning this endpoint is tracked
+separately.
+
+An MCP caller still sees a single boolean: `stale` does not say *which*
+dimension failed, so `/api/health` remains the surface that names the stale
+country.
 
 Named entities are operator-only. `contentFreshness` and the
 `chinaDecisionSignals` group breakdown are stripped from the anonymous

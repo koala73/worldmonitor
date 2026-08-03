@@ -548,14 +548,110 @@ describe('#6080 — executeTool reads the activation marker', () => {
     );
   });
 
-  // EXISTS answers presence, so the marker's stored VALUE is irrelevant — the
-  // property that keeps MCP agreeing with health, whose read is also EXISTS.
-  it('keys grace on marker presence, not on the value the writer stored', async () => {
-    const result = await runWithRedis(
-      { ...baseKeys(blockLessMeta()), [ACTIVATION_KEY]: '2026-08-03T10:00:00Z' },
-      { markers: [ACTIVATION_KEY] },
-    );
+});
 
-    assert.equal(result.stale, true, 'a non-JSON marker value still reads as activated');
+// #6080 review: hardening MCP to fail closed on an unreadable marker created a
+// NARROW, DELIBERATE asymmetry with health, which softens the same condition.
+// Health cannot distinguish "marker errored" from "marker absent" — it collapses
+// both into `activatedNames` not containing the name (api/health.js:2026,
+// `if (!r?.error && Number(r?.result) === 1)`) — so a per-command error there
+// still grants the grace.
+//
+// The disagreement is one input class wide (block absent AND the marker read
+// errors) and runs in the SAFE direction: MCP over-alarms, it never reports
+// fresh for something health calls stale, which is the failure #6080 exists to
+// prevent. Pinned here so the direction cannot silently flip, and tracked for
+// alignment on health's side in #6095.
+describe('#6080 — the one accepted divergence, and its direction', () => {
+  const NO_BLOCK = completeRun(undefined);
+
+  it('has MCP fail closed where health softens an unreadable marker', () => {
+    // `activated: false` is health's error bucket as well as its absent bucket.
+    assert.equal(
+      healthVerdict(NO_BLOCK, { activated: false }).status,
+      'OK',
+      'health softens a marker it could not read',
+    );
+    assert.equal(
+      mcpStale(NO_BLOCK, { activated: null }),
+      true,
+      'MCP fails closed on the same input',
+    );
+  });
+
+  it('never diverges in the unsafe direction', () => {
+    // The invariant that actually matters: for every activation state, MCP
+    // must not answer fresh while health answers stale.
+    for (const activated of [true, false, null]) {
+      for (const meta of [STALE_CONTENT_META, FRESH_META, NO_BLOCK]) {
+        const healthStale = healthVerdict(meta, { activated: activated === true }).status !== 'OK';
+        if (!healthStale) continue;
+        assert.equal(
+          mcpStale(meta, { activated }),
+          true,
+          `MCP reported fresh where health alarmed (activated=${activated})`,
+        );
+      }
+    }
+  });
+});
+
+// The assessor's fail-closed rules are shared code, but the two surfaces reach
+// them through independently-written gates, so agreement on the malformed
+// shapes has to be asserted, not assumed.
+describe('#6080 — both surfaces agree across the unusable state space', () => {
+  const SHAPES = {
+    scalar_block: 42,
+    array_block: [],
+    string_block: 'not-an-object',
+    null_block: null,
+    empty_critical_scope: contentFreshnessOf({ criticalCountries: [], criticalFreshCount: 0 }),
+    narrowed_scope: contentFreshnessOf({ criticalCountries: ['CN'], criticalFreshCount: 1 }),
+    counts_inconsistent: contentFreshnessOf({ freshCount: 100, staleCount: 2, unknownCount: 0 }),
+    fresh_exceeds_covered: contentFreshnessOf({ freshCount: 500 }),
+    critical_fresh_exceeds_declared: contentFreshnessOf({ criticalFreshCount: 9 }),
+    missing_counts: contentFreshnessOf({ coveredCount: null, freshCount: null }),
+  };
+
+  for (const [label, block] of Object.entries(SHAPES)) {
+    it(`fails closed on both surfaces: ${label}`, () => {
+      const meta = completeRun(block);
+      assert.notEqual(
+        healthVerdict(meta).status,
+        'OK',
+        `health must not accept ${label}`,
+      );
+      assert.equal(mcpStale(meta), true, `MCP must not accept ${label}`);
+    });
+  }
+
+  // Clock skew: an observation dated in the future is an upstream clock error
+  // or a forecast mislabelled as an observation — never evidence of freshness.
+  it('fails closed on both surfaces for a future-dated observation', () => {
+    const meta = completeRun(contentFreshnessOf({
+      criticalOldestObservedAt: NOW + 60 * MINUTE_MS,
+      criticalOldestAgeMinutes: -60,
+    }));
+
+    assert.equal(healthVerdict(meta).status, 'STALE_CONTENT');
+    assert.equal(mcpStale(meta), true);
+  });
+
+  // The assessor compares raw milliseconds inclusively, so exactly-at-budget is
+  // stale. Rounded minutes would accept up to 29,999ms over on both surfaces.
+  it('agrees at the raw millisecond budget boundary', () => {
+    const budgetMs = 4320 * MINUTE_MS;
+    for (const extraMs of [0, 1]) {
+      const meta = completeRun(contentFreshnessOf({
+        criticalOldestObservedAt: NOW - (budgetMs + extraMs),
+      }));
+      assert.equal(healthVerdict(meta).status, 'STALE_CONTENT', `health at +${extraMs}ms`);
+      assert.equal(mcpStale(meta), true, `MCP at +${extraMs}ms`);
+    }
+    const inside = completeRun(contentFreshnessOf({
+      criticalOldestObservedAt: NOW - (budgetMs - 1),
+    }));
+    assert.equal(healthVerdict(inside).status, 'OK', 'health 1ms inside budget');
+    assert.equal(mcpStale(inside), false, 'MCP 1ms inside budget');
   });
 });

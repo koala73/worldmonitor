@@ -1273,6 +1273,7 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
+- **Per-country content freshness (PortWatch slice):** `stale: true` also flags when a decision-critical country's own observation (`CN`/`HK`) is older than **72 h**, even though the run's heartbeat is fresh and all 174 countries are published. The seeder reuses a cached country payload while upstream `max(date)` has not advanced, so transport age and record count both read healthy while an individual country's data is days old. This mirrors the `STALE_CONTENT` verdict on `/api/health` for the same seed key — see [Health endpoints](/health-endpoints). `stale` stays a single boolean, so it does not say which dimension tripped; `/api/health` names the stale country.
 
 <CodeGroup>
 
