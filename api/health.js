@@ -15,6 +15,13 @@ import { unwrapEnvelope } from './_seed-envelope.js';
 import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
+import {
+  projectChinaDecisionGroupDiagnostics,
+} from './_china-decision-health.js';
+import {
+  buildContentFreshnessAssessment,
+  projectContentFreshnessForWire,
+} from './_content-freshness.js';
 
 export const config = { runtime: 'edge' };
 
@@ -29,6 +36,12 @@ const CHINA_DECISION_SIGNAL_GROUP_IDS = Object.freeze([
   'corporate-disclosures',
   'corridor-conditions',
   'activity-nowcast',
+]);
+const CHINA_DECISION_SIGNAL_STATES = new Set([
+  'available',
+  'partial',
+  'stale',
+  'unavailable',
 ]);
 // The one unavailable cause that still counts as operational source coverage:
 // the upstream answered and had nothing qualifying to report. Must stay in
@@ -1127,207 +1140,31 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  // Per-entity content freshness (#6060). Distinct from the contentAge trio
-  // above: that one asks "did the source publish anything recently" via
-  // `newestItemAt`, which a per-country corpus always answers yes to — one
-  // 98-hour-old China observation hides behind 173 fresh countries. This block
-  // asks "is EVERY covered entity inside its content budget".
-  //
-  // Opt-in is health-config (`requireContentFreshness`), not the mere presence
-  // of producer fields, so a producer that stops writing the block cannot
-  // silently switch the check off — that path fails closed below.
-  let contentFreshness = null;
-  if (seedCfg.requireContentFreshness) {
-    const block = meta?.contentFreshness;
-    // Distinguishes "the producer never wrote this field" (a deploy-order
-    // state) from "wrote it, but the contents are unusable" (a regression).
-    const blockPresent = block !== null
-      && typeof block === 'object'
-      && !Array.isArray(block);
-    const count = (value) => (Number.isInteger(value) && value >= 0 ? value : null);
-    const coveredCount = count(block?.coveredCount);
-    const freshCount = count(block?.freshCount);
-    const staleCount = count(block?.staleCount);
-    const unknownCount = count(block?.unknownCount);
-    const entityList = (value) => (Array.isArray(value)
-      ? value
-          .filter((entity) => typeof entity === 'string')
-          .slice(0, 40)
-          .map((entity) => entity.slice(0, 8))
-      : []);
-    // The decision-critical subset the producer declares (CN/HK today) is what
-    // the verdict keys on. Fleet-wide staleness is normal by construction —
-    // the seeder refreshes 30 of 174 countries per 12h run, so the tail of the
-    // rotation is routinely past budget — and alarming on it would produce a
-    // warning that is always lit and never actionable.
-    const criticalCountries = entityList(block?.criticalCountries);
-    const criticalFreshCount = count(block?.criticalFreshCount);
-    // The producer must not be able to define both the numerator and the
-    // denominator of its own alarm. `requireContentFreshness` carries the
-    // country set HEALTH expects to be covered; narrowing the producer-side
-    // list would otherwise shrink the alarm scope silently — drop `CN` from it
-    // and this check reports OK with China 98h stale, which is exactly the
-    // #6060 failure. Extras are fine; a missing expected country is not.
-    const expectedCountries = Array.isArray(seedCfg.requireContentFreshness?.countries)
-      ? seedCfg.requireContentFreshness.countries
-      : [];
-    // Health owns the THRESHOLD as well as the scope. A producer that widened
-    // its own `budgetMinutes` could otherwise certify an arbitrarily old
-    // observation as fresh — the same "defines its own alarm" hole the country
-    // pin closes, one field over.
-    const expectedBudgetMinutes = Number(seedCfg.requireContentFreshness?.budgetMinutes);
-    // Re-age the producer's measurement against NOW. The counts below are a
-    // snapshot taken at seeder-run time and seed-meta is rewritten only on a
-    // canonical-advancing 12h run, so trusting them alone lets OK persist while
-    // the observation silently ages past budget.
-    const epochMs = (value) => (
-      typeof value === 'number' && Number.isFinite(value) ? value : null
-    );
-    const criticalOldestObservedAt = epochMs(block?.criticalOldestObservedAt);
-    const criticalAgeMinutes = criticalOldestObservedAt === null
-      ? null
-      : Math.round((now - criticalOldestObservedAt) / 60_000);
-    const declaredScopeCoversExpected = expectedCountries.length > 0
-      && expectedCountries.every((entity) => criticalCountries.includes(entity));
-    // `usable` is the fail-closed gate: without a coherent declared/fresh pair
-    // over the expected scope, health cannot prove content freshness and must
-    // not report OK. The fresh > declared case is included because a producer
-    // reporting more fresh entities than it declared is arithmetically broken,
-    // and "broken" must never be the branch that certifies freshness.
-    // Publish WHICH condition failed, not just that one did. `usable` is six
-    // ANDed conditions; without this an operator (or an agent) seeing
-    // COVERAGE_DEGRADED has to reimplement the boolean from the raw counts to
-    // guess why — and `declared_scope_narrowed` is not reconstructable from the
-    // response at all, because the expected scope lives in health config.
-    // Bounded vocabulary, mirroring `unavailableCause`.
-    const unusableReasons = [];
-    if (coveredCount === null) unusableReasons.push('covered_count_unusable');
-    if (freshCount === null) unusableReasons.push('fresh_count_unusable');
-    else if (coveredCount !== null && freshCount > coveredCount) {
-      unusableReasons.push('fresh_exceeds_covered');
-    }
-    if (!declaredScopeCoversExpected) unusableReasons.push('declared_scope_narrowed');
-    if (criticalFreshCount === null) unusableReasons.push('critical_fresh_count_unusable');
-    else if (criticalFreshCount > criticalCountries.length) {
-      unusableReasons.push('critical_fresh_exceeds_declared');
-    }
-    if (!Number.isFinite(expectedBudgetMinutes) || expectedBudgetMinutes <= 0) {
-      unusableReasons.push('expected_budget_unusable');
-    }
-    // A block claiming every critical country is fresh but carrying no usable
-    // observation time cannot be re-aged, so its freshness is unprovable.
-    if (
-      blockPresent
-      && criticalOldestObservedAt === null
-      && criticalFreshCount !== null
-      && criticalCountries.length > 0
-      && criticalFreshCount === criticalCountries.length
-    ) {
-      unusableReasons.push('critical_observation_time_unusable');
-    }
-    const usable = unusableReasons.length === 0;
-    contentFreshness = {
-      present: blockPresent,
-      usable,
-      unusableReasons,
-      expectedCriticalCountries: expectedCountries,
-      // The pinned budget, not the producer's — publishing the producer's
-      // would explain the verdict with a number health did not use.
-      budgetMinutes: Number.isFinite(expectedBudgetMinutes) ? expectedBudgetMinutes : null,
-      coveredCount,
-      freshCount,
-      staleCount,
-      unknownCount,
-      staleCountries: entityList(block?.staleCountries),
-      staleCountriesTruncated: count(block?.staleCountriesTruncated) ?? 0,
-      oldestObservedAt: epochMs(block?.oldestObservedAt),
-      oldestObservedCountry: typeof block?.oldestObservedCountry === 'string'
-        ? block.oldestObservedCountry.slice(0, 8)
-        : null,
-      oldestAgeMinutes: epochMs(block?.oldestAgeMinutes) === null
-        ? null
-        : Math.round(block.oldestAgeMinutes),
-      criticalCountries,
-      criticalFreshCount,
-      criticalStaleCountries: entityList(block?.criticalStaleCountries),
-      criticalMissingCountries: count(block?.criticalMissingCountries),
-      criticalOldestObservedAt,
-      criticalOldestObservedCountry: typeof block?.criticalOldestObservedCountry === 'string'
-        ? block.criticalOldestObservedCountry.slice(0, 8)
-        : null,
-      // Recomputed against now, not echoed from the producer.
-      criticalOldestAgeMinutes: criticalAgeMinutes,
-      // A decision-critical entity that is not PROVEN fresh — past budget,
-      // future-dated, missing a usable timestamp, or absent from the run
-      // entirely — makes the decision content stale.
-      contentStale: usable
-        ? criticalFreshCount < criticalCountries.length
-          // Age < 0 (future-dated) is suspicious, never fresh — same rule the
-          // producer applies per country.
-          || criticalAgeMinutes === null
-          || criticalAgeMinutes < 0
-          || criticalAgeMinutes > expectedBudgetMinutes
-        : false,
-    };
-  }
-  // Decision-group classes (#6060). The china-decision-signals seeder writes
-  // chinaDecisionSignalGroupDiagnostics as an afterPublish freshness patch, so
-  // groupStates / unavailableCauses land flat on seed-meta. Projecting them
-  // here turns a generic "N/6" warning into the three states an operator has
-  // to act on differently: a healthy quiet window (nothing to do), a stale
-  // group (chase the source's content), and a genuinely unavailable group
-  // (chase the source's transport or inputs).
-  //
-  // Surfacing only — the coverage verdict stays with minRecordCount, which the
-  // producer computes from the same rule. Absent diagnostics therefore cannot
-  // soften the verdict; they only remove the breakdown.
-  let decisionGroups = null;
-  const plainObject = (value) => (
-    value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null
+  // The shared assessment owns validation, fail-closed activation semantics,
+  // and exact millisecond re-aging. This endpoint keeps only its status and
+  // response-shaping concerns local.
+  const contentFreshness = buildContentFreshnessAssessment(
+    meta,
+    seedCfg.requireContentFreshness,
+    now,
   );
-  if (
-    seedCfg.decisionGroups
-    && plainObject(meta?.groupStates) !== null
-    && plainObject(meta?.groupCounts) !== null
-  ) {
-    const states = meta.groupStates;
-    const causes = plainObject(meta?.unavailableCauses) ?? {};
-    const counts = meta.groupCounts;
-    const count = (value) => (Number.isInteger(value) && value >= 0 ? value : null);
-    const declared = seedCfg.decisionGroups.filter(
-      (groupId) => typeof states[groupId] === 'string',
-    );
-    const quietGroups = [];
-    const staleGroups = [];
-    const partialGroups = [];
-    const unavailableGroups = [];
-    for (const groupId of declared) {
-      if (states[groupId] === 'partial') partialGroups.push(groupId);
-      if (states[groupId] === 'stale') staleGroups.push(groupId);
-      if (states[groupId] !== 'unavailable') continue;
-      const cause = typeof causes[groupId] === 'string' ? causes[groupId] : 'unknown';
-      if (cause === CHINA_DECISION_HEALTHY_QUIET_CAUSE) quietGroups.push(groupId);
-      // NOT `cause`: api/_json-response.js strips that key fleet-wide as an
-      // Error.cause leak guard, so a field named `cause` never reaches the wire.
-      else unavailableGroups.push({ id: groupId, unavailableCause: cause.slice(0, 40) });
+  const decisionDiagnostics = seedCfg.decisionGroups
+    ? projectChinaDecisionGroupDiagnostics(meta, {
+      groupIds: seedCfg.decisionGroups,
+      allowedStates: CHINA_DECISION_SIGNAL_STATES,
+      healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
+    })
+    : null;
+  const decisionGroups = decisionDiagnostics
+    ? {
+      ...decisionDiagnostics.groupCounts,
+      groupStates: decisionDiagnostics.groupStates,
+      quietGroups: decisionDiagnostics.quietGroups,
+      partialGroups: decisionDiagnostics.partialGroups,
+      staleGroups: decisionDiagnostics.staleGroups,
+      unavailableGroups: decisionDiagnostics.unavailableGroups,
     }
-    decisionGroups = {
-      populated: count(counts.populated),
-      partial: count(counts.partial),
-      stale: count(counts.stale),
-      unavailable: count(counts.unavailable),
-      healthyQuiet: count(counts.healthyQuiet),
-      operationallyCovered: count(counts.operationallyCovered),
-      // The full state map, matching what /api/seed-health already publishes —
-      // otherwise a caller polling /api/health can see that a group is partial
-      // but not which one, and has to make a second request for the answer.
-      groupStates: Object.fromEntries(declared.map((groupId) => [groupId, states[groupId]])),
-      quietGroups,
-      partialGroups,
-      staleGroups,
-      unavailableGroups,
-    };
-  }
+    : null;
   // Per-market coverage: optional { status, completedPages, failedPages, completionRatio, rejectedCount, retailers }
   // written by consumer-prices publish.ts and other seeders that track partial completion.
   // null when the seeder didn't write coverage fields.
@@ -1476,7 +1313,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   const contentFreshnessPending = Boolean(
     seedCfg?.requireContentFreshness
     && contentFreshness
-    && !contentFreshness.present
+    && !contentFreshness.fieldPresent
     && seedCfg.contentFreshnessActivation
     && !ctx.activatedNames?.has(seedCfg.contentFreshnessActivation),
   );
@@ -1614,31 +1451,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // the unusable case, so "the producer stopped writing this" is diagnosable
   // from the health response rather than only from a bare COVERAGE_DEGRADED.
   if (contentFreshness && !contentFreshnessPending) {
-    entry.contentFreshness = {
-      usable: contentFreshness.usable,
-      // Empty when usable; names the failed condition(s) otherwise.
-      unusableReasons: contentFreshness.unusableReasons,
-      expectedCriticalCountries: contentFreshness.expectedCriticalCountries,
-      budgetMinutes: contentFreshness.budgetMinutes,
-      coveredCount: contentFreshness.coveredCount,
-      freshCount: contentFreshness.freshCount,
-      staleCount: contentFreshness.staleCount,
-      unknownCount: contentFreshness.unknownCount,
-      staleCountries: contentFreshness.staleCountries,
-      staleCountriesTruncated: contentFreshness.staleCountriesTruncated,
-      oldestObservedAt: contentFreshness.oldestObservedAt,
-      oldestObservedCountry: contentFreshness.oldestObservedCountry,
-      oldestAgeMinutes: contentFreshness.oldestAgeMinutes,
-      criticalCountries: contentFreshness.criticalCountries,
-      criticalFreshCount: contentFreshness.criticalFreshCount,
-      criticalStaleCountries: contentFreshness.criticalStaleCountries,
-      // Distinguishes "absent from the run entirely" from "present but past
-      // budget" — two different remediation paths the seeder already separates.
-      criticalMissingCountries: contentFreshness.criticalMissingCountries,
-      criticalOldestObservedAt: contentFreshness.criticalOldestObservedAt,
-      criticalOldestObservedCountry: contentFreshness.criticalOldestObservedCountry,
-      criticalOldestAgeMinutes: contentFreshness.criticalOldestAgeMinutes,
-    };
+    entry.contentFreshness = projectContentFreshnessForWire(contentFreshness);
   }
   if (decisionGroups) entry.decisionGroups = decisionGroups;
   if (synthesisFailure) {

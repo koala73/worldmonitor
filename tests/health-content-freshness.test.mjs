@@ -206,6 +206,21 @@ describe('portwatchPortActivity classification', () => {
     assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 71 * 60);
   });
 
+  it('uses the raw millisecond boundary when re-aging content', () => {
+    const budgetMs = 4320 * MINUTE_MS;
+    for (const extraMs of [0, 1]) {
+      const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+        criticalOldestObservedAt: NOW - budgetMs - extraMs,
+        criticalOldestAgeMinutes: 4320,
+      })));
+      assert.equal(
+        entry.status,
+        'STALE_CONTENT',
+        `an observation ${extraMs}ms beyond the boundary must be stale`,
+      );
+    }
+  });
+
   it('ignores a producer-supplied budget in favour of the one health pins', () => {
     // A producer that widens its own budget to 30 days must not be able to
     // certify a 98h-old observation as fresh.
@@ -403,6 +418,17 @@ describe('portwatchPortActivity classification', () => {
     assert.deepEqual(broken.contentFreshness.unusableReasons, ['declared_scope_narrowed']);
   });
 
+  it('does not grant activation grace to scalar or array blocks', () => {
+    for (const malformed of [42, [], 'not-an-object', null]) {
+      const entry = classifyPortwatch(completeRun(malformed), { activated: false });
+      assert.equal(
+        entry.status,
+        'COVERAGE_DEGRADED',
+        `present malformed contentFreshness=${JSON.stringify(malformed)} must fail closed before activation`,
+      );
+    }
+  });
+
   it('fails closed when a required content-freshness block is missing or malformed', () => {
     for (const missing of [undefined, null, 'not-an-object', 42, []]) {
       const entry = classifyPortwatch(completeRun(missing));
@@ -420,6 +446,9 @@ describe('portwatchPortActivity classification', () => {
       { coveredCount: 174, freshCount: -1 },
       { coveredCount: null, freshCount: 174 },
       { coveredCount: 174, freshCount: 175 },
+      { coveredCount: 174, freshCount: 173, staleCount: 0, unknownCount: 0 },
+      { coveredCount: 174, freshCount: 173, staleCount: -1, unknownCount: 2 },
+      { coveredCount: 0, freshCount: 0, staleCount: 0, unknownCount: 0, criticalFreshCount: 2 },
       // A producer that declares no critical set cannot prove the decision
       // inputs are fresh, whatever its fleet-wide numbers say.
       { criticalCountries: [] },

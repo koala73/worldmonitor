@@ -21,6 +21,7 @@ import { __testing__ } from '../api/health.js';
 import {
   buildContentFreshnessReport,
   buildPortActivityMetaPayload,
+  isCriticalContentRefreshDue,
   orderColdFetchQueue,
   PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
@@ -295,6 +296,54 @@ describe('decision-critical cold-fetch priority', () => {
     assert.ok(
       PORTWATCH_DECISION_CRITICAL_COUNTRIES.length < 30,
       'critical reservations must not consume the whole cold-fetch budget',
+    );
+  });
+});
+
+describe('decision-critical cache-hit refresh deadline', () => {
+  it('moves a critical cache hit into the cold queue before the 72h boundary', () => {
+    const budgetMs = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES * MINUTE_MS;
+    const cadenceMs = 12 * HOUR_MS;
+    const atDeadline = new Date(NOW - budgetMs + cadenceMs).toISOString();
+    const justBeforeDeadline = new Date(NOW - budgetMs + cadenceMs + 1).toISOString();
+
+    assert.equal(
+      isCriticalContentRefreshDue({
+        iso2: 'CN',
+        prevPayload: payload('CN', atDeadline),
+        now: NOW,
+      }),
+      true,
+    );
+    assert.equal(
+      isCriticalContentRefreshDue({
+        iso2: 'HK',
+        prevPayload: payload('HK', justBeforeDeadline),
+        now: NOW,
+      }),
+      false,
+    );
+  });
+
+  it('does not evict a fresh non-critical cache hit for the content policy', () => {
+    assert.equal(
+      isCriticalContentRefreshDue({
+        iso2: 'US',
+        prevPayload: payload('US', new Date(NOW - 100 * HOUR_MS).toISOString()),
+        now: NOW,
+      }),
+      false,
+    );
+  });
+
+  it('fails closed for a critical cache payload without a usable observation time', () => {
+    assert.equal(
+      isCriticalContentRefreshDue({
+        iso2: 'CN',
+        prevPayload: { iso2: 'CN', asof: '2026-07-29', cacheWrittenAt: NOW - HOUR_MS },
+        now: NOW,
+      }),
+      true,
     );
   });
 });

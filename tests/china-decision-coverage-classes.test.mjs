@@ -344,16 +344,16 @@ describe('health decision-group classes (#6060)', () => {
     }
   });
 
-  it('ignores group ids the manifest does not declare', () => {
+  it('fails closed when the producer omits a canonical group state', () => {
     const entry = classifyDecisionSignals({
       ...decisionMeta(auditSnapshot()),
       groupStates: { macro: 'available', 'not-a-group': 'available' },
       unavailableCauses: { 'not-a-group': 'healthy_quiet_window' },
     });
-    assert.deepEqual(entry.decisionGroups.quietGroups, []);
     assert.equal(
-      entry.decisionGroups.unavailableGroups.every((group) => group.id !== 'not-a-group'),
-      true,
+      entry.decisionGroups,
+      undefined,
+      'a partial state map cannot be published as a complete diagnostic contract',
     );
   });
 });
