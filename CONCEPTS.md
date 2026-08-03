@@ -196,7 +196,7 @@ The MCP transport this server implements over HTTP: JSON-RPC 2.0 requests via `P
 
 ### Variant Host
 
-One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, `energy`) that serves a themed dashboard entry and metadata. The middleware and Vercel config recognize these hosts explicitly; canonical discovery URLs for shared surfaces (such as `/mcp`) redirect retrieval-method requests from variant hosts to the apex host so discovery signals do not fragment.
+One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, `energy`) that serves a themed dashboard entry and metadata. The middleware and Vercel config recognize these hosts explicitly; canonical discovery URLs for shared surfaces (such as `/mcp`) redirect retrieval-method requests from variant hosts to the apex host so discovery signals do not fragment. This is the web half of variant resolution only — see Desktop Variant Selection for the desktop half, which does not use hosts.
 
 ## Anonymous Access
 
@@ -328,7 +328,20 @@ The upstream that actually fed a published theater-posture cycle, recorded with 
 
 Each cycle attributes exactly one winning source (or a vessels-only outcome when no flight source contributed), and per-source cycle counts accumulate for the life of the producer process. The attribution answers "who fed this record", not "which sources are healthy" — a primary source that answered healthily with zero relevant traffic is a quiet primary, not a failed one, and its health is judged from its own request counters, never from the attribution. Because the two Theater Posture producers use different vocabularies for their sources, every attribution also names its producer. See also: Theater Posture.
 
+## Desktop Distribution
+
+### Desktop Variant Selection
+
+How the desktop app decides which product variant to present: from a locally stored user choice re-read at startup, rather than from the host that served it. Switching is an in-app action that reloads into the chosen variant and survives restart.
+
+The distinction from Variant Host is load-bearing rather than cosmetic. One desktop binary is published and it carries every variant, so there is no per-variant download, no per-variant release, and no variant dimension in the update or download path. An interface that accepts a variant when choosing a desktop artifact is therefore recording an identity, not making a selection — treating it as a selector yields a request that can only resolve to the one artifact or fail, and gating any correctness filter on its presence lets the app's own updater, which sends no variant, bypass that filter. See also: Variant Host, Release Line.
+
+### Release Line
+
+The sequence of published releases the update and download surfaces can address. There is exactly one for desktop, because those surfaces resolve the newest published release rather than searching by name — so a second, differently-named line is unservable by construction no matter how it is built or tagged. Publication is therefore the point at which a release becomes visible to every installed client at once, which is why a release is assembled privately and made visible only once every artifact it advertises exists. See also: Desktop Variant Selection.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
+- *"Variant"* resolves differently per surface — a served host on the web, a locally stored selection on desktop. Only the web sense is addressable by URL; a desktop artifact is never variant-specific, so a variant accompanying a desktop artifact request is an identity label rather than a selector.
 - *"wingbits"* as a publication source means opposite things from the two Theater Posture producers — the military-flights seeder's normal first-choice tier, but the relay loop's last-resort fallback. The recorded producer disambiguates which reading applies; never compare the token across producers.
