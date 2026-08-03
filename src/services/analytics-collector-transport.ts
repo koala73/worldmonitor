@@ -598,20 +598,61 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
   emitCollectorFailureToSentry(request, failure, cohort, diagnostics);
 }
 
-function withTimeout(init: RequestInit | undefined): RequestInit {
-  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
-    return init ?? {};
-  }
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+type TimeoutBoundInit = {
+  init: RequestInit;
+  cleanup: () => void;
+};
+
+function createTimeoutError(): Error {
+  const error = new Error(`Umami collector request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+  error.name = 'TimeoutError';
+  return error;
+}
+
+function withManualTimeout(init: RequestInit | undefined): TimeoutBoundInit {
+  if (typeof AbortController === 'undefined') throw createTimeoutError();
+
+  const controller = new AbortController();
   const existing = init?.signal;
-  if (!existing) return { ...(init ?? {}), signal: timeout };
-  if (typeof AbortSignal.any === 'function') {
-    return { ...init, signal: AbortSignal.any([existing, timeout]) };
+  const forwardAbort = (): void => controller.abort(existing?.reason);
+  if (existing?.aborted) forwardAbort();
+  else existing?.addEventListener('abort', forwardAbort, { once: true });
+
+  const timeoutId = setTimeout(
+    () => controller.abort(createTimeoutError()),
+    REQUEST_TIMEOUT_MS,
+  );
+  return {
+    init: { ...(init ?? {}), signal: controller.signal },
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      existing?.removeEventListener('abort', forwardAbort);
+    },
+  };
+}
+
+function withTimeout(init: RequestInit | undefined): TimeoutBoundInit {
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
+    return withManualTimeout(init);
   }
-  return init;
+  const existing = init?.signal;
+  if (!existing) {
+    return {
+      init: { ...(init ?? {}), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+      cleanup: () => {},
+    };
+  }
+  if (typeof AbortSignal.any === 'function') {
+    return {
+      init: { ...init, signal: AbortSignal.any([existing, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) },
+      cleanup: () => {},
+    };
+  }
+  return withManualTimeout(init);
 }
 
 async function runCollectorRequest(request: CollectorRequest, generation: number): Promise<void> {
+  let timeoutBoundInit: TimeoutBoundInit | undefined;
   try {
     // The re-entrancy guard must cover ONLY the synchronous call into the
     // underlying fetch — that is the window in which a foreign wrapper stacked
@@ -621,7 +662,8 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     let responsePromise: Promise<Response>;
     collectorDispatchDepth += 1;
     try {
-      responsePromise = request.originalFetch(request.input, withTimeout(request.init));
+      timeoutBoundInit = withTimeout(request.init);
+      responsePromise = request.originalFetch(request.input, timeoutBoundInit.init);
     } finally {
       collectorDispatchDepth -= 1;
     }
@@ -642,6 +684,8 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     }
     request.reject(error);
     request.rejectDelivery(error);
+  } finally {
+    timeoutBoundInit?.cleanup();
   }
 }
 

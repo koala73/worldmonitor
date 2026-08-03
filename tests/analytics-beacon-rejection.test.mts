@@ -785,9 +785,124 @@ const {
   isRetryableCollectorFailure,
   isRetryableIdentityFailure,
   isAlertWorthyCollectorFailure,
+  installCollectorFetchGate,
   getCollectorHealthForTesting,
   _setCollectorHealthReporterForTesting,
 } = await import('../src/services/analytics-collector-transport.ts');
+
+function collectorEventInit(signal?: AbortSignal): RequestInit {
+  return {
+    method: 'POST',
+    body: JSON.stringify({ type: 'event', payload: { name: 'search-open' } }),
+    ...(signal ? { signal } : {}),
+  };
+}
+
+function rejectWhenAborted(signal: AbortSignal | null | undefined): Promise<Response> {
+  assert.ok(signal, 'the collector request must carry a timeout signal');
+  return new Promise<Response>((_resolve, reject) => {
+    if (signal.aborted) reject(signal.reason);
+    else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+}
+
+describe('collector request timeout compatibility (#6086)', () => {
+  beforeEach(() => {
+    resetAnalyticsForTesting();
+  });
+
+  afterEach(() => {
+    resetAnalyticsForTesting();
+  });
+
+  it('aborts a stalled request and drains the queue without AbortSignal.timeout', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    let calls = 0;
+    console.warn = () => {};
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      return calls === 1
+        ? rejectWhenAborted(init?.signal)
+        : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(calls, 1, 'the second write waits for the stalled request');
+
+      const deadline = fakeTimers.timers.find((timer) => timer.delay === 20_000);
+      assert.ok(deadline, 'the compatibility path must schedule the 20s deadline');
+      deadline.callback();
+
+      await assert.rejects(stalled, { name: 'TimeoutError' });
+      assert.equal((await queued).status, 200);
+      assert.equal(calls, 2, 'the timed-out request releases the serialized queue');
+      assert.ok(fakeTimers.timers.every((timer) => timer.cancelled), 'settled requests clean up their timers');
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('keeps the deadline when AbortSignal.any is unavailable and a caller signal exists', async () => {
+    const anyDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => rejectWhenAborted(init?.signal)) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const caller = new AbortController();
+      const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit(caller.signal));
+      await drainPromiseHandlers();
+
+      const deadline = fakeTimers.timers.find((timer) => timer.delay === 20_000);
+      assert.ok(deadline, 'the caller signal must not replace the collector deadline');
+      deadline.callback();
+
+      await assert.rejects(stalled, { name: 'TimeoutError' });
+      assert.ok(deadline.cancelled, 'the timeout timer is cleared after rejection');
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (anyDescriptor) Object.defineProperty(AbortSignal, 'any', anyDescriptor);
+    }
+  });
+
+  it('forwards caller cancellation when AbortSignal.any is unavailable', async () => {
+    const anyDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => rejectWhenAborted(init?.signal)) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const caller = new AbortController();
+      const reason = new Error('caller cancelled collector write');
+      const request = window.fetch(UMAMI_SEND_URL, collectorEventInit(caller.signal));
+      caller.abort(reason);
+
+      await assert.rejects(request, (error) => error === reason);
+      assert.equal(fakeTimers.timers[0]?.delay, 20_000, 'caller cancellation retains the collector deadline');
+      assert.ok(fakeTimers.timers.every((timer) => timer.cancelled), 'caller cancellation clears the deadline');
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (anyDescriptor) Object.defineProperty(AbortSignal, 'any', anyDescriptor);
+    }
+  });
+});
 
 /**
  * A bot-filtered write is a REAL delivery failure — Umami stored nothing — but
