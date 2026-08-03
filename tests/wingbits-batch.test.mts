@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { transformSync } from 'esbuild';
 
+import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation.ts';
 import { validateGeneratedRequest } from '../server/request-validator.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -16,7 +17,7 @@ function replaceRequired(source: string, search: string | RegExp, replacement: s
   return patched;
 }
 
-async function loadWingbits(capture: (request: { icao24s: string[] }) => void) {
+async function loadWingbits(capture: (request: { icao24s: string[] }) => unknown) {
   const hookName = `__wmWingbitsBatchTest${++moduleCounter}`;
   (globalThis as Record<string, unknown>)[hookName] = capture;
 
@@ -55,8 +56,8 @@ async function loadWingbits(capture: (request: { icao24s: string[] }) => void) {
     `class MilitaryServiceClient {
       constructor(..._args: unknown[]) {}
       getAircraftDetailsBatch(req: { icao24s: string[] }) {
-        (globalThis as Record<string, unknown>)[${JSON.stringify(hookName)}](req);
-        return Promise.resolve({ results: {}, fetched: 0, requested: req.icao24s.length, configured: true });
+        const override = (globalThis as Record<string, unknown>)[${JSON.stringify(hookName)}](req);
+        return Promise.resolve(override ?? { results: {}, fetched: 0, requested: req.icao24s.length, configured: true });
       }
     }`,
     'military RPC client',
@@ -72,6 +73,7 @@ async function loadWingbits(capture: (request: { icao24s: string[] }) => void) {
   try {
     const module = await import(dataUrl) as {
       getAircraftDetailsBatch(icao24List: string[]): Promise<Map<string, unknown>>;
+      getWingbitsStatus(): { configured: boolean | null; cacheSize: number };
     };
     return {
       module,
@@ -88,13 +90,15 @@ async function loadWingbits(capture: (request: { icao24s: string[] }) => void) {
 describe('Wingbits aircraft-details batching', () => {
   it('caps unresolved keys before the generated RPC validator can reject the request', async () => {
     const calls: Array<{ icao24s: string[] }> = [];
+    // Never assert inside this callback: the stub invokes it synchronously from
+    // within getAircraftDetailsBatch's own try/catch, which swallows anything
+    // thrown here into a console.warn. Record the verdict and assert after the
+    // await, where a failure can actually fail the test.
+    const verdicts: Array<ReturnType<typeof validateGeneratedRequest>> = [];
     const { module, cleanup } = await loadWingbits((request) => {
       calls.push(request);
-      assert.equal(
-        validateGeneratedRequest('getAircraftDetailsBatch', request),
-        undefined,
-        'the browser must never generate an invalid aircraft-details batch',
-      );
+      verdicts.push(validateGeneratedRequest('getAircraftDetailsBatch', request));
+      return undefined;
     });
 
     try {
@@ -107,6 +111,55 @@ describe('Wingbits aircraft-details batching', () => {
       assert.deepEqual(
         calls[0]?.icao24s,
         input.map((value) => value.toLowerCase()).sort().slice(0, 10),
+      );
+      assert.deepEqual(
+        verdicts,
+        [undefined],
+        'the browser must never generate an invalid aircraft-details batch',
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('keeps the client cap at or below the bound the generated validator enforces', () => {
+    const maxItems = GENERATED_MESSAGE_RULES[
+      'worldmonitor.military.v1.GetAircraftDetailsBatchRequest'
+    ]?.fields?.icao24s?.repeatedMaxItems;
+
+    assert.equal(typeof maxItems, 'number', 'generated rules must still declare icao24s.repeatedMaxItems');
+
+    const capMatch = serviceSource.match(/const MAX_AIRCRAFT_DETAILS_BATCH = (\d+);/);
+    assert.ok(capMatch, 'MAX_AIRCRAFT_DETAILS_BATCH must stay a literal the drift guard can read');
+    const cap = Number(capMatch[1]);
+
+    assert.ok(
+      cap <= (maxItems as number),
+      `MAX_AIRCRAFT_DETAILS_BATCH (${cap}) exceeds the validator's max_items (${maxItems}); the browser would emit requests the RPC validator rejects with HTTP 400`,
+    );
+  });
+
+  it('only negative-caches the keys it actually sent when the response omits a requested count', async () => {
+    const calls: Array<{ icao24s: string[] }> = [];
+    // No `requested` field: exercises the Number.isFinite fallback, the one path
+    // where basing the negative-cache slice on batchKeys rather than toFetch
+    // changes behaviour. Without it, the 15 keys never sent would be poisoned
+    // with negative entries for a full LOCAL_CACHE_TTL.
+    const { module, cleanup } = await loadWingbits((request) => {
+      calls.push(request);
+      return { results: {}, fetched: 0, configured: true };
+    });
+
+    try {
+      const input = Array.from({ length: 25 }, (_, index) => (0xabc000 + index).toString(16).toUpperCase());
+      await module.getAircraftDetailsBatch(input);
+
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.icao24s.length, 10);
+      assert.equal(
+        module.getWingbitsStatus().cacheSize,
+        10,
+        'negative entries must cover only the keys actually sent, not the truncated tail',
       );
     } finally {
       cleanup();

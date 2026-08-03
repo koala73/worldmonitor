@@ -51,9 +51,15 @@ export interface EnrichedAircraftInfo {
 
 const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
-// The server handler intentionally processes at most 10 aircraft per request.
-// Keep the browser payload within that work bound before generated request
-// validation rejects a larger flight set.
+// Two different bounds apply, and this cap is set by the tighter one:
+//   - generated request validation rejects the call outright above 20 keys
+//     (icao24s repeated.max_items = 20), which is what a full flight set used
+//     to trip with an HTTP 400;
+//   - the server handler then processes at most the first 10 anyway
+//     (toUniqueSortedLimited(normalized, 10) in get-aircraft-details-batch.ts).
+// Sending more than 10 is therefore wasted work at best and a rejected request
+// at worst. tests/wingbits-batch.test.mts pins this value against the
+// validator's own max_items so the two cannot drift apart silently.
 const MAX_AIRCRAFT_DETAILS_BATCH = 10;
 
 // Client-side cache for aircraft details
@@ -268,6 +274,14 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
 
   try {
     const batchKeys = toFetch.slice(0, MAX_AIRCRAFT_DETAILS_BATCH);
+    if (toFetch.length > batchKeys.length) {
+      // Deferred, not failed — the tail is retried on the next refresh once
+      // these keys are cached. Logged so "why is this aircraft unenriched?"
+      // is distinguishable from an outright enrichment failure.
+      console.warn(
+        `[Wingbits] Deferring enrichment for ${toFetch.length - batchKeys.length} aircraft (batch cap ${MAX_AIRCRAFT_DETAILS_BATCH})`,
+      );
+    }
     const resp = await client.getAircraftDetailsBatch({ icao24s: batchKeys });
 
     if (resp.configured === false) {
