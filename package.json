@@ -220,6 +220,8 @@
     "srvx": "^0.11.13",
     "protobufjs": "^7.6.2",
     "ws": "$ws",
-    "shell-quote": "^1.8.4"
+    "shell-quote": "^1.8.4",
+    "brace-expansion@1": "^1.1.18",
+    "brace-expansion@2": "^2.1.4"
   }
 }

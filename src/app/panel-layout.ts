@@ -81,6 +81,10 @@ import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
 import { measure, mutate } from '@/utils/layout-batch';
+import {
+  hydrateGeoHubPanelFromClusters,
+  hydrateTechHubPanelFromClusters,
+} from '@/app/hub-activity-hydration';
 
 function readSessionStorageValue(key: string): string | null {
   try {
@@ -2379,15 +2383,29 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyDefaultPanel('cross-source-signals', () => import('@/components/CrossSourceSignalsPanel'), 'CrossSourceSignalsPanel');
 
+    // Hub panels pull retained clusters at mount rather than going through
+    // callPanel()/replayPendingCalls(). That queue would have to be fed the
+    // computed activities on every clustering pass, and computing tech activities
+    // requires the tech-activity → tech-hub-index → ~62KB tech-geo chain — which
+    // applyTechHubActivities() deliberately loads only when the panel is already
+    // mounted (#4404). Pulling on mount keeps that chunk off the critical path.
     this.lazyImportedPanel('geo-hubs', () => import('@/components/GeoHubsPanel'), 'GeoHubsPanel', (GeoHubsPanel) => {
       const p = new GeoHubsPanel();
       p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
+      hydrateGeoHubPanelFromClusters(p, this.ctx.latestClusters, {
+        allowEmpty: this.ctx.clustersSettled,
+      });
       return p;
     });
 
     this.lazyImportedPanel('tech-hubs', () => import('@/components/TechHubsPanel'), 'TechHubsPanel', (TechHubsPanel) => {
       const p = new TechHubsPanel();
       p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
+      void hydrateTechHubPanelFromClusters(p, this.ctx.latestClusters, {
+        allowEmpty: this.ctx.clustersSettled,
+      }).catch((err) => {
+        console.error('[panel] failed to lazy-load "tech-hubs" activity data', err);
+      });
       return p;
     });
 
