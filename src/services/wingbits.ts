@@ -51,6 +51,11 @@ export interface EnrichedAircraftInfo {
 
 const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
+// The server handler intentionally processes at most 10 aircraft per request.
+// Keep the browser payload within that work bound before generated request
+// validation rejects a larger flight set.
+const MAX_AIRCRAFT_DETAILS_BATCH = 10;
+
 // Client-side cache for aircraft details
 const localCache = new Map<string, { data: WingbitsAircraftDetails; timestamp: number }>();
 const LOCAL_CACHE_TTL = 60 * 60 * 1000; // 1 hour client-side
@@ -262,7 +267,8 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
   }
 
   try {
-    const resp = await client.getAircraftDetailsBatch({ icao24s: toFetch });
+    const batchKeys = toFetch.slice(0, MAX_AIRCRAFT_DETAILS_BATCH);
+    const resp = await client.getAircraftDetailsBatch({ icao24s: batchKeys });
 
     if (resp.configured === false) {
       wingbitsConfigured = false;
@@ -283,9 +289,9 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
 
     // Cache missing lookups as negative entries to avoid repeated retries.
     const requestedCount = Number.isFinite(resp.requested)
-      ? Math.max(0, Math.min(toFetch.length, resp.requested))
-      : toFetch.length;
-    for (const key of toFetch.slice(0, requestedCount)) {
+      ? Math.max(0, Math.min(batchKeys.length, resp.requested))
+      : batchKeys.length;
+    for (const key of batchKeys.slice(0, requestedCount)) {
       if (!returnedKeys.has(key)) {
         setLocalCache(key, createNegativeDetailsEntry(key));
       }
