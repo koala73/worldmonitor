@@ -26,6 +26,7 @@ export interface EntitlementState {
       apiBurstRequestsPerMinute: number | null;
       mcpCallsPerDay: number | null;
       mcpBurstRequestsPerMinute: number | null;
+      dashboardAiCallsPerDay?: number | null;
     };
     maxDashboards: number;
     prioritySupport: boolean;

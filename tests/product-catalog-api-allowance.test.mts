@@ -62,3 +62,29 @@ describe('#3199 U1 — Business marketing differentiation', () => {
     );
   });
 });
+
+describe('dashboard-AI allowance is separate from MCP', () => {
+  it('sets the agreed daily dashboard-AI limits by plan family', () => {
+    assert.equal(getEntitlementFeatures('free').planLimits?.dashboardAiCallsPerDay, 0);
+    assert.equal(getEntitlementFeatures('pro_monthly').planLimits?.dashboardAiCallsPerDay, 500);
+    assert.equal(getEntitlementFeatures('pro_business_monthly').planLimits?.dashboardAiCallsPerDay, 2500);
+    assert.equal(getEntitlementFeatures('api_starter').planLimits?.dashboardAiCallsPerDay, 1000);
+    assert.equal(getEntitlementFeatures('api_business').planLimits?.dashboardAiCallsPerDay, 10000);
+    assert.equal(getEntitlementFeatures('enterprise').planLimits?.dashboardAiCallsPerDay, null);
+  });
+
+  it('does not change the existing MCP allowances', () => {
+    assert.equal(getEntitlementFeatures('pro_monthly').planLimits?.mcpCallsPerDay, 50);
+    assert.equal(getEntitlementFeatures('pro_business_monthly').planLimits?.mcpCallsPerDay, 250);
+  });
+
+  it('sets the dashboard-AI field explicitly for every catalog entry', () => {
+    for (const [planKey, entry] of Object.entries(PRODUCT_CATALOG)) {
+      const limit = entry.features.planLimits?.dashboardAiCallsPerDay;
+      assert.ok(
+        typeof limit === 'number' || limit === null,
+        `${planKey} must set dashboardAiCallsPerDay explicitly`,
+      );
+    }
+  });
+});
