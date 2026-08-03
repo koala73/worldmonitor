@@ -1,5 +1,6 @@
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { INSIGHTS_MAX_AGE_MS, isAcceptedInsightsSnapshot } from '../../shared/insights-snapshot.js';
 
 export interface ServerInsightStory {
   primaryTitle: string;
@@ -55,20 +56,14 @@ let cached: ServerInsights | null = null;
 // missed-tick of headroom before falling through to the client-side path.
 // Exported so the regression test asserts against the real value rather than
 // inlining a copy that drifts silently when this constant changes.
-export const MAX_AGE_MS = 60 * 60 * 1000;
+export const MAX_AGE_MS = INSIGHTS_MAX_AGE_MS;
 
 function isFresh(data: ServerInsights): boolean {
-  const age = Date.now() - new Date(data.generatedAt).getTime();
-  return age < MAX_AGE_MS;
+  return isAcceptedInsightsSnapshot(data);
 }
 
 function validateInsights(raw: unknown): ServerInsights | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const data = raw as ServerInsights;
-  if (!Array.isArray(data.topStories) || data.topStories.length === 0) return null;
-  if (typeof data.generatedAt !== 'string') return null;
-  if (!isFresh(data)) return null;
-  return data;
+  return isAcceptedInsightsSnapshot(raw) ? raw as ServerInsights : null;
 }
 
 export function getServerInsights(): ServerInsights | null {

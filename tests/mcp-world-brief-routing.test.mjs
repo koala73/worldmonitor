@@ -97,19 +97,27 @@ function requestFor(url, headers, id = 1) {
   });
 }
 
-function digestResponse() {
+function insightsResponse(overrides = {}) {
   return new Response(JSON.stringify({
-    categories: {
-      world: {
-        items: [{
+    data: {
+      insights: JSON.stringify({
+        worldBrief: 'Seeded grounded world brief.',
+        briefStoryLines: [{ n: 1, text: 'Seeded grounded world brief.' }],
+        worldBriefSources: [{
           title: 'World brief routing regression headline',
-          snippet: 'Grounding body for the issue 5514 regression.',
           source: 'Example Wire',
-          link: 'https://example.com/world-brief-routing',
+          url: 'https://example.com/world-brief-routing',
           publishedAt: '2026-07-23T00:00:00.000Z',
         }],
-      },
+        briefProvider: 'seeded-provider',
+        briefModel: 'seeded-model',
+        generatedAt: new Date().toISOString(),
+        status: 'ok',
+        topStories: [{ primaryTitle: 'World brief routing regression headline' }],
+        ...overrides,
+      }),
     },
+    missing: [],
   }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
@@ -144,7 +152,7 @@ afterEach(() => {
   Object.assign(process.env, originalEnv);
 });
 
-describe('get_world_brief canonical sibling routing', () => {
+describe('get_world_brief seeded brief routing', () => {
   it('preserves non-production origins without exposing them in telemetry tags', () => {
     const cases = [
       {
@@ -186,13 +194,7 @@ describe('get_world_brief canonical sibling routing', () => {
       };
       fetchCalls.push(call);
       const { pathname } = new URL(call.url);
-      if (pathname === '/api/news/v1/list-feed-digest') return digestResponse();
-      if (pathname === '/api/news/v1/summarize-article') {
-        return new Response(JSON.stringify({ summary: 'Canonical world brief.' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
+      if (pathname === '/api/infrastructure/v1/get-bootstrap-data') return insightsResponse();
       throw new Error(`Unexpected downstream URL: ${call.url}`);
     };
 
@@ -207,21 +209,23 @@ describe('get_world_brief canonical sibling routing', () => {
         const rpc = await response.json();
         assert.equal(
           JSON.parse(rpc.result.content[0].text).summary,
-          'Canonical world brief.',
+          'Seeded grounded world brief.',
           `${host.url} ${auth.kind}: valid caller receives a brief`,
         );
 
         const calls = fetchCalls.slice(beforeFetch);
-        assert.equal(calls.length, 2, `${host.url} ${auth.kind}: digest + summarize`);
+        assert.equal(calls.length, 1, `${host.url} ${auth.kind}: shared insights read only`);
         for (const call of calls) {
           assert.equal(new URL(call.url).origin, CANONICAL_API_ORIGIN);
+          assert.equal(new URL(call.url).pathname, '/api/infrastructure/v1/get-bootstrap-data');
+          assert.equal(new URL(call.url).search, '?keys=insights');
         }
 
         const events = downstreamEvents(captured).slice(beforeTelemetry);
-        assert.equal(events.length, 2, `${host.url} ${auth.kind}: one event per downstream call`);
+        assert.equal(events.length, 1, `${host.url} ${auth.kind}: one event per downstream call`);
         assert.deepEqual(
           events.map((event) => event.downstream_operation),
-          ['list-feed-digest', 'summarize-article'],
+          ['bootstrap-insights'],
         );
         for (const event of events) {
           assert.equal(event.auth_kind, auth.kind);
@@ -323,8 +327,7 @@ describe('get_world_brief canonical sibling routing', () => {
       console.error = () => {};
       globalThis.fetch = async (input) => {
         const { pathname } = new URL(String(input));
-        if (pathname === '/api/news/v1/list-feed-digest') return digestResponse();
-        if (pathname === '/api/news/v1/summarize-article') return scenario.response();
+        if (pathname === '/api/infrastructure/v1/get-bootstrap-data') return scenario.response();
         throw new Error(`Unexpected downstream URL: ${input}`);
       };
 
@@ -337,9 +340,9 @@ describe('get_world_brief canonical sibling routing', () => {
       assert.equal(rpc.error?.code, -32603, `${scenario.name}: internal tool failure contract`);
 
       const event = downstreamEvents(captured).find(
-        (candidate) => candidate.downstream_operation === 'summarize-article',
+        (candidate) => candidate.downstream_operation === 'bootstrap-insights',
       );
-      assert.ok(event, `${scenario.name}: summarize telemetry`);
+      assert.ok(event, `${scenario.name}: bootstrap telemetry`);
       assert.equal(event.auth_kind, scenario.auth.kind);
       assert.equal(event.inbound_host_class, 'variant');
       assert.equal(event.downstream_origin, CANONICAL_API_ORIGIN);
@@ -362,8 +365,7 @@ describe('get_world_brief canonical sibling routing', () => {
     console.warn = () => {};
     globalThis.fetch = async (input) => {
       const { pathname } = new URL(String(input));
-      if (pathname === '/api/news/v1/list-feed-digest') return digestResponse();
-      if (pathname === '/api/news/v1/summarize-article') {
+      if (pathname === '/api/infrastructure/v1/get-bootstrap-data') {
         return new Response(JSON.stringify({
           error: 'Renewal verification pending',
           detail: SECRET_RESPONSE_DETAIL,
@@ -395,7 +397,7 @@ describe('get_world_brief canonical sibling routing', () => {
     assert.match(rpc.error?.message ?? '', /Retry shortly/);
 
     const event = downstreamEvents(captured).find(
-      (candidate) => candidate.downstream_operation === 'summarize-article',
+      (candidate) => candidate.downstream_operation === 'bootstrap-insights',
     );
     assert.ok(event);
     assert.equal(event.status, 503);

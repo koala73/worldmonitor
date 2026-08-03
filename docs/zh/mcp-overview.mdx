@@ -199,7 +199,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## 工具目录
 
-服务器暴露 59 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括七个实时 LLM/外部 API 工具（`get_world_brief`、`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
+服务器暴露 59 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
 
 <Tip>
 如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
@@ -297,11 +297,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 |------|-------------|
 | `get_displacement_data` | 按国家统计的难民和 IDP 数量（UNHCR 年度数据）。 |
 
-### AI 情报（实时 LLM）
+### AI 情报
 
 | 工具 | 描述 | 成本 |
 |------|-------------|------|
-| `get_world_brief` | 带结构化来源链接的 AI 摘要世界情报简报。可选 `geo_context` 参数。 | LLM |
+| `get_world_brief` | 来自仪表板使用的 `news:insights:v1` 快照的预计算、有引用依据的世界情报简报。`geo_context` 为兼容性保留，不会重新聚焦种子快照。 | 缓存 |
 | `get_country_brief` | 带结构化来源链接的各国地缘 + 经济评估。支持分析框架。 | LLM |
 | `analyze_situation` | 基于查询 + 上下文的临时地缘推断推理。返回置信度 + 支撑信号。 | LLM |
 | `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
@@ -363,7 +363,6 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
-| `get_world_brief` | `GET /api/news/v1/list-feed-digest`<br/>`POST /api/news/v1/summarize-article` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
 | `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
@@ -374,6 +373,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 没有声明 API 路径的工具仍通过 `tools/call` 返回数据，但不应将它们视为 REST 等价物：
 
 - **缓存支撑的 bootstrap 聚合** —— 读取由 Railway cron 直接填充的 Redis key（例如 `get_aviation_status`、`get_cyber_threats`、`get_country_macro`，以及三个 EU Eurostat 工具）。
+- **种子合成快照** —— `get_world_brief` 通过仪表板 bootstrap 路径读取已接受的 `news:insights:v1` payload；没有直接 REST 等价操作，也不会在请求时调用 LLM。
 - **静态内存注册表** —— 过滤随 MCP 服务器 edge 二进制文件一起打包的一个常量，完全无需上游调用（例如 `get_commodity_geo`）。
 - **没有公共 OpenAPI 行的实时工具** —— 运行时代理一次 HTTP 调用，其方法偏离公共规范，由一个同类工具覆盖规范声明的方法（例如 `generate_forecasts` 以 POST 方式请求 `/api/forecast/v1/get-forecasts`，而 `get_forecast_predictions` 拥有该 GET）。
 
@@ -443,7 +443,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | UI 资源 URI | 关联工具 | 渲染内容 |
 |-----------------|-------------|---------|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII 评分、动荡/冲突/安全/新闻组成部分分解、旅行警示级别，以及 OFAC 制裁敞口。 |
-| `ui://worldmonitor/world-brief.html` | `get_world_brief` | 以可读段落呈现的 AI 摘要全球情报简报，外加支撑性头条和来源文章。 |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | 以可读段落呈现的预计算、有引用依据的全球情报简报，外加支撑性头条和来源文章。 |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | 以段落呈现的 AI 合成各国简报，附带分析框架视角和支撑来源。 |
 | `ui://worldmonitor/market-radar.html` | `get_market_data` | Fear & Greed 综合指标，外加各资产类别的报价表（股票、大宗商品、加密货币、海湾、板块），带有带符号、色彩编码的涨跌。 |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 各咽喉要道的滚动过境摘要（今日计数、周环比变化、油轮占比），并带有风险级别标记。 |

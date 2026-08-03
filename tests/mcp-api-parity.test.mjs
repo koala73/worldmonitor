@@ -118,7 +118,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/v2/shipping/webhooks",
     "mutating: webhook/registration write — POSTs persistent record"],
 
-  // === llm-passthrough (1) ===
+  // === llm-passthrough (2) ===
   // classify-event moved to covered in #5697: the classify_event MCP tool wraps
   // it behind an enum-validated, temperature-0, 50-output-token handler with a
   // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
@@ -128,6 +128,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // quota bounds it" without qualifying the env-key path.
   ["GET /api/market/v1/analyze-stock",
     "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
+  ["POST /api/news/v1/summarize-article",
+    "llm-passthrough: request-time article summarization is intentionally REST-only; get_world_brief reads the gated seeded snapshot instead"],
 
   // === fetch-on-miss (29) ===
   ["GET /api/intelligence/v1/get-risk-scores",
@@ -189,7 +191,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/military/v1/get-aircraft-details-batch",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
 
-  // === manual-mapping (28) ===
+  // === manual-mapping (27) ===
   ["POST /api/batch/v1/execute",
     "manual-mapping: REST-only transport multiplexer — fans out to documented GET RPCs that are each individually covered by a tool's _apiPaths or excluded here; the MCP equivalent is native parallel tool calls, so a batch tool would double-map every covered op"],
   ["GET /api/aviation/v1/search-flight-prices",
@@ -197,8 +199,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/economic/v1/get-bls-series",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/economic/v1/get-fred-series",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
-  ["GET /api/infrastructure/v1/get-bootstrap-data",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/infrastructure/v1/get-ip-geo",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
