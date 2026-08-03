@@ -852,8 +852,9 @@ describe('critical ingestion Railway registry contract', () => {
     assert.ok(umami, 'umami must be registered');
 
     const correlationRuntimeModePath = 'scripts/shared/correlation-runtime-mode.js';
+    const expectedDerivedWatchPatterns = [...derivedSignals.watchPatterns];
     assert.ok(
-      derivedSignals.watchPatterns.includes(correlationRuntimeModePath),
+      expectedDerivedWatchPatterns.includes(correlationRuntimeModePath),
       'derived-signals registry must pin the correlation runtime-mode helper',
     );
     assert.equal(umami.dockerfile, 'Dockerfile.umami');
@@ -866,7 +867,7 @@ describe('critical ingestion Railway registry contract', () => {
     ]);
     const liveDerivedSignals = service({
       cronSchedule: derivedSignals.cronSchedule,
-      watchPatterns: derivedSignals.watchPatterns,
+      watchPatterns: [...expectedDerivedWatchPatterns],
       variables: { JAPAN_MOD_PROXY_URL: 'https://proxy.example' },
     });
     const liveUmami = service({
@@ -906,13 +907,13 @@ describe('critical ingestion Railway registry contract', () => {
           serviceId: derivedServiceId,
           missingService: false,
           watchPatterns: {
-            actual: derivedSignals.watchPatterns.filter((path) => path !== correlationRuntimeModePath),
-            expected: derivedSignals.watchPatterns,
+            actual: expectedDerivedWatchPatterns.filter((path) => path !== correlationRuntimeModePath),
+            expected: [...expectedDerivedWatchPatterns],
           },
           cronSchedule: null,
         },
         expectedPatch: {
-          build: { watchPatterns: derivedSignals.watchPatterns },
+          build: { watchPatterns: [...expectedDerivedWatchPatterns] },
         },
       },
       {
@@ -950,6 +951,11 @@ describe('critical ingestion Railway registry contract', () => {
         `${testCase.name} patch`,
       );
     }
+    assert.deepEqual(
+      derivedSignals.watchPatterns,
+      expectedDerivedWatchPatterns,
+      'audit and patch construction must not mutate the registry watch-path contract',
+    );
   });
 
   it('every cron pin names a service that is registry-managed', () => {
