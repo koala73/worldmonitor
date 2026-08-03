@@ -40422,11 +40422,15 @@ components:
                          client can still tell absent from null, so read absence, not null.
                 periodChangeBasis:
                     type: string
+                    enum:
+                        - PERIOD_CHANGE_BASIS_UNSPECIFIED
+                        - publisher_reported
+                        - derived_from_prior_period_level
                     description: |-
-                        Provenance of period_change_pct: "publisher_reported" when the exchange
-                         published the percentage itself, or "derived_from_prior_period_level"
-                         when it was computed from prior_period_value. Absent whenever
-                         period_change_pct is absent.
+                        Basis for the decision-grade period-over-period change. The custom JSON
+                         values preserve the lowercase strings already present in Redis and consumed
+                         by downstream matchers while exposing a closed taxonomy to generated clients
+                         and OpenAPI.
                 priorPeriodValue:
                     type: number
                     format: double

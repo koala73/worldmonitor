@@ -2,9 +2,21 @@ syntax = "proto3";
 
 package worldmonitor.supply_chain.v1;
 
+import "sebuf/http/annotations.proto";
+
 message ShippingRatePoint {
   string date = 1;
   double value = 2;
+}
+
+// Basis for the decision-grade period-over-period change. The custom JSON
+// values preserve the lowercase strings already present in Redis and consumed
+// by downstream matchers while exposing a closed taxonomy to generated clients
+// and OpenAPI.
+enum PeriodChangeBasis {
+  PERIOD_CHANGE_BASIS_UNSPECIFIED = 0;
+  PERIOD_CHANGE_BASIS_PUBLISHER_REPORTED = 1 [(sebuf.http.enum_value) = "publisher_reported"];
+  PERIOD_CHANGE_BASIS_DERIVED_FROM_PRIOR_PERIOD_LEVEL = 2 [(sebuf.http.enum_value) = "derived_from_prior_period_level"];
 }
 
 message ShippingIndex {
@@ -35,7 +47,7 @@ message ShippingIndex {
   // published the percentage itself, or "derived_from_prior_period_level"
   // when it was computed from prior_period_value. Absent whenever
   // period_change_pct is absent.
-  optional string period_change_basis = 10;
+  optional PeriodChangeBasis period_change_basis = 10;
   // The publisher's own prior-period index level that period_change_pct was
   // measured against. Absent when the publisher shipped no comparable prior.
   optional double prior_period_value = 11;

@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -252,6 +253,22 @@ describe('BDI parser (functional)', () => {
     const unparseable = parseBdiIndices(`<h1>Baltic Dry Index 13-Smarch-2026</h1>${BDI_HTML_PARTIAL}`);
     assert.equal(unparseable[0]._observationDate, today,
       'an unparseable heading date falls back to today rather than yielding Invalid Date');
+  });
+
+  it('keeps heading dates stable across positive-offset and UTC timezones', () => {
+    const probe = [
+      `import { parseBdiIndices } from ${JSON.stringify(resolve(root, 'scripts/seed-supply-chain-trade.mjs'))};`,
+      `const html = ${JSON.stringify('<h1>Baltic Dry Index 13-March-2026</h1>Baltic Dry Index (BDI) reached 2,000 points.')};`,
+      `console.log(parseBdiIndices(html)[0]?._observationDate ?? '');`,
+    ].join('\n');
+    const run = (timezone) => execFileSync(process.execPath, ['--input-type=module', '-e', probe], {
+      cwd: root,
+      env: { ...process.env, TZ: timezone },
+      encoding: 'utf8',
+    }).trim();
+
+    assert.equal(run('Pacific/Auckland'), '2026-03-13');
+    assert.equal(run('UTC'), '2026-03-13');
   });
 });
 
@@ -548,6 +565,19 @@ describe('ShippingIndex public contract gate (#6078)', () => {
     for (const field of ['periodChangePct', 'periodChangeBasis', 'priorPeriodValue', 'priorPeriodDate']) {
       assert.ok(declared.has(field), `${field} is served by get-shipping-rates but not declared in ${PROTO_PATH}`);
     }
+  });
+
+  it('publishes the period-change basis as a closed, wire-compatible enum', () => {
+    const genSrc = readFileSync(resolve(root, GENERATED_SERVER_PATH), 'utf-8');
+    assert.match(genSrc, /periodChangeBasis\?: PeriodChangeBasis;/);
+    assert.match(genSrc, /export type PeriodChangeBasis = [^;]*"publisher_reported"/);
+    assert.match(genSrc, /export type PeriodChangeBasis = [^;]*"derived_from_prior_period_level"/);
+    const openapi = JSON.parse(readFileSync(resolve(root, 'docs/api/SupplyChainService.openapi.json'), 'utf-8'));
+    const schema = openapi.components?.schemas?.ShippingIndex?.properties?.periodChangeBasis;
+    assert.deepEqual(
+      schema?.enum?.filter((value) => value !== 'PERIOD_CHANGE_BASIS_UNSPECIFIED').sort(),
+      ['derived_from_prior_period_level', 'publisher_reported'],
+    );
   });
 
   it('keeps the generated server interface in step with the proto', () => {
