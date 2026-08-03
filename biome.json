@@ -43,7 +43,7 @@
 			"correctness": {
 				"noUnusedVariables": "off",
 				"noUnusedImports": "off",
-				"noUndeclaredVariables": "off"
+				"noUndeclaredVariables": "error"
 			},
 			"suspicious": {
 				"noExplicitAny": "off",
@@ -99,7 +99,12 @@
 		}
 	},
 	"javascript": {
-		"globals": ["globalThis"]
+		"globals": [
+			"globalThis",
+			"__APP_VERSION__",
+			"__BUILD_HASH__",
+			"__CLERK_JS_VERSION__"
+		]
 	},
 	"assist": {
 		"enabled": false
