@@ -1958,6 +1958,10 @@ export class DataLoaderManager implements AppModule {
       this.ctx.latestClusters = mlWorker.isAvailable
         ? await clusterNewsHybrid(this.ctx.allNews)
         : await analysisWorker.clusterNews(this.ctx.allNews);
+      // Only now is an empty cluster set a real answer. Set inside the try, after
+      // the assignment, so a pass that threw leaves late-mounting hub panels on
+      // their loading skeleton instead of asserting "no active hubs".
+      this.ctx.clustersSettled = true;
 
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights(this.ctx.latestClusters);
@@ -4010,13 +4014,16 @@ export class DataLoaderManager implements AppModule {
 
   // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
   // table) only when the lazy tech-hubs panel is mounted, so the table stays off
-  // the eager dashboard critical path. Non-critical panel data — degrade silently
-  // on load failure. (#4404)
+  // the eager dashboard critical path. Non-critical panel data — the panel keeps
+  // its previous contents on load failure, but the failure is logged: a silent
+  // swallow here leaves the panel on "Loading..." with no way to diagnose it. (#4404)
   private applyTechHubActivities(): void {
     const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
     if (!techHubsPanel) return;
     void hydrateTechHubPanelFromClusters(techHubsPanel, this.ctx.latestClusters, { allowEmpty: true })
-      .catch(() => { /* non-critical */ });
+      .catch((err) => {
+        console.error('[App] tech-hub activity hydration failed:', err);
+      });
   }
 
   async runCorrelationAnalysis(): Promise<void> {
@@ -4025,6 +4032,7 @@ export class DataLoaderManager implements AppModule {
         this.ctx.latestClusters = mlWorker.isAvailable
           ? await clusterNewsHybrid(this.ctx.allNews)
           : await analysisWorker.clusterNews(this.ctx.allNews);
+        this.ctx.clustersSettled = true;
       }
 
       if (this.ctx.latestClusters.length > 0) {
@@ -4034,6 +4042,7 @@ export class DataLoaderManager implements AppModule {
         hydrateGeoHubPanelFromClusters(
           this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
           this.ctx.latestClusters,
+          { allowEmpty: true },
         );
         this.applyTechHubActivities();
       }
