@@ -70,7 +70,10 @@ function blockLessPortwatchMeta() {
 // Mirrors tests/health-verdict-snapshot.test.mjs: snapshot GET misses so every
 // call runs a real sweep, the refresh lock is granted, and every unrelated key
 // answers fresh so only the PortWatch content dimension can move the verdict.
-function installHealthPipelineMock(markerEntries, { emptyDataKeys = [] } = {}) {
+function installHealthPipelineMock(
+  markerEntries,
+  { emptyDataKeys = [], truncateBeforeActivation = false } = {},
+) {
   const empty = new Set(emptyDataKeys);
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
@@ -90,7 +93,16 @@ function installHealthPipelineMock(markerEntries, { emptyDataKeys = [] } = {}) {
       if (op === 'GET') return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    // A response ARRAY shorter than the command list. Upstash validates the
+    // request as a whole, so the activation EXISTS commands — which sit at the
+    // tail of the sweep — are exactly where a truncated or size-capped response
+    // stops short. The slots are then `undefined`: not an entry carrying an
+    // error, but no entry at all.
+    const firstActivation = commands.findIndex(([op]) => op === 'EXISTS');
+    const body = truncateBeforeActivation && firstActivation !== -1
+      ? results.slice(0, firstActivation)
+      : results;
+    return new Response(JSON.stringify(body), { status: 200 });
   };
 }
 
@@ -127,6 +139,22 @@ describe('#6095 — /api/health treats an unreadable activation marker as unknow
       entry?.status,
       'COVERAGE_DEGRADED',
       'an errored marker read is unknown state, not proof of a producer that never ran',
+    );
+  });
+
+  // The same bug through a second door. "Unread" is not only an entry carrying
+  // an error — it is also a slot that never arrived. A guard written as
+  // `!r?.error` is TRUE for `r === undefined`, so a short response would record
+  // every missing activation slot as `false` ("read and confirmed absent") and
+  // hand back the very grace this issue exists to revoke. The sibling guards in
+  // api/seed-health.js and api/mcp/dispatch.ts both test the entry itself, and
+  // health must not be the one surface that trusts a slot it never received.
+  it('does not treat a slot missing from a short pipeline response as read-absent', async () => {
+    const checks = await healthChecks({}, { truncateBeforeActivation: true });
+    assert.equal(
+      checks.portwatchPortActivity?.status,
+      'COVERAGE_DEGRADED',
+      'a slot that never arrived is unknown state, not a marker read and found absent',
     );
   });
 });

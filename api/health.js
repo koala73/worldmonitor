@@ -2058,10 +2058,17 @@ export default async function handler(req, ctx) {
   // never published); a MISSING entry = the read failed, so the state is
   // unknown. Which way "unknown" resolves is the consumer's call and the two
   // policies differ deliberately — see classifyKey.
+  // Test the entry ITSELF, never `!r?.error` — that reads TRUE for a slot that
+  // never arrived (`undefined?.error` is undefined), so a response array
+  // shorter than the command list would record every missing marker as `false`
+  // = "read and confirmed absent" and hand back the exact grace this three-
+  // valued read exists to revoke. The EXISTS commands sit at the tail of the
+  // sweep, which is precisely where a truncated response stops short. Same
+  // guard as api/seed-health.js and api/mcp/dispatch.ts.
   const activationStates = new Map();
   for (let i = 0; i < activationEntries.length; i++) {
     const r = results[allDataKeys.length + allMetaKeys.length + i];
-    if (!r?.error) activationStates.set(activationEntries[i][0], Number(r?.result) === 1);
+    if (r && !r.error) activationStates.set(activationEntries[i][0], Number(r.result) === 1);
   }
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
