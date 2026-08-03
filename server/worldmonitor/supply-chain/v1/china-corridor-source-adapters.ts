@@ -65,6 +65,21 @@ function isoTimestamp(value: unknown): string | null {
   return new Date(value).toISOString();
 }
 
+function dateOnlyTimestamp(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? date.toISOString()
+    : null;
+}
+
 function yearTimestamp(value: unknown): string | null {
   const year = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   if (!Number.isInteger(year) || year < 1900 || year > 2200) return null;
@@ -673,10 +688,13 @@ function adaptTrade(
   if (ccfi) {
     const history = records(ccfi.history);
     const latestHistory = history
-      .map((item) => ({ item, timestamp: isoTimestamp(item.date) }))
+      .map((item) => ({ item, timestamp: dateOnlyTimestamp(item.date) }))
       .filter((item): item is { item: UnknownRecord; timestamp: string } => item.timestamp !== null)
       .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))[0];
-    const observedRaw = latestHistory?.item.date ?? shipping?.fetchedAt;
+    // Retrieval proves when we fetched the payload, not when SSE observed the
+    // index. Without a valid dated history point, keep observation time unknown
+    // so an undated/frozen CCFI cannot clear the content-freshness budget.
+    const observedRaw = latestHistory?.item.date ?? null;
     const observedAt = isoTimestamp(observedRaw);
     const retrievalTime = metaTimestamp(snapshots.shippingMeta);
     signals.push(sourceSignal({

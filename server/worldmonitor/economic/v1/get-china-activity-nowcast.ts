@@ -253,11 +253,14 @@ function corridorProxyObservations(
     // arrived, one that arrived but is no longer timely, and one that arrived
     // timely with a level but no comparable prior are three different facts;
     // collapsing them would overstate what the source actually published.
+    const ccfiFreshnessStale = ccfi.availability === 'stale'
+      || ccfi.transportFreshness === 'stale'
+      || ccfi.contentFreshness === 'stale';
     const exclusion = periodChange !== null
       ? null
       : ccfi.availability === 'unavailable'
         ? 'source_signal_unavailable'
-        : ccfi.availability === 'stale'
+        : ccfiFreshnessStale
           ? 'source_signal_stale'
           : 'missing_comparable_prior';
     observations.push(corridorObservation({

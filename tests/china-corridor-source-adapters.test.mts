@@ -192,6 +192,26 @@ describe('China corridor source adapters (#5578)', () => {
     assert.equal(ccfi?.metrics.priorPeriodValue, undefined);
   });
 
+  it('does not use shipping retrieval time as an undated CCFI observation', () => {
+    const ccfi = buildChinaCorridorSourceBundle({
+      shipping: {
+        fetchedAt: '2026-07-25T11:00:00.000Z',
+        indices: [{
+          indexId: 'CCFI',
+          currentValue: 900,
+          history: [{ date: '2026-02-30', value: 900 }],
+        }],
+      },
+      shippingMeta: FRESH_META,
+    }, ASSESSED_AT).families.trade.signals.find((signal) =>
+      signal.selectorId === 'supply_chain:shipping:v2:CCFI');
+
+    assert.equal(ccfi?.observationTime, null);
+    assert.equal(ccfi?.observationTimePrecision, 'unknown');
+    assert.equal(ccfi?.availability, 'stale');
+    assert.equal(ccfi?.contentFreshness, 'timestamp_unknown');
+  });
+
   it('exposes the published CCFI period change with its basis and prior period (#6066)', () => {
     const signalFor = (index: Record<string, unknown>) =>
       buildChinaCorridorSourceBundle({

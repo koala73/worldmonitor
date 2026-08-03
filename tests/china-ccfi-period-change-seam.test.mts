@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parseSseIndexResponse } from '../scripts/seed-supply-chain-trade.mjs';
+import {
+  accumulateHistory,
+  parseSseIndexResponse,
+} from '../scripts/seed-supply-chain-trade.mjs';
 import { buildChinaCorridorSourceBundle } from '../server/worldmonitor/supply-chain/v1/china-corridor-source-adapters.ts';
 import { buildChinaActivityNowcastInputs } from '../server/worldmonitor/economic/v1/get-china-activity-nowcast';
 import type {
@@ -20,11 +23,15 @@ const ASSESSED_AT = '2026-07-25T12:00:00.000Z';
 const EVALUATED_AT = '2026-07-25T12:00:00.000Z';
 const FRESH_META = { fetchedAt: Date.parse('2026-07-25T11:30:00.000Z') };
 
-function sseEnvelope(overrides: Record<string, unknown> = {}) {
+function sseEnvelope(
+  overrides: Record<string, unknown> = {},
+  dataOverrides: Record<string, unknown> = {},
+) {
   return {
     data: {
       currentDate: '2026-07-25',
       lastDate: '2026-07-18',
+      ...dataOverrides,
       lineDataList: [{
         dataItemTypeName: 'CCFI_T',
         currentContent: 1072.16,
@@ -40,15 +47,15 @@ function sseEnvelope(overrides: Record<string, unknown> = {}) {
 // exactly as the published `supply_chain:shipping:v2` payload would.
 function corridorsFromSse(
   overrides: Record<string, unknown> = {},
+  dataOverrides: Record<string, unknown> = {},
 ): ChinaCorridorControlTowerResponse {
-  const indices = parseSseIndexResponse(
-    sseEnvelope(overrides),
+  const indices = accumulateHistory(parseSseIndexResponse(
+    sseEnvelope(overrides, dataOverrides),
     'CCFI',
     'CCFI_T',
     'CCFI - China Container Freight',
     'index',
-  );
-  for (const index of indices) delete (index as Record<string, unknown>)._observationDate;
+  ), { indices: [] });
 
   const bundle = buildChinaCorridorSourceBundle({
     shipping: { indices, fetchedAt: '2026-07-25T11:00:00.000Z' },
@@ -76,11 +83,14 @@ function corridorsFromSse(
   };
 }
 
-function freightObservation(overrides: Record<string, unknown> = {}) {
+function freightObservation(
+  overrides: Record<string, unknown> = {},
+  dataOverrides: Record<string, unknown> = {},
+) {
   return buildChinaActivityNowcastInputs({
     evaluatedAt: EVALUATED_AT,
     macro: { unavailable: true, indicators: [] } as never,
-    corridors: corridorsFromSse(overrides),
+    corridors: corridorsFromSse(overrides, dataOverrides),
     marketValues: new Map<string, unknown>(),
   }).proxyObservations.find((item) => item.seriesId === 'ccfi_freight_rate_change');
 }
@@ -142,5 +152,15 @@ describe('CCFI period change: seeder -> corridor adapter -> nowcast seam (#6066)
 
     const freight = freightObservation({ lastContent: undefined, percentage: undefined });
     assert.equal(freight?.value, null);
+  });
+
+  it('fails closed through history and adapter seams when SSE omits a real date', () => {
+    const freight = freightObservation({}, { currentDate: 'N/A' });
+    assert.equal(freight?.value, null);
+    assert.equal(freight?.stale, true);
+    assert.equal(
+      (freight?.provenance as Record<string, unknown>).exclusion,
+      'source_signal_stale',
+    );
   });
 });

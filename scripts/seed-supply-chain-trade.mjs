@@ -145,6 +145,17 @@ function finiteOrNull(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function validSseDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? value
+    : null;
+}
+
 // Parse one Shanghai Shipping Exchange `currentIndex` envelope (issue #6066).
 //
 // `changePct` / `previousValue` are the legacy display fields, kept as-is so the
@@ -158,8 +169,8 @@ function finiteOrNull(value) {
 // SSE published its own percentage, or a comparable prior-period level this function
 // differences against — `periodChangeBasis` names which of the two it came from.
 // A single index level never becomes a change. It is also null when SSE does not
-// date the observation: an undateable change would be stamped with today's date
-// downstream and could pass the freshness budget forever while frozen.
+// provide a real calendar date: an undateable change must not be stamped with a
+// retrieval or synthetic date downstream and pass the freshness budget forever.
 export function parseSseIndexResponse(json, indexId, dataItemType, displayName, unit) {
   const lines = json?.data?.lineDataList;
   if (!Array.isArray(lines)) return [];
@@ -171,12 +182,9 @@ export function parseSseIndexResponse(json, indexId, dataItemType, displayName, 
   const changePct = typeof composite.percentage === 'number' ? composite.percentage
     : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
 
-  // An undated observation is not a dateable change. The display record keeps the
-  // today-fallback so the index stays on the panel; the decision-grade field does
-  // not, because downstream only ever sees the stamped date.
-  const publishedDate = typeof json.data?.currentDate === 'string' && json.data.currentDate
-    ? json.data.currentDate
-    : null;
+  // An undated observation is not a dateable change. Keep the display record, but
+  // preserve an explicit null marker so history accumulation cannot invent a date.
+  const publishedDate = validSseDate(json.data?.currentDate);
   const publishedChangePct = finiteOrNull(composite.percentage);
   const priorPeriodValue = finiteOrNull(previousValue);
   const derivedChangePct = publishedChangePct === null && priorPeriodValue !== null
@@ -200,11 +208,11 @@ export function parseSseIndexResponse(json, indexId, dataItemType, displayName, 
     // Both prior-period facts describe the comparison the change was measured
     // against, so neither is published without a change to attach them to.
     priorPeriodValue: provenChangePct === null ? null : priorPeriodValue,
-    priorPeriodDate: provenChangePct !== null && typeof json.data?.lastDate === 'string'
-      ? json.data.lastDate
+    priorPeriodDate: provenChangePct !== null
+      ? validSseDate(json.data?.lastDate)
       : null,
     unit, history: [], spikeAlert: false,
-    _observationDate: publishedDate ?? new Date().toISOString().slice(0, 10),
+    _observationDate: publishedDate,
   }];
 }
 
@@ -312,9 +320,17 @@ async function fetchBDI() {
 
 // ─── History accumulation (inline in canonical payload) ───
 
-function accumulateHistory(newIndices, previousPayload) {
+export function accumulateHistory(newIndices, previousPayload) {
   if (!previousPayload?.indices?.length) {
-    for (const idx of newIndices) delete idx._observationDate;
+    for (const idx of newIndices) {
+      const hasObservationDate = Object.prototype.hasOwnProperty.call(idx, '_observationDate');
+      if (idx.history?.length === 0 && typeof idx._observationDate === 'string') {
+        idx.history = [{ date: idx._observationDate, value: idx.currentValue }];
+      }
+      // An explicit null means the source did not date this observation. Do not
+      // replace it with today; the adapter must see it as stale/undated.
+      if (hasObservationDate) delete idx._observationDate;
+    }
     return newIndices;
   }
   const prevMap = new Map();
@@ -326,7 +342,13 @@ function accumulateHistory(newIndices, previousPayload) {
     const prev = prevMap.get(idx.indexId);
     const existingHistory = prev?.history ?? [];
     if (idx.history?.length > 0) { delete idx._observationDate; continue; }
-    const obsDate = idx._observationDate || fallbackDate;
+    const hasObservationDate = Object.prototype.hasOwnProperty.call(idx, '_observationDate');
+    if (hasObservationDate && typeof idx._observationDate !== 'string') {
+      idx.history = existingHistory.slice(-24);
+      delete idx._observationDate;
+      continue;
+    }
+    const obsDate = hasObservationDate ? idx._observationDate : fallbackDate;
     const last = existingHistory[existingHistory.length - 1];
     const newHistory = [...existingHistory];
     if (!last || last.date !== obsDate) {
