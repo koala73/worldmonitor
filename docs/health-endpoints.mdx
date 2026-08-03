@@ -281,12 +281,12 @@ data gate — an alarm should fire no later than the contract it protects.
 
 The MCP freshness envelope over the same seed-meta key carries this dimension
 too. `get_chokepoint_status` declares the identical pinned scope, budget, and
-activation marker, so an MCP consumer cannot read `stale: false` for a key this
-endpoint calls `STALE_CONTENT`. Both surfaces re-age the observation at read
-time and share one assessor (`api/_content-freshness.js`), and the parity is
-asserted field-for-field against this config rather than left to a comment.
-Both also read the activation marker as an `EXISTS`, so its stored value can
-never make the two disagree.
+activation marker, and calls the same assessor — so it ages the same
+`contentAsOfChangedAt` clock described above, and an MCP consumer cannot read
+`stale: false` for a key this endpoint calls `STALE_CONTENT`. The parity is
+asserted field-for-field against this config rather than left to a comment, and
+both surfaces read the activation marker as an `EXISTS`, so its stored value
+can never make them disagree.
 
 The surfaces differ in exactly one input class, deliberately. This endpoint
 cannot tell a marker it failed to read from one that is genuinely absent — both
@@ -296,8 +296,8 @@ absence of evidence never expires: an evicted or renamed marker would otherwise
 disable the alarm permanently. So for a pre-activation key whose marker read
 errors, this endpoint reports `OK` while MCP reports `stale: true`. The
 disagreement only ever runs in that direction — MCP over-alarming — and never
-the direction that hides stale content. Aligning this endpoint is tracked
-separately.
+the direction that hides stale content. Aligning this endpoint is tracked in
+[#6095](https://github.com/koala73/worldmonitor/issues/6095).
 
 An MCP caller still sees a single boolean: `stale` does not say *which*
 dimension failed, so `/api/health` remains the surface that names the stale

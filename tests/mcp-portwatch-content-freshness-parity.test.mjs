@@ -282,10 +282,15 @@ describe('#6080 — the fixture is the shape the producer really publishes', () 
     const { buildContentFreshnessReport } = await import(
       '../scripts/_portwatch-content-freshness.mjs'
     );
+    // Drive the PRIMARY clock the producer ages: `contentAsOfChangedAt`, which
+    // advances only when the upstream's own max(date) does. `fetchedAt` is the
+    // legacy fallback for payloads written before that field existed, so a
+    // fixture built from it exercises a path production payloads no longer
+    // take — and this guard exists precisely to keep the fixture honest.
     const real = buildContentFreshnessReport({
       countryData: new Map([
-        ['CN', { fetchedAt: new Date(NOW - 60 * MINUTE_MS).toISOString() }],
-        ['HK', { fetchedAt: new Date(NOW - 60 * MINUTE_MS).toISOString() }],
+        ['CN', { contentAsOfChangedAt: NOW - 60 * MINUTE_MS }],
+        ['HK', { contentAsOfChangedAt: NOW - 60 * MINUTE_MS }],
       ]),
       now: NOW,
     });
