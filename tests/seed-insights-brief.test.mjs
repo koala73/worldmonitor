@@ -303,14 +303,35 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
     assert.equal(composeSynthesizedBrief(trailingUncited, topStories, { validatorMode: 'enforce' }), null);
   });
 
-  it('still scopes proper nouns to the citation that follows the acronym', () => {
-    // "U.S." attributed to [1], which never mentions the US. Collapsing the
-    // acronym must not let it ground against story 2's title.
+  // Scoping must be pinned by a DISCRIMINATING pair, not a lone rejection.
+  // The first version of this test led with "Citizens were urged to leave…",
+  // and review showed it rejected on the sentence-initial "Citizens" — deleting
+  // the acronym entirely still rejected, so it never tested acronym scoping at
+  // all. Here "The" is a sentence-start stopword and "region" is lowercase, so
+  // the acronym is the ONLY proper noun in that sentence: the citation index is
+  // the sole variable and the verdict flips with it.
+  it('scopes the collapsed acronym to the story it cites (negative)', () => {
     const misattributed = JSON.stringify({
-      lead: 'Citizens were urged to leave the region by the U.S. [1]. GCC states condemned Iranian attacks on Kuwait [1].',
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [1].',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }), null);
+    assert.equal(
+      composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }),
+      null,
+      'story 1 never mentions the US — collapsing must not let it ground against story 2',
+    );
+  });
+
+  it('scopes the collapsed acronym to the story it cites (positive)', () => {
+    const grounded = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [2].',
+      lines,
+    });
+    assert.notEqual(
+      composeSynthesizedBrief(grounded, topStories, { validatorMode: 'enforce' }),
+      null,
+      'identical text citing [2] must pass — only the citation index differs',
+    );
   });
 
   // Cross-model adversarial review (Codex) broke the first version of this fix,
@@ -358,6 +379,17 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     assert.notEqual(composeSynthesizedBrief(endOfLead, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('treats a bracketed year after the acronym as prose, not a citation', () => {
+    // verifyCitationIndexes deliberately leaves 4-digit brackets as prose, and
+    // \d{1,3} cannot match one — so "[2026]" must not license a collapse. The
+    // fragment stays uncited and fails closed.
+    const bracketedYear = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [2026].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(bracketedYear, topStories, { validatorMode: 'enforce' }), null);
   });
 
   it('stays closed when an out-of-range marker is stripped down to a bare one', () => {
