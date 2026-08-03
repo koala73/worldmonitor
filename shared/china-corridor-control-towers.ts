@@ -406,18 +406,28 @@ function provenanceBindingMatches(
   }
   const claims = record(provenance.claims);
   if (claims === null) return true;
-  const expectedInputIds = signals
-    .filter((signal) => signal.availability !== 'unavailable')
-    .map((signal) => signal.id);
+  const usableSignals = signals.filter((signal) => signal.availability !== 'unavailable');
+  const expectedInputIds = usableSignals.map((signal) => signal.id);
   const expectedInputIdSet = new Set(expectedInputIds);
+  const expectedPublisherIds = new Set(usableSignals.map((signal) => signal.publisher.id));
   const corroboration = record(claims.corroboration);
   if (corroboration?.status === 'known') {
-    const sourceSignalIds = record(corroboration.value)?.sourceSignalIds;
+    const corroborationValue = record(corroboration.value);
+    const sourceSignalIds = corroborationValue?.sourceSignalIds;
+    const expectedState = expectedPublisherIds.size > 1
+      ? 'multi_source'
+      : 'single_source';
     if (
-      !Array.isArray(sourceSignalIds)
+      corroborationValue?.state !== expectedState
+      || !Array.isArray(sourceSignalIds)
       || sourceSignalIds.length === 0
       || !sourceSignalIds.every((id) =>
         typeof id === 'string' && expectedInputIdSet.has(id))
+      || (
+        expectedPublisherIds.size > 1
+          ? !sameStringSet(sourceSignalIds, expectedInputIds)
+          : sourceSignalIds.length !== 1
+      )
     ) {
       return false;
     }
