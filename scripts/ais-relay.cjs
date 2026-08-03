@@ -561,6 +561,32 @@ function upstashDel(key) {
   });
 }
 
+function upstashReleaseLockIfOwner(key, owner) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
+    const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(Number(JSON.parse(data)?.result) === 1); } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 // Seed envelope — canonical { _seed, data } shape. Mirrored from
 // scripts/_seed-envelope-source.mjs (ESM; can't be require()'d from CJS).
@@ -576,18 +602,19 @@ function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, s
 }
 
 // Wrap `data` in a seed envelope and write to Redis at `key` with `ttlSeconds`.
-// meta: { recordCount, sourceVersion, schemaVersion?, state?, zeroOk? }
+// meta: { fetchedAt?, recordCount, sourceVersion, schemaVersion?, state?, zeroOk?, groupId? }
 //   - state: omit to derive ('OK_ZERO' when recordCount===0 && zeroOk, else 'OK')
 //   - schemaVersion: defaults to 1
 function envelopeWrite(key, data, ttlSeconds, meta) {
   const recordCount = Number(meta?.recordCount ?? 0) || 0;
   const state = meta?.state || (recordCount === 0 && meta?.zeroOk ? 'OK_ZERO' : 'OK');
   const envelope = buildEnvelope({
-    fetchedAt: Date.now(),
+    fetchedAt: meta?.fetchedAt ?? Date.now(),
     recordCount,
     sourceVersion: meta?.sourceVersion || 'ais-relay',
     schemaVersion: meta?.schemaVersion ?? 1,
     state,
+    groupId: meta?.groupId,
     data,
   });
   return upstashSet(key, envelope, ttlSeconds);
@@ -3933,6 +3960,8 @@ const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
 const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
 const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
 const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
+const THEATER_POSTURE_LOCK_KEY = 'seed-lock:theater-posture';
+const THEATER_POSTURE_LOCK_TTL_SECONDS = 120;
 const THEATER_POSTURE_LIVE_TTL = 1200;   // 20 min — must outlive the 10-min seed interval (2x)
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
@@ -4456,29 +4485,48 @@ async function seedTheaterPosture() {
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const payload = { theaters };
-  const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
-  // key; `producer` disambiguates the two writers, whose source vocabularies
-  // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
-  // last-resort fallback).
-  const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay' }, 604800);
-  theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
-  theaterPostureLastRun = {
-    seededAt: new Date().toISOString(),
-    source: flightSource,
-    flightCount: flights.length,
-    vesselCount: totalVessels,
-    redisOk: ok1 && ok2 && ok3,
-    // Reported separately from redisOk: health gates staleness on the
-    // seed-meta key, so a failed attribution write must not hide behind
-    // three green envelope writes.
-    seedMetaOk,
-  };
-  const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+  const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
+  if (lockResult !== 'new') {
+    console.warn(`[TheaterPosture] Skipping publication: shared seed lock is ${lockResult}`);
+    return;
+  }
+
+  try {
+    const publishedAt = Date.now();
+    const envelopeMeta = {
+      fetchedAt: publishedAt,
+      recordCount: theaters.length,
+      sourceVersion: 'theater-posture',
+      groupId: publicationId,
+    };
+    const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, envelopeMeta);
+    const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, envelopeMeta);
+    const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, envelopeMeta);
+    // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
+    // key; `producer` disambiguates the two writers, whose source vocabularies
+    // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
+    // last-resort fallback). publicationId pairs this metadata with the
+    // canonical envelope _seed.groupId for cross-producer consistency checks.
+    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    theaterPostureLastRun = {
+      seededAt: new Date().toISOString(),
+      source: flightSource,
+      flightCount: flights.length,
+      vesselCount: totalVessels,
+      redisOk: ok1 && ok2 && ok3,
+      // Reported separately from redisOk: health gates staleness on the
+      // seed-meta key, so a failed attribution write must not hide behind
+      // three green envelope writes.
+      seedMetaOk,
+    };
+    const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+  } finally {
+    await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
+  }
 }
 
 function startTheaterPostureSeedLoop() {

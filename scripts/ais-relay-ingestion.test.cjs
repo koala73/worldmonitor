@@ -77,9 +77,14 @@ function spawnRelay(extraEnv) {
   return { child, ready: ready.then(() => ({ child, port })) };
 }
 
-// Mock Upstash REST endpoint: records every command, acknowledges writes.
-async function createUpstashMock() {
+// Mock Upstash REST endpoint: records every command, acknowledges writes, and
+// can return a deterministic response sequence for a specific Redis key.
+async function createUpstashMock({ setResponses = {} } = {}) {
   const commands = [];
+  const responseQueues = new Map(Object.entries(setResponses).map(([key, responses]) => [
+    key,
+    Array.isArray(responses) ? [...responses] : [responses],
+  ]));
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
@@ -92,7 +97,12 @@ async function createUpstashMock() {
         res.end(JSON.stringify((Array.isArray(command) ? command : []).map(() => ({ result: null }))));
         return;
       }
-      res.end(JSON.stringify({ result: 'OK' }));
+      const key = Array.isArray(command) ? command[1] : null;
+      const queue = responseQueues.get(key);
+      const response = queue?.length
+        ? queue.shift()
+        : (command?.[0] === 'EVAL' ? { result: 1 } : { result: 'OK' });
+      res.end(JSON.stringify(response));
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -216,7 +226,13 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
       assert.ok(seedMeta.recordCount >= 1);
     }
 
-    assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 2, 'canonical theater posture must still publish');
+    const canonicalSets = upstash.setsFor('theater-posture:sebuf:v1');
+    assert.equal(canonicalSets.length, 2, 'canonical theater posture must still publish');
+    for (let i = 0; i < canonicalSets.length; i += 1) {
+      const canonical = JSON.parse(canonicalSets[i].command[2]);
+      const meta = JSON.parse(seedMetaSets[i].command[2]);
+      assert.equal(canonical._seed.groupId, meta.publicationId, 'canonical envelope and seed-meta must identify one publication');
+    }
 
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.ok(metrics.theaterPosture, '/metrics must expose a theaterPosture section');
@@ -230,6 +246,79 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
     assert.equal(metrics.opensky.success, 0);
     assert.equal(metrics.opensky.served, 0);
     assert.ok(metrics.opensky.throttle >= 1);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture reports a canonical envelope write failure separately', async () => {
+  const upstash = await createUpstashMock({
+    setResponses: {
+      'theater-posture:sebuf:v1': [{ result: 'ERR canonical unavailable' }],
+    },
+  });
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.redisOk, false);
+    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, true);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture reports a seed-meta write failure separately', async () => {
+  const upstash = await createUpstashMock({
+    setResponses: {
+      'seed-meta:theater-posture': [{ result: 'ERR seed-meta unavailable' }],
+    },
+  });
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.redisOk, true);
+    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, false);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture does not publish while the shared producer lock is held', async () => {
+  const upstash = await createUpstashMock({
+    setResponses: {
+      'seed-lock:theater-posture': [{ result: null }],
+    },
+  });
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+    assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 0);
+    assert.equal(upstash.setsFor('seed-meta:theater-posture').length, 0);
   } finally {
     await stop(child);
     await upstash.close();
