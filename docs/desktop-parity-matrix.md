@@ -80,7 +80,7 @@ current code does in a current desktop build — not the stale v2.5.23 binary.
 | Desktop-locked panels | `forecast`, `oref-sirens`, `telegram-intel` locked; `cii`, `strategic-risk`, `gdelt-intel`, `supply-chain` downgraded to enhanced | intentional difference (documented here as the fallback statement) | `src/config/panels.ts:32-36,64,118-119` |
 | Layers not loaded on desktop | AIS, Iran attacks, GPS jamming (premium/relay-dependent); military flights uses direct OpenSky w/ 15-min cache instead of proto RPC | intentional difference | `src/app/data-loader.ts:1050,1055,3138`; `src/services/military-flights.ts:63-72` |
 | Variant selection | Web: hostname. Desktop: `localStorage` override with in-app switching (reload in place), falling back to build-time `VITE_VARIANT` | intentional difference | `src/config/variant.ts:20-38`; `src/app/event-handlers.ts:1594-1598` |
-| Variant switcher scope | **GAP**: switcher accepts commodity/energy, but no desktop artifact, updater variant, or package path exists for them (updater knows full/tech/finance; packaging stops at full/tech) | blocked → #5908 | `variant.ts:23`; `src/app/desktop-updater.ts:15-21`; `scripts/desktop-package.mjs:23` |
+| Variant switcher scope | **Fixed by #5908**: the supported model is one published binary that switches all six variants in-app, so no variant needs its own artifact. `SITE_VARIANTS` is the single source of truth, and `/api/download` accepts exactly that set (plus the `world` alias), pinned by `tests/desktop-one-binary-model.test.mjs`. Historical state: the switcher accepted commodity/energy while the updater knew only full/tech/finance and packaging stopped at full/tech | parity | `src/config/variant.ts:7`; `api/download.js:26-34`; `tests/desktop-one-binary-model.test.mjs` |
 | Runtime-config panel | Force-enabled on desktop boot; hidden on web | intentional difference | `src/App.ts:881-892`; `src/settings-window.ts:63` |
 | Runtime detection | **GAP (cosmetic/dev)**: two detectors disagree — `isDesktopRuntime()` (VITE flag + broad heuristics) vs raw `__TAURI__` checks in 6 files; split-brain under `desktop:dev` early boot and `VITE_DESKTOP_RUNTIME=1` browser builds | blocked (minor) → #5912 | `src/services/runtime.ts:72-113`; `src/config/variant.ts:20` |
 
@@ -118,7 +118,7 @@ current code does in a current desktop build — not the stale v2.5.23 binary.
 
 | Capability | Desktop behavior vs web | Classification | Evidence |
 | --- | --- | --- | --- |
-| Update discovery | Custom 6-hourly poll of `api.worldmonitor.app/api/version` (no Tauri updater plugin, no signed update artifacts); per-arch download via `/api/download` | intentional mechanism; **blocked on correctness** — see #5908 (`-tech` tag would NaN-poison `isNewerVersion`; both endpoints read only `/releases/latest`) | `src/app/desktop-updater.ts:26,73-75,112-162`; `api/version.js:13`; `api/download.js` |
+| Update discovery | Custom 6-hourly poll of `api.worldmonitor.app/api/version` (no Tauri updater plugin, no signed update artifacts); per-arch download via `/api/download` | intentional mechanism; **correctness fixed by #5908** — one release line, so `/releases/latest` is the right read, and `isNewerDesktopVersion` reports an unparseable version as `version_unparsable` instead of NaN-collapsing it to a silent `no_update` | `src/app/desktop-updater.ts:25,66-95`; `src/utils/desktop-version.ts`; `api/version.js:13`; `api/download.js` |
 | Web push / service worker | Intentionally desktop-excluded (Tauri check) and doubly so via missing `VITE_VAPID_PUBLIC_KEY` | intentional difference — fallback: in-app alerts | `src/services/push-notifications.ts:42`; `src/main.ts:496` |
 | Breaking-news alerts | Run on desktop; posted via raw XHR to bypass the fetch interceptor | parity | `src/services/breaking-news-alerts.ts:214-228` |
 | Stale-bundle check | Web-only (desktop has the updater instead) | intentional difference | `src/main.ts:405` |
@@ -129,12 +129,14 @@ current code does in a current desktop build — not the stale v2.5.23 binary.
 Condensed from the release-infra audit; each row feeds a child issue or the
 release-candidate checklist:
 
-1. Variant release model structurally broken: `/api/version` + `/api/download`
-   read only `/releases/latest`; `-tech` tags build the **full** variant on tag
-   push; release-notes step targets the wrong tag; `workflow_dispatch` default
-   `draft: true` makes builds invisible to the endpoints; finance is advertised
-   (`api/download.js:21`, docs) but unbuildable (workflow + packager stop at
-   full/tech). → #5908.
+1. ~~Variant release model structurally broken~~ — **resolved by #5908.** The
+   supported model is now one published World Monitor binary with in-app variant
+   switching, so the endpoints' single-release read is correct by design. The
+   workflow keeps one build-leg pair and one tag (`v__VERSION__`), the AppImage
+   re-upload and release-notes step can no longer target different tags,
+   `workflow_dispatch` defaults to `draft: false` so a dispatched build is
+   actually served, and the unbuildable tech/finance packaging surface is gone.
+   `tests/desktop-one-binary-model.test.mjs` fails if any surface drifts back.
 2. Bundled Node 22.14.0 vs CI Node 24 everywhere; SHASUMS fetched without GPG
    verification. → #5909.
 3. README/docs drift: "Stable" label, missing Linux ARM64 row, `windows-exe`
