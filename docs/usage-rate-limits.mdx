@@ -51,6 +51,8 @@ Dashboard and direct REST AI operations use a separate daily budget from MCP. Th
 
 Free and signed-out dashboard users keep the normal keyword/cache fallback for feed enrichment; they do not consume the paid direct-AI budget. These limits are independent of the MCP allowances above.
 
+Signed-out callers are rejected outright, and Pro-gated AI routes deny free accounts before any spend. Separately from these plan allowances, a small non-plan safety floor of **50 requests/day** applies to any caller whose paid entitlement cannot be confirmed at request time — a lapsed subscription, or a transient entitlement-lookup outage. It exists so an outage degrades gracefully instead of rejecting paying customers; it is not an allowance any plan includes, and it is never larger than the smallest paid allowance.
+
 ## OAuth endpoints
 
 | Endpoint | Limit | Window | Scope |

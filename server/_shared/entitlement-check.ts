@@ -531,9 +531,17 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       // post-U10 layout. Self-healing, bounded to one extra Convex
       // round-trip per affected user during the migration window.
       // Reviewer round-2 P2 (cache layer).
+      //
+      // The same trap re-opened for `planLimits.dashboardAiCallsPerDay`: a
+      // cache entry written before that dimension shipped already satisfies the
+      // mcpAccess check, so it would be served as fresh WITHOUT the new member
+      // and every paid tier above Pro would silently resolve to the Pro default
+      // (Pro Business 2,500 -> 500, API Business 10,000 -> 500). Require the
+      // member the same way, so those rows self-heal through Convex instead.
       if (
         ent.validUntil >= Date.now() &&
-        typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean'
+        typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean' &&
+        ent.features.planLimits?.dashboardAiCallsPerDay !== undefined
       ) {
         return ent;
       }

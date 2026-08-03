@@ -25,6 +25,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
+      "dashboardAiCallsPerDay": 0,
       "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view, 3 dashboard tabs"
     },
     {
@@ -39,6 +40,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 500,
       "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license"
     },
     {
@@ -53,6 +55,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 500,
       "description": ""
     },
     {
@@ -67,6 +70,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 2500,
       "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included"
     },
     {
@@ -81,6 +85,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 2500,
       "description": ""
     },
     {
@@ -95,6 +100,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 1000,
       "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, Commercial license — for your organization"
     },
     {
@@ -109,6 +115,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 1000,
       "description": ""
     },
     {
@@ -123,6 +130,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 10000,
       "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Priority support, Commercial license — for your customers"
     },
     {
@@ -137,6 +145,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": true,
       "selfServe": true,
+      "dashboardAiCallsPerDay": 10000,
       "description": ""
     },
     {
@@ -151,6 +160,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
+      "dashboardAiCallsPerDay": null,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option"
     }
   ],

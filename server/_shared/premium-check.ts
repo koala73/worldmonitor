@@ -17,7 +17,10 @@ import {
   getInternalMcpVerifiedNonce,
 } from './mcp-internal-hmac';
 import { validateUserApiKey } from './user-api-key';
-import { directLlmDailyLimitFromEntitlements } from './direct-llm-quota';
+import {
+  DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+  resolveActiveDirectLlmLimit,
+} from './direct-llm-quota';
 
 export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
@@ -26,8 +29,16 @@ export type PremiumCallerIdentity =
       userId: string;
       kind: 'user-api-key' | 'bearer';
       quotaExempt: false;
-      /** Undefined uses the conservative legacy Pro default; null is unlimited. */
-      directLlmDailyLimit?: number | null;
+      /**
+       * Daily direct-LLM budget for this caller. `null` is unlimited.
+       *
+       * REQUIRED, not optional: every arm that builds this identity must state
+       * the budget explicitly. When it was optional an arm was added without
+       * it, and the absent field fell through to the paid default — so the two
+       * surfaces sharing this counter enforced two different caps. Always
+       * source it from `resolveActiveDirectLlmLimit`.
+       */
+      directLlmDailyLimit: number | null;
     }
   | { isPremium: true; userId: null; kind: 'enterprise'; quotaExempt: true }
   | {
@@ -293,7 +304,11 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
             userId: userKey.userId,
             kind: 'user-api-key',
             quotaExempt: false,
-            directLlmDailyLimit: directLlmDailyLimitFromEntitlements(ent),
+            // apiAccess proves the plan sells API access; it does NOT prove the
+            // subscription is still current. resolveActiveDirectLlmLimit
+            // re-checks tier + validUntil so a lapsed row cannot keep spending
+            // its old allowance against the shared daily counter.
+            directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
           };
         }
         // Preserve main's billing-verification tag on confirmed denials (#5622).
@@ -337,7 +352,18 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       return UNAUTHENTICATED;
     }
     if (session.role === 'pro' && session.userId) {
-      return { isPremium: true, userId: session.userId, kind: 'bearer', quotaExempt: false };
+      // A Clerk-role grant is premium WITHOUT a Convex row to price it: the Dodo
+      // pipeline never syncs publicMetadata.role (see server/gateway.ts), so
+      // this arm is complimentary/tester/legacy grants, not paying subscribers.
+      // Unpriceable is exactly the unverified case, so name the floor here
+      // rather than letting an absent field fall through to the paid default.
+      return {
+        isPremium: true,
+        userId: session.userId,
+        kind: 'bearer',
+        quotaExempt: false,
+        directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+      };
     }
     // Clerk role isn't 'pro' — check Dodo entitlement tier as second signal.
     // A Dodo subscriber (tier >= 1) is premium regardless of Clerk role.
@@ -349,7 +375,11 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
           userId: session.userId,
           kind: 'bearer',
           quotaExempt: false,
-          directLlmDailyLimit: directLlmDailyLimitFromEntitlements(ent),
+          // Premium-ness here keys on tier alone (pre-existing contract). The
+          // SPEND limit is stricter on purpose: a lapsed row must not keep its
+          // paid allowance, and an Enterprise row's null must not skip the
+          // meter once it has expired.
+          directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
         };
       }
       return denyFor(ent);

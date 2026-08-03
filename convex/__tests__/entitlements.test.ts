@@ -248,6 +248,51 @@ describe("entitlement query", () => {
     expect(result.features.mcpAccess).toBe(false); // override preserved
   });
 
+  test("nested planLimits merges PER FIELD: override survives, new dimension inherits", async () => {
+    const t = convexTest(schema, modules);
+
+    // The other planLimits tests seed rows with no `planLimits` key at all, so
+    // they pass under either merge order. This one seeds a genuine per-field
+    // override alongside a MISSING new dimension -- the only shape that can
+    // tell "spread catalog under stored" from "stored replaces catalog".
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user-planlimits-override",
+        planKey: "pro_business_monthly",
+        features: {
+          tier: 1,
+          apiAccess: false,
+          apiRateLimit: 0,
+          maxDashboards: 25,
+          prioritySupport: true,
+          exportFormats: ["csv", "json", "pdf"],
+          mcpAccess: true,
+          planLimits: {
+            apiRequestsPerDay: 0,
+            apiBurstRequestsPerMinute: 0,
+            mcpCallsPerDay: 999, // explicit per-user override
+            mcpBurstRequestsPerMinute: 60,
+            // dashboardAiCallsPerDay deliberately absent (pre-dates the field).
+          },
+        },
+        validUntil: FUTURE,
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
+      userId: "user-planlimits-override",
+    });
+
+    // Stored member wins...
+    expect(result.features.planLimits?.mcpCallsPerDay).toBe(999);
+    // ...while the member the row never had inherits the catalog value. A
+    // whole-object replacement would leave this undefined.
+    expect(result.features.planLimits?.dashboardAiCallsPerDay).toBe(2_500);
+    // Untouched siblings still come through.
+    expect(result.features.planLimits?.mcpBurstRequestsPerMinute).toBe(60);
+  });
+
   test("does not throw when duplicate entitlement rows exist for same userId", async () => {
     const t = convexTest(schema, modules);
 

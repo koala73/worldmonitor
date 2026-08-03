@@ -72,7 +72,7 @@ import {
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_GATEWAY_QUOTA_PATHS,
-  directLlmDailyLimitFromEntitlements,
+  resolveActiveDirectLlmLimit,
   reserveDirectLlmQuota,
 } from './_shared/direct-llm-quota';
 import {
@@ -1848,16 +1848,19 @@ export function createDomainGateway(
       // Tier-1 legacy Clerk-role grants intentionally bypass the ordinary
       // entitlement lookup. Re-read the cached row when available so Pro
       // Business/API plans still receive their catalog-specific dashboard-AI
-      // allowance; a missing legacy row falls back to the Pro default.
+      // allowance.
       const ent = quotaEntitlements ?? (
         userKeyEntitlement !== undefined
           ? userKeyEntitlement
           : await getEntitlements(sessionUserId)
       );
       if (ent) recordUsageEntitlement(ent);
-      if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
-        directLlmDailyLimit = directLlmDailyLimitFromEntitlements(ent);
-      }
+      // resolveActiveDirectLlmLimit — NOT the raw catalog read — decides this.
+      // A caller we cannot confirm as actively paid (free tier, lapsed row, no
+      // row, or a verification outage) must land on the unverified floor, never
+      // on the paid default: this endpoint spends real provider budget, and
+      // two of the DIRECT_LLM_GATEWAY_QUOTA_PATHS carry no tier gate at all.
+      directLlmDailyLimit = resolveActiveDirectLlmLimit(ent);
 
       // Enterprise subscription rows carry an explicit null allowance. Do not
       // hit Redis for those unlimited callers; static enterprise keys already
