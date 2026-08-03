@@ -6,12 +6,13 @@ import {
 } from '../../../shared/china-decision-signals';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../../../shared/mining-sites.js';
-import { readJsonFromUpstash } from '../../_upstash-json.js';
+import { readJsonFromUpstash, readJsonFromUpstashWithStatus } from '../../_upstash-json.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import { assertMcpToolFetchOk } from '../downstream';
 import { evaluateFreshness } from '../freshness';
+import { McpSourceUnavailableError } from '../source-unavailable';
 import type { FreshnessCheck, ToolDef } from '../types';
 import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '../ui/registry';
 import { ANALYSIS_TOOLS } from './analysis-tools';
@@ -35,6 +36,140 @@ type DigestItemForBrief = {
   pubDate?: string | number;
   date?: string | number;
 };
+
+const WORLD_BRIEF_CACHE_KEY = 'news:insights:v1';
+// Keep this aligned with src/services/insights-loader.ts: the dashboard only
+// renders a hydrated snapshot while it is younger than one seeder interval.
+const WORLD_BRIEF_MAX_AGE_MS = 60 * 60 * 1000;
+
+type CanonicalWorldBriefPayload = {
+  worldBrief?: unknown;
+  briefStoryLines?: unknown;
+  worldBriefSources?: unknown;
+  briefProvider?: unknown;
+  briefModel?: unknown;
+  status?: unknown;
+  topStories?: unknown;
+  generatedAt?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeCanonicalBriefSource(value: unknown): McpBriefSource | null {
+  if (!isRecord(value)) return null;
+  if (!isNonEmptyString(value.title) || !isNonEmptyString(value.source)) return null;
+  const url = normalizeBriefUrl(value.url);
+  if (!url) return null;
+  if (value.publishedAt === undefined) {
+    return { title: value.title.trim(), source: value.source.trim(), url };
+  }
+  const publishedAt = normalizeBriefDate(value.publishedAt);
+  return publishedAt
+    ? { title: value.title.trim(), source: value.source.trim(), url, publishedAt }
+    : null;
+}
+
+function normalizeCanonicalBriefSources(value: unknown): McpBriefSource[] | null {
+  if (!Array.isArray(value)) return null;
+  const normalized: McpBriefSource[] = [];
+  for (const source of value) {
+    const next = normalizeCanonicalBriefSource(source);
+    if (!next) return null;
+    normalized.push(next);
+  }
+  return normalized;
+}
+
+function isCanonicalBriefStoryLine(value: unknown): boolean {
+  return isRecord(value)
+    && Number.isInteger(value.n)
+    && Number(value.n) > 0
+    && isNonEmptyString(value.text);
+}
+
+function projectCanonicalWorldBrief(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${WORLD_BRIEF_CACHE_KEY}_invalid`);
+  const payload = value as CanonicalWorldBriefPayload;
+  const worldBrief = payload.worldBrief;
+  const briefProvider = payload.briefProvider;
+  const briefModel = payload.briefModel;
+  const topStories = Array.isArray(payload.topStories) ? payload.topStories : [];
+  const headlines = topStories.map((story) => (
+    isRecord(story) && typeof story.primaryTitle === 'string' ? story.primaryTitle : ''
+  ));
+  const briefStoryLines = Array.isArray(payload.briefStoryLines) ? payload.briefStoryLines : [];
+  const worldBriefSources = payload.worldBriefSources === undefined
+    ? []
+    : normalizeCanonicalBriefSources(payload.worldBriefSources);
+  const hasBriefStoryLines = payload.briefStoryLines !== undefined;
+  const hasWorldBriefSources = payload.worldBriefSources !== undefined;
+  const generatedAtMs = typeof payload.generatedAt === 'string'
+    ? new Date(payload.generatedAt).getTime()
+    : Number.NaN;
+  const snapshotAgeMs = Date.now() - generatedAtMs;
+  const isDegradedWithoutBrief = payload.status === 'degraded' && worldBrief === '';
+
+  // These are the same minimum fields the dashboard's ServerInsights loader
+  // requires before it accepts the seeded snapshot. Optional brief metadata
+  // remains compatible with pre-rollout payloads, but malformed metadata must
+  // never be turned into a new MCP brief or trigger an ungated live fallback.
+  if (
+    typeof worldBrief !== 'string'
+    || (!isNonEmptyString(worldBrief) && !isDegradedWithoutBrief)
+    || (!isDegradedWithoutBrief && briefProvider !== undefined && !isNonEmptyString(briefProvider))
+    || (!isDegradedWithoutBrief && briefModel !== undefined && !isNonEmptyString(briefModel))
+    || topStories.length === 0
+    || headlines.some((headline) => headline.trim().length === 0)
+    || (hasBriefStoryLines && (!Array.isArray(payload.briefStoryLines) || !briefStoryLines.every(isCanonicalBriefStoryLine)))
+    || (hasWorldBriefSources && worldBriefSources === null)
+    || !Number.isFinite(generatedAtMs)
+    || snapshotAgeMs < 0
+    || snapshotAgeMs >= WORLD_BRIEF_MAX_AGE_MS
+    || (payload.status !== 'ok' && payload.status !== 'degraded')
+  ) {
+    throw new Error(`${WORLD_BRIEF_CACHE_KEY}_invalid`);
+  }
+
+  return {
+    brief: worldBrief,
+    summary: worldBrief,
+    headlines,
+    provider: typeof briefProvider === 'string' ? briefProvider : '',
+    model: typeof briefModel === 'string' ? briefModel : '',
+    generatedAt: payload.generatedAt,
+    sources: worldBriefSources ?? [],
+    briefStoryLines,
+    status: payload.status,
+  };
+}
+
+async function readCanonicalWorldBrief(): Promise<Record<string, unknown>> {
+  const read = await readJsonFromUpstashWithStatus(WORLD_BRIEF_CACHE_KEY);
+  if (read.status !== 'hit' || read.value === null) {
+    const unavailable = [WORLD_BRIEF_CACHE_KEY];
+    const failed = read.status === 'error' ? unavailable : [];
+    throw new McpSourceUnavailableError(
+      'Canonical world brief is unavailable',
+      unavailable,
+      failed,
+    );
+  }
+  try {
+    return projectCanonicalWorldBrief(read.value);
+  } catch {
+    throw new McpSourceUnavailableError(
+      'Canonical world brief is invalid',
+      [WORLD_BRIEF_CACHE_KEY],
+      [WORLD_BRIEF_CACHE_KEY],
+    );
+  }
+}
 
 function clipBriefText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
@@ -447,27 +582,31 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_world_brief',
     _outputBudgetBytes: 65536,
-    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
+    description: 'Precomputed, citation-grounded world intelligence brief from the same seeded snapshot the dashboard renders. It does not run a per-call LLM; geo_context is retained for compatibility but does not change the global snapshot.',
     inputSchema: {
       type: 'object',
       properties: {
-        geo_context: { type: 'string', description: 'Optional focus context (e.g. "Middle East tensions", "US-China trade war")' },
+        geo_context: { type: 'string', description: 'Legacy compatibility input; the seeded global snapshot is not re-generated or narrowed per call.' },
       },
       required: [],
     },
-    // RPC tool: returns the raw body of /api/news/v1/summarize-article (LLM brief).
+    // The MCP projection keeps the legacy brief/summary/headlines/source names,
+    // while the extra fields expose the same canonical snapshot metadata the
+    // dashboard uses to render its grounded brief.
     outputSchema: {
       type: 'object',
       properties: {
-        brief: { type: 'string', description: 'LLM-summarized geopolitical brief.' },
-        summary: { type: 'string', description: 'Alternate naming used by some upstream variants.' },
+        brief: { type: 'string', description: 'Precomputed geopolitical brief from the canonical seeded dashboard snapshot.' },
+        summary: { type: 'string', description: 'Compatibility alias for brief.' },
         headlines: { type: 'array', items: { type: 'string' } },
         provider: { type: 'string' },
         model: { type: 'string' },
         generatedAt: { type: ['string', 'number', 'null'] },
+        status: { type: 'string', enum: ['ok', 'degraded'] },
+        briefStoryLines: { type: 'array', items: { type: 'object' } },
         sources: {
           type: 'array',
-          description: 'Original feed articles used as grounding inputs for this brief.',
+          description: 'Citation-locked source records emitted with the dashboard brief.',
           items: {
             type: 'object',
             properties: {
@@ -480,76 +619,19 @@ export const RPC_TOOLS: ToolDef[] = [
         },
       },
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: WORLD_BRIEF_UI_URI,
-    _execute: async (params, base, context, execution) => {
-      const UA = 'worldmonitor-mcp-edge/1.0';
-      // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM).
-      // `full` is the documented geopolitical/default digest variant.
-      const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
-      const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
-      const digestRes = await fetch(digestUrl, {
-        headers: { ...digestAuth, 'User-Agent': UA },
-        signal: AbortSignal.timeout(6_000),
-      });
-      await assertMcpToolFetchOk(digestRes, {
-        operation: 'list-feed-digest',
-        tool: 'get_world_brief',
-        auth: context,
-        execution,
-      });
-      type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
-      const digest = await digestRes.json() as DigestPayload;
-      // Pair headlines with their RSS snippets so the LLM grounds per-story
-      // on article bodies instead of hallucinating across unrelated titles.
-      const pairs = Object.values(digest.categories ?? {})
-        .flatMap(cat => cat.items ?? [])
-        .map(item => ({
-          title: item.title ?? '',
-          snippet: item.snippet ?? '',
-          source: item.source ?? '',
-          link: item.link ?? item.url ?? '',
-          publishedAt: item.publishedAt ?? item.pubDate ?? item.date,
-        }))
-        .filter(p => p.title.length > 0)
-        .slice(0, 10);
-      const headlines = pairs.map(p => p.title);
-      const bodies = pairs.map(p => p.snippet);
-      const sources = collectMcpBriefSources(pairs, 6);
-      // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
-      const briefUrl = `${base}/api/news/v1/summarize-article`;
-      const briefBody = JSON.stringify({
-        provider: 'openrouter',
-        headlines,
-        bodies,
-        mode: 'brief',
-        geoContext: String(params.geo_context ?? ''),
-        variant: 'full',
-        lang: 'en',
-      });
-      const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
-      const briefRes = await fetch(briefUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...briefAuth, 'User-Agent': UA },
-        body: briefBody,
-        signal: AbortSignal.timeout(18_000),
-      });
-      await assertMcpToolFetchOk(briefRes, {
-        operation: 'summarize-article',
-        tool: 'get_world_brief',
-        auth: context,
-        execution,
-      });
-      const result = await briefRes.json() as Record<string, unknown>;
-      return { ...result, headlines, sources };
+    _execute: async () => {
+      return readCanonicalWorldBrief();
     },
-    _apiPaths: [
-      "GET /api/news/v1/list-feed-digest",
-      "POST /api/news/v1/summarize-article",
-    ],
+    // Direct Redis read of the same canonical key the dashboard hydrates from
+    // /api/bootstrap. No REST/LLM fetch-on-miss path is allowed here: a cache
+    // miss must fail closed rather than create an ungated second brief.
+    _coverageKeys: [WORLD_BRIEF_CACHE_KEY],
+    _apiPaths: [],
   },
   {
     name: 'get_country_brief',

@@ -5,9 +5,14 @@ import { readFileSync } from 'node:fs';
 import { __testing__ } from '../api/mcp.ts';
 
 const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Object.keys(process.env).forEach((key) => {
+    if (!(key in originalEnv)) delete process.env[key];
+  });
+  Object.assign(process.env, originalEnv);
 });
 
 function readRepoFile(path) {
@@ -21,13 +26,48 @@ function rpcTool(name) {
   return tool;
 }
 
+function canonicalWorldBriefPayload() {
+  const generatedAt = new Date().toISOString();
+  return {
+    worldBrief: 'Corroborated world brief [1].',
+    briefStoryLines: [{ n: 1, text: 'Corroborated world brief [1].' }],
+    worldBriefSources: [{
+      title: 'United States headline used for MCP grounding',
+      source: 'Example Wire',
+      url: 'https://example.com/world-grounding',
+      publishedAt: '2026-06-07T00:00:00.000Z',
+    }],
+    briefProvider: 'seed-provider',
+    briefModel: 'seed-model',
+    status: 'ok',
+    topStories: [{
+      primaryTitle: 'United States headline used for MCP grounding',
+      primarySource: 'Example Wire',
+      primaryLink: 'https://example.com/world-grounding',
+      pubDate: '2026-06-07T00:00:00.000Z',
+    }],
+    generatedAt,
+  };
+}
+
 async function captureRpcFetches(toolName, params, opts = {}) {
   const calls = [];
+  if (toolName === 'get_world_brief') {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+  }
   let result;
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
     calls.push({ url, init });
     const { pathname } = new URL(url);
+
+    if (toolName === 'get_world_brief' && url === 'https://fake.upstash.io/get/news%3Ainsights%3Av1') {
+      return new Response(JSON.stringify({ result: JSON.stringify(canonicalWorldBriefPayload()) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     if (pathname === '/api/news/v1/list-feed-digest') {
       return new Response(JSON.stringify({
@@ -93,7 +133,7 @@ async function captureRpcFetches(toolName, params, opts = {}) {
 }
 
 describe('MCP news/auth public contract', () => {
-  it('RPC news-brief tools use the documented full digest variant for grounding', async () => {
+  it('get_world_brief reads the canonical seeded snapshot while get_country_brief keeps its full digest grounding', async () => {
     const { calls: worldCalls } = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
     const { calls: countryCalls } = await captureRpcFetches('get_country_brief', { country_code: 'US' });
     const allCalls = [...worldCalls, ...countryCalls];
@@ -101,16 +141,20 @@ describe('MCP news/auth public contract', () => {
     const digestUrls = allCalls
       .map((call) => new URL(call.url))
       .filter((url) => url.pathname === '/api/news/v1/list-feed-digest');
-    assert.equal(digestUrls.length, 2, 'both RPC brief tools should ground on list-feed-digest');
+    assert.equal(digestUrls.length, 1, 'only the country brief should read list-feed-digest');
     assert.deepEqual(
       digestUrls.map((url) => url.searchParams.get('variant')),
-      ['full', 'full'],
+      ['full'],
       'MCP RPC tools must not rely on unsupported digest variants such as geo',
     );
 
-    const summarizeCall = allCalls.find((call) => new URL(call.url).pathname === '/api/news/v1/summarize-article');
-    assert.ok(summarizeCall, 'get_world_brief should call summarize-article');
-    assert.equal(JSON.parse(String(summarizeCall.init.body)).variant, 'full');
+    assert.equal(
+      worldCalls.filter((call) => new URL(call.url).pathname === '/api/news/v1/summarize-article').length,
+      0,
+      'get_world_brief must not call the live summarizer',
+    );
+    assert.equal(worldCalls.length, 1, 'get_world_brief should make one canonical cache read');
+    assert.equal(new URL(worldCalls[0].url).pathname, '/get/news%3Ainsights%3Av1');
   });
 
   it('RPC brief tools return sources from grounding digest items, not LLM text', async () => {
@@ -123,7 +167,8 @@ describe('MCP news/auth public contract', () => {
       url: 'https://example.com/world-grounding',
       publishedAt: '2026-06-07T00:00:00.000Z',
     }]);
-    assert.equal(worldResult.summary, 'Grounded world brief.');
+    assert.equal(worldResult.summary, 'Corroborated world brief [1].');
+    assert.equal(worldResult.status, 'ok');
     assert.equal(worldResult.sources.some((source) => source.url.startsWith('javascript:')), false);
 
     assert.deepEqual(countryResult.sources, worldResult.sources);

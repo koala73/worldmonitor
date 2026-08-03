@@ -162,7 +162,7 @@
     },
     {
       "name": "get_world_brief",
-      "description": "AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic."
+      "description": "Precomputed, citation-grounded world intelligence brief from the same seeded snapshot the dashboard renders. It does not run a per-call LLM; geo_context is retained for compatibility but does not change the global snapshot."
     },
     {
       "name": "get_country_brief",

@@ -1750,19 +1750,21 @@ curl -s https://worldmonitor.app/mcp \
 
 ## AI 情报（实时 LLM）
 
+本节大多数工具执行实时 LLM 工作；`get_world_brief` 是缓存支持的例外，返回预计算且有引用依据的仪表板快照。
+
 ### `get_world_brief`
 
-AI 生成的世界情报简报。抓取最新地缘政治头条及其 RSS 文章正文，生成有据可依的 LLM 摘要简报。提供可选的 geo_context 以聚焦某个地区或主题。
+与仪表板共享的预计算、有引用依据的世界情报简报，读取 `news:insights:v1` 快照。MCP 调用不会运行单次 LLM。`geo_context` 为兼容旧客户端而保留，但不会缩小或重新生成全局快照。
 
 **参数：**
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
-| `geo_context` | string | 否 | 可选的聚焦上下文（例如 "Middle East tensions"、"US-China trade war"） |
+| `geo_context` | string | 否 | 旧客户端兼容输入；对这个全局预计算快照会被忽略，不会聚焦或重新生成简报 |
 
-- **API 端点：** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
-- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（6s 摘要抓取 + 18s LLM 摘要，顺序执行）。
-- **来源：** 返回有界的 `sources` 数组，含来自作为依据输入发送的订阅源摘要条目的原始文章链接。URL 从订阅源数据复制，而非由 LLM 生成。
+- **来源：** 与仪表板 bootstrap 水合共享的规范种子 Redis key `news:insights:v1`。
+- **类型：** 缓存支持的 RPC — 返回生产者生成的引用锁定简报、故事行和来源记录；快照缺失或格式错误时会安全失败，不会回退到未受门控的实时摘要。
+- **新鲜度：** 由 insights seeder 的运行节奏限制；简报同时返回 `generatedAt` 和 `status`。
 
 <CodeGroup>
 
