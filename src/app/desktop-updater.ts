@@ -4,6 +4,7 @@ import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/se
 import { escapeHtml } from '@/utils/sanitize';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isNewerDesktopVersion } from '@/utils/desktop-version';
 
 
 interface DesktopRuntimeInfo {
@@ -11,14 +12,12 @@ interface DesktopRuntimeInfo {
   arch: string;
 }
 
-type UpdaterOutcome = 'no_update' | 'update_available' | 'open_failed' | 'fetch_failed';
-type DesktopBuildVariant = 'full' | 'tech' | 'finance';
-
-const DESKTOP_BUILD_VARIANT: DesktopBuildVariant = (
-  import.meta.env.VITE_VARIANT === 'tech' || import.meta.env.VITE_VARIANT === 'finance'
-    ? import.meta.env.VITE_VARIANT
-    : 'full'
-);
+type UpdaterOutcome =
+  | 'no_update'
+  | 'update_available'
+  | 'open_failed'
+  | 'fetch_failed'
+  | 'version_unparsable';
 
 export class DesktopUpdater implements AppModule {
   private ctx: AppContext;
@@ -58,14 +57,10 @@ export class DesktopUpdater implements AppModule {
   }
 
   private logUpdaterOutcome(outcome: UpdaterOutcome, context: Record<string, unknown> = {}): void {
-    const logger = outcome === 'open_failed' || outcome === 'fetch_failed'
-      ? console.warn
-      : console.info;
+    const logger = outcome === 'no_update' || outcome === 'update_available'
+      ? console.info
+      : console.warn;
     logger('[updater]', outcome, context);
-  }
-
-  private getDesktopBuildVariant(): DesktopBuildVariant {
-    return DESKTOP_BUILD_VARIANT;
   }
 
   private async checkForUpdate(): Promise<void> {
@@ -85,7 +80,16 @@ export class DesktopUpdater implements AppModule {
       }
 
       const current = __APP_VERSION__;
-      if (!this.isNewerVersion(remote, current)) {
+      const newer = isNewerDesktopVersion(remote, current);
+      if (newer === null) {
+        // #5908: never treat an unreadable version as "up to date". The old
+        // `Number('0-tech')` -> NaN path did exactly that and logged `no_update`,
+        // so a single malformed release stopped every client updating with no
+        // trace. Refusing to guess keeps the defect visible in the logs.
+        this.logUpdaterOutcome('version_unparsable', { current, remote });
+        return;
+      }
+      if (!newer) {
         this.logUpdaterOutcome('no_update', { current, remote });
         return;
       }
@@ -107,18 +111,6 @@ export class DesktopUpdater implements AppModule {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  private isNewerVersion(remote: string, current: string): boolean {
-    const r = remote.split('.').map(Number);
-    const c = current.split('.').map(Number);
-    for (let i = 0; i < Math.max(r.length, c.length); i++) {
-      const rv = r[i] ?? 0;
-      const cv = c[i] ?? 0;
-      if (rv > cv) return true;
-      if (rv < cv) return false;
-    }
-    return false;
   }
 
   private mapDesktopDownloadPlatform(os: string, arch: string): string | null {
@@ -152,8 +144,11 @@ export class DesktopUpdater implements AppModule {
       const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
       const platform = this.mapDesktopDownloadPlatform(runtimeInfo.os, runtimeInfo.arch);
       if (platform) {
-        const variant = this.getDesktopBuildVariant();
-        return `https://api.worldmonitor.app/api/download?platform=${platform}&variant=${variant}`;
+        // #5908: one published desktop binary, variants switch in-app — so the
+        // download is chosen by OS/arch alone. There is no per-variant asset to
+        // disambiguate, and asking for one only ever produced a 302 to the
+        // releases page.
+        return `https://api.worldmonitor.app/api/download?platform=${platform}`;
       }
     } catch {
       // Silent fallback to release page when desktop runtime info is unavailable.

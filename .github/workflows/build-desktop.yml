@@ -1,20 +1,22 @@
 name: 'Build Desktop App'
 
+# One published desktop binary (#5908). World Monitor ships as a single build
+# and every variant — tech, finance, commodity, energy, happy — is selected
+# in-app after install. There is deliberately no per-variant build leg or
+# per-variant tag: `/api/version` and `/api/download` read `/releases/latest`,
+# which can only ever resolve one release, so a second release line was
+# unservable by construction.
 on:
   workflow_dispatch:
     inputs:
-      variant:
-        description: 'App variant'
-        required: true
-        default: 'full'
-        type: choice
-        options:
-          - full
-          - tech
       draft:
-        description: 'Create as draft release'
+        # Defaults to false so a dispatched build is a real, served release.
+        # A draft is invisible to `/releases/latest`, and therefore to
+        # `/api/version` and `/api/download` — it looks shipped without being
+        # downloadable or offered to installed clients (#5908).
+        description: 'Create as draft release (NOT served by /api/version or /api/download until published)'
         required: false
-        default: true
+        default: false
         type: boolean
   push:
     tags:
@@ -221,23 +223,13 @@ jobs:
             echo "SKIP_SIGNING=true" >> $GITHUB_ENV
           fi
 
-      # ── Determine variant ──
-      - name: Set build variant
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "BUILD_VARIANT=${{ github.event.inputs.variant }}" >> $GITHUB_ENV
-          else
-            echo "BUILD_VARIANT=full" >> $GITHUB_ENV
-          fi
-
       # ── Build with tauri-action ──
       # Signed builds: only when Apple signing secrets are valid and imported
       # Unsigned builds: fallback when no signing (Windows always uses this path)
 
-      # ── Build: Full variant (signed) ──
-      - name: Build Tauri app (full, signed)
-        if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
+      # ── Build (signed) ──
+      - name: Build Tauri app (signed)
+        if: steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -269,9 +261,9 @@ jobs:
           args: ${{ matrix.args }}
           retryAttempts: 1
 
-      # ── Build: Full variant (unsigned — no Apple certs) ──
-      - name: Build Tauri app (full, unsigned)
-        if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
+      # ── Build (unsigned — no Apple certs) ──
+      - name: Build Tauri app (unsigned)
+        if: steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true'
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -296,71 +288,6 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
           retryAttempts: 1
-
-      # ── Build: Tech variant (signed) ──
-      - name: Build Tauri app (tech, signed)
-        if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_VARIANT: tech
-          VITE_DESKTOP_RUNTIME: '1'
-          VITE_WS_API_URL: https://worldmonitor.app
-          # Client env parity (#5905): a key missing here silently disables the
-          # capability in every shipped build — checked by
-          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
-          # Secret-sourced keys render empty until the repo secret exists.
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_ENABLE_CYBER_LAYER: 'true'
-          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
-          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
-          CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: v__VERSION__-tech
-          releaseName: 'Tech Monitor v__VERSION__'
-          releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
-          prerelease: false
-          tauriScript: npx tauri
-          args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
-          retryAttempts: 1
-
-      # ── Build: Tech variant (unsigned — no Apple certs) ──
-      - name: Build Tauri app (tech, unsigned)
-        if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_VARIANT: tech
-          VITE_DESKTOP_RUNTIME: '1'
-          VITE_WS_API_URL: https://worldmonitor.app
-          # Client env parity (#5905): a key missing here silently disables the
-          # capability in every shipped build — checked by
-          # scripts/check-desktop-build-env.mjs (desktop-config CI job).
-          # Secret-sourced keys render empty until the repo secret exists.
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          VITE_ENABLE_CYBER_LAYER: 'true'
-          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
-          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
-          CONVEX_URL: ${{ secrets.CONVEX_URL }}
-        with:
-          tagName: v__VERSION__-tech
-          releaseName: 'Tech Monitor v__VERSION__'
-          releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
-          prerelease: false
-          tauriScript: npx tauri
-          args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
-          retryAttempts: 1
-
       - name: Verify signed macOS bundle + embedded runtime
         if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
         shell: bash
@@ -400,12 +327,11 @@ jobs:
           bash scripts/repack-linux-appimage.sh "$APPIMAGE" "$TOOL_ARCH"
 
           # --- Re-upload stripped AppImage to GitHub Release ---
+          # Single release line (#5908): this must stay the same tag the build
+          # legs publish (`v__VERSION__`) and the same one update-release-notes
+          # edits. The two halves of this workflow previously disagreed.
           VERSION=$(node -p "require('./package.json').version")
-          if [ "$BUILD_VARIANT" = "tech" ]; then
-            TAG_NAME="v${VERSION}-tech"
-          else
-            TAG_NAME="v${VERSION}"
-          fi
+          TAG_NAME="v${VERSION}"
           echo "Computed release tag: $TAG_NAME"
           if gh release view "$TAG_NAME" &>/dev/null; then
             echo "Re-uploading stripped AppImage to release $TAG_NAME"
