@@ -126,6 +126,13 @@ export interface AppContext {
   isPlaybackMode: boolean;
   isIdle: boolean;
   initialLoadComplete: boolean;
+  /**
+   * A clustering pass has completed successfully at least once, so `latestClusters`
+   * is an answer rather than "not computed yet". Distinct from `initialLoadComplete`,
+   * which is set before the clustering pass begins. Never reset: once a pass has
+   * settled, a later in-flight pass still leaves the previous clusters on screen.
+   */
+  clustersSettled: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
   activeChokepoint: string | null;
 

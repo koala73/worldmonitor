@@ -49,6 +49,9 @@ export const syncEntitlementCache = internalAction({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
         mcpCallsPerDay: v.union(v.number(), v.null()),
+        // Optional so cache sync remains compatible with legacy rows/jobs that
+        // predate the dashboard-AI dimension.
+        dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
         mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
       })),
       prioritySupport: v.boolean(),
