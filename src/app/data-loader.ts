@@ -193,9 +193,12 @@ import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
-import { getTopActiveGeoHubs } from '@/services/geo-activity';
-// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
-// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+import {
+  hydrateGeoHubPanelFromClusters,
+  hydrateTechHubPanelFromClusters,
+} from '@/app/hub-activity-hydration';
+// Tech activity remains lazy-imported by hub-activity-hydration so the
+// tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
 // dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
@@ -1955,6 +1958,10 @@ export class DataLoaderManager implements AppModule {
       this.ctx.latestClusters = mlWorker.isAvailable
         ? await clusterNewsHybrid(this.ctx.allNews)
         : await analysisWorker.clusterNews(this.ctx.allNews);
+      // Only now is an empty cluster set a real answer. Set inside the try, after
+      // the assignment, so a pass that threw leaves late-mounting hub panels on
+      // their loading skeleton instead of asserting "no active hubs".
+      this.ctx.clustersSettled = true;
 
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights(this.ctx.latestClusters);
@@ -1963,8 +1970,11 @@ export class DataLoaderManager implements AppModule {
         void threatTimelinePanel?.refresh(this.ctx.latestClusters);
       }
 
-      (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-        ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+      hydrateGeoHubPanelFromClusters(
+        this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
+        this.ctx.latestClusters,
+        { allowEmpty: true },
+      );
       this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
@@ -4004,15 +4014,16 @@ export class DataLoaderManager implements AppModule {
 
   // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
   // table) only when the lazy tech-hubs panel is mounted, so the table stays off
-  // the eager dashboard critical path. Non-critical panel data — degrade silently
-  // on load failure. (#4404)
+  // the eager dashboard critical path. Non-critical panel data — the panel keeps
+  // its previous contents on load failure, but the failure is logged: a silent
+  // swallow here leaves the panel on "Loading..." with no way to diagnose it. (#4404)
   private applyTechHubActivities(): void {
     const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
     if (!techHubsPanel) return;
-    const clusters = this.ctx.latestClusters;
-    void import('@/services/tech-activity')
-      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
-      .catch(() => { /* non-critical */ });
+    void hydrateTechHubPanelFromClusters(techHubsPanel, this.ctx.latestClusters, { allowEmpty: true })
+      .catch((err) => {
+        console.error('[App] tech-hub activity hydration failed:', err);
+      });
   }
 
   async runCorrelationAnalysis(): Promise<void> {
@@ -4021,14 +4032,18 @@ export class DataLoaderManager implements AppModule {
         this.ctx.latestClusters = mlWorker.isAvailable
           ? await clusterNewsHybrid(this.ctx.allNews)
           : await analysisWorker.clusterNews(this.ctx.allNews);
+        this.ctx.clustersSettled = true;
       }
 
       if (this.ctx.latestClusters.length > 0) {
         ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
         this.refreshCiiAndBrief();
-        (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-          ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+        hydrateGeoHubPanelFromClusters(
+          this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
+          this.ctx.latestClusters,
+          { allowEmpty: true },
+        );
         this.applyTechHubActivities();
       }
 

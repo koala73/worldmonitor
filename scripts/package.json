@@ -29,7 +29,9 @@
   "overrides": {
     "esbuild": "0.28.1",
     "undici": "$undici",
-    "ws": "$ws"
+    "ws": "$ws",
+    "brace-expansion@1": "^1.1.18",
+    "brace-expansion@2": "^2.1.4"
   },
   "engines": {
     "node": ">=20"
