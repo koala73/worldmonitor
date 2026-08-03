@@ -297,6 +297,7 @@ const STANDALONE_KEYS = {
   thermalEscalationBootstrap: 'thermal:escalation-bootstrap:v1',
   tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
   militaryForecastInputs:   'military:forecast-inputs:stale:v1',
+  militarySurges:           'military:surges:stale:v1',
   gscpi:                    'economic:fred:v1:GSCPI:0',
   forecastFredWalcl:        'economic:fred:v1:WALCL:0',
   forecastFredT10y2y:       'economic:fred:v1:T10Y2Y:0',
@@ -526,6 +527,12 @@ const SEED_META = {
   ucdpEventsBootstrap: { key: 'seed-meta:conflict:ucdp-events-bootstrap', maxStaleMin: 420 }, // Same cron. Monitored separately because the bootstrap tier now hydrates from the compact projection, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
   acledIntel:       { key: 'seed-meta:conflict:acled-intel',      maxStaleMin: 38 }, // conflict:acled:v1:all:0:0, now ACLED-or-GDELT fallback for the forecast EMA input (#5099).
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 30 }, // cron ~10min (LIVE_TTL=600s); 30min = 3x interval,
+  // These are late-stage outputs of the same ~10min seeder. Keep their
+  // budgets tied to the cron rather than the payload TTL (24h), so a run that
+  // writes flights and then dies still becomes visible as the downstream
+  // snapshots age.
+  militaryForecastInputs: { key: 'seed-meta:military-forecast-inputs', maxStaleMin: 30 },
+  militarySurges:     { key: 'seed-meta:military-surges',      maxStaleMin: 30 },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
@@ -785,7 +792,6 @@ const ON_DEMAND_KEYS = new Set([
   'cyberThreatsRpc', 'militaryBases', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
-  'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
   // chronic LLM-provider failures must surface as CRIT.
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
@@ -998,6 +1004,9 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  // A completed surge calculation can legitimately contain no surge events;
+  // the canonical snapshot must still exist and remain fresh.
+  'militarySurges',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.

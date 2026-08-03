@@ -114,6 +114,7 @@ const SEED_DOMAINS = {
   'military:cross-strait-activity:japan-mod': { key: 'seed-meta:military:cross-strait-activity:japan-mod', intervalMin: 180 },
   'military:defense-patents': { key: 'seed-meta:military:defense-patents', intervalMin: 12600 },
   'military-forecast-inputs': { key: 'seed-meta:military-forecast-inputs', intervalMin: 8 },
+  'military-surges':         { key: 'seed-meta:military-surges',         intervalMin: 8 },
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
   'supply_chain:shipping':    { key: 'seed-meta:supply_chain:shipping',    intervalMin: 120 },
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
