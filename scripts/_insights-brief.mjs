@@ -9,17 +9,26 @@ import {
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
 
-// A dotted acronym ("U.S.", "U.N.", "D.O.J.") followed by either a lowercase
-// word or its own citation marker. Sentences start with a capital and none
-// starts with "[7]", so both runs are necessarily mid-clause and their periods
-// are not sentence boundaries. Deliberately narrow — see the sentence split in
-// composeSynthesizedBrief for why the ambiguous cases must not match.
+// A dotted acronym ("U.S.", "U.N.", "D.O.J.") that is provably NOT at a sentence
+// boundary, in one of two shapes:
+//   1. followed by a lowercase word — sentences start with a capital;
+//   2. followed by its own citation run that CLOSES the sentence — "[5]." or
+//      "[1][2]!" or a run at end-of-lead. Deliberately narrow — see the sentence
+//      split in composeSynthesizedBrief for why ambiguous cases must not match.
 //
-// #5947: the citation alternative matters because the model writes the acronym
-// as the sentence's OBJECT ("...not with the U.S. [5].") whenever the story is
-// about a country rather than by it. Without it the split stranded an uncited
-// fragment and orphaned "[5]." into a pseudo-sentence, rejecting the brief.
-const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+(?:\p{Ll}|\[\d{1,3}\]))/gu;
+// #5947: shape 2 matters because the model writes the acronym as the sentence's
+// OBJECT ("...not with the U.S. [5].") whenever the story is about a country
+// rather than by it. Without it the split stranded an uncited fragment and
+// orphaned "[5]." into a pseudo-sentence, rejecting the brief.
+//
+// The trailing [.!?]|$ is load-bearing and was NOT in the first version of this
+// fix. Matching a bare citation marker let "…by the U.S. [1] GCC condemned the
+// strikes [2]." collapse with NO sentence terminator anywhere, so the split
+// produced ONE unit citing {1,2} and each claim validated against the other's
+// story — the exact #4928 misattribution the review below fails closed on.
+// Requiring the run to close the sentence keeps the merge citation-neutral: the
+// fragment can only ever join the citation it already owned.
+const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+(?:\p{Ll}|(?:\[\d{1,3}\])+(?:[.!?]|$)))/gu;
 
 /**
  * Choose which clustered story to summarize for the WORLD BRIEF.
@@ -218,14 +227,17 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
   // #5947: a dotted acronym mid-clause ("U.S. embassies") was read as a
   // sentence boundary, so the fragment ending at "U.S." inherited the previous
   // clause's citations and "us" grounded against the wrong story — rejecting
-  // otherwise-valid briefs. Collapse the dots ONLY when the acronym is followed
-  // by a lowercase word, which cannot start a sentence and is therefore
-  // provably mid-clause. A capitalized continuation stays a boundary: review of
-  // this fix showed that collapsing every acronym merged genuine sentences into
-  // one validation unit whose citation set was the UNION of both, re-opening
-  // the misattribution #4928 closed and letting an uncited sentence ride inside
-  // a cited one. Ambiguity must fail closed. Only the gate's view changes — the
-  // published lead below stays leadCheck.text, punctuation intact.
+  // otherwise-valid briefs. Collapse the dots ONLY where the acronym is provably
+  // mid-clause: followed by a lowercase word (which cannot start a sentence), or
+  // by its own citation run that CLOSES the sentence ("U.S. [5]." / end-of-lead).
+  // Everything else stays a boundary — a capitalized continuation, and a citation
+  // run that does NOT close the sentence ("U.S. [1] GCC said…", which would merge
+  // two real sentences). Review of this fix showed that collapsing more broadly
+  // merged genuine sentences into one validation unit whose citation set was the
+  // UNION of both, re-opening the misattribution #4928 closed and letting an
+  // uncited sentence ride inside a cited one. Ambiguity must fail closed. Only
+  // the gate's view changes — the published lead below stays leadCheck.text,
+  // punctuation intact.
   const leadSentences = leadCheck.text
     .replace(MIDSENTENCE_DOTTED_ACRONYM, (acronym) => acronym.replace(/\./g, ''))
     .split(/(?<=[.!?])\s+/)

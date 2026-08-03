@@ -312,4 +312,61 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
     });
     assert.equal(composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }), null);
   });
+
+  // Cross-model adversarial review (Codex) broke the first version of this fix,
+  // which matched a bare "[n]" with no requirement that it CLOSE the sentence.
+  // "…the U.S. [1] GCC condemned…[2]." then collapsed with no sentence
+  // terminator anywhere, so the split produced ONE unit citing {1,2} and each
+  // claim validated against the other's story — the #4928 misattribution this
+  // whole gate exists to prevent, re-opened by the fix meant to preserve it.
+  // These pin the fail-closed direction of the citation branch specifically:
+  // both go green under the old lowercase-only regex too, but they are the only
+  // tests that RED the over-permissive bare-marker version.
+  it('does not merge two sentences when the citation run does not close the first', () => {
+    const unioned = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [1] GCC states condemned Iranian attacks on Kuwait [2].',
+      lines,
+    });
+    assert.equal(
+      composeSynthesizedBrief(unioned, topStories, { validatorMode: 'enforce' }),
+      null,
+      'a bare marker mid-lead must stay a boundary — merging would union {1,2}',
+    );
+  });
+
+  it('does not merge on an adjacent citation run that does not close the sentence', () => {
+    const adjacentUnioned = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [1][2] GCC states condemned Iranian attacks on Kuwait [2].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(adjacentUnioned, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('accepts an adjacent citation run that does close the sentence', () => {
+    // The multi-citation shape the system prompt explicitly asks for ("[3][7]"),
+    // terminated — collapsing here joins the clause to citations it already owned.
+    const adjacentClosed = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave the region by the U.S. [1][2].',
+      lines,
+    });
+    assert.notEqual(composeSynthesizedBrief(adjacentClosed, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('accepts a citation run that closes the lead with no trailing punctuation', () => {
+    const endOfLead = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave the region by the U.S. [2]',
+      lines,
+    });
+    assert.notEqual(composeSynthesizedBrief(endOfLead, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('stays closed when an out-of-range marker is stripped down to a bare one', () => {
+    // verifyCitationIndexes strips [999] BEFORE the split, so the gate sees
+    // "U.S. [2] GCC…" — a bare marker that must not collapse.
+    const strippedToBare = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [999] [2] GCC states condemned Iranian attacks on Kuwait [1].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' }), null);
+  });
 });
