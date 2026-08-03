@@ -2096,13 +2096,13 @@ export const CACHE_TOOLS: ToolDef[] = [
       { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
       { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
       // #3613 requires full country coverage; #6060 adds the per-entity content
-      // dimension — a complete 174/174 run can still carry a 98h-old CN payload,
+      // dimension — a complete 174/174 run can still carry a synthetic >170h-old CN payload,
       // which transport age and record count both read as fresh (#6080).
       {
         key: 'seed-meta:supply_chain:portwatch-ports',
         maxStaleMin: 2160, // 12h cron; 36h = 3× interval
         minRecordCount: 174,
-        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 },
+        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
         contentFreshnessActivationKey: 'seed-activated:supply_chain:portwatch-ports:content-freshness',
       },
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry

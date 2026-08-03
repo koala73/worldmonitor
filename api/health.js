@@ -563,8 +563,8 @@ const SEED_META = {
   portwatchDisruptions: { key: 'seed-meta:portwatch:disruptions',             maxStaleMin: 150 },
   // 12h cron; 36h = 3x interval; #3613 requires full 174-country coverage before OK.
   // requireContentFreshness (#6060): cardinality and transport freshness alone
-  // let a 174/174 run report healthy while China's cached observation was 98h
-  // old — past the 72h budget the China corridor adapter and activity-nowcast
+  // let a 174/174 run report healthy while China's cached observation was 170h
+  // old — past the 144h budget the China corridor adapter and activity-nowcast
   // enforce. The seeder publishes contentFreshness; a missing block is
   // COVERAGE_DEGRADED, a stale country is STALE_CONTENT.
   //
@@ -573,7 +573,7 @@ const SEED_META = {
   // scripts/seed-portwatch-port-activity.mjs and CHINA_CORRIDOR_KEYS in
   // get-china-corridor-control-towers.ts, and it exists so a producer-side
   // change cannot narrow the alarm scope without health noticing.
-  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,

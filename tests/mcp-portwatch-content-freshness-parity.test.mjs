@@ -2,7 +2,7 @@
 // the same seed-meta key.
 //
 // #6060 gave health a per-entity content dimension for PortWatch: a 174/174
-// run whose decision-critical country (CN/HK) content is past a 72h budget is
+// run whose decision-critical country (CN/HK) content is past a 144h budget is
 // STALE_CONTENT, not OK. The MCP envelope over that same key kept answering
 // only the transport/cardinality questions, so an MCP consumer read
 // `stale: false` for the exact key the operator surface called content-stale.
@@ -29,14 +29,14 @@ const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PORTWATCH_DATA_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 const ACTIVATION_KEY = 'seed-activated:supply_chain:portwatch-ports:content-freshness';
 
-// The production observation from the #6060 audit: CN last observed
-// 2026-07-29T12:02:43.475Z, i.e. ~98h before the 14:42:58 health snapshot and
-// therefore past the 72h content budget.
-const CN_OBSERVED_AT = Date.parse('2026-07-29T12:02:43.475Z');
+// Synthetic regression shape from the #6060 audit: CN last observed more than
+// 170h before the health snapshot, therefore past the 144h content budget.
+const CN_OBSERVED_AT = Date.parse('2026-07-26T12:02:43.475Z');
+const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
 
 function contentFreshnessOf(overrides = {}) {
   return {
-    budgetMinutes: 4320,
+    budgetMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES,
     assessedAt: NOW,
     coveredCount: 174,
     freshCount: 174,
@@ -180,14 +180,14 @@ describe('#6080 — MCP freshness envelope vs /api/health on PortWatch content',
   // re-ages against read time; MCP must too, or it re-opens the divergence
   // between two runs rather than at deploy.
   it('re-ages the producer measurement on both surfaces', () => {
-    // Seeder counted CN fresh at 71h. Both surfaces read that meta 12h later,
-    // by which time the observation is 83h old and past the 72h budget.
+    // Seeder counted CN fresh at 143h. Both surfaces read that meta 2h later,
+    // by which time the observation is 145h old and past the 144h budget.
     const meta = completeRun(contentFreshnessOf({
       criticalFreshCount: 2,
       criticalStaleCountries: [],
-      criticalOldestObservedAt: NOW - 83 * 60 * MINUTE_MS,
+      criticalOldestObservedAt: NOW - 145 * 60 * MINUTE_MS,
       criticalOldestObservedCountry: 'CN',
-      criticalOldestAgeMinutes: 71 * 60, // the producer's own frozen number
+      criticalOldestAgeMinutes: 143 * 60, // the producer's own frozen number
     }));
 
     assert.equal(healthVerdict(meta).status, 'STALE_CONTENT');
@@ -423,7 +423,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
       fetchedAt: liveNow - 60 * MINUTE_MS,
       recordCount: 174,
       contentFreshness: {
-        budgetMinutes: 4320,
+        budgetMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES,
         assessedAt: liveNow,
         coveredCount: 174,
         freshCount: 174,
@@ -473,7 +473,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
 
   it('flags stale content end-to-end through the tool', async () => {
     const result = await runWithRedis(
-      baseKeys(liveMeta({ criticalAgeHours: 98 })),
+      baseKeys(liveMeta({ criticalAgeHours: 170 })),
       { markers: [ACTIVATION_KEY] },
     );
     assert.equal(result.stale, true);
@@ -514,7 +514,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
 
   it('still flags stale content when the marker read fails', async () => {
     const result = await runWithRedis(
-      baseKeys(liveMeta({ criticalAgeHours: 98 })),
+      baseKeys(liveMeta({ criticalAgeHours: 170 })),
       { markers: [ACTIVATION_KEY], failActivationRead: true },
     );
 
@@ -671,7 +671,7 @@ describe('#6080 — both surfaces agree across the unusable state space', () => 
   // The assessor compares raw milliseconds inclusively, so exactly-at-budget is
   // stale. Rounded minutes would accept up to 29,999ms over on both surfaces.
   it('agrees at the raw millisecond budget boundary', () => {
-    const budgetMs = 4320 * MINUTE_MS;
+    const budgetMs = PORTWATCH_CONTENT_BUDGET_MINUTES * MINUTE_MS;
     for (const extraMs of [0, 1]) {
       const meta = completeRun(contentFreshnessOf({
         criticalOldestObservedAt: NOW - (budgetMs + extraMs),

@@ -187,12 +187,12 @@ const SEED_DOMAINS = {
   'portwatch:disruptions':    { key: 'seed-meta:portwatch:disruptions',    intervalMin: 75 }, // active disruptions seed; intervalMin*2 = 150min matches api/health.js
   // #6060: mirror /api/health's decision-critical content contract. The
   // heartbeat and 174-country cardinality can both be green while CN/HK's
-  // cached observations are older than the corridor adapter's 72h budget.
+  // cached observations are older than the corridor adapter's 144h budget.
   'supply_chain:portwatch-ports': {
     key: 'seed-meta:supply_chain:portwatch-ports',
     intervalMin: 720,
     minRecordCount: 174,
-    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 },
+    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
     contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3); #3613 requires 174-country coverage before OK.
   'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)

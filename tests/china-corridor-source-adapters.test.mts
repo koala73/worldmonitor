@@ -33,9 +33,9 @@ describe('China corridor source adapters (#5578)', () => {
       portwatchChina: {
         // Retrieved seconds ago ...
         fetchedAt: '2026-07-25T11:59:00.000Z',
-        // ... but upstream has not advanced in 120h, past the 72h budget.
-        asof: '2026-07-19',
-        contentAsOfChangedAt: Date.parse('2026-07-20T12:00:00.000Z'),
+        // ... but upstream has not advanced in 168h, past the 144h budget.
+        asof: '2026-07-17',
+        contentAsOfChangedAt: Date.parse('2026-07-18T12:00:00.000Z'),
         ports: [{ portId: 'port1188', portName: 'Shanghai', trendDelta: 2 }],
       },
       portwatchMeta: FRESH_META,
@@ -47,7 +47,27 @@ describe('China corridor source adapters (#5578)', () => {
       'stale',
       'a fresh retrieval of frozen upstream content is not current',
     );
-    assert.equal(signal?.observationTime, '2026-07-20T12:00:00.000Z');
+    assert.equal(signal?.observationTime, '2026-07-18T12:00:00.000Z');
+  });
+
+  it('keeps the 144-hour boundary consistent for corridor consumers', () => {
+    const buildPortSignal = (contentAsOfChangedAt: string) => buildChinaCorridorSourceBundle({
+      portwatchChina: {
+        fetchedAt: '2026-07-25T11:59:00.000Z',
+        contentAsOfChangedAt: Date.parse(contentAsOfChangedAt),
+        ports: [{ portId: 'port1188', portName: 'Shanghai' }],
+      },
+      portwatchMeta: FRESH_META,
+    }, ASSESSED_AT).families.port.signals[0];
+
+    assert.equal(
+      buildPortSignal('2026-07-19T12:00:00.001Z')?.contentFreshness,
+      'current',
+    );
+    assert.equal(
+      buildPortSignal('2026-07-19T11:59:59.999Z')?.contentFreshness,
+      'stale',
+    );
   });
 
   it('still ages fetchedAt for legacy payloads with no content clock', () => {

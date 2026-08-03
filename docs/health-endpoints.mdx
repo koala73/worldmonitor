@@ -217,13 +217,13 @@ check verdict is:
 
 | Condition | Status |
 | --- | --- |
-| Every decision-critical country inside the 72-hour content budget | `OK` |
+| Every decision-critical country inside the 144-hour content budget | `OK` |
 | A decision-critical country past budget, future-dated, or absent from the run | `STALE_CONTENT` |
 | The block is absent, its counts are missing or arithmetically incoherent, or the producer's declared country set does not cover the set health pins | `COVERAGE_DEGRADED` |
 
 The verdict keys on the **decision-critical** countries — currently `CN` and
 `HK`, the two the China corridor control towers read — rather than on all 174.
-Health pins both that set and the 72-hour budget in its own config rather than
+Health pins both that set and the 144-hour budget in its own config rather than
 accepting whatever the producer declares, so a producer-side change cannot
 narrow the alarm scope or widen its threshold silently: dropping `CN` from the
 seeder's list, or publishing a 30-day budget, would otherwise report `OK` with
@@ -252,27 +252,29 @@ covers **absence only** — a block that is present is always evaluated, and onc
 the marker exists a block that disappears fails closed.
 
 The seeder reserves cold-fetch slots for the decision-critical countries so they
-refresh every run they are a cache miss. Without that reservation the rotation
-period (`ceil(174 / 30)` runs at a 12-hour cadence ~ 72 hours) equals the
-content budget, and the alarm would measure the rotation rather than an
-incident.
+refresh every run they are a cache miss. The content budget deliberately spans
+two full producer rotations: `ceil(174 / 30)` runs at a 12-hour cadence is
+about 72 hours, leaving 72 hours of headroom before the 144-hour alarm.
+The reservation still matters because it keeps CN/HK from waiting behind the
+rest of the bounded queue when many countries become misses together.
 
-The reservation only reaches a country that is a cache **miss**. A country stays
-a cache hit while the upstream `max(date)` it already holds is unchanged, so
-when the upstream feed itself freezes, the decision-critical countries never
-enter the refresh queue and no amount of slot reservation makes their content
-current. In that state the check is doing its job precisely by staying
-`STALE_CONTENT`: the content is genuinely old, the seeder cannot fix it, and the
-alarm is reporting an upstream outage rather than an internal one.
+The refresh deadline uses the content clock, not the retrieval timestamp. A
+successful refetch of unchanged upstream data updates `fetchedAt` but carries
+`contentAsOfChangedAt` forward, so a frozen feed remains due for another
+decision-critical refresh and cannot hide behind a recent retrieval. If the
+upstream still does not advance, the check stays `STALE_CONTENT`: the content
+is genuinely old, the seeder cannot fix it, and the alarm reports an upstream
+outage rather than an internal rotation delay.
 Fleet-wide content staleness is normal by construction: the seeder refreshes at
-most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
-tail of the rotation is routinely past budget. Alarming on that would produce a
-warning that is always lit and never actionable. The fleet-wide counts
+most 30 countries per 12-hour run, so a full sweep takes about 72 hours; the
+two-rotation budget leaves normal tail lag visible without making it an
+actionable failure. Alarming on the fleet-wide age would produce a warning
+that is always lit and never actionable. The fleet-wide counts
 (`coveredCount`, `freshCount`, `staleCount`, `unknownCount`, a bounded
 `staleCountries` list, and the oldest observation with its age) stay published
 for visibility; only the critical subset moves the status.
 
-The 72-hour budget is deliberately the same one
+The 144-hour budget is deliberately the same one
 `china-corridor-source-adapters.ts` applies to a PortWatch observation, so this
 alarm explains the China activity-nowcast's `marked_stale` exclusion rather
 than contradicting it. Health is inclusive at the boundary and treats a
