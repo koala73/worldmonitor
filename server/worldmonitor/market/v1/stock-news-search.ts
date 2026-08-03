@@ -10,13 +10,28 @@ export type StockNewsSearchProviderId = 'exa' | 'brave' | 'serpapi' | 'google-ne
 type StockNewsSearchResult = {
   provider: StockNewsSearchProviderId;
   headlines: StockAnalysisHeadline[];
+  fetchedAtMs: number;
 };
+type StockNewsProviderResult = Omit<StockNewsSearchResult, 'fetchedAtMs'>;
 
 type SearchProviderDefinition = {
   id: Exclude<StockNewsSearchProviderId, 'google-news-rss'>;
   envKey: 'EXA_API_KEYS' | 'BRAVE_API_KEYS' | 'SERPAPI_API_KEYS';
-  search: (query: string, maxResults: number, days: number, apiKey: string) => Promise<StockAnalysisHeadline[]>;
+  search: (
+    query: string,
+    maxResults: number,
+    days: number,
+    apiKey: string,
+    signal?: AbortSignal,
+  ) => Promise<StockAnalysisHeadline[]>;
 };
+
+export interface StockNewsSearchOptions {
+  /** Cancels the entire provider ladder, including fallbacks. */
+  signal?: AbortSignal;
+  /** Isolates callers with different deadlines so they never share inflight work. */
+  cacheNamespace?: string;
+}
 
 type ProviderRotationState = {
   cursor: number;
@@ -164,7 +179,19 @@ function recordProviderError(providerId: string, apiKey: string): void {
   state.errors.set(apiKey, (state.errors.get(apiKey) || 0) + 1);
 }
 
-async function searchWithExa(query: string, maxResults: number, days: number, apiKey: string): Promise<StockAnalysisHeadline[]> {
+function providerSignal(signal?: AbortSignal): AbortSignal {
+  return signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)])
+    : AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+}
+
+async function searchWithExa(
+  query: string,
+  maxResults: number,
+  days: number,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<StockAnalysisHeadline[]> {
   const startDate = new Date(Date.now() - days * 86_400_000).toISOString();
   const response = await fetch('https://api.exa.ai/search', {
     method: 'POST',
@@ -180,7 +207,7 @@ async function searchWithExa(query: string, maxResults: number, days: number, ap
       useAutoprompt: false,
       startPublishedDate: startDate,
     }),
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    signal: providerSignal(signal),
   });
 
   if (!response.ok) {
@@ -201,7 +228,13 @@ async function searchWithExa(query: string, maxResults: number, days: number, ap
   );
 }
 
-async function searchWithBrave(query: string, maxResults: number, days: number, apiKey: string): Promise<StockAnalysisHeadline[]> {
+async function searchWithBrave(
+  query: string,
+  maxResults: number,
+  days: number,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<StockAnalysisHeadline[]> {
   const freshness = days <= 1 ? 'pd' : days <= 7 ? 'pw' : days <= 30 ? 'pm' : 'py';
   const url = new URL('https://api.search.brave.com/res/v1/web/search');
   url.searchParams.set('q', query);
@@ -217,7 +250,7 @@ async function searchWithBrave(query: string, maxResults: number, days: number, 
       'User-Agent': CHROME_UA,
       'X-Subscription-Token': apiKey,
     },
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    signal: providerSignal(signal),
   });
 
   if (!response.ok) {
@@ -240,7 +273,13 @@ async function searchWithBrave(query: string, maxResults: number, days: number, 
   );
 }
 
-async function searchWithSerpApi(query: string, maxResults: number, days: number, apiKey: string): Promise<StockAnalysisHeadline[]> {
+async function searchWithSerpApi(
+  query: string,
+  maxResults: number,
+  days: number,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<StockAnalysisHeadline[]> {
   const response = await fetch(`https://serpapi.com/search.json?${new URLSearchParams({
     engine: 'google_news',
     q: query,
@@ -254,7 +293,7 @@ async function searchWithSerpApi(query: string, maxResults: number, days: number
       Accept: 'application/json',
       'User-Agent': CHROME_UA,
     },
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    signal: providerSignal(signal),
   });
 
   if (!response.ok) {
@@ -280,7 +319,12 @@ async function searchWithSerpApi(query: string, maxResults: number, days: number
   );
 }
 
-async function searchViaProviders(query: string, maxResults: number, days: number): Promise<StockNewsSearchResult | null> {
+async function searchViaProviders(
+  query: string,
+  maxResults: number,
+  days: number,
+  signal?: AbortSignal,
+): Promise<StockNewsProviderResult | null> {
   const providers: SearchProviderDefinition[] = [
     { id: 'exa', envKey: 'EXA_API_KEYS', search: searchWithExa },
     { id: 'brave', envKey: 'BRAVE_API_KEYS', search: searchWithBrave },
@@ -288,16 +332,19 @@ async function searchViaProviders(query: string, maxResults: number, days: numbe
   ];
 
   for (const provider of providers) {
+    signal?.throwIfAborted();
     const candidates = getProviderCandidates(provider);
     for (const apiKey of candidates) {
+      signal?.throwIfAborted();
       try {
-        const headlines = await provider.search(query, maxResults, days, apiKey);
+        const headlines = await provider.search(query, maxResults, days, apiKey, signal);
         recordProviderSuccess(provider.id, apiKey);
         if (headlines.length > 0) {
           return { provider: provider.id, headlines };
         }
         break;
       } catch (error) {
+        if (signal?.aborted) throw signal.reason;
         recordProviderError(provider.id, apiKey);
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[stock-news-search] ${provider.id} failed: ${message}`);
@@ -308,12 +355,16 @@ async function searchViaProviders(query: string, maxResults: number, days: numbe
   return null;
 }
 
-async function fetchGoogleNewsRss(query: string, maxResults: number): Promise<StockAnalysisHeadline[]> {
+async function fetchGoogleNewsRss(
+  query: string,
+  maxResults: number,
+  signal?: AbortSignal,
+): Promise<StockAnalysisHeadline[]> {
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      signal: providerSignal(signal),
     });
     if (!response.ok) return [];
     const xml = await response.text();
@@ -341,25 +392,40 @@ async function fetchGoogleNewsRss(query: string, maxResults: number): Promise<St
       maxResults,
     );
   } catch {
+    if (signal?.aborted) throw signal.reason;
     return [];
   }
 }
 
-export async function searchRecentStockHeadlines(symbol: string, name: string, maxResults = 5): Promise<StockNewsSearchResult> {
+export async function searchRecentStockHeadlines(
+  symbol: string,
+  name: string,
+  maxResults = 5,
+  options: StockNewsSearchOptions = {},
+): Promise<StockNewsSearchResult> {
   const query = buildStockNewsSearchQuery(symbol, name);
   const days = getSearchDays();
   const symbolKey = normalizeSymbol(symbol) || 'UNKNOWN';
   const queryHash = stableHash(query).slice(0, 12);
-  const cacheKey = `market:stock-news-search:v1:${symbolKey}:${days}:${maxResults}:${queryHash}`;
+  const namespace = options.cacheNamespace?.trim() || 'default';
+  const cacheKey = `market:stock-news-search:v3:${namespace}:${symbolKey}:${days}:${maxResults}:${queryHash}`;
 
   const cached = await cachedFetchJson<StockNewsSearchResult>(cacheKey, SEARCH_CACHE_TTL_SECONDS, async () => {
-    const providerResult = await searchViaProviders(query, maxResults, days);
-    if (providerResult?.headlines.length) return providerResult;
+    options.signal?.throwIfAborted();
+    const providerResult = await searchViaProviders(query, maxResults, days, options.signal);
+    if (providerResult?.headlines.length) return { ...providerResult, fetchedAtMs: Date.now() };
     return {
       provider: 'google-news-rss',
-      headlines: await fetchGoogleNewsRss(query, maxResults),
+      headlines: await fetchGoogleNewsRss(query, maxResults, options.signal),
+      fetchedAtMs: Date.now(),
     };
-  }, 180);
+  }, 180, {
+    // Aborts are request-scoped availability failures, not definitive empty
+    // news, so never persist a negative sentinel for another caller.
+    // Keep cachedFetchJson's existing 30s safety net for signal-less callers;
+    // their sequential provider ladder can legitimately outlive one 10s leg.
+    cacheFetcherErrors: false,
+  });
 
-  return cached || { provider: 'google-news-rss', headlines: [] };
+  return cached || { provider: 'google-news-rss', headlines: [], fetchedAtMs: Date.now() };
 }

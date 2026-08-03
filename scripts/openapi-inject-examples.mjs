@@ -152,7 +152,10 @@ const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
 })();
 
 const GDELT_TOPIC_EXAMPLE_ID = (() => {
-  const src = readRepoText('scripts/seed-gdelt-intel.mjs');
+  // Sourced from the ACTIVE producer (#5864): scripts/seed-gdelt-intel.mjs no
+  // longer runs on any Railway service after the #5843 materializer cutover,
+  // so reading its topic ids would silently drift from what is published.
+  const src = readRepoText('scripts/_gdelt-bulk-materializer.mjs');
   const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
   return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
 })();
@@ -493,6 +496,14 @@ function stringExample(name, schema = {}, context = {}) {
   // field. Keep the generated response example truthful instead of emitting
   // the generic non-empty string placeholder.
   if (key === 'abstract' && (where.includes('listdefensepatents') || where.includes('list-defense-patents'))) return '';
+  // Intel-history scope: `domain` collides with web-domain params on other
+  // ops, so anchor on the exact accepted-values pattern instead of the name.
+  // If the contract's pattern ever changes this falls through to the generic
+  // heuristic and the schema-validity check reds — the correct failure mode.
+  if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  // get-similar-events `situation` enforces min_len 10; the generic
+  // placeholder is shorter and produces an un-runnable request sample.
+  if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
   if (shouldUseDescriptionClosedValue(context)) {
@@ -587,6 +598,104 @@ function mergeObjects(a, b) {
     : b;
 }
 
+function getCompanyEnrichmentExample() {
+  return {
+    company: {
+      name: 'Apple Inc.',
+      domain: 'apple.com',
+      description: 'Electronic Computers',
+      location: 'Cupertino, CA',
+      website: 'https://www.apple.com',
+      founded: 0,
+      cik: '0000320193',
+      ticker: 'AAPL',
+    },
+    // Deprecated compatibility collections are intentionally empty. `github`
+    // is omitted because the handler serializes its undefined value away.
+    techStack: [],
+    secFilings: {
+      totalFilings: 120,
+      recentFilings: [{
+        form: '8-K',
+        fileDate: '2026-07-24',
+        description: 'Results of Operations and Financial Condition',
+        url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000070/0000320193-26-000070-index.htm',
+        items: ['2.02'],
+      }],
+    },
+    hackerNewsMentions: [],
+    enrichedAtMs: 1784908800000,
+    sources: ['sec_edgar', 'finnhub', 'news'],
+    market: {
+      exchange: 'NASDAQ NMS - GLOBAL MARKET',
+      industry: 'Technology',
+      marketCapMusd: 3200000,
+      ipoDate: '1980-12-12',
+      logoUrl: 'https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png',
+      country: 'US',
+      currency: 'USD',
+    },
+    earningsSurprises: [{
+      period: '2026-06-30',
+      actualEps: 1.57,
+      estimateEps: 1.43,
+      surprise: 0.14,
+      surprisePercent: 9.79,
+      year: 2026,
+      quarter: 3,
+    }],
+    newsMentions: [{
+      title: 'Apple reports quarterly results',
+      url: 'https://example.com/apple-results',
+      source: 'example.com',
+      publishedAtMs: 1784905200000,
+    }],
+    unavailable: false,
+  };
+}
+
+// ShippingIndex has 12 properties and none are `required`, so the generic
+// builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
+// dropping the four decision-grade period-change fields (#6078) along with
+// previousValue/unit/spikeAlert. Curate it so the published example shows what
+// the endpoint actually returns, including the fail-closed shape where the
+// exchange published no comparable prior.
+function getShippingRatesExample() {
+  return {
+    indices: [
+      {
+        indexId: 'CCFI',
+        name: 'CCFI - China Container Freight',
+        currentValue: 1072.16,
+        previousValue: 1054.38,
+        changePct: 1.69,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1072.16 }],
+        spikeAlert: false,
+        periodChangePct: 1.69,
+        periodChangeBasis: 'publisher_reported',
+        priorPeriodValue: 1054.38,
+        priorPeriodDate: '2026-01-08',
+      },
+      {
+        // Fail-closed shape: the exchange published a level with no comparable
+        // prior, so the decision-grade fields are ABSENT (not 0, not null) while
+        // the legacy display fields still carry their fabricated fallback.
+        indexId: 'BDI',
+        name: 'BDI - Baltic Dry Index',
+        currentValue: 1972,
+        previousValue: 1972,
+        changePct: 0,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1972 }],
+        spikeAlert: false,
+      },
+    ],
+    fetchedAt: '2026-01-15T12:00:00Z',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
@@ -604,6 +713,20 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getScenarioStatusExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getcompanyenrichment'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getCompanyEnrichmentExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getshippingrates'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getShippingRatesExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -662,7 +785,14 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);
-  if (type === 'boolean') return true;
+  if (type === 'boolean') {
+    // Success-path examples must not teach outage envelopes. `unavailable` on
+    // corporate-intel (and similar) RPCs means the upstream seed/registry was
+    // unreadable — a 200 example with unavailable:true is a contract footgun.
+    const key = normalizeKey(name || context.name || '');
+    if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    return true;
+  }
   return stringExample(name, schema, context);
 }
 

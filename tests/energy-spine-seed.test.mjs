@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  buildDemandChangeEntry,
   buildSpineEntry,
   SPINE_KEY_PREFIX,
   SPINE_COUNTRIES_KEY,
@@ -34,7 +35,7 @@ function makeMix(overrides = {}) {
 
 function makeJodiOil(overrides = {}) {
   return {
-    dataMonth: '2026-02',
+    dataMonth: '2026-04',
     crude: { importsKbd: 950 },
     gasoline: { demandKbd: 120, importsKbd: 10 },
     diesel: { demandKbd: 310, importsKbd: 50 },
@@ -214,7 +215,7 @@ describe('buildSpineEntry — full data', () => {
       ieaStocks: makeIeaStocks(),
     });
     assert.equal(spine.sources.mixYear, 2024);
-    assert.equal(spine.sources.jodiOilMonth, '2026-02');
+    assert.equal(spine.sources.jodiOilMonth, '2026-04');
     assert.equal(spine.sources.jodiGasMonth, '2026-02');
     assert.equal(spine.sources.ieaStocksMonth, '2026-02');
   });
@@ -287,6 +288,141 @@ describe('buildSpineEntry — IEA anomaly guard', () => {
     });
     assert.equal(spine.coverage.hasIeaStocks, true);
     assert.equal(spine.oil.daysOfCover, 90);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Observed demand change projection (#6067)
+// ---------------------------------------------------------------------------
+
+describe('buildDemandChangeEntry', () => {
+  function makeDemandChange(overrides = {}) {
+    return {
+      basis: 'year_over_year',
+      observationPeriod: '2026-04',
+      priorObservationPeriod: '2025-04',
+      periodEnd: '2026-04-30T23:59:59.999Z',
+      priorPeriodEnd: '2025-04-30T23:59:59.999Z',
+      products: ['diesel', 'gasoline', 'jet'],
+      unit: '% change',
+      currentDemandKbd: 1100,
+      priorDemandKbd: 1000,
+      percentChange: 10,
+      ...overrides,
+    };
+  }
+
+  it('projects a fully published change onto the spine', () => {
+    const entry = buildDemandChangeEntry(makeJodiOil({ demandChange: makeDemandChange() }));
+    assert.deepEqual(entry, {
+      basis: 'year_over_year',
+      observationPeriod: '2026-04',
+      priorObservationPeriod: '2025-04',
+      periodEnd: '2026-04-30T23:59:59.999Z',
+      priorPeriodEnd: '2025-04-30T23:59:59.999Z',
+      unit: '% change',
+      products: ['diesel', 'gasoline', 'jet'],
+      productCount: 3,
+      currentDemandKbd: 1100,
+      priorDemandKbd: 1000,
+      percentChange: 10,
+    });
+  });
+
+  it('pins the reviewed year-over-year basis', () => {
+    assert.equal(
+      buildDemandChangeEntry(makeJodiOil({
+        demandChange: makeDemandChange({ basis: 'month_over_month' }),
+      })),
+      null,
+      'a seasonal basis must not reach the nowcast as the reviewed one',
+    );
+    assert.equal(
+      buildDemandChangeEntry(makeJodiOil({ demandChange: makeDemandChange({ basis: undefined }) })),
+      null,
+    );
+  });
+
+  it('rejects an incomplete or malformed change rather than defaulting it', () => {
+    const rejected = [
+      undefined,
+      null,
+      'year_over_year',
+      [],
+      makeDemandChange({ percentChange: null }),
+      makeDemandChange({ percentChange: '10' }),
+      makeDemandChange({ percentChange: Number.NaN }),
+      makeDemandChange({ periodEnd: 'not-a-timestamp' }),
+      makeDemandChange({ priorPeriodEnd: null }),
+      makeDemandChange({ observationPeriod: '2026-13' }),
+      makeDemandChange({ priorObservationPeriod: '2025' }),
+      makeDemandChange({ products: [] }),
+      makeDemandChange({ products: 'diesel' }),
+      makeDemandChange({ unit: 'kbd' }),
+      makeDemandChange({ currentDemandKbd: 900, priorDemandKbd: 1000 }),
+      makeDemandChange({ products: ['diesel', 'gasoline'] }),
+      makeDemandChange({ products: ['diesel', 'gasoline', 'jet', 'fuelOil', 'lpg', 'extra'] }),
+      makeDemandChange({ periodEnd: '2026-03-31T23:59:59.999Z' }),
+      // The basis label must agree with the arithmetic: a payload claiming
+      // year-over-year while spanning some other distance is not it.
+      makeDemandChange({
+        priorObservationPeriod: '2026-03',
+        priorPeriodEnd: '2026-03-31T23:59:59.999Z',
+      }),
+      makeDemandChange({
+        priorObservationPeriod: '2024-04',
+        priorPeriodEnd: '2024-04-30T23:59:59.999Z',
+      }),
+      // A prior period at or after the current one is not a comparison.
+      makeDemandChange({ priorPeriodEnd: '2026-05-31T23:59:59.999Z' }),
+      makeDemandChange({ priorPeriodEnd: '2026-04-30T23:59:59.999Z' }),
+    ];
+    for (const demandChange of rejected) {
+      assert.equal(
+        buildDemandChangeEntry(makeJodiOil({ demandChange })),
+        null,
+        `should reject ${JSON.stringify(demandChange)}`,
+      );
+    }
+    assert.equal(
+      buildDemandChangeEntry(makeJodiOil({
+        dataMonth: '2026-03',
+        demandChange: makeDemandChange(),
+      })),
+      null,
+      'a change from a different data vintage must not reach the spine',
+    );
+  });
+
+  it('reports the change through coverage without letting coverage stand in for it', () => {
+    const published = buildSpineEntry('CN', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil({ demandChange: makeDemandChange() }),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+    });
+    assert.equal(published.coverage.hasDemandChange, true);
+    assert.equal(published.demandChange.percentChange, 10);
+
+    // Coverage present, change absent: the value stays null, never a zero.
+    const coverageOnly = buildSpineEntry('CN', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+    });
+    assert.equal(coverageOnly.coverage.hasJodiOil, true);
+    assert.equal(coverageOnly.coverage.hasDemandChange, false);
+    assert.equal(coverageOnly.demandChange, null);
+
+    const noOil = buildSpineEntry('CN', {
+      mix: makeMix(),
+      jodiOil: null,
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+    });
+    assert.equal(noOil.coverage.hasDemandChange, false);
+    assert.equal(noOil.demandChange, null);
   });
 });
 

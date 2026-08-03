@@ -17,6 +17,15 @@ import {
   assessChinaJodiCoverage,
   hasFiniteMeasurementAtPaths,
 } from './shared/jodi-content-age.mjs';
+import {
+  DEMAND_CHANGE_BASIS,
+  DEMAND_CHANGE_UNIT,
+  DEMAND_CHANGE_LOOKBACK_MONTHS,
+  MAX_DEMAND_CHANGE_PERCENT,
+  MIN_DEMAND_CHANGE_PRODUCTS,
+  monthPeriodEnd,
+  shiftMonth,
+} from './shared/jodi-demand-change.mjs';
 
 loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
@@ -88,7 +97,7 @@ export function parseObsValue(raw) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function extractCountryData(allRows, iso2) {
+function rowsByMonth(allRows, iso2) {
   const rows = allRows.filter(r => r.REF_AREA === iso2 && r.UNIT_MEASURE === 'KBD');
 
   const byMonth = new Map();
@@ -98,6 +107,116 @@ export function extractCountryData(allRows, iso2) {
     if (!byMonth.has(month)) byMonth.set(month, []);
     byMonth.get(month).push(r);
   }
+  return byMonth;
+}
+
+function pickMonthValue(monthRows, iso2, product, flow, isAnomalyCapped) {
+  const r = monthRows.find(row => row.ENERGY_PRODUCT === product && row.FLOW_BREAKDOWN === flow);
+  if (!r) return null;
+  const code = r.ASSESSMENT_CODE;
+  if (code === '3') return null;
+  const val = parseObsValue(r.OBS_VALUE);
+  if (val === null) return null;
+  if (isAnomalyCapped && iso2 !== 'US' && flow === 'TOTDEMO' && val > ANOMALY_DEMAND_KBD) return null;
+  return val;
+}
+
+/** Total demand across every secondary product reporting a usable TOTDEMO. */
+function monthProductDemand(monthRows, iso2) {
+  const demand = new Map();
+  for (const [productCode, productName] of Object.entries(SECONDARY_PRODUCTS)) {
+    const value = pickMonthValue(monthRows, iso2, productCode, 'TOTDEMO', true);
+    if (value !== null) demand.set(productName, value);
+  }
+  return demand;
+}
+
+/**
+ * Observed year-over-year change in reported oil-product demand.
+ *
+ * Fails closed: the comparison month must be exactly twelve months earlier and
+ * must report the identical product set, so a product appearing or vanishing
+ * between vintages can never read as a demand move. Returns null whenever the
+ * change is not observable — an absent change is never a zero.
+ */
+export function computeOilDemandChange(allRows, iso2, dataMonth) {
+  return assessOilDemandChange(allRows, iso2, dataMonth).change;
+}
+
+/**
+ * Explain a refused demand comparison for the operator log without changing
+ * the public null-on-refusal data contract.
+ */
+export function assessOilDemandChange(allRows, iso2, dataMonth) {
+  return oilDemandChangeFromMonths(rowsByMonth(allRows, iso2), iso2, dataMonth);
+}
+
+function refusedDemandChange(reason) {
+  return { change: null, reason };
+}
+
+function oilDemandChangeFromMonths(byMonth, iso2, dataMonth) {
+  const priorMonth = shiftMonth(dataMonth, -DEMAND_CHANGE_LOOKBACK_MONTHS);
+  if (priorMonth === null) {
+    return refusedDemandChange(`invalid comparison period ${dataMonth ?? 'missing'}`);
+  }
+
+  const current = monthProductDemand(byMonth.get(dataMonth) ?? [], iso2);
+  const prior = monthProductDemand(byMonth.get(priorMonth) ?? [], iso2);
+  if (current.size < MIN_DEMAND_CHANGE_PRODUCTS) {
+    return refusedDemandChange(
+      `current basket has ${current.size} comparable product(s); need >=${MIN_DEMAND_CHANGE_PRODUCTS}`,
+    );
+  }
+
+  const products = [...current.keys()].sort();
+  if (prior.size !== current.size || products.some(product => !prior.has(product))) {
+    return refusedDemandChange(
+      `current/prior comparable baskets differ (${products.length} vs ${prior.size} product(s))`,
+    );
+  }
+
+  const currentDemandKbd = products.reduce((sum, product) => sum + current.get(product), 0);
+  const priorDemandKbd = products.reduce((sum, product) => sum + prior.get(product), 0);
+  if (!Number.isFinite(currentDemandKbd) || currentDemandKbd < 0 || !(priorDemandKbd > 0)) {
+    return refusedDemandChange('current demand is non-finite/negative or prior demand is non-positive');
+  }
+
+  const percentChange = ((currentDemandKbd - priorDemandKbd) / priorDemandKbd) * 100;
+  if (!Number.isFinite(percentChange)) {
+    return refusedDemandChange('percentage change is non-finite');
+  }
+  if (Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT) {
+    return refusedDemandChange(
+      `absolute percentage change ${percentChange.toFixed(2)} exceeds ±${MAX_DEMAND_CHANGE_PERCENT}%`,
+    );
+  }
+
+  const periodEnd = monthPeriodEnd(dataMonth);
+  const priorPeriodEnd = monthPeriodEnd(priorMonth);
+  if (periodEnd === null || priorPeriodEnd === null) {
+    return refusedDemandChange(`invalid period end for ${dataMonth} or ${priorMonth}`);
+  }
+
+  return {
+    reason: null,
+    change: {
+      basis: DEMAND_CHANGE_BASIS,
+      observationPeriod: dataMonth,
+      priorObservationPeriod: priorMonth,
+      periodEnd,
+      priorPeriodEnd,
+      products,
+      unit: DEMAND_CHANGE_UNIT,
+      currentDemandKbd,
+      priorDemandKbd,
+      percentChange,
+    },
+  };
+}
+
+export function extractCountryData(allRows, iso2) {
+  const byMonth = rowsByMonth(allRows, iso2);
 
   const sortedMonths = [...byMonth.keys()].sort((a, b) => b.localeCompare(a));
 
@@ -122,14 +241,7 @@ export function extractCountryData(allRows, iso2) {
   const monthRows = byMonth.get(dataMonth) || [];
 
   function pickVal(product, flow, isAnomalyCapped) {
-    const r = monthRows.find(row => row.ENERGY_PRODUCT === product && row.FLOW_BREAKDOWN === flow);
-    if (!r) return null;
-    const code = r.ASSESSMENT_CODE;
-    if (code === '3') return null;
-    const val = parseObsValue(r.OBS_VALUE);
-    if (val === null) return null;
-    if (isAnomalyCapped && iso2 !== 'US' && flow === 'TOTDEMO' && val > ANOMALY_DEMAND_KBD) return null;
-    return val;
+    return pickMonthValue(monthRows, iso2, product, flow, isAnomalyCapped);
   }
 
   const seededAt = new Date().toISOString();
@@ -174,6 +286,7 @@ export function extractCountryData(allRows, iso2) {
       importsKbd:        crudeImportsKbd,
       exportsKbd:        crudeExportsKbd,
     },
+    demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
     seededAt,
   };
 }
@@ -209,7 +322,13 @@ async function fetchCsv(url) {
   return resp.text();
 }
 
-export function mergeSourceRows(primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior) {
+export function mergeSourceRows(
+  primaryCurrent,
+  primaryPrior,
+  secondaryCurrent,
+  secondaryPrior,
+  secondaryLookback = '',
+) {
   if (!secondaryCurrent && !secondaryPrior) {
     throw new Error('Both secondary JODI CSV files failed to download; product-level data unavailable');
   }
@@ -218,27 +337,54 @@ export function mergeSourceRows(primaryCurrent, primaryPrior, secondaryCurrent, 
     ...(primaryPrior ? parseCsv(primaryPrior) : []),
     ...(secondaryCurrent ? parseCsv(secondaryCurrent) : []),
     ...(secondaryPrior ? parseCsv(secondaryPrior) : []),
+    ...(secondaryLookback ? parseCsv(secondaryLookback) : []),
   ];
   return allRows.filter(r => r.UNIT_MEASURE === 'KBD');
 }
 
-async function fetchAllRows() {
-  const now = new Date();
+/**
+ * Calendar years whose JODI files must be downloaded.
+ *
+ * Files are per calendar year and China's data month runs months behind, so
+ * early in a year the newest usable month still sits in `priorYear` — whose
+ * year-over-year comparison month lives one file further back. Without
+ * `lookbackYear` the demand change is structurally unpublishable for months at
+ * a time. Demand is a secondary-product measure, so only that file is needed.
+ */
+export function jodiSourceYears(now = new Date()) {
   const currentYear = now.getFullYear();
-  const priorYear = currentYear - 1;
+  return {
+    currentYear,
+    priorYear: currentYear - 1,
+    lookbackYear: currentYear - 2,
+  };
+}
 
-  const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior] = await Promise.all([
-    withRetry(() => fetchCsv(`${JODI_BASE}primary/${currentYear}.csv`), 2, 2000)
-      .catch(e => { console.warn(`  primary/${currentYear}.csv failed: ${e.message}`); return ''; }),
-    withRetry(() => fetchCsv(`${JODI_BASE}primary/${priorYear}.csv`), 2, 2000)
-      .catch(e => { console.warn(`  primary/${priorYear}.csv failed: ${e.message}`); return ''; }),
-    withRetry(() => fetchCsv(`${JODI_BASE}secondary/${currentYear}.csv`), 2, 2000)
-      .catch(e => { console.warn(`  secondary/${currentYear}.csv failed: ${e.message}`); return ''; }),
-    withRetry(() => fetchCsv(`${JODI_BASE}secondary/${priorYear}.csv`), 2, 2000)
-      .catch(e => { console.warn(`  secondary/${priorYear}.csv failed: ${e.message}`); return ''; }),
-  ]);
+async function fetchAllRows() {
+  const { currentYear, priorYear, lookbackYear } = jodiSourceYears();
 
-  return mergeSourceRows(primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior);
+  const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback] =
+    await Promise.all([
+      withRetry(() => fetchCsv(`${JODI_BASE}primary/${currentYear}.csv`), 2, 2000)
+        .catch(e => { console.warn(`  primary/${currentYear}.csv failed: ${e.message}`); return ''; }),
+      withRetry(() => fetchCsv(`${JODI_BASE}primary/${priorYear}.csv`), 2, 2000)
+        .catch(e => { console.warn(`  primary/${priorYear}.csv failed: ${e.message}`); return ''; }),
+      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${currentYear}.csv`), 2, 2000)
+        .catch(e => { console.warn(`  secondary/${currentYear}.csv failed: ${e.message}`); return ''; }),
+      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${priorYear}.csv`), 2, 2000)
+        .catch(e => { console.warn(`  secondary/${priorYear}.csv failed: ${e.message}`); return ''; }),
+      // Optional: its absence only withholds the demand change, never the seed.
+      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${lookbackYear}.csv`), 2, 2000)
+        .catch(e => { console.warn(`  secondary/${lookbackYear}.csv failed: ${e.message}`); return ''; }),
+    ]);
+
+  return mergeSourceRows(
+    primaryCurrent,
+    primaryPrior,
+    secondaryCurrent,
+    secondaryPrior,
+    secondaryLookback,
+  );
 }
 
 async function redisPipeline(commands) {
@@ -283,7 +429,7 @@ async function main() {
   }
 
   try {
-    console.log('  Fetching JODI CSV data (4 files)...');
+    console.log('  Fetching JODI CSV data (5 files)...');
     const allRows = await withRetry(fetchAllRows, 2, 3000);
 
     if (!allRows.length) {
@@ -304,13 +450,36 @@ async function main() {
         chinaCoverage,
       });
       console.error(`  COVERAGE GATE FAILED: ${reason}`);
-      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
-      const prevCountryKeys = Array.isArray(prevIso2List)
-        ? prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`)
-        : countries.map(c => `${COUNTRY_KEY_PREFIX}${c.iso2}`);
-      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], JODI_TTL);
+      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
+      if (Array.isArray(prevIso2List) && prevIso2List.length > 0) {
+        const prevCountryKeys = prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`);
+        const preserved = await extendExistingTtl(
+          [CANONICAL_KEY, META_KEY, ...prevCountryKeys],
+          JODI_TTL,
+        );
+        if (!preserved) {
+          throw new Error('Coverage gate could not verify preservation of the last-good snapshot');
+        }
+      } else {
+        console.warn('  COVERAGE GATE: no last-good snapshot exists to preserve');
+      }
       return;
     }
+
+    // Every guard in this chain refuses by returning null, so a refused change
+    // is otherwise indistinguishable from an upstream that simply has not
+    // published one. Say which it is, once, for the only country the activity
+    // nowcast consumes.
+    const china = countries.find(c => c.iso2 === 'CN');
+    const chinaDemandAssessment = china?.demandChange
+      ? { change: china.demandChange, reason: null }
+      : assessOilDemandChange(allRows, 'CN', chinaCoverage.dataMonth);
+    console.log(chinaDemandAssessment.change
+      ? `  China demand change: ${chinaDemandAssessment.change.percentChange.toFixed(2)}% `
+        + `${chinaDemandAssessment.change.observationPeriod} vs ${chinaDemandAssessment.change.priorObservationPeriod} `
+        + `(${chinaDemandAssessment.change.products.length} products)`
+      : `  China demand change: not published for dataMonth=${chinaCoverage.dataMonth ?? 'missing'} `
+        + `(${chinaDemandAssessment.reason ?? 'no comparable basket'})`);
 
     const iso2List = countries.map(c => c.iso2);
     const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length, chinaDataMonth: chinaCoverage.dataMonth };

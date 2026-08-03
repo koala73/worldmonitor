@@ -81,6 +81,7 @@
 // missing SWF seed key.
 
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates, getBundleRunStartedAtMs } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
 
@@ -336,11 +337,15 @@ function stripHtmlInline(value) {
   // `302.0<sup>41</sup>` becomes `302.0 41` — otherwise the decimal
   // value and its trailing footnote ref get welded into `302.041`,
   // which the Assets regex then mis-parses as a single number.
-  return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&[#\w]+;/g, ' ')
+  // Entities decode through the shared single-pass decoder (exactly one
+  // level — `&amp;lt;` stays literal `&lt;`); `unknownEntity: 'blank'`
+  // preserves the old `&[#\w]+;` -> ' ' catch-all for unknown entities AND
+  // invalid numeric refs, so a malformed ref can't weld neighboring digits
+  // (`100&#999999999;200` -> `100 200`, never `100200`).
+  return decodeHtmlEntities(
+    String(value || '').replace(/<[^>]+>/g, ' '),
+    { unknownEntity: 'blank' },
+  )
     .replace(/\s+/g, ' ')
     .trim();
 }

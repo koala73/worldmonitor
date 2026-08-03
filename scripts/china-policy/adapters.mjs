@@ -1,4 +1,5 @@
 import { CHROME_UA } from '../_seed-utils.mjs';
+import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { extractDocumentNumber } from './normalize.mjs';
 
 const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
@@ -117,31 +118,6 @@ const VOID_TAGS = new Set([
   'wbr',
 ]);
 
-function decodeNumericEntity(code, radix) {
-  const value = Number.parseInt(code, radix);
-  if (
-    !Number.isInteger(value)
-    || value < 0
-    || value > 0x10FFFF
-    || (value >= 0xD800 && value <= 0xDFFF)
-  ) {
-    return '\uFFFD';
-  }
-  return String.fromCodePoint(value);
-}
-
-function decodeEntities(input) {
-  return String(input ?? '')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&#(\d+);/g, (_, code) => decodeNumericEntity(code, 10))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => decodeNumericEntity(code, 16));
-}
-
 function attributeValue(attributes, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = String(attributes ?? '').match(new RegExp(
@@ -235,7 +211,7 @@ function walkHtml(input, { onTag, onText } = {}) {
 }
 
 function normalizeHtmlText(parts) {
-  return decodeEntities(parts.join(' ')).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(parts.join(' ')).replace(/\s+/g, ' ').trim();
 }
 
 function stripHtml(input) {

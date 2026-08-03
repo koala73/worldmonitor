@@ -65,7 +65,7 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
       transformation: {
         kind: 'signed_value',
         direction: 'same',
-        description: 'Use the published period-over-period percentage change; do not infer a change from a single index level.',
+        description: "Use the exchange's own published period-over-period percentage change, or the change between two period levels it published; never infer a change from a single index level.",
       },
       lagRule: {
         days: 0,
@@ -165,14 +165,14 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
         window: 'latest_point_in_window',
         forwardFill: false,
         interpolate: false,
-        description: 'Use a released monthly change inside the window; do not fill absent months.',
+        description: 'Use the latest released monthly change inside the live 210-day window; do not fill absent months.',
       },
       freshnessBudgetMinutes: 210 * 24 * 60,
       source: {
         publisherId: 'publisher:worldmonitor-energy-spine',
         publisherName: 'WorldMonitor energy spine',
         url: 'https://www.worldmonitor.app/docs/data-sources',
-        provenance: 'Consumed only when the reviewed #5578 energy condition exposes a directional observed metric.',
+        provenance: 'Consumed only when the reviewed #5578 energy condition exposes a directional observed metric. The value sums TOTDEMO for the available GASOLINE, GASDIES, JETKERO, RESFUEL, and LPG products; at least three matching products are required and absolute changes above 50% are refused.',
       },
     }),
     proxyDefinition({
@@ -209,13 +209,13 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
       id: 'corridor_activity_breadth_change',
       label: 'China corridor activity-breadth change',
       family: 'corridor',
-      decisionRationale: 'Change in the count of directionally observed corridor families can show broadening or narrowing, while a one-time availability count is explicitly rejected as activity.',
+      decisionRationale: 'Change in signed source-derived activity across corridor families can show broadening or narrowing, while directional availability transitions are explicitly excluded as activity.',
       unit: 'family-count change',
       frequency: 'daily',
       transformation: {
         kind: 'signed_value',
         direction: 'same',
-        description: 'Use a measured change versus a prior comparable corridor snapshot; availability alone is not a value.',
+        description: 'Use the change in strengthening-family count minus weakening-family count versus a prior comparable snapshot; availability alone is never a value.',
       },
       lagRule: {
         days: 0,

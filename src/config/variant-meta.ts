@@ -14,7 +14,7 @@ export interface VariantMeta {
 export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
   full: {
     title: 'World Monitor - Real-Time Global Intelligence Dashboard',
-    description: 'Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.',
+    description: 'Real-time global intelligence platform tracking conflicts, markets, military activity, and OSINT signals across 190+ countries, with live context in one view.',
     keywords: 'AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
     url: 'https://www.worldmonitor.app/dashboard',
     siteName: 'World Monitor',
@@ -39,7 +39,7 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
   },
   tech: {
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
-    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
+    description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and technology events worldwide with live context.',
     keywords: 'tech dashboard, AI industry, startup ecosystem, tech companies, AI labs, venture capital, tech events, tech conferences, cloud infrastructure, datacenters, tech layoffs, funding rounds, unicorns, FAANG, tech HQ, accelerators, Y Combinator, tech news',
     url: 'https://tech.worldmonitor.app/dashboard',
     siteName: 'Tech Monitor',
@@ -63,7 +63,7 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
   },
   happy: {
     title: 'Happy Monitor - Good News & Global Progress',
-    description: 'Curated positive news, progress data, and uplifting stories from around the world.',
+    description: 'Curated positive news, global progress data, science breakthroughs, conservation wins, and uplifting stories from around the world with daily highlights.',
     keywords: 'good news, positive news, global progress, happy news, uplifting stories, human achievement, science breakthroughs, conservation wins',
     url: 'https://happy.worldmonitor.app/dashboard',
     siteName: 'Happy Monitor',
@@ -106,7 +106,7 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
   },
   commodity: {
     title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
-    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
+    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global trade flows with live context.',
     keywords: 'commodity dashboard, mining sites, processing plants, commodity ports, supply chain, commodity markets, oil, gas, metals, agriculture, mining operations, commodity trade, logistics, infrastructure, resource tracking, commodity prices, futures markets',
     url: 'https://commodity.worldmonitor.app/dashboard',
     siteName: 'Commodity Monitor',

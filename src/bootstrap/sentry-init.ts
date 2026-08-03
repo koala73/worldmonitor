@@ -7,6 +7,7 @@
  */
 
 import { isDebugBearRumScriptFrame } from './debugbear-rum';
+import { getSentryBuildMetadata } from './sentry-build-metadata';
 
 type SentryNs = typeof import('@sentry/browser');
 
@@ -58,7 +59,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
   return {
     dsn: sentryDsn || undefined,
-    release: `worldmonitor@${__APP_VERSION__}`,
+    ...getSentryBuildMetadata(__APP_VERSION__, __BUILD_HASH__),
     environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',
@@ -544,8 +545,20 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // trampoline variant is WORLDMONITOR-TZ: a wallet extension's
       // `injected/hook.js` wraps `window.fetch` and the leaked rejection frame
       // surfaces as `Object.apply`, not `window.fetch`.
+      // Sentry renders a frame reached through an aliased property as
+      // `<name> [<annotation>]` — an extension that stashes the original fetch
+      // under its own property surfaces as `window.fetch [<annotation>]`. The
+      // anchored match below needs the bare name, so strip one trailing
+      // bracketed annotation first; the meaningful identity is the name BEFORE
+      // the bracket, so a frame merely stored under a fetch-ish alias still
+      // fails the match (WORLDMONITOR-Y8, same Adjust extension as SG above).
+      // NB: deliberately written without spelling out the annotation keyword —
+      // the beforeSend unit-test harness strips `<keyword> <word>` sequences to
+      // drop TypeScript assertions and would mangle a regex that contained it
+      // (same harness trap as the Floot gate above).
+      const bareFrameFunction = (fn: string) => fn.replace(/\s*\[[^\]]*\]$/, '');
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(f.function ?? ''))) {
+          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(bareFrameFunction(f.function ?? '')))) {
         return null;
       }
       // Bare `Failed to fetch` surfacing through the DebugBear RUM collector's
@@ -586,6 +599,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       if (!hasFirstParty && /Cannot read properties of null \(reading 'contains'\)|null is not an object \(evaluating '\w+\.contains'\)/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
       // Suppress Convex WS onmessage JSON.parse truncation (intermittent WS frame splits on Ping/Updated control messages)
       if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
+      // Suppress SnapTube (Android video-downloader in-app WebView) JS-bridge JSON.parse
+      // noise: its injected bridge parses its own `undefined` message payload inside a
+      // setTimeout our SDK instruments, so only vendor sentry-*.js + `<anonymous>` bridge
+      // frames appear. `/SnapTube/` in ignoreErrors already covers the variants that name
+      // the bridge in the MESSAGE; this closes the case where the attribution exists only
+      // in a frame function. Double-gated on !hasFirstParty AND the named bridge frame so a
+      // genuine first-party `JSON.parse(undefined)` still surfaces (WORLDMONITOR-RA).
+      if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /^SnapTube\./.test(f.function ?? ''))) return null;
       // Suppress errors originating from UV proxy (Ultraviolet service worker)
       if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
       // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script, stay-userscript.html)

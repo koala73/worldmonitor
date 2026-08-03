@@ -27,11 +27,14 @@ afterEach(() => {
 
 test('default _loadPrevious retries the Redis read and warns loudly when it stays down', async () => {
   let redisCalls = 0;
+  let nowCalls = 0;
   const warns = [];
   console.warn = (...args) => { warns.push(args.join(' ')); };
-  // Collapse retry backoffs so exhaustion doesn't sleep for real.
+  // Collapse only the Redis retry backoffs so exhaustion doesn't sleep for
+  // real. Keep the ordering-read budget timer intact: collapsing every large
+  // timer also collapses the operation's deadline and races the retry ladder.
   globalThis.setTimeout = (cb, ms, ...args) =>
-    originalSetTimeout(cb, ms >= 500 ? 0 : ms, ...args);
+    originalSetTimeout(cb, ms === 1000 || ms === 2000 ? 0 : ms, ...args);
   globalThis.fetch = async () => {
     redisCalls += 1;
     const err = new Error('The operation was aborted due to timeout');
@@ -39,17 +42,27 @@ test('default _loadPrevious retries the Redis read and warns loudly when it stay
     throw err;
   };
 
-  // Soft budget pre-spent: no topic fetch starts, all 6 topics are empty, so
-  // the cache-merge consults the DEFAULT _loadPrevious (deliberately not
-  // injected here — this test exercises the real wiring).
+  // Give the ordering read a deterministic budget, then advance the injected
+  // run clock before the topic loop. A real 1ms budget made this test
+  // load-dependent: slow CI could spend it before the ordering operation was
+  // even invoked, observing only the later cache-merge read.
   const out = await fetchAllTopics({
-    _softBudgetMs: 1,
+    _now: () => (++nowCalls <= 2 ? 0 : 40_000),
+    _softBudgetMs: 40_000,
+    _minRequestBudgetMs: 35_000,
     _sleep: async () => {},
     _fetchArticles: async () => { throw new Error('must not fetch topics'); },
     _fetchTimeline: async () => [],
   });
 
-  assert.equal(redisCalls, 3, 'previous-snapshot read must be retried (3 attempts)');
+  // Two logical reads x 3 retried attempts each. Since issue #5848 the fetch
+  // order is chosen from the same snapshot, so the run reads it up front too — but
+  // a read that degraded to null is deliberately NOT memoized, because "Upstash
+  // was unreachable" and "there is no previous snapshot" arrive as the same value.
+  // Caching the first failure would silently disable the cache-merge for the whole
+  // run; leaving it unmemoized buys the merge an independent attempt minutes later,
+  // when the blip may have passed.
+  assert.equal(redisCalls, 6, 'each of the two previous-snapshot reads must be retried (3 attempts each)');
   assert.ok(
     warns.some((w) => w.includes('cache-merge')),
     `a failed merge read must warn loudly; warns were: ${JSON.stringify(warns)}`,

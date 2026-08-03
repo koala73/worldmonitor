@@ -20,10 +20,11 @@
  * an INJECTED storage handle (so tests stay jsdom-free); every other storage
  * read/write still lives in the panel-layout/UI units.
  *
- * Plan identity is an allowlist against the two Pro product ids. The literals
- * are mirrored from config/products.generated.ts (DODO_PRODUCTS.PRO_MONTHLY /
- * PRO_ANNUAL) rather than imported — keeping the leaf import-free — and
- * tests/pro-activation-state.test.mts asserts them against the generated
+ * Plan identity is an allowlist against the Pro-family product ids. The
+ * literals are mirrored from config/products.generated.ts (DODO_PRODUCTS
+ * PRO_MONTHLY / PRO_ANNUAL / PRO_BUSINESS_*) rather than imported — keeping
+ * the leaf import-free — and tests/pro-activation-state.test.mts asserts
+ * them against the generated
  * catalog so any drift goes red. The repo product-id guard excludes this file
  * for the same reason (the drift-guard test provides the catalog-sync it wants).
  */
@@ -33,20 +34,29 @@
 // ---------------------------------------------------------------------------
 
 /**
- * The only two product ids that grant Pro. Mirrors
- * `DODO_PRODUCTS.PRO_MONTHLY` / `PRO_ANNUAL` (kept in sync by the drift-guard
- * test). Anything else — api_starter, api_starter_annual, api_business,
- * enterprise, or an unknown id — is non-Pro and must never trigger onboarding.
+ * The only product ids that grant Pro. Mirrors `DODO_PRODUCTS.PRO_MONTHLY` /
+ * `PRO_ANNUAL` / `PRO_BUSINESS_MONTHLY` / `PRO_BUSINESS_ANNUAL` (kept in sync
+ * by the drift-guard test). Pro Business is a larger Pro and gets the same
+ * day-0 activation (KTD9). Anything else — api_starter, api_starter_annual,
+ * api_business, enterprise, or an unknown id — is non-Pro and must never
+ * trigger onboarding.
  */
 export const PRO_PRODUCT_IDS: readonly string[] = [
   'pdt_0Nbtt71uObulf7fGXhQup', // PRO_MONTHLY
   'pdt_0NbttMIfjLWC10jHQWYgJ', // PRO_ANNUAL
+  'pdt_0NjyFDbhURh2oROgPIU3G', // PRO_BUSINESS_MONTHLY
+  'pdt_0Nk072fxPUcHWivZRtlQW', // PRO_BUSINESS_ANNUAL
 ];
 
 /** The entitlement plan keys that classify as Pro (productCatalog.ts). */
-export const PRO_PLAN_KEYS: readonly string[] = ['pro_monthly', 'pro_annual'];
+export const PRO_PLAN_KEYS: readonly string[] = [
+  'pro_monthly',
+  'pro_annual',
+  'pro_business_monthly',
+  'pro_business_annual',
+];
 
-/** True when `productId` is one of the two Pro products. */
+/** True when `productId` is one of the Pro-family products. */
 export function isProProductId(productId: string): boolean {
   return PRO_PRODUCT_IDS.includes(productId);
 }
@@ -668,13 +678,13 @@ export function buildCriticalAlertsPayload(
 /**
  * What actually happened to a step during the flow.
  *
- * `blocked` is deliberately distinct from `skipped` (#5617). Both mean the step
- * was not set up, and both read as `pending` to the user, but only `blocked`
- * says the BROWSER refused — the subscriber never got a choice. Collapsing the
- * two makes the push-permission-denial cohort unsizeable after the fact, and
- * makes "is re-prompting this account worth anything?" unanswerable (it never
- * is, once permission is `denied`). It is equally not `failed`: we never
- * attempted a write, so "we couldn't set this up" would be a false claim.
+ * `blocked` is deliberately distinct from `skipped` (#5617). Both keep the
+ * aggregate `pending` status, but `blocked` says the BROWSER refused and lets
+ * the UI render browser-specific recovery guidance (#5727). Collapsing the two
+ * makes the push-permission-denial cohort unsizeable after the fact, and makes
+ * "is re-prompting this account worth anything?" unanswerable (it never is,
+ * once permission is `denied`). It is equally not `failed`: we never attempted
+ * a write, so "we couldn't set this up" would be a false claim.
  */
 export type ActivationStepOutcome = 'confirmed' | 'skipped' | 'blocked' | 'done' | 'failed';
 
@@ -698,9 +708,10 @@ function outcomeStatus(outcome: ActivationStepOutcome): ActivationSummaryStatus 
     case 'done':
       return 'verified';
     case 'skipped':
-    // A browser refusal is durably distinct (#5617) but reads as `pending` to
-    // the user, NOT `failed`: the summary renders `failed` as "we couldn't set
-    // this up", which claims an attempt we were never allowed to make.
+      // A browser refusal is durably distinct (#5617) but keeps the `pending`
+      // status, NOT `failed`: the summary renders `failed` as "we couldn't set
+      // this up", which claims an attempt we were never allowed to make. Its
+      // detail copy can still explain the browser block (#5727).
     case 'blocked':
       return 'pending';
     case 'failed':

@@ -7,7 +7,7 @@ const PUBLIC_SHARED_RPC_PATHS = new Set([
 const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
 const NEWS_LANGUAGES = new Set([
   'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
-  'sv', 'ru', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
+  'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
 ]);
 const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
 // Exact raw-query contract (no leading `?`): exactly one public displacement shape,

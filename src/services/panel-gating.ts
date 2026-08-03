@@ -1,6 +1,20 @@
+/**
+ * Premium access, panel gate reasons, and CTA routing.
+ *
+ * Per-gate logic does NOT live here (#5813). Each gate owns a pure resolver
+ * leaf plus a reader beside it under `gates/` — `gates/export.ts` (data export
+ * + dashboard tab cap) and `gates/playback.ts` (historical playback). A fourth
+ * gate gets its own pair there, not another `readX`/`evaluateX` in this file.
+ *
+ * What stays here is what every gate shares: the access predicate
+ * (`hasPremiumAccess`), the reason enum and its billing-aware refinement, and
+ * the CTA action resolver. Gate modules import from this file; it imports from
+ * none of them, so the dependency runs one way.
+ */
+
 import type { AuthSession } from './auth-state';
-import { getSubscription } from './billing';
-import { deriveBillingUxState, getBillingGateOverride } from './billing-state';
+import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from './billing';
+import { deriveBillingUxState, getBillingGateOverride, getReactivationHref } from './billing-state';
 import { getEntitlementState } from './entitlements';
 import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
@@ -99,5 +113,59 @@ export function resolveBillingAwareGateReason(reason: PanelGateReason): PanelGat
       return PanelGateReason.LAPSED;
     default:
       return reason;
+  }
+}
+
+/**
+ * Every locked surface routes its CTA through here. Extracted from
+ * `PanelLayoutManager.getGateAction` (which was private and closed over
+ * `ctx.authModal`) so the export gate, the panel gate and future gates cannot
+ * drift — the auth-modal opener is injected instead.
+ */
+export interface GateActionDeps {
+  /** Opens the sign-in modal for the ANONYMOUS reason. */
+  openAuthModal: () => void;
+  /**
+   * Plan key used to preselect the pricing page's billing period on the LAPSED
+   * reason. Defaults to the live subscription row.
+   */
+  planKey?: string | null;
+}
+
+// Absolute origin: the desktop runtime's webview has no worldmonitor.app
+// origin, so a relative href would resolve against tauri://localhost.
+const PRO_PAGE_ORIGIN = 'https://worldmonitor.app';
+
+function openProPage(path: string): void {
+  window.open(`${PRO_PAGE_ORIGIN}${path}`, '_blank', 'noopener,noreferrer');
+}
+
+/** Return the action callback for a given gate reason. */
+export function resolveGateAction(reason: PanelGateReason, deps: GateActionDeps): () => void {
+  switch (reason) {
+    case PanelGateReason.ANONYMOUS:
+      return () => deps.openAuthModal();
+    case PanelGateReason.FREE_TIER:
+      return () => openProPage('/pro');
+    case PanelGateReason.PAYMENT_ON_HOLD:
+    case PanelGateReason.RENEWAL_FAILED:
+      // Pre-reserve the portal tab synchronously inside the click gesture
+      // so the async portal-session fetch survives the popup blocker
+      // (same pattern as payment-failure-banner.ts).
+      return () => {
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin);
+      };
+    case PanelGateReason.RENEWAL_PENDING:
+      // Verification resolves server-side; a reload re-pulls entitlements
+      // for users who don't want to wait for the reactive update.
+      return () => window.location.reload();
+    case PanelGateReason.LAPSED:
+      // A returning subscriber lands on the pricing anchor with their previous
+      // billing period preselected — the bare /pro redirect this replaced
+      // dropped both signals.
+      return () => openProPage(getReactivationHref(deps.planKey ?? getSubscription()?.planKey));
+    default:
+      return () => {};
   }
 }

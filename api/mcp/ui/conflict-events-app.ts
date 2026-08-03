@@ -91,9 +91,19 @@ const RENDER = `
         : "Conflict event data is temporarily unavailable."));
     }
 
-    q("foot").textContent = data.cached_at
-      ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")
-      : "";
+    var footParts = [];
+    if (d.partial === true && d.truncation && typeof d.truncation === "object") {
+      var returnedCount = num(d.truncation.returned_event_count);
+      var originalCount = num(d.truncation.original_event_count);
+      if (returnedCount != null && originalCount != null) {
+        footParts.push("Source response includes " + returnedCount.toLocaleString() + " of "
+          + originalCount.toLocaleString() + " events (output limit).");
+      }
+    }
+    if (data.cached_at) {
+      footParts.push("Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : ""));
+    }
+    q("foot").textContent = footParts.join(" ");
 `;
 
 export const CONFLICT_EVENTS_APP_HTML = buildAppHtml({

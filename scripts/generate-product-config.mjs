@@ -9,7 +9,7 @@
  *   - pro-test/src/generated/tiers.json  (tier view model for /pro page)
  *   - pro-test/src/locales/*.json       (English pricing feature placeholders)
  *
- * Usage: npx tsx scripts/generate-product-config.mjs
+ * Usage: npm run product:facts
  */
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -31,6 +31,8 @@ const { PRODUCT_CATALOG } = await import('../convex/config/productCatalog.ts');
 const KEY_MAP = {
   pro_monthly: 'PRO_MONTHLY',
   pro_annual: 'PRO_ANNUAL',
+  pro_business_monthly: 'PRO_BUSINESS_MONTHLY',
+  pro_business_annual: 'PRO_BUSINESS_ANNUAL',
   api_starter: 'API_STARTER_MONTHLY',
   api_starter_annual: 'API_STARTER_ANNUAL',
   api_business: 'API_BUSINESS',
@@ -50,7 +52,7 @@ const planLimitEntries = Object.entries(PRODUCT_CATALOG)
   .join('\n');
 
 const productsTs = `// AUTO-GENERATED from convex/config/productCatalog.ts
-// Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
+// Do not edit manually. Run: npm run product:facts
 
 export const DODO_PRODUCTS = {
 ${productEntries}
@@ -69,7 +71,7 @@ writeFileSync(productsPath, productsTs);
 console.log(`  ✓ ${productsPath}`);
 
 const productIdsTs = `// AUTO-GENERATED from convex/config/productCatalog.ts
-// Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
+// Do not edit manually. Run: npm run product:facts
 
 /** Product IDs accepted by client-side analytics without loading checkout config. */
 export const DODO_PRODUCT_IDS: ReadonlySet<string> = new Set([
@@ -83,29 +85,6 @@ ${Object.values(PRODUCT_CATALOG)
 const productIdsPath = join(ROOT, 'src/config/product-ids.generated.ts');
 writeFileSync(productIdsPath, productIdsTs);
 console.log(`  ✓ ${productIdsPath}`);
-
-// ---------------------------------------------------------------------------
-// 1b. Generate api/_product-fallback-prices.js
-// ---------------------------------------------------------------------------
-
-const fallbackEntries = Object.entries(PRODUCT_CATALOG)
-  .filter(([, e]) => e.dodoProductId && e.priceCents != null && e.priceCents > 0)
-  .map(([, e]) => `  '${e.dodoProductId}': ${e.priceCents},  // ${e.displayName}`)
-  .join('\n');
-
-const fallbackJs = `// AUTO-GENERATED from convex/config/productCatalog.ts
-// Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
-// @ts-check
-
-/** Fallback prices (cents) when Dodo API is unreachable for individual products. */
-export const FALLBACK_PRICES = {
-${fallbackEntries}
-};
-`;
-
-const fallbackPath = join(ROOT, 'api/_product-fallback-prices.js');
-writeFileSync(fallbackPath, fallbackJs);
-console.log(`  ✓ ${fallbackPath}`);
 
 // ---------------------------------------------------------------------------
 // 2. Generate pro-test/src/generated/tiers.json
@@ -193,7 +172,7 @@ if (syncedLocaleCount > 0) {
   console.log(`  ✓ refreshed pricing features in ${syncedLocaleCount} pro locale file(s)`);
 }
 
-console.log('\nDone. Remember to rebuild /pro: cd pro-test && npm run build');
+console.log('\nDone. Remember to rebuild /pro: npm run build:pro');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -203,6 +182,9 @@ function getTierDisplayName(tierGroup) {
   const names = {
     free: 'Free',
     pro: 'Pro',
+    // Exact string — pro-test checkout derives PRO_BUSINESS_PRODUCT_IDS from it
+    // and the dashboard export gate probes the served catalog for it.
+    pro_business: 'Pro Business',
     api_starter: 'API Starter',
     api_business: 'API Business',
     enterprise: 'Enterprise',
@@ -214,6 +196,7 @@ function getTierLocaleKey(tierGroup) {
   const keys = {
     free: 'free',
     pro: 'pro',
+    pro_business: 'proBusiness',
     api_starter: 'api',
     api_business: 'apiBusiness',
     enterprise: 'enterprise',
@@ -229,8 +212,9 @@ function getDescription(tierGroup) {
   const descriptions = {
     free: 'Get started with the essentials',
     pro: 'Full intelligence dashboard',
-    api_starter: 'Programmatic access to intelligence data',
-    api_business: 'High-volume API for teams',
+    pro_business: 'The Pro dashboard, licensed for work',
+    api_starter: 'Build internal tools on live intelligence data',
+    api_business: 'Launch your own product on WorldMonitor data',
     enterprise: 'Custom solutions for organizations',
   };
   return descriptions[tierGroup] || '';

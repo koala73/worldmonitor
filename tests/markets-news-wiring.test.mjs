@@ -254,11 +254,10 @@ describe('misplaced-opts guard (#4929 external review)', () => {
   });
 });
 
-describe('recall benchmark fast-fail wiring (source-textual)', () => {
-  it('uses benchmark-grade limits and a shared GDELT deadline', () => {
+describe('recall benchmark bulk-reference wiring (source-textual)', () => {
+  it('reads the materialized article index and performs no GDELT fetch', () => {
     const src = readSrc('scripts/seed-recall-benchmark.mjs');
-    assert.match(src, /maxRetries: 1/);
-    assert.match(src, /proxyMaxAttempts: 1/);
-    assert.match(src, /GDELT_DEADLINE_MS = 4 \* 60 \* 1000/);
+    assert.match(src, /GDELT_BULK_ARTICLES_KEY/);
+    assert.doesNotMatch(src, /fetchGdeltJson|api\.gdeltproject\.org/);
   });
 });

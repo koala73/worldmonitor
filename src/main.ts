@@ -8,13 +8,19 @@ import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
 import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
+import { loadVariantThemeStylesheet } from '@/bootstrap/variant-theme';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
+import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
   // stylesheet applies asynchronously, so a brief base-theme flash is possible.
-  void import('./styles/happy-theme.css');
+  // The import is fire-and-forget, so its rejection must be consumed: Vite's
+  // preload helper rejects with `Unable to preload CSS for <url>` when the
+  // injected <link> errors, and a bare `void import(...)` let that escape to
+  // onunhandledrejection (WORLDMONITOR-XT). See bootstrap/variant-theme.ts.
+  void loadVariantThemeStylesheet('happy', () => import('./styles/happy-theme.css'));
 }
 
 // Activate the deferred dashboard app stylesheet. The build
@@ -372,17 +378,24 @@ import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runt
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyFont } from '@/services/font-settings';
-import { initAnalytics } from '@/services/analytics';
+import { initAnalytics, trackContentHandoff } from '@/services/analytics';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
-import { installSwUpdateHandler } from '@/bootstrap/sw-update';
+import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.
+const capturedContentAttribution = captureContentAttributionFromUrl();
+if (capturedContentAttribution) {
+  // The event is queued safely if the deferred Umami tracker is not ready.
+  // `captureContentAttributionFromUrl` returns only fresh URL captures, so a
+  // reload does not duplicate the landing handoff.
+  trackContentHandoff();
+}
 void initAnalytics();
 initVercelAnalytics();
 initDebugBearRum();
@@ -488,8 +501,12 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
   });
 }
 
-if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  installSwUpdateHandler({ version: __APP_VERSION__ });
+// `'serviceWorker' in navigator` is not a safe gate: in a sandboxed iframe the
+// property exists but reading it throws SecurityError (WORLDMONITOR-Y5), which
+// at module scope aborts every top-level statement below. Read it once, safely.
+const swContainer = readServiceWorkerContainer();
+if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContainer) {
+  installSwUpdateHandler({ version: __APP_VERSION__, swContainer });
 
   const SW_UPDATE_SUCCESS_INTERVAL_MS = 60 * 60 * 1000;
   const SW_UPDATE_FAILURE_INTERVAL_MS = 5 * 60 * 1000;

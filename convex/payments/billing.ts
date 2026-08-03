@@ -29,16 +29,15 @@ import {
 } from "./subscriptionHelpers";
 
 // ---------------------------------------------------------------------------
-// Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
+// Billing REST SDK client
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a direct DodoPayments REST SDK client.
+ * Returns the direct DodoPayments REST SDK client owned by this billing module.
  *
- * This uses the "dodopayments" npm package (REST SDK) for API calls
- * such as customer portal creation and plan changes. It is distinct from
- * the @dodopayments/convex component SDK in lib/dodo.ts, which handles
- * checkout and webhook verification.
+ * This client handles billing, customer portal, and subscription operations.
+ * lib/dodo.ts independently owns direct REST checkout-session creation;
+ * webhook verification lives in payments/webhookHandlers.ts.
  *
  * Canonical env var: DODO_API_KEY.
  */
@@ -173,7 +172,13 @@ const DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP = 5;
 // `NotFoundError extends APIError<404>` (a `.status` of 404). Transient failures
 // (network, timeout, 5xx, 429) carry a different/absent status and must stay on
 // the backoff-and-retry path, never downgrade.
-function isDefinitiveDodoNotFound(err: unknown): boolean {
+//
+// Exported for #5380 census #10: every reconciliation test drives this through
+// a hand-rolled `Object.assign(new Error(), { status })` stub, so nothing pinned
+// it against the SDK's REAL error classes. It is the gate that decides whether a
+// paying customer gets downgraded, so the vendor's error shape is a contract —
+// see the real-instance table in convex/__tests__/webhook-rollback-boundaries.test.ts.
+export function isDefinitiveDodoNotFound(err: unknown): boolean {
   return (
     typeof err === "object" &&
     err !== null &&
@@ -481,8 +486,16 @@ function getSubscriptionStatusPriority(status: string): number {
   }
 }
 
+// Pro Business buyers get the same day-0 activation interstitial as Pro
+// (KTD9) — the tier is a larger Pro, not a separate product line. Mirrored by
+// the client allowlist in src/services/pro-activation-state.ts.
 function isProActivationPlan(planKey: string): boolean {
-  return planKey === "pro_monthly" || planKey === "pro_annual";
+  return (
+    planKey === "pro_monthly" ||
+    planKey === "pro_annual" ||
+    planKey === "pro_business_monthly" ||
+    planKey === "pro_business_annual"
+  );
 }
 
 function isFirstBillingCycle(
@@ -2824,9 +2837,37 @@ export const getActiveSubscription = internalQuery({
  * concurrent API subscription ($99.99 + $249.99 double-billing; PR #4946
  * review). Pro ↔ API cross-line purchases remain deliberately allowed —
  * they are complementary products.
+ *
+ * pro_business joins the `pro` family for the same reason: Pro Business is
+ * a strictly-larger Pro, so holding both is always double-billing ($39.99 +
+ * $69.99) for one dashboard. The upgrade path out of that block is the
+ * carve-out below, not a second subscription.
  */
 export function checkoutBillingFamily(tierGroup: string): string {
-  return tierGroup.startsWith("api_") ? "api" : tierGroup;
+  if (tierGroup.startsWith("api_")) return "api";
+  return tierGroup === "pro_business" ? "pro" : tierGroup;
+}
+
+/**
+ * The one same-family pairing a cancelled subscription must NOT block: a Pro
+ * subscriber who cancelled (non-renewing, possibly still paid through) buying
+ * Pro Business. Cancelling is exactly what we tell them to do first — Pro and
+ * Pro Business are separate Dodo products, so the portal cannot perform the
+ * change — and an annual subscriber would otherwise be locked out for months.
+ *
+ * Upgrade direction only, and cancelled only: an ACTIVE (or on_hold) Pro still
+ * blocks, and a cancelled Pro Business still blocks a Pro purchase.
+ */
+function isCancelledProBeforeProBusinessUpgrade(
+  existingTierGroup: string,
+  existingStatus: string,
+  targetTierGroup: string,
+): boolean {
+  return (
+    targetTierGroup === "pro_business" &&
+    existingTierGroup === "pro" &&
+    existingStatus === "cancelled"
+  );
 }
 
 /**
@@ -2834,8 +2875,10 @@ export function checkoutBillingFamily(tierGroup: string): string {
  *
  * Blocks new checkout sessions when the user already has an active/on_hold
  * subscription in the same billing family (see checkoutBillingFamily —
- * api_starter and api_business count as one family), or a cancelled
- * subscription that still has time remaining in the current billing period.
+ * api_starter and api_business count as one family, as do pro and
+ * pro_business), or a cancelled subscription that still has time remaining in
+ * the current billing period — except for the cancelled-Pro → Pro Business
+ * upgrade carve-out (isCancelledProBeforeProBusinessUpgrade).
  * This is an app-side guard only; Dodo's "Allow Multiple Subscriptions"
  * setting is still the provider-side backstop for races before webhook
  * ingestion updates Convex.
@@ -2863,6 +2906,13 @@ export const getCheckoutBlockingSubscription = internalQuery({
         if (
           checkoutBillingFamily(existingCatalogEntry.tierGroup) !==
           checkoutBillingFamily(targetCatalogEntry.tierGroup)
+        ) return false;
+        if (
+          isCancelledProBeforeProBusinessUpgrade(
+            existingCatalogEntry.tierGroup,
+            sub.status,
+            targetCatalogEntry.tierGroup,
+          )
         ) return false;
         if (sub.status === "active" || sub.status === "on_hold") return true;
         return sub.status === "cancelled" && sub.currentPeriodEnd > now;

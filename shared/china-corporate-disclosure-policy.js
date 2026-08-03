@@ -1,3 +1,6 @@
+// This is an intentionally narrow, market-moving event taxonomy. Routine
+// governance/system-rule revisions remain visible in unclassifiedRevisions
+// unless they can inherit a unique owned-category lineage; they are not events.
 export const CHINA_CORPORATE_DISCLOSURE_TYPES = Object.freeze([
   'halt',
   'resumption',

@@ -20,7 +20,11 @@ import {
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
-import { bootstrapTierKeyNames, resolveBootstrapRegistry } from './_bootstrap-tier-keys.js';
+import {
+  PUBLIC_WEATHER_BOOTSTRAP_KEY,
+  bootstrapTierKeyNames,
+  resolveBootstrapRegistry,
+} from './_bootstrap-tier-keys.js';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
 import {
   BOOTSTRAP_R2_PROBE_CEILING_MS,
@@ -62,7 +66,62 @@ const ON_DEMAND_CACHE_PROFILES = {
   },
 };
 
+// The URL SHAPE shared by every marked single-key public read:
+// `GET /api/bootstrap?keys=<one>&public=1`, no other params, each appearing once.
+// Returns the requested key name, or null when the request is not that shape.
+//
+// GET only: a HEAD has no body to serve and must not mint a cacheable entry.
+//
+// The MEMBERSHIP test deliberately stays with each caller below. Which keys may
+// be served without credentials is the whole semantic difference between them,
+// and folding both allowlists into one here would silently widen each to the
+// other's keys — the shape is shared, the authorization is not.
+function publicSingleKeyBootstrapRequestKey(req) {
+  if (req.method !== 'GET') return null;
+
+  const url = new URL(req.url);
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  if (pathname !== '/api/bootstrap') return null;
+
+  const params = Array.from(url.searchParams.keys());
+  if (params.some((key) => key !== 'keys' && key !== 'public')) return null;
+
+  const keyParams = url.searchParams.getAll('keys');
+  const publicParams = url.searchParams.getAll('public');
+  if (keyParams.length !== 1 || publicParams.length !== 1 || publicParams[0] !== '1') return null;
+
+  return keyParams[0];
+}
+
+// The explicitly-marked public weather URL: `?keys=weatherAlerts&public=1`.
+//
+// Same contract as its `?tier=fast|slow&public=1` and `?keys=<onDemand>&public=1`
+// siblings below: the payload is the shared production seed value, identical for
+// every caller, so the marker gives it its own CDN entry and the response is
+// public REGARDLESS of attached credentials — a CDN hit precedes handler auth,
+// so a credential-dependent answer at this URL could never be honored.
 export function isPublicWeatherBootstrapRequest(req) {
+  return publicSingleKeyBootstrapRequestKey(req) === PUBLIC_WEATHER_BOOTSTRAP_KEY;
+}
+
+// The legacy unmarked weather URL: `?keys=weatherAlerts` with no credentials.
+// Still anonymous and still serves the public payload — it is a documented
+// public path (docs/api-platform.mdx) and the only bootstrap read the map embed
+// could make before the marked URL existed — but it is NEVER shared-cacheable.
+//
+// That is the whole of #5386: this is the SAME URL a credentialed caller uses,
+// and a CDN hit precedes handler auth, so while a warm public entry sat here it
+// answered an invalid-key request with the cached anonymous 200 instead of the
+// origin's 401. The origin and the edge disagreed about one URL. Keeping every
+// response on this URL no-store means the edge never holds an entry that can
+// answer for the origin, so an invalid key always reaches validateApiKey.
+//
+// Deliberately NOT built on publicSingleKeyBootstrapRequestKey above: this
+// predicate is the pre-#5386 one, kept verbatim. It accepts HEAD and tolerates
+// `?keys=weatherAlerts,` / whitespace forms that the marked shape rejects.
+// Reusing the stricter helper here would narrow which requests still reach the
+// documented anonymous path — a behavior change this fix does not intend.
+export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
   const url = new URL(req.url);
@@ -76,7 +135,7 @@ export function isPublicWeatherBootstrapRequest(req) {
   if (keyParams.length !== 1) return false;
 
   const requested = keyParams[0].split(',').map((key) => key.trim()).filter(Boolean);
-  return requested.length === 1 && requested[0] === 'weatherAlerts';
+  return requested.length === 1 && requested[0] === PUBLIC_WEATHER_BOOTSTRAP_KEY;
 }
 
 let nextBootstrapR2ShadowProbeIsCold = true;
@@ -181,20 +240,8 @@ export { isPublicTierBootstrapRequest } from './_bootstrap-public-tier.js';
 // The legacy multi-key `?keys=a,b` URL keeps working and stays credentialed +
 // no-store, so nothing that relies on it changes.
 export function isPublicOnDemandBootstrapRequest(req) {
-  if (req.method !== 'GET') return false;
-
-  const url = new URL(req.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
-  if (pathname !== '/api/bootstrap') return false;
-
-  const params = Array.from(url.searchParams.keys());
-  if (params.some((key) => key !== 'keys' && key !== 'public')) return false;
-
-  const keyParams = url.searchParams.getAll('keys');
-  const publicParams = url.searchParams.getAll('public');
-  if (keyParams.length !== 1 || publicParams.length !== 1 || publicParams[0] !== '1') return false;
-
-  return ON_DEMAND_KEYS.has(keyParams[0]);
+  const key = publicSingleKeyBootstrapRequestKey(req);
+  return key !== null && ON_DEMAND_KEYS.has(key);
 }
 
 const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
@@ -277,9 +324,12 @@ async function validateBootstrapAuth(req, cors) {
   if (isPublicOnDemandBootstrapRequest(req)) {
     return { ok: true, kind: 'public-on-demand' };
   }
+  if (isPublicWeatherBootstrapRequest(req)) {
+    return { ok: true, kind: 'public-weather' };
+  }
   if (!headerKey && !hasBootstrapCredentialCookie(req)) {
-    if (isPublicWeatherBootstrapRequest(req)) {
-      return { ok: true, kind: 'public-weather' };
+    if (isAnonymousWeatherBootstrapRequest(req)) {
+      return { ok: true, kind: 'anonymous-weather' };
     }
   }
 
@@ -359,7 +409,20 @@ async function validateBootstrapAuth(req, cors) {
   };
 }
 
+// Kinds that serve the shared public seed payload with no per-user variation.
+// They all get ACAO:* and the retryable-outage contract; only the subset below
+// is additionally allowed into a shared cache.
 function isPublicBootstrapKind(authKind) {
+  return authKind === 'public-weather'
+    || authKind === 'anonymous-weather'
+    || authKind === 'public-tier'
+    || authKind === 'public-on-demand';
+}
+
+// Only the explicitly-marked `&public=1` URLs may be stored by a shared cache.
+// The unmarked weather URL is public but no-store — see
+// isAnonymousWeatherBootstrapRequest for why (#5386).
+function isSharedCacheableBootstrapKind(authKind) {
   return authKind === 'public-weather' || authKind === 'public-tier' || authKind === 'public-on-demand';
 }
 
@@ -378,6 +441,12 @@ function successCacheHeaders(tier, authKind, cors, onDemandKey = null) {
   // already rejected unauthorized origins at the handler entry (this is exactly
   // the contract getPublicCorsHeaders documents).
   const publicCors = getPublicCorsHeaders();
+  if (!isSharedCacheableBootstrapKind(authKind)) {
+    return {
+      ...publicCors,
+      'Cache-Control': 'no-store',
+    };
+  }
   const onDemandProfile = authKind === 'public-on-demand'
     ? ON_DEMAND_CACHE_PROFILES[onDemandKey]
     : null;
@@ -394,8 +463,14 @@ function successCacheHeaders(tier, authKind, cors, onDemandKey = null) {
 }
 
 export default async function handler(req, ctx) {
+  // no-store because this rejection is decided by the Origin header, which no
+  // cache layer here keys on (CF ignores Vary — see TIER_CACHE above). Without
+  // it, a 403 minted by one disallowed origin is an ordinary cacheable response
+  // on a `&public=1` URL that every other caller shares, and a shared cache is
+  // free to replay it to legitimate ones. Same reasoning as the split below:
+  // anything whose answer depends on the request must never be cacheable.
   if (isDisallowedOrigin(req))
-    return new Response('Forbidden', { status: 403 });
+    return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store' } });
 
   const cors = getCorsHeaders(req);
   if (req.method === 'OPTIONS')

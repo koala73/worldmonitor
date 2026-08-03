@@ -9,7 +9,7 @@ import { getSourceProvenanceState } from '../../../shared/source-provenance';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
-import { DEFAULT_LIST_LIMIT } from '../constants';
+import { DEFAULT_LIST_LIMIT, MARKET_FRESHNESS_CHECKS } from '../constants';
 import {
   argBool,
   argNum,
@@ -30,8 +30,10 @@ import {
   pickMapKeysLike,
   pickNestedMap,
   selectDatasets,
+  summarizeData,
 } from '../filters';
 import type { ToolDef } from '../types';
+import { utf8ByteLength } from '../utils';
 import {
   CHOKEPOINT_MONITOR_UI_URI,
   CONFLICT_EVENTS_UI_URI,
@@ -48,6 +50,101 @@ import {
 // The output schema still documents an iran-events field (harmless when absent).
 // Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+// Leave headroom for the cache envelope (`cached_at`, `stale`, and `data`) so
+// the dispatcher never replaces a useful conflict response with the generic
+// `_budget_exceeded` envelope.
+const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
+const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
+const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
+
+function fitConflictEventsToBudget(data: Record<string, unknown>): void {
+  const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
+    const parent = data[label];
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [];
+    const events = (parent as Record<string, unknown>).events;
+    return Array.isArray(events) ? [{ label, events }] : [];
+  });
+  const originalEventCount = lists.reduce((sum, { events }) => sum + events.length, 0);
+  if (originalEventCount === 0) return;
+
+  const byteLength = () => utf8ByteLength(JSON.stringify(data));
+  if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) return;
+
+  data.partial = true;
+  const truncation = {
+    reason: 'output_budget',
+    original_event_count: originalEventCount,
+    returned_event_count: 0,
+  };
+  data.truncation = truncation;
+
+  const caps = new Map(lists.map(({ label }) => [label, 0]));
+  const applyCaps = () => {
+    let returnedEventCount = 0;
+    for (const { label, events } of lists) {
+      const parent = data[label] as Record<string, unknown>;
+      const bounded = events.slice(0, caps.get(label) ?? 0);
+      parent.events = bounded;
+      returnedEventCount += bounded.length;
+    }
+    truncation.returned_event_count = returnedEventCount;
+  };
+
+  let low = 0;
+  let high = Math.max(...lists.map(({ events }) => events.length));
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    for (const { label } of lists) caps.set(label, mid);
+    applyCaps();
+    if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) low = mid;
+    else high = mid - 1;
+  }
+  for (const { label } of lists) caps.set(label, low);
+  applyCaps();
+
+  // Spend any remaining budget per feed. This preserves the fair common
+  // prefix above while ensuring one oversized feed cannot force every other
+  // source to return zero usable events.
+  for (const { label, events } of lists) {
+    let feedLow = caps.get(label) ?? 0;
+    let feedHigh = events.length;
+    while (feedLow < feedHigh) {
+      const mid = Math.ceil((feedLow + feedHigh) / 2);
+      caps.set(label, mid);
+      applyCaps();
+      if (byteLength() <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) feedLow = mid;
+      else feedHigh = mid - 1;
+    }
+    caps.set(label, feedLow);
+    applyCaps();
+  }
+}
+
+function summarizeConflictEvents(data: Record<string, unknown>): Record<string, unknown> {
+  const summary = summarizeData(data);
+  if (utf8ByteLength(JSON.stringify(summary)) <= CONFLICT_EVENTS_DATA_BUDGET_BYTES) return summary;
+
+  const samples = CONFLICT_EVENT_LISTS.flatMap((label) => {
+    const parent = summary[label];
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [];
+    const events = (parent as Record<string, unknown>).events;
+    if (!events || typeof events !== 'object' || Array.isArray(events)) return [];
+    const sample = (events as Record<string, unknown>).sample;
+    return Array.isArray(sample) ? [{ sample, original: [...sample] }] : [];
+  });
+
+  for (const { sample } of samples) sample.length = 0;
+  const maxSampleLength = Math.max(0, ...samples.map(({ original }) => original.length));
+  for (let index = 0; index < maxSampleLength; index++) {
+    for (const { sample, original } of samples) {
+      if (index >= original.length) continue;
+      sample.push(original[index]);
+      if (utf8ByteLength(JSON.stringify(summary)) > CONFLICT_EVENTS_DATA_BUDGET_BYTES) sample.pop();
+    }
+  }
+
+  return summary;
+}
 
 function addNewsSourceProvenance(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
@@ -122,11 +219,40 @@ function projectChinaMacroForMcp(value: unknown): unknown {
   };
 }
 
+const MARKET_SECTOR_MAX_STALE_MIN = MARKET_FRESHNESS_CHECKS[1].maxStaleMin;
+
+// `get_market_data` bundles several independently seeded caches. The outer
+// envelope carries aggregate freshness, but sector valuation coverage also
+// needs a field-level freshness bit so a caller filtering to sectors does not
+// mistake an old valuation snapshot for a current one.
+export function applySectorValuationFreshness(
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Record<string, unknown> {
+  const sectors = data.sectors;
+  if (!sectors || typeof sectors !== 'object' || Array.isArray(sectors)) return data;
+  const coverage = (sectors as Record<string, unknown>).valuationCoverage;
+  if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) {
+    (sectors as Record<string, unknown>).valuationCoverage = {
+      sourceStatus: 'degraded',
+      stale: true,
+    };
+    return data;
+  }
+  const fetchedAtValue = (coverage as Record<string, unknown>).fetchedAt;
+  const fetchedAt = typeof fetchedAtValue === 'number' || typeof fetchedAtValue === 'string'
+    ? Number(fetchedAtValue)
+    : Number.NaN;
+  (coverage as Record<string, unknown>).stale = !Number.isFinite(fetchedAt)
+    || (now - fetchedAt) / 60_000 > MARKET_SECTOR_MAX_STALE_MIN;
+  return data;
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -171,6 +297,51 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, changePercent: { type: 'number' } } } },
           valuations: { type: ['object', 'array', 'null'] },
+          valuationCoverage: {
+            type: ['object', 'null'],
+            properties: {
+              valuationCount: { type: 'number' },
+              expectedValuationCount: { type: 'number' },
+              sourceStatus: { type: 'string', enum: ['ok', 'partial', 'degraded'] },
+              source: { type: 'string' },
+              fetchedAt: { type: 'number' },
+              stale: { type: 'boolean' },
+              unavailableSymbols: { type: 'array', items: { type: 'string' } },
+              valuationDiagnostics: {
+                type: 'array',
+                description: 'Bounded per-symbol direct/proxy outcomes from the final Yahoo valuation routes. This is diagnostic metadata, not a valuation record.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    symbol: { type: 'string' },
+                    outcomes: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          route: { type: 'string', enum: ['v7Quote', 'quoteSummary'] },
+                          transport: { type: 'string', enum: ['direct', 'proxy'] },
+                          attempts: { type: 'number' },
+                          status: { type: 'number' },
+                          responseClass: { type: 'string' },
+                          missingFields: { type: 'array', items: { type: 'string' } },
+                          failure: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              lastGood: {
+                type: ['object', 'null'],
+                properties: {
+                  fetchedAt: { type: 'number' },
+                  stale: { type: 'boolean' },
+                  symbols: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            },
+          },
         },
       },
       'etf-flows': {
@@ -211,6 +382,87 @@ export const CACHE_TOOLS: ToolDef[] = [
           narrowNested(data, label, 'quotes', (q) => matchesCode(q.symbol, symbols));
         }
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
+        const sectorData = data.sectors;
+        if (sectorData && typeof sectorData === 'object' && !Array.isArray(sectorData)) {
+          const sector = sectorData as Record<string, unknown>;
+          const coverage = sector.valuationCoverage;
+          const valuations = sector.valuations;
+          const unavailable = coverage && typeof coverage === 'object' && !Array.isArray(coverage)
+            ? (coverage as Record<string, unknown>).unavailableSymbols
+            : null;
+          const allSectorSymbols = new Set<string>([
+            ...(Array.isArray(sector.sectors)
+              ? sector.sectors.flatMap((row) => {
+                if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+                const symbol = (row as Record<string, unknown>).symbol;
+                return typeof symbol === 'string' ? [symbol.toLowerCase()] : [];
+              })
+              : []),
+            ...(valuations && typeof valuations === 'object' && !Array.isArray(valuations)
+              ? Object.keys(valuations).map((symbol) => symbol.toLowerCase())
+              : []),
+            ...(Array.isArray(unavailable)
+              ? unavailable.filter((symbol): symbol is string => typeof symbol === 'string').map((symbol) => symbol.toLowerCase())
+              : []),
+          ]);
+          const requestedSectorSymbols = symbols.filter((symbol) => allSectorSymbols.has(symbol));
+          // symbols= is active: always project sector valuations/coverage to the
+          // requested sector subset (empty when the filter is equity-only).
+          if (valuations && typeof valuations === 'object' && !Array.isArray(valuations)) {
+            sector.valuations = Object.fromEntries(
+              Object.entries(valuations).filter(([symbol]) => requestedSectorSymbols.includes(symbol.toLowerCase())),
+            );
+          }
+          if (coverage && typeof coverage === 'object' && !Array.isArray(coverage)) {
+            const coverageRecord = coverage as Record<string, unknown>;
+            if (Array.isArray(coverageRecord.unavailableSymbols)) {
+              const filteredUnavailable = coverageRecord.unavailableSymbols
+                .filter((symbol): symbol is string => typeof symbol === 'string')
+                .filter((symbol) => requestedSectorSymbols.includes(symbol.toLowerCase()));
+              if (filteredUnavailable.length === 0) {
+                delete coverageRecord.unavailableSymbols;
+              } else {
+                coverageRecord.unavailableSymbols = filteredUnavailable;
+              }
+            }
+            if (coverageRecord.lastGood && typeof coverageRecord.lastGood === 'object' && !Array.isArray(coverageRecord.lastGood)) {
+              const lastGoodRecord = coverageRecord.lastGood as Record<string, unknown>;
+              if (Array.isArray(lastGoodRecord.symbols)) {
+                lastGoodRecord.symbols = lastGoodRecord.symbols
+                  .filter((symbol): symbol is string => typeof symbol === 'string')
+                  .filter((symbol) => requestedSectorSymbols.includes(symbol.toLowerCase()));
+              }
+              // Match seeder omit-empty: never leave lastGood with symbols:[].
+              if (!Array.isArray(lastGoodRecord.symbols) || lastGoodRecord.symbols.length === 0) {
+                delete coverageRecord.lastGood;
+              }
+            }
+            if (Array.isArray(coverageRecord.valuationDiagnostics)) {
+              const filteredDiagnostics = coverageRecord.valuationDiagnostics.filter((diagnostic) => {
+                if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic)) return false;
+                const symbol = (diagnostic as Record<string, unknown>).symbol;
+                return typeof symbol === 'string' && requestedSectorSymbols.includes(symbol.toLowerCase());
+              });
+              if (filteredDiagnostics.length === 0) {
+                delete coverageRecord.valuationDiagnostics;
+              } else {
+                coverageRecord.valuationDiagnostics = filteredDiagnostics;
+              }
+            }
+            const filteredValuationCount = sector.valuations && typeof sector.valuations === 'object' && !Array.isArray(sector.valuations)
+              ? Object.keys(sector.valuations).length
+              : 0;
+            const expectedValuationCount = requestedSectorSymbols.length;
+            coverageRecord.valuationCount = filteredValuationCount;
+            coverageRecord.expectedValuationCount = expectedValuationCount;
+            // Empty request set (no sector symbols matched): complete empty view, not degraded.
+            coverageRecord.sourceStatus = expectedValuationCount === 0
+              ? 'ok'
+              : filteredValuationCount === 0
+                ? 'degraded'
+                : filteredValuationCount < expectedValuationCount ? 'partial' : 'ok';
+          }
+        }
         narrowNested(data, 'etf-flows', 'etfs', (e) => matchesCode(e.ticker, symbols));
       }
       const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
@@ -219,6 +471,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       capNested(data, 'sectors', 'sectors', limit);
       capNested(data, 'etf-flows', 'etfs', limit);
+      applySectorValuationFreshness(data);
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
         const map: Record<string, string> = {
@@ -243,6 +496,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
+    _freshnessChecks: [...MARKET_FRESHNESS_CHECKS],
     // NOTE: `GET /api/market/v1/get-gold-intelligence` is NOT covered here.
     // The audit-time cross-reference matched on the single `market:commodities-bootstrap:v1`
     // key shared between this tool and the gold-intel handler, but the handler also reads 4
@@ -262,7 +516,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_conflict_events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
-    _outputBudgetBytes: 131072,
+    _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
     description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
     inputSchema: {
       type: 'object',
@@ -292,6 +546,11 @@ export const CACHE_TOOLS: ToolDef[] = [
           } } },
           fetchedAt: { type: ['number', 'string'] },
           version: { type: ['string', 'number'] },
+          // Newest merged GED Candidate release, or null when the annual base is
+          // serving alone. A `+partial` suffix means the candidate was fetched
+          // incompletely.
+          candidateVersion: { type: ['string', 'null'] },
+          candidateComplete: { type: 'boolean' },
           totalRaw: { type: 'number' },
           filteredCount: { type: 'number' },
         },
@@ -323,8 +582,18 @@ export const CACHE_TOOLS: ToolDef[] = [
           strategicRisks: { type: ['array', 'object', 'null'] },
         },
       },
+      partial: { type: 'boolean', description: 'True when event lists were shortened to fit the MCP output budget.' },
+      truncation: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+          original_event_count: { type: 'number' },
+          returned_event_count: { type: 'number' },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _summarize: summarizeConflictEvents,
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const minFatal = argNum(params.min_fatalities);
@@ -338,7 +607,8 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'ucdp-events', 'events', (e) => (argNum(e.deathsBest) ?? 0) >= minFatal);
         narrowNested(data, 'events', 'events', (e) => (argNum(e.fatalities) ?? 0) >= minFatal);
       }
-      for (const label of ['ucdp-events', 'iran-events', 'events']) capNested(data, label, 'events', limit);
+      for (const label of CONFLICT_EVENT_LISTS) capNested(data, label, 'events', limit);
+      if (!argBool(params.summary) && !argStr(params.jmespath)) fitConflictEventsToBudget(data);
       return data;
     },
     _cacheKeys: [
@@ -349,6 +619,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
+    // Per-key budgets (#5864): unrest:events:v1 is materializer-backed since
+    // #5863 and was invisible to this envelope — a dead 15-min pipeline still
+    // reported stale:false to agents.
+    _freshnessChecks: [
+      { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 30 },  // 15min cron × 2
+      { key: 'seed-meta:unrest:events',        maxStaleMin: 120 }, // matches api/health.js unrestEvents
+    ],
     // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
     // The audit-time hint matched only this tool's conflict/risk cache keys,
     // but the handler at server/worldmonitor/intelligence/v1/get-risk-scores.ts
@@ -502,6 +779,15 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:news:insights',
     _maxStaleMin: 30,
+    // Per-key budgets (#5864): the envelope used to gate on the insights meta
+    // alone, so a stalled GDELT materializer left agents reading stale:false
+    // for hours. Every bundled key now carries its own freshness budget,
+    // matching api/health.js.
+    _freshnessChecks: [
+      { key: 'seed-meta:news:insights',                    maxStaleMin: 30 },  // 15min cron × 2
+      { key: 'seed-meta:intelligence:gdelt-intel',         maxStaleMin: 45 },  // 15min materializer; matches api/health.js
+      { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 60 }, // 30min cron × 2
+    ],
     _apiPaths: [
       "GET /api/intelligence/v1/list-cross-source-signals",
       "GET /api/intelligence/v1/search-gdelt-documents",
@@ -1026,17 +1312,17 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_prediction_markets',
     _uiResourceUri: PREDICTION_MARKETS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.',
+    description: 'Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance.',
     inputSchema: {
       type: 'object',
       properties: {
         category: {
           type: 'string',
           enum: ['geopolitical', 'tech', 'finance'],
-          description: 'Restrict to one market category bucket. Omit for all three.',
+          description: 'Restrict to one market category bucket. Omit for all three. Finance also owns untagged non-geopolitical records.',
         },
         query: { type: 'string', description: 'Keep only markets whose title contains this text (case-insensitive).' },
-        source: { type: 'string', enum: ['kalshi', 'polymarket'], description: 'Filter to one prediction-market source.' },
+        source: { type: 'string', enum: ['kalshi', 'polymarket'], description: 'Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records.' },
         limit: { type: 'number', description: 'Cap each category bucket to at most this many markets (default 30, pass 0 for no cap).' },
       },
       required: [],
@@ -1771,6 +2057,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     // slow chokepoint-baselines budget, and the long-cadence portwatch keys
     // don't drag aggregate stale flagging.
     //
+    // That mirror claim is ENFORCED, not aspirational: the portwatch-ports
+    // entry is asserted field-for-field against health's exported
+    // SEED_META.portwatchPortActivity in
+    // tests/mcp-portwatch-content-freshness-parity.test.mjs. #4293 aligned the
+    // two surfaces on cardinality; #6080 aligned them on content freshness
+    // after the comment had silently stopped being true.
+    //
     // Payload measurement (PR pre-merge, fun-toad-55127.upstash.io 2026-05-11):
     //   transit-summaries:v1                        — 6.8 KB
     //   chokepoint_transits:v1                      — 1.1 KB
@@ -1802,7 +2095,16 @@ export const CACHE_TOOLS: ToolDef[] = [
     _freshnessChecks: [
       { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
       { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
-      { key: 'seed-meta:supply_chain:portwatch-ports',     maxStaleMin: 2160, minRecordCount: 174 }, // 12h cron; 36h = 3× interval; #3613 requires full country coverage
+      // #3613 requires full country coverage; #6060 adds the per-entity content
+      // dimension — a complete 174/174 run can still carry a 98h-old CN payload,
+      // which transport age and record count both read as fresh (#6080).
+      {
+        key: 'seed-meta:supply_chain:portwatch-ports',
+        maxStaleMin: 2160, // 12h cron; 36h = 3× interval
+        minRecordCount: 174,
+        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 },
+        contentFreshnessActivationKey: 'seed-activated:supply_chain:portwatch-ports:content-freshness',
+      },
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
       { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval
       { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval
@@ -2045,6 +2347,179 @@ export const CACHE_TOOLS: ToolDef[] = [
     _apiPaths: [
       "GET /api/intelligence/v1/get-social-velocity",
     ],
+  },
+
+  {
+    name: 'get_temporal_anomalies',
+    _outputBudgetBytes: 65536,
+    description:
+      'Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. ' +
+      'Surfaces where activity is statistically abnormal right now — news velocity, satellite fire detections, and other tracked ' +
+      'streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared ' +
+      'to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a ' +
+      'severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty ' +
+      'anomaly list with fresh data means activity is within normal bounds — that is itself signal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: 'Filter to one tracked stream type (e.g. "news", "satellite_fires"); see trackedTypes in the response for what is currently baselined.',
+        },
+        region: { type: 'string', description: 'Filter to one region label (case-insensitive exact match).' },
+        min_severity: {
+          type: 'string',
+          enum: ['medium', 'high', 'critical'],
+          description: 'Drop anomalies below this severity band.',
+        },
+        limit: { type: 'number', description: 'Cap the anomaly list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      snapshot: {
+        type: ['object', 'null'],
+        properties: {
+          anomalies: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string' }, region: { type: 'string' },
+                currentCount: { type: 'number' }, expectedCount: { type: 'number' },
+                zScore: { type: 'number' }, severity: { type: 'string' },
+                multiplier: { type: 'number' }, message: { type: 'string' },
+              },
+            },
+          },
+          trackedTypes: { type: 'array', items: { type: 'string' } },
+          computedAt: { type: 'string' },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const type = argStr(params.type);
+      const region = argStr(params.region);
+      const minSeverity = argStr(params.min_severity);
+      const severityRank: Record<string, number> = { medium: 1, high: 2, critical: 3 };
+      const floor = minSeverity ? (severityRank[minSeverity] ?? 0) : 0;
+      narrowNested(data, 'snapshot', 'anomalies', (a) => {
+        if (type && String(a.type ?? '').toLowerCase() !== type) return false;
+        if (region && String(a.region ?? '').toLowerCase() !== region) return false;
+        if (floor && (severityRank[String(a.severity ?? '')] ?? 0) < floor) return false;
+        return true;
+      });
+      capNested(data, 'snapshot', 'anomalies', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      return data;
+    },
+    _cacheKeys: ['temporal:anomalies:v1'],
+    _cacheLabels: { 'temporal:anomalies:v1': 'snapshot' },
+    _seedMetaKey: 'seed-meta:temporal:anomalies',
+    _maxStaleMin: 45,
+    _apiPaths: [],
+  },
+
+  {
+    name: 'get_test_site_seismicity',
+    _outputBudgetBytes: 65536,
+    description:
+      'Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. ' +
+      'Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the ' +
+      'Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0-100 from magnitude, ' +
+      'proximity, and depth — shallow events close to a site score highest, since underground tests are shallow by nature. ' +
+      'Concern bands: low, moderate, elevated, critical. Includes a per-site rollup (event count, max concern, max magnitude). ' +
+      'An empty list with fresh data means no seismicity near any monitored site in the current feed window.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        site: { type: 'string', description: 'Filter to one test site by name substring (e.g. "Punggye", "Lop Nur", case-insensitive).' },
+        min_concern: {
+          type: 'string',
+          enum: ['low', 'moderate', 'elevated', 'critical'],
+          description: 'Drop events below this concern band.',
+        },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      earthquakes: {
+        type: ['object', 'null'],
+        properties: {
+          earthquakes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, place: { type: 'string' },
+                magnitude: { type: 'number' }, depthKm: { type: 'number' },
+                location: {
+                  type: 'object',
+                  properties: { latitude: { type: 'number' }, longitude: { type: 'number' } },
+                },
+                occurredAt: { type: 'number' },
+                nearTestSite: { type: 'boolean' }, testSiteName: { type: 'string' },
+                concernScore: { type: 'number' }, concernLevel: { type: 'string' },
+              },
+            },
+          },
+          siteSummary: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                site: { type: 'string' }, eventCount: { type: 'number' },
+                maxConcernScore: { type: 'number' }, maxConcernLevel: { type: 'string' },
+                maxMagnitude: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const site = argStr(params.site);
+      const minConcern = argStr(params.min_concern);
+      const concernRank: Record<string, number> = { low: 1, moderate: 2, elevated: 3, critical: 4 };
+      const floor = minConcern ? (concernRank[minConcern] ?? 0) : 0;
+      narrowNested(data, 'earthquakes', 'earthquakes', (q) => {
+        const siteName = typeof q.testSiteName === 'string' ? q.testSiteName : '';
+        if (!q.nearTestSite && !siteName && typeof q.concernScore !== 'number') return false;
+        if (site && !siteName.toLowerCase().includes(site)) return false;
+        if (floor && (concernRank[String(q.concernLevel ?? '')] ?? 0) < floor) return false;
+        return true;
+      });
+      const payload = data.earthquakes as {
+        earthquakes?: Array<Record<string, unknown>>;
+        siteSummary?: Array<Record<string, unknown>>;
+      } | null;
+      if (payload && Array.isArray(payload.earthquakes)) {
+        const bySite = new Map<string, { site: string; eventCount: number; maxConcernScore: number; maxConcernLevel: string; maxMagnitude: number }>();
+        for (const q of payload.earthquakes) {
+          const name = (typeof q.testSiteName === 'string' && q.testSiteName) || 'Unattributed';
+          const entry = bySite.get(name) ?? { site: name, eventCount: 0, maxConcernScore: 0, maxConcernLevel: '', maxMagnitude: 0 };
+          entry.eventCount += 1;
+          const score = typeof q.concernScore === 'number' ? q.concernScore : 0;
+          if (score >= entry.maxConcernScore) {
+            entry.maxConcernScore = score;
+            entry.maxConcernLevel = typeof q.concernLevel === 'string' ? q.concernLevel : entry.maxConcernLevel;
+          }
+          const mag = typeof q.magnitude === 'number' ? q.magnitude : 0;
+          if (mag > entry.maxMagnitude) entry.maxMagnitude = mag;
+          bySite.set(name, entry);
+        }
+        payload.siteSummary = [...bySite.values()].sort((a, b) => b.maxConcernScore - a.maxConcernScore);
+      }
+      capNested(data, 'earthquakes', 'earthquakes', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      return data;
+    },
+    _cacheKeys: ['seismology:earthquakes:v1'],
+    _cacheLabels: { 'seismology:earthquakes:v1': 'earthquakes' },
+    _seedMetaKey: 'seed-meta:seismology:earthquakes',
+    _maxStaleMin: 30,
+    _apiPaths: [],
   },
 
 ];

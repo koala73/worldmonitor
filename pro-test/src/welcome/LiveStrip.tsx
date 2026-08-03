@@ -200,7 +200,7 @@ export const LiveStrip = () => {
     <section className="py-16 px-6 border-y border-wm-border bg-wm-bg relative">
       <div className="max-w-7xl mx-auto">
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.5 }}

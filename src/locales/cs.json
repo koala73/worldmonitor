@@ -129,20 +129,20 @@
       "currencies": "Měny",
       "area": "Rozloha"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Načítání skóre odolnosti…",
+    "resilienceScoreUnavailable": "Skóre odolnosti není k dispozici.",
     "china": {
       "title": "Přehled země: Čína",
       "description": "Aktuální makro, trh, obchod, energetika a provozní dostupnost z existujících veřejných datových kontraktů.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Politika a vymáhání",
       "energy": "Energetika",
       "availability": "Rizika a letectví",
       "observed": "K datu:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Publikováno:",
+      "effective": "Platné od:",
+      "sectors": "Sektory:",
+      "entities": "Entity:",
+      "translation": "Překlad:",
       "source": "Zdroj:",
       "imfGrowth": "Prognóza růstu MMF",
       "creditGdp": "Úvěr k HDP",
@@ -175,12 +175,12 @@
         "stale": "Zastaralé",
         "unavailable": "Nedostupné"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Makrosignály",
+      "crossStraitActivity": "Aktivita přes průliv",
+      "corporateDisclosures": "Firemní zveřejnění",
+      "corridorConditions": "Podmínky koridoru",
+      "activityNowcast": "Nowcast aktivity",
+      "decisionSignalsUnavailable": "Snímek rozhodovacích signálů Číny je momentálně nedostupný."
     }
   },
   "header": {
@@ -261,7 +261,7 @@
     "panelCatCommodityEcon": "Ekonomika a obchod",
     "panelCatHappyNews": "Dobré zprávy",
     "panelCatHappyPlanet": "Planeta a dárcovství",
-    "embed": "Embed"
+    "embed": "Vložit"
   },
   "panels": {
     "liveNews": "Živé zprávy",
@@ -1264,8 +1264,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "snížená kvalita",
+        "stale": "zastaralý"
       }
     },
     "insights": {
@@ -1346,7 +1346,8 @@
       "sources_many": "{{count}} zdrojů",
       "provenanceTitle": "Původ pokrytí: počet příjatých příběhů a odlišných zdrojů, ze kterých byl tento přehled vybrán",
       "compiledFrom": "Sestaveno z {{stories}} příběhů z {{sources}} zdrojů",
-      "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h"
+      "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "cascade": {
       "filters": {
@@ -1415,10 +1416,10 @@
         "hoursAgo": "před {{count}} h"
       },
       "infoTooltip": "<strong>Metodika</strong> Kompozitní skóre (0-100) slučující:<ul><li>50 % Nestabilita zemí (váženo top 5)</li><li>30 % Geografické konvergenční zóny</li><li>20 % Incidenty infrastruktury</li></ul>Automaticky se obnovuje každých 5 minut.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Mezipaměť CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "snížená kvalita",
+        "stale": "zastaralý"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1546,25 +1547,25 @@
       "candidGrants": "Granty Candid",
       "dataLag": "Zpoždění dat",
       "infoTooltip": "<strong>Index globální dárcovské aktivity</strong> Kompozitní index sledující osobní dárcovství napříč crowdfundingovými platformami a krypto peněženkami.<ul><li><strong>Platformy</strong>: Vzorkování kampaní GoFundMe, GlobalGiving, JustGiving</li><li><strong>Krypto</strong>: Příliv do on-chain charitativních peněženek (Endaoment, Giving Block)</li><li><strong>Institucionální</strong>: OECD ODA, CAF World Giving Index, granty Candid</li></ul>Index je orientační (ne přesné částky v dolarech). Kombinuje živé vzorkování s publikovanými výročními zprávami.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Globální srovnávací hodnoty darování",
+      "benchmarkInfoTooltip": "<strong>Globální srovnávací hodnoty darování</strong> Zveřejněná tvrzení platforem a institucí se zdrojovými obdobími a stavem ověření. Anualizované hodnoty jsou odhady, nikoli aktivita v reálném čase.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Zveřejněné srovnávací hodnoty s ověřeným pokrytím zdrojů.",
+        "partial": "Zveřejněné srovnávací hodnoty s částečným pokrytím zdrojů.",
+        "legacy": "Starý snímek; podrobnosti zdroje nejsou k dispozici.",
+        "cached": "Zobrazení snímku z mezipaměti; obnovení není k dispozici."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Sledované dary platformy — anualizovaný odhad",
+      "annualizedDaily": "Denní anualizovaný odhad",
+      "atLeast": "Nejméně",
+      "about": "Přibližně",
+      "sourceNotVerified": "Zdroj neověřen",
+      "reportedCumulative": "Hlášený kumulativní součet",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Zveřejněná srovnávací hodnota",
+      "sourcesMethodology": "Zdroje a metodologie",
+      "methodologyIntro": "Do titulku vstupují pouze ověřená roční nebo obhajitelně anualizovaná tvrzení platforem. Kumulativní a institucionální hodnoty zůstávají samostatným kontextem.",
+      "partialEstimate": "Částečně ověřený odhad"
     },
     "displacement": {
       "refugees": "Uprchlíci",
@@ -1604,6 +1605,8 @@
       "relatedAssetsNear": "Související aktiva blízko {{location}}",
       "summaryError": "Shrnutí se nepodařilo vytvořit",
       "summaryFailed": "Shrnutí selhalo",
+      "sourceCoverage": "{{covered}}/{{total}} zdrojů",
+      "sourceCoverageHint": "Zobrazeno {{covered}} z {{total}} zapnutých zdrojů — tento panel své zdroje při každé aktualizaci střídá",
       "sortBy": "Seřadit podle",
       "sortNewest": "Nejnovější",
       "sortRelevance": "Relevance"
@@ -2151,8 +2154,8 @@
     "markets": {
       "infoTooltip": "<strong>Trhy</strong> Ceny akcií v reálném čase, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Graf ceny {{symbol}}",
+        "close": "Zavřít graf"
       }
     },
     "heatmap": {
@@ -2273,6 +2276,7 @@
           "summaryVerified": "Odemčeno a připraveno, až budete chtít.",
           "channelsNote": "Preferujete Telegram, Slack, Discord nebo webhook?",
           "pointers": {
+            "search": "Prohledat celý panel",
             "widgets": "Vytvořit vlastní widget",
             "analyst": "Zeptat se AI analytika",
             "mcpClients": "Nastavit MCP",
@@ -2501,43 +2505,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Kategorie panelů"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Aktuální",
+        "stale": "Zastaralý",
+        "veryStale": "Velmi zastaralý",
+        "noData": "Žádná data",
+        "disabled": "Zakázáno",
+        "error": "Chyba"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Aktuálnost dat: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "poslední aktualizace {{time}}",
+      "neverUpdated": "nikdy neaktualizováno",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "částečné pokrytí",
+        "contentStale": "obsah zastaralý",
+        "seedStale": "seed zastaralý",
+        "noSourceData": "žádná zdrojová data",
+        "sourceErrorReported": "hlášena chyba zdroje",
+        "freshnessStoreUnavailable": "úložiště čerstvosti nedostupné",
+        "freshnessStoreDegraded": "úložiště čerstvosti degradováno"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nikdy",
+        "justNow": "právě teď",
+        "minutesAgo": "před {{count}}m",
+        "hoursAgo": "před {{count}}h",
+        "daysAgo": "před {{count}}d",
+        "compactNow": "nyní",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Přihlaste se pro export dat řídicího panelu jako CSV, JSON nebo PDF.",
+      "upgradeDesc": "Export dat (CSV, JSON, PDF) je součástí Pro Business.",
+      "upgradeCta": "Přejít na Pro Business",
+      "lockedAriaLabel": "Exportovat data — zamčeno. {{reason}}",
+      "unlockedAnnouncement": "Export dat odemčen.",
+      "preparingPdf": "Příprava PDF…",
+      "pdfFailed": "Zprávu PDF nelze vygenerovat. Zkuste to znovu nebo použijte export JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Nepřihlášená pracovní prostředí jsou omezena na {{cap}} karet. Přihlaste se pro přidání dalších.",
+      "upgradeDesc": "Dosáhli jste limitu {{cap}} karet řídicího panelu.",
+      "upgradeCta": "Upgradovat pro více",
+      "lockedAriaLabel": "Přidat kartu — zamčeno. {{reason}}",
+      "unlockedAnnouncement": "Limit karet řídicího panelu zrušen."
     }
   },
   "popups": {
@@ -3341,16 +3361,42 @@
     "visualizationFailed": "Vizualizace selhala"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Karty řídicího panelu",
+    "defaultName": "Hlavní",
+    "newTabName": "Nová karta",
+    "newTabCreated": "Nová karta vytvořena",
+    "tabDeleted": "Karta \"{{name}}\" smazána",
+    "addTab": "Přidat kartu",
+    "addTabTitle": "Nová karta (začíná s výchozími panely)",
+    "renameHint": "{{name}} — dvojitým kliknutím přejmenujete",
+    "deleteTab": "Smazat kartu",
+    "deleteTabAria": "Smazat kartu {{name}}",
+    "tabNameAria": "Název karty"
+  },
+  "theaterPresets": {
+    "label": "Balíčky pokrytí",
+    "applied": "Balíček {{preset}} použit: povoleno {{count}} zdrojů",
+    "alreadyApplied": "Balíček {{preset}} je již použit",
+    "ukraineWar": {
+      "label": "Válka na Ukrajině",
+      "description": "Povolit hlavní ukrajinská média, nezávislý ruský tisk a zdroje pro hodnocení fronty"
+    },
+    "indoPacific": {
+      "label": "Indo-pacifický region / Tchaj-wan",
+      "description": "Povolit bezpečnostní zdroje z Tchaj-wanu, Pákistánu a jihovýchodní Asie"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel a západní Afrika",
+      "description": "Povolit místní zdroje ze Sahelu, Nigérie a západní Afriky"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kavkaz a Střední Asie",
+      "description": "Povolit regionální zdroje z Jižního Kavkazu a Střední Asie"
+    },
+    "middleEastFlashpoints": {
+      "label": "Ohniska napětí na Blízkém východě",
+      "description": "Povolit zdroje z Íránu, Izraele, oblasti Perského zálivu a kurdských regionů"
+    },
+    "unavailable": "Balíček {{preset}} není s aktuálními panely dostupný"
   }
 }

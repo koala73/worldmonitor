@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 import { parseStringArray, xmlParser } from './_shared';
+import { incrementProviderCounter } from './_counters';
 
 const CACHE_TTL = 900; // 15 minutes
 
@@ -66,10 +67,21 @@ async function fetchFeed(feedUrl: string, sourceName: string): Promise<RssItem[]
             },
             signal: AbortSignal.timeout(8_000),
         });
-        if (!resp.ok) return [];
+        if (resp.status === 401 || resp.status === 403) {
+            incrementProviderCounter('aviationNewsAuthRejection');
+            return [];
+        }
+        if (!resp.ok) {
+            incrementProviderCounter('aviationNewsTerminalFailure');
+            return [];
+        }
         const xml = await resp.text();
+        incrementProviderCounter('aviationNewsSuccess');
         return parseRssItems(xml, sourceName);
-    } catch {
+    } catch (err) {
+        const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timed out'));
+        if (isTimeout) incrementProviderCounter('aviationNewsTimeout');
+        else incrementProviderCounter('aviationNewsTerminalFailure');
         return [];
     }
 }

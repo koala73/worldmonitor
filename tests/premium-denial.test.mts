@@ -29,6 +29,7 @@ import {
   PRO_TIER,
   type ClientEntitlementBelief,
 } from '@/services/premium-denial';
+import { classifyBillingVerification } from '../server/_shared/entitlement-check.ts';
 
 /** No entitlement snapshot has arrived and the session carries no Pro role. */
 const UNKNOWN: ClientEntitlementBelief = { entitlementTier: null, authRole: null };
@@ -242,13 +243,15 @@ describe('classifyPremiumDenial — 403 that means "authenticate", not "upgrade"
 });
 
 describe('classifyPremiumDenial — 403 that is not about entitlement', () => {
-  it("api/latest-brief's 'Origin not allowed' is access_denied, not an upsell", () => {
-    for (const belief of [UNKNOWN, FREE, PRO, CLERK_PRO]) {
-      assert.equal(
-        classifyPremiumDenial({ status: 403, errorCode: 'Origin not allowed', belief }),
-        'access_denied',
-        'a rejected origin must never be rendered as a missing plan',
-      );
+  it('origin and generic access denials stay access_denied for every belief', () => {
+    for (const errorCode of ['Origin not allowed', 'Forbidden']) {
+      for (const belief of [UNKNOWN, FREE, PRO, CLERK_PRO]) {
+        assert.equal(
+          classifyPremiumDenial({ status: 403, errorCode, belief }),
+          'access_denied',
+          `${errorCode} must never be rendered as a missing plan`,
+        );
+      }
     }
   });
 
@@ -418,14 +421,90 @@ describe('premium panels route their denials through the classifier', () => {
   });
 
   it("ChatAnalystPanel no longer hardcodes the upsell as its only 403 copy", () => {
-    const source = readSource('src/components/ChatAnalystPanel.ts');
-    const upsells = [...source.matchAll(/'Pro subscription required\.'/g)];
+    // The decision moved to src/services/analyst-denial.ts (a zero-runtime-import
+    // leaf) so it is reachable from tsx --test — ChatAnalystPanel imports
+    // DOMPurify at module scope and cannot be loaded there. The copy itself is
+    // now pinned by EXECUTION in tests/analyst-denial.test.mts rather than by
+    // this regex, which is strictly stronger: a swapped branch fails there and
+    // would not have failed here.
+    const panel = readSource('src/components/ChatAnalystPanel.ts');
+    assert.equal(
+      [...panel.matchAll(/'Pro subscription required\.'/g)].length,
+      0,
+      'the panel must not re-inline the upsell copy it delegates',
+    );
+    assert.match(
+      panel,
+      /analystDenialMessage\(res\.status, verdict\)/,
+      'the panel must route its denial copy through the extracted decision',
+    );
+
+    const leaf = readSource('src/services/analyst-denial.ts');
+    const upsells = [...leaf.matchAll(/'Pro subscription required\.'/g)];
     assert.equal(upsells.length, 1, 'exactly one upsell string, in the verdict switch');
-    const preceding = source.slice(Math.max(0, upsells[0].index - 200), upsells[0].index);
+    const preceding = leaf.slice(Math.max(0, upsells[0].index - 200), upsells[0].index);
     assert.match(
       preceding,
       /case 'upgrade_required':/,
       'the upsell string must sit under the upgrade_required case',
+    );
+  });
+
+  it('reports the only three client-side entitlement-desync decision sites', () => {
+    const expectedCalls = new Map([
+      ['src/components/LatestBriefPanel.ts', "if (verdict === 'entitlement_desync') reportEntitlementDesync('latest-brief');"],
+      ['src/components/ChatAnalystPanel.ts', "if (verdict === 'entitlement_desync') reportEntitlementDesync('chat-analyst');"],
+      ['src/components/WidgetChatModal.ts', "if (verdict === 'entitlement_desync') reportEntitlementDesync('widget-chat');"],
+    ]);
+    for (const [rel, expectedCall] of expectedCalls) {
+      assert.match(
+        readSource(rel),
+        new RegExp(expectedCall.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+        `${rel} must make its client-side desync decision observable`,
+      );
+    }
+  });
+
+  it('classifies widget preflight denials from the account belief, not the widget tier', () => {
+    const source = readSource('src/components/WidgetChatModal.ts');
+    assert.match(
+      source,
+      /function reportWidgetEntitlementDesync\([\s\S]*?if \(usedTesterKey \|\| \(getAuthState\(\)\.user\?\.id \?\? null\) !== requestUserId\) return;[\s\S]*?const verdict = classifyPremiumDenial\(\{\s*status,\s*errorCode: payload\?\.error \?\? null,\s*belief: requestBelief,\s*\}\);[\s\S]*?if \(verdict === 'entitlement_desync'\) reportEntitlementDesync\('widget-chat'\);/,
+      'widget telemetry must classify the request-time account belief and reject responses from another account',
+    );
+    assert.match(
+      source,
+      /const requestAuthState = getAuthState\(\);[\s\S]*?const requestUserId = requestAuthState\.user\?\.id \?\? null;[\s\S]*?const requestBelief = readClientEntitlementBelief\(requestAuthState\);[\s\S]*?const res = await fetch\(widgetAgentHealthUrl\(\)[\s\S]*?resolvePreflightMessage\([\s\S]*?requestBelief,[\s\S]*?requestUserId,[\s\S]*?\);/,
+      'widget preflight must carry its request account snapshot into denial telemetry',
+    );
+    assert.match(
+      source,
+      /const res = await fetch\(widgetAgentUrl\(\),[\s\S]*?if \(!res\.ok\) \{[\s\S]*?reportWidgetEntitlementDesync\(\s*res\.status,\s*payload,\s*auth\.usedTesterKey,\s*requestBelief,\s*requestUserId,\s*\);/,
+      'widget POST denials must classify and report with their request account snapshot',
+    );
+    assert.equal(
+      [...source.matchAll(/reportWidgetEntitlementDesync\(/g)].length,
+      3,
+      'the widget telemetry helper must be declared once and called from both preflight and POST',
+    );
+  });
+
+  it('binds Chat Analyst denial telemetry to the account that made the request', () => {
+    const source = readSource('src/components/ChatAnalystPanel.ts');
+    assert.match(
+      source,
+      /const requestAuthState = getAuthState\(\);[\s\S]*?const requestUserId = requestAuthState\.user\?\.id \?\? null;[\s\S]*?const requestBelief = readClientEntitlementBelief\(requestAuthState\);/,
+      'Chat Analyst must snapshot the request account and its entitlement belief',
+    );
+    assert.match(
+      source,
+      /if \(requestIdentityChanged\(\)\) throw[\s\S]*?const verdict = await classifyDenialResponse\(res, requestBelief\);[\s\S]*?if \(requestIdentityChanged\(\)\) throw[\s\S]*?if \(verdict === 'entitlement_desync'\) reportEntitlementDesync\('chat-analyst'\);/,
+      'Chat Analyst must reject account changes both before and after consuming the denial body',
+    );
+    assert.match(
+      source,
+      /describeDenial\(res, requestBelief, requestUserId\)/,
+      'Chat Analyst must pass the request-time account snapshot into denial classification',
     );
   });
 });
@@ -467,6 +546,15 @@ const KNOWN_NON_ENTITLEMENT_CODES = new Set([
 
 /**
  * Pull every `error: '<literal>'` whose OWN response carries a 401/403.
+ *
+ * Scope note (#5622): this covers hand-written response literals only. The
+ * billing-verification strings are NOT reachable this way any more — they moved
+ * behind `classifyBillingVerification`, which returns `{ message, status }` for a
+ * renderer to map onto the wire `error` field. Widening the pattern to `message:`
+ * is the wrong fix: it also scrapes prose fields like api/latest-brief.ts's
+ * `message: 'The Brief is available on the Pro plan.'`, which is copy, not a code.
+ * Those strings are covered by executing the classifier instead — see the
+ * describe block below this one.
  *
  * Pairing matters: a proximity window would attribute the 401 a few lines
  * below `{ error: 'Method not allowed' }, 405` to that 405, so scan forward to
@@ -528,6 +616,73 @@ describe('classifier vocabulary matches what the servers actually emit', () => {
       classifyPremiumDenial({ status: 403, errorCode: 'Pro subscription required', belief: PRO }),
       'entitlement_desync',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Billing-verification vocabulary — executed, not scraped
+// ---------------------------------------------------------------------------
+
+/**
+ * The billing strings used to be hand-written `error: '...'` literals that
+ * `extractDenialStrings` above could scrape. #5622 moved them behind
+ * `classifyBillingVerification`, which returns `{ message, status }` for a
+ * renderer to map onto the wire `error` field — so the regex silently stopped
+ * covering them (it kept passing on the file's other literals).
+ *
+ * Widening the regex to `message:` is the wrong repair: it also scrapes prose
+ * fields like api/latest-brief.ts's `message: 'The Brief is available on the Pro
+ * plan.'`, which is copy rather than a code. Instead, CALL the classifier and
+ * assert the client agrees with every string it can actually emit. Exact by
+ * construction, and it cannot drift — a new billing status shows up here the
+ * moment the classifier can return it.
+ */
+describe('the client classifies every string classifyBillingVerification can emit', () => {
+  const BILLING_INPUTS = [
+    { label: 'transient lookup failure', input: { verificationUnavailable: true as const } },
+    { label: 'confirmed lapse', input: { billingStatus: 'subscription_lapsed' as const } },
+    { label: 'renewal pending', input: { billingStatus: 'renewal_verification_pending' as const } },
+    { label: 'renewal failed', input: { billingStatus: 'renewal_verification_failed' as const } },
+  ];
+
+  for (const { label, input } of BILLING_INPUTS) {
+    it(`${label}: its wire string is accounted for at its own status`, () => {
+      const denial = classifyBillingVerification(input);
+      assert.ok(denial, `${label} must produce a denial`);
+
+      const verdict = classifyPremiumDenial({
+        status: denial.status,
+        errorCode: denial.message,
+        belief: PRO,
+      });
+
+      if (denial.retryable) {
+        // A retryable denial rides a 503, which this classifier deliberately does
+        // not own (the caller retries on status). What matters is that it is never
+        // an upsell.
+        assert.notEqual(
+          verdict,
+          'upgrade_required',
+          `${label} is transient and must never render as "buy Pro"`,
+        );
+      } else {
+        // The one terminal member. It must upsell even for a client convinced it
+        // is Pro, or a lapsed subscriber retries forever with no way back.
+        assert.equal(
+          verdict,
+          'upgrade_required',
+          `${label} is provider-confirmed and must route to the upgrade CTA`,
+        );
+      }
+    });
+  }
+
+  it('the terminal member is the only one that upsells', () => {
+    const terminal = BILLING_INPUTS.filter(
+      ({ input }) => classifyBillingVerification(input)?.retryable === false,
+    );
+    assert.equal(terminal.length, 1, 'exactly one billing state may be terminal');
+    assert.equal(classifyBillingVerification(terminal[0].input)?.code, 'subscription_lapsed');
   });
 });
 

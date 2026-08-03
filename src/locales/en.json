@@ -1482,6 +1482,7 @@
       "briefCommodity": "COMMODITY BRIEF",
       "briefEnergy": "ENERGY BRIEF",
       "briefWorld": "WORLD BRIEF",
+      "briefStoryDetails": "Story details ({{count}})",
       "mlDetected": "ML DETECTED",
       "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
       "focalPoints": "FOCAL POINTS",
@@ -1760,6 +1761,8 @@
       "summaryFailed": "Summary failed",
       "sources": "{{count}} sources",
       "relatedAssetsNear": "Related assets near {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} sources",
+      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
@@ -2280,6 +2283,22 @@
       "lapsedDesc": "Your Pro subscription has ended. Resubscribe to regain premium access.",
       "resubscribe": "Resubscribe"
     },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
+    },
     "checkoutFailureBanner": {
       "message": "Payment couldn't be completed. No charge was made.",
       "retry": "Try again",
@@ -2327,6 +2346,7 @@
           "summaryVerified": "Unlocked and ready when you are.",
           "channelsNote": "Prefer Telegram, Slack, Discord, or a webhook?",
           "pointers": {
+            "search": "Search the entire dashboard",
             "widgets": "Build a custom widget",
             "analyst": "Ask the AI analyst",
             "mcpClients": "Set up MCP",
@@ -3137,6 +3157,32 @@
     "multipleRegions": "Multiple Regions",
     "trending": "\"{{term}}\" Trending - {{count}} mentions in {{hours}}h",
     "eventsDetected": "{{count}} events detected in region ({{lat}}°, {{lon}}°)"
+  },
+  "theaterPresets": {
+    "label": "Coverage presets",
+    "applied": "{{preset}} preset applied: {{count}} sources enabled",
+    "alreadyApplied": "{{preset}} preset already applied",
+    "unavailable": "{{preset}} preset is not available with your current panels",
+    "ukraineWar": {
+      "label": "Ukraine War",
+      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel & West Africa",
+      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucasus & Central Asia",
+      "description": "Enable South Caucasus and Central Asia regional sources"
+    },
+    "middleEastFlashpoints": {
+      "label": "Middle East Flashpoints",
+      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+    }
   },
   "intel": {
     "topics": {

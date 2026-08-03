@@ -16,7 +16,7 @@ import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
-import { getCSSColor, showToast } from '@/utils';
+import { getCSSColor, isMobileDevice, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
@@ -54,6 +54,7 @@ import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-sig
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 import { exportCountryEvidenceMarkdown } from '@/utils/export';
@@ -69,6 +70,7 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
 import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -116,6 +118,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
+  private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
   private onCloseCallback?: () => void;
@@ -297,7 +300,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.open();
   }
 
-  public hide(): void {
+  public hide(origin: OverlayCloseOrigin = 'control'): void {
+    if (origin === 'control' && this.historyRegistered) overlayHistory.close('deep-dive');
+    this.historyRegistered = false;
     this.destroyResilienceWidget();
     this.tearDownFollowButton();
     if (this.isMaximizedState) {
@@ -445,7 +450,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         top.append(riskBadge);
       }
 
-      const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
+      const title = this.el('div', 'cdp-news-title', decodeHtmlEntities(item.title));
       const metaText = extraSources.length > 0
         ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
         : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
@@ -3052,7 +3057,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.panel.classList.add('active');
     this.panel.setAttribute('aria-hidden', 'false');
     document.addEventListener('keydown', this.handleGlobalKeydown);
-    requestAnimationFrame(() => this.closeButton.focus());
+    if (isMobileDevice()) {
+      this.historyRegistered = true;
+      overlayHistory.open('deep-dive', (origin) => this.hide(origin));
+    }
+    requestAnimationFrame(() => {
+      if (this.panel.classList.contains('active')) this.closeButton.focus();
+    });
     this.onStateChangeCallback?.({ visible: true, maximized: this.isMaximizedState });
   }
 
@@ -3226,17 +3237,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (trend === 'up') return '↑';
     if (trend === 'down') return '↓';
     return '→';
-  }
-
-  private decodeEntities(text: string): string {
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#x27;/g, "'")
-      .replace(/&#x2F;/g, '/');
   }
 
   private toThreatLevel(level: string | undefined): ThreatLevel {

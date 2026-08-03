@@ -40,9 +40,11 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 | `set-quiet-hours` | Set do-not-disturb windows. |
 | `set-digest-settings` | Configure digest cadence and channel routing. |
 
-All actions require Clerk bearer + PRO (`tier >= 1`). Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
+All actions require Clerk bearer + PRO, and PRO here specifically means a **billed entitlement row** at `tier >= 1`. A Clerk session whose role is `pro` but which has no entitlement row does **not** qualify, unlike the gateway's tier-1 REST gate: notification delivery is enforced a second time inside Convex (`assertProEntitlement`), so the edge gate returns the clean `403 pro_required` rather than letting the request fail deeper with a less useful error. Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 
-A caller below `tier >= 1` gets `403 pro_required` only when the entitlement is confirmed non-Pro. When entitlement verification is itself in doubt the gate follows the shared billing-verification contract instead: `503` with `Retry-After` and `X-Billing-Verification` for `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, and `403 subscription_lapsed` for a confirmed lapse. See [Error handling](/usage-errors).
+A caller without a billed row gets `403 pro_required` only when the entitlement is confirmed non-Pro. When entitlement verification is itself in doubt the gate follows the shared billing-verification contract instead: `503` with `Retry-After` and `X-Billing-Verification` for `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, and `403 subscription_lapsed` for a confirmed lapse. See [Error handling](/usage-errors).
+
+Clients should honor that `503` with at least one retry at the advertised `Retry-After` before surfacing a failure — the dashboard's own service layer (`src/services/notification-channels.ts`) makes exactly one bounded retry. For `entitlement_verification_unavailable` specifically, retrying earlier than `Retry-After` is wasted: that answer is briefly negative-cached server-side, so an early retry is served the same result. The two `renewal_verification_*` codes are not negative-cached, but their delay reflects a real provider re-check or cooldown, so retrying early is still answered from the same state.
 
 - **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again.
 

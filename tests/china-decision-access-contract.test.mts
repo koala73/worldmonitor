@@ -12,6 +12,7 @@ import {
 const PATH = '/api/intelligence/v1/get-china-decision-signals';
 const CHINA_DATA_KEY = 'intelligence:china-decision-signals:v1';
 const CHINA_META_KEY = 'seed-meta:intelligence:china-decision-signals';
+const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const OPERATOR_KEY = 'china-decision-test-operator-key';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
@@ -35,7 +36,15 @@ afterEach(() => {
   }
 });
 
-function installSeedHealthPipelineMock(chinaMeta: { fetchedAt: number; recordCount: number }) {
+type ChinaMeta = {
+  fetchedAt: number;
+  recordCount: number;
+  groupStates?: Record<string, string>;
+  groupCounts?: Record<string, number | undefined>;
+  unavailableCauses?: Record<string, string>;
+};
+
+function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
   process.env.WORLDMONITOR_VALID_KEYS = OPERATOR_KEY;
@@ -59,10 +68,21 @@ function installSeedHealthPipelineMock(chinaMeta: { fetchedAt: number; recordCou
         };
       }
       if (key === CHINA_META_KEY) return { result: JSON.stringify(chinaMeta) };
+      if (key === PREDICTION_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt: chinaMeta.fetchedAt,
+            recordCount: 38,
+            poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
+          }),
+        };
+      }
       return {
         result: JSON.stringify({
           fetchedAt: chinaMeta.fetchedAt,
-          recordCount: 1_000,
+          // Must clear EVERY seed's minRecordCount floor (sec-cik-map: 5000)
+          // so only the China entry under test can degrade `overall`.
+          recordCount: 1_000_000,
           sourceVersion: key === 'seed-meta:resilience:intervals'
             ? RESILIENCE_INTERVAL_SOURCE_VERSION
             : 'test',
@@ -76,7 +96,7 @@ function installSeedHealthPipelineMock(chinaMeta: { fetchedAt: number; recordCou
   };
 }
 
-function classifyMainHealth(chinaMeta: { fetchedAt: number; recordCount: number }) {
+function classifyMainHealth(chinaMeta: ChinaMeta) {
   return healthTesting.classifyKey(
     'chinaDecisionSignals',
     CHINA_DATA_KEY,
@@ -91,7 +111,7 @@ function classifyMainHealth(chinaMeta: { fetchedAt: number; recordCount: number 
   );
 }
 
-async function readSeedHealth(chinaMeta: { fetchedAt: number; recordCount: number }) {
+async function readSeedHealth(chinaMeta: ChinaMeta) {
   installSeedHealthPipelineMock(chinaMeta);
   const response = await seedHealthHandler(new Request(
     'https://api.worldmonitor.app/api/seed-health',
@@ -190,6 +210,164 @@ describe('China decision-signal access tiers (#5580)', () => {
       assert.equal(seedEntry.stale, expectation.seedStale);
       assert.equal(seedEntry.recordCount, expectation.recordCount);
       assert.equal(seedEntry.minRecordCount, 6);
+    }
+  });
+
+  it('projects bounded per-group diagnostics only through operator seed health', async () => {
+    const groupStates = {
+      macro: 'available',
+      'policy-enforcement': 'partial',
+      'cross-strait-activity': 'stale',
+      'corporate-disclosures': 'unavailable',
+      'corridor-conditions': 'available',
+      'activity-nowcast': 'unavailable',
+    };
+    const groupCounts = {
+      populated: 4,
+      partial: 1,
+      stale: 1,
+      unavailable: 2,
+      healthyQuiet: 1,
+      operationallyCovered: 5,
+    };
+    const { body } = await readSeedHealth({
+      fetchedAt: Date.now() - 60_000,
+      recordCount: 5,
+      groupStates,
+      groupCounts,
+      unavailableCauses: {
+        'corporate-disclosures': 'healthy_quiet_window',
+        'activity-nowcast': 'insufficient_data',
+      },
+    });
+
+    const entry = body.seeds['intelligence:china-decision-signals'];
+    assert.deepEqual(entry.groupStates, groupStates);
+    assert.deepEqual(entry.groupCounts, groupCounts);
+    // #6060: the two unavailable groups are not the same kind of problem.
+    assert.deepEqual(entry.quietGroups, ['corporate-disclosures']);
+    assert.deepEqual(entry.unavailableGroups, [
+      { id: 'activity-nowcast', unavailableCause: 'insufficient_data' },
+    ]);
+  });
+
+  it('treats an undeclared unavailable cause as unknown rather than quiet', async () => {
+    const { body } = await readSeedHealth({
+      fetchedAt: Date.now() - 60_000,
+      recordCount: 5,
+      groupStates: {
+        macro: 'available',
+        'policy-enforcement': 'available',
+        'cross-strait-activity': 'available',
+        'corporate-disclosures': 'unavailable',
+        'corridor-conditions': 'available',
+        'activity-nowcast': 'available',
+      },
+      groupCounts: {
+        populated: 5,
+        partial: 0,
+        stale: 0,
+        unavailable: 1,
+        healthyQuiet: 0,
+        operationallyCovered: 5,
+      },
+      // unavailableCauses deliberately omitted.
+    });
+
+    const entry = body.seeds['intelligence:china-decision-signals'];
+    assert.deepEqual(entry.quietGroups, []);
+    assert.deepEqual(entry.unavailableGroups, [
+      { id: 'corporate-disclosures', unavailableCause: 'unknown' },
+    ]);
+  });
+
+  it('omits both per-group diagnostics when either bounded projection is malformed', async () => {
+    const validGroupStates = {
+      macro: 'available',
+      'policy-enforcement': 'partial',
+      'cross-strait-activity': 'stale',
+      'corporate-disclosures': 'unavailable',
+      'corridor-conditions': 'available',
+      'activity-nowcast': 'unavailable',
+    };
+    const validGroupCounts = {
+      populated: 4,
+      partial: 1,
+      stale: 1,
+      unavailable: 2,
+      healthyQuiet: 1,
+      operationallyCovered: 5,
+    };
+    const malformedDiagnostics = [
+      // #6060: the coverage-class counts are required. A producer that writes
+      // only the legacy four cannot prove which unavailable group was quiet,
+      // so the whole projection is withheld rather than published half-blind.
+      {
+        name: 'legacy counts without coverage classes',
+        groupStates: validGroupStates,
+        groupCounts: {
+          populated: 4, partial: 1, stale: 1, unavailable: 2,
+        },
+      },
+      {
+        name: 'missing operationallyCovered',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, operationallyCovered: undefined },
+      },
+      {
+        name: 'healthyQuiet above group total',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, healthyQuiet: 7 },
+      },
+      {
+        name: 'invalid state',
+        groupStates: { ...validGroupStates, macro: 'healthy' },
+        groupCounts: validGroupCounts,
+      },
+      {
+        name: 'missing canonical group',
+        groupStates: {
+          macro: 'available',
+          'policy-enforcement': 'partial',
+          'cross-strait-activity': 'stale',
+          'corporate-disclosures': 'unavailable',
+          'corridor-conditions': 'available',
+        },
+        groupCounts: validGroupCounts,
+      },
+      {
+        name: 'fractional count',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, populated: 1.5 },
+      },
+      {
+        name: 'negative count',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, partial: -1 },
+      },
+      {
+        name: 'count above group total',
+        groupStates: validGroupStates,
+        groupCounts: { ...validGroupCounts, unavailable: 7 },
+      },
+    ];
+
+    for (const malformed of malformedDiagnostics) {
+      const { response, body } = await readSeedHealth({
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 4,
+        groupStates: malformed.groupStates,
+        groupCounts: malformed.groupCounts,
+      });
+      const seedEntry = body.seeds['intelligence:china-decision-signals'];
+
+      assert.equal(response.status, 200, malformed.name);
+      assert.equal(body.overall, 'warning', malformed.name);
+      assert.equal(seedEntry.status, 'coverage_partial', malformed.name);
+      assert.equal(seedEntry.recordCount, 4, malformed.name);
+      assert.equal(seedEntry.minRecordCount, 6, malformed.name);
+      assert.equal(Object.hasOwn(seedEntry, 'groupStates'), false, malformed.name);
+      assert.equal(Object.hasOwn(seedEntry, 'groupCounts'), false, malformed.name);
     }
   });
 });

@@ -23,10 +23,8 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
   HMAC_SECRET,
@@ -43,12 +41,16 @@ const originalEnv = { ...process.env };
 // before reaching dispatch. Values are deliberately benign and aligned with
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
+  classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
   get_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
   get_consumer_prices: { country_code: 'US' },
   get_airspace: { country_code: 'US' },
   get_maritime_activity: { country_code: 'US' },
   analyze_situation: { query: 'test query' },
+  search_intel_history: { query: 'test query' },
+  // `situation` carries a 10-char proto minimum, so the placeholder clears it.
+  get_similar_events: { situation: 'a test situation description' },
   search_flights: { origin: 'JFK', destination: 'LHR', departure_date: '2026-06-01' },
   search_flight_prices_by_date: {
     origin: 'JFK', destination: 'LHR', start_date: '2026-06-01', end_date: '2026-06-10',
@@ -82,7 +84,7 @@ function minimalShape(schema) {
   return null;
 }
 
-describe('api/mcp.ts — per-tool output contract (envelope-shape, all 42 tools)', () => {
+describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry tools)', () => {
   let mod;
   let mcpHandler;
   let originalExecutes;
@@ -124,26 +126,10 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all 42 tools)
     Object.assign(process.env, originalEnv);
   });
 
-  // node-test registers test cases during synchronous `describe()`
-  // evaluation, so per-tool `it()` generation needs the tool list before
-  // any `await`. Reading the source file is the cheapest synchronous way
-  // to enumerate the registry without forking the source-of-truth (the
-  // `_execute` presence is determined at runtime inside each `it()` via
-  // the freshly-imported module).
-  const REGISTRY_DIR = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '..', 'api', 'mcp', 'registry',
-  );
-  const TOOL_NAMES = (() => {
-    const cacheSrc = readFileSync(path.join(REGISTRY_DIR, 'cache-tools.ts'), 'utf8');
-    const rpcSrc = readFileSync(path.join(REGISTRY_DIR, 'rpc-tools.ts'), 'utf8');
-    const src = cacheSrc + '\n' + rpcSrc;
-    assert.ok(src.includes('CACHE_TOOLS'), 'CACHE_TOOLS declaration not found in api/mcp/registry/cache-tools.ts');
-    assert.ok(src.includes('RPC_TOOLS'), 'RPC_TOOLS declaration not found in api/mcp/registry/rpc-tools.ts');
-    const matches = [...src.matchAll(/^\s{4}name:\s+'([a-z0-9_]+)'/gm)];
-    return matches.map((m) => m[1]);
-  })();
-  assert.ok(TOOL_NAMES.length >= 42, `expected >= 42 tools, got ${TOOL_NAMES.length}`);
+  // Register one test per tool from the executable source of truth. Source
+  // text parsing can silently lose coverage after formatting or a module move.
+  const TOOL_NAMES = TOOL_REGISTRY.map((tool) => tool.name);
+  assert.ok(TOOL_NAMES.length > 0, 'expected at least one tool in the registry');
 
   for (const name of TOOL_NAMES) {
     it(`${name} — tools/call response validates against declared outputSchema`, async () => {

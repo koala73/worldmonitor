@@ -58,7 +58,7 @@
 - **Local AI** — run everything with Ollama, no API keys required
 - **6 site variants** from a single codebase (world, tech, finance, commodity, happy, energy)
 - **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
-- **25 languages** with native-language feeds and RTL support
+- **26 languages** with native-language feeds and RTL support
 
 For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://www.worldmonitor.app/docs/documentation)**.
 
@@ -111,7 +111,7 @@ See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started
 | **Frontend** | Vanilla TypeScript, Vite, globe.gl + Three.js, deck.gl + MapLibre GL |
 | **Desktop** | Tauri 2 (Rust) with Node.js sidecar |
 | **AI/ML** | Ollama / Groq / OpenRouter, Transformers.js (browser-side) |
-| **API Contracts** | Protocol Buffers (284 protos, 35 services), sebuf HTTP annotations |
+| **API Contracts** | Protocol Buffers (290 protos, 35 services), sebuf HTTP annotations |
 | **Deployment** | Vercel Edge Functions (60+), Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 

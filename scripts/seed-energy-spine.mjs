@@ -11,6 +11,17 @@ import {
   releaseLock,
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import {
+  DEMAND_CHANGE_BASIS,
+  DEMAND_CHANGE_UNIT,
+  DEMAND_CHANGE_LOOKBACK_MONTHS,
+  MAX_DEMAND_CHANGE_PERCENT,
+  MAX_DEMAND_CHANGE_PRODUCTS,
+  MIN_DEMAND_CHANGE_PRODUCTS,
+  monthIndex,
+  monthPeriodEnd,
+  shiftMonth,
+} from './shared/jodi-demand-change.mjs';
 
 loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
@@ -193,6 +204,101 @@ function buildMixFields(mix) {
   };
 }
 
+function finiteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function isoInstant(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+function observationMonth(value) {
+  return typeof value === 'string' && monthIndex(value) !== null ? value : null;
+}
+
+/**
+ * Project an upstream JODI oil demand change onto the spine.
+ *
+ * Every field is validated, and the year-over-year basis is pinned here so a
+ * seasonal (or otherwise non-comparable) upstream basis can never reach the
+ * activity nowcast as if it were the reviewed one. Returns null — never a zero
+ * or a neutral value — whenever the change is not fully published.
+ */
+export function buildDemandChangeEntry(jodiOil) {
+  const change = jodiOil?.demandChange;
+  if (change == null || typeof change !== 'object' || Array.isArray(change)) return null;
+  if (change.basis !== DEMAND_CHANGE_BASIS) return null;
+
+  const dataMonth = observationMonth(jodiOil?.dataMonth);
+  const percentChange = finiteNumber(change.percentChange);
+  const periodEnd = isoInstant(change.periodEnd);
+  const priorPeriodEnd = isoInstant(change.priorPeriodEnd);
+  const observationPeriod = observationMonth(change.observationPeriod);
+  const priorObservationPeriod = observationMonth(change.priorObservationPeriod);
+  const products = Array.isArray(change.products)
+    ? [...new Set(change.products
+      .filter(product => typeof product === 'string' && product.trim().length > 0)
+      .map(product => product.trim()))].sort()
+    : [];
+  const currentDemandKbd = finiteNumber(change.currentDemandKbd);
+  const priorDemandKbd = finiteNumber(change.priorDemandKbd);
+  const expectedPriorObservationPeriod = dataMonth === null
+    ? null
+    : shiftMonth(dataMonth, -DEMAND_CHANGE_LOOKBACK_MONTHS);
+  const expectedPeriodEnd = monthPeriodEnd(observationPeriod);
+  const expectedPriorPeriodEnd = monthPeriodEnd(priorObservationPeriod);
+  const expectedPercentChange = currentDemandKbd !== null && priorDemandKbd !== null && priorDemandKbd > 0
+    ? ((currentDemandKbd - priorDemandKbd) / priorDemandKbd) * 100
+    : null;
+  const percentTolerance = expectedPercentChange === null
+    ? null
+    : 1e-9 * Math.max(1, Math.abs(expectedPercentChange), Math.abs(percentChange ?? 0));
+  if (
+    dataMonth === null
+    || percentChange === null
+    || change.unit !== DEMAND_CHANGE_UNIT
+    || currentDemandKbd === null
+    || currentDemandKbd < 0
+    || priorDemandKbd === null
+    || priorDemandKbd <= 0
+    || periodEnd === null
+    || priorPeriodEnd === null
+    || observationPeriod === null
+    || priorObservationPeriod === null
+    || observationPeriod !== dataMonth
+    || priorObservationPeriod !== expectedPriorObservationPeriod
+    || expectedPeriodEnd === null
+    || expectedPriorPeriodEnd === null
+    || Date.parse(periodEnd) !== Date.parse(expectedPeriodEnd)
+    || Date.parse(priorPeriodEnd) !== Date.parse(expectedPriorPeriodEnd)
+    || products.length < MIN_DEMAND_CHANGE_PRODUCTS
+    || products.length > MAX_DEMAND_CHANGE_PRODUCTS
+    || expectedPercentChange === null
+    || Math.abs(expectedPercentChange - percentChange) > percentTolerance
+    || Math.abs(percentChange) > MAX_DEMAND_CHANGE_PERCENT
+    || Date.parse(priorPeriodEnd) >= Date.parse(periodEnd)
+    // Corroborate the basis label with the arithmetic: a payload claiming
+    // year-over-year while spanning some other distance is not the reviewed
+    // comparison, whatever it calls itself.
+    || monthIndex(observationPeriod) - monthIndex(priorObservationPeriod)
+      !== DEMAND_CHANGE_LOOKBACK_MONTHS
+  ) return null;
+
+  return {
+    basis: DEMAND_CHANGE_BASIS,
+    observationPeriod,
+    priorObservationPeriod,
+    periodEnd,
+    priorPeriodEnd,
+    unit: DEMAND_CHANGE_UNIT,
+    products,
+    productCount: products.length,
+    currentDemandKbd,
+    priorDemandKbd,
+    percentChange,
+  };
+}
+
 function buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, ember) {
   return {
     mixYear: mix ? (mix.year ?? null) : null,
@@ -222,6 +328,12 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember 
   const hasJodiGas = checkJodiGasAvailability(jodiGas);
   const hasIeaStocks = checkIeaAvailability(ieaStocks);
   const hasEmber = ember != null && typeof ember.fossilShare === 'number';
+  const demandChange = buildDemandChangeEntry(jodiOil);
+  // The period the demand series covers, published whether or not a change was
+  // observed for it. A consumer needs this to tell "the change for this month
+  // is not due yet" from "this month is due and nothing was published" — the
+  // family's latest coverage timestamp answers neither question.
+  const demandPeriodEnd = monthPeriodEnd(observationMonth(jodiOil?.dataMonth));
 
   const comtradeCode = ISO2_TO_COMTRADE[iso2] ?? null;
 
@@ -229,7 +341,9 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember 
     countryCode: iso2,
     updatedAt: new Date().toISOString(),
     sources: buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, ember),
-    coverage: { hasMix, hasJodiOil, hasJodiGas, hasIeaStocks, hasEmber, hasSprPolicy: sprPolicy != null && sprPolicy.regime !== 'unknown' },
+    coverage: { hasMix, hasJodiOil, hasJodiGas, hasIeaStocks, hasEmber, hasDemandChange: demandChange !== null, hasSprPolicy: sprPolicy != null && sprPolicy.regime !== 'unknown' },
+    demandPeriodEnd,
+    demandChange,
     oil: buildOilFields(jodiOil, ieaStocks, hasIeaStocks),
     gas: buildGasFields(jodiGas),
     mix: buildMixFields(hasMix ? mix : null),

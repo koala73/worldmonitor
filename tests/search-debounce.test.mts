@@ -37,7 +37,7 @@ test('SearchModal keystroke input is debounced, not a direct handleSearch (R4)',
 });
 
 test('SearchModal builds the debounced wrapper from the shared debounce util (R4)', () => {
-  assert.match(searchModalSrc, /import \{ shuffle, debounce \} from '@\/utils'/);
+  assert.match(searchModalSrc, /import \{ debounce \} from '@\/utils'/);
   assert.match(
     searchModalSrc,
     /private debouncedSearch = debounce\(\(\): void => this\.handleSearch\(\), SEARCH_DEBOUNCE_MS\)/,
@@ -57,7 +57,7 @@ test('SearchModal.close() cancels the pending debounced search (R4)', () => {
 // Stale-results guard: with the keystroke search debounced, Arrow/Enter must
 // flush the pending search first so selection acts on current results (review #4556).
 test('handleKeydown flushes the pending search before Arrow/Enter (R4)', () => {
-  const m = searchModalSrc.match(/private handleKeydown\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  const m = searchModalSrc.match(/private handleKeydown\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
   assert.ok(m, 'handleKeydown exists');
   const head = m![0].slice(0, m![0].indexOf('switch'));
   assert.match(head, /ArrowDown.*ArrowUp.*Enter/s, 'guards the nav/selection keys');
@@ -65,7 +65,7 @@ test('handleKeydown flushes the pending search before Arrow/Enter (R4)', () => {
 });
 
 test('flushPendingSearch runs handleSearch only when input changed since last search (R4)', () => {
-  const m = searchModalSrc.match(/private flushPendingSearch\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  const m = searchModalSrc.match(/private flushPendingSearch\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
   assert.ok(m, 'flushPendingSearch exists');
   const body = m![0];
   assert.match(body, /!==\s*this\.lastSearchedQuery/, 'compares current input to last searched query');

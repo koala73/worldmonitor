@@ -13,6 +13,7 @@ import {
   DELAY_SEVERITY_THRESHOLDS,
 } from '../../../../src/config/airports';
 import { CHROME_UA } from '../../../_shared/constants';
+import { incrementProviderCounter } from './_counters';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
@@ -279,18 +280,25 @@ async function fetchSingleAirport(
       signal: AbortSignal.timeout(5_000),
     });
     if (!resp.ok) {
+      if (resp.status === 401 || resp.status === 403) incrementProviderCounter('aviationStackAuthRejection');
+      else incrementProviderCounter('aviationStackTerminalFailure');
       console.warn(`[Aviation] ${airport.iata}: HTTP ${resp.status}`);
       return { ok: false, alert: null };
     }
     const json = await resp.json() as { data?: AviationStackFlight[]; error?: { message?: string } };
     if (json.error) {
+      incrementProviderCounter('aviationStackTerminalFailure');
       console.warn(`[Aviation] ${airport.iata}: API error: ${json.error.message}`);
       return { ok: false, alert: null };
     }
     const flights = json?.data ?? [];
+    incrementProviderCounter('aviationStackSuccess');
     const alert = aggregateFlights(airport, flights);
     return { ok: true, alert };
   } catch (err) {
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timed out'));
+    if (isTimeout) incrementProviderCounter('aviationStackTimeout');
+    else incrementProviderCounter('aviationStackTerminalFailure');
     console.warn(`[Aviation] ${airport.iata}: fetch error: ${err instanceof Error ? err.message : 'unknown'}`);
     return { ok: false, alert: null };
   }
@@ -386,6 +394,7 @@ export async function fetchNotamClosures(
   const result: NotamClosureResult = { closedIcaoCodes: new Set(), restrictedIcaoCodes: new Set(), notamsByIcao: new Map() };
   if (!apiKey) {
     console.warn('[Aviation] NOTAM: no ICAO_API_KEY — skipping');
+    incrementProviderCounter('notamAuthRejection');
     return result;
   }
 
@@ -405,7 +414,9 @@ export async function fetchNotamClosures(
         headers: getRelayHeaders(),
         signal: AbortSignal.timeout(30_000),
       });
+      if (resp.status === 401 || resp.status === 403) incrementProviderCounter('notamAuthRejection');
       if (!resp.ok) {
+        incrementProviderCounter('notamTerminalFailure');
         console.warn(`[Aviation] NOTAM relay: HTTP ${resp.status}`);
         return result;
       }
@@ -418,19 +429,26 @@ export async function fetchNotamClosures(
         headers: { 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(20_000),
       });
+      if (resp.status === 401 || resp.status === 403) incrementProviderCounter('notamAuthRejection');
       if (!resp.ok) {
+        incrementProviderCounter('notamTerminalFailure');
         console.warn(`[Aviation] NOTAM direct: HTTP ${resp.status}`);
         return result;
       }
       const contentType = resp.headers.get('content-type') || '';
       if (contentType.includes('text/html')) {
+        incrementProviderCounter('notamTerminalFailure');
         console.warn('[Aviation] NOTAM direct: got HTML instead of JSON');
         return result;
       }
       const data = await resp.json();
       if (Array.isArray(data)) notams = data;
     }
+    incrementProviderCounter('notamSuccess');
   } catch (err) {
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timed out'));
+    if (isTimeout) incrementProviderCounter('notamTimeout');
+    else incrementProviderCounter('notamTerminalFailure');
     console.warn(`[Aviation] NOTAM fetch: ${err instanceof Error ? err.message : 'unknown'}`);
     return result;
   }

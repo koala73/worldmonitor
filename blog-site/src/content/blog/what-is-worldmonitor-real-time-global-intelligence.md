@@ -79,7 +79,7 @@ The dashboard serves a surprisingly wide audience:
 - **Journalists** who need instant context for breaking stories
 - **Supply chain managers** monitoring disruption risk at ports and commodity hubs
 - **Policy researchers** studying government spending and trade policy
-- **Developers** who want to build on top of open, typed APIs (284 proto files, 35 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
+- **Developers** who want to build on top of open, typed APIs (290 proto files, 35 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
 
 ## Available Everywhere
 
@@ -90,7 +90,7 @@ World Monitor works as:
 - A **native desktop app** via Tauri for macOS, Windows, and Linux
 - Fully **mobile-optimized** with touch gestures, pinch-to-zoom, and bottom-sheet panels
 
-It supports **25 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 25 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+It supports **26 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 26 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 
 ## Open Source, No Strings
 

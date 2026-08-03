@@ -12,6 +12,7 @@ import {
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
 import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -433,12 +434,16 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 42 tools with name, description, inputSchema', async () => {
+  it('tools/list returns every registered tool with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 42, `Expected 42 tools, got ${body.result.tools.length}`);
+    assert.equal(
+      body.result.tools.length,
+      TOOL_REGISTRY.length,
+      `Expected ${TOOL_REGISTRY.length} tools, got ${body.result.tools.length}`,
+    );
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -1052,7 +1057,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
-    const macro = await buildOfficialChinaMacroFixture();
+    // Live clock: this test asserts on the MCP projection, which re-derives
+    // transport freshness against Date.now(). A pinned fixture time expires
+    // 72h later and reddens main for every branch (#5762).
+    const macro = await buildOfficialChinaMacroFixture(Date.now());
     const releaseCalendar = {
       events: [{ countryCode: 'CN', event: 'NBS release' }],
     };
@@ -1125,7 +1133,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('get_economic_data: China MCP projection keeps retained transport failures explicit', async () => {
-    const macro = await buildOfficialChinaMacroFixture();
+    // Live clock: this test asserts on the MCP projection, which re-derives
+    // transport freshness against Date.now(). A pinned fixture time expires
+    // 72h later and reddens main for every branch (#5762).
+    const macro = await buildOfficialChinaMacroFixture(Date.now());
     const nbsDecision = macro.sourceDecisions.find(
       (decision) => decision.publisherId === 'publisher:nbs-cn',
     );
@@ -1330,6 +1341,114 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     );
     const out = await callTool('get_conflict_events', { limit: 0 });
     assert.equal(out.data['ucdp-events'].events.length, 50, 'limit: 0 must opt out of the default cap and return the full list');
+  });
+
+  it('get_conflict_events truncates oversized no-cap responses instead of returning a budget envelope', async () => {
+    const events = Array.from({ length: 1000 }, (_, i) => ({
+      id: `event-${i}`,
+      country: 'Syrian Arab Republic',
+      sideA: 'Government forces and aligned armed groups',
+      sideB: 'Opposition forces and aligned armed groups',
+      deathsBest: i,
+      sourceOriginal: 'A deliberately verbose source description that makes the fixture exceed the MCP output budget',
+    }));
+    mockCacheKeys(
+      { 'conflict:ucdp-events:v1': { events } },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: events.length } },
+    );
+
+    const out = await callTool('get_conflict_events', { limit: 0 });
+
+    assert.equal(out._budget_exceeded, undefined, 'oversized conflict responses must preserve usable event data');
+    assert.equal(out.data.partial, true, 'truncated responses must be explicitly marked partial');
+    assert.equal(out.data.truncation.reason, 'output_budget');
+    assert.equal(out.data.truncation.original_event_count, events.length);
+    assert.ok(out.data.truncation.returned_event_count > 0, 'truncation must retain a useful event subset');
+    assert.ok(out.data.truncation.returned_event_count < events.length, 'truncation must actually reduce the payload');
+    assert.equal(
+      out.data['ucdp-events'].events.length,
+      out.data.truncation.returned_event_count,
+      'truncation metadata must describe the returned lists',
+    );
+  });
+
+  it('get_conflict_events summarizes the full oversized no-cap response before byte fitting', async () => {
+    const events = Array.from({ length: 1000 }, (_, i) => ({
+      id: `event-${i}`,
+      country: 'Syrian Arab Republic',
+      sourceOriginal: 'A deliberately verbose source description that makes the fixture exceed the MCP output budget',
+    }));
+    mockCacheKeys(
+      { 'conflict:ucdp-events:v1': { events } },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: events.length } },
+    );
+
+    const out = await callTool('get_conflict_events', { limit: 0, summary: true });
+
+    assert.equal(out.data['ucdp-events'].events.count, events.length, 'summary count must describe the full matching set');
+    assert.equal(out.data.partial, undefined, 'summary mode fits naturally and must not report source truncation');
+  });
+
+  it('get_conflict_events preserves summary counts when one sample event exceeds the output budget', async () => {
+    mockCacheKeys(
+      {
+        'conflict:ucdp-events:v1': {
+          events: [{ id: 'oversized', country: 'X', sourceOriginal: 'x'.repeat(140 * 1024) }],
+        },
+      },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+
+    const out = await callTool('get_conflict_events', { limit: 0, summary: true });
+
+    assert.equal(out._budget_exceeded, undefined, 'oversized summary samples must not erase the full count');
+    assert.equal(out.data['ucdp-events'].events.count, 1, 'summary count must still describe the full matching set');
+    assert.deepEqual(out.data['ucdp-events'].events.sample, [], 'an individually oversized sample cannot be returned');
+  });
+
+  it('get_conflict_events applies JMESPath to the full oversized no-cap response before byte fitting', async () => {
+    const events = Array.from({ length: 1000 }, (_, i) => ({
+      id: `event-${i}`,
+      country: 'Syrian Arab Republic',
+      sourceOriginal: 'A deliberately verbose source description that makes the fixture exceed the MCP output budget',
+    }));
+    mockCacheKeys(
+      { 'conflict:ucdp-events:v1': { events } },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: events.length } },
+    );
+
+    const out = await callTool('get_conflict_events', {
+      limit: 0,
+      jmespath: 'data."ucdp-events".events[-1].id',
+    });
+
+    assert.equal(out, 'event-999', 'a selective projection must still reach events beyond the byte-fitted prefix');
+  });
+
+  it('get_conflict_events keeps usable feeds when another feed has an individually oversized event', async () => {
+    const unrestEvents = Array.from({ length: 10 }, (_, i) => ({
+      id: `unrest-${i}`,
+      country: 'France',
+      fatalities: 0,
+    }));
+    mockCacheKeys(
+      {
+        'conflict:ucdp-events:v1': {
+          events: [{ id: 'oversized', country: 'X', sourceOriginal: 'x'.repeat(140 * 1024) }],
+        },
+        'unrest:events:v1': { events: unrestEvents },
+      },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: 11 } },
+    );
+
+    const out = await callTool('get_conflict_events', { limit: 0 });
+
+    assert.equal(out._budget_exceeded, undefined, 'one oversized feed must not void the complete response');
+    assert.equal(out.data.partial, true);
+    assert.equal(out.data['ucdp-events'].events.length, 0, 'an event larger than the full budget cannot be returned');
+    assert.equal(out.data.events.events.length, unrestEvents.length, 'other feeds must retain their usable events');
+    assert.equal(out.data.truncation.original_event_count, unrestEvents.length + 1);
+    assert.equal(out.data.truncation.returned_event_count, unrestEvents.length);
   });
 
   // --- limit on country/EU/displacement tools ---
@@ -2142,8 +2261,18 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // chokepoint-flows budget=720min (12h) → 5h old (fresh)
     const chokepointFlowsFetchedAt = Date.now() - 5 * 60 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080: get_chokepoint_status also reads its content-freshness
+      // activation marker via an EXISTS pipeline. These metas predate the
+      // contentFreshness block, so answer 0 — marker absent, i.e. the producer
+      // has never published the field. That is the deployment-order grace
+      // state, which keeps these transport/cardinality assertions about
+      // transport and cardinality alone.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2224,8 +2353,18 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // portwatch-ports budget=2160min (36h) → 100h old (clearly STALE)
     const portwatchPortsFetchedAt = Date.now() - 100 * 60 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080: get_chokepoint_status also reads its content-freshness
+      // activation marker via an EXISTS pipeline. These metas predate the
+      // contentFreshness block, so answer 0 — marker absent, i.e. the producer
+      // has never published the field. That is the deployment-order grace
+      // state, which keeps these transport/cardinality assertions about
+      // transport and cardinality alone.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2266,8 +2405,18 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const transitSummariesPayload = { chokepoints: { suez: { vesselsPast24h: 87 } } };
     const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080: get_chokepoint_status also reads its content-freshness
+      // activation marker via an EXISTS pipeline. These metas predate the
+      // contentFreshness block, so answer 0 — marker absent, i.e. the producer
+      // has never published the field. That is the deployment-order grace
+      // state, which keeps these transport/cardinality assertions about
+      // transport and cardinality alone.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }

@@ -7,6 +7,7 @@
  */
 
 const channel = new WeakMap<Request, Record<string, string>>();
+const retryableResponses = new WeakSet<Request>();
 
 export function setResponseHeader(req: Request, key: string, value: string): void {
   let headers = channel.get(req);
@@ -30,6 +31,24 @@ export function drainResponseHeaders(req: Request): Record<string, string> | und
   const headers = channel.get(req);
   if (headers) channel.delete(req);
   return headers;
+}
+
+/**
+ * Marks a successful generated RPC envelope as transient.
+ *
+ * Some generated handlers must return their typed error envelope with HTTP 200.
+ * The gateway uses this side-channel to preserve that wire contract while
+ * releasing an Idempotency-Key processing lock instead of replaying the
+ * transient result as a completed response.
+ */
+export function markRetryableResponse(req: Request): void {
+  retryableResponses.add(req);
+}
+
+export function drainRetryableResponse(req: Request): boolean {
+  const retryable = retryableResponses.has(req);
+  if (retryable) retryableResponses.delete(req);
+  return retryable;
 }
 
 /**

@@ -63,13 +63,13 @@ function isRolePrefixedInjectionLine(line) {
   return ROLE_OVERRIDE_COMMAND_RE.test(line) && ROLE_OVERRIDE_TARGET_RE.test(line);
 }
 
-//  U+0000-U+001F  ASCII control chars (except newline U+000A, tab U+0009)
-//  U+007F         DEL
+//  U+0000-U+001F  ASCII controls (except tab U+0009, newline U+000A, carriage return U+000D)
+//  U+007F-U+009F  DEL and C1 control characters
 //  U+00AD         soft hyphen
 //  U+200B-U+200D  zero-width space / non-joiner / joiner
 //  U+2028-U+2029  Unicode line/paragraph separator
 //  U+FEFF         BOM / zero-width no-break space
-const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\xAD\u200B-\u200D\u2028\u2029\uFEFF]/g;
+const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\xAD\u200B-\u200D\u2028\u2029\uFEFF]/g;
 
 /**
  * Sanitize a single string for safe inclusion in an LLM prompt.
@@ -96,6 +96,31 @@ export function sanitizeForPrompt(input) {
   s = s.replace(/\s{2,}/g, ' ').trim();
 
   return s;
+}
+
+/**
+ * Sanitize a string for safe inclusion in a *single line* of an LLM prompt.
+ *
+ * sanitizeForPrompt deliberately preserves a lone newline — it splits on '\n'
+ * to drop role-prefixed injection lines, rejoins, then collapses only runs of
+ * 2+ whitespace. That is right for prose blocks, and wrong everywhere the
+ * newline is the *delimiter* of the surrounding block: a `- ${title}` list
+ * joined with '\n', or a `Label: ${value}` line inside a section. There a
+ * single '\n' in feed text forges an extra bullet or section the model reads as
+ * a separate, real datum (#5850 for liveHeadlines, #5857 for its siblings).
+ *
+ * Sanitizing the content is not enough when the delimiter is part of the
+ * content's alphabet, so this variant also collapses every whitespace run —
+ * newlines, carriage returns and tabs included — to a single space.
+ *
+ * Use this at line-composing call sites; keep plain sanitizeForPrompt for prose
+ * bodies whose internal newlines are legitimate.
+ *
+ * @param {unknown} input
+ * @returns {string}
+ */
+export function sanitizeForPromptLine(input) {
+  return sanitizeForPrompt(input).replace(/\s+/g, ' ').trim();
 }
 
 /**

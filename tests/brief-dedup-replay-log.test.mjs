@@ -4,7 +4,7 @@
  * Covers:
  *   1. Flag OFF → no writes, returns skipped=disabled (default behaviour)
  *   2. Flag ON + empty stories → no writes
- *   3. Flag ON + stories → RPUSH with one record per story + EXPIRE 30d
+ *   3. Flag ON + stories → RPUSH with one record per story + EXPIRE 14d
  *   4. Record fields match §5 Phase 1 spec (hash, originalIndex, isRep,
  *      clusterId, title/normalizedTitle, link, severity/score/mentions,
  *      phase/sources, embeddingCacheKey, hasEmbedding, tickConfig)
@@ -30,6 +30,7 @@ import {
   writeReplayLog,
 } from '../scripts/lib/brief-dedup-replay-log.mjs';
 import { cacheKeyFor, normalizeForEmbedding } from '../scripts/lib/brief-embedding.mjs';
+import { DEFAULT_REPLAY_DAYS } from '../scripts/replay-digest-cooldown.mjs';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -386,7 +387,7 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(pipe.calls.length, 0);
   });
 
-  it('flag ON + stories → RPUSH + LTRIM cap + EXPIRE 30d on correct key', async () => {
+  it('flag ON + stories → RPUSH + LTRIM cap + EXPIRE 14d on correct key', async () => {
     const pipe = mockPipeline();
     const warn = mockWarn();
     const res = await writeReplayLog({
@@ -399,9 +400,10 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(pipe.calls.length, 1);
     const [commands] = pipe.calls;
     // RPUSH appends → LTRIM caps the per-day list at the most recent N
-    // entries → EXPIRE refreshes the 30d TTL. The cap was added on
-    // 2026-05-10 after busy days (~420K entries) hit Upstash's 500MB
-    // max-record-size and back-pressured adjacent writes.
+    // entries → EXPIRE refreshes the 14d TTL. The cap was added on
+    // 2026-05-10 against Upstash's 500MB max-record-size; it was
+    // re-anchored on 2026-08-02 to the 50MiB per-COMMAND limit, which
+    // binds first and is what an `LRANGE key 0 -1` actually hits.
     assert.equal(commands.length, 3, 'three commands: RPUSH + LTRIM + EXPIRE');
     const [rpushCmd, ltrimCmd, expireCmd] = commands;
     assert.equal(rpushCmd[0], 'RPUSH');
@@ -416,7 +418,9 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(ltrimCmd[3], '-1', 'end index is -1 (last element)');
     assert.equal(expireCmd[0], 'EXPIRE');
     assert.equal(expireCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
-    assert.equal(expireCmd[2], String(30 * 24 * 60 * 60));
+    // The writer and harness share REPLAY_WINDOW_DAYS; this assertion
+    // catches a future retention drift at the command boundary.
+    assert.equal(expireCmd[2], String(DEFAULT_REPLAY_DAYS * 24 * 60 * 60));
     // Each pushed value is a JSON-stringified record.
     const rec0 = JSON.parse(rpushCmd[2]);
     const rec1 = JSON.parse(rpushCmd[3]);
@@ -441,10 +445,23 @@ describe('writeReplayLog — behaviour', () => {
     });
     const ltrimCmd = pipe.calls[0][1];
     assert.equal(ltrimCmd[2], `-${REPLAY_LOG_MAX_ENTRIES_PER_DAY}`);
-    // Sanity — keep the constant inside a band that's reasonable for
-    // the 500MB Upstash limit at observed entry sizes (~1.5KB).
+    // The binding constraint is Upstash's 50MiB per-COMMAND limit, which
+    // counts a single command's RESULT — so `LRANGE key 0 -1` on a capped
+    // day list must stay under it. Verified live on 2026-08-02: the
+    // uncapped 100K-entry list returned
+    //   ERR max request size exceeded. Limit: 52428800, Actual: 144028523
+    // Mean entry size measured over a full production day (2026-08-01,
+    // full:en:all, 100,000 entries, 154.5MB total) = 1,545B; p95 = 2,078B.
+    // Hold the whole-list read to <=75% of the ceiling. At the current cap
+    // that lands at ~31MB (59%), so the mean entry could grow ~70% before
+    // the limit binds again.
+    const MEASURED_MEAN_ENTRY_BYTES = 1_545;
+    const UPSTASH_MAX_COMMAND_BYTES = 52_428_800;
     assert.ok(REPLAY_LOG_MAX_ENTRIES_PER_DAY >= 10_000, 'cap must allow useful sample');
-    assert.ok(REPLAY_LOG_MAX_ENTRIES_PER_DAY <= 200_000, 'cap must stay under the 500MB record limit at observed entry sizes');
+    assert.ok(
+      REPLAY_LOG_MAX_ENTRIES_PER_DAY * MEASURED_MEAN_ENTRY_BYTES <= 0.75 * UPSTASH_MAX_COMMAND_BYTES,
+      'a full-list LRANGE of a capped day must stay well under the 50MiB per-command limit',
+    );
   });
 
   it('pipeline returns null → warn + skipped=null + wrote=0', async () => {

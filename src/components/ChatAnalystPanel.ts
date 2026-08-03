@@ -7,7 +7,13 @@ import { yieldToMain } from '@/utils/after-paint';
 import { premiumFetch } from '@/services/premium-fetch';
 import { getAuthState } from '@/services/auth-state';
 import { readClientEntitlementBelief } from '@/services/panel-gating';
-import { classifyDenialResponse } from '@/services/premium-denial';
+import {
+  analystDenialMessage,
+  isBillingVerificationDenial,
+  PRO_VERIFICATION_RETRY_MESSAGE,
+} from '@/services/analyst-denial';
+import { classifyDenialResponse, type ClientEntitlementBelief } from '@/services/premium-denial';
+import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackAnalystControlAction } from '@/services/analytics';
 import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import {
@@ -68,20 +74,25 @@ type DashboardControlStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
  * Consumes the response body, so it is only called on the !ok path where the
  * stream is never read.
  */
-async function describeDenial(res: Response): Promise<string> {
-  const verdict = await classifyDenialResponse(res, readClientEntitlementBelief(getAuthState()));
-  switch (verdict) {
-    case 'sign_in_required':
-      return 'Sign in to use the analyst.';
-    case 'upgrade_required':
-      return 'Pro subscription required.';
-    case 'entitlement_desync':
-      return 'Verifying your Pro access — try again in a moment.';
-    case 'access_denied':
-      return 'Analyst temporarily unavailable — try again in a moment.';
-    default:
-      return `Error ${res.status}`;
+async function describeDenial(
+  res: Response,
+  requestBelief: ClientEntitlementBelief,
+  requestUserId: string | null,
+): Promise<string> {
+  const requestIdentityChanged = () => (getAuthState().user?.id ?? null) !== requestUserId;
+  if (requestIdentityChanged()) throw new DOMException('account changed during analyst request', 'AbortError');
+  // #5622: the route now answers an entitlement it could not VERIFY with a
+  // retryable 503 + `X-Billing-Verification` instead of flattening it into the
+  // 403 upsell. Both this check and the verdict-to-copy mapping live in
+  // src/services/analyst-denial.ts so they are reachable from a test — this
+  // module imports DOMPurify at scope and cannot be loaded by `tsx --test`.
+  if (isBillingVerificationDenial(res.status, res.headers.get('X-Billing-Verification'))) {
+    return PRO_VERIFICATION_RETRY_MESSAGE;
   }
+  const verdict = await classifyDenialResponse(res, requestBelief);
+  if (requestIdentityChanged()) throw new DOMException('account changed while reading analyst denial', 'AbortError');
+  if (verdict === 'entitlement_desync') reportEntitlementDesync('chat-analyst');
+  return analystDenialMessage(res.status, verdict);
 }
 
 interface DashboardControlResult {
@@ -520,6 +531,9 @@ export class ChatAnalystPanel extends Panel {
 
     const controller = new AbortController();
     this.streamAbort = controller;
+    const requestAuthState = getAuthState();
+    const requestUserId = requestAuthState.user?.id ?? null;
+    const requestBelief = readClientEntitlementBelief(requestAuthState);
 
     try {
       const res = await premiumFetch(API_URL, {
@@ -536,7 +550,11 @@ export class ChatAnalystPanel extends Panel {
       });
 
       if (!res.ok) {
-        this.finalizeStreamingBubble(streamingBody, `⚠ ${await describeDenial(res)}`, false);
+        this.finalizeStreamingBubble(
+          streamingBody,
+          `⚠ ${await describeDenial(res, requestBelief, requestUserId)}`,
+          false,
+        );
         return;
       }
 

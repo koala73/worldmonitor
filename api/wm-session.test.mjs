@@ -110,15 +110,18 @@ function makeWaitUntilCtx() {
   };
 }
 
-test('POST from trusted origin sets a valid HttpOnly wms_ session cookie without exposing token JSON', async () => {
+test('POST sets a valid HttpOnly cookie and returns the anonymous-only fallback token', async () => {
   const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 200);
   const body = await resp.json();
-  assert.equal(body.token, undefined);
+  assert.match(body.token, /^wms_/);
+  assert.equal(await validateSessionToken(body.token), true);
   assert.equal(typeof body.exp, 'number');
+  assert.equal(resp.headers.get('cache-control'), 'no-store');
   const cookies = setCookies(resp);
   const token = cookieValue(cookies, 'wm-session');
   assert.match(token, /^wms_/);
+  assert.equal(body.token, token, 'cookie and fallback header must carry the same anonymous token');
   assert.equal(await validateSessionToken(token), true);
   assert.match(cookies.join('\n'), /wm-session=.*HttpOnly/);
   assert.match(cookies.join('\n'), /wm-session=.*Domain=\.worldmonitor\.app/);
@@ -289,8 +292,10 @@ test('No origin (curl) is allowed (rate limit + token TTL are the throttles)', a
   const resp = await handler(makeReq('POST', {}));
   assert.equal(resp.status, 200);
   const body = await resp.json();
-  assert.equal(body.token, undefined);
-  assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
+  const cookieToken = cookieValue(setCookies(resp), 'wm-session');
+  assert.match(body.token, /^wms_/);
+  assert.equal(body.token, cookieToken);
+  assert.equal(await validateSessionToken(body.token), true);
 });
 
 test('POST returns degraded 503 without issuing a token when Redis limiter config is missing', async () => {
@@ -605,4 +610,58 @@ test('Returns 503 when WM_SESSION_SECRET is missing', async () => {
   } finally {
     process.env.WM_SESSION_SECRET = stash;
   }
+});
+
+// --- hadSession: does the caller's browser give the cookie back? -------------
+// The client cannot answer this itself (HttpOnly), so it could not tell "the
+// server rejected my cookie" from "my browser never stored it" — and re-minted
+// forever on the second, reporting it as a server-side retry_401. See
+// WORLDMONITOR-WG/XP.
+
+function makeReqWithCookie(cookie) {
+  const headers = new Headers({ origin: 'https://worldmonitor.app' });
+  if (cookie) headers.set('cookie', cookie);
+  return new Request('https://api.worldmonitor.app/api/wm-session', { method: 'POST', headers });
+}
+
+test('mint reports hadSession:false when the request carries no session cookie', async () => {
+  const resp = await handler(makeReqWithCookie(null));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, false, 'a first-ever visitor presents no cookie');
+});
+
+test('mint reports hadSession:true when the browser returns the cookie it was issued', async () => {
+  const first = await handler(makeReqWithCookie(null));
+  const token = cookieValue(setCookies(first), 'wm-session');
+  assert.match(token, /^wms_/);
+
+  // Exactly what a browser that stored the cookie sends on the next mint.
+  const resp = await handler(makeReqWithCookie(`wm-session=${encodeURIComponent(token)}`));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, true, 'a cookie that made the round trip must be reported');
+});
+
+test('mint reports hadSession:false for a tampered or foreign session cookie', async () => {
+  // A cookie that exists but does not verify is not evidence of a working
+  // round trip — it must not suppress the client's re-mint.
+  const first = await handler(makeReqWithCookie(null));
+  const token = cookieValue(setCookies(first), 'wm-session');
+  const tampered = `${token.slice(0, -2)}${token.slice(-2) === 'AA' ? 'BB' : 'AA'}`;
+
+  const resp = await handler(makeReqWithCookie(`wm-session=${encodeURIComponent(tampered)}`));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, false);
+});
+
+test('mint still succeeds when the cookie header is malformed', async () => {
+  // hadSession is diagnostic, never a gate: a junk Cookie header must not
+  // turn a routine mint into an error.
+  const resp = await handler(makeReqWithCookie('wm-session=%%%not-a-token%%%; other=1'));
+  assert.equal(resp.status, 200);
+  const body = await resp.json();
+  assert.equal(body.hadSession, false);
+  assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
 });

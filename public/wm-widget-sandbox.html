@@ -51,11 +51,37 @@
     }
   }
 
+  var nativeAddEventListener = EventTarget.prototype.addEventListener;
+  var nativeStopImmediatePropagation = Event.prototype.stopImmediatePropagation;
+
+  function installBeforeUnloadStopper() {
+    nativeAddEventListener.call(window, 'beforeunload', function (event) {
+      nativeStopImmediatePropagation.call(event);
+    }, true);
+  }
+
+  function installBeforeUnloadGuard() {
+    Object.defineProperty(window, 'onbeforeunload', {
+      configurable: false,
+      get: function () {
+        return null;
+      },
+      set: function () {},
+    });
+
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (this === window && type === 'beforeunload') return;
+      return nativeAddEventListener.call(this, type, listener, options);
+    };
+  }
+
   try {
     parentOrigin = document.referrer ? new URL(document.referrer).origin : '';
   } catch (_err) {
     parentOrigin = '';
   }
+
+  installBeforeUnloadGuard();
 
   window.addEventListener('message', function (e) {
     if (handled) return;
@@ -66,6 +92,10 @@
     if (typeof e.data.html !== 'string') return;
     handled = true;
     document.open();
+    // document.open() clears Window listeners. Reinstall through the saved
+    // native method before widget parsing so reflected body/frameset handlers
+    // and registrations through another realm are later than this stopper.
+    installBeforeUnloadStopper();
     document.write(e.data.html);
     document.close();
   });

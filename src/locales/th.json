@@ -129,20 +129,20 @@
       "currencies": "สกุลเงิน",
       "area": "พื้นที่"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "กำลังโหลดคะแนนความยืดหยุ่น…",
+    "resilienceScoreUnavailable": "คะแนนความยืดหยุ่นไม่พร้อมใช้งาน",
     "china": {
       "title": "ภาพรวมประเทศ: จีน",
       "description": "สถานะปัจจุบันด้านเศรษฐกิจมหภาค ตลาด การค้า พลังงาน และความพร้อมใช้งานเชิงปฏิบัติการจากสัญญาข้อมูลสาธารณะที่มีอยู่",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "นโยบายและการบังคับใช้",
       "energy": "พลังงาน",
       "availability": "ภัยพิบัติและการบิน",
       "observed": "ณ วันที่:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "เผยแพร่:",
+      "effective": "มีผลบังคับใช้:",
+      "sectors": "ภาคส่วน:",
+      "entities": "หน่วยงาน:",
+      "translation": "การแปล:",
       "source": "แหล่งที่มา:",
       "imfGrowth": "คาดการณ์การเติบโตของ IMF",
       "creditGdp": "สินเชื่อต่อ GDP",
@@ -171,12 +171,12 @@
         "stale": "ล้าสมัย",
         "unavailable": "ไม่พร้อมใช้งาน"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "สัญญาณมหภาค",
+      "crossStraitActivity": "กิจกรรมข้ามช่องแคบ",
+      "corporateDisclosures": "การเปิดเผยข้อมูลองค์กร",
+      "corridorConditions": "สภาวะทางเดิน",
+      "activityNowcast": "การคาดการณ์กิจกรรมปัจจุบัน",
+      "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     }
   },
   "header": {
@@ -257,7 +257,7 @@
     "panelCatCommodityEcon": "เศรษฐกิจและการค้า",
     "panelCatHappyNews": "ข่าวดี",
     "panelCatHappyPlanet": "โลกและการให้กำลังใจ",
-    "embed": "Embed"
+    "embed": "ฝังตัว"
   },
   "panels": {
     "liveNews": "ข่าวสด",
@@ -887,7 +887,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "เทียบกับ FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "กระทรวงการคลังสหรัฐฯ",
       "colDate": "วันที่",
       "colMonthly": "รายเดือน",
       "colFytd": "FY YTD",
@@ -1272,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "เสื่อมสภาพ",
+        "stale": "ล้าสมัย"
       }
     },
     "insights": {
@@ -1352,7 +1352,8 @@
       "newsSignals": "{{news}} ข่าว • {{signals}} สัญญาณ",
       "provenanceTitle": "ความมาของการครอบคลุม: จำนวนเรื่องข่าวที่นำเข้าและแหล่งข่าวที่แตกต่างกันที่ใช้สำหรับสรุปนี้",
       "compiledFrom": "รวบรวมจาก {{stories}} เรื่องราวจาก {{sources}} แหล่งที่มา",
-      "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า"
+      "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",
@@ -1430,10 +1431,10 @@
         "hoursAgo": "{{count}}ชม. ที่แล้ว"
       },
       "infoTooltip": "<strong>วิธีการ</strong> คะแนนรวม (0-100) ผสมผสาน:<ul><li>50% ความไม่มั่นคงของประเทศ (5 อันดับแรกถ่วงน้ำหนัก)</li><li>30% เขตการบรรจบทางภูมิศาสตร์</li><li>20% เหตุการณ์โครงสร้างพื้นฐาน</li></ul>รีเฟรชอัตโนมัติทุก 5 นาที",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII ที่แคชไว้ {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "เสื่อมสภาพ",
+        "stale": "ล้าสมัย"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1561,25 +1562,25 @@
       "candidGrants": "ทุน Candid",
       "dataLag": "ความล่าช้าของข้อมูล",
       "infoTooltip": "<strong>ดัชนีกิจกรรมการบริจาคทั่วโลก</strong> ดัชนีรวมที่ติดตามการบริจาคส่วนบุคคลผ่านแพลตฟอร์มระดมทุนและกระเป๋าเงินคริปโต<ul><li><strong>แพลตฟอร์ม</strong>: GoFundMe, GlobalGiving, JustGiving สุ่มตัวอย่างแคมเปญ</li><li><strong>คริปโต</strong>: เงินเข้ากระเป๋าการกุศลบนเชน (Endaoment, Giving Block)</li><li><strong>สถาบัน</strong>: OECD ODA, CAF World Giving Index, ทุน Candid</li></ul>ดัชนีเป็นตัวชี้ทิศทาง (ไม่ใช่จำนวนเงินที่แน่นอน) รวมการสุ่มตัวอย่างแบบเรียลไทม์กับรายงานประจำปีที่เผยแพร่",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "เกณฑ์มาตรฐานการบริจาคระดับโลก",
+      "benchmarkInfoTooltip": "<strong>เกณฑ์มาตรฐานการบริจาคระดับโลก</strong> การเรียกร้องแพลตฟอร์มและสถาบันที่เผยแพร่พร้อมระยะเวลาแหล่งที่มาและสถานะการตรวจสอบ ตัวเลขรายปีเป็นการประมาณการ ไม่ใช่กิจกรรมสด",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "เกณฑ์มาตรฐานที่เผยแพร่พร้อมการครอบคลุมแหล่งที่มาที่ผ่านการตรวจสอบ",
+        "partial": "เกณฑ์มาตรฐานที่เผยแพร่พร้อมการครอบคลุมแหล่งที่มาบางส่วน",
+        "legacy": "ภาพรวมเก่า; ไม่มีรายละเอียดแหล่งที่มา",
+        "cached": "แสดงภาพรวมที่แคชไว้; ไม่สามารถรีเฟรชได้"
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "การบริจาคแพลตฟอร์มที่ติดตาม — การประมาณการรายปี",
+      "annualizedDaily": "การประมาณการรายวันรายปี",
+      "atLeast": "อย่างน้อย",
+      "about": "ประมาณ",
+      "sourceNotVerified": "แหล่งที่มาไม่ได้รับการตรวจสอบ",
+      "reportedCumulative": "ยอดรวมสะสมที่รายงาน",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "เกณฑ์มาตรฐานที่เผยแพร่",
+      "sourcesMethodology": "แหล่งที่มาและวิธีการ",
+      "methodologyIntro": "เฉพาะการเรียกร้องแพลตฟอร์มประจำปีที่ผ่านการตรวจสอบหรือรายปีที่สามารถป้องกันได้เท่านั้นที่เข้าสู่พาดหัว ตัวเลขสะสมและสถาบันยังคงเป็นบริบทแยกต่างหาก",
+      "partialEstimate": "การประมาณการที่ผ่านการตรวจสอบบางส่วน"
     },
     "displacement": {
       "refugees": "ผู้ลี้ภัย",
@@ -1619,6 +1620,8 @@
       "summaryFailed": "สรุปล้มเหลว",
       "sources": "{{count}} แหล่งที่มา",
       "relatedAssetsNear": "สินทรัพย์ที่เกี่ยวข้องใกล้ {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} แหล่งข่าว",
+      "sourceCoverageHint": "แสดง {{covered}} จาก {{total}} แหล่งข่าวที่เปิดใช้งาน — แผงนี้จะสลับแหล่งข่าวที่ดึงในทุกครั้งที่รีเฟรช",
       "sortBy": "เรียงลำดับตาม",
       "sortNewest": "ล่าสุด",
       "sortRelevance": "ความเกี่ยวข้อง"
@@ -2133,8 +2136,8 @@
     "markets": {
       "infoTooltip": "<strong>Markets</strong> ดัชนีหุ้น หุ้น และราคา crypto แบบเรียลไทม์ ปรับแต่งรายการชมรับชองของคุณด้วยปุ่ม Watchlist Sparklines แสดงแนวโน้มราคาล่าสุด",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "แผนภูมิราคา {{symbol}}",
+        "close": "ปิดแผนภูมิ"
       }
     },
     "heatmap": {
@@ -2255,6 +2258,7 @@
           "summaryVerified": "ปลดล็อกแล้ว พร้อมใช้งานเมื่อคุณพร้อม",
           "channelsNote": "ต้องการ Telegram, Slack, Discord หรือเว็บฮุกมากกว่ากัน?",
           "pointers": {
+            "search": "ค้นหาทั่วทั้งแดชบอร์ด",
             "widgets": "สร้างวิดเจ็ตที่กำหนดเอง",
             "analyst": "ถามนักวิเคราะห์ AI",
             "mcpClients": "ตั้งค่า MCP",
@@ -2465,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "หมวดหมู่แผง"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "ล่าสุด",
+        "stale": "ล้าสมัย",
+        "veryStale": "ล้าสมัยมาก",
+        "noData": "ไม่มีข้อมูล",
+        "disabled": "ปิดใช้งาน",
+        "error": "ข้อผิดพลาด"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "ความสดใหม่ของข้อมูล: {{status}} {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "อัปเดตล่าสุด {{time}}",
+      "neverUpdated": "ไม่เคยอัปเดต",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "ครอบคลุมบางส่วน",
+        "contentStale": "เนื้อหาล้าสมัย",
+        "seedStale": "seed ล้าสมัย",
+        "noSourceData": "ไม่มีข้อมูลแหล่งที่มา",
+        "sourceErrorReported": "รายงานข้อผิดพลาดแหล่งที่มา",
+        "freshnessStoreUnavailable": "ที่เก็บข้อมูลความสดใหม่ไม่พร้อมใช้งาน",
+        "freshnessStoreDegraded": "ที่เก็บข้อมูลความสดใหม่เสื่อมสภาพ"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "ไม่เคย",
+        "justNow": "เมื่อกี้",
+        "minutesAgo": "{{count}}น ที่แล้ว",
+        "hoursAgo": "{{count}}ช ที่แล้ว",
+        "daysAgo": "{{count}}ว ที่แล้ว",
+        "compactNow": "ตอนนี้",
+        "compactMinutes": "{{count}}น",
+        "compactHours": "{{count}}ช",
+        "compactDays": "{{count}}ว"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "ลงชื่อเข้าใช้เพื่อส่งออกข้อมูลแดชบอร์ดเป็น CSV, JSON หรือ PDF",
+      "upgradeDesc": "การส่งออกข้อมูล (CSV, JSON, PDF) รวมอยู่ใน Pro Business",
+      "upgradeCta": "อัปเกรดเป็น Pro Business",
+      "lockedAriaLabel": "ส่งออกข้อมูล — ล็อกอยู่ {{reason}}",
+      "unlockedAnnouncement": "การส่งออกข้อมูลถูกปลดล็อกแล้ว",
+      "preparingPdf": "กำลังเตรียม PDF…",
+      "pdfFailed": "ไม่สามารถสร้างรายงาน PDF ได้ ลองอีกครั้งหรือใช้การส่งออก JSON"
+    },
+    "tabCap": {
+      "signedOutDesc": "พื้นที่ทำงานที่ไม่ได้ลงชื่อเข้าใช้จำกัดที่ {{cap}} แท็บ ลงชื่อเข้าใช้เพื่อเพิ่มเติม",
+      "upgradeDesc": "คุณถึงขีดจำกัด {{cap}} แท็บแดชบอร์ดแล้ว",
+      "upgradeCta": "อัปเกรดเพื่อรับเพิ่มเติม",
+      "lockedAriaLabel": "เพิ่มแท็บ — ล็อกอยู่ {{reason}}",
+      "unlockedAnnouncement": "ยกเลิกขีดจำกัดแท็บแดชบอร์ดแล้ว"
     }
   },
   "popups": {
@@ -3305,16 +3325,42 @@
     "visualizationFailed": "การแสดงผลล้มเหลว"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "แท็บแดชบอร์ด",
+    "defaultName": "หลัก",
+    "newTabName": "แท็บใหม่",
+    "newTabCreated": "สร้างแท็บใหม่แล้ว",
+    "tabDeleted": "ลบแท็บ \"{{name}}\" แล้ว",
+    "addTab": "เพิ่มแท็บ",
+    "addTabTitle": "แท็บใหม่ (เริ่มต้นด้วยแผงเริ่มต้น)",
+    "renameHint": "{{name}} — ดับเบิลคลิกเพื่อเปลี่ยนชื่อ",
+    "deleteTab": "ลบแท็บ",
+    "deleteTabAria": "ลบแท็บ {{name}}",
+    "tabNameAria": "ชื่อแท็บ"
+  },
+  "theaterPresets": {
+    "label": "พรีเซ็ตการครอบคลุม",
+    "applied": "ใช้พรีเซ็ต {{preset}} แล้ว: เปิดใช้แหล่งข้อมูล {{count}} แหล่ง",
+    "alreadyApplied": "ใช้พรีเซ็ต {{preset}} อยู่แล้ว",
+    "ukraineWar": {
+      "label": "สงครามยูเครน",
+      "description": "เปิดใช้สื่อหลักของยูเครน สื่อรัสเซียอิสระ และแหล่งประเมินสถานการณ์แนวหน้า"
+    },
+    "indoPacific": {
+      "label": "อินโดแปซิฟิก / ไต้หวัน",
+      "description": "เปิดใช้แหล่งข่าวความมั่นคงจากไต้หวัน ปากีสถาน และเอเชียตะวันออกเฉียงใต้"
+    },
+    "sahelWestAfrica": {
+      "label": "ซาเฮลและแอฟริกาตะวันตก",
+      "description": "เปิดใช้แหล่งข่าวท้องถิ่นจากซาเฮล ไนจีเรีย และแอฟริกาตะวันตก"
+    },
+    "caucasusCentralAsia": {
+      "label": "คอเคซัสและเอเชียกลาง",
+      "description": "เปิดใช้แหล่งข่าวภูมิภาคจากคอเคซัสใต้และเอเชียกลาง"
+    },
+    "middleEastFlashpoints": {
+      "label": "จุดตึงเครียดในตะวันออกกลาง",
+      "description": "เปิดใช้แหล่งข่าวจากอิหร่าน อิสราเอล อ่าวอาหรับ และภูมิภาคเคิร์ด"
+    },
+    "unavailable": "พรีเซ็ต {{preset}} ไม่พร้อมใช้งานกับแผงปัจจุบันของคุณ"
   }
 }

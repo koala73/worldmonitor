@@ -13,15 +13,48 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
+// The fixture used to be written into the real `scripts/` directory so its
+// `./_seed-utils.mjs` import would resolve. That made this test a source of
+// FLAKY CI failures for every suite that scans that tree: under
+// `--test-concurrency=16`, tests/seed-env-hermeticity.test.mjs globs
+// `scripts/**` and readFileSync's each hit, so a fixture unlinked between the
+// glob yield and the read produced
+// `ENOENT ... scripts/_sigterm-fixture-<ts>.mjs` in an unrelated test.
+// Fixtures now live in a private temp dir and reach the helper by absolute
+// URL, so no scanned tree ever sees them.
+const SEED_UTILS_URL = pathToFileURL(
+  fileURLToPath(new URL('../scripts/_seed-utils.mjs', import.meta.url)),
+).href;
+const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'wm-sigterm-fixture-'));
+
+process.on('exit', () => {
+  try { rmSync(FIXTURE_DIR, { recursive: true, force: true }); } catch { /* best effort */ }
+});
+
+let fixtureSeq = 0;
+
+/**
+ * Writes a fixture into the private temp dir and returns its path.
+ *
+ * Every fixture in this file goes through here — four separate writers used to
+ * hand-roll their own `join(SCRIPTS_DIR, ...)` path, so each was an independent
+ * source of the ENOENT flake described above.
+ */
+function writeFixture(label, bodyJs) {
+  const path = join(FIXTURE_DIR, `${label}-${fixtureSeq++}.mjs`);
+  // Keep the readable relative form at every call site; rewrite it here, since
+  // the fixture no longer sits next to the helper.
+  writeFileSync(path, bodyJs.replaceAll("'./_seed-utils.mjs'", JSON.stringify(SEED_UTILS_URL)));
+  return path;
+}
 
 function runFixture(bodyJs) {
-  const path = join(SCRIPTS_DIR, `_sigterm-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, bodyJs);
+  const path = writeFixture('sigterm', bodyJs);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [path], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -152,8 +185,7 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', { sk
       lockTtlMs: 60_000,
     });
   `;
-  const path = join(SCRIPTS_DIR, `_sigterm-once-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, body);
+  const path = writeFixture('sigterm-once', body);
   try {
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [path], {
@@ -260,8 +292,7 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
       lockTtlMs: 60_000,
     });
   `;
-  const path = join(SCRIPTS_DIR, `_sigterm-postfetch-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, body);
+  const path = writeFixture('sigterm-postfetch', body);
   try {
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [path], {
@@ -399,8 +430,7 @@ test('SIGTERM during fetch-failure cleanup still triggers handler (no leak windo
       maxRetries: 0,  // fail fast — no withRetry retries
     });
   `;
-  const path = join(SCRIPTS_DIR, `_sigterm-fetchfail-fixture-${Date.now()}.mjs`);
-  writeFileSync(path, body);
+  const path = writeFixture('sigterm-fetchfail', body);
   try {
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [path], {

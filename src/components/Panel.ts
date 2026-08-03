@@ -7,6 +7,7 @@ import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
+import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 import {
@@ -42,10 +43,6 @@ export interface PanelOptions {
   collapsible?: boolean;
   defaultRowSpan?: number;
 }
-
-const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
-
-const upgradeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
 
 const ROW_RESIZE_STEP_PX = 80;
 const COL_RESIZE_STEP_PX = 80;
@@ -83,7 +80,12 @@ function getRowSpan(element: HTMLElement): number {
   if (element.classList.contains('span-4')) return 4;
   if (element.classList.contains('span-3')) return 3;
   if (element.classList.contains('span-2')) return 2;
-  return 1;
+  if (element.classList.contains('span-1')) return 1;
+  // A natural wide panel already occupies two dashboard rows even when it
+  // has no explicit span-N class. Treat that footprint as the resize baseline
+  // so the first vertical drag changes the visible height instead of being a
+  // no-op against the existing grid-row: span 2 rule.
+  return element.classList.contains('panel-wide') ? 2 : 1;
 }
 
 function deltaToRowSpan(startSpan: number, deltaY: number): number {
@@ -617,7 +619,16 @@ export class Panel {
   }
 
 
-  protected setDataBadge(state: 'live' | 'cached' | 'unavailable', detail?: string): void {
+  /**
+   * `detailTitle` explains a `detail` the badge is too small to justify on its
+   * own (e.g. a partial source count). Cleared when absent so a stale
+   * explanation can't outlive the detail it described.
+   */
+  protected setDataBadge(
+    state: 'live' | 'cached' | 'unavailable',
+    detail?: string,
+    detailTitle?: string,
+  ): void {
     if (!this.statusBadgeEl) return;
     const labels = {
       live: t('common.live'),
@@ -626,6 +637,13 @@ export class Panel {
     } as const;
     this.statusBadgeEl.textContent = detail ? `${labels[state]} · ${detail}` : labels[state];
     this.statusBadgeEl.className = `panel-data-badge ${state}`;
+    if (detailTitle) {
+      this.statusBadgeEl.title = detailTitle;
+      this.statusBadgeEl.setAttribute('aria-label', detailTitle);
+    } else {
+      this.statusBadgeEl.removeAttribute('title');
+      this.statusBadgeEl.removeAttribute('aria-label');
+    }
     this.statusBadgeEl.style.display = 'inline-flex';
   }
 

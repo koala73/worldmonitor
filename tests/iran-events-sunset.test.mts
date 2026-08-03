@@ -17,6 +17,7 @@ import {
   getLayersForVariant,
   getAllowedLayerKeys,
   isLayerExecutable,
+  isSunsetLayer,
   sanitizeLayersForVariant,
 } from '../src/config/map-layer-definitions';
 import { buildForecastInputFetchKeys } from '../scripts/seed-forecasts.mjs';
@@ -42,6 +43,25 @@ describe('iran-events sunset — frontend map layer (default OFF)', () => {
 
   it('is not executable (CMD+K / picker toggles silently skip it)', () => {
     assert.equal(isLayerExecutable('iranAttacks', 'flat', true), false);
+  });
+
+  // #6046 — SVG/mobile Map.ts hardcodes its own layer lists and used to surface
+  // a dead raw-key 'iranAttacks' toggle. Guard both the export and the filter
+  // so the SVG picker cannot drift from getLayersForVariant / DeckGL again.
+  it('exports isSunsetLayer and SVG Map.createLayerToggles filters with it', () => {
+    assert.equal(typeof isSunsetLayer, 'function');
+    assert.equal(isSunsetLayer('iranAttacks'), true);
+    assert.equal(isSunsetLayer('conflicts'), false);
+
+    const mapSrc = read('src/components/Map.ts');
+    assert.match(mapSrc, /isSunsetLayer/, 'Map.ts must import isSunsetLayer');
+    // The static lists still mention the key (for re-enable), but the picker
+    // must filter before building buttons.
+    assert.match(
+      mapSrc,
+      /\.filter\(\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*!isSunsetLayer\(/,
+      'createLayerToggles must filter sunset layers before rendering buttons',
+    );
   });
 });
 

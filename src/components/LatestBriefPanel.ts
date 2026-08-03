@@ -31,6 +31,7 @@ import {
   shouldSkipDoomedFetch,
   type PremiumDenialVerdict,
 } from '@/services/premium-denial';
+import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackBriefThreadOpen } from '@/services/analytics';
 import { h, rawHtml, replaceChildren, clearChildren, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 
@@ -375,6 +376,7 @@ export class LatestBriefPanel extends Panel {
       // this, that abort would surface as a denial render instead of the
       // no-op the abort was asking for.
       if (signal.aborted) throw new DOMException('aborted while reading denial body', 'AbortError');
+      if (verdict === 'entitlement_desync') reportEntitlementDesync('latest-brief');
       throw new BriefAccessError(verdict);
     }
     if (!res.ok) {

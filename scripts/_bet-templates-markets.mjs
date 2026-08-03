@@ -18,6 +18,8 @@
 // sorted). Bet ids key on the market slug (stable across runs → the ledger's
 // id@deadline dedup and the seeder's open-window skip work per-market).
 
+import { isGeopoliticalMarket } from './_bet-templates-markets-classify.mjs';
+
 export const MARKET_FEED = 'prediction:markets-bootstrap:v1';
 export const MARKET_SETTLEMENT_FEED = 'prediction:markets-resolution:v1';
 
@@ -44,26 +46,40 @@ export function marketSlugFromUrl(url) {
   return null;
 }
 
-// Eligible markets, volume-sorted, deduped by slug. Pure.
+// Parse + validate one bootstrap-feed record into the normalized shape both
+// market families consume, or null if it fails the shared gates (missing
+// title/slug, non-finite price/volume/date, below the liquidity floor). Pure.
+// Shared so the general and geo families cannot drift on record handling.
+export function parseMarketRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const title = String(record.title || '').trim();
+  const yesPrice = Number(record.yesPrice);
+  const volume = Number(record.volume);
+  const endDateMs = Date.parse(record.endDate ?? '');
+  const slugInfo = marketSlugFromUrl(record.url);
+  if (!title || !slugInfo) return null;
+  if (!Number.isFinite(yesPrice)) return null;
+  if (!Number.isFinite(volume) || volume < MARKET_MIN_VOLUME) return null;
+  if (!Number.isFinite(endDateMs)) return null;
+  return { title, yesPrice, volume, endDateMs, ...slugInfo };
+}
+
+// Eligible markets, volume-sorted, deduped by slug. Pure. GEOPOLITICAL markets
+// are excluded here — they are owned by the dedicated long-horizon geo family
+// (_bet-templates-markets-geo.mjs), an exhaustive, disjoint partition so no
+// market is bet twice and the `market:<slug>` id namespace never collides.
 export function eligibleMarkets(feed, nowMs) {
   const pools = [feed?.geopolitical, feed?.tech, feed?.finance].filter(Array.isArray);
   const seen = new Set();
   const out = [];
   for (const record of pools.flat()) {
-    if (!record || typeof record !== 'object') continue;
-    const title = String(record.title || '').trim();
-    const yesPrice = Number(record.yesPrice);
-    const volume = Number(record.volume);
-    const endDateMs = Date.parse(record.endDate ?? '');
-    const slugInfo = marketSlugFromUrl(record.url);
-    if (!title || !slugInfo) continue;
-    if (!Number.isFinite(yesPrice)) continue;
-    if (!Number.isFinite(volume) || volume < MARKET_MIN_VOLUME) continue;
-    if (!Number.isFinite(endDateMs)) continue;
-    if (endDateMs < nowMs + MIN_LEAD_MS || endDateMs > nowMs + MAX_HORIZON_MS) continue;
-    if (seen.has(slugInfo.slug)) continue;
-    seen.add(slugInfo.slug);
-    out.push({ title, yesPrice, volume, endDateMs, ...slugInfo });
+    const market = parseMarketRecord(record);
+    if (!market) continue;
+    if (isGeopoliticalMarket(market.title)) continue;
+    if (market.endDateMs < nowMs + MIN_LEAD_MS || market.endDateMs > nowMs + MAX_HORIZON_MS) continue;
+    if (seen.has(market.slug)) continue;
+    seen.add(market.slug);
+    out.push(market);
   }
   return out.sort((a, b) => b.volume - a.volume);
 }

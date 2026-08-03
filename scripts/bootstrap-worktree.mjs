@@ -239,66 +239,187 @@ export function installDependencies({
   return result;
 }
 
+// Relative, so git resolves it against whichever worktree the hook runs from.
+const RELATIVE_HOOKS_PATH = '.husky';
+
 // A stale absolute core.hooksPath makes every push from this worktree run
 // ANOTHER checkout's (possibly ancient) pre-push hook — the 2026-07-24
 // "pushes take minutes and time out" incident: the main checkout was parked
 // 800+ commits behind and its unconditional pre-#4800 gate ran on every
 // worktree push. Worktree-creation tooling copies the shared value into
 // .git/worktrees/<name>/config.worktree at creation time, so a one-time
-// absolute value keeps resurfacing in new worktrees. Policy: a per-worktree
-// override pointing outside this worktree is unset (worktree-local, safe);
-// a foreign absolute value in the SHARED config is warned about but never
-// mutated from a bootstrap script.
-export function decideHooksPathAction({ rootDir, hooksPathValue, originFile }) {
+// absolute value keeps resurfacing in new worktrees.
+//
+// Policy (#5810): repair, do not merely report. Warning was tried and the
+// value came back three times — a log line at worktree-creation time is not a
+// gate, and the hook's own self-identity tripwire cannot help here because a
+// hook copy stale enough to be the problem predates the tripwire. Both layers
+// are therefore healed: a per-worktree override pointing outside this worktree
+// is unset, and an absolute SHARED value is rewritten to the relative form.
+// The two carve-outs keep the repair from clobbering a deliberate setup: a
+// hooks dir that is not a `.husky` (so, not this repo's shape) is left alone,
+// as is any value when WM_ALLOW_FOREIGN_HOOKS is set — the same escape hatch
+// .husky/pre-push honours.
+export function decideHooksPathAction({
+  allowForeignHooks = false,
+  hooksPathValue,
+  hooksPathOwnedByRepository = false,
+  originFile,
+  rootDir,
+}) {
   if (!hooksPathValue) return { action: 'none', reason: 'core.hooksPath not set' };
   if (!hooksPathValue.startsWith('/')) {
     return { action: 'none', reason: `relative hooksPath (${hooksPathValue}) resolves per-worktree` };
   }
-  if (hooksPathValue === resolve(rootDir, '.husky')) {
-    return { action: 'none', reason: 'absolute hooksPath already points into this worktree' };
-  }
+
+  // A worktree-local override only governs this worktree, so pointing at this
+  // worktree's own hooks is harmless. The same value in the SHARED config
+  // welds every OTHER worktree to this checkout's hook file, which is the bug.
   if (originFile.includes('/config.worktree')) {
+    if (hooksPathValue === resolve(rootDir, RELATIVE_HOOKS_PATH)) {
+      return { action: 'none', reason: 'absolute hooksPath already points into this worktree' };
+    }
     return {
       action: 'unset-worktree',
       reason: `per-worktree override points outside this worktree (${hooksPathValue})`,
     };
   }
+
+  if (basename(hooksPathValue) !== RELATIVE_HOOKS_PATH) {
+    return {
+      action: 'warn-shared',
+      reason: `shared config points at a non-husky hooks dir (${hooksPathValue}); leaving it alone`,
+    };
+  }
+  if (allowForeignHooks) {
+    return {
+      action: 'warn-shared',
+      reason: `shared config sets absolute hooksPath (${hooksPathValue}); WM_ALLOW_FOREIGN_HOOKS is set, leaving it alone`,
+    };
+  }
+  if (!hooksPathOwnedByRepository) {
+    return {
+      action: 'warn-shared',
+      reason: `shared config points at an unverified .husky dir (${hooksPathValue}); leaving it alone`,
+    };
+  }
   return {
-    action: 'warn-shared',
-    reason: `shared config sets absolute hooksPath outside this worktree (${hooksPathValue})`,
+    action: 'repair-shared',
+    reason: `shared config pins every worktree's hooks to one checkout (${hooksPathValue})`,
   };
 }
 
-export function normalizeWorktreeHooksPath({ dryRun = false, log = console.log, rootDir = process.cwd() } = {}) {
-  const probe = spawnSync(
+function probeHooksPath(rootDir, runGit) {
+  const probe = runGit(
     'git',
     ['config', '--show-origin', '--get', 'core.hooksPath'],
     { cwd: rootDir, encoding: 'utf8' },
   );
   // Exit 1 = unset; other failures (not a repo, no git) are not bootstrap's problem.
-  if (probe.status !== 0) return { action: 'none', reason: 'core.hooksPath not set' };
+  if (probe.status !== 0) return null;
 
   const [origin = '', ...valueParts] = probe.stdout.trim().split('\t');
-  const decision = decideHooksPathAction({
-    rootDir,
+  return {
     hooksPathValue: valueParts.join('\t'),
     originFile: origin.replace(/^file:/, ''),
-  });
+  };
+}
 
-  if (decision.action === 'unset-worktree') {
-    log(`[worktree] removing stale hooksPath override: ${decision.reason}`);
-    if (!dryRun) {
-      spawnSync('git', ['config', '--worktree', '--unset', 'core.hooksPath'], {
+function getGitCommonDir(rootDir, runGit) {
+  const result = runGit(
+    'git',
+    ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+    { cwd: rootDir, encoding: 'utf8' },
+  );
+  return result.status === 0 ? resolve(result.stdout.trim()) : null;
+}
+
+function hooksPathBelongsToRepository({ hooksPathValue, rootDir, runGit }) {
+  const currentCommonDir = getGitCommonDir(rootDir, runGit);
+  const hooksCheckoutCommonDir = getGitCommonDir(dirname(hooksPathValue), runGit);
+  return currentCommonDir !== null && currentCommonDir === hooksCheckoutCommonDir;
+}
+
+export function normalizeWorktreeHooksPath({
+  allowForeignHooks = Boolean(process.env.WM_ALLOW_FOREIGN_HOOKS),
+  dryRun = false,
+  log = console.log,
+  rootDir = process.cwd(),
+  runGit = spawnSync,
+} = {}) {
+  const decisions = [];
+
+  // Two passes, because `--show-origin` reports only the winning layer: a
+  // per-worktree override hides whatever the shared config says, so unsetting
+  // it can expose a second, broken value underneath. Fixing one layer and
+  // calling it done is exactly how the 2026-07-24 incident survived its first
+  // fix.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const probed = probeHooksPath(rootDir, runGit);
+    if (!probed) {
+      decisions.push({ action: 'none', reason: 'core.hooksPath not set' });
+      break;
+    }
+
+    const decision = decideHooksPathAction({
+      allowForeignHooks,
+      hooksPathOwnedByRepository:
+        probed.hooksPathValue.startsWith('/')
+        && hooksPathBelongsToRepository({
+          hooksPathValue: probed.hooksPathValue,
+          rootDir,
+          runGit,
+        }),
+      rootDir,
+      ...probed,
+    });
+    decisions.push(decision);
+
+    if (decision.action === 'unset-worktree') {
+      log(`[worktree] removing stale hooksPath override: ${decision.reason}`);
+      if (dryRun) {
+        log('[worktree]   the shared value it masks cannot be read until the override is gone');
+        break;
+      }
+      const unset = runGit('git', ['config', '--worktree', '--unset', 'core.hooksPath'], {
         cwd: rootDir,
         stdio: 'inherit',
       });
+      if (unset.status !== 0) {
+        throw new Error(
+          'failed to remove stale worktree hooksPath override; '
+          + 'run: git config --worktree --unset core.hooksPath',
+        );
+      }
+      continue;
     }
-  } else if (decision.action === 'warn-shared') {
-    log(`[worktree] WARNING: ${decision.reason}`);
-    log('[worktree]   pushes here will run that checkout\'s hook copy, which may be stale.');
-    log('[worktree]   Fix once for all worktrees: git config core.hooksPath .husky');
+
+    if (decision.action === 'repair-shared') {
+      log(`[worktree] repairing shared hooksPath: ${decision.reason}`);
+      log(`[worktree]   setting core.hooksPath=${RELATIVE_HOOKS_PATH} so each worktree runs its own hook`);
+      if (!dryRun) {
+        const repair = runGit('git', ['config', 'core.hooksPath', RELATIVE_HOOKS_PATH], {
+          cwd: rootDir,
+          stdio: 'inherit',
+        });
+        if (repair.status !== 0) {
+          throw new Error(
+            'failed to repair shared hooksPath; run: git config core.hooksPath .husky',
+          );
+        }
+      }
+    } else if (decision.action === 'warn-shared') {
+      log(`[worktree] WARNING: ${decision.reason}`);
+      log('[worktree]   pushes here run that hooks dir, not this worktree\'s .husky/pre-push.');
+      log('[worktree]   To switch to per-worktree hooks: git config core.hooksPath .husky');
+    }
+    break;
   }
-  return decision;
+
+  // The top-level action is the FINAL state; `decisions` is the audit trail,
+  // which is the only place a two-layer repair is visible.
+  const last = decisions[decisions.length - 1];
+  return { ...last, decisions };
 }
 
 export function bootstrapWorktree(options = {}) {

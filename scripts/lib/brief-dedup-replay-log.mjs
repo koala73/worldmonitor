@@ -16,38 +16,64 @@
  *     errors MUST NEVER affect digest delivery.
  *   - Append-only list in Upstash: one JSON record per story, keyed by
  *     rule + date so operators can range-query a day's traffic.
- *   - 30-day TTL (see §5 Phase 1 retention rationale: covers labelling
- *     cadence + cross-candidate comparison window; cache TTL is not the
- *     right anchor — replays that change embed config pay a fresh embed
- *     regardless of cache).
+ *   - 14-day TTL, matching the U6 harness's required coverage window
+ *     (see TTL_SECONDS below; cache TTL is not the right anchor —
+ *     replays that change embed config pay a fresh embed regardless
+ *     of cache).
  */
 
 import { cacheKeyFor, normalizeForEmbedding } from './brief-embedding.mjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
+import { REPLAY_WINDOW_DAYS } from './brief-replay-constants.mjs';
 
 const KEY_PREFIX = 'digest:replay-log:v1';
-const TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 /**
- * Per-day list cap. Each record is ~1.0-1.7KB JSON; Upstash enforces a
- * 500MB max-record-size on the Fixed plan. Without a cap, busy days
- * (~420K entries observed in production on 2026-05-07) hit the limit
- * and back-pressure adjacent Redis writes — see WM 2026-05-10 incident
- * where seed-forecasts publish timed out coincident with Max Record Size
- * alerts.
+ * Retention. 14 days, NOT 30: `DEFAULT_REPLAY_DAYS` in
+ * scripts/replay-digest-cooldown.mjs is 14 and that harness hard-aborts
+ * below 14 days of coverage, while the other two consumers
+ * (brief-quality-report.mjs, sweep-topic-thresholds.mjs) read a single
+ * day key. Days 15-30 therefore served no consumer at all — measured
+ * 2026-08-02, that dead tail was 3.93GB of the log's 7.24GB.
  *
- * 100,000 entries × 1.5KB ≈ 150MB → ~3× safety margin under 500MB.
+ * Raising this again means raising DEFAULT_REPLAY_DAYS first; the TTL
+ * exists to cover the harness's window, not the other way round.
+ */
+const TTL_SECONDS = REPLAY_WINDOW_DAYS * 24 * 60 * 60;
+
+/**
+ * Per-day list cap, anchored to Upstash's 50MiB **per-command** limit.
+ *
+ * The limit counts a single command's REQUEST *or* RESULT, so a
+ * whole-day `LRANGE key 0 -1` is bounded by cap × entry size. Verified
+ * live against production on 2026-08-02:
+ *
+ *   LRANGE digest:replay-log:v1:full:en:all:2026-08-01 0 -1
+ *   -> ERR max request size exceeded. Limit: 52428800, Actual: 144028523
+ *
+ * The previous 100,000-entry cap was sized against the 500MB
+ * max-RECORD-size (a different, larger limit) and left every day list
+ * unreadable in one command. Measured on that same full production day
+ * (100,000 entries, 154.5MB): mean entry 1,545B, p95 2,078B.
+ *
+ *   20,000 × 1,545B ≈ 31MB ≈ 59% of the 50MiB ceiling
+ *
+ * so the mean entry can grow ~70% before the ceiling binds again.
+ * scripts/replay-digest-cooldown.mjs pages its reads regardless
+ * (readReplayListPaged), so this cap is defence in depth plus a bound
+ * on storage — it keeps ad-hoc `LRANGE 0 -1` from redis-cli working.
+ *
  * For the calibration use-case (replay/sweep tooling consumes the
  * NEWEST entries to evaluate dedup quality), tail-keep semantics are
  * correct: LTRIM `-N..-1` keeps the most recent N records.
  *
- * Tradeoff: very busy days lose the OLDEST entries beyond 100K. The
- * U6 14-day replay harness aggregates ACROSS days and uses repHash
- * stability for cluster identity, so within-day eviction of older
- * entries is acceptable — operators get a representative sample of
- * each day's traffic, not exhaustive coverage.
+ * Tradeoff: busy days lose the OLDEST entries beyond the cap — at
+ * ~1,100 records/tick that retains roughly the newest 18 ticks. The
+ * U6 14-day harness aggregates ACROSS days and uses repHash stability
+ * for cluster identity, so within-day eviction is acceptable: 20K/day
+ * over the 14-day window is still ~280K records to aggregate.
  */
-export const REPLAY_LOG_MAX_ENTRIES_PER_DAY = 100_000;
+export const REPLAY_LOG_MAX_ENTRIES_PER_DAY = 20_000;
 
 /**
  * Env-read at call time so Railway can flip the flag without a redeploy.
@@ -339,11 +365,15 @@ export async function writeReplayLog(args) {
     const key = buildReplayLogKey(tickContext?.ruleId, tickContext?.tsMs ?? Date.now());
     // RPUSH + LTRIM + EXPIRE in one pipeline. LTRIM `-N..-1` keeps the
     // last N entries (most recent), evicting the oldest beyond the cap.
-    // This bounds each per-day key under ~150MB at observed entry sizes,
-    // well under Upstash's 500MB max-record-size that production hit on
-    // 2026-05-10 (busy days reached 420K entries ≈ 630MB without a cap).
+    // This bounds each per-day key at ~31MB at observed entry sizes, so
+    // a whole-day read stays under Upstash's 50MiB per-command limit
+    // (see REPLAY_LOG_MAX_ENTRIES_PER_DAY for the measurement).
     // Stringify each record individually so downstream readers can
     // consume with LRANGE + JSON.parse.
+    //
+    // The RPUSH body itself is not a limit risk: one tick's records are
+    // ~1.8MB at the observed maximum (measured across 165 ticks on
+    // 2026-08-01). Only the READ side ever approached 50MiB.
     const rpushCmd = ['RPUSH', key, ...records.map((r) => JSON.stringify(r))];
     const ltrimCmd = ['LTRIM', key, `-${REPLAY_LOG_MAX_ENTRIES_PER_DAY}`, '-1'];
     const expireCmd = ['EXPIRE', key, String(TTL_SECONDS)];

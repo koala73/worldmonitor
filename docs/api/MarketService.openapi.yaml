@@ -863,7 +863,7 @@ paths:
                                     "period": "daily"
                                     "sell": 1
                                     "strongBuy": 1
-                                "available": true
+                                "atr": 1.5
                             schema:
                                 $ref: '#/components/schemas/AnalyzeStockResponse'
                 "400":
@@ -983,7 +983,7 @@ paths:
                                               "period": "daily"
                                               "sell": 1
                                               "strongBuy": 1
-                                          "available": true
+                                          "atr": 1.5
                                       "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetStockAnalysisHistoryResponse'
@@ -1045,7 +1045,7 @@ paths:
             tags:
                 - MarketService
             summary: BacktestStock
-            description: BacktestStock replays premium stock-analysis signals over recent price history. PRO-gated. Requires entitlement tier >= 1.
+            description: BacktestStock replays the technical-only stock signal over recent price history. PRO-gated. Requires entitlement tier >= 1.
             operationId: BacktestStock
             security:
                 - WorldMonitorKey: []
@@ -1723,7 +1723,7 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListEarningsCalendarResponse'
                 "400":
@@ -1808,7 +1808,7 @@ paths:
                                       "dealerLong": "1717200000000"
                                       "dealerShort": "1717200000000"
                                 "reportDate": "2026-01-15"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetCotPositioningResponse'
                 "400":
@@ -1983,7 +1983,7 @@ paths:
                                       "pctAbove200d": 1.5
                                       "pctAbove20d": 1.5
                                       "pctAbove50d": 1.5
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetMarketBreadthHistoryResponse'
                 "400":
@@ -2196,7 +2196,7 @@ paths:
                                       "dayNotional": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "ts": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetHyperliquidFlowResponse'
                 "400":
@@ -2854,8 +2854,14 @@ components:
                 signalScore:
                     type: number
                     format: double
+                    description: |-
+                        Technical-analysis score (0-100), retained as a stable pair with signal
+                         for clients that predate the fundamentals-blended rating.
                 signal:
                     type: string
+                    description: |-
+                        Technical-only signal paired with signal_score. New clients should use
+                         rating_signal with composite_score for the surfaced investment rating.
                 trendStatus:
                     type: string
                 volumeStatus:
@@ -3003,6 +3009,20 @@ components:
                          extended_price is set.
                 fundamentals:
                     $ref: '#/components/schemas/Fundamentals'
+                fundamentalScore:
+                    type: number
+                    format: double
+                    description: |-
+                        Fundamental health score (0-100) blended from the quality/growth/leverage
+                         fundamentals above. Unset when too few fundamentals are available to score,
+                         in which case composite_score falls back to signal_score.
+                compositeScore:
+                    type: number
+                    format: double
+                    description: |-
+                        Blend of signal_score (technicals) and fundamental_score that drives
+                         rating_signal, so a Strong buy/sell no longer fires on price action alone.
+                         Equals signal_score when fundamental_score is unset.
                 nextEarningsDate:
                     type: string
                     description: |-
@@ -3016,6 +3036,80 @@ components:
                 consensusRevenue:
                     type: number
                     format: double
+                newsSentiment:
+                    type: number
+                    format: double
+                    description: |-
+                        LLM-derived news sentiment for the analyzed symbol: a signed score in
+                         [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),
+                         emitted by the same overlay model that already reads the headlines — no
+                         extra call. Omitted when the analysis falls back to rules (no LLM overlay).
+                         (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals
+                         into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight
+                         risk-analytics PR.)
+                realizedVolatility:
+                    type: number
+                    format: double
+                    description: |-
+                        Risk analytics computed from the 6-month daily candles already fetched for
+                         the technical snapshot (no extra upstream call).
+                         (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that
+                         blends fundamentals into the rating, and 63-65 by the merged earnings join.)
+
+                         Annualized realized volatility — sample stdev of daily log returns × √252 —
+                         as a fractional ratio where 0.25 means 25%. 0 when history is insufficient.
+                atr:
+                    type: number
+                    format: double
+                    description: |-
+                        Wilder's 14-period Average True Range, in the response currency's price
+                         units. 0 when history is insufficient.
+                maxDrawdown:
+                    type: number
+                    format: double
+                    description: |-
+                        Maximum peak-to-trough drawdown over the window, as a non-positive fractional
+                         ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
+                ratingSignal:
+                    type: string
+                    description: |-
+                        Fundamentals-blended signal paired with composite_score. Kept separate
+                         from the legacy technical-only signal/signal_score pair so already-loaded
+                         web, desktop, and API clients never render a mixed-version rating.
+                ratingSummary:
+                    type: string
+                    description: |-
+                        Fundamentals-blended narrative paired with rating_signal/composite_score.
+                         Legacy summary remains paired with signal/signal_score during rollout.
+                ratingAction:
+                    type: string
+                    description: |-
+                        Fundamentals-blended action paired with rating_signal/composite_score.
+                         Legacy action remains paired with signal/signal_score during rollout.
+                ratingConfidence:
+                    type: string
+                    description: |-
+                        Fundamentals-blended confidence paired with rating_signal/composite_score.
+                         Legacy confidence remains paired with signal/signal_score during rollout.
+                ratingWhyNow:
+                    type: string
+                    description: |-
+                        Fundamentals-blended explanation paired with rating_signal/composite_score.
+                         Legacy why_now remains paired with signal/signal_score during rollout.
+                ratingBullishFactors:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Fundamentals-aware positive factors supporting the composite rating.
+                             Legacy bullish_factors remain technical-only during rollout.
+                ratingRiskFactors:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Fundamentals-aware risks supporting the composite rating.
+                             Legacy risk_factors remain technical-only during rollout.
         StockAnalysisHeadline:
             type: object
             properties:
@@ -3246,6 +3340,12 @@ components:
                         $ref: '#/components/schemas/BacktestStockEvaluation'
                 engineVersion:
                     type: string
+                ratingBasis:
+                    type: string
+                    description: |-
+                        "technical_only": historical Yahoo bars do not include point-in-time
+                         fundamentals, so this result must not be presented as a replay of the
+                         fundamentals-blended live rating.
         BacktestStockEvaluation:
             type: object
             properties:

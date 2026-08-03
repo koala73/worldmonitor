@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readQueryLanguage, stripQueryLanguage } from '../src/utils/i18n-url.ts';
 
 describe('readQueryLanguage — wmQuery detector lookup', () => {
-  it('returns the lang param for a shareable/SEO language URL', () => {
+  it('returns the lang param for shareable application-language state', () => {
     assert.equal(readQueryLanguage('https://www.worldmonitor.app/dashboard?lang=fa'), 'fa');
     assert.equal(readQueryLanguage('https://www.worldmonitor.app/dashboard?foo=1&lang=hr'), 'hr');
   });

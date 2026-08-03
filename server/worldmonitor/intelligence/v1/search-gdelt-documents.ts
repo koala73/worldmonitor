@@ -8,9 +8,10 @@ import { getCachedJson } from '../../../_shared/redis';
 
 const SEEDED_KEY = 'intelligence:gdelt-intel:v1';
 
-// All GDELT fetching happens in the Railway seed script
-// (scripts/seed-gdelt-intel.mjs). This handler reads pre-seeded
-// topic data from Redis only (gold standard: Vercel reads, Railway writes).
+// All GDELT ingestion happens in the Railway bulk materializer
+// (scripts/seed-gdelt-bulk-materializer.mjs, #5843). This handler reads
+// pre-seeded topic data from Redis only (gold standard: Vercel reads,
+// Railway writes).
 
 type SeededGdeltData = {
   topics?: Array<{

@@ -58,7 +58,7 @@
 - **ローカル AI** — Ollama ですべて実行可能、API キー不要
 - **単一コードベースから 6 つのサイトバリアント** (world、tech、finance、commodity、happy、energy)
 - **ネイティブデスクトップアプリ** (Tauri 2) — macOS、Windows、Linux 対応
-- **25 言語対応** — 各言語のネイティブフィードと RTL サポート
+- **26 言語対応** — 各言語のネイティブフィードと RTL サポート
 
 機能の全一覧、アーキテクチャ、データソース、アルゴリズムについては **[ドキュメント](https://www.worldmonitor.app/docs/documentation)** を参照してください。
 
@@ -111,7 +111,7 @@ npm run dev:energy     # energy.worldmonitor.app
 | **フロントエンド** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **デスクトップ** | Tauri 2 (Rust) + Node.js サイドカー |
 | **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js (ブラウザ側) |
-| **API コントラクト** | Protocol Buffers (284 proto、35 サービス)、sebuf HTTP アノテーション |
+| **API コントラクト** | Protocol Buffers (290 proto、35 サービス)、sebuf HTTP アノテーション |
 | **デプロイ** | Vercel Edge Functions (60 以上)、Railway リレー、Tauri、PWA |
 | **キャッシュ** | Redis (Upstash)、3 層キャッシュ、CDN、Service Worker |
 

@@ -11,6 +11,12 @@ import {
   buildOverviewSnapshot,
   buildRetailerSpreadSnapshot,
 } from '../snapshots/worldmonitor.js';
+import { buildCoverageSnapshot } from '../snapshots/coverage.js';
+import {
+  COVERAGE_ACTIVATION_SCHEMA_VERSION,
+  coverageActivationKey,
+  isActivatingCoverage,
+} from '../ops/coverage.js';
 import { loadAllBasketConfigs, loadAllRetailerConfigs } from '../config/loader.js';
 import { closePool } from '../db/client.js';
 
@@ -78,6 +84,14 @@ async function writeSnapshot(
   data: unknown,
   ttlSeconds: number,
   advanceSeedMeta = true,
+  coverage?: {
+    status?: string;
+    pagesOk: number;
+    pagesFailed: number;
+    rejectedCount: number;
+    completionRatio?: number | null;
+    retailers?: unknown[];
+  },
 ): Promise<void> {
   const count = recordCount(data);
   // Envelope the canonical payload. Legacy seed-meta:<key> is still written
@@ -86,10 +100,24 @@ async function writeSnapshot(
   const json = JSON.stringify(envelope);
   await upstashCommand(url, token, ['SET', key, json, 'EX', ttlSeconds]);
   if (advanceSeedMeta) {
+    const meta: Record<string, unknown> = { fetchedAt: Date.now(), recordCount: count };
+    if (coverage) {
+      const completionRatio = coverage.completionRatio ?? (coverage.pagesOk + coverage.pagesFailed > 0
+        ? Number((coverage.pagesOk / (coverage.pagesOk + coverage.pagesFailed)).toFixed(4))
+        : 0);
+      meta.coverage = {
+        ...(coverage.status ? { status: coverage.status } : {}),
+        completedPages: coverage.pagesOk,
+        failedPages: coverage.pagesFailed,
+        completionRatio,
+        rejectedCount: coverage.rejectedCount,
+        ...(coverage.retailers ? { retailers: coverage.retailers } : {}),
+      };
+    }
     await upstashCommand(url, token, [
       'SET',
       makeKey(['seed-meta', key]),
-      JSON.stringify({ fetchedAt: Date.now(), recordCount: count }),
+      JSON.stringify(meta),
       'EX',
       ttlSeconds * 2,
     ]);
@@ -132,18 +160,80 @@ export async function publishAll() {
       );
     logger.info(`Publishing snapshots for market: ${marketCode} (freshData=${advanceSeedMeta})`);
 
+    let pagesOk = 0;
+    let pagesFailed = 0;
+
+    try {
+      const coverage = await buildCoverageSnapshot(marketCode);
+      await writeSnapshot(
+        url,
+        token,
+        makeKey(['consumer-prices', 'coverage', marketCode]),
+        coverage,
+        TTL,
+        advanceSeedMeta,
+        {
+          pagesOk: coverage.completedPages,
+          pagesFailed: coverage.failedPages,
+          rejectedCount: coverage.rejectedCount,
+          completionRatio: coverage.completionRatio,
+          status: coverage.status,
+          retailers: coverage.retailers,
+        },
+      );
+      pagesOk++;
+      // #6059 activation handshake. Written AFTER the snapshot lands and only
+      // for real coverage, so WorldMonitor health leaves its bounded
+      // ROLLOUT_PENDING window for this market and becomes strict forever.
+      // Durable by design: no EX, so it outlives the 7d seed-meta TTL and a
+      // publisher that ran once and then died can never read as
+      // pending-activation again.
+      //
+      // Its own try/catch: a marker write failure must not be logged as a
+      // coverage failure (the coverage snapshot already published) and must not
+      // abort the market's remaining snapshots. The next run retries, and the
+      // compiled rollout deadline bounds the window regardless.
+      if (isActivatingCoverage(coverage)) {
+        try {
+          await upstashCommand(url, token, [
+            'SET',
+            coverageActivationKey(marketCode),
+            JSON.stringify({
+              schemaVersion: COVERAGE_ACTIVATION_SCHEMA_VERSION,
+              marketCode,
+              activatedAt: Date.now(),
+              attemptedPages: coverage.attemptedPages,
+            }),
+          ]);
+        } catch (err) {
+          logger.error(`coverage-activation:${marketCode} failed: ${err}`);
+        }
+      } else {
+        logger.warn(
+          `coverage:${marketCode} published without attempted pages — activation marker withheld`,
+        );
+      }
+    } catch (err) {
+      pagesFailed++;
+      logger.error(`coverage:${marketCode} failed: ${err}`);
+    }
+
     try {
       const overview = await buildOverviewSnapshot(marketCode);
-      await writeSnapshot(url, token, makeKey(['consumer-prices', 'overview', marketCode]), overview, TTL, advanceSeedMeta);
+      await writeSnapshot(url, token, makeKey(['consumer-prices', 'overview', marketCode]), overview, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
+      pagesOk++;
     } catch (err) {
+      pagesFailed++;
       logger.error(`overview:${marketCode} failed: ${err}`);
     }
 
     for (const days of [7, 30]) {
       try {
         const movers = await buildMoversSnapshot(marketCode, days);
-        await writeSnapshot(url, token, makeKey(['consumer-prices', 'movers', marketCode, `${days}d`]), movers, TTL, advanceSeedMeta);
+        await writeSnapshot(url, token, makeKey(['consumer-prices', 'movers', marketCode, `${days}d`]), movers, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
+        pagesOk++;
       } catch (err) {
+        pagesFailed++;
         logger.error(`movers:${marketCode}:${days}d failed: ${err}`);
       }
     }
@@ -151,17 +241,21 @@ export async function publishAll() {
     try {
       // Reuse already-built freshness snapshot — no second DB query
       if (freshnessSnapshot != null) {
-        await writeSnapshot(url, token, makeKey(['consumer-prices', 'freshness', marketCode]), freshnessSnapshot, TTL, advanceSeedMeta);
+        await writeSnapshot(url, token, makeKey(['consumer-prices', 'freshness', marketCode]), freshnessSnapshot, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
+        pagesOk++;
       }
     } catch (err) {
+      pagesFailed++;
       logger.error(`freshness:${marketCode} failed: ${err}`);
     }
 
     for (const range of ['7d', '30d', '90d']) {
       try {
         const categories = await buildCategoriesSnapshot(marketCode, range);
-        await writeSnapshot(url, token, makeKey(['consumer-prices', 'categories', marketCode, range]), categories, TTL, advanceSeedMeta);
+        await writeSnapshot(url, token, makeKey(['consumer-prices', 'categories', marketCode, range]), categories, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
+        pagesOk++;
       } catch (err) {
+        pagesFailed++;
         logger.error(`categories:${marketCode}:${range} failed: ${err}`);
       }
     }
@@ -175,8 +269,11 @@ export async function publishAll() {
           spread,
           TTL,
           advanceSeedMeta,
+          { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 },
         );
+        pagesOk++;
       } catch (err) {
+        pagesFailed++;
         logger.error(`spread:${marketCode}:${basket.slug} failed: ${err}`);
       }
 
@@ -189,12 +286,19 @@ export async function publishAll() {
             series,
             TTL,
             advanceSeedMeta,
+            { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 },
           );
+          pagesOk++;
         } catch (err) {
+          pagesFailed++;
           logger.error(`basket-series:${marketCode}:${basket.slug}:${range} failed: ${err}`);
         }
       }
     }
+
+    const totalSnapshots = pagesOk + pagesFailed;
+    const completionRatio = totalSnapshots > 0 ? Number((pagesOk / totalSnapshots).toFixed(4)) : 0;
+    logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}`);
   }
 
   logger.info('Publish complete');

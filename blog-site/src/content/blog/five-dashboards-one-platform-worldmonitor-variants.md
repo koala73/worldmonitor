@@ -155,7 +155,7 @@ Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/)
 
 The 4-tier LLM fallback chain (Ollama, Groq, OpenRouter, browser T5) works across all variants. Generate briefs, classify threats, and run analysis privately.
 
-### 25 Languages
+### 26 Languages
 
 Full internationalization with lazy-loaded language packs, locale-specific RSS feeds, and RTL support for Arabic.
 

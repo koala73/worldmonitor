@@ -14,10 +14,8 @@ function readFileSync(path, options) {
 import { fileURLToPath } from 'node:url';
 import {
   CONTENT_CORPUS_PREFIXES,
-  buildContentCorpusSitemapBlock,
   discoverContentCorpusPages,
-  injectContentCorpusSitemapBlock,
-} from '../scripts/build-content-corpus-sitemap.mjs';
+} from '../scripts/discover-content-corpus-pages.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
@@ -35,7 +33,7 @@ const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -173,6 +171,7 @@ describe('crawlable content corpus deployment contracts', () => {
   const staticCorpusPaths = [
     '/countries/ukraine/',
     '/chokepoints/suez-canal/',
+    '/research/strait-of-hormuz-transit-report-2026-07/',
     '/crises/ukraine-war/',
     '/tools/natural-hazard-pulse/',
     '/reference/changelog/page/2/',
@@ -191,28 +190,28 @@ describe('crawlable content corpus deployment contracts', () => {
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
     assert.equal(
       packageJson.scripts['build:crawlable-corpus'],
-      'tsx scripts/build-crawlable-corpus.mjs'
+      'node --import tsx scripts/build-crawlable-corpus.mjs'
     );
     assert.equal(
-      packageJson.scripts['build:content-corpus'],
-      'node scripts/build-content-corpus-sitemap.mjs'
+      packageJson.scripts['build:sitemap'],
+      'node scripts/build-sitemap.mjs'
     );
 
     for (const scriptName of ['build', 'build:full']) {
       const script = packageJson.scripts[scriptName];
       assert.ok(script.includes('npm run build:blog'), scriptName + ' must build the Astro blog first');
       assert.ok(script.includes('npm run build:crawlable-corpus'), scriptName + ' must build the static corpus');
-      assert.ok(script.includes('npm run build:content-corpus'), scriptName + ' must run content corpus sitemap integration');
+      assert.ok(script.includes('npm run build:sitemap'), scriptName + ' must run root sitemap generation');
       assert.ok(
         script.indexOf('npm run build:blog') < script.indexOf('npm run build:crawlable-corpus'),
         scriptName + ' must build /blog first so existing /blog/glossary remains delegated to the blog sitemap'
       );
       assert.ok(
-        script.indexOf('npm run build:crawlable-corpus') < script.indexOf('npm run build:content-corpus'),
+        script.indexOf('npm run build:crawlable-corpus') < script.indexOf('npm run build:sitemap'),
         scriptName + ' must scan the corpus only after the page generator runs'
       );
       assert.ok(
-        script.indexOf('npm run build:content-corpus') < script.indexOf('vite build'),
+        script.indexOf('npm run build:sitemap') < script.indexOf('vite build'),
         scriptName + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
     }
@@ -222,13 +221,13 @@ describe('crawlable content corpus deployment contracts', () => {
       ['docker/Dockerfile', frontendDockerfileSource],
     ]) {
       assert.ok(source.includes('npm run build:crawlable-corpus'), name + ' must build the static corpus');
-      assert.ok(source.includes('npm run build:content-corpus'), name + ' must update the sitemap block');
+      assert.ok(source.includes('npm run build:sitemap'), name + ' must generate the root sitemap');
       assert.ok(
-        source.indexOf('npm run build:crawlable-corpus') < source.indexOf('npm run build:content-corpus'),
+        source.indexOf('npm run build:crawlable-corpus') < source.indexOf('npm run build:sitemap'),
         name + ' must scan the sitemap only after corpus pages exist'
       );
       assert.ok(
-        source.indexOf('npm run build:content-corpus') < source.indexOf('npx vite build'),
+        source.indexOf('npm run build:sitemap') < source.indexOf('npx vite build'),
         name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
     }
@@ -244,6 +243,19 @@ describe('crawlable content corpus deployment contracts', () => {
     const changelogInclude = dockerignoreSource.indexOf('!CHANGELOG.md');
     assert.ok(markdownIgnore >= 0, 'expected the broad markdown ignore rule to be present');
     assert.ok(changelogInclude > markdownIgnore, 'CHANGELOG.md must be re-included after *.md for Docker corpus builds');
+  });
+
+  it('keeps local self-hosting credentials out of Docker build contexts', () => {
+    const ignoreRules = new Set(
+      dockerignoreSource
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'))
+    );
+
+    for (const path of ['docker-compose.override.yml', 'secrets/']) {
+      assert.ok(ignoreRules.has(path), `${path} must never enter Docker build contexts or caches`);
+    }
   });
 
   it('keeps generated corpus prefixes out of the SPA catch-all while preserving normal app deep links', () => {
@@ -282,9 +294,12 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.match(robotsSource, /^Sitemap: https:\/\/www\.worldmonitor\.app\/docs\/sitemap\.xml$/m);
   });
 
-  it('keeps a generated-content marker in the root sitemap', () => {
-    assert.ok(sitemapSource.includes('<!-- content-corpus:start -->'));
-    assert.ok(sitemapSource.includes('<!-- content-corpus:end -->'));
+  it('keeps the root sitemap generated while delegating blog and docs inventories', () => {
+    assert.ok(sitemapSource.includes('Generated by npm run build:sitemap. Do not edit by hand.'));
+    assert.ok(!sitemapSource.includes('https://www.worldmonitor.app/blog/'));
+    assert.ok(!sitemapSource.includes('https://www.worldmonitor.app/docs/'));
+    assert.ok(!sitemapSource.includes('<changefreq>'));
+    assert.ok(!sitemapSource.includes('<priority>'));
   });
 
   it('discovers canonical generated corpus pages and validates changelog pagination links', () => {
@@ -332,20 +347,6 @@ describe('crawlable content corpus deployment contracts', () => {
         'https://www.worldmonitor.app/countries/ukraine/',
         'https://www.worldmonitor.app/tools/natural-hazard-pulse/',
       ].sort());
-
-      const block = buildContentCorpusSitemapBlock(pages);
-      assert.match(block, /<loc>https:\/\/www\.worldmonitor\.app\/countries\/ukraine\/<\/loc>/);
-      assert.match(block, /<lastmod>2026-07-08<\/lastmod>/);
-
-      const injected = injectContentCorpusSitemapBlock(
-        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://www.worldmonitor.app/</loc></url>\n</urlset>\n',
-        pages
-      );
-      assert.match(injected, /<!-- content-corpus:start -->[\s\S]*\/countries\/ukraine\/[\s\S]*<!-- content-corpus:end -->/);
-      const reinjected = injectContentCorpusSitemapBlock(injected, pages);
-      assert.equal(reinjected, injected, 're-injecting the same pages must be idempotent');
-      assert.equal((reinjected.match(/<!-- content-corpus:start -->/g) ?? []).length, 1);
-      assert.equal((reinjected.match(/<!-- content-corpus:end -->/g) ?? []).length, 1);
 
       writeFixturePage(
         publicDir,
