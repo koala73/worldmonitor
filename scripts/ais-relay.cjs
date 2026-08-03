@@ -67,6 +67,10 @@ console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).to
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Actual bound port, resolved at listen time. Self-requests must use this:
+// with PORT=0 (ephemeral bind, used by tests) the env value is not the port
+// the server listens on, and `http://localhost:0` fails outright.
+let relayBoundPort = PORT;
 const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
 
 if (!API_KEY) {
@@ -557,6 +561,32 @@ function upstashDel(key) {
   });
 }
 
+function upstashReleaseLockIfOwner(key, owner) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
+    const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(Number(JSON.parse(data)?.result) === 1); } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 // Seed envelope — canonical { _seed, data } shape. Mirrored from
 // scripts/_seed-envelope-source.mjs (ESM; can't be require()'d from CJS).
@@ -572,18 +602,19 @@ function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, s
 }
 
 // Wrap `data` in a seed envelope and write to Redis at `key` with `ttlSeconds`.
-// meta: { recordCount, sourceVersion, schemaVersion?, state?, zeroOk? }
+// meta: { fetchedAt?, recordCount, sourceVersion, schemaVersion?, state?, zeroOk?, groupId? }
 //   - state: omit to derive ('OK_ZERO' when recordCount===0 && zeroOk, else 'OK')
 //   - schemaVersion: defaults to 1
 function envelopeWrite(key, data, ttlSeconds, meta) {
   const recordCount = Number(meta?.recordCount ?? 0) || 0;
   const state = meta?.state || (recordCount === 0 && meta?.zeroOk ? 'OK_ZERO' : 'OK');
   const envelope = buildEnvelope({
-    fetchedAt: Date.now(),
+    fetchedAt: meta?.fetchedAt ?? Date.now(),
     recordCount,
     sourceVersion: meta?.sourceVersion || 'ais-relay',
     schemaVersion: meta?.schemaVersion ?? 1,
     state,
+    groupId: meta?.groupId,
     data,
   });
   return upstashSet(key, envelope, ttlSeconds);
@@ -3929,6 +3960,8 @@ const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
 const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
 const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
 const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
+const THEATER_POSTURE_LOCK_KEY = 'seed-lock:theater-posture';
+const THEATER_POSTURE_LOCK_TTL_SECONDS = 120;
 const THEATER_POSTURE_LIVE_TTL = 1200;   // 20 min — must outlive the 10-min seed interval (2x)
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
@@ -4226,7 +4259,7 @@ async function fetchTheaterFlightsFromOpenSky() {
   const allFlights = [];
   for (const region of THEATER_QUERY_REGIONS) {
     const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-    const resp = await fetch(`http://localhost:${PORT}/opensky?${params}`, {
+    const resp = await fetch(`http://localhost:${relayBoundPort}/opensky?${params}`, {
       headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
       signal: AbortSignal.timeout(20_000),
     });
@@ -4409,11 +4442,26 @@ function calculateTheaterPostures(flights) {
     };
   });
 }
+// Which upstream actually produced the published theater flights. OpenSky is
+// heavily 429-throttled in production (#5945): a healthy publication served by
+// adsb.lol/Wingbits must stay attributable so fallback operation is never
+// mistaken for OpenSky recovery.
+const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
+  opensky: 'opensky',
+  'adsb.lol': 'adsbLol',
+  wingbits: 'wingbits',
+  'vessel-only': 'vesselOnly',
+});
+const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
+let theaterPostureLastRun = null;
+
 async function seedTheaterPosture() {
   const t0 = Date.now();
   let flights = [];
+  let flightSource = 'vessel-only';
   try {
     flights = await fetchTheaterFlightsFromOpenSky();
+    if (flights.length > 0) flightSource = 'opensky';
   } catch (e) {
     console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
   }
@@ -4422,9 +4470,13 @@ async function seedTheaterPosture() {
     if (adsbLol !== null) {
       // null = fetch error (fall through to Wingbits); [] = success, no theater traffic (stop here)
       flights = adsbLol;
+      if (flights.length > 0) flightSource = 'adsb.lol';
     } else {
       const wb = await fetchTheaterFlightsFromWingbits();
-      if (wb && wb.length > 0) flights = wb;
+      if (wb && wb.length > 0) {
+        flights = wb;
+        flightSource = 'wingbits';
+      }
     }
   }
   if (flights.length === 0) {
@@ -4433,13 +4485,48 @@ async function seedTheaterPosture() {
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const payload = { theaters };
-  const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels }, 604800);
-  const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights, ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
+  const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
+  if (lockResult !== 'new') {
+    console.warn(`[TheaterPosture] Skipping publication: shared seed lock is ${lockResult}`);
+    return;
+  }
+
+  try {
+    const publishedAt = Date.now();
+    const envelopeMeta = {
+      fetchedAt: publishedAt,
+      recordCount: theaters.length,
+      sourceVersion: 'theater-posture',
+      groupId: publicationId,
+    };
+    const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, envelopeMeta);
+    const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, envelopeMeta);
+    const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, envelopeMeta);
+    // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
+    // key; `producer` disambiguates the two writers, whose source vocabularies
+    // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
+    // last-resort fallback). publicationId pairs this metadata with the
+    // canonical envelope _seed.groupId for cross-producer consistency checks.
+    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    theaterPostureLastRun = {
+      seededAt: new Date().toISOString(),
+      source: flightSource,
+      flightCount: flights.length,
+      vesselCount: totalVessels,
+      redisOk: ok1 && ok2 && ok3,
+      // Reported separately from redisOk: health gates staleness on the
+      // seed-meta key, so a failed attribution write must not hide behind
+      // three green envelope writes.
+      seedMetaOk,
+    };
+    const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+  } finally {
+    await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
+  }
 }
 
 function startTheaterPostureSeedLoop() {
@@ -7078,6 +7165,17 @@ function getRelayRollingMetrics() {
     aviation: {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
+    },
+    // Which upstream fed each theater-posture publication cycle. Kept separate
+    // from the opensky route counters above so healthy fallback publication
+    // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945). Unlike
+    // the sibling sections these are NOT rolling-window: the seed cadence
+    // (~10 min) exceeds the metrics window, so bucketed counts would read
+    // all-zero — sourceCountsSinceBoot is process-lifetime and lastRun
+    // (with seededAt) is the current-state signal.
+    theaterPosture: {
+      lastRun: theaterPostureLastRun,
+      sourceCountsSinceBoot: { ...theaterPostureSourceCounts },
     },
     googleFlights: {
       requests: rollup.googleFlightsRequests,
@@ -9901,6 +9999,14 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
+    // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
+    // so tests trigger a single theater-posture cycle explicitly.
+    await seedTheaterPosture();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
   } else if (pathname.startsWith('/ais/snapshot')) {
     incrementRelayMetric('aisSnapshotRequests');
     // Aggregated AIS snapshot for server-side fanout — serve pre-serialized + pre-gzipped
@@ -11963,6 +12069,7 @@ const wss = new WebSocketServer({ server });
 
 server.listen(PORT, () => {
   const listeningPort = server.address()?.port || PORT;
+  relayBoundPort = listeningPort;
   console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
   if (RELAY_TEST_MODE) {
     console.log('[Relay] Test mode enabled — background seed loops are disabled');

@@ -123,10 +123,6 @@ describe('authenticated Yahoo quoteSummary integration (static analysis)', () =>
     assert.match(valuationFetcherSrc, /v10\/finance\/quoteSummary/);
   });
 
-  it('uses summaryDetail and defaultKeyStatistics modules', () => {
-    assert.match(valuationFetcherSrc, /summaryDetail,defaultKeyStatistics/);
-  });
-
   it('extracts PE, beta, and return metrics', () => {
     for (const field of [
       'trailingPE',

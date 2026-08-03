@@ -42,6 +42,8 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
+const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
+  'seed-activated:supply_chain:portwatch-ports:content-freshness';
 
 const {
   appendSeedHistory,
@@ -1007,7 +1009,15 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
     globalThis.fetch = async (_url, init) => {
       const commands = JSON.parse(init.body);
       const results = commands.map(([op, key]) => {
-        if (op === 'EXISTS') return { result: activated ? 1 : 0 };
+        if (op === 'EXISTS') {
+          // The PortWatch content contract has its own activation marker. This
+          // fixture does not provide that producer block, so keep it in the
+          // pre-activation grace window while the history assertions exercise
+          // the relay states.
+          return {
+            result: activated && key !== PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY ? 1 : 0,
+          };
+        }
         if (Object.hasOwn(ingestMetaByKey, key)) {
           const value = ingestMetaByKey[key];
           return { result: value == null ? null : JSON.stringify(value) };

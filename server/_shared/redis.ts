@@ -220,6 +220,7 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
       },
       body: JSON.stringify(['SET', finalKey, JSON.stringify(value), 'EX', String(ttlSeconds)]),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
@@ -235,6 +236,168 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
     return true;
   } catch (err) {
     console.warn('[redis] setCachedJson failed:', errMsg(err));
+    return false;
+  }
+}
+
+/** Read a bounded Redis list whose members are independently JSON encoded. */
+export async function readCachedJsonList(
+  key: string,
+  limit: number,
+  raw = false,
+): Promise<CacheReadResult> {
+  const boundedLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.floor(limit))
+    : 1;
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    try {
+      const { sidecarCacheGet } = await import('./sidecar-cache');
+      const value = sidecarCacheGet(key);
+      if (!Array.isArray(value) || value.length === 0) return { status: 'miss' };
+      return { status: 'hit', value: value.slice(0, boundedLimit) };
+    } catch (error) {
+      return { status: 'error', error };
+    }
+  }
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return { status: 'miss' };
+
+  const finalKey = raw ? key : prefixKey(key);
+  try {
+    const response = await fetch(`${url}/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
+      },
+      body: JSON.stringify(['LRANGE', finalKey, '0', String(boundedLimit - 1)]),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    const data = (await response.json().catch(() => null)) as {
+      result?: unknown;
+      error?: string;
+    } | null;
+    if (!response.ok || data?.error) {
+      return {
+        status: 'error',
+        error: new Error(data?.error ?? `Redis HTTP ${response.status}`),
+      };
+    }
+    if (!Array.isArray(data?.result)) {
+      return {
+        status: 'error',
+        error: new Error('Redis LRANGE returned a malformed result'),
+      };
+    }
+    if (data.result.length === 0) return { status: 'miss' };
+    return {
+      status: 'hit',
+      value: data.result.map((item) => {
+        if (typeof item !== 'string') return item;
+        try {
+          return JSON.parse(item) as unknown;
+        } catch {
+          return item;
+        }
+      }),
+    };
+  } catch (error) {
+    return { status: 'error', error };
+  }
+}
+
+/**
+ * Atomically deduplicate, prepend, trim, and expire a JSON list. The transaction
+ * avoids lost updates across concurrent edge isolates without requiring Lua,
+ * which the self-hosted Redis proxy intentionally blocks.
+ */
+export async function prependCachedJsonList(
+  key: string,
+  value: unknown,
+  limit: number,
+  ttlSeconds: number,
+  raw = false,
+): Promise<boolean> {
+  const boundedLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.floor(limit))
+    : 1;
+  const boundedTtlSeconds = Number.isFinite(ttlSeconds)
+    ? Math.max(1, Math.floor(ttlSeconds))
+    : 1;
+  let encoded: string;
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) return false;
+    encoded = serialized;
+  } catch {
+    return false;
+  }
+
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    try {
+      const { sidecarCacheGet, sidecarCacheSet } = await import('./sidecar-cache');
+      const existing = sidecarCacheGet(key);
+      const retained = Array.isArray(existing)
+        ? existing.filter((item) => JSON.stringify(item) !== encoded)
+        : [];
+      sidecarCacheSet(key, [value, ...retained].slice(0, boundedLimit), boundedTtlSeconds);
+      return true;
+    } catch (err) {
+      // sentry-coverage-ok: this helper returns false to its caller, and a
+      // history write must never fail the current response it will inform.
+      console.warn('[redis] prependCachedJsonList failed:', errMsg(err));
+      return false;
+    }
+  }
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return false;
+  const finalKey = raw ? key : prefixKey(key);
+  const commands = [
+    ['LREM', finalKey, '0', encoded],
+    ['LPUSH', finalKey, encoded],
+    ['LTRIM', finalKey, '0', String(boundedLimit - 1)],
+    ['EXPIRE', finalKey, String(boundedTtlSeconds)],
+  ];
+  try {
+    const response = await fetch(`${url}/multi-exec`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
+      },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    const data = (await response.json().catch(() => null)) as
+      | Array<{ result?: unknown; error?: string }>
+      | { error?: string }
+      | null;
+    const failedCommand = Array.isArray(data)
+      ? data.find((item) => item.error || item.result === 'ERR')
+      : undefined;
+    if (
+      !response.ok
+      || !Array.isArray(data)
+      || data.length !== commands.length
+      || failedCommand !== undefined
+    ) {
+      console.warn('[redis] prependCachedJsonList failed:',
+        Array.isArray(data)
+          ? failedCommand?.error ?? failedCommand?.result ?? `HTTP ${response.status}`
+          : data?.error ?? `HTTP ${response.status}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    // sentry-coverage-ok: this helper returns false to its caller, and a
+    // history write must never fail the current response it will inform.
+    console.warn('[redis] prependCachedJsonList failed:', errMsg(err));
     return false;
   }
 }

@@ -10,6 +10,23 @@ const googleStatuses = (process.env.RELAY_TEST_GOOGLE_STATUS_SEQUENCE || '429')
   .split(',')
   .map((value) => Number(value.trim()))
   .filter(Number.isFinite);
+// OpenSky upstream statuses consumed per request; exhausted -> 429 (throttled,
+// the production condition under test). A 200 serves one military-callsign
+// state inside iran-theater bounds.
+const openskyStatuses = (process.env.RELAY_TEST_OPENSKY_STATUS_SEQUENCE || '')
+  .split(',')
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isFinite(value) && value > 0);
+// adsb.lol modes consumed per request: 'error' -> 503 (falls through to
+// Wingbits), 'empty' -> 200 with zero aircraft (authoritative quiet skies —
+// stops the fallback chain), 'flight' -> 200 with one military aircraft in
+// iran-theater bounds. Exhausted -> 'error'.
+const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+// OpenSky /states/all row: [icao24, callsign, country, t_pos, t_contact, lon, lat, alt, onGround, velocity, heading]
+const OPENSKY_MIL_STATE = ['ae9999', 'RCH999  ', '', 0, 0, 45, 30, 10000, false, 400, 90];
 const rssCalls = new Map();
 
 function nextValue(values, fallback) {
@@ -58,8 +75,9 @@ function request({ callback, statusCode, body = '', headers = {}, error = null }
 }
 
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async (url) => {
-  if (String(url).includes('FlightsFrontendService')) {
+globalThis.fetch = async (url, options) => {
+  const target = String(url);
+  if (target.includes('FlightsFrontendService')) {
     const status = nextValue(googleStatuses, 200);
     return {
       status,
@@ -67,7 +85,37 @@ globalThis.fetch = async (url) => {
       text: async () => '',
     };
   }
-  if (typeof originalFetch === 'function') return originalFetch(url);
+  if (target.includes('api.adsb.lol')) {
+    const mode = nextValue(adsbModes, 'error');
+    if (mode === 'empty') {
+      return { status: 200, ok: true, statusText: 'OK', text: async () => '', json: async () => ({ ac: [] }) };
+    }
+    if (mode === 'flight') {
+      return {
+        status: 200,
+        ok: true,
+        statusText: 'OK',
+        text: async () => '',
+        json: async () => ({ ac: [{ hex: 'ae8888', flight: 'RCH888', lat: 30, lon: 45, alt_baro: 10000, track: 90, gs: 400 }] }),
+      };
+    }
+    // Theater-posture fallback chain: adsb.lol is down, forcing Wingbits.
+    return { status: 503, ok: false, statusText: 'Service Unavailable', text: async () => '', json: async () => ({}) };
+  }
+  if (target.includes('customer-api.wingbits.com')) {
+    // One military-callsign flight inside iran-theater bounds.
+    return {
+      status: 200,
+      ok: true,
+      statusText: 'OK',
+      text: async () => '',
+      json: async () => ([{
+        alias: 'iran-theater',
+        data: [{ h: 'ae1234', f: 'RCH123', la: 30, lo: 45, ab: 30000, th: 90, gs: 400 }],
+      }]),
+    };
+  }
+  if (typeof originalFetch === 'function') return originalFetch(url, options);
   throw new Error(`Unexpected test fetch: ${url}`);
 };
 
@@ -93,10 +141,11 @@ https.get = function patchedGet(...args) {
   const cb = typeof options === 'function' ? options : callback;
   const parsed = targetUrl(input);
   if (parsed.hostname === 'opensky-network.org') {
+    const status = nextValue(openskyStatuses, 429);
     return request({
       callback: cb,
-      statusCode: 429,
-      body: JSON.stringify({ states: [], time: Date.now() }),
+      statusCode: status,
+      body: JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE] : [], time: Date.now() }),
       headers: { 'content-type': 'application/json' },
     });
   }

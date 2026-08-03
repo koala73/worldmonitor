@@ -82,7 +82,7 @@ Two limits are deliberate. First, softening keys on "the coverage key is absent"
 
 ### Relay ingestion telemetry
 
-The relay's public `GET /health` keeps the top-level `status: "ok"` contract for process-liveness probes. Its nested `ingestion.status` is the application-level verdict: it becomes `degraded` when aviation or RSS served coverage falls below its configured floor, or when AIS snapshot requests have no served snapshot. `GET /metrics` exposes the rolling-window per-route counters for success, throttle, timeout, authentication rejection, fallback, terminal failure, served coverage, cooldowns, and RSS feed backoff. AIS snapshot `unauthorizedClient` is tracked separately from upstream authentication failures so client traffic cannot be mistaken for provider health.
+The relay's public `GET /health` keeps the top-level `status: "ok"` contract for process-liveness probes. Its nested `ingestion.status` is the application-level verdict: it becomes `degraded` when aviation or RSS served coverage falls below its configured floor, or when AIS snapshot requests have no served snapshot. `GET /metrics` exposes the rolling-window per-route counters for success, throttle, timeout, authentication rejection, fallback, terminal failure, served coverage, cooldowns, and RSS feed backoff. AIS snapshot `unauthorizedClient` is tracked separately from upstream authentication failures so client traffic cannot be mistaken for provider health. The `theaterPosture` section attributes each theater-posture publication cycle to the upstream that actually fed it (`opensky`, `adsb.lol`, `wingbits`, or `vessel-only`), so healthy publication through the fallback chain is never mistaken for OpenSky recovery; the same source is written as `sourceVersion` on `seed-meta:theater-posture` (with a `producer` field distinguishing the relay loop from the seed-military-flights writer). Unlike the rolling-window route counters, `theaterPosture.sourceCountsSinceBoot` is process-lifetime (the seed cadence exceeds the metrics window); `lastRun` carries the latest cycle's source, counts, and write outcomes.
 
 ### Key Classifications
 
@@ -129,6 +129,22 @@ six group records and a seed no older than 60 minutes. Per-source transport
 details for policy, exchanges, and cross-Strait publishers remain visible only
 in this authenticated operator view; they are not copied into the public
 country summary or Pro MCP result.
+
+The six required records count **operationally covered** groups, which is not
+the same as populated groups. A group whose state is `unavailable` with the
+cause `healthy_quiet_window` is covered: the upstream answered and simply had
+nothing qualifying to report, which is not a source failure and needs no
+operator action. Its public state and zero-item payload are unchanged — no
+event is invented to fill it. Every other unavailable cause
+(`insufficient_data`, `provenance_rejected`, `upstream_unavailable`,
+`unknown`) is a real failure and stays uncovered, and a cause that is absent or
+malformed fails closed as uncovered.
+
+Both health surfaces publish a group breakdown so a shortfall names its own
+work item instead of reading as a bare `4/6`: `quietGroups` (nothing to do),
+`staleGroups` (chase the source's content), and `unavailableGroups`, each
+carrying the group id and its `unavailableCause`.
+
 Blocked China contracts remain visible in the audit with their stable reason
 code but are excluded from the strict launched-entry health count.
 
@@ -190,6 +206,117 @@ health entries where those feeds publish seed metadata.
 `COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country
 PortWatch cache entries, but the canonical country list and healthy seed-meta
 signal do not advance until full 174-country coverage returns.
+
+`portwatchPortActivity` additionally requires per-country **content**
+freshness, which is a different question from transport freshness and country
+cardinality. The seeder reuses a cached country payload whenever upstream
+`max(date)` has not advanced, so a run can report a fresh heartbeat and a
+complete 174/174 country list while an individual country's observation is
+days old. The producer therefore publishes a `contentFreshness` block, and the
+check verdict is:
+
+| Condition | Status |
+| --- | --- |
+| Every decision-critical country inside the 72-hour content budget | `OK` |
+| A decision-critical country past budget, future-dated, or absent from the run | `STALE_CONTENT` |
+| The block is absent, its counts are missing or arithmetically incoherent, or the producer's declared country set does not cover the set health pins | `COVERAGE_DEGRADED` |
+
+The verdict keys on the **decision-critical** countries — currently `CN` and
+`HK`, the two the China corridor control towers read — rather than on all 174.
+Health pins both that set and the 72-hour budget in its own config rather than
+accepting whatever the producer declares, so a producer-side change cannot
+narrow the alarm scope or widen its threshold silently: dropping `CN` from the
+seeder's list, or publishing a 30-day budget, would otherwise report `OK` with
+China days stale — the exact failure this check exists to catch. A producer set
+that covers the pinned countries and adds more is accepted.
+
+The producer's counts are a measurement taken at seeder-run time, and seed
+metadata is only rewritten on a canonical-advancing 12-hour run. Health
+therefore **re-ages** the oldest decision-critical observation against the
+current time rather than trusting the count, so an observation that was inside
+budget when the seeder measured it still alarms once it crosses the boundary
+between runs. `criticalOldestAgeMinutes` on the wire is the recomputed age, not
+the producer's. A block claiming every critical country is fresh but carrying no
+usable observation timestamp cannot be re-aged, so it reads as unusable.
+
+`unusableReasons` names which condition failed (`declared_scope_narrowed`,
+`fresh_exceeds_covered`, `critical_observation_time_unusable`, …) so a consumer
+never has to reconstruct the verdict from the raw counts; `expectedCriticalCountries`
+publishes the pinned scope alongside the declared one.
+
+Because the edge function redeploys within minutes of a merge while the producer
+is a 12-hour cron, the absent-block case is softened until the seeder has
+published the field at least once, tracked by the durable marker
+`seed-activated:supply_chain:portwatch-ports:content-freshness`. The softening
+covers **absence only** — a block that is present is always evaluated, and once
+the marker exists a block that disappears fails closed.
+
+The seeder reserves cold-fetch slots for the decision-critical countries so they
+refresh every run they are a cache miss. Without that reservation the rotation
+period (`ceil(174 / 30)` runs at a 12-hour cadence ~ 72 hours) equals the
+content budget, and the alarm would measure the rotation rather than an
+incident.
+
+The reservation only reaches a country that is a cache **miss**. A country stays
+a cache hit while the upstream `max(date)` it already holds is unchanged, so
+when the upstream feed itself freezes, the decision-critical countries never
+enter the refresh queue and no amount of slot reservation makes their content
+current. In that state the check is doing its job precisely by staying
+`STALE_CONTENT`: the content is genuinely old, the seeder cannot fix it, and the
+alarm is reporting an upstream outage rather than an internal one.
+Fleet-wide content staleness is normal by construction: the seeder refreshes at
+most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
+tail of the rotation is routinely past budget. Alarming on that would produce a
+warning that is always lit and never actionable. The fleet-wide counts
+(`coveredCount`, `freshCount`, `staleCount`, `unknownCount`, a bounded
+`staleCountries` list, and the oldest observation with its age) stay published
+for visibility; only the critical subset moves the status.
+
+The 72-hour budget is deliberately the same one
+`china-corridor-source-adapters.ts` applies to a PortWatch observation, so this
+alarm explains the China activity-nowcast's `marked_stale` exclusion rather
+than contradicting it. Health is inclusive at the boundary and treats a
+future-dated observation as stale, both one step more conservative than the
+data gate — an alarm should fire no later than the contract it protects.
+
+The MCP freshness envelope over the same seed-meta key carries this dimension
+too. `get_chokepoint_status` declares the identical pinned scope, budget, and
+activation marker, so an MCP consumer cannot read `stale: false` for a key this
+endpoint calls `STALE_CONTENT`. Both surfaces re-age the observation at read
+time and share one assessor (`api/_content-freshness.js`), and the parity is
+asserted field-for-field against this config rather than left to a comment.
+Both also read the activation marker as an `EXISTS`, so its stored value can
+never make the two disagree.
+
+The surfaces differ in exactly one input class, deliberately. This endpoint
+cannot tell a marker it failed to read from one that is genuinely absent — both
+land in the same bucket — so a read error still grants the grace. MCP treats an
+unreadable marker as *unknown* and fails closed, because a grace granted on the
+absence of evidence never expires: an evicted or renamed marker would otherwise
+disable the alarm permanently. So for a pre-activation key whose marker read
+errors, this endpoint reports `OK` while MCP reports `stale: true`. The
+disagreement only ever runs in that direction — MCP over-alarming — and never
+the direction that hides stale content. Aligning this endpoint is tracked
+separately.
+
+An MCP caller still sees a single boolean: `stale` does not say *which*
+dimension failed, so `/api/health` remains the surface that names the stale
+country.
+
+Both sides age the same clock, and it is not the retrieval timestamp. They read
+`contentAsOfChangedAt`, which advances only when the upstream's own `max(date)`
+advances, falling back to `fetchedAt` only for payloads written before that
+field existed. This matters because the seeder force-refetches every country
+once its cache passes `MAX_CACHE_AGE_MS`, and that refetch resets `fetchedAt`
+while returning unchanged content. Ageing `fetchedAt` would therefore have
+admitted a frozen observation as current for one budget window out of every
+cache lifetime — the same transport-for-content substitution this check exists
+to end, one layer below it.
+
+Named entities are operator-only. `contentFreshness` and the
+`chinaDecisionSignals` group breakdown are stripped from the anonymous
+`?compact=1` projection, which keeps the status but not which source is
+degraded.
 
 `predictionMarkets` also requires at least one published market in each
 `geopolitical`, `tech`, and `finance` pool. Its seed metadata publishes

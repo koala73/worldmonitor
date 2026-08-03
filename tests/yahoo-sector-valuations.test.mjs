@@ -299,6 +299,34 @@ describe('parseQuoteSummary', () => {
 });
 
 describe('YahooQuoteSummaryClient', () => {
+  it('requests the price module so ETF quoteSummary responses carry symbol identity', async () => {
+    let summaryUrl = '';
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse();
+        if (kind === 'crumb') return crumbResponse();
+        summaryUrl = url;
+        const response = valuationResponse('XLK');
+        const body = JSON.parse(response.body);
+        const result = body.quoteSummary.result[0];
+        delete result.symbol;
+        result.price = { symbol: 'XLK' };
+        return { ...response, body: JSON.stringify(body) };
+      },
+      resolveProxyString: () => '',
+      sleepFn: async () => {},
+    });
+
+    const result = await client.fetchDetailed('XLK');
+
+    assert.equal(result.kind, 'success');
+    assert.deepEqual(
+      new URL(summaryUrl).searchParams.get('modules')?.split(',').sort(),
+      ['defaultKeyStatistics', 'price', 'summaryDetail'],
+    );
+  });
+
   it('bounds direct and proxy Invalid Crumb retries, cools down, then recovers', async () => {
     let now = 1_700_000_000_000;
     let recovered = false;

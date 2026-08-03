@@ -19,6 +19,10 @@ export interface ShippingIndex {
   unit: string;
   history: ShippingRatePoint[];
   spikeAlert: boolean;
+  periodChangePct?: number;
+  periodChangeBasis?: PeriodChangeBasis;
+  priorPeriodValue?: number;
+  priorPeriodDate?: string;
 }
 
 export interface ShippingRatePoint {
@@ -645,6 +649,8 @@ export interface GetChinaCorridorControlTowersResponse {
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
+
+export type PeriodChangeBasis = "PERIOD_CHANGE_BASIS_UNSPECIFIED" | "publisher_reported" | "derived_from_prior_period_level";
 
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 

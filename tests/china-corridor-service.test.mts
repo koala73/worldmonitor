@@ -293,6 +293,24 @@ describe('China corridor client service', () => {
     );
   });
 
+  it('rejects corroboration signal ids outside the condition inputs', () => {
+    const example = openApiExample();
+    const malformed = JSON.parse(example.payloadJson);
+    const condition = malformed.corridors[0]!.conditions[0]!;
+    condition.provenance.claims.corroboration.value.sourceSignalIds = [
+      'signal:unrelated-source',
+    ];
+
+    assert.throws(
+      () => parseChinaCorridorResponse({
+        payloadJson: JSON.stringify(malformed),
+        generatedAt: example.generatedAt,
+        upstreamUnavailable: example.upstreamUnavailable,
+      }),
+      /Invalid China corridor control-tower response/,
+    );
+  });
+
   it('keeps the documented OpenAPI example valid at the production parser boundary', () => {
     const parsed = parseChinaCorridorResponse(openApiExample());
     assert.equal(parsed.corridors.length, 4);

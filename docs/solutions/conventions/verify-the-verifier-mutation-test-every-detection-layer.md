@@ -190,3 +190,8 @@ including a detector written moments ago as the fix for another detector.
 Issues: #5379 (the sweep), #5385 (the PR), #3803 (the timing oracle the layer-3 guard protects),
 #4497 (the cache/auth incident the layer-1 suite was written for). Filed during the sweep and
 deliberately left unfixed: #5384, #5386.
+
+- [`design-patterns/contract-gate-field-names-miss-value-axis.md`](../design-patterns/contract-gate-field-names-miss-value-axis.md)
+  — the same Layer 3 mechanism (a comment-stripper that swallows or spares the wrong source) applied to a
+  schema-contract gate, plus a second lesson this doc's framing predicts: two of twelve mutants survived the
+  first pass, and both survivors were branches no fixture reached rather than assertions that were wrong.
