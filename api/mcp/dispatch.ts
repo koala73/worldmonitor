@@ -45,8 +45,32 @@ export async function executeTool(
     ? tool._freshnessChecks
     : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
-  const [results, metas] = await Promise.all([Promise.all(reads), Promise.all(metaReads)]);
-  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
+  // #6080 deployment-order grace. Only checks declaring a content contract pay
+  // for this read, so it is one extra key on get_chokepoint_status and zero on
+  // every other tool. The marker is written with `SET <key> '1'` and no TTL, so
+  // a present marker parses to 1 and an absent one to null.
+  const activationKeys = [...new Set(
+    freshnessChecks
+      .map((check) => check.contentFreshnessActivationKey)
+      .filter((key): key is string => typeof key === 'string' && key !== ''),
+  )];
+  // A marker read error degrades to not-activated (soft), never to a false
+  // alarm — the same handling api/health.js applies to its own activation
+  // pipeline ("if (!r?.error && Number(r?.result) === 1)"). Without the catch
+  // an unreadable marker would reject inside the Promise.all below and turn a
+  // freshness hint into a hard tool-execution failure.
+  const activationReads = activationKeys.map(
+    (key) => readJsonFromUpstash(key).catch(() => null),
+  );
+  const [results, metas, activationValues] = await Promise.all([
+    Promise.all(reads),
+    Promise.all(metaReads),
+    Promise.all(activationReads),
+  ]);
+  const activatedKeys = new Set(
+    activationKeys.filter((_key, i) => activationValues[i] != null),
+  );
+  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas, Date.now(), activatedKeys);
 
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient

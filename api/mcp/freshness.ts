@@ -1,4 +1,6 @@
 import type { FreshnessCheck } from './types';
+// @ts-expect-error — JS module, no declaration file
+import { buildContentFreshnessAssessment } from '../_content-freshness.js';
 
 function parseFiniteRecordCount(raw: unknown): number | null {
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
@@ -9,7 +11,18 @@ function parseFiniteRecordCount(raw: unknown): number | null {
   return null;
 }
 
-export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], now = Date.now()): { cached_at: string | null; stale: boolean } {
+// `activatedKeys` holds the content-freshness activation markers that were
+// found present at read time (see FreshnessCheck.contentFreshnessActivationKey).
+// Callers that declare no content contract can omit it. Omitting it while a
+// check DOES declare one is the safe direction: the check reads as
+// pre-activation, so an absent block is graced — but a present-and-broken block
+// is still evaluated and still fails closed.
+export function evaluateFreshness(
+  checks: FreshnessCheck[],
+  metas: unknown[],
+  now = Date.now(),
+  activatedKeys?: ReadonlySet<string>,
+): { cached_at: string | null; stale: boolean } {
   let stale = false;
   let oldestFetchedAt = Number.POSITIVE_INFINITY;
   let hasAnyValidMeta = false;
@@ -36,6 +49,27 @@ export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], no
         ? parseFiniteRecordCount((meta as { recordCount: unknown }).recordCount)
         : null;
       stale ||= recordCount == null || recordCount < check.minRecordCount;
+    }
+
+    if (check.requireContentFreshness) {
+      // Same assessor api/health.js uses, so the two surfaces cannot drift on
+      // parsing, on the fail-closed rules, or on re-aging: the producer's
+      // counts are a measurement taken at seeder-run time, and this recomputes
+      // the critical observation's age against `now`.
+      const assessment = buildContentFreshnessAssessment(
+        meta,
+        check.requireContentFreshness,
+        now,
+      );
+      const pendingActivation = Boolean(
+        assessment
+        && !assessment.fieldPresent
+        && check.contentFreshnessActivationKey
+        && !activatedKeys?.has(check.contentFreshnessActivationKey),
+      );
+      if (!pendingActivation) {
+        stale ||= !assessment?.usable || assessment.contentStale;
+      }
     }
   }
 
