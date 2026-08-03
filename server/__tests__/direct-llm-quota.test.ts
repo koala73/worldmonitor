@@ -9,10 +9,38 @@ import {
   DIRECT_LLM_REDIS_UNAVAILABLE_RETRY_AFTER_SECONDS,
   DIRECT_LLM_SELF_METERED_QUOTA_PATHS,
   directLlmDailyQuotaKey,
+  directLlmDailyLimitFromEntitlements,
   reserveDirectLlmQuota,
+  resolveDirectLlmDailyLimit,
 } from "../_shared/direct-llm-quota";
 
 describe("direct LLM daily quota", () => {
+  test("uses the dashboard-AI default for legacy Pro rows and preserves explicit plan limits", () => {
+    expect(resolveDirectLlmDailyLimit()).toBe(500);
+    expect(resolveDirectLlmDailyLimit(500)).toBe(500);
+    expect(resolveDirectLlmDailyLimit(2_500)).toBe(2_500);
+    expect(resolveDirectLlmDailyLimit(null)).toBeNull();
+    expect(resolveDirectLlmDailyLimit(0)).toBe(0);
+    expect(resolveDirectLlmDailyLimit(Number.NaN)).toBe(500);
+  });
+
+  test("reads the dashboard-AI allowance without touching MCP limits", () => {
+    expect(directLlmDailyLimitFromEntitlements({
+      features: {
+        planLimits: {
+          dashboardAiCallsPerDay: 2_500,
+        },
+      },
+    })).toBe(2_500);
+    expect(directLlmDailyLimitFromEntitlements({
+      features: {
+        planLimits: {
+          mcpCallsPerDay: 250,
+        },
+      },
+    })).toBeUndefined();
+  });
+
   test("uses a UTC daily key in the direct-LLM namespace", () => {
     const key = directLlmDailyQuotaKey("user_123", new Date(Date.UTC(2026, 6, 4, 23, 59, 0)));
     expect(key).toBe("llm:direct-usage:user_123:2026-07-04");
@@ -55,6 +83,27 @@ describe("direct LLM daily quota", () => {
       retryAfterSec: 43_200,
     });
     expect(calls.at(-1)).toEqual([["DECR", "llm:direct-usage:user_123:2026-07-04"]]);
+  });
+
+  test("honors a Pro Business dashboard-AI allowance independently of MCP", async () => {
+    const calls: Array<Array<Array<string | number>>> = [];
+    const result = await reserveDirectLlmQuota({
+      userId: "user_business",
+      limit: 2_500,
+      date: new Date(Date.UTC(2026, 6, 4, 12, 0, 0)),
+      pipeline: async (cmds) => {
+        calls.push(cmds);
+        if (cmds[0]?.[0] === "DECR") return [{ result: 2_500 }];
+        return [{ result: 2_501 }, { result: "OK" }];
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "cap-exceeded",
+      floor: 2_500,
+    });
+    expect(calls.at(-1)).toEqual([["DECR", "llm:direct-usage:user_business:2026-07-04"]]);
   });
 
   test("fails closed with a short retry window when Redis reservation cannot be proven", async () => {

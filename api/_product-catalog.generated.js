@@ -228,6 +228,7 @@ export const TIER_CONFIG = {
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 0,
+      "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0
     },
     "cta": "Get Started",
@@ -255,6 +256,7 @@ export const TIER_CONFIG = {
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 50,
+      "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60
     },
     "highlighted": true
@@ -278,6 +280,7 @@ export const TIER_CONFIG = {
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 250,
+      "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60
     },
     "highlighted": false
@@ -301,6 +304,7 @@ export const TIER_CONFIG = {
       "apiRequestsPerDay": 1000,
       "apiBurstRequestsPerMinute": 60,
       "mcpCallsPerDay": 1000,
+      "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60
     },
     "highlighted": false
@@ -324,6 +328,7 @@ export const TIER_CONFIG = {
       "apiRequestsPerDay": 10000,
       "apiBurstRequestsPerMinute": 300,
       "mcpCallsPerDay": 10000,
+      "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300
     },
     "highlighted": false
@@ -344,6 +349,7 @@ export const TIER_CONFIG = {
       "apiRequestsPerDay": null,
       "apiBurstRequestsPerMinute": 1000,
       "mcpCallsPerDay": null,
+      "dashboardAiCallsPerDay": null,
       "mcpBurstRequestsPerMinute": 1000
     },
     "cta": "Contact Sales",

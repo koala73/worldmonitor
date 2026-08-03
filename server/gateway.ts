@@ -72,6 +72,7 @@ import {
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_GATEWAY_QUOTA_PATHS,
+  directLlmDailyLimitFromEntitlements,
   reserveDirectLlmQuota,
 } from './_shared/direct-llm-quota';
 import {
@@ -639,7 +640,7 @@ function createDirectLlmQuotaFailureResponse(
   if (reservation.reason === 'cap-exceeded') {
     return new Response(JSON.stringify({
       error: 'Direct LLM daily quota exceeded',
-      limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      limit: reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
       resetsAt: 'next UTC midnight',
     }), {
       status: 429,
@@ -1163,6 +1164,8 @@ export function createDomainGateway(
     // market allowlist to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
+    let quotaEntitlements: CachedEntitlements | null = null;
+    let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
@@ -1489,6 +1492,7 @@ export function createDomainGateway(
       const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
         clerkRole: sessionRole,
       });
+      quotaEntitlements = entitlementCheck.entitlements;
       recordUsageEntitlement(entitlementCheck.entitlements);
       const entitlementResponse = entitlementCheck.response;
       if (entitlementResponse) {
@@ -1551,6 +1555,7 @@ export function createDomainGateway(
             ? userKeyEntitlement
             : await getEntitlements(sessionUserId)
         );
+        quotaEntitlements = ent;
         recordUsageEntitlement(ent);
         if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
           rateLimitPrincipalUserId = sessionUserId;
@@ -1840,18 +1845,38 @@ export function createDomainGateway(
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
 
-      const reservation = await reserveDirectLlmQuota({
-        userId: sessionUserId,
-        pipeline: (cmds) => runRedisPipeline(cmds, true),
-      });
-      if (!reservation.ok) {
-        const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
-        emitRequest(
-          response.status,
-          response.status === 429 ? 'rate_limit_429_direct_llm' : 'rate_limit_degraded',
-          null,
-        );
-        return response;
+      // Tier-1 legacy Clerk-role grants intentionally bypass the ordinary
+      // entitlement lookup. Re-read the cached row when available so Pro
+      // Business/API plans still receive their catalog-specific dashboard-AI
+      // allowance; a missing legacy row falls back to the Pro default.
+      const ent = quotaEntitlements ?? (
+        userKeyEntitlement !== undefined
+          ? userKeyEntitlement
+          : await getEntitlements(sessionUserId)
+      );
+      if (ent) recordUsageEntitlement(ent);
+      if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
+        directLlmDailyLimit = directLlmDailyLimitFromEntitlements(ent);
+      }
+
+      // Enterprise subscription rows carry an explicit null allowance. Do not
+      // hit Redis for those unlimited callers; static enterprise keys already
+      // bypass this block above.
+      if (directLlmDailyLimit !== null) {
+        const reservation = await reserveDirectLlmQuota({
+          userId: sessionUserId,
+          limit: directLlmDailyLimit,
+          pipeline: (cmds) => runRedisPipeline(cmds, true),
+        });
+        if (!reservation.ok) {
+          const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
+          emitRequest(
+            response.status,
+            response.status === 429 ? 'rate_limit_429_direct_llm' : 'rate_limit_degraded',
+            null,
+          );
+          return response;
+        }
       }
     }
 

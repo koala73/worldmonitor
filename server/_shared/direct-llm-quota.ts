@@ -1,8 +1,39 @@
 import { getKeyPrefix } from './redis';
 import { PRO_DAILY_QUOTA_TTL_SECONDS, secondsUntilUtcMidnight } from './pro-mcp-token';
 
-export const DIRECT_LLM_DAILY_QUOTA_LIMIT = 50;
+// Dashboard/API LLM work is a separate budget from MCP calls. The old value of
+// 50 was copied from the MCP allowance and caused normal dashboard hydration to
+// exhaust a Pro user's spend budget almost immediately.
+export const DIRECT_LLM_DAILY_QUOTA_LIMIT = 500;
 export const DIRECT_LLM_REDIS_UNAVAILABLE_RETRY_AFTER_SECONDS = 30;
+
+export type DirectLlmEntitlementShape = {
+  features?: {
+    planLimits?: {
+      mcpCallsPerDay?: number | null;
+      dashboardAiCallsPerDay?: number | null;
+    };
+  };
+};
+
+/**
+ * Resolve the dashboard-AI allowance from a catalog-backed entitlement row.
+ * Missing/invalid legacy data falls back to the conservative Pro default;
+ * explicit null means unlimited and zero remains a real zero allowance.
+ */
+export function resolveDirectLlmDailyLimit(planDailyLimit?: number | null): number | null {
+  if (planDailyLimit === null) return null;
+  if (typeof planDailyLimit === 'number' && Number.isFinite(planDailyLimit) && planDailyLimit >= 0) {
+    return planDailyLimit;
+  }
+  return DIRECT_LLM_DAILY_QUOTA_LIMIT;
+}
+
+export function directLlmDailyLimitFromEntitlements(
+  entitlements: DirectLlmEntitlementShape | null | undefined,
+): number | null | undefined {
+  return entitlements?.features?.planLimits?.dashboardAiCallsPerDay;
+}
 
 export const DIRECT_LLM_GATEWAY_QUOTA_PATHS = new Set<string>([
   '/api/intelligence/v1/classify-event',
@@ -46,8 +77,10 @@ export function directLlmDailyQuotaKey(userId: string, date?: Date): string {
 export async function reserveDirectLlmQuota(opts: {
   userId: string;
   pipeline: DirectLlmQuotaPipeline;
+  limit?: number | null;
   date?: Date;
 }): Promise<DirectLlmQuotaReservation> {
+  const limit = resolveDirectLlmDailyLimit(opts.limit);
   const retryAfterSec = secondsUntilUtcMidnight(opts.date);
   const key = directLlmDailyQuotaKey(opts.userId, opts.date);
   if (!key) {
@@ -97,12 +130,12 @@ export async function reserveDirectLlmQuota(opts: {
     }
   };
 
-  if (newCount > DIRECT_LLM_DAILY_QUOTA_LIMIT) {
+  if (limit !== null && newCount > limit) {
     await rollback();
     return {
       ok: false,
       reason: 'cap-exceeded',
-      floor: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      floor: limit,
       retryAfterSec,
     };
   }

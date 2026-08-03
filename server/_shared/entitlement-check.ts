@@ -81,13 +81,14 @@ export interface CachedEntitlements {
      * `null` on a member means **unlimited**; a MISSING member (or a missing
      * `planLimits` altogether) means unknown, and consumers resolve unknown
      * toward cost protection — never toward the higher allowance. The MCP
-     * daily quota (plan 2026-07-25-001 U3) is the first consumer.
+     * daily quota (plan 2026-07-25-001 U3) and dashboard-AI quota are consumers.
      */
     planLimits?: {
       apiRequestsPerDay?: number | null;
       apiBurstRequestsPerMinute?: number | null;
       mcpCallsPerDay?: number | null;
       mcpBurstRequestsPerMinute?: number | null;
+      dashboardAiCallsPerDay?: number | null;
     };
   };
   validUntil: number;

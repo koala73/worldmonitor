@@ -730,6 +730,9 @@ export default defineSchema({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
         mcpCallsPerDay: v.union(v.number(), v.null()),
+        // Optional for entitlement rows written before the dashboard-AI
+        // dimension existed; the read-time catalog merge supplies it.
+        dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
         mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
       })),
       prioritySupport: v.boolean(),

@@ -222,6 +222,37 @@ describe("gateway direct LLM quota", () => {
     );
   });
 
+  test("Pro Business entitlement uses its dashboard-AI allowance", async () => {
+    const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_business", orgId: null, role: "free" });
+    checkEntitlementDetailed.mockResolvedValue({
+      response: null,
+      entitlements: {
+        planKey: "pro_business_monthly",
+        features: {
+          tier: 1,
+          planLimits: {
+            mcpCallsPerDay: 250,
+            dashboardAiCallsPerDay: 2_500,
+          },
+        },
+        validUntil: Date.now() + 60_000,
+      },
+    });
+
+    const res = await makeGateway(calls)(
+      req(`${COUNTRY_BRIEF_PATH}?country_code=US`, {
+        headers: { Authorization: "Bearer business" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_business", limit: 2_500 }),
+    );
+  });
+
   test("anonymous wms-only classify-event is blocked before handler spend", async () => {
     const calls = { classify: 0, deduct: 0, cache: 0 };
     validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
@@ -238,6 +269,19 @@ describe("gateway direct LLM quota", () => {
     );
 
     expect(res.status).toBe(403);
+    expect(calls.classify).toBe(0);
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
+  });
+
+  test("signed-out classify-event is rejected before quota or handler spend", async () => {
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(401);
     expect(calls.classify).toBe(0);
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });

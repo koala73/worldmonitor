@@ -188,6 +188,36 @@ describe("entitlement query", () => {
     expect(result.features.mcpAccess).toBe(true); // surfaced from catalog default
   });
 
+  test("read-time catalog merge surfaces dashboard-AI allowance on legacy rows", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user-legacy-ai",
+        planKey: "pro_business_monthly",
+        features: {
+          tier: 1,
+          apiAccess: false,
+          apiRateLimit: 0,
+          maxDashboards: 25,
+          prioritySupport: true,
+          exportFormats: ["csv", "json", "pdf"],
+          mcpAccess: true,
+          // No planLimits — this row predates the catalog-backed limits.
+        },
+        validUntil: FUTURE,
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
+      userId: "user-legacy-ai",
+    });
+
+    expect(result.features.planLimits?.mcpCallsPerDay).toBe(250);
+    expect(result.features.planLimits?.dashboardAiCallsPerDay).toBe(2_500);
+  });
+
   test("read-time catalog merge: stored features win on conflict (per-user overrides preserved)", async () => {
     const t = convexTest(schema, modules);
 

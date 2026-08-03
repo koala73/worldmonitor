@@ -17,10 +17,18 @@ import {
   getInternalMcpVerifiedNonce,
 } from './mcp-internal-hmac';
 import { validateUserApiKey } from './user-api-key';
+import { directLlmDailyLimitFromEntitlements } from './direct-llm-quota';
 
 export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
-  | { isPremium: true; userId: string; kind: 'user-api-key' | 'bearer'; quotaExempt: false }
+  | {
+      isPremium: true;
+      userId: string;
+      kind: 'user-api-key' | 'bearer';
+      quotaExempt: false;
+      /** Undefined uses the conservative legacy Pro default; null is unlimited. */
+      directLlmDailyLimit?: number | null;
+    }
   | { isPremium: true; userId: null; kind: 'enterprise'; quotaExempt: true }
   | {
     isPremium: false;
@@ -280,7 +288,13 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       if (userKey) {
         const ent = await getEntitlements(userKey.userId);
         if (ent && ent.features.apiAccess === true) {
-          return { isPremium: true, userId: userKey.userId, kind: 'user-api-key', quotaExempt: false };
+          return {
+            isPremium: true,
+            userId: userKey.userId,
+            kind: 'user-api-key',
+            quotaExempt: false,
+            directLlmDailyLimit: directLlmDailyLimitFromEntitlements(ent),
+          };
         }
         // Preserve main's billing-verification tag on confirmed denials (#5622).
         return denyFor(ent);
@@ -330,7 +344,13 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     if (session.userId) {
       const ent = await getEntitlements(session.userId);
       if (ent && ent.features.tier >= 1) {
-        return { isPremium: true, userId: session.userId, kind: 'bearer', quotaExempt: false };
+        return {
+          isPremium: true,
+          userId: session.userId,
+          kind: 'bearer',
+          quotaExempt: false,
+          directLlmDailyLimit: directLlmDailyLimitFromEntitlements(ent),
+        };
       }
       return denyFor(ent);
     }
