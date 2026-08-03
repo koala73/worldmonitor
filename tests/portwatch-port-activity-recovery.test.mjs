@@ -210,6 +210,11 @@ describe('PortWatch atomic publication', () => {
         'supply_chain:portwatch-ports:v1:US',
         'supply_chain:portwatch-ports:v1:_countries',
         'seed-meta:supply_chain:portwatch-ports',
+        // #6060: the content-freshness activation marker commits in the SAME
+        // transaction as the meta it activates. If it landed separately, a
+        // partial failure could set the marker without the block, flipping
+        // health out of its pending grace onto a payload that lacks the field.
+        'seed-activated:supply_chain:portwatch-ports:content-freshness',
       ],
     );
   });
@@ -266,7 +271,7 @@ describe('PortWatch atomic publication', () => {
         fetchFn,
         credentials: { url: 'https://redis.example.test', token: 'token' },
       }),
-      /transaction: 1\/4 commands failed/,
+      /transaction: 1\/5 commands failed/,
     );
   });
 });

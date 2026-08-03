@@ -7,9 +7,9 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const test = require('node:test');
 
-function get(port, requestPath) {
+function get(port, requestPath, headers) {
   return new Promise((resolve, reject) => {
-    const request = http.get({ hostname: '127.0.0.1', port, path: requestPath }, (response) => {
+    const request = http.get({ hostname: '127.0.0.1', port, path: requestPath, headers }, (response) => {
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));
       response.on('end', () => resolve({
@@ -32,7 +32,9 @@ async function stop(child) {
   if (child.exitCode == null) child.kill('SIGKILL');
 }
 
-test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback metrics', async () => {
+// Spawns the relay with the test preload and resolves { child, port } once
+// test mode is ready. extraEnv layers on top of the shared baseline.
+function spawnRelay(extraEnv) {
   const preload = path.join(__dirname, 'ais-relay-test-preload.cjs');
   const relay = path.join(__dirname, 'ais-relay.cjs');
   const child = spawn(process.execPath, [relay], {
@@ -44,17 +46,13 @@ test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback me
       RELAY_SHARED_SECRET: '',
       I_UNDERSTAND_THIS_DISABLES_AUTH: 'true',
       RELAY_RATE_LIMIT_MAX: '1000',
-      RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX: '1000',
       RELAY_OPENSKY_RATE_LIMIT_MAX: '1000',
-      RELAY_RSS_RATE_LIMIT_MAX: '1000',
-      RELAY_TEST_RSS_CACHE_TTL_MS: '10',
-      GF_429_COOLDOWN_MS: '60000',
       OPENSKY_429_COOLDOWN_MS: '60000',
       OPENSKY_REQUEST_SPACING_MS: '1',
       OPENSKY_CLIENT_ID: 'test-client',
       OPENSKY_CLIENT_SECRET: 'test-secret',
-      RELAY_TEST_GOOGLE_STATUS_SEQUENCE: '429',
       NODE_OPTIONS: `--require=${preload}`,
+      ...extraEnv,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -76,8 +74,63 @@ test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback me
     });
   });
 
+  return { child, ready: ready.then(() => ({ child, port })) };
+}
+
+// Mock Upstash REST endpoint: records every command, acknowledges writes, and
+// can return a deterministic response sequence for a specific Redis key.
+async function createUpstashMock({ setResponses = {} } = {}) {
+  const commands = [];
+  const responseQueues = new Map(Object.entries(setResponses).map(([key, responses]) => [
+    key,
+    Array.isArray(responses) ? [...responses] : [responses],
+  ]));
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      let command = null;
+      try { command = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* non-JSON body */ }
+      commands.push({ path: req.url, command });
+      res.setHeader('Content-Type', 'application/json');
+      if (req.url === '/pipeline') {
+        res.end(JSON.stringify((Array.isArray(command) ? command : []).map(() => ({ result: null }))));
+        return;
+      }
+      const key = Array.isArray(command) ? command[1] : null;
+      const queue = responseQueues.get(key);
+      const response = queue?.length
+        ? queue.shift()
+        : (command?.[0] === 'EVAL' ? { result: 1 } : { result: 'OK' });
+      res.end(JSON.stringify(response));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return {
+    commands,
+    setsFor: (key) => commands.filter(
+      (entry) => Array.isArray(entry.command) && entry.command[0] === 'SET' && entry.command[1] === key,
+    ),
+    env: {
+      UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
+      UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
+      UPSTASH_ALLOW_INSECURE_HTTP: 'true',
+    },
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
+test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback metrics', async () => {
+  const { child, ready } = spawnRelay({
+    RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX: '1000',
+    RELAY_RSS_RATE_LIMIT_MAX: '1000',
+    RELAY_TEST_RSS_CACHE_TTL_MS: '10',
+    GF_429_COOLDOWN_MS: '60000',
+    RELAY_TEST_GOOGLE_STATUS_SEQUENCE: '429',
+  });
+
   try {
-    await ready;
+    const { port } = await ready;
 
     const googleFirst = await get(port, '/google-flights/search?origin=DXB&destination=LHR&departure_date=2026-08-03');
     assert.equal(googleFirst.status, 502);
@@ -124,6 +177,7 @@ test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback me
     assert.equal(health.ingestion.status, 'degraded');
     assert.equal(health.ingestion.aisSnapshot.served, 0);
     assert.equal(health.ingestion.aisSnapshot.connected, false);
+    assert.ok(!('theaterPosture' in health.ingestion), 'public /health must not expose theaterPosture (#3802 surface discipline)');
 
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.equal(metrics.googleFlights.requests, 2);
@@ -142,5 +196,212 @@ test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback me
     assert.ok(metrics.aisSnapshot.terminalFailure >= 1);
   } finally {
     await stop(child);
+  }
+});
+
+test('theater-posture Wingbits fallback publication is attributed to Wingbits, not OpenSky recovery', async () => {
+  const upstash = await createUpstashMock();
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+
+    // OpenSky upstream is stubbed to 429, adsb.lol to 503 — Wingbits carries
+    // the cycle. Two cycles prove the per-source counter accumulates.
+    for (let cycle = 1; cycle <= 2; cycle += 1) {
+      const trigger = await get(port, '/__test/seed-theater-posture');
+      assert.equal(trigger.status, 200, `trigger ${cycle} failed: ${trigger.body}`);
+      assert.equal(JSON.parse(trigger.body).ok, true);
+    }
+
+    const seedMetaSets = upstash.setsFor('seed-meta:theater-posture');
+    assert.equal(seedMetaSets.length, 2, `expected two seed-meta writes, saw: ${JSON.stringify(upstash.commands.map((e) => e.command?.[1]))}`);
+    for (const entry of seedMetaSets) {
+      const seedMeta = JSON.parse(entry.command[2]);
+      assert.equal(seedMeta.sourceVersion, 'wingbits', 'seed-meta must attribute the publishing source');
+      assert.equal(seedMeta.producer, 'ais-relay', 'seed-meta must name which of the two writers produced it');
+      assert.ok(seedMeta.recordCount >= 1);
+    }
+
+    const canonicalSets = upstash.setsFor('theater-posture:sebuf:v1');
+    assert.equal(canonicalSets.length, 2, 'canonical theater posture must still publish');
+    for (let i = 0; i < canonicalSets.length; i += 1) {
+      const canonical = JSON.parse(canonicalSets[i].command[2]);
+      const meta = JSON.parse(seedMetaSets[i].command[2]);
+      assert.equal(canonical._seed.groupId, meta.publicationId, 'canonical envelope and seed-meta must identify one publication');
+    }
+
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.ok(metrics.theaterPosture, '/metrics must expose a theaterPosture section');
+    assert.equal(metrics.theaterPosture.lastRun.source, 'wingbits');
+    assert.equal(metrics.theaterPosture.lastRun.flightCount, 1);
+    assert.equal(metrics.theaterPosture.lastRun.redisOk, true);
+    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, true);
+    assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 0, adsbLol: 0, wingbits: 2, vesselOnly: 0 });
+
+    // The acceptance gate itself: fallback publication must not read as OpenSky recovery.
+    assert.equal(metrics.opensky.success, 0);
+    assert.equal(metrics.opensky.served, 0);
+    assert.ok(metrics.opensky.throttle >= 1);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture reports a canonical envelope write failure separately', async () => {
+  const upstash = await createUpstashMock({
+    setResponses: {
+      'theater-posture:sebuf:v1': [{ result: 'ERR canonical unavailable' }],
+    },
+  });
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.redisOk, false);
+    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, true);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture reports a seed-meta write failure separately', async () => {
+  const upstash = await createUpstashMock({
+    setResponses: {
+      'seed-meta:theater-posture': [{ result: 'ERR seed-meta unavailable' }],
+    },
+  });
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.redisOk, true);
+    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, false);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture does not publish while the shared producer lock is held', async () => {
+  const upstash = await createUpstashMock({
+    setResponses: {
+      'seed-lock:theater-posture': [{ result: null }],
+    },
+  });
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+    assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 0);
+    assert.equal(upstash.setsFor('seed-meta:theater-posture').length, 0);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture OpenSky success is attributed to opensky, and /metrics stays auth-gated', async () => {
+  const upstash = await createUpstashMock();
+  const { child, ready } = spawnRelay({
+    RELAY_SHARED_SECRET: 'test-relay-secret',
+    I_UNDERSTAND_THIS_DISABLES_AUTH: '',
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200,200',
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+  const auth = { 'x-relay-key': 'test-relay-secret' };
+
+  try {
+    const { port } = await ready;
+
+    // theaterPosture attribution must never ship on an unauthenticated surface.
+    const unauthorized = await get(port, '/metrics');
+    assert.equal(unauthorized.status, 401, '/metrics must stay auth-gated');
+
+    // The seed cycle's own /opensky self-request runs through the authed
+    // route (x-relay-key), matching the production configuration.
+    const trigger = await get(port, '/__test/seed-theater-posture', auth);
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+
+    const seedMetaSets = upstash.setsFor('seed-meta:theater-posture');
+    assert.equal(seedMetaSets.length, 1);
+    assert.equal(JSON.parse(seedMetaSets[0].command[2]).sourceVersion, 'opensky');
+
+    const metrics = JSON.parse((await get(port, '/metrics', auth)).body);
+    assert.equal(metrics.theaterPosture.lastRun.source, 'opensky');
+    assert.equal(metrics.theaterPosture.lastRun.flightCount, 1);
+    assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 1, adsbLol: 0, wingbits: 0, vesselOnly: 0 });
+    assert.ok(metrics.opensky.success >= 1, 'a real OpenSky 200 must be recorded as opensky success');
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('theater-posture attributes adsb.lol wins to adsb.lol, and adsb-confirmed quiet skies to vessel-only', async () => {
+  const upstash = await createUpstashMock();
+  const { child, ready } = spawnRelay({
+    RELAY_TEST_ADSB_MODE_SEQUENCE: 'flight,empty',
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+
+    // Cycle 1: adsb.lol serves one military aircraft — the win must be
+    // attributed to adsb.lol, not Wingbits (catches swapped fallback arms).
+    const first = await get(port, '/__test/seed-theater-posture');
+    assert.equal(first.status, 200, `trigger 1 failed: ${first.body}`);
+    let metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.source, 'adsb.lol');
+    assert.equal(metrics.theaterPosture.lastRun.flightCount, 1);
+
+    // Cycle 2: adsb.lol answers an authoritative empty — the chain stops
+    // without consulting Wingbits and the cycle publishes vessel-only.
+    const second = await get(port, '/__test/seed-theater-posture');
+    assert.equal(second.status, 200, `trigger 2 failed: ${second.body}`);
+
+    const seedMetaSets = upstash.setsFor('seed-meta:theater-posture');
+    assert.equal(seedMetaSets.length, 2);
+    assert.equal(JSON.parse(seedMetaSets[0].command[2]).sourceVersion, 'adsb.lol');
+    const quietMeta = JSON.parse(seedMetaSets[1].command[2]);
+    assert.equal(quietMeta.sourceVersion, 'vessel-only');
+    assert.equal(quietMeta.recordCount, 0);
+
+    metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.source, 'vessel-only');
+    // The Wingbits stub would have contributed a flight had the chain
+    // consulted it: adsb.lol's authoritative empty answer stops the chain.
+    assert.equal(metrics.theaterPosture.lastRun.flightCount, 0);
+    assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 0, adsbLol: 1, wingbits: 0, vesselOnly: 1 });
+  } finally {
+    await stop(child);
+    await upstash.close();
   }
 });

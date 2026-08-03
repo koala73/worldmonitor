@@ -88,30 +88,72 @@ export async function fetchChinaDecisionSignals({
   return snapshot;
 }
 
+// #6060: a healthy quiet window is not an operational source failure. The
+// exchanges answered and simply had nothing qualifying to report, so the group
+// is covered even though its public state stays `unavailable` with zero items —
+// no disclosure event is invented and the product surface is unchanged.
+//
+// Every other unavailable cause (insufficient_data, provenance_rejected,
+// upstream_unavailable, unknown) IS a real failure and stays uncovered. The
+// comparison is deliberately strict-equality against the canonical cause
+// string: an absent, malformed, or differently-cased cause has not PROVEN a
+// healthy window, and unproven must never be the branch that certifies
+// coverage.
+export const CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE = 'healthy_quiet_window';
+
+function unavailableCauseOf(group) {
+  const cause = group?.metadata?.unavailableCause;
+  return typeof cause === 'string' && cause.length > 0 ? cause : 'unknown';
+}
+
+export function isChinaDecisionGroupOperationallyCovered(group) {
+  if (!group) return false;
+  if (group.state !== 'unavailable') return true;
+  return unavailableCauseOf(group) === CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE;
+}
+
 export function declareChinaDecisionSignalRecords(snapshot) {
   return Array.isArray(snapshot?.groups)
-    ? snapshot.groups.filter((group) => group?.state !== 'unavailable').length
+    ? snapshot.groups.filter(isChinaDecisionGroupOperationallyCovered).length
     : 0;
 }
 
 export function summarizeChinaDecisionGroups(groups) {
   const candidates = Array.isArray(groups) ? groups : [];
+  const unavailable = candidates.filter((group) => group?.state === 'unavailable');
   return {
     populated: candidates.filter((group) => Array.isArray(group?.items) && group.items.length > 0).length,
     partial: candidates.filter((group) => group?.state === 'partial').length,
     stale: candidates.filter((group) => group?.state === 'stale').length,
-    unavailable: candidates.filter((group) => group?.state === 'unavailable').length,
+    // The raw public state, unchanged — a quiet group is still `unavailable`
+    // on the wire. `healthyQuiet` breaks out the subset of those that are
+    // operationally covered, so operators can tell a quiet window from an
+    // outage without either count lying about the other.
+    unavailable: unavailable.length,
+    healthyQuiet: unavailable.filter(
+      (group) => unavailableCauseOf(group) === CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE,
+    ).length,
+    operationallyCovered: candidates.filter(isChinaDecisionGroupOperationallyCovered).length,
   };
 }
 
 export function chinaDecisionSignalGroupDiagnostics(snapshot) {
   const groups = Array.isArray(snapshot?.groups) ? snapshot.groups : [];
+  const byId = (groupId) => groups.find((group) => group?.id === groupId);
   return {
     groupStates: Object.fromEntries(
       CHINA_DECISION_SIGNAL_GROUP_IDS.map((groupId) => [
         groupId,
-        groups.find((group) => group?.id === groupId)?.state ?? 'unavailable',
+        byId(groupId)?.state ?? 'unavailable',
       ]),
+    ),
+    // Cause per unavailable group so health names the stale or quiet source
+    // family instead of emitting a generic N/6 warning. A group the snapshot
+    // omits entirely defaults to `unknown` rather than dropping out of the map.
+    unavailableCauses: Object.fromEntries(
+      CHINA_DECISION_SIGNAL_GROUP_IDS
+        .filter((groupId) => (byId(groupId)?.state ?? 'unavailable') === 'unavailable')
+        .map((groupId) => [groupId, unavailableCauseOf(byId(groupId))]),
     ),
     groupCounts: summarizeChinaDecisionGroups(groups),
   };

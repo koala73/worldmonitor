@@ -19,6 +19,7 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 const { default: handler } = await import('../api/seed-health.js');
 
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
+const DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
@@ -39,7 +40,10 @@ after(() => {
   }
 });
 
-function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchMeta = false } = {}) {
+function installSeedHealthPipelineMock(
+  portwatchRecordCount,
+  { missingPortwatchMeta = false, portwatchContentFreshness, chinaDecisionMeta } = {},
+) {
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     const results = commands.map((command) => {
@@ -53,7 +57,16 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
       assert.equal(op, 'GET');
       if (key === PORTWATCH_META_KEY) {
         if (missingPortwatchMeta) return { result: null };
-        return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: portwatchRecordCount }) };
+        return {
+          result: JSON.stringify({
+            fetchedAt: Date.now(),
+            recordCount: portwatchRecordCount,
+            ...(portwatchContentFreshness ? { contentFreshness: portwatchContentFreshness } : {}),
+          }),
+        };
+      }
+      if (key === DECISION_META_KEY && chinaDecisionMeta) {
+        return { result: JSON.stringify(chinaDecisionMeta) };
       }
       if (key === PREDICTION_META_KEY) {
         return {
@@ -150,4 +163,69 @@ test('seed-health keeps PortWatch port activity OK at the 174-country recovery f
   assert.equal(entry.stale, false);
   assert.equal(entry.recordCount, 174);
   assert.equal(entry.minRecordCount, 174);
+});
+
+test('seed-health flags stale decision-critical PortWatch content separately from heartbeat', async () => {
+  const now = Date.now();
+  installSeedHealthPipelineMock(174, {
+    portwatchContentFreshness: {
+      budgetMinutes: 4320,
+      coveredCount: 174,
+      freshCount: 173,
+      staleCount: 1,
+      unknownCount: 0,
+      criticalCountries: ['CN', 'HK'],
+      criticalFreshCount: 1,
+      criticalStaleCountries: ['CN'],
+      criticalMissingCountries: 0,
+      criticalOldestObservedAt: now - (73 * 60 * 60 * 1000),
+    },
+  });
+
+  const { res, body } = await readSeedHealth();
+  const entry = body.seeds['supply_chain:portwatch-ports'];
+
+  assert.equal(res.status, 200);
+  assert.equal(body.overall, 'warning');
+  assert.equal(entry.status, 'stale_content');
+  assert.equal(entry.stale, true);
+  assert.equal(entry.contentFreshness.usable, true);
+  assert.deepEqual(entry.contentFreshness.criticalStaleCountries, ['CN']);
+});
+
+test('seed-health publishes partial and stale China decision groups like /api/health', async () => {
+  installSeedHealthPipelineMock(174, {
+    chinaDecisionMeta: {
+      fetchedAt: Date.now(),
+      recordCount: 3,
+      groupStates: {
+        macro: 'partial',
+        'policy-enforcement': 'stale',
+        'cross-strait-activity': 'available',
+        'corporate-disclosures': 'unavailable',
+        'corridor-conditions': 'unavailable',
+        'activity-nowcast': 'unavailable',
+      },
+      groupCounts: {
+        populated: 1,
+        partial: 1,
+        stale: 1,
+        unavailable: 3,
+        healthyQuiet: 0,
+        operationallyCovered: 3,
+      },
+      unavailableCauses: {
+        'corporate-disclosures': 'healthy_quiet_window',
+        'corridor-conditions': 'insufficient_data',
+        'activity-nowcast': 'upstream_unavailable',
+      },
+    },
+  });
+
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['intelligence:china-decision-signals'];
+
+  assert.deepEqual(entry.partialGroups, ['macro']);
+  assert.deepEqual(entry.staleGroups, ['policy-enforcement']);
+  assert.deepEqual(entry.quietGroups, ['corporate-disclosures']);
 });

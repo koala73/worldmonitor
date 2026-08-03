@@ -63,6 +63,7 @@
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_portwatch-content-freshness.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-bundle-portwatch-port-activity.mjs",
       "scripts/seed-portwatch-port-activity.mjs",

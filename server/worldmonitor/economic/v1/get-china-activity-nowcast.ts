@@ -18,9 +18,17 @@ import type {
   CorridorSourceSignal,
 } from '../../../../shared/china-corridor-control-towers';
 import { chinaMacroObservationDateMs } from '../../../../shared/china-macro-contract.js';
-import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, getCachedJsonBatch } from '../../../_shared/redis';
 import { CHINA_ACTIVITY_NOWCAST_KEY } from '../../../_shared/cache-keys';
 import { resolveChinaCorridorSnapshot } from '../../supply-chain/v1/get-china-corridor-control-towers';
+import {
+  compareChinaCorridorDirectionalSnapshots,
+  createChinaCorridorDirectionalSnapshot,
+  persistChinaCorridorDirectionalSnapshot,
+  readChinaCorridorDirectionalHistory,
+  selectPriorChinaCorridorDirectionalSnapshot,
+  type ChinaCorridorDirectionalSnapshot,
+} from './china-corridor-breadth-history';
 import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 
 export const CHINA_ACTIVITY_NOWCAST_CACHE_KEY =
@@ -43,13 +51,21 @@ export interface ChinaActivityNowcastDependencies {
   getMacro: () => Promise<GetChinaMacroSnapshotResponse>;
   getCorridors: () => Promise<ChinaCorridorControlTowerResponse>;
   readMarketBatch: ChinaActivityNowcastMarketBatchReader;
+  readCorridorHistory?: () => Promise<ChinaCorridorDirectionalSnapshot[]>;
+  persistCorridorSnapshot?: (
+    current: ChinaCorridorDirectionalSnapshot,
+  ) => Promise<boolean>;
 }
 
 export type ChinaActivityNowcastCache = (
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<ChinaActivityNowcastResponse | null>,
-) => Promise<ChinaActivityNowcastResponse | null>;
+) => Promise<{
+  data: ChinaActivityNowcastResponse | null;
+  source: 'cache' | 'fresh' | 'skipped';
+  leader: boolean;
+}>;
 
 function record(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -193,6 +209,8 @@ function corridorObservation(input: {
 function corridorProxyObservations(
   corridors: ChinaCorridorControlTowerResponse,
   evaluatedAt: string,
+  priorCorridorSnapshot: ChinaCorridorDirectionalSnapshot | null,
+  corridorHistoryReadFailed: boolean,
 ): ChinaActivityProxyObservation[] {
   if (corridors.corridors.length === 0) return [];
   const observations: ChinaActivityProxyObservation[] = [];
@@ -244,18 +262,25 @@ function corridorProxyObservations(
     signal.selectorId === 'supply_chain:shipping:v2:CCFI'
     || signal.id.startsWith('signal:ccfi:'));
   if (ccfi) {
-    // Only the publisher's own period-over-period move counts (#6066). The
-    // current level and the legacy fabricable `changePct` are never read, so a
-    // level cannot be reinterpreted as a change or a neutral contribution.
+    // Only a proven period-over-period move counts (#6066) — the exchange's own
+    // percentage, or the change between two levels it published. The current
+    // level and the legacy fabricable `changePct` are never read, so a level
+    // cannot be reinterpreted as a change or a neutral contribution.
     const periodChange = finiteNumber(ccfi.metrics.periodChangePct);
-    // A signal that never arrived is not the same exclusion as one that arrived
-    // with a level but no comparable prior; naming the wrong one would overstate
-    // what the source actually published.
+    // Each way of having no change gets its own name. A signal that never
+    // arrived, one that arrived but is no longer timely, and one that arrived
+    // timely with a level but no comparable prior are three different facts;
+    // collapsing them would overstate what the source actually published.
+    const ccfiFreshnessStale = ccfi.availability === 'stale'
+      || ccfi.transportFreshness === 'stale'
+      || ccfi.contentFreshness === 'stale';
     const exclusion = periodChange !== null
       ? null
-      : ccfi.availability === 'available'
-        ? 'missing_comparable_prior'
-        : 'source_signal_unavailable';
+      : ccfi.availability === 'unavailable'
+        ? 'source_signal_unavailable'
+        : ccfiFreshnessStale
+          ? 'source_signal_stale'
+          : 'missing_comparable_prior';
     observations.push(corridorObservation({
       evaluatedAt,
       seriesId: 'ccfi_freight_rate_change',
@@ -291,23 +316,63 @@ function corridorProxyObservations(
     }));
   }
 
+  const currentCorridorSnapshot = createChinaCorridorDirectionalSnapshot(corridors);
+  const breadth = currentCorridorSnapshot === null
+    ? {
+      value: null,
+      priorValue: null,
+      exclusion: 'directional_observations_not_available' as const,
+    }
+    : corridorHistoryReadFailed
+      ? {
+        value: null,
+        priorValue: null,
+        exclusion: 'corridor_history_read_failed' as const,
+      }
+    : compareChinaCorridorDirectionalSnapshots(
+      currentCorridorSnapshot,
+      priorCorridorSnapshot,
+    );
   observations.push({
     seriesId: 'corridor_activity_breadth_change',
     observationId: `corridor-breadth-change:${corridors.generatedAt}`,
     observedAt: corridors.generatedAt,
     releasedAt: corridors.generatedAt,
     retrievedAt: corridors.generatedAt,
-    // One snapshot has no comparable prior. Availability breadth must not be
-    // flattened into an activity change.
-    value: null,
-    priorValue: null,
+    value: breadth.value,
+    priorValue: breadth.priorValue,
     available: true,
     stale: false,
     structuralBreak: false,
     provenance: {
-      corridorIds: corridors.corridors.map((corridor) => corridor.id),
+      corridorIds: currentCorridorSnapshot?.corridorIds
+        ?? corridors.corridors.map((corridor) => corridor.id).sort(),
+      familyKeys: currentCorridorSnapshot?.familyKeys ?? [],
       generatedAt: corridors.generatedAt,
-      exclusion: 'comparable_prior_snapshot_not_available',
+      ...(priorCorridorSnapshot === null ? {} : {
+        priorGeneratedAt: priorCorridorSnapshot.generatedAt,
+      }),
+      directionalFamilies: currentCorridorSnapshot?.directionalFamilies ?? [],
+      priorDirectionalFamilies: priorCorridorSnapshot?.directionalFamilies ?? [],
+      directionalSelectorKeys: currentCorridorSnapshot?.directionalSelectorKeys ?? [],
+      priorDirectionalSelectorKeys: priorCorridorSnapshot?.directionalSelectorKeys ?? [],
+      directionalFamilyCount: currentCorridorSnapshot?.directionalFamilies.length ?? 0,
+      priorDirectionalFamilyCount: priorCorridorSnapshot?.directionalFamilies.length ?? 0,
+      strengtheningFamilies: currentCorridorSnapshot?.strengtheningFamilies ?? [],
+      priorStrengtheningFamilies: priorCorridorSnapshot?.strengtheningFamilies ?? [],
+      weakeningFamilies: currentCorridorSnapshot?.weakeningFamilies ?? [],
+      priorWeakeningFamilies: priorCorridorSnapshot?.weakeningFamilies ?? [],
+      activityBreadthValue: currentCorridorSnapshot === null
+        ? null
+        : currentCorridorSnapshot.strengtheningFamilies.length
+          - currentCorridorSnapshot.weakeningFamilies.length,
+      priorActivityBreadthValue: priorCorridorSnapshot === null
+        ? null
+        : priorCorridorSnapshot.strengtheningFamilies.length
+          - priorCorridorSnapshot.weakeningFamilies.length,
+      ...(breadth.exclusion === null
+        ? { aggregation: 'signed_activity_family_count_change' }
+        : { exclusion: breadth.exclusion }),
     },
   });
   return observations;
@@ -379,6 +444,8 @@ export function buildChinaActivityNowcastInputs(input: {
   macro: GetChinaMacroSnapshotResponse;
   corridors: ChinaCorridorControlTowerResponse;
   marketValues: Map<string, unknown>;
+  priorCorridorSnapshot?: ChinaCorridorDirectionalSnapshot | null;
+  corridorHistoryReadFailed?: boolean;
 }): {
   officialObservations: ChinaActivityOfficialObservation[];
   proxyObservations: ChinaActivityProxyObservation[];
@@ -386,7 +453,12 @@ export function buildChinaActivityNowcastInputs(input: {
   return {
     officialObservations: officialObservations(input.macro),
     proxyObservations: [
-      ...corridorProxyObservations(input.corridors, input.evaluatedAt),
+      ...corridorProxyObservations(
+        input.corridors,
+        input.evaluatedAt,
+        input.priorCorridorSnapshot ?? null,
+        input.corridorHistoryReadFailed ?? false,
+      ),
       ...marketProxyObservations(input.marketValues),
     ],
   };
@@ -417,30 +489,71 @@ export async function composeChinaActivityNowcastSnapshot(
   evaluatedAt: string,
   dependencies: ChinaActivityNowcastDependencies,
 ): Promise<ChinaActivityNowcastResponse> {
-  const [macroResult, corridorsResult, marketResult] = await Promise.allSettled([
+  const [macroResult, corridorsResult, marketResult, corridorHistoryResult] =
+    await Promise.allSettled([
     dependencies.getMacro(),
     dependencies.getCorridors(),
     dependencies.readMarketBatch(
       Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
       true,
     ),
+    dependencies.readCorridorHistory?.() ?? Promise.resolve([]),
   ]);
+  const corridors = corridorsResult.status === 'fulfilled'
+    ? corridorsResult.value
+    : unavailableCorridors(evaluatedAt);
+  const corridorHistory = corridorHistoryResult.status === 'fulfilled'
+    ? corridorHistoryResult.value
+    : [];
+  const currentCorridorSnapshot = createChinaCorridorDirectionalSnapshot(corridors);
+  const priorCorridorSnapshot = currentCorridorSnapshot === null
+    ? null
+    : selectPriorChinaCorridorDirectionalSnapshot(
+      currentCorridorSnapshot,
+      corridorHistory,
+    );
   const inputs = buildChinaActivityNowcastInputs({
     evaluatedAt,
     macro: macroResult.status === 'fulfilled'
       ? macroResult.value
       : unavailableMacro(evaluatedAt),
-    corridors: corridorsResult.status === 'fulfilled'
-      ? corridorsResult.value
-      : unavailableCorridors(evaluatedAt),
+    corridors,
     marketValues: marketResult.status === 'fulfilled'
       ? marketResult.value
       : new Map(),
+    priorCorridorSnapshot,
+    corridorHistoryReadFailed: corridorHistoryResult.status === 'rejected',
   });
-  return evaluateChinaActivityNowcast({
+  const response = evaluateChinaActivityNowcast({
     evaluatedAt,
     officialObservations: inputs.officialObservations,
     proxyObservations: inputs.proxyObservations,
+  });
+  if (
+    currentCorridorSnapshot !== null
+    && corridorHistoryResult.status === 'fulfilled'
+    && dependencies.persistCorridorSnapshot
+  ) {
+    try {
+      await dependencies.persistCorridorSnapshot(
+        currentCorridorSnapshot,
+      );
+    } catch {
+      // Persistence is evidence for the next run. A write failure must keep the
+      // current response fail-closed, not turn an otherwise valid nowcast into
+      // an upstream outage.
+    }
+  }
+  return response;
+}
+
+function insufficientChinaActivityNowcast(
+  evaluatedAt: string,
+): ChinaActivityNowcastResponse {
+  return evaluateChinaActivityNowcast({
+    evaluatedAt,
+    officialObservations: [],
+    proxyObservations: [],
   });
 }
 
@@ -451,10 +564,12 @@ const defaultDependencies = (
   getMacro: () => getChinaMacroSnapshot(ctx, {}),
   getCorridors: () => resolveChinaCorridorSnapshot(evaluatedAt),
   readMarketBatch: getCachedJsonBatch,
+  readCorridorHistory: readChinaCorridorDirectionalHistory,
+  persistCorridorSnapshot: persistChinaCorridorDirectionalSnapshot,
 });
 
 const defaultCache: ChinaActivityNowcastCache =
-  (key, ttlSeconds, fetcher) => cachedFetchJson(key, ttlSeconds, fetcher);
+  (key, ttlSeconds, fetcher) => cachedFetchJsonWithMeta(key, ttlSeconds, fetcher);
 
 export async function resolveChinaActivityNowcastSnapshot(
   evaluatedAt: string,
@@ -475,12 +590,15 @@ export async function resolveChinaActivityNowcastSnapshot(
         return composed;
       },
     );
-    if (cached !== null) return cached;
+    if (cached.data !== null) return cached.data;
   } catch {
-    // Recompose below so cache transport failures never become a positive state.
+    // Cache transport failures never become a positive state.
   }
   if (insufficientCacheMiss !== null) return insufficientCacheMiss;
-  return composeChinaActivityNowcastSnapshot(evaluatedAt, dependencies);
+  // A null cache result can be a Redis NEG_SENTINEL hit. Do not recompose: that
+  // would reread and rewrite corridor history on every request in the negative
+  // cache window. The empty response is deliberately fail-closed.
+  return insufficientChinaActivityNowcast(evaluatedAt);
 }
 
 export function projectChinaActivityNowcastWireResponse(
@@ -509,11 +627,7 @@ export async function getChinaActivityNowcast(
     );
   } catch {
     return projectChinaActivityNowcastWireResponse(
-      evaluateChinaActivityNowcast({
-        evaluatedAt,
-        officialObservations: [],
-        proxyObservations: [],
-      }),
+      insufficientChinaActivityNowcast(evaluatedAt),
     );
   }
 }

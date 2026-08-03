@@ -7,6 +7,11 @@ import {
   PREDICTION_MARKET_MIN_POOL_COUNTS,
 } from './_pool-coverage.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
+import { projectChinaDecisionGroupDiagnostics } from './_china-decision-health.js';
+import {
+  buildContentFreshnessAssessment,
+  projectContentFreshnessForWire,
+} from './_content-freshness.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 
@@ -34,39 +39,12 @@ const CHINA_DECISION_SIGNAL_STATES = new Set([
   'stale',
   'unavailable',
 ]);
-
-function projectChinaDecisionGroupDiagnostics(meta) {
-  const states = meta?.groupStates;
-  const counts = meta?.groupCounts;
-  if (
-    !states
-    || typeof states !== 'object'
-    || Array.isArray(states)
-    || !counts
-    || typeof counts !== 'object'
-    || Array.isArray(counts)
-  ) return null;
-  const groupStates = Object.fromEntries(
-    CHINA_DECISION_SIGNAL_GROUP_IDS.map((groupId) => [groupId, states[groupId]]),
-  );
-  if (
-    Object.values(groupStates).some((state) => !CHINA_DECISION_SIGNAL_STATES.has(state))
-    || !['populated', 'partial', 'stale', 'unavailable'].every(
-      (key) => Number.isInteger(counts[key])
-        && counts[key] >= 0
-        && counts[key] <= CHINA_DECISION_SIGNAL_GROUP_IDS.length,
-    )
-  ) return null;
-  return {
-    groupStates,
-    groupCounts: {
-      populated: counts.populated,
-      partial: counts.partial,
-      stale: counts.stale,
-      unavailable: counts.unavailable,
-    },
-  };
-}
+// #6060: the one unavailable cause that is operational coverage rather than a
+// source failure. Mirrors CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE in
+// scripts/seed-china-decision-signals.mjs.
+const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
+const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
+  'seed-activated:supply_chain:portwatch-ports:content-freshness';
 
 const SEED_DOMAINS = {
   'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
@@ -207,7 +185,16 @@ const SEED_DOMAINS = {
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
   'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 10080 },
   'portwatch:disruptions':    { key: 'seed-meta:portwatch:disruptions',    intervalMin: 75 }, // active disruptions seed; intervalMin*2 = 150min matches api/health.js
-  'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720, minRecordCount: 174 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3); #3613 requires 174-country coverage before OK.
+  // #6060: mirror /api/health's decision-critical content contract. The
+  // heartbeat and 174-country cardinality can both be green while CN/HK's
+  // cached observations are older than the corridor adapter's 72h budget.
+  'supply_chain:portwatch-ports': {
+    key: 'seed-meta:supply_chain:portwatch-ports',
+    intervalMin: 720,
+    minRecordCount: 174,
+    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 },
+    contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+  }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3); #3613 requires 174-country coverage before OK.
   'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)
   'energy:eia-petroleum':   { key: 'seed-meta:energy:eia-petroleum',   intervalMin: 1440 }, // daily bundle cron; intervalMin*3 = health.js maxStaleMin (4320)
   'energy:spine':                 { key: 'seed-meta:energy:spine',                 intervalMin: 1440 }, // daily cron (0 6 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
@@ -391,6 +378,7 @@ async function getSeedBatch(entries) {
   const metaSlots = [];
   const probeSlots = [];
   const activationSlots = [];
+  const contentFreshnessActivationSlots = [];
   for (const [domain, cfg] of entries) {
     metaSlots.push({ domain, key: cfg.key, index: commands.length });
     commands.push(['GET', cfg.key]);
@@ -401,6 +389,10 @@ async function getSeedBatch(entries) {
     if (cfg.activationKey) {
       activationSlots.push({ domain, index: commands.length });
       commands.push(['EXISTS', cfg.activationKey]);
+    }
+    if (cfg.contentFreshnessActivationKey) {
+      contentFreshnessActivationSlots.push({ domain, index: commands.length });
+      commands.push(['EXISTS', cfg.contentFreshnessActivationKey]);
     }
   }
 
@@ -423,7 +415,11 @@ async function getSeedBatch(entries) {
   for (const slot of activationSlots) {
     activatedMap.set(slot.domain, Number(data[slot.index]?.result) === 1);
   }
-  return { metaMap, probeMap, activatedMap };
+  const contentFreshnessActivatedMap = new Map();
+  for (const slot of contentFreshnessActivationSlots) {
+    contentFreshnessActivatedMap.set(slot.domain, Number(data[slot.index]?.result) === 1);
+  }
+  return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
 
 export default async function handler(req) {
@@ -443,9 +439,10 @@ export default async function handler(req) {
 
   let metaMap;
   let activatedMap = new Map();
+  let contentFreshnessActivatedMap = new Map();
   let probeMap;
   try {
-    ({ metaMap, probeMap, activatedMap } = await getSeedBatch(entries));
+    ({ metaMap, probeMap, activatedMap, contentFreshnessActivatedMap } = await getSeedBatch(entries));
   } catch {
     return jsonResponse({ error: 'Redis unavailable' }, 503, cors);
   }
@@ -504,6 +501,29 @@ export default async function handler(req) {
       meta.sourceVersion !== '' &&
       meta.sourceVersion !== cfg.dataProbe.sourceVersion
     );
+    const contentFreshness = buildContentFreshnessAssessment(
+      meta,
+      cfg.requireContentFreshness,
+      now,
+    );
+    const contentFreshnessPending = Boolean(
+      contentFreshness
+      && !contentFreshness.fieldPresent
+      && cfg.contentFreshnessActivationKey
+      && !contentFreshnessActivatedMap.get(domain),
+    );
+    const contentFreshnessInvalid = Boolean(
+      cfg.requireContentFreshness
+      && contentFreshness
+      && !contentFreshness.usable
+      && !contentFreshnessPending,
+    );
+    const contentFreshnessStale = Boolean(
+      contentFreshness
+      && contentFreshness.usable
+      && contentFreshness.contentStale
+      && !contentFreshnessPending,
+    );
     // Keep the new pool-coverage verdict distinct from freshness. The legacy
     // scalar minRecordCount path still contributes to `stale` for wire
     // compatibility, but an empty pool is fresh data with partial coverage.
@@ -512,7 +532,9 @@ export default async function handler(req) {
       || recordCoveragePartial
       || isError
       || sourceMismatch
-      || probe?.ok === false;
+      || probe?.ok === false
+      || contentFreshnessInvalid
+      || contentFreshnessStale;
     if (stale || poolCoveragePartial) staleCount++;
 
     seeds[domain] = {
@@ -528,9 +550,13 @@ export default async function handler(req) {
               ? 'stale'
               : coveragePartial
                 ? 'coverage_partial'
-                : sourceBlocked
-                  ? 'source_blocked'
-                  : 'ok',
+                : contentFreshnessInvalid
+                  ? 'coverage_degraded'
+                  : contentFreshnessStale
+                    ? 'stale_content'
+                    : sourceBlocked
+                      ? 'source_blocked'
+                      : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: recordCount ?? meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,
@@ -540,6 +566,9 @@ export default async function handler(req) {
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;
+    if (contentFreshness && !contentFreshnessPending) {
+      seeds[domain].contentFreshness = projectContentFreshnessForWire(contentFreshness);
+    }
     // Explicit coverage flag so consumers that only inspect `stale` still see
     // pool/aggregate shortfalls (pool shortfall keeps stale:false by design).
     if (coveragePartial) seeds[domain].coveragePartial = true;
@@ -555,7 +584,11 @@ export default async function handler(req) {
       seeds[domain].lastErrorCode = meta.lastErrorCode;
     }
     if (domain === 'intelligence:china-decision-signals') {
-      const diagnostics = projectChinaDecisionGroupDiagnostics(meta);
+      const diagnostics = projectChinaDecisionGroupDiagnostics(meta, {
+        groupIds: CHINA_DECISION_SIGNAL_GROUP_IDS,
+        allowedStates: CHINA_DECISION_SIGNAL_STATES,
+        healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
+      });
       if (diagnostics) Object.assign(seeds[domain], diagnostics);
     }
   }

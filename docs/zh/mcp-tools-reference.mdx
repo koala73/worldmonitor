@@ -1164,6 +1164,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算（按切片）：** 当任意贡献切片超过其单独预算时标记 `stale: true` — 实时通行汇总（中继）**30 分钟**、PortWatch 港口活动 **36 小时**、咽喉流量 **12 小时**、PortWatch 咽喉参考 **14 天**，静态咽喉注册表/地理基准线最多 **~400 天**。捆绑包的 `cached_at` 反映最旧的贡献种子；`stale: true` 并不意味着所有数据都过时。
+- **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **72 小时**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
 
 <CodeGroup>
 

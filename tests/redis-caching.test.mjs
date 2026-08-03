@@ -2298,6 +2298,93 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
   });
 });
 
+describe('bounded JSON-list history storage', { concurrency: 1 }, () => {
+  it('uses an allowlisted transaction to deduplicate, prepend, trim, and expire', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const captured = [];
+    globalThis.fetch = async (url, init) => {
+      captured.push({ url: String(url), init });
+      return jsonResponse([
+        { result: 0 },
+        { result: 2 },
+        { result: 'OK' },
+        { result: 1 },
+      ]);
+    };
+
+    try {
+      const next = { generatedAt: 'current' };
+      assert.equal(
+        await redis.prependCachedJsonList('history:key', next, 16, 600),
+        true,
+      );
+
+      assert.equal(captured.length, 1);
+      const commands = JSON.parse(String(captured[0].init.body));
+      assert.equal(captured[0].url, 'https://redis.test/multi-exec');
+      assert.deepEqual(commands, [
+        ['LREM', 'history:key', '0', JSON.stringify(next)],
+        ['LPUSH', 'history:key', JSON.stringify(next)],
+        ['LTRIM', 'history:key', '0', '15'],
+        ['EXPIRE', 'history:key', '600'],
+      ]);
+      const proxy = readFileSync(resolve(root, 'docker/redis-rest-proxy.mjs'), 'utf8');
+      assert.match(proxy, /'LREM'/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('reads and decodes the bounded list without collapsing a Redis error into a miss', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const captured = [];
+    let malformed = false;
+    globalThis.fetch = async (url, init) => {
+      captured.push({ url: String(url), init });
+      return jsonResponse(malformed
+        ? { result: 'not-a-list' }
+        : { result: [JSON.stringify({ generatedAt: 'current' })] });
+    };
+
+    try {
+      assert.deepEqual(await redis.readCachedJsonList('history:key', 16), {
+        status: 'hit',
+        value: [{ generatedAt: 'current' }],
+      });
+      assert.equal(captured[0].url, 'https://redis.test/');
+      assert.deepEqual(JSON.parse(String(captured[0].init.body)), [
+        'LRANGE',
+        'history:key',
+        '0',
+        '15',
+      ]);
+      malformed = true;
+      assert.equal(
+        (await redis.readCachedJsonList('history:key', 16)).status,
+        'error',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
 describe('getHashFieldsBatch empty-string handling (#3530)', { concurrency: 1 }, () => {
   it('preserves empty-string values, omits null/missing, and retains real strings', async () => {
     // Regression: getHashFieldsBatch used a truthy check (`if (values[i])`) that
