@@ -198,7 +198,15 @@ function adaptPortwatch(
   for (const payloadValue of [snapshots.portwatchChina, snapshots.portwatchHongKong]) {
     const payload = record(payloadValue);
     if (!payload) continue;
-    const observedAt = isoTimestamp(payload.fetchedAt);
+    // Age the CONTENT clock, not the retrieval one (#6060). The seeder rewrites
+    // `fetchedAt` on every successful fetch — including the forced refetch once
+    // a country's cache passes MAX_CACHE_AGE_MS, which returns an unchanged
+    // upstream `asof`. Ageing that would admit a frozen observation as current
+    // for one budget window out of every cache lifetime. `contentAsOfChangedAt`
+    // advances only when upstream's own max(date) advances; `fetchedAt` remains
+    // the fallback for payloads written before that field existed.
+    const observedAt = isoTimestamp(payload.contentAsOfChangedAt)
+      ?? isoTimestamp(payload.fetchedAt);
     for (const port of records(payload.ports)) {
       const selectorId = stringValue(port.portId);
       if (!selectorId) continue;

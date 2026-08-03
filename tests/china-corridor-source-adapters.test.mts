@@ -22,6 +22,45 @@ describe('China corridor source adapters (#5578)', () => {
     assert.equal(JSON.stringify(signal).includes('"tankerCalls30d":0'), false);
   });
 
+  // #6060: the gate must age CONTENT, not retrieval. The seeder force-refetches
+  // each country once its cache passes MAX_CACHE_AGE_MS (168h); that refetch
+  // resets `fetchedAt` while returning an unchanged upstream `asof`. Ageing
+  // `fetchedAt` admits a frozen observation for one budget window out of every
+  // cache lifetime — the same conflation this issue exists to end, one layer
+  // below the health alarm.
+  it('reads the content clock, so a refetch of frozen upstream data stays stale', () => {
+    const bundle = buildChinaCorridorSourceBundle({
+      portwatchChina: {
+        // Retrieved seconds ago ...
+        fetchedAt: '2026-07-25T11:59:00.000Z',
+        // ... but upstream has not advanced in 120h, past the 72h budget.
+        asof: '2026-07-19',
+        contentAsOfChangedAt: Date.parse('2026-07-20T12:00:00.000Z'),
+        ports: [{ portId: 'port1188', portName: 'Shanghai', trendDelta: 2 }],
+      },
+      portwatchMeta: FRESH_META,
+    }, ASSESSED_AT);
+
+    const signal = bundle.families.port.signals[0];
+    assert.equal(
+      signal?.contentFreshness,
+      'stale',
+      'a fresh retrieval of frozen upstream content is not current',
+    );
+    assert.equal(signal?.observationTime, '2026-07-20T12:00:00.000Z');
+  });
+
+  it('still ages fetchedAt for legacy payloads with no content clock', () => {
+    const bundle = buildChinaCorridorSourceBundle({
+      portwatchChina: {
+        fetchedAt: '2026-07-25T11:00:00.000Z',
+        ports: [{ portId: 'port1188', portName: 'Shanghai', trendDelta: 2 }],
+      },
+      portwatchMeta: FRESH_META,
+    }, ASSESSED_AT);
+    assert.equal(bundle.families.port.signals[0]?.contentFreshness, 'current');
+  });
+
   it('does not turn omitted or failed aviation coverage into normal operations', () => {
     const bundle = buildChinaCorridorSourceBundle({
       aviation: {

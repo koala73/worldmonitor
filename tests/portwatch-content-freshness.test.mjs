@@ -22,6 +22,7 @@ import {
   buildContentFreshnessReport,
   buildPortActivityMetaPayload,
   isCriticalContentRefreshDue,
+  contentClockFor,
   orderColdFetchQueue,
   PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
@@ -244,6 +245,117 @@ describe('buildContentFreshnessReport', () => {
 // ceil(174/30) = 6 runs = 72h — exactly the content budget. CN and HK feed the
 // China corridor adapter and the activity-nowcast's maritime family, so they
 // must be refreshed every run they are a cache miss, not once per sweep.
+// The alarm's clock must measure CONTENT, not retrieval. `fetchedAt` resets on
+// every successful fetch — including the forced refetch at MAX_CACHE_AGE_MS
+// (168h) that returns an UNCHANGED upstream `asof`. Ageing that would green the
+// alarm for 72h of every 168h during an indefinite upstream freeze, which is
+// the precise failure #6060 exists to end.
+describe('content clock survives a refetch that returns unchanged upstream data', () => {
+  it('ages the upstream content date, not the retrieval timestamp', () => {
+    const frozenSince = NOW - 120 * HOUR_MS;
+    const report = buildContentFreshnessReport({
+      countryData: countryDataOf([
+        {
+          iso2: 'CN',
+          ports: [],
+          // Just refetched — retrieval is seconds old ...
+          fetchedAt: new Date(NOW - 60_000).toISOString(),
+          cacheWrittenAt: NOW - 60_000,
+          // ... but upstream has not advanced since it froze 120h ago.
+          asof: '2026-07-28',
+          contentAsOfChangedAt: frozenSince,
+        },
+        payload('HK', new Date(NOW - HOUR_MS).toISOString()),
+      ]),
+      now: NOW,
+    });
+
+    assert.deepEqual(
+      report.criticalStaleCountries,
+      ['CN'],
+      'a fresh retrieval of frozen upstream data is not fresh content',
+    );
+    assert.equal(report.criticalFreshCount, 1);
+    assert.equal(report.criticalOldestObservedAt, frozenSince);
+    assert.equal(report.criticalOldestAgeMinutes, 120 * 60);
+  });
+
+  it('counts content as fresh when the upstream date actually advanced', () => {
+    const report = buildContentFreshnessReport({
+      countryData: countryDataOf([
+        {
+          iso2: 'CN',
+          ports: [],
+          fetchedAt: new Date(NOW - 30 * HOUR_MS).toISOString(),
+          cacheWrittenAt: NOW - 30 * HOUR_MS,
+          asof: '2026-08-01',
+          contentAsOfChangedAt: NOW - HOUR_MS,
+        },
+        payload('HK', new Date(NOW - HOUR_MS).toISOString()),
+      ]),
+      now: NOW,
+    });
+    assert.deepEqual(report.criticalStaleCountries, []);
+    assert.equal(report.criticalFreshCount, 2);
+  });
+
+  // Now a real exported function rather than inline in fetchAll's batch loop,
+  // so these assert behaviour instead of source text.
+  it('carries the prior content clock forward when upstream max(date) is unchanged', () => {
+    const frozenSince = NOW - 120 * HOUR_MS;
+    assert.equal(
+      contentClockFor(
+        { asof: '2026-07-24', contentAsOfChangedAt: frozenSince },
+        '2026-07-24',
+        NOW,
+      ),
+      frozenSince,
+      'a refetch returning the same upstream date must not reset the clock',
+    );
+  });
+
+  it('resets the clock when the upstream date actually advances', () => {
+    assert.equal(
+      contentClockFor(
+        { asof: '2026-07-24', contentAsOfChangedAt: NOW - 120 * HOUR_MS },
+        '2026-07-25',
+        NOW,
+      ),
+      NOW,
+      'new upstream content means the clock starts now',
+    );
+  });
+
+  it('seeds a legacy payload from the upstream date, not the rollout moment', () => {
+    // Every payload in Redis predates this field. Stamping the refetch moment
+    // would report a frozen upstream as fresh for a full budget window after
+    // rollout — the alarm would look fixed, then appear to regress days later.
+    assert.equal(
+      contentClockFor({ asof: '2026-07-24' }, '2026-07-24', NOW),
+      Date.parse('2026-07-24T23:59:59.999Z'),
+    );
+    assert.equal(contentClockFor(null, '2026-07-24', NOW), Date.parse('2026-07-24T23:59:59.999Z'));
+  });
+
+  it('falls back to the refetch moment only when the upstream date is unusable', () => {
+    for (const bad of [null, undefined, '', 'not-a-date', 42]) {
+      assert.equal(contentClockFor(null, bad, NOW), NOW, `upstreamMaxDate=${String(bad)}`);
+    }
+  });
+
+  it('falls back to the retrieval timestamp only when no content clock exists', () => {
+    // Legacy payloads written before the content clock was introduced.
+    const report = buildContentFreshnessReport({
+      countryData: countryDataOf([
+        payload('CN', new Date(NOW - 100 * HOUR_MS).toISOString()),
+        payload('HK', new Date(NOW - HOUR_MS).toISOString()),
+      ]),
+      now: NOW,
+    });
+    assert.deepEqual(report.criticalStaleCountries, ['CN']);
+  });
+});
+
 describe('decision-critical cold-fetch priority', () => {
   function queueItem(iso2, refreshAttemptedAt) {
     return { iso2, iso3: `${iso2}X`, prevPayload: { iso2, refreshAttemptedAt } };
@@ -383,6 +495,29 @@ describe('content-freshness constant parity', () => {
       [...PORTWATCH_DECISION_CRITICAL_COUNTRIES].sort(),
       [...new Set(consumed)],
       'the seeder reserves refresh slots for a different set than the adapter consumes',
+    );
+  });
+
+  // A shared threshold is not enough: the alarm and the gate can agree on 72h
+  // while ageing different fields, which is exactly how the alarm can go red
+  // with the nowcast still green. Pin that BOTH read the content clock, with
+  // the same legacy fallback.
+  it('ages the same content clock as the corridor gate it guards', () => {
+    const adapter = read('server/worldmonitor/supply-chain/v1/china-corridor-source-adapters.ts');
+    assert.match(
+      adapter,
+      /isoTimestamp\(payload\.contentAsOfChangedAt\)\s*\n?\s*\?\?\s*isoTimestamp\(payload\.fetchedAt\)/,
+      'the corridor gate must age the content clock, falling back to retrieval',
+    );
+
+    const report = readFileSync(
+      new URL('../scripts/_portwatch-content-freshness.mjs', import.meta.url),
+      'utf8',
+    );
+    assert.match(
+      report,
+      /Number\.isFinite\(payload\?\.contentAsOfChangedAt\)/,
+      'the alarm must age the same clock',
     );
   });
 

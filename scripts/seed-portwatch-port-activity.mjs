@@ -15,6 +15,7 @@ import {
 import { createCountryResolvers } from './_country-resolver.mjs';
 import {
   buildPortActivityMetaPayload,
+  contentClockFor,
   isCriticalContentRefreshDue,
   orderColdFetchQueue,
   PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
@@ -23,6 +24,7 @@ import {
 export {
   buildContentFreshnessReport,
   buildPortActivityMetaPayload,
+  contentClockFor,
   isCriticalContentRefreshDue,
   orderColdFetchQueue,
   PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
@@ -1292,6 +1294,13 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
         iso2,
         ports,
         fetchedAt: new Date(refreshedAt).toISOString(),
+        // Content clock (#6060): advances only when upstream's own max(date)
+        // advances, so a forced refetch of FROZEN upstream data cannot reset it
+        // and green the content-freshness alarm. Seeded from the upstream
+        // observation date when no prior clock exists — stamping `refreshedAt`
+        // there would report a frozen upstream as fresh for a full budget
+        // window after rollout, since every payload predates this field.
+        contentAsOfChangedAt: contentClockFor(batch[j].prevPayload, upstreamMaxDate, refreshedAt),
         // Cache fields. `asof` may be null if preflight failed; that's fine —
         // next run will always be a miss (null !== any string) so we'll
         // re-fetch and repopulate.

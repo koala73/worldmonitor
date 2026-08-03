@@ -256,6 +256,14 @@ refresh every run they are a cache miss. Without that reservation the rotation
 period (`ceil(174 / 30)` runs at a 12-hour cadence ~ 72 hours) equals the
 content budget, and the alarm would measure the rotation rather than an
 incident.
+
+The reservation only reaches a country that is a cache **miss**. A country stays
+a cache hit while the upstream `max(date)` it already holds is unchanged, so
+when the upstream feed itself freezes, the decision-critical countries never
+enter the refresh queue and no amount of slot reservation makes their content
+current. In that state the check is doing its job precisely by staying
+`STALE_CONTENT`: the content is genuinely old, the seeder cannot fix it, and the
+alarm is reporting an upstream outage rather than an internal one.
 Fleet-wide content staleness is normal by construction: the seeder refreshes at
 most 30 countries per 12-hour run, so a full sweep takes about 72 hours and the
 tail of the rotation is routinely past budget. Alarming on that would produce a
@@ -265,11 +273,20 @@ warning that is always lit and never actionable. The fleet-wide counts
 for visibility; only the critical subset moves the status.
 
 The 72-hour budget is deliberately the same one
-`china-corridor-source-adapters.ts` applies to a PortWatch observation, so this
-alarm explains the China activity-nowcast's `marked_stale` exclusion rather
-than contradicting it. Health is inclusive at the boundary and treats a
-future-dated observation as stale, both one step more conservative than the
-data gate — an alarm should fire no later than the contract it protects.
+`china-corridor-source-adapters.ts` applies to a PortWatch observation. Health
+is inclusive at the boundary and treats a future-dated observation as stale,
+both one step more conservative than the data gate — an alarm should fire no
+later than the contract it protects.
+
+Both sides age the same clock, and it is not the retrieval timestamp. They read
+`contentAsOfChangedAt`, which advances only when the upstream's own `max(date)`
+advances, falling back to `fetchedAt` only for payloads written before that
+field existed. This matters because the seeder force-refetches every country
+once its cache passes `MAX_CACHE_AGE_MS`, and that refetch resets `fetchedAt`
+while returning unchanged content. Ageing `fetchedAt` would therefore have
+admitted a frozen observation as current for one budget window out of every
+cache lifetime — the same transport-for-content substitution this check exists
+to end, one layer below it.
 
 Named entities are operator-only. `contentFreshness` and the
 `chinaDecisionSignals` group breakdown are stripped from the anonymous
