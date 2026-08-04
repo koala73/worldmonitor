@@ -197,13 +197,13 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_economic_data`
 
-宏观经济指标：联邦基金利率（FRED）、经济日历事件、燃料价格、ECB 外汇汇率、EU 收益率曲线、财报日历、COT 持仓、能源存储数据、BIS 家庭偿债比率（DSR，季度，约 40 个发达经济体家庭财务压力的领先指标），以及 BIS 住宅 + 商业地产价格指数（实际值，季度）。
+宏观经济指标：联邦基金利率（FRED）、经济日历事件、燃料价格、ECB 外汇汇率、俄罗斯央行官方卢布汇率与关键政策利率、EU 收益率曲线、财报日历、COT 持仓、能源存储数据、BIS 家庭偿债比率（DSR，季度，约 40 个发达经济体家庭财务压力的领先指标），以及 BIS 住宅 + 商业地产价格指数（实际值，季度）。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: fedfunds / econ-calendar / fuel-prices / ecb-fx-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | 将响应限制为一个或多个子数据集。省略则返回完整经济捆绑包。 |
+| `dataset` | `array<string: fedfunds / econ-calendar / china-macro / china-release-calendar / fuel-prices / ecb-fx-rates / cbr-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | 将响应限制为一个或多个子数据集。省略则返回完整经济捆绑包。 |
 | `country` | string | 将按国家键控的数据集（燃料价格、BIS DSR/地产、经济日历）筛选为一个 ISO 3166-1 alpha-2 代码。 |
 | `limit` | number | 将每个列表数据集（日历、支出、财报）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
