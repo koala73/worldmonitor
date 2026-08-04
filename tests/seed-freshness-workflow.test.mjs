@@ -228,13 +228,21 @@ describe('seed freshness workflow control plane', () => {
       'deploy drift must not be able to cancel the compact-health probe',
     );
 
-    // `git merge-base --is-ancestor` cannot answer from a depth-1 checkout, and
-    // every unanswerable question becomes a reported service. Without this the
-    // check is correct but reds on any run that overlaps a merge.
+    // Two questions need local history: `git merge-base --is-ancestor` for a
+    // merge that landed mid-run, and (#6142) the diff between the commit each
+    // service is RUNNING and head. The second is why a fixed depth no longer
+    // does — a service legitimately weeks behind on code it does not contain
+    // sits outside any of them, and an unreachable running commit reports as
+    // CLOSURE_UNKNOWN. Full history, no blobs.
     assert.equal(
       checkout.with?.['fetch-depth'],
-      50,
-      'the deploy-drift check needs enough history to resolve commit ancestry',
+      0,
+      'the deploy-drift check needs history back to each service\'s running commit',
+    );
+    assert.equal(
+      checkout.with?.filter,
+      'blob:none',
+      'full history must be fetched without blobs — the closure diff walks trees only',
     );
 
     const drift = monitorSteps[driftIndex];
@@ -242,8 +250,16 @@ describe('seed freshness workflow control plane', () => {
     assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
     assert.match(
       drift.run,
-      /git fetch --quiet --depth=50 origin main/,
+      /git fetch --quiet origin main/,
       'a merge landing mid-run must be resolvable as ahead, not reported as behind',
+    );
+    // Passing --depth to a full clone SHALLOWS it, which would strand exactly
+    // the running commits the closure comparison needs — the checkout above
+    // fetches full history precisely so this cannot happen.
+    assert.doesNotMatch(
+      drift.run,
+      /git fetch[^\n]*--depth/,
+      're-fetching with a depth would re-shallow the full-history checkout',
     );
     assert.equal(
       drift['continue-on-error'],

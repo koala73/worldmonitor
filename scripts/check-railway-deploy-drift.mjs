@@ -38,9 +38,18 @@ import {
   runRailway,
 } from './audit-railway-watch-paths.mjs';
 import { applyAcceptanceBaseline } from './check-seed-freshness.mjs';
+import {
+  changeReachesService,
+  createChangedPathsReader,
+  createCommitPathsReader,
+  isLegitimatePathSkip,
+  pathsReachingService,
+  resolveServiceClosure,
+} from './railway-deploy-closure.mjs';
 
 const DEFAULT_ENVIRONMENT = 'production';
 const BASELINE_URL = new URL('./railway-deploy-drift-baseline.json', import.meta.url);
+const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 
 // Railway records a refused push as a deployment whose status is SKIPPED and
 // whose meta still carries the commit it refused. That record is the only
@@ -91,12 +100,19 @@ export const DEFAULT_DEPLOYMENT_WINDOW = 50;
 // limited or starved of file descriptors.
 export const DEFAULT_CONCURRENCY = 8;
 
-// Everything that is not a positive "running the head commit" or "a build for
-// it is under way". The list is derived from the two healthy verdicts rather
+// Everything that is not a positive "running everything that reaches it" or "a
+// build is under way". The list is derived from the healthy verdicts rather
 // than enumerated, so a verdict added later is a problem until someone decides
 // otherwise — a scanner whose unmatched case means healthy cannot be fixed by
 // adding cases.
-const HEALTHY_VERDICTS = new Set(['CURRENT', 'AHEAD', 'PENDING_BUILD']);
+//
+// CURRENT_FOR_CLOSURE is the verdict that makes this check compatible with
+// watch-path filtering at all. Under a filter, most services are deliberately
+// NOT running head: they are running the newest commit that changed anything
+// they can see, and every merge since is none of their business. Demanding head
+// from all of them reported 62 healthy services as rejected pushes, which is
+// how the baseline came to acknowledge most of the fleet (#6142).
+const HEALTHY_VERDICTS = new Set(['CURRENT', 'CURRENT_FOR_CLOSURE', 'AHEAD', 'PENDING_BUILD']);
 
 export function isProblemVerdict(verdict) {
   return !HEALTHY_VERDICTS.has(verdict);
@@ -139,6 +155,17 @@ export function classifyServiceDeploy({
   // commit the checkout did not contain, because main moved mid-run. Defaults
   // to "cannot prove it", so a caller without git history fails to noise.
   isAncestor = () => false,
+  // What this service's container can be affected by, from
+  // scripts/railway-deploy-closure.mjs. Null means "everything", which is the
+  // strict reading and the behaviour this check had before #6142.
+  closure = null,
+  // Paths changed between a commit and head, or null when the checkout cannot
+  // reach that commit. Defaults to "cannot tell", which reports the service
+  // rather than silently excusing it.
+  changedPathsSince = () => null,
+  // Paths changed by one commit, used to judge whether a single refusal was the
+  // filter working. Same default, same reason.
+  changedPathsIn = () => null,
 }) {
   const base = {
     service,
@@ -184,6 +211,19 @@ export function classifyServiceDeploy({
 
   const runningSha = running?.meta?.commitHash ?? null;
 
+  // Everything this service is missing: the paths changed between the source it
+  // is running and head.
+  //
+  // Tri-state on purpose. `false` — nothing that reaches this container has
+  // changed — is the only value that excuses a service, and it has to be
+  // positively evidenced. `null` means the checkout could not compute the
+  // delta, which is not the same as "nothing changed" and must leave the
+  // service reported.
+  const missingPaths = runningSha ? changedPathsSince(runningSha) : null;
+  const closureChanged = missingPaths === null
+    ? null
+    : changeReachesService(closure, missingPaths);
+
   // A rejection is outstanding until the running SOURCE contains it. Comparing
   // against the newest deployment RECORD instead was wrong: a cron tick is a
   // redeploy of the same image, so on a service that records its ticks the
@@ -207,9 +247,21 @@ export function classifyServiceDeploy({
       && deployment.meta.commitHash !== shaBefore);
   };
 
-  const outstandingRejections = ordered.filter((deployment) => deployment.status === REJECTED_STATUS
-    && deployment.meta?.commitHash
-    && !supersededBySource(deployment));
+  // A refusal of a push that could not have changed this container is the
+  // filter working, not a rejection to report. Fleet-wide over 600 commits,
+  // 7,331 of 7,391 path-reason skips were exactly that; treating them as
+  // rejections is what put 62 of 77 services in the baseline.
+  //
+  // Judged per refusal, not per service, and that distinction decides a
+  // verdict: a service that is genuinely behind while every recorded refusal
+  // was a correct path skip has not had a push refused at all — its merge
+  // never reached Railway, which is #6064's failure wearing #6141's name.
+  const outstandingRejections = closureChanged === false
+    ? []
+    : ordered.filter((deployment) => deployment.status === REJECTED_STATUS
+      && deployment.meta?.commitHash
+      && !supersededBySource(deployment)
+      && !isLegitimatePathSkip(deployment, closure, changedPathsIn(deployment.meta.commitHash)));
   const rejectedShas = outstandingRejections.map((deployment) => deployment.meta.commitHash);
   const identified = {
     ...base,
@@ -237,10 +289,18 @@ export function classifyServiceDeploy({
   }
 
   if (rejectedShas.length > 0) {
+    // Name the reason Railway gave. The two it uses mean opposite things — a
+    // path filter doing its job versus a deferral on the commit's whole check
+    // suite, which scheduled workflows re-reporting onto main's head SHA turn
+    // red long after the merge gates passed. Without the reason in the report
+    // both read as one undifferentiated "refused".
+    const reasons = [...new Set(
+      outstandingRejections.map((deployment) => deployment.meta?.skippedReason).filter(Boolean),
+    )];
     return {
       ...identified,
       verdict: 'REJECTED_PUSH',
-      detail: `Railway refused ${rejectedShas.length} push(es) and has built nothing since: ${rejectedShas.map((sha) => sha.slice(0, 9)).join(', ')}`,
+      detail: `Railway refused ${rejectedShas.length} push(es) reaching this service and has built nothing since: ${rejectedShas.map((sha) => sha.slice(0, 9)).join(', ')}${reasons.length > 0 ? ` (${reasons.join('; ')})` : ''}`,
     };
   }
   if (!running) {
@@ -287,6 +347,27 @@ export function classifyServiceDeploy({
     }
     return { ...identified, verdict: 'PENDING_BUILD', detail: `a build for ${headSha.slice(0, 9)} is under way` };
   }
+  // Not running head, but running everything that can reach it. This is the
+  // normal steady state for a filtered service and it is healthy: the merges
+  // since are changes to code this container does not contain.
+  if (closureChanged === false) {
+    return {
+      ...identified,
+      verdict: 'CURRENT_FOR_CLOSURE',
+      detail: `running ${identified.runningSha.slice(0, 9)}; none of the ${missingPaths.length} path(s) changed since then reach this service`,
+    };
+  }
+  // We could not compute the delta — almost always a checkout too shallow to
+  // reach the running commit. Report it: "we could not check" is not "it is
+  // fine", and this is precisely the service that has been behind longest.
+  if (closureChanged === null) {
+    return {
+      ...identified,
+      verdict: 'CLOSURE_UNKNOWN',
+      detail: `running ${identified.runningSha.slice(0, 9)}, which this checkout cannot reach — deepen the fetch to decide whether anything reaching this service changed since`,
+    };
+  }
+
   if (graceSha !== headSha && isAncestor(graceSha, identified.runningSha)) {
     return {
       ...identified,
@@ -297,7 +378,7 @@ export function classifyServiceDeploy({
   return {
     ...identified,
     verdict: 'BEHIND',
-    detail: `running ${identified.runningSha.slice(0, 9)} from ${identified.runningAt}, which predates ${graceSha.slice(0, 9)} — no build and no rejection recorded`,
+    detail: `running ${identified.runningSha.slice(0, 9)} from ${identified.runningAt}, which predates ${graceSha.slice(0, 9)} and is missing ${pathsReachingService(closure, missingPaths).length} path(s) that reach it — no build and no rejection recorded`,
   };
 }
 
@@ -386,7 +467,11 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
 const GIT_CALL_TIMEOUT_MS = 30_000;
 
 function runGit(args) {
-  const result = spawnSync('git', args, { encoding: 'utf8', timeout: GIT_CALL_TIMEOUT_MS });
+  // maxBuffer is not decoration: `git diff --name-only` across a service that
+  // is weeks behind runs to thousands of paths, and the default 1MB cap would
+  // turn that into a thrown error and a CLOSURE_UNKNOWN for the very services
+  // this check most needs to classify.
+  const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: GIT_CALL_TIMEOUT_MS });
   if (result.signal) throw new Error(`git ${args.join(' ')} timed out`);
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -527,6 +612,19 @@ async function main() {
   }
 
   const services = readRepositoryServices(environment);
+  // What each service's container can be affected by. The registry is the
+  // repository's declaration and the live config is what Railway is actually
+  // filtering on; resolveServiceClosure unions them, because between a merged
+  // registry edit and the audit's --apply each knows a path the other does not.
+  const registryByService = new Map(
+    JSON.parse(readFileSync(REGISTRY_URL, 'utf8')).map((entry) => [entry.service, entry]),
+  );
+  const liveById = JSON.parse(runRailway([
+    'environment', 'config', '--environment', environment, '--json',
+  ]))?.services ?? {};
+  const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
+  const changedPathsIn = createCommitPathsReader({ git: runGit });
+
   const results = (await mapWithConcurrency(services, concurrency, async (service) => {
     let deployments = null;
     let error = null;
@@ -542,6 +640,12 @@ async function main() {
       headSha,
       graceSha,
       isAncestor,
+      closure: resolveServiceClosure({
+        registryEntry: registryByService.get(service.name) ?? null,
+        liveService: liveById[service.id] ?? null,
+      }),
+      changedPathsSince,
+      changedPathsIn,
     });
   })).sort((left, right) => left.service.localeCompare(right.service));
 

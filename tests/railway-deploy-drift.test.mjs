@@ -21,6 +21,7 @@ import {
   summarizeDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
 import { validateAcceptanceBaseline } from '../scripts/check-seed-freshness.mjs';
+import { resolveServiceClosure } from '../scripts/railway-deploy-closure.mjs';
 
 const HEAD = '1d9dcd0ef0d282961e6af75bbe469478ef57c22f';
 const PREVIOUS = 'f1a85003e99cd762e67ad561f5155b53a359e4e6';
@@ -38,11 +39,19 @@ function deployment(status, { at, sha, ...meta } = {}) {
 // By default graceSha is head, which is the strict reading: every commit has
 // been available long enough. A case that wants the grace to matter passes an
 // explicit graceSha plus the ancestry it implies.
+//
+// changedPathsSince defaults to "a file this service watches changed", because
+// that is the situation every fixture here models: a service that is genuinely
+// missing work meant for it. The cases where nothing reaching the service
+// changed — the normal steady state under a watch-path filter — get their own
+// suite below, and a case that wants the checkout to be unable to answer passes
+// `changedPathsSince: () => null` explicitly.
 function classify(deployments, overrides = {}) {
   return classifyServiceDeploy({
     service: 'seed-example',
     deployments,
     headSha: HEAD,
+    changedPathsSince: () => ['scripts/seed-example.mjs'],
     ...overrides,
   });
 }
@@ -351,6 +360,177 @@ describe('Railway deploy drift classification', () => {
   });
 });
 
+// #6142 — what a watch-path filter makes normal.
+//
+// Before this, "not running head" was the whole definition of drift, so the 62
+// services that carry a filter reported REJECTED_PUSH on every merge that was
+// none of their business. That is how the baseline came to acknowledge most of
+// the fleet. Re-measured, 7,331 of 7,391 path-reason skips across 600 commits
+// were the filter working correctly.
+describe('Railway deploy drift against the service closure', () => {
+  const SCRIPTS_SEEDER = resolveServiceClosure({
+    liveService: {
+      source: { rootDirectory: 'scripts' },
+      build: { watchPatterns: ['scripts/**', 'shared/**'] },
+    },
+  });
+
+  function classifyWithClosure(deployments, { changedPaths, ...overrides } = {}) {
+    return classify(deployments, {
+      closure: SCRIPTS_SEEDER,
+      changedPathsSince: () => changedPaths,
+      // Default to "this refusal was for a commit that reaches the service",
+      // so a case that does not care about per-refusal judgement keeps the
+      // refusal — the reporting direction.
+      changedPathsIn: () => ['scripts/seed-example.mjs'],
+      ...overrides,
+    });
+  }
+
+  it('accepts a service running everything that reaches it, head or not', () => {
+    const result = classifyWithClosure(
+      [deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS })],
+      { changedPaths: ['src/App.ts', 'docs/a.md'] },
+    );
+    assert.equal(result.verdict, 'CURRENT_FOR_CLOSURE');
+    assert.equal(isProblemVerdict(result.verdict), false);
+    assert.equal(result.runningSha, PREVIOUS);
+  });
+
+  it('still reports a service missing a change that does reach it', () => {
+    const result = classifyWithClosure(
+      [deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS })],
+      { changedPaths: ['src/App.ts', 'scripts/seed-example.mjs'] },
+    );
+    assert.equal(result.verdict, 'BEHIND');
+    assert.equal(isProblemVerdict(result.verdict), true);
+    assert.match(result.detail, /missing 1 path/);
+  });
+
+  it('applies the build context, so a repository-root shared/ change excuses a scripts-rooted service', () => {
+    // The 57 apparent refusals that turned out to be correct: a
+    // rootDirectory: scripts container cannot see repository-root shared/, so
+    // the shared/** pattern such services carry is unreachable by construction.
+    const result = classifyWithClosure(
+      [deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS })],
+      { changedPaths: ['shared/china-decision-signals.ts'] },
+    );
+    assert.equal(result.verdict, 'CURRENT_FOR_CLOSURE');
+  });
+
+  it('stops reporting a refusal of a push that could not have reached the service', () => {
+    // The 62-entry baseline in one assertion: a SKIPPED record for a commit
+    // this container cannot be affected by is the filter working.
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD }),
+      deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
+    ], { changedPaths: ['src/App.ts'] });
+    assert.equal(result.verdict, 'CURRENT_FOR_CLOSURE');
+    assert.deepEqual(result.rejectedShas, []);
+  });
+
+  it('keeps reporting a refusal of a push that did reach the service', () => {
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD, skippedReason: 'CI check suite failed' }),
+      deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
+    ], { changedPaths: ['scripts/seed-example.mjs'] });
+    assert.equal(result.verdict, 'REJECTED_PUSH');
+    assert.deepEqual(result.rejectedShas, [HEAD]);
+  });
+
+  it('names the reason Railway refused, so the two causes stay distinguishable', () => {
+    // A path refusal and a check-suite deferral are different failures with
+    // different owners; collapsing them to "refused" is what hid the second one
+    // for the whole life of #6141.
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD, skippedReason: 'CI check suite failed' }),
+      deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
+    ], { changedPaths: ['scripts/seed-example.mjs'] });
+    assert.match(result.detail, /CI check suite failed/);
+  });
+
+  it('does not blame a refusal when every recorded refusal was a correct path skip', () => {
+    // The service IS behind, but not because Railway refused anything that
+    // mattered: the refusals it recorded were for commits it cannot see, and
+    // the commit that does reach it was never recorded at all. That is #6064's
+    // failure, and calling it REJECTED_PUSH routes it to the wrong owner — and,
+    // because the baseline matches on service:verdict, to the wrong entry.
+    const unrelated = 'dddddddd000000000000000000000000000000aa';
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: unrelated, skippedReason: 'No changes to watched files' }),
+      deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
+    ], {
+      changedPaths: ['scripts/seed-example.mjs'],
+      changedPathsIn: () => ['src/App.ts'],
+    });
+    assert.equal(result.verdict, 'BEHIND');
+    assert.deepEqual(result.rejectedShas, []);
+  });
+
+  it('still blames the refusal when that commit did reach the service', () => {
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD, skippedReason: 'No changes to watched files' }),
+      deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
+    ], {
+      changedPaths: ['scripts/seed-example.mjs'],
+      changedPathsIn: () => ['scripts/seed-example.mjs'],
+    });
+    assert.equal(result.verdict, 'REJECTED_PUSH');
+    assert.deepEqual(result.rejectedShas, [HEAD]);
+  });
+
+  it('keeps a refusal it cannot judge rather than excusing it', () => {
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD, skippedReason: 'No changes to watched files' }),
+      deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
+    ], {
+      changedPaths: ['scripts/seed-example.mjs'],
+      changedPathsIn: () => null,
+    });
+    assert.equal(result.verdict, 'REJECTED_PUSH');
+  });
+
+  it('reports rather than excuses a service whose running commit the checkout cannot reach', () => {
+    // "We could not compute the delta" is not "nothing changed", and the
+    // service furthest behind is exactly the one a shallow fetch cannot reach.
+    const result = classifyWithClosure(
+      [deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS })],
+      { changedPaths: null },
+    );
+    assert.equal(result.verdict, 'CLOSURE_UNKNOWN');
+    assert.equal(isProblemVerdict(result.verdict), true);
+  });
+
+  it('does not excuse a service that watches everything', () => {
+    // umami and the bootstrap publisher declare an empty filter deliberately;
+    // for them every merge is closure-relevant.
+    const everything = resolveServiceClosure({ liveService: { source: {}, build: { watchPatterns: [] } } });
+    const result = classify(
+      [deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS })],
+      { closure: everything, changedPathsSince: () => ['src/App.ts'] },
+    );
+    assert.equal(result.verdict, 'BEHIND');
+  });
+
+  it('never lets the closure excuse a failed build for head', () => {
+    // Railway ran it and it broke. That is a real failure with its own owner,
+    // and it must outrank "nothing reaching this service changed".
+    const result = classifyWithClosure([
+      deployment('FAILED', { at: '2026-08-04T05:07:00Z', sha: HEAD }),
+      deployment('REMOVED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ], { changedPaths: ['src/App.ts'] });
+    assert.equal(result.verdict, 'BUILD_FAILED');
+  });
+
+  it('never lets the closure excuse a service with no identifiable source', () => {
+    const result = classifyWithClosure(
+      [deployment('SUCCESS', { at: '2026-08-04T05:00:00Z' })],
+      { changedPaths: ['src/App.ts'] },
+    );
+    assert.equal(result.verdict, 'UNKNOWN_SOURCE');
+  });
+});
+
 describe('Railway deploy drift summary', () => {
   const results = [
     { service: 'a', verdict: 'CURRENT' },
@@ -473,31 +653,32 @@ describe('the shipped deploy-drift baseline', () => {
     }
   });
 
-  // The rejected-push entries are a measured snapshot of the fleet, owned by
-  // one issue, so pruning them is mechanical when that issue lands: every
-  // service the fix reaches is reported as recovered on the next run.
-  it('routes every acknowledged rejected push to the single owner issue', () => {
-    const rejected = baseline.acknowledged.filter((entry) => entry.status === 'REJECTED_PUSH');
-    assert.ok(rejected.length > 0, 'the fleet snapshot must be recorded, not implied');
-    for (const entry of rejected) {
-      assert.equal(
-        entry.issue,
-        6142,
-        `${entry.name} must point at the issue that replaces the deploy trigger, not at #6141`,
-      );
-    }
+  // This file used to hold 62 REJECTED_PUSH entries — every service carrying a
+  // watch-path filter — because the check demanded that a filtered service run
+  // HEAD. It does not any more; those services report CURRENT_FOR_CLOSURE.
+  // Re-adding them would suppress a verdict that now means something real:
+  // Railway refused a push that DID reach the service.
+  it('no longer suppresses the fleet-wide rejections #6142 removed', () => {
+    const owned = baseline.acknowledged.filter((entry) => entry.issue === 6142);
+    assert.deepEqual(
+      owned.map((entry) => `${entry.name}:${entry.status}`),
+      [],
+      'the closure-aware check reports these healthy — acknowledging them again would hide a real refusal',
+    );
   });
 
-  // 62 of the 63 entries carry one canonical sentence. A partial hand-edit
-  // during pruning would leave the file looking maintained while quietly
-  // disagreeing with itself, so the identity is asserted rather than assumed.
-  it('keeps one canonical reason across every rejected-push entry', () => {
-    const reasons = new Set(
-      baseline.acknowledged
-        .filter((entry) => entry.status === 'REJECTED_PUSH')
-        .map((entry) => entry.reason),
-    );
-    assert.equal(reasons.size, 1, 'rejected-push entries must share one reason string');
+  // A partial hand-edit during pruning leaves the file looking maintained while
+  // quietly disagreeing with itself, so entries that share an owner must share
+  // the sentence that explains them.
+  it('keeps one canonical reason per owner issue', () => {
+    const byIssue = new Map();
+    for (const entry of baseline.acknowledged) {
+      if (!byIssue.has(entry.issue)) byIssue.set(entry.issue, new Set());
+      byIssue.get(entry.issue).add(entry.reason);
+    }
+    for (const [issue, reasons] of byIssue) {
+      assert.equal(reasons.size, 1, `entries acknowledged against #${issue} must share one reason string`);
+    }
   });
 
   // A verdict that means "this check could not determine anything" is not a
