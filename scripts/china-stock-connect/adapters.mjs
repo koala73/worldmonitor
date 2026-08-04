@@ -903,6 +903,13 @@ function sumOrNull(...values) {
   return values.reduce((total, value) => total + value, 0);
 }
 
+// Deliberately raw, unlike the combined figures above. The {status,reason}
+// envelope exists because a combined value has several distinct ways to be
+// absent -- TRADE_DATE_MISMATCH, EXCHANGE_UNAVAILABLE, INCOMPLETE_EXCHANGE_FIELDS
+// -- and a consumer cannot tell them apart from a bare null. A per-exchange
+// field has exactly one: the block itself is null when that exchange did not
+// answer, so a null INSIDE a present block can only mean the exchange did not
+// publish that field. Wrapping it would add no information.
 function exchangeBlock(observation) {
   if (!observation) return null;
   return { ...observation };

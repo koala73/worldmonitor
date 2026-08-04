@@ -1,5 +1,5 @@
 // Shared transport PRIMITIVES for the mainland Chinese exchange hosts
-// (query.sse.com.cn, www.szse.cn), extracted verbatim from
+// (query.sse.com.cn, www.szse.cn), extracted from
 // china-corporate-disclosures/adapters.mjs so a second consumer --
 // china-stock-connect -- reuses the proxy hop, the edge hop, the bounded reads
 // and the failure classification instead of reimplementing them. Behaviour is
@@ -39,6 +39,15 @@ export function sourceError(code, cause) {
 async function readBoundedResponseBytes(response, maxBytes) {
   const contentLength = Number(response?.headers?.get?.('content-length'));
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    // Cancel before throwing, matching the chunked path below. Leaving the body
+    // unread holds the socket until GC, and china-stock-connect reaches this
+    // arm routinely: a dateless SZSE report answers with the whole series since
+    // 2010 (~438 KiB) and a declared content-length, once per date probe.
+    try {
+      await response?.body?.cancel?.();
+    } catch {
+      // A size rejection must not be masked by a cancel that failed.
+    }
     throw sourceError('RESPONSE_TOO_LARGE');
   }
   if (!response?.body?.getReader) {

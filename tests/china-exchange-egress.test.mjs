@@ -276,6 +276,40 @@ describe('internal China exchange egress', () => {
     assert.equal(called, false);
   });
 
+  it('refuses prototype-polluting keys rather than treating them as absent', async () => {
+    // hasExactKeys compares Object.keys(), and isPlainObject requires a literal
+    // Object prototype -- but "__proto__ is silently swallowed" is exactly the
+    // assumption worth pinning rather than inferring from the code's shape.
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      return new Response('{}');
+    };
+    const polluted = [
+      `{"catalogId":"SGT_SGTJYRB","route":"szse-report","tabKey":"tab1","txtDate":"${RECENT_DAY}","__proto__":{"admin":true}}`,
+      `{"__proto__":{"route":"szse-calendar"},"month":"${RECENT_MONTH}"}`,
+      `{"constructor":{"prototype":{}},"month":"${RECENT_MONTH}","route":"szse-calendar"}`,
+      `{"month":"${RECENT_MONTH}","route":"szse-calendar","prototype":1}`,
+    ];
+    for (const body of polluted) {
+      const response = await handler(new Request(
+        'https://api.worldmonitor.app/api/internal/china-exchange-egress',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer test-relay-secret',
+            'Content-Type': 'application/json',
+          },
+          body,
+        },
+      ));
+      assert.equal(response.status, 400, body);
+      assert.deepEqual(await response.json(), { error: 'invalid_request' });
+    }
+    assert.equal(called, false, 'no polluted body may reach the upstream fetch');
+    assert.equal({}.admin, undefined, 'Object.prototype must be untouched');
+  });
+
   it('pins the report date window against a fixed clock', () => {
     // Exercised through the pure resolver so the boundary is asserted against a
     // known instant. Going through the handler would test it against whatever

@@ -502,7 +502,11 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(szse.transportStatus, 'error');
       // Last-good timestamp is carried forward so staleness stays visible.
       assert.equal(szse.lastSuccessAt, '2026-08-03T00:00:00.000Z');
-      assert.ok(snapshot.history.some((entry: { day: string }) => entry.day === '2026-08-03'));
+      const merged = snapshot.history.find((e: { day: string }) => e.day === '2026-08-03');
+      // Same-day collision: the new margin fields must land ALONGSIDE the prior
+      // northbound value, not replace the whole row.
+      assert.equal(merged.northboundTurnoverCny, 1, 'prior field was dropped on merge');
+      assert.ok(merged.marginTotalBalanceCny > 0, 'new field was not merged in');
       // Margin is independent and unaffected.
       assert.equal(snapshot.margin.totalBalanceCny.status, 'known');
     });
