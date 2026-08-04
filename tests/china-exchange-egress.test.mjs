@@ -3,7 +3,18 @@ import { strict as assert } from 'node:assert';
 
 import handler, {
   SZSE_EGRESS_MAX_RESPONSE_BYTES,
+  resolveSzseReportRoute,
 } from '../api/internal/china-exchange-egress.js';
+
+// The handler validates txtDate/month against a rolling window anchored on the
+// real clock, so literal dates in a test are a time bomb: they pass today and
+// start failing once they age past the window. Derive them from now instead,
+// and pin the clock separately where the boundary itself is under test.
+const DAY_MS = 86_400_000;
+const isoDay = (offsetDays) =>
+  new Date(Date.now() + offsetDays * DAY_MS).toISOString().slice(0, 10);
+const RECENT_DAY = isoDay(-1);
+const RECENT_MONTH = RECENT_DAY.slice(0, 7);
 
 const originalFetch = globalThis.fetch;
 const originalSecret = process.env.RELAY_SHARED_SECRET;
@@ -186,7 +197,7 @@ describe('internal China exchange egress', () => {
       catalogId: 'SGT_SGTJYRB',
       route: 'szse-report',
       tabKey: 'tab1',
-      txtDate: '2026-08-04',
+      txtDate: RECENT_DAY,
     }));
 
     assert.equal(response.status, 200);
@@ -195,7 +206,7 @@ describe('internal China exchange egress', () => {
     assert.equal(
       calls[0].input,
       'https://www.szse.cn/api/report/ShowReport/data'
-      + '?SHOWTYPE=JSON&CATALOGID=SGT_SGTJYRB&TABKEY=tab1&txtDate=2026-08-04',
+      + `?SHOWTYPE=JSON&CATALOGID=SGT_SGTJYRB&TABKEY=tab1&txtDate=${RECENT_DAY}`,
     );
     assert.equal(calls[0].init.method, 'GET');
     assert.equal(calls[0].init.redirect, 'error');
@@ -213,12 +224,12 @@ describe('internal China exchange egress', () => {
       });
     };
 
-    const response = await handler(request({ month: '2026-08', route: 'szse-calendar' }));
+    const response = await handler(request({ month: RECENT_MONTH, route: 'szse-calendar' }));
 
     assert.equal(response.status, 200);
     assert.equal(
       calls[0].input,
-      'https://www.szse.cn/api/report/exchange/onepersistenthour/monthList?month=2026-08',
+      `https://www.szse.cn/api/report/exchange/onepersistenthour/monthList?month=${RECENT_MONTH}`,
     );
     assert.equal(calls[0].init.method, 'GET');
   });
@@ -233,7 +244,7 @@ describe('internal China exchange egress', () => {
       catalogId: 'SGT_SGTJYRB',
       route: 'szse-report',
       tabKey: 'tab1',
-      txtDate: '2026-08-04',
+      txtDate: RECENT_DAY,
     };
     const invalidBodies = [
       // A catalogue outside the two reviewed reports.
@@ -245,15 +256,15 @@ describe('internal China exchange egress', () => {
       { catalogId: 'SGT_SGTJYRB', route: 'szse-report', tabKey: 'tab1' },
       { ...report, txtDate: '' },
       { ...report, txtDate: '2026-02-31' },
-      { ...report, txtDate: '2019-01-02' },
-      { ...report, txtDate: '2030-01-02' },
+      { ...report, txtDate: isoDay(-500) },
+      { ...report, txtDate: isoDay(30) },
       { ...report, extra: 'unexpected' },
       // Nothing may steer the URL itself.
       { ...report, url: 'https://example.com/' },
       { route: 'szse-report' },
-      { month: '2026-13', route: 'szse-calendar' },
+      { month: `${RECENT_MONTH.slice(0, 4)}-13`, route: 'szse-calendar' },
       { month: '2026-8', route: 'szse-calendar' },
-      { month: '2026-08', route: 'szse-calendar', extra: 1 },
+      { month: RECENT_MONTH, route: 'szse-calendar', extra: 1 },
       { route: 'szse-unknown' },
     ];
 
@@ -263,6 +274,34 @@ describe('internal China exchange egress', () => {
       assert.deepEqual(await response.json(), { error: 'invalid_request' });
     }
     assert.equal(called, false);
+  });
+
+  it('pins the report date window against a fixed clock', () => {
+    // Exercised through the pure resolver so the boundary is asserted against a
+    // known instant. Going through the handler would test it against whatever
+    // today happens to be, which is how a window check silently stops being
+    // checked at all.
+    const now = Date.parse('2026-08-05T00:00:00.000Z');
+    const report = (txtDate) =>
+      resolveSzseReportRoute(
+        { catalogId: 'SGT_SGTJYRB', route: 'szse-report', tabKey: 'tab1', txtDate },
+        now,
+      );
+
+    assert.ok(report('2026-08-04'), 'yesterday must be inside the window');
+    // 400 days back is the documented floor; 401 is outside it.
+    assert.ok(report('2025-07-01'), '400-day-old dates stay inside the window');
+    assert.equal(report('2025-06-01'), null, 'far past must be refused');
+    // Two days of lead tolerates clock skew; a month ahead is a caller bug.
+    assert.ok(report('2026-08-06'), 'a small lead is tolerated');
+    assert.equal(report('2026-09-05'), null, 'far future must be refused');
+
+    const calendar = (month) =>
+      resolveSzseReportRoute({ month, route: 'szse-calendar' }, now);
+    assert.ok(calendar('2026-08'));
+    assert.ok(calendar('2025-08'));
+    assert.equal(calendar('2020-01'), null);
+    assert.equal(calendar('2030-01'), null);
   });
 
   it('preserves upstream failure status for the seeder fallback chain', async () => {

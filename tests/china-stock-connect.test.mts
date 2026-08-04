@@ -319,6 +319,39 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(validateChinaStockConnectSnapshot(snapshot), true);
     });
 
+    it('rejects every malformed snapshot shape, arm by arm', async () => {
+      // validateChinaStockConnectSnapshot is the publish gate: if it wrongly
+      // returns true, a malformed payload reaches the canonical key that
+      // api/health.js and the coverage manifest trust. Testing one arm leaves
+      // the other seven free to rot.
+      const { snapshot } = await fetchWithFixtures();
+      assert.equal(validateChinaStockConnectSnapshot(snapshot), true);
+
+      const mutations: Array<[string, Record<string, unknown>]> = [
+        ['wrong schemaVersion', { schemaVersion: 2 }],
+        ['missing schemaVersion', { schemaVersion: undefined }],
+        ['wrong country', { countryCode: 'US' }],
+        ['status outside the enum', { status: 'ok' }],
+        ['sources not an array', { sources: {} }],
+        ['history not an array', { history: null }],
+        ['northbound missing', { northbound: null }],
+        ['margin missing', { margin: undefined }],
+        ['netFlow claimed as known', {
+          northbound: { ...snapshot.northbound, netFlow: { status: 'known', value: 1 } },
+        }],
+        ['a source dropped', { sources: snapshot.sources.slice(1) }],
+      ];
+      for (const [label, patch] of mutations) {
+        assert.equal(
+          validateChinaStockConnectSnapshot({ ...snapshot, ...patch }),
+          false,
+          `accepted a snapshot with: ${label}`,
+        );
+      }
+      assert.equal(validateChinaStockConnectSnapshot(null), false);
+      assert.equal(validateChinaStockConnectSnapshot(undefined), false);
+    });
+
     it('never claims a northbound net flow', async () => {
       const { snapshot } = await fetchWithFixtures();
       assert.equal(snapshot.northbound.netFlow.status, 'unavailable');
