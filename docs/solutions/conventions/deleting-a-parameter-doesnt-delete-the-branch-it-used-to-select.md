@@ -16,7 +16,8 @@ symptoms:
   - "A caller stops sending a parameter and its requests silently fall onto an unfiltered or unguarded branch, with no test failure"
   - "Existing tests stay green because their fixtures still supply the old parameter — the newly-exposed branch has zero coverage"
   - "A bare object lookup (OBJ[userInput]) treats inherited Object.prototype properties like constructor as present, passing an existence guard"
-  - "Multiple independent reviewers flag the exact same line without prompting each other — convergence is the catch signal, not the test suite"
+  - "A guard's remaining callers can be counted on one hand, and a cleanup removes the last one — the branch was already mostly inert before the change that finished it"
+  - "Reviewers agree on a line, but their briefs named it — directed confirmation reads like independent convergence unless the briefs are re-read"
 related_components:
   - service_object
   - testing_framework
@@ -43,6 +44,11 @@ new behavior. The hazard is on the other side of the boundary. If the receiver b
 on that value's *presence*, dropping it does not remove a branch; it silently reselects
 one. Whatever the receiver does when the value is absent is now what your most important
 caller gets, and nothing in the caller's diff says so.
+
+Before assuming the deletion is the whole story, count who else already reaches the
+absence branch. A guard conditioned on an optional value tends to lose callers gradually,
+so the deletion that removes the last one is usually finishing a decay rather than
+starting it — and the other callers are where the bug has been living unnoticed.
 
 The shape is worst when the parameter was never load-bearing for the thing it appeared
 to control. Then it reads as decoration on the caller side and as a switch on the
@@ -81,16 +87,28 @@ the prototype chain; `Object.hasOwn(obj, key)` does not.
 ## Why This Matters
 
 The test suite stayed green through the whole regression, and that is the point. The
-existing handler tests all supplied a variant, because every real caller used to. They
-exercised the filtered branch exclusively; the branch the change actually moved
-production onto had no coverage at all. Green CI here was evidence that the *old* call
-shape still worked — a statement about a caller that no longer existed.
+handler's stray-asset defense was asserted only for `variant=tech` — the strict branch —
+so it guarded a call shape no shipped client used, while the variantless branch the
+updater moved onto was covered by a single-asset fixture any implementation passes. Green
+CI here was evidence that a call shape nobody sent still worked.
 
-What caught it was review convergence: four independent passes — a correctness reviewer,
-a security reviewer, an adversarial reviewer, and a cross-model pass from a different
-model family — each flagged the same ternary without being pointed at it. Independent
-reviewers agreeing on one line is a much stronger signal than any single verdict, and it
-is worth treating as a stop condition rather than as three redundant comments.
+The filter was in fact already inert for most traffic. Only the updater ever sent a
+variant; the in-app download banner, the README badges, and the machine-readable download
+list all called the endpoint without one and had therefore always taken the unfiltered
+branch. The deletion did not expose a safe endpoint — it removed the guard's last user,
+finishing a decay that had been underway for as long as those other callers existed. That
+is the more common shape: a conditional guard usually dies by attrition, one caller at a
+time, and the deletion that removes the final one only looks like the cause.
+
+**On what "caught it" is worth claiming.** Four passes flagged this line, but only one was
+independent. The other three had been pointed at the variant/no-variant consistency
+question in their briefs, so their agreement confirms a hypothesis rather than
+corroborating a discovery — the reviewer who surfaced it unprompted was reviewing the
+change's *verification fidelity* and noticed the tests defended the wrong branch. Treat
+convergence as a strong signal only across reviewers whose briefs did not name the thing;
+otherwise it measures how well the brief was written. Counting directed confirmations as
+independent votes inflates confidence in exactly the situation where it should not, and
+the roster is easy to check after the fact: read the briefs, not just the findings.
 
 The blast radius is also asymmetric. Losing the filter did not break anything visible: a
 download still resolved, still 302'd, still installed. It only mattered when a stray
@@ -103,7 +121,10 @@ the wrong binary and the failure is silent on both ends.
 - Removing a query parameter, header, cookie, flag, or optional field from any caller.
 - Retiring a feature flag whose false/absent path was never the tested path.
 - Any receiver code of the form `param ? strictPath() : loosePath()` — treat the loose
-  arm as the real default and ask who reaches it.
+  arm as the real default and take a census of who already reaches it before assuming
+  your deletion is what put anyone there.
+- Weighing whether reviewer agreement is corroboration: check whether the briefs named
+  the finding before counting the votes.
 - Migrations where one side of a client/server or producer/consumer pair changes shape
   and the two diffs land in the same PR under different review lenses.
 - Any lookup keyed on user-controlled strings against a plain object literal.
@@ -132,6 +153,15 @@ const asset = findDesktopAsset(assets, matcher);
 **The caller that triggered it** — `src/app/desktop-updater.ts:148` now builds
 `.../api/download?platform=${platform}` with no `variant`. That single-line deletion is
 the whole trigger; nothing else in the updater diff touched the endpoint.
+
+**The census that reframes it.** Grepping the base branch for callers of the endpoint
+shows the updater was the *only* one that ever sent a variant. The in-app download banner
+(`src/components/DownloadBanner.ts:33-37`), the README download badges, and the
+machine-readable download list (`public/llms.txt:106-109`) all called it without one, and
+had therefore always been served by the unfiltered branch. Doing this census first would
+have shown that the strict arm was already unreachable for most traffic — which reads as
+a much louder signal than "this deletion introduces a risk", and points at deleting the
+conditional rather than at preserving the parameter.
 
 **Locking it down.** Two different kinds of test, because either alone is weak:
 
