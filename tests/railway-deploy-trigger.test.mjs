@@ -186,6 +186,33 @@ describe('deploy planning', () => {
     assert.equal(result.action, 'skip');
   });
 
+  it('sorts an unreadable timestamp oldest instead of leaving the order undefined', () => {
+    // The drift check pins this for itself; without the same case here, a
+    // revert to an inline `Date.parse(x ?? 0)` sort passes the whole trigger
+    // suite. NaN comparisons make the sort order undefined, so the record
+    // chosen as "running" would depend on the input order — and runningSha is
+    // what decides whether a production deploy fires.
+    const result = plan({
+      deployments: [
+        deployment('SUCCESS', 'ffffffff000000000000000000000000000000aa', { createdAt: 'not-a-date' }),
+        deployment('SUCCESS', RUNNING, { createdAt: '2026-08-01T00:00:00.000Z' }),
+      ],
+      changedPathsSince: () => ['scripts/seed-aviation.mjs'],
+    });
+    assert.equal(result.runningSha, RUNNING, 'the record with a readable timestamp must win');
+  });
+
+  it('treats a missing timestamp the same way', () => {
+    const result = plan({
+      deployments: [
+        { status: 'SUCCESS', meta: { commitHash: 'ffffffff000000000000000000000000000000aa' } },
+        deployment('SUCCESS', RUNNING, { createdAt: '2026-08-01T00:00:00.000Z' }),
+      ],
+      changedPathsSince: () => ['scripts/seed-aviation.mjs'],
+    });
+    assert.equal(result.runningSha, RUNNING);
+  });
+
   it('ignores a SKIPPED record when deciding what the service is running', () => {
     // A refusal never produced an image, so it can never be the running source.
     const result = plan({

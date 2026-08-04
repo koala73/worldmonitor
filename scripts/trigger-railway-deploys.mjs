@@ -339,10 +339,16 @@ function printReport(plans, summary, headSha, { dryRun, elapsedMs }) {
     console.error(`::${level}::${plan.service}: ${plan.detail}`);
   }
   for (const plan of summary.deploys) {
-    const prefix = dryRun ? 'would deploy' : plan.deploymentId ? `deployed (${plan.deploymentId})` : 'FAILED to deploy';
-    const line = `- ${prefix}: ${plan.service} [${plan.reason}] ${plan.detail}`;
-    if (!dryRun && !plan.deploymentId) console.error(`${line} — ${plan.error}`);
-    else console.log(line);
+    if (!dryRun && !plan.deploymentId) {
+      // ::error:: so the failing SERVICE and its reason reach the Actions
+      // summary and the PR checks panel. A plain console.error reds the run but
+      // names nothing until someone opens the raw log, and this is the one
+      // outcome an operator has to act on: a deploy that was supposed to happen
+      // and did not.
+      console.error(`::error::${plan.service} was not deployed [${plan.reason}]: ${plan.error}`);
+      continue;
+    }
+    console.log(`- ${dryRun ? 'would deploy' : `deployed (${plan.deploymentId})`}: ${plan.service} [${plan.reason}] ${plan.detail}`);
   }
   if (summary.deploys.length === 0) {
     console.log(`No service needs a build for ${headSha.slice(0, 9)} — Railway already took it or nothing reaching them changed.`);

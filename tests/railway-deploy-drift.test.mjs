@@ -57,6 +57,32 @@ function classify(deployments, overrides = {}) {
   });
 }
 
+describe('the healthy set is closed, so an unrecognised verdict reports', () => {
+  // The problem set is derived from the healthy verdicts by negation rather
+  // than enumerated. That is the only reason a verdict added in future is a
+  // problem until someone decides otherwise — and it is exactly the kind of
+  // decision that flips silently: switch to an explicit problem list and every
+  // new verdict starts life as "healthy", which is a green report over a stale
+  // fleet with nothing to notice it.
+  it('treats any verdict outside the healthy set as a problem', () => {
+    for (const healthy of ['CURRENT', 'CURRENT_FOR_CLOSURE', 'AHEAD', 'PENDING_BUILD']) {
+      assert.equal(isProblemVerdict(healthy), false, healthy);
+    }
+    for (const unknown of ['A_VERDICT_ADDED_IN_2027', 'CURRENT_ISH', '', undefined, null]) {
+      assert.equal(isProblemVerdict(unknown), true, String(unknown));
+    }
+  });
+
+  it('reports every verdict this file can actually return', () => {
+    // Belt and braces on the same property: no verdict the classifier emits may
+    // fall outside {healthy} ∪ {problem}, and every undeterminable one must
+    // land in the problem half.
+    for (const verdict of UNDETERMINABLE_VERDICTS) {
+      assert.equal(isProblemVerdict(verdict), true, verdict);
+    }
+  });
+});
+
 describe('Railway deploy drift classification', () => {
   it('reports a service running the head commit as current', () => {
     const result = classify([
