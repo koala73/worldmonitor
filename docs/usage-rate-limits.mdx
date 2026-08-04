@@ -36,6 +36,23 @@ Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP �
 - The per-minute burst, daily allowance, and ceiling are all **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
 - Need a higher limit? **Contact support** to raise your plan's allowance.
 
+## Dashboard AI quota
+
+Dashboard and direct REST AI operations use a separate daily budget from MCP. The counter resets at **00:00 UTC**.
+
+| Plan | Dashboard-AI requests/day |
+|------|----------------------------|
+| **Free / signed out** | **0** — protected AI routes require Pro authentication |
+| **Pro** | **500** |
+| **Pro Business** | **2,500** |
+| **API Starter** | **1,000** |
+| **API Business** | **10,000** |
+| **Enterprise** | unlimited |
+
+Free and signed-out dashboard users keep the normal keyword/cache fallback for feed enrichment; they do not consume the paid direct-AI budget. These limits are independent of the MCP allowances above.
+
+Signed-out callers are rejected outright, and Pro-gated AI routes deny free accounts before any spend. Separately from these plan allowances, a small non-plan safety floor of **50 requests/day** applies to any caller whose paid entitlement cannot be confirmed at request time — a lapsed subscription, or a transient entitlement-lookup outage. It exists so an outage degrades gracefully instead of rejecting paying customers; it is not an allowance any plan includes, and it is never larger than the smallest paid allowance.
+
 ## OAuth endpoints
 
 | Endpoint | Limit | Window | Scope |

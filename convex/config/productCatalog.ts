@@ -46,6 +46,12 @@ export type PlanLimits = {
    */
   mcpCallsPerDay: number | null;
   /**
+   * Daily dashboard-AI/REST LLM allowance. This is deliberately separate from
+   * `mcpCallsPerDay`: MCP clients and dashboard/API callers have different
+   * workloads and must not share the same product limit by accident.
+   */
+  dashboardAiCallsPerDay: number | null;
+  /**
    * Per-minute MCP burst allowance. Notices stay disabled until limiter-hit
    * telemetry is durable enough to scan.
    */
@@ -157,6 +163,7 @@ const FREE_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
     mcpCallsPerDay: 0,
+    dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
   },
   prioritySupport: false,
@@ -175,6 +182,7 @@ const PRO_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
     mcpCallsPerDay: 50,
+    dashboardAiCallsPerDay: 500,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: false,
@@ -204,6 +212,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
     mcpCallsPerDay: 250,
+    dashboardAiCallsPerDay: 2_500,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: true,
@@ -222,6 +231,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 1_000,
     apiBurstRequestsPerMinute: 60,
     mcpCallsPerDay: 1_000,
+    dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: false,
@@ -240,6 +250,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 10_000,
     apiBurstRequestsPerMinute: 300,
     mcpCallsPerDay: 10_000,
+    dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
   },
   prioritySupport: true,
@@ -259,6 +270,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
     apiRequestsPerDay: null,
     apiBurstRequestsPerMinute: 1000,
     mcpCallsPerDay: null,
+    dashboardAiCallsPerDay: null,
     mcpBurstRequestsPerMinute: 1000,
   },
   prioritySupport: true,

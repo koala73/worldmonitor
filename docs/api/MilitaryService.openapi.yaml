@@ -1640,8 +1640,10 @@ components:
                         maxItems: 20
                         minItems: 1
                         description: |-
-                            ICAO 24-bit hex addresses (lowercase). Up to 20 are accepted by validation, but the
-                             handler de-duplicates, sorts, and processes at most the first 10 addresses.
+                            ICAO 24-bit hex addresses (lowercase). Validation accepts up to 20, but the handler
+                             de-duplicates, sorts, and processes at most the first 10 addresses -- anything beyond
+                             that is silently discarded, so send at most 10 per call. The official browser client
+                             caps its own requests at the same bound.
                     maxItems: 20
                     minItems: 1
             description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
