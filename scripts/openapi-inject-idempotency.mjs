@@ -26,6 +26,12 @@ import { eq, serialize } from './lib/openapi-codegen.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const CHECK = process.argv.includes('--check');
+// This import owns tuple-level retry semantics: committed rows replay while
+// rejected and no-op rows are recomputed against current state. Whole-response
+// replay would violate that application contract.
+const IDEMPOTENCY_EXEMPT_PATHS = new Set([
+  '/api/company-monitoring/v1/import-monitored-company-batch',
+]);
 
 const DESCRIPTION =
   'Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.';
@@ -162,9 +168,10 @@ function canonicalizeJson400Response(existing) {
 
 function injectJson(spec) {
   let changed = false;
-  for (const ops of Object.values(spec.paths ?? {})) {
+  for (const [pathname, ops] of Object.entries(spec.paths ?? {})) {
     const post = ops && typeof ops === 'object' ? ops.post : null;
     if (!post || typeof post !== 'object') continue;
+    if (IDEMPOTENCY_EXEMPT_PATHS.has(pathname)) continue;
     const params = Array.isArray(post.parameters) ? post.parameters : [];
     const paramIndex = params.findIndex(isIdempotencyParam);
     if (paramIndex === -1) {
@@ -474,6 +481,7 @@ function injectYaml(text) {
       continue;
     }
     if (!currentPath || !/^ {8}post:\s*$/.test(line)) continue;
+    if (IDEMPOTENCY_EXEMPT_PATHS.has(currentPath)) continue;
 
     // Op block spans until the next line at <= 8-space indent (next method /
     // path / top-level key).

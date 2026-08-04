@@ -5,9 +5,7 @@ import { describe, it } from 'node:test';
 
 import { serverOptions } from '../server/gateway.ts';
 import { validateGeneratedRequest } from '../server/request-validator.ts';
-import {
-  GENERATED_REQUEST_TYPES,
-} from '../src/generated/server/request_validation.ts';
+import { GENERATED_REQUEST_TYPES } from '../src/generated/server/request_validation.ts';
 import {
   createMarketServiceRoutes,
   type MarketServiceHandler,
@@ -227,6 +225,109 @@ describe('generated request validation', () => {
     }), [
       { field: 'airports', description: 'array must contain at most 20 item(s)' },
     ]);
+  });
+
+  it('enforces UTF-8 byte ceilings and exact contract versions', () => {
+    assert.deepEqual(validateGeneratedRequest('createMonitoredCompany', {
+      company: {
+        name: 'é'.repeat(129),
+        domicileCountry: 'DOMICILE_COUNTRY_US',
+        aliases: [],
+      },
+    }), [
+      { field: 'company.name', description: 'string UTF-8 length must be at most 256 bytes' },
+    ]);
+
+    assert.deepEqual(validateGeneratedRequest('importMonitoredCompanyBatch', {
+      contractVersion: 'cm-import-v2',
+      clientImportId: 'import-001',
+      rows: [{
+        ordinal: 0,
+        company: {
+          name: 'Example Holdings',
+          domicileCountry: 'DOMICILE_COUNTRY_GB',
+          aliases: [],
+        },
+      }],
+    }), [
+      { field: 'contractVersion', description: 'string must equal cm-import-v1' },
+    ]);
+
+    assert.deepEqual(validateGeneratedRequest('createMonitoredCompany', {
+      company: {
+        name: 'Missing Domicile',
+        aliases: [],
+      },
+    }), [
+      { field: 'company.domicileCountry', description: 'value is required' },
+    ]);
+    assert.deepEqual(validateGeneratedRequest('createMonitoredCompany', {
+      company: {
+        name: 'Unspecified Domicile',
+        domicileCountry: 'DOMICILE_COUNTRY_UNSPECIFIED',
+        aliases: [],
+      },
+    }), [
+      { field: 'company.domicileCountry', description: 'value is required' },
+    ]);
+    assert.deepEqual(validateGeneratedRequest('createMonitoredCompany', {
+      company: {
+        name: 'Unknown Domicile',
+        domicileCountry: 'DOMICILE_COUNTRY_CA',
+        aliases: [],
+      },
+    }), [
+      { field: 'company.domicileCountry', description: 'enum value must be defined' },
+    ]);
+    assert.deepEqual(validateGeneratedRequest('createMonitoredCompany', {
+      company: {
+        name: 'Malformed Claims',
+        domicileCountry: 'DOMICILE_COUNTRY_US',
+        domains: ['https://example.com/path'],
+        xHandles: ['not-a-handle!'],
+      },
+    }), [
+      {
+        field: 'company.domains[0]',
+        description: 'string must match pattern ^(?:www\\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.?$',
+      },
+      {
+        field: 'company.xHandles[0]',
+        description: 'string must match pattern ^@?[A-Za-z0-9_]{1,15}$',
+      },
+    ]);
+    assert.deepEqual(validateGeneratedRequest('updateMonitoredCompany', {
+      companyId: 'cm_company_01JNZB2Y7K4F6W8P9Q0R1S2T3V',
+      patch: {
+        addClaims: [{ type: 'COMPANY_CLAIM_TYPE_UNSPECIFIED', value: 'x' }],
+        removeClaimIds: ['internal-document-id'],
+      },
+    }), [
+      { field: 'patch.addClaims[0].type', description: 'value is required' },
+      {
+        field: 'patch.removeClaimIds[0]',
+        description: 'string must match pattern ^cm_claim_[0-9A-HJKMNP-TV-Z]{26}$',
+      },
+    ]);
+    assert.deepEqual(validateGeneratedRequest('listCompanyEventImpacts', {
+      companyIds: ['internal-document-id'],
+      directions: ['up'],
+      lifecycles: ['deleted'],
+    }), [
+      {
+        field: 'companyIds[0]',
+        description: 'string must match pattern ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$',
+      },
+      {
+        field: 'directions[0]',
+        description: 'string must match pattern ^(?:positive|negative|mixed|MATERIAL_IMPACT_DIRECTION_(?:POSITIVE|NEGATIVE|MIXED))$',
+      },
+      {
+        field: 'lifecycles[0]',
+        description: 'string must match pattern ^(?:admitted|corrected|retracted|MATERIAL_IMPACT_LIFECYCLE_(?:ADMITTED|CORRECTED|RETRACTED))$',
+      },
+    ]);
+
   });
 
   it('distinguishes an absent proto3 optional scalar from an invalid value', () => {

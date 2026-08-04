@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package worldmonitor.company_monitoring.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/company_monitoring/v1/coverage.proto";
+import "worldmonitor/company_monitoring/v1/events.proto";
+import "worldmonitor/company_monitoring/v1/portfolio.proto";
+
+// CompanyMonitoringService defines the dark v1 contract for account-scoped private-company monitoring.
+// Every RPC requires server-derived account context. The four mutation RPCs require
+// company_monitoring:write; the six read RPCs require company_monitoring:read.
+service CompanyMonitoringService {
+  option (sebuf.http.service_config) = {base_path: "/api/company-monitoring/v1"};
+
+  rpc CreateMonitoredCompany(CreateMonitoredCompanyRequest) returns (CreateMonitoredCompanyResponse) {
+    option (sebuf.http.config) = {path: "/create-monitored-company", method: HTTP_METHOD_POST};
+  }
+
+  rpc UpdateMonitoredCompany(UpdateMonitoredCompanyRequest) returns (UpdateMonitoredCompanyResponse) {
+    option (sebuf.http.config) = {path: "/update-monitored-company", method: HTTP_METHOD_POST};
+  }
+
+  rpc SetMonitoredCompanyState(SetMonitoredCompanyStateRequest) returns (SetMonitoredCompanyStateResponse) {
+    option (sebuf.http.config) = {path: "/set-monitored-company-state", method: HTTP_METHOD_POST};
+  }
+
+  rpc ImportMonitoredCompanyBatch(ImportMonitoredCompanyBatchRequest) returns (ImportMonitoredCompanyBatchResponse) {
+    option (sebuf.http.config) = {path: "/import-monitored-company-batch", method: HTTP_METHOD_POST};
+  }
+
+  rpc ListMonitoredCompanies(ListMonitoredCompaniesRequest) returns (ListMonitoredCompaniesResponse) {
+    option (sebuf.http.config) = {path: "/list-monitored-companies", method: HTTP_METHOD_GET};
+  }
+
+  rpc ListCompanyEventImpacts(ListCompanyEventImpactsRequest) returns (ListCompanyEventImpactsResponse) {
+    option (sebuf.http.config) = {path: "/list-company-event-impacts", method: HTTP_METHOD_GET};
+  }
+
+  rpc ListCompanyEventChanges(ListCompanyEventChangesRequest) returns (ListCompanyEventChangesResponse) {
+    option (sebuf.http.config) = {path: "/list-company-event-changes", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetCompanyMaterialEvent(GetCompanyMaterialEventRequest) returns (GetCompanyMaterialEventResponse) {
+    option (sebuf.http.config) = {path: "/get-company-material-event", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetCompanyCoverage(GetCompanyCoverageRequest) returns (GetCompanyCoverageResponse) {
+    option (sebuf.http.config) = {path: "/get-company-coverage", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetCompanyMonitoringStatus(GetCompanyMonitoringStatusRequest) returns (GetCompanyMonitoringStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-company-monitoring-status", method: HTTP_METHOD_GET};
+  }
+}

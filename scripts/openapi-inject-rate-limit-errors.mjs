@@ -113,6 +113,10 @@ const DEFAULT_ERROR_RESPONSE = {
 };
 
 const POST_400_DESCRIPTION = 'Validation error, invalid Idempotency-Key header, or malformed JSON request body';
+const POST_400_DESCRIPTION_WITHOUT_IDEMPOTENCY = 'Validation error or malformed JSON request body';
+const IDEMPOTENCY_EXEMPT_PATHS = new Set([
+  '/api/company-monitoring/v1/import-monitored-company-batch',
+]);
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -145,16 +149,19 @@ function ensureJsonSchemas(spec) {
   return changed;
 }
 
-function ensureInvalidRequestBody400(op) {
+function ensureInvalidRequestBody400(op, supportsIdempotency) {
+  const description = supportsIdempotency
+    ? POST_400_DESCRIPTION
+    : POST_400_DESCRIPTION_WITHOUT_IDEMPOTENCY;
   op.responses ||= {};
   const had400 = Boolean(op.responses['400']);
   const response = op.responses['400'] ?? {
-    description: POST_400_DESCRIPTION,
+    description,
     content: { 'application/json': { schema: { $ref: '#/components/schemas/InvalidRequestBodyError' } } },
   };
   let changed = false;
-  if (response.description !== POST_400_DESCRIPTION) {
-    response.description = POST_400_DESCRIPTION;
+  if (response.description !== description) {
+    response.description = description;
     changed = true;
   }
   response.content ||= {};
@@ -176,7 +183,7 @@ function ensureInvalidRequestBody400(op) {
 
 function injectJson(spec) {
   let changed = ensureJsonSchemas(spec);
-  for (const ops of Object.values(spec.paths ?? {})) {
+  for (const [pathname, ops] of Object.entries(spec.paths ?? {})) {
     if (!ops || typeof ops !== 'object') continue;
     for (const [method, op] of Object.entries(ops)) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
@@ -189,7 +196,10 @@ function injectJson(spec) {
         op.responses.default = clone(DEFAULT_ERROR_RESPONSE);
         changed = true;
       }
-      if (method === 'post' && ensureInvalidRequestBody400(op)) {
+      if (method === 'post' && ensureInvalidRequestBody400(
+        op,
+        !IDEMPOTENCY_EXEMPT_PATHS.has(pathname),
+      )) {
         changed = true;
       }
     }
@@ -425,7 +435,13 @@ function ensureYamlResponse(lines, op, statusLine, block, beforeStatusLine = '  
   return true;
 }
 
-function ensureYamlPost400Response(lines, op) {
+function ensureYamlPost400Response(lines, op, supportsIdempotency) {
+  const descriptionLine = `                    description: ${supportsIdempotency
+    ? POST_400_DESCRIPTION
+    : POST_400_DESCRIPTION_WITHOUT_IDEMPOTENCY}`;
+  const fallbackResponse = YAML_POST_400_RESPONSE.map((line) => (
+    /^ {20}description:/.test(line) ? descriptionLine : line
+  ));
   const existing = findYamlResponseRange(lines, op, '                "400":');
   if (!existing) {
     const responses = findYamlResponsesEnd(lines, op);
@@ -433,12 +449,11 @@ function ensureYamlPost400Response(lines, op) {
     const beforeIndex = lines.findIndex((line, index) =>
       index > responses.responsesIndex && index < responses.end && line === '                "401":');
     const insertAt = beforeIndex === -1 ? responses.end : beforeIndex;
-    lines.splice(insertAt, 0, ...YAML_POST_400_RESPONSE);
+    lines.splice(insertAt, 0, ...fallbackResponse);
     return true;
   }
 
   let changed = false;
-  const descriptionLine = '                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body';
   let descriptionIndex = -1;
   for (let i = existing.start + 1; i < existing.end; i++) {
     if (/^ {20}description:/.test(lines[i])) {
@@ -465,7 +480,7 @@ function ensureYamlPost400Response(lines, op) {
     const schemaIndex = lines.findIndex((line, index) =>
       index > existing.start && index < existing.end && /^ {28}schema:\s*$/.test(line));
     if (schemaIndex === -1) {
-      lines.splice(existing.start, existing.end - existing.start, ...YAML_POST_400_RESPONSE);
+      lines.splice(existing.start, existing.end - existing.start, ...fallbackResponse);
       return true;
     }
     let schemaEnd = schemaIndex + 1;
@@ -474,7 +489,7 @@ function ensureYamlPost400Response(lines, op) {
     }
     const existingSchema = lines.slice(schemaIndex + 1, schemaEnd);
     if (existingSchema.length === 0) {
-      lines.splice(existing.start, existing.end - existing.start, ...YAML_POST_400_RESPONSE);
+      lines.splice(existing.start, existing.end - existing.start, ...fallbackResponse);
       return true;
     }
     const wrappedSchema = existingSchema.map((line, index) => {
@@ -517,7 +532,11 @@ function injectYaml(text) {
     if (method === 'post') {
       op = findYamlOperationRange(lines, path, method);
       if (!op) continue;
-      changed = ensureYamlPost400Response(lines, op) || changed;
+      changed = ensureYamlPost400Response(
+        lines,
+        op,
+        !IDEMPOTENCY_EXEMPT_PATHS.has(path),
+      ) || changed;
     }
   }
 

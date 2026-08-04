@@ -24,6 +24,9 @@ const serviceYaml = readdirSync(apiDir)
   .sort();
 
 const IDEMPOTENCY_PATTERN = '^[\\x21-\\x7E]{1,255}$';
+const IDEMPOTENCY_EXEMPT_PATHS = new Set([
+  '/api/company-monitoring/v1/import-monitored-company-batch',
+]);
 
 function idempotencyParam(op) {
   return (op?.parameters ?? []).find(
@@ -116,6 +119,25 @@ function assertIdempotencyResponses(op, label) {
   );
 }
 
+function assertApplicationIdempotencyOnly(op, label) {
+  assert.equal(idempotencyParam(op), undefined, `${label} must not advertise generic response replay`);
+  assert.equal(op.responses?.['409'], undefined, `${label} must not advertise generic in-flight replay`);
+  assert.equal(op.responses?.['422'], undefined, `${label} must not advertise generic body replay conflicts`);
+  for (const [, response] of Object.entries(op.responses ?? {}).filter(([code]) => /^2\d\d$/.test(code))) {
+    assert.equal(response.headers?.['Idempotency-Key'], undefined, `${label} must not echo a generic idempotency key`);
+    assert.equal(response.headers?.['Idempotent-Replayed'], undefined, `${label} must not advertise whole-response replay`);
+  }
+}
+
+function assertOperationIdempotency(path, op, label) {
+  if (IDEMPOTENCY_EXEMPT_PATHS.has(path)) {
+    assertApplicationIdempotencyOnly(op, label);
+    return;
+  }
+  assertIdempotencyParam(idempotencyParam(op), label);
+  assertIdempotencyResponses(op, label);
+}
+
 describe('OpenAPI Idempotency-Key contract', () => {
   it('has at least one POST operation to protect', () => {
     const total = serviceJson.reduce(
@@ -130,8 +152,7 @@ describe('OpenAPI Idempotency-Key contract', () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       for (const [path, op] of postOps(spec)) {
         const label = `${file} ${path} POST`;
-        assertIdempotencyParam(idempotencyParam(op), label);
-        assertIdempotencyResponses(op, label);
+        assertOperationIdempotency(path, op, label);
       }
     });
   }
@@ -141,8 +162,7 @@ describe('OpenAPI Idempotency-Key contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, file), 'utf8'));
       for (const [path, op] of postOps(spec)) {
         const label = `${file} ${path} POST`;
-        assertIdempotencyParam(idempotencyParam(op), label);
-        assertIdempotencyResponses(op, label);
+        assertOperationIdempotency(path, op, label);
       }
     });
   }
@@ -153,8 +173,7 @@ describe('OpenAPI Idempotency-Key contract', () => {
     assert.ok(ops.length > 0, 'bundle has POST operations');
     for (const [path, op] of ops) {
       const label = `bundle ${path} POST`;
-      assertIdempotencyParam(idempotencyParam(op), label);
-      assertIdempotencyResponses(op, label);
+      assertOperationIdempotency(path, op, label);
     }
   });
 

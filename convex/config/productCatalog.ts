@@ -29,6 +29,22 @@ export const PUBLIC_PRODUCT_METADATA = {
   availability: "https://schema.org/InStock",
 } as const;
 
+/**
+ * Independent Company Monitoring rollout controls.
+ *
+ * U1 defines the gates but deliberately keeps every behavior dark. Later
+ * units may wire one gate at a time only after their owning promotion gate
+ * passes; no aggregate flag may silently enable the entire product.
+ */
+export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
+  exaProvider: false,
+  xProvider: false,
+  publication: false,
+  restWrites: false,
+  ui: false,
+  alerts: false,
+} as const;
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans

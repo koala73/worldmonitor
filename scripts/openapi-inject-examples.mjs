@@ -474,8 +474,20 @@ function constrainedString(value, schema) {
 
 function patternString(pattern, key) {
   if (!pattern) return null;
+  if (pattern.startsWith('^cmc1\\.')) {
+    return `cmc1.${'a'.repeat(32)}.${'b'.repeat(43)}`;
+  }
+  if (pattern.includes('(?:www\\.)?') && pattern.includes('[A-Za-z0-9-]')) {
+    return 'example.com';
+  }
   const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
+  const companyMonitoringLogicalId = pattern.match(
+    /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/,
+  );
+  if (companyMonitoringLogicalId) {
+    return `${companyMonitoringLogicalId[1]}01ARZ3NDEKTSV4RRFFQ69G5FAV`;
+  }
   if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }

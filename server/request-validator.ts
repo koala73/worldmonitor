@@ -20,11 +20,16 @@ interface FieldRule {
   readonly optional?: boolean;
   readonly messageType?: string;
   readonly int64Encoding?: 'number' | 'string';
+  readonly enumValues?: readonly string[];
+  readonly enumDefinedOnly?: boolean;
+  readonly enumNotIn?: readonly string[];
   readonly required?: boolean;
   readonly ignore?: 'IGNORE_IF_ZERO_VALUE';
   readonly stringLen?: number;
   readonly stringMinLen?: number;
   readonly stringMaxLen?: number;
+  readonly stringMaxBytes?: number;
+  readonly stringConst?: string;
   readonly stringPattern?: string;
   readonly numberGte?: number;
   readonly numberLte?: number;
@@ -39,7 +44,16 @@ interface MessageRule {
 const requestTypes: Readonly<Record<string, string>> = GENERATED_REQUEST_TYPES;
 const messageRules: Readonly<Record<string, MessageRule>> = GENERATED_MESSAGE_RULES;
 const patternCache = new Map<string, RegExp>();
+const utf8Encoder = new TextEncoder();
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+function exceedsUtf8ByteLimit(value: string, limit: number): boolean {
+  if (value.length > limit) return true;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > 0x7f) return utf8Encoder.encode(value).byteLength > limit;
+  }
+  return false;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -71,10 +85,30 @@ function defaultScalarValue(rule: FieldRule): unknown {
   if (rule.optional) return undefined;
   if (rule.kind === 'string') return '';
   if (rule.kind === 'double' || rule.kind === 'float') return 0;
+  if (rule.kind === 'enum') return rule.enumValues?.[0];
   if (/^(?:s?fixed|s?int|uint)/.test(rule.kind)) {
     return rule.kind === 'int64' && rule.int64Encoding !== 'number' ? '0' : 0;
   }
   return undefined;
+}
+
+function validateEnum(
+  rule: FieldRule,
+  value: unknown,
+  path: string,
+  violations: RequestFieldViolation[],
+): void {
+  if (typeof value !== 'string') {
+    addViolation(violations, path, 'value must be an enum name');
+    return;
+  }
+  if (rule.enumDefinedOnly && !rule.enumValues?.includes(value)) {
+    addViolation(violations, path, 'enum value must be defined');
+    return;
+  }
+  if (rule.enumNotIn?.includes(value)) {
+    addViolation(violations, path, `enum value must not be ${value}`);
+  }
 }
 
 function validateString(
@@ -97,6 +131,12 @@ function validateString(
   }
   if (rule.stringMaxLen != null && length > rule.stringMaxLen) {
     addViolation(violations, path, `string length must be at most ${rule.stringMaxLen}`);
+  }
+  if (rule.stringMaxBytes != null && exceedsUtf8ByteLimit(value, rule.stringMaxBytes)) {
+    addViolation(violations, path, `string UTF-8 length must be at most ${rule.stringMaxBytes} bytes`);
+  }
+  if (rule.stringConst != null && value !== rule.stringConst) {
+    addViolation(violations, path, `string must equal ${rule.stringConst}`);
   }
   if (rule.stringPattern != null) {
     let pattern = patternCache.get(rule.stringPattern);
@@ -173,6 +213,10 @@ function validateSingleValue(
     validateString(rule, value, path, violations);
     return;
   }
+  if (rule.kind === 'enum') {
+    validateEnum(rule, value, path, violations);
+    return;
+  }
   if (rule.kind === 'int64' && rule.int64Encoding !== 'number') {
     validateStringEncodedInt64(rule, value, path, violations);
     return;
@@ -191,7 +235,8 @@ function validateField(
   if (rule.ignore === 'IGNORE_IF_ZERO_VALUE' && (!present || isZeroValue(value))) {
     return;
   }
-  if (rule.required && isRequiredValueMissing(value)) {
+  const enumZeroValue = rule.kind === 'enum' && value === rule.enumValues?.[0];
+  if (rule.required && (isRequiredValueMissing(value) || enumZeroValue)) {
     addViolation(violations, path, 'value is required');
     return;
   }

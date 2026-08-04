@@ -1,0 +1,334 @@
+syntax = "proto3";
+
+package worldmonitor.company_monitoring.v1;
+
+import "buf/validate/validate.proto";
+
+// DomicileCountry is the closed v1 company-domicile set. Event geography is unrestricted.
+enum DomicileCountry {
+  DOMICILE_COUNTRY_UNSPECIFIED = 0;
+  DOMICILE_COUNTRY_US = 1;
+  DOMICILE_COUNTRY_GB = 2;
+}
+
+// MonitoredCompanyLifecycle is the customer-visible company lifecycle.
+enum MonitoredCompanyLifecycle {
+  MONITORED_COMPANY_LIFECYCLE_UNSPECIFIED = 0;
+  MONITORED_COMPANY_LIFECYCLE_ACTIVE = 1;
+  MONITORED_COMPANY_LIFECYCLE_PAUSED = 2;
+  MONITORED_COMPANY_LIFECYCLE_REMOVED = 3;
+}
+
+// CompanyClaimType identifies one independently trusted company claim.
+enum CompanyClaimType {
+  COMPANY_CLAIM_TYPE_UNSPECIFIED = 0;
+  COMPANY_CLAIM_TYPE_ALIAS = 1;
+  COMPANY_CLAIM_TYPE_DOMAIN = 2;
+  COMPANY_CLAIM_TYPE_LEGAL_IDENTIFIER = 3;
+  COMPANY_CLAIM_TYPE_X_ACCOUNT_ID = 4;
+  COMPANY_CLAIM_TYPE_X_HANDLE = 5;
+  COMPANY_CLAIM_TYPE_LOCATION = 6;
+  COMPANY_CLAIM_TYPE_CUSTOMER_REFERENCE = 7;
+}
+
+// CompanyClaimTrustState is scoped to the individual claim, not the legal subject.
+enum CompanyClaimTrustState {
+  COMPANY_CLAIM_TRUST_STATE_UNSPECIFIED = 0;
+  COMPANY_CLAIM_TRUST_STATE_DECLARED = 1;
+  COMPANY_CLAIM_TRUST_STATE_VERIFIED = 2;
+  COMPANY_CLAIM_TRUST_STATE_EXPIRED = 3;
+  COMPANY_CLAIM_TRUST_STATE_REJECTED = 4;
+}
+
+// CompanyClaimAllowedUse states what a claim may support.
+enum CompanyClaimAllowedUse {
+  COMPANY_CLAIM_ALLOWED_USE_UNSPECIFIED = 0;
+  COMPANY_CLAIM_ALLOWED_USE_DISCOVERY = 1;
+  COMPANY_CLAIM_ALLOWED_USE_ATTRIBUTION = 2;
+  COMPANY_CLAIM_ALLOWED_USE_PRIMARY_EVIDENCE = 3;
+}
+
+// MaterialImpactDirection is independent of category and impact channel.
+enum MaterialImpactDirection {
+  MATERIAL_IMPACT_DIRECTION_UNSPECIFIED = 0;
+  MATERIAL_IMPACT_DIRECTION_POSITIVE = 1;
+  MATERIAL_IMPACT_DIRECTION_NEGATIVE = 2;
+  MATERIAL_IMPACT_DIRECTION_MIXED = 3;
+}
+
+// MaterialImpactChannel records which customer outcome is affected.
+enum MaterialImpactChannel {
+  MATERIAL_IMPACT_CHANNEL_UNSPECIFIED = 0;
+  MATERIAL_IMPACT_CHANNEL_REPUTATION = 1;
+  MATERIAL_IMPACT_CHANNEL_FINANCES = 2;
+}
+
+// MaterialImpactMagnitude is a bounded customer-facing magnitude vocabulary.
+enum MaterialImpactMagnitude {
+  MATERIAL_IMPACT_MAGNITUDE_UNSPECIFIED = 0;
+  MATERIAL_IMPACT_MAGNITUDE_LOW = 1;
+  MATERIAL_IMPACT_MAGNITUDE_MEDIUM = 2;
+  MATERIAL_IMPACT_MAGNITUDE_HIGH = 3;
+}
+
+// MaterialImpactLifecycle exposes only admitted current truth and its replacements.
+enum MaterialImpactLifecycle {
+  MATERIAL_IMPACT_LIFECYCLE_UNSPECIFIED = 0;
+  MATERIAL_IMPACT_LIFECYCLE_ADMITTED = 1;
+  MATERIAL_IMPACT_LIFECYCLE_CORRECTED = 2;
+  MATERIAL_IMPACT_LIFECYCLE_RETRACTED = 3;
+}
+
+// CompanyCoverageState reports source and assessment readiness, not event count.
+enum CompanyCoverageState {
+  COMPANY_COVERAGE_STATE_UNSPECIFIED = 0;
+  COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN = 1;
+  COMPANY_COVERAGE_STATE_ADEQUATE = 2;
+  COMPANY_COVERAGE_STATE_PARTIAL = 3;
+  COMPANY_COVERAGE_STATE_STALE = 4;
+  COMPANY_COVERAGE_STATE_UNAVAILABLE = 5;
+  COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION = 6;
+}
+
+// CompanyObservationState is independent of coverage completeness.
+enum CompanyObservationState {
+  COMPANY_OBSERVATION_STATE_UNSPECIFIED = 0;
+  COMPANY_OBSERVATION_STATE_EVENTS_OBSERVED = 1;
+  COMPANY_OBSERVATION_STATE_NO_EVENTS_OBSERVED = 2;
+  COMPANY_OBSERVATION_STATE_UNKNOWN = 3;
+}
+
+// MonitoringProvider is the closed provider set for the production-shaped v1 tracer.
+enum MonitoringProvider {
+  MONITORING_PROVIDER_UNSPECIFIED = 0;
+  MONITORING_PROVIDER_EXA = 1;
+  MONITORING_PROVIDER_X = 2;
+}
+
+// ProviderCoverageState preserves incomplete and failed provider work.
+enum ProviderCoverageState {
+  PROVIDER_COVERAGE_STATE_UNSPECIFIED = 0;
+  PROVIDER_COVERAGE_STATE_COMPLETE = 1;
+  PROVIDER_COVERAGE_STATE_PARTIAL = 2;
+  PROVIDER_COVERAGE_STATE_FAILED = 3;
+}
+
+// EvidenceAuthorityTier preserves the source authority used by admission policy.
+enum EvidenceAuthorityTier {
+  EVIDENCE_AUTHORITY_TIER_UNSPECIFIED = 0;
+  EVIDENCE_AUTHORITY_TIER_PRIMARY_VERIFIED = 1;
+  EVIDENCE_AUTHORITY_TIER_INDEPENDENT_AUTHORITATIVE = 2;
+  EVIDENCE_AUTHORITY_TIER_ORDINARY = 3;
+}
+
+// CompanyEventPollState tells a client whether it may continue or must resnapshot.
+enum CompanyEventPollState {
+  COMPANY_EVENT_POLL_STATE_UNSPECIFIED = 0;
+  COMPANY_EVENT_POLL_STATE_CURRENT = 1;
+  COMPANY_EVENT_POLL_STATE_SNAPSHOT_REQUIRED = 2;
+}
+
+// CompanyMonitoringAccessState describes account access without enabling a product surface.
+enum CompanyMonitoringAccessState {
+  COMPANY_MONITORING_ACCESS_STATE_UNSPECIFIED = 0;
+  COMPANY_MONITORING_ACCESS_STATE_DISABLED = 1;
+  COMPANY_MONITORING_ACCESS_STATE_ENTITLED = 2;
+  COMPANY_MONITORING_ACCESS_STATE_ENTITLEMENT_LAPSED = 3;
+  COMPANY_MONITORING_ACCESS_STATE_DENIED = 4;
+}
+
+// CompanyClaimInput is normalized before storage or fingerprinting.
+message CompanyClaimInput {
+  CompanyClaimType type = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).enum.defined_only = true
+  ];
+  string value = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_bytes = 512
+  ];
+}
+
+// CompanyClaim is one independently attributed and expiring claim.
+message CompanyClaim {
+  // Stable WorldMonitor logical ID; never a storage-layer document ID.
+  string claim_id = 1 [(buf.validate.field).string.pattern = "^cm_claim_[0-9A-HJKMNP-TV-Z]{26}$"];
+  CompanyClaimType type = 2;
+  string value = 3;
+  string provenance = 4;
+  CompanyClaimTrustState trust_state = 5;
+  repeated CompanyClaimAllowedUse allowed_uses = 6 [(buf.validate.field).repeated.max_items = 3];
+  string expires_at = 7;
+}
+
+// MonitoredCompanyInput is the bounded create/import company shape.
+message MonitoredCompanyInput {
+  string name = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_bytes = 256
+  ];
+  DomicileCountry domicile_country = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).enum.defined_only = true
+  ];
+  repeated string aliases = 3 [
+    (buf.validate.field).repeated.max_items = 20,
+    (buf.validate.field).repeated.items.string.min_len = 1,
+    (buf.validate.field).repeated.items.string.max_bytes = 256
+  ];
+  repeated string domains = 4 [
+    (buf.validate.field).repeated.max_items = 10,
+    (buf.validate.field).repeated.items.string.min_len = 1,
+    (buf.validate.field).repeated.items.string.max_bytes = 253,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:www\\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.?$"
+  ];
+  repeated string identifiers = 5 [
+    (buf.validate.field).repeated.max_items = 20,
+    (buf.validate.field).repeated.items.string.min_len = 1,
+    (buf.validate.field).repeated.items.string.max_bytes = 512
+  ];
+  repeated string x_handles = 6 [
+    (buf.validate.field).repeated.max_items = 5,
+    (buf.validate.field).repeated.items.string.pattern = "^@?[A-Za-z0-9_]{1,15}$",
+    (buf.validate.field).repeated.items.string.max_bytes = 16
+  ];
+  repeated string locations = 7 [
+    (buf.validate.field).repeated.max_items = 20,
+    (buf.validate.field).repeated.items.string.min_len = 1,
+    (buf.validate.field).repeated.items.string.max_bytes = 256
+  ];
+  string customer_reference = 8 [(buf.validate.field).string.max_bytes = 128];
+}
+
+// MonitoredCompany is a compact account-scoped portfolio row.
+message MonitoredCompany {
+  // Stable WorldMonitor logical ID; never a storage-layer document ID.
+  string company_id = 1 [(buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"];
+  string name = 2;
+  DomicileCountry domicile_country = 3;
+  MonitoredCompanyLifecycle lifecycle = 4;
+  repeated CompanyClaim claims = 5 [(buf.validate.field).repeated.max_items = 81];
+  CompanyCoverageState coverage = 6;
+  CompanyObservationState observation = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  string canonical_url = 10;
+}
+
+// ConfidenceAxes keeps attribution, occurrence truth, and company impact independent.
+message ConfidenceAxes {
+  double attribution = 1 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  double occurrence_truth = 2 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  double material_impact = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Overall confidence must equal the minimum of the three independent axes.
+  double overall = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+}
+
+// ProviderCoverage reports one required provider's last complete obligation.
+message ProviderCoverage {
+  MonitoringProvider provider = 1;
+  ProviderCoverageState state = 2;
+  bool capped = 3;
+  bool fresh = 4;
+  string returned_window_start = 5;
+  string returned_window_end = 6;
+  string reason_code = 7 [(buf.validate.field).string.max_bytes = 64];
+}
+
+// CompanyCoverage separates source completeness, assessment readiness, and observation.
+message CompanyCoverage {
+  CompanyCoverageState state = 1;
+  CompanyObservationState observation = 2;
+  repeated ProviderCoverage providers = 3 [(buf.validate.field).repeated.max_items = 2];
+  bool assessment_ready = 4;
+  string changed_at = 5;
+}
+
+// CompanyEvidenceReference is a bounded public evidence record.
+message CompanyEvidenceReference {
+  // Stable WorldMonitor logical ID; never a storage-layer document ID.
+  string evidence_id = 1 [(buf.validate.field).string.pattern = "^cm_evidence_[0-9A-HJKMNP-TV-Z]{26}$"];
+  MonitoringProvider provider = 2;
+  string source_id = 3 [(buf.validate.field).string.max_bytes = 512];
+  string canonical_url = 4 [(buf.validate.field).string.max_bytes = 2048];
+  string publisher = 5 [(buf.validate.field).string.max_bytes = 256];
+  string published_at = 6;
+  EvidenceAuthorityTier authority_tier = 7;
+  string excerpt = 8 [(buf.validate.field).string.max_bytes = 2048];
+}
+
+// MaterialEvent is the neutral occurrence revision pinned by every impact.
+message MaterialEvent {
+  // Stable WorldMonitor logical ID; never a storage-layer document ID.
+  string event_id = 1 [(buf.validate.field).string.pattern = "^cm_event_[0-9A-HJKMNP-TV-Z]{26}$"];
+  int32 revision = 2 [(buf.validate.field).int32.gte = 1];
+  MaterialImpactLifecycle lifecycle = 3;
+  string title = 4 [(buf.validate.field).string.max_bytes = 512];
+  string summary = 5 [(buf.validate.field).string.max_bytes = 4096];
+  string occurred_at = 6;
+  string category = 7 [(buf.validate.field).string.max_bytes = 64];
+  string canonical_url = 8 [(buf.validate.field).string.max_bytes = 2048];
+}
+
+// CompanyMaterialImpact is the latest company-specific state for one occurrence.
+message CompanyMaterialImpact {
+  // Stable WorldMonitor logical IDs; never storage-layer document IDs.
+  string impact_id = 1 [(buf.validate.field).string.pattern = "^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$"];
+  string event_id = 2 [(buf.validate.field).string.pattern = "^cm_event_[0-9A-HJKMNP-TV-Z]{26}$"];
+  string company_id = 3 [(buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"];
+  int32 event_revision = 4 [(buf.validate.field).int32.gte = 1];
+  int32 impact_revision = 5 [(buf.validate.field).int32.gte = 1];
+  bool is_current = 6;
+  MaterialImpactDirection direction = 7;
+  repeated MaterialImpactChannel channels = 8 [(buf.validate.field).repeated.max_items = 2];
+  MaterialImpactMagnitude magnitude = 9;
+  ConfidenceAxes confidence = 10;
+  string rationale = 11 [(buf.validate.field).string.max_bytes = 2048];
+  MaterialImpactLifecycle lifecycle = 12;
+  string occurred_at = 13;
+  string changed_at = 14;
+  int32 evidence_reference_count = 15 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 20
+  ];
+  int32 evidence_total_count = 16 [(buf.validate.field).int32.gte = 0];
+  bool evidence_truncated = 17;
+  string canonical_url = 18 [(buf.validate.field).string.max_bytes = 2048];
+}
+
+// SnapshotBoundary closes initialization gaps before latest-state polling begins.
+message SnapshotBoundary {
+  string snapshot_as_of = 1;
+  int64 snapshot_generation = 2 [(buf.validate.field).int64.gte = 0];
+  // Signed mode=poll cursor for ListCompanyEventChanges. The raw watermark is
+  // private cursor state and is never exposed as an independently editable field.
+  string poll_cursor = 3 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$"
+  ];
+}
+
+// CompanyMonitoringFeatureFlags exposes independent rollout state without an aggregate switch.
+message CompanyMonitoringFeatureFlags {
+  bool exa_provider = 1;
+  bool x_provider = 2;
+  bool publication = 3;
+  bool rest_writes = 4;
+  bool ui = 5;
+  bool alerts = 6;
+}
