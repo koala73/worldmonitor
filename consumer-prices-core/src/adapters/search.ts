@@ -106,9 +106,10 @@ export function looksLikeQuantityAsPrice(
   price: number,
   sizeText: string | undefined,
   item: Pick<BasketItem, 'baseUnit'>,
+  fallbackSizeText?: string,
 ): boolean {
-  if (item.baseUnit === 'ct' || !sizeText || !Number.isFinite(price) || price < 20) return false;
-  const parsed = parseSize(sizeText);
+  if (item.baseUnit === 'ct' || !Number.isFinite(price) || price < 20) return false;
+  const parsed = parseSize(sizeText ?? fallbackSizeText);
   if (!parsed || parsed.baseUnit !== item.baseUnit || parsed.baseQuantity < 100) return false;
   return Math.abs(price - parsed.baseQuantity) < 0.005;
 }
@@ -315,11 +316,24 @@ export class SearchAdapter implements RetailerAdapter {
     const extractSchema = {
       prompt: `Extract the retail price of THIS specific product from the main product section of the page.${sizeClause} The price may be displayed as two parts split across lines — like "3" and ".95" next to "${currency}" — combine them to get 3.95. ONLY extract the price shown for the main product itself. If the page shows "Out of Stock" and no price is displayed for the main product, return null for price — do NOT use prices from related products, recommendations, or carousels. Return the product name, the numeric price in ${currency} (null if not shown), the currency code, whether it is in stock, and the size or quantity shown on the page.`,
       fields: {
-        productName: { type: 'string' as const, description: 'Name or title of the product' },
-        price: { type: 'number' as const, description: `Retail price in ${currency} as a single number (e.g. 4.69)` },
-        currency: { type: 'string' as const, description: `Currency code, should be ${currency}` },
-        inStock: { type: 'boolean' as const, description: 'Whether the product is currently in stock and purchasable' },
-        sizeText: { type: 'string' as const, description: 'Size or quantity shown on the page (e.g. "32 oz", "1 gallon", "24 pack")' },
+        productName: { type: 'string' as const, required: true, description: 'Name or title of the product' },
+        price: {
+          type: 'number' as const,
+          required: true,
+          nullable: true,
+          description: `Retail price in ${currency} as a single number (e.g. 4.69)`,
+        },
+        currency: { type: 'string' as const, required: true, description: `Currency code, should be ${currency}` },
+        inStock: {
+          type: 'boolean' as const,
+          required: false,
+          description: 'Whether the product is currently in stock and purchasable',
+        },
+        sizeText: {
+          type: 'string' as const,
+          required: false,
+          description: 'Size or quantity shown on the page (e.g. "32 oz", "1 gallon", "24 pack")',
+        },
       },
     };
 
@@ -393,8 +407,19 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
-      if (strictMode && looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints)) {
+      if (strictMode && looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints, canonicalName)) {
         failures.push({ provider, reason: 'quantity-as-price', detail: `${price} for ${data.sizeText}` });
+        continue;
+      }
+
+      if (
+        strictMode &&
+        itemConstraints &&
+        (itemConstraints.minBaseQty != null || itemConstraints.maxBaseQty != null) &&
+        !data.sizeText?.trim() &&
+        !parseSize(canonicalName)
+      ) {
+        failures.push({ provider, reason: 'validator-rejected', detail: 'missing-size' });
         continue;
       }
 

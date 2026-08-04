@@ -13,7 +13,9 @@ retailer:
     # short-lived `/now-product/` pages on minutes.noon.com.
     allowedHosts:
       - minutes.noon.com
-    urlPathContains: /uae-en/
+    urlPathContains:
+      - /p/
+      - /now-product/
     queryTemplate: "{canonicalName} grocery fresh food {currency} {market}"
     extractionFallback: exa
     requireStrictValidator: true

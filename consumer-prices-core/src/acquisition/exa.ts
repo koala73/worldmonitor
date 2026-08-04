@@ -73,9 +73,17 @@ export class ExaProvider implements AcquisitionProvider {
     const outputSchema = {
       type: 'object',
       properties: Object.fromEntries(
-        Object.entries(schema.fields).map(([key, field]) => [key, { type: field.type, description: field.description }]),
+        Object.entries(schema.fields).map(([key, field]) => [
+          key,
+          {
+            type: field.nullable ? [field.type, 'null'] : field.type,
+            description: field.description,
+          },
+        ]),
       ),
-      required: Object.keys(schema.fields),
+      required: Object.entries(schema.fields)
+        .filter(([, field]) => field.required !== false)
+        .map(([key]) => key),
       additionalProperties: false,
     };
 

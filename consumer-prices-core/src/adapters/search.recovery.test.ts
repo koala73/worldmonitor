@@ -250,6 +250,31 @@ describe('SearchAdapter recovery path', () => {
     ]);
   });
 
+  it('rejects a quantity-like price when the extractor omits sizeText', async () => {
+    const extracted = {
+      data: {
+        productName: 'Meadows Enriched White Bread',
+        price: 400,
+        currency: 'SGD',
+      },
+    };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+      extract: vi.fn().mockResolvedValue(extracted),
+    } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue(extracted),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const error = await adapter.fetchTarget(makeContext(makeConfig()), makeTarget()).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(SearchTargetError);
+    expect((error as SearchTargetError).failures.map(({ reason }) => reason)).toEqual([
+      'quantity-as-price',
+      'quantity-as-price',
+    ]);
+  });
+
   it('keeps shadow-mode admission for an unaffected retailer when strict validation is off', async () => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
@@ -277,8 +302,8 @@ describe('SearchAdapter recovery path', () => {
   it('loads the diagnosed retailer route policies from YAML', () => {
     const recoveryPolicies = [
       ['jiomart_in', '/p/groceries/', 'www.jiomart.com'],
-      ['noon_grocery_ae', '/uae-en/', 'minutes.noon.com'],
-      ['noon_sa', '/saudi-en/', 'minutes.noon.com'],
+      ['noon_grocery_ae', ['/p/', '/now-product/'], 'minutes.noon.com'],
+      ['noon_sa', ['/p/', '/now-product/'], 'minutes.noon.com'],
       ['carrefour_sa', '/p/', 'www.carrefourksa.com'],
       ['coldstorage_sg', '/p/', 'www.coldstorage.com.sg'],
     ] as const;
@@ -287,7 +312,7 @@ describe('SearchAdapter recovery path', () => {
       const searchConfig = loadRetailerConfig(slug).searchConfig;
       expect(searchConfig?.extractionFallback, slug).toBe('exa');
       expect(searchConfig?.requireStrictValidator, slug).toBe(true);
-      expect(searchConfig?.urlPathContains, slug).toBe(path);
+      expect(searchConfig?.urlPathContains, slug).toEqual(path);
       expect(searchConfig?.allowedHosts, slug).toContain(alias);
     }
 
@@ -310,7 +335,7 @@ describe('SearchAdapter recovery path', () => {
         baseUrl: 'https://www.noon.com',
         marketCode: 'ae',
         currencyCode: 'AED',
-        path: '/uae-en/',
+        path: ['/p/', '/now-product/'],
         alias: 'minutes.noon.com',
         url: 'https://minutes.noon.com/uae-en/now-product/milk-1',
       },
@@ -319,7 +344,7 @@ describe('SearchAdapter recovery path', () => {
         baseUrl: 'https://www.noon.com/saudi-en',
         marketCode: 'sa',
         currencyCode: 'SAR',
-        path: '/saudi-en/',
+        path: ['/p/', '/now-product/'],
         alias: 'minutes.noon.com',
         url: 'https://minutes.noon.com/saudi-en/now-product/milk-1',
       },
@@ -390,6 +415,32 @@ describe('SearchAdapter recovery path', () => {
       const result = await adapter.fetchTarget(context, target);
 
       expect(result.url, fixture.slug).toBe(fixture.url);
+    }
+  });
+
+  it('rejects Noon search and category routes before extraction', async () => {
+    for (const fixture of [
+      { slug: 'noon_grocery_ae', locale: 'uae-en' },
+      { slug: 'noon_sa', locale: 'saudi-en' },
+    ]) {
+      const exa = {
+        search: vi.fn().mockResolvedValue([
+          { url: `https://minutes.noon.com/${fixture.locale}/search?q=milk` },
+          { url: `https://minutes.noon.com/${fixture.locale}/category/grocery` },
+        ]),
+      } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn() } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const config = makeConfig({
+        allowedHosts: ['minutes.noon.com'],
+        urlPathContains: ['/p/', '/now-product/'],
+        extractionFallback: 'none',
+      });
+      config.slug = fixture.slug;
+      const context = makeContext(config);
+
+      await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('host/path check');
+      expect(firecrawl.extract).not.toHaveBeenCalled();
     }
   });
 });

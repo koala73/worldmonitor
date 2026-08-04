@@ -148,6 +148,7 @@ describe('looksLikeQuantityAsPrice', () => {
   it('rejects a quantity echoed as a price for weighted products', () => {
     expect(looksLikeQuantityAsPrice(400, '400g', { baseUnit: 'g' })).toBe(true);
     expect(looksLikeQuantityAsPrice(1000, '1kg', { baseUnit: 'g' })).toBe(true);
+    expect(looksLikeQuantityAsPrice(400, undefined, { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
   });
 
   it('does not reject normal prices or count-based products', () => {

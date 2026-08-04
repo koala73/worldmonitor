@@ -102,9 +102,12 @@ export class FirecrawlProvider implements AcquisitionProvider {
       properties: Object.fromEntries(
         Object.entries(schema.fields).map(([k, v]) => [
           k,
-          { type: v.type, description: v.description },
+          { type: v.nullable ? [v.type, 'null'] : v.type, description: v.description },
         ]),
       ),
+      ...(Object.values(schema.fields).some((field) => field.required !== undefined)
+        ? { required: Object.entries(schema.fields).filter(([, field]) => field.required !== false).map(([key]) => key) }
+        : {}),
     };
 
     const resp = await fetch(`${this.baseUrl}/scrape`, {

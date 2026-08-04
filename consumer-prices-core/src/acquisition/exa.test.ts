@@ -10,7 +10,8 @@ describe('ExaProvider.extract', () => {
     prompt: 'Extract the grocery price.',
     fields: {
       productName: { type: 'string' as const, description: 'Product title' },
-      price: { type: 'number' as const, description: 'Retail price' },
+      price: { type: 'number' as const, nullable: true, description: 'Retail price' },
+      inStock: { type: 'boolean' as const, required: false, description: 'Availability' },
     },
   };
 
@@ -33,10 +34,13 @@ describe('ExaProvider.extract', () => {
     expect(request.method).toBe('POST');
     expect(request.headers).toMatchObject({ 'x-api-key': 'test-key', 'User-Agent': 'worldmonitor-consumer-prices/1.0' });
     const body = JSON.parse(String(request.body)) as {
-      summary: { query: string; schema: { properties: Record<string, { type: string }>; required: string[] } };
+      summary: {
+        query: string;
+        schema: { properties: Record<string, { type: string | string[] }>; required: string[] };
+      };
     };
     expect(body.summary.query).toContain('Extract the grocery price.');
-    expect(body.summary.schema.properties.price.type).toBe('number');
+    expect(body.summary.schema.properties.price.type).toEqual(['number', 'null']);
     expect(body.summary.schema.required).toEqual(['productName', 'price']);
   });
 

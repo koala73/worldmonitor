@@ -17,7 +17,15 @@ export interface SearchOptions {
 }
 
 export interface ExtractSchema {
-  fields: Record<string, { description: string; type: 'string' | 'number' | 'boolean' | 'array' }>;
+  fields: Record<
+    string,
+    {
+      description: string;
+      type: 'string' | 'number' | 'boolean' | 'array';
+      required?: boolean;
+      nullable?: boolean;
+    }
+  >;
   prompt?: string;
 }
 

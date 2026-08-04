@@ -10,7 +10,9 @@ retailer:
   searchConfig:
     numResults: 5
     queryTemplate: "{canonicalName} grocery SAR saudi noon"
-    urlPathContains: /saudi-en/  # restrict to SA storefront; noon.com also serves UAE (/uae-en/) and Egypt
+    urlPathContains:
+      - /p/
+      - /now-product/
     allowedHosts:
       - minutes.noon.com
     extractionFallback: exa
