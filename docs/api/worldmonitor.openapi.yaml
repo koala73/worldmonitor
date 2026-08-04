@@ -2147,6 +2147,7 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: CreateMonitoredCompany
+            description: 'Creates an account-scoped monitored-company record. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
             operationId: CreateMonitoredCompany
             requestBody:
                 content:
@@ -2317,6 +2318,7 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: UpdateMonitoredCompany
+            description: 'Applies a bounded patch to an account-scoped monitored-company record. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
             operationId: UpdateMonitoredCompany
             requestBody:
                 content:
@@ -2484,6 +2486,7 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: SetMonitoredCompanyState
+            description: 'Transitions an account-scoped monitored company between active, paused, and removed states. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
             operationId: SetMonitoredCompanyState
             requestBody:
                 content:
@@ -2633,6 +2636,7 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: ImportMonitoredCompanyBatch
+            description: 'Imports up to 100 normalized account-scoped company rows with deterministic per-row outcomes. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
             operationId: ImportMonitoredCompanyBatch
             requestBody:
                 content:
@@ -2731,6 +2735,7 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: ListMonitoredCompanies
+            description: 'Lists account-scoped monitored companies at a signed snapshot boundary. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
             operationId: ListMonitoredCompanies
             parameters:
                 - name: lifecycle
@@ -2763,6 +2768,7 @@ paths:
                         description: "Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation."
                 - name: page_size
                   in: query
+                  description: Maximum rows to return, from 1 through 100; zero requests the server default.
                   required: false
                   example: 25
                   schema:
@@ -2770,6 +2776,7 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
+                  description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
                   required: false
                   example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                   schema:
@@ -2866,10 +2873,12 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: ListCompanyEventImpacts
+            description: 'Lists account-scoped material impacts with independent direction, confidence, and lifecycle fields. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
             operationId: ListCompanyEventImpacts
             parameters:
                 - name: company_id
                   in: query
+                  description: Account-scoped logical company IDs to include; storage identifiers are not accepted.
                   required: false
                   style: form
                   explode: true
@@ -2910,6 +2919,7 @@ paths:
                         description: "Accepted values are admitted, corrected, and retracted."
                 - name: page_size
                   in: query
+                  description: Maximum rows to return, from 1 through 100; zero requests the server default.
                   required: false
                   example: 25
                   schema:
@@ -2917,6 +2927,7 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
+                  description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
                   required: false
                   example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                   schema:
@@ -3012,10 +3023,12 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: ListCompanyEventChanges
+            description: 'Polls account-scoped material-impact changes from a signed opaque cursor. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
             operationId: ListCompanyEventChanges
             parameters:
                 - name: cursor
                   in: query
+                  description: Required signed opaque poll cursor bound to the account, mode, expiry, and snapshot generation; never a storage identifier.
                   required: true
                   example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                   schema:
@@ -3023,6 +3036,7 @@ paths:
                     pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
                 - name: page_size
                   in: query
+                  description: Maximum changes to return, from 1 through 100; zero requests the server default.
                   required: false
                   example: 25
                   schema:
@@ -3115,10 +3129,12 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: GetCompanyMaterialEvent
+            description: 'Returns one account-scoped material event, its impact, and bounded evidence references. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
             operationId: GetCompanyMaterialEvent
             parameters:
                 - name: impact_id
                   in: query
+                  description: Account-scoped logical impact ID; storage identifiers are not accepted.
                   required: true
                   example: "cm_impact_01ARZ3NDEKTSV4RRFFQ69G5FAV"
                   schema:
@@ -3223,10 +3239,12 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: GetCompanyCoverage
+            description: 'Returns the current coverage state for one account-scoped monitored company. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
             operationId: GetCompanyCoverage
             parameters:
                 - name: company_id
                   in: query
+                  description: Account-scoped logical company ID; storage identifiers are not accepted.
                   required: true
                   example: "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
                   schema:
@@ -3318,6 +3336,7 @@ paths:
             tags:
                 - CompanyMonitoringService
             summary: GetCompanyMonitoringStatus
+            description: 'Returns account-scoped limits, snapshot generation, access state, and independent feature flags. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
             operationId: GetCompanyMonitoringStatus
             parameters:
                 - name: jmespath
@@ -29428,9 +29447,11 @@ components:
                     maximum: 100
                     minimum: 1
                     format: int32
+                    description: Maximum rows to return, from 1 through 100; zero requests the server default.
                 cursor:
                     type: string
                     pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
         worldmonitor_company_monitoring_v1_ListMonitoredCompaniesResponse:
             type: object
             properties:
@@ -29488,9 +29509,11 @@ components:
                     maximum: 100
                     minimum: 1
                     format: int32
+                    description: Maximum rows to return, from 1 through 100; zero requests the server default.
                 cursor:
                     type: string
                     pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
         worldmonitor_company_monitoring_v1_ListCompanyEventImpactsResponse:
             type: object
             properties:
@@ -29615,11 +29638,13 @@ components:
                     type: string
                     minLength: 1
                     pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: Required signed opaque poll cursor bound to the account, mode, expiry, and snapshot generation; never a storage identifier.
                 pageSize:
                     type: integer
                     maximum: 100
                     minimum: 1
                     format: int32
+                    description: Maximum changes to return, from 1 through 100; zero requests the server default.
             required:
                 - cursor
         worldmonitor_company_monitoring_v1_ListCompanyEventChangesResponse:
@@ -29646,6 +29671,7 @@ components:
                 impactId:
                     type: string
                     pattern: ^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Account-scoped logical impact ID; storage identifiers are not accepted.
             required:
                 - impactId
         worldmonitor_company_monitoring_v1_GetCompanyMaterialEventResponse:
@@ -29735,6 +29761,7 @@ components:
                 companyId:
                     type: string
                     pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Account-scoped logical company ID; storage identifiers are not accepted.
             required:
                 - companyId
         worldmonitor_company_monitoring_v1_GetCompanyCoverageResponse:

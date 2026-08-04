@@ -415,6 +415,16 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // GET /webhooks lists caller's webhooks — premium-gated; short-circuited to
   // slow-browser. Entry required by tests/route-cache-tier.test.mjs.
   '/api/v2/shipping/webhooks': 'slow-browser',
+
+  // Company Monitoring is account-private and remains unrouted until #6003.
+  // Keep every generated read no-store so future activation cannot inherit a
+  // shared CDN tier before its account isolation is proven end to end.
+  '/api/company-monitoring/v1/get-company-coverage': 'no-store',
+  '/api/company-monitoring/v1/get-company-material-event': 'no-store',
+  '/api/company-monitoring/v1/get-company-monitoring-status': 'no-store',
+  '/api/company-monitoring/v1/list-company-event-changes': 'no-store',
+  '/api/company-monitoring/v1/list-company-event-impacts': 'no-store',
+  '/api/company-monitoring/v1/list-monitored-companies': 'no-store',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';

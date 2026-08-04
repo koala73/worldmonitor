@@ -117,12 +117,14 @@ message ListMonitoredCompaniesRequest {
     (buf.validate.field).repeated.items.string.pattern = "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$",
     (sebuf.http.query) = {name: "coverage"}
   ];
+  // Maximum rows to return, from 1 through 100; zero requests the server default.
   int32 page_size = 3 [
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 100,
     (sebuf.http.query) = {name: "page_size"}
   ];
+  // Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
   string cursor = 4 [
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).string.max_bytes = 2048,
