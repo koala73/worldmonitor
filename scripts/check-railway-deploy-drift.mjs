@@ -26,18 +26,30 @@
 //   node scripts/check-railway-deploy-drift.mjs --concurrency 4
 //   node scripts/check-railway-deploy-drift.mjs --verbose   # list acknowledged
 
-import { execFile, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { promisify } from 'node:util';
 
-import {
-  RAILWAY_CALL_TIMEOUT_MS,
-  isRepositoryService,
-  readArgument,
-  runRailway,
-} from './audit-railway-watch-paths.mjs';
 import { applyAcceptanceBaseline } from './check-seed-freshness.mjs';
+import {
+  DEFAULT_CONCURRENCY,
+  mapWithConcurrency,
+  readArgument,
+  readDeployments,
+  readEnvironmentConfig,
+  readRepositoryServices,
+  runRailway,
+} from './railway-cli.mjs';
+import {
+  FAILED_STATUSES,
+  IN_FLIGHT_STATUSES,
+  REJECTED_STATUS,
+  RUNNING_STATUSES,
+  createdAtMs,
+  isKnownStatus,
+  newestRunning,
+  orderByRecency,
+} from './railway-deployments.mjs';
 import {
   changeReachesService,
   createChangedPathsReader,
@@ -51,29 +63,21 @@ const DEFAULT_ENVIRONMENT = 'production';
 const BASELINE_URL = new URL('./railway-deploy-drift-baseline.json', import.meta.url);
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 
-// Railway records a refused push as a deployment whose status is SKIPPED and
-// whose meta still carries the commit it refused. That record is the only
-// evidence the push happened at all.
-export const REJECTED_STATUS = 'SKIPPED';
+// Re-exported for the existing importers. The definitions live in the shared
+// modules so this check and the deploy trigger cannot drift apart on them.
+export {
+  DEFAULT_CONCURRENCY,
+  FAILED_STATUSES,
+  IN_FLIGHT_STATUSES,
+  REJECTED_STATUS,
+  RUNNING_STATUSES,
+  createdAtMs,
+  mapWithConcurrency,
+};
 
-// Statuses that prove an image was built from a source and deployed. REMOVED is
-// a superseded deployment — for a cron service that is every completed tick —
-// and CRASHED ran the code and exited non-zero, which is a runtime failure the
-// seeder's own health checks own, not a source-drift one.
-export const RUNNING_STATUSES = Object.freeze(['SUCCESS', 'REMOVED', 'CRASHED', 'SLEEPING']);
 
-// A build that has started but has not produced a running container yet.
-export const IN_FLIGHT_STATUSES = Object.freeze([
-  'QUEUED',
-  'WAITING',
-  'INITIALIZING',
-  'BUILDING',
-  'DEPLOYING',
-]);
 
-// The build never produced an image, so the previous one is still serving —
-// even though this record carries the newest commit SHA.
-export const FAILED_STATUSES = Object.freeze(['FAILED']);
+
 
 // Railway builds land in about two minutes. Thirty is a generous ceiling for a
 // queued build on a busy project, chosen against the observed build duration
@@ -93,12 +97,6 @@ export const DEFAULT_BUILD_GRACE_MS = 30 * 60 * 1000;
 // inside a job with a wall-clock budget.
 export const DEFAULT_DEPLOYMENT_WINDOW = 50;
 
-// One `railway deployment list` per service, run serially, took over ten
-// minutes against the 77-service production fleet — longer than the interval
-// this check runs on. The calls are independent read-only round trips, so they
-// fan out; the cap keeps us from opening 77 CLI processes and being rate
-// limited or starved of file descriptors.
-export const DEFAULT_CONCURRENCY = 8;
 
 // Everything that is not a positive "running everything that reaches it" or "a
 // build is under way". The list is derived from the healthy verdicts rather
@@ -132,20 +130,7 @@ export const UNDETERMINABLE_VERDICTS = Object.freeze([
   'CLOSURE_UNKNOWN',
 ]);
 
-function isKnownStatus(status) {
-  return status === REJECTED_STATUS
-    || RUNNING_STATUSES.includes(status)
-    || IN_FLIGHT_STATUSES.includes(status)
-    || FAILED_STATUSES.includes(status);
-}
 
-// Exported so scripts/trigger-railway-deploys.mjs orders deployment records by
-// the same rule. Both files derive "which deployment is running" from this
-// sort, and two definitions is how they come to disagree about one service.
-export function createdAtMs(deployment) {
-  const parsed = Date.parse(deployment?.createdAt ?? '');
-  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-}
 
 /**
  * Decide which source a single service is running, and whether that is head.
@@ -200,8 +185,8 @@ export function classifyServiceDeploy({
 
   // Railway returns newest-first today. Sorting anyway costs nothing and keeps
   // "which deployment is live" from depending on an undocumented ordering.
-  const ordered = [...deployments].sort((left, right) => createdAtMs(right) - createdAtMs(left));
-  const running = ordered.find((deployment) => RUNNING_STATUSES.includes(deployment.status));
+  const ordered = orderByRecency(deployments);
+  const running = newestRunning(ordered);
   const runningAtMs = running ? createdAtMs(running) : Number.NEGATIVE_INFINITY;
   const newerThanRunning = (deployment) => createdAtMs(deployment) > runningAtMs;
 
@@ -265,9 +250,9 @@ export function classifyServiceDeploy({
   };
 
   // A refusal of a push that could not have changed this container is the
-  // filter working, not a rejection to report. Fleet-wide over 600 commits,
-  // 7,331 of 7,391 path-reason skips were exactly that; treating them as
-  // rejections is what put 62 of 77 services in the baseline.
+  // filter working, not a rejection to report. Fleet-wide, nearly every
+  // path-reason skip is exactly that; treating them as rejections is what put
+  // 62 of 77 services in the suppression baseline.
   //
   // Judged per refusal, not per service, and that distinction decides a
   // verdict: a service that is genuinely behind while every recorded refusal
@@ -497,43 +482,8 @@ function runGit(args) {
   return result.stdout.trim();
 }
 
-function readRepositoryServices(environment) {
-  const services = JSON.parse(runRailway(['service', 'list', '--environment', environment, '--json']));
-  if (!Array.isArray(services)) throw new Error('railway service list must return an array');
-  return services.filter(isRepositoryService);
-}
 
-const execFileAsync = promisify(execFile);
 
-async function readDeployments(service, environment, window) {
-  const { stdout } = await execFileAsync('railway', [
-    'deployment',
-    'list',
-    '--service',
-    service.id ?? service.name,
-    '--environment',
-    environment,
-    '--limit',
-    String(window),
-    '--json',
-  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: RAILWAY_CALL_TIMEOUT_MS });
-  return JSON.parse(stdout);
-}
-
-/** Run `worker` over `items` with at most `limit` in flight, preserving order. */
-export async function mapWithConcurrency(items, limit, worker) {
-  const results = new Array(items.length);
-  let next = 0;
-  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await worker(items[index], index);
-    }
-  });
-  await Promise.all(runners);
-  return results;
-}
 
 function printReport(results, summary, headSha, graceSha, { verbose = false } = {}) {
   console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
@@ -636,17 +586,8 @@ async function main() {
   const registryByService = new Map(
     JSON.parse(readFileSync(REGISTRY_URL, 'utf8')).map((entry) => [entry.service, entry]),
   );
-  const config = JSON.parse(runRailway([
-    'environment', 'config', '--environment', environment, '--json',
-  ]));
-  // Fail closed exactly as audit-railway-watch-paths.mjs does. `?? {}` would
-  // turn a renamed key or a CLI output-shape change into "no live service is
-  // described", which resolveServiceClosure reads as "watches everything" —
-  // widening every closure and reporting the whole fleet behind.
-  if (!config?.services || typeof config.services !== 'object' || Array.isArray(config.services)) {
-    throw new Error('Railway environment config must contain a services object');
-  }
-  const liveById = config.services;
+  // readEnvironmentConfig fails closed on an unexpected payload; see its comment.
+  const liveById = readEnvironmentConfig(environment).services;
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
   const changedPathsIn = createCommitPathsReader({ git: runGit });
 

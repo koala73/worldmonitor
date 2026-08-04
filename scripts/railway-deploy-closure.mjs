@@ -10,27 +10,21 @@
 // Splitting that judgement across two implementations is how the two surfaces
 // drift into disagreeing about the same service, so both import this file.
 //
-// WHAT THE PRODUCTION RECORD ACTUALLY SHOWS
+// WHY rootDirectory IS LOAD-BEARING BELOW
 //
 // #6141 read Railway's `SKIPPED` deployments as refusals of pushes that plainly
-// matched the watch-path glob. Re-measured across the whole 77-service fleet
-// (7,391 path-reason skips, 600 commits of main), that is not what they are:
-//
-//   7,331  correctly skipped — the commit touches nothing the service watches
-//      57  every matched file lies OUTSIDE the service's build context
-//       3  the closure was declared in the registry but not yet applied to
-//          Railway, so Railway matched against its older, narrower filter
-//       0  unexplained
-//
-// The 57 are the interesting ones and they are the reason `rootDirectory` is
-// load-bearing below. A `nixpacks-root-scripts` service is built with the build
+// matched the watch-path glob. Re-measured fleet-wide it is not: 57 of the 60
+// apparent refusals matched a pattern whose every matched file lay OUTSIDE the
+// service's build context. A `nixpacks-root-scripts` service is built with the
 // context rooted at scripts/, so scripts/ IS the container — the same
-// containment tests/nixpacks-seeder-import-graph.test.mjs enforces on imports.
-// A commit that only touches repository-root `shared/` therefore cannot change
-// that image no matter what the service's watch patterns say, and the several
-// scripts-rooted services that list `shared/**` are asking to be rebuilt for
-// files their container has never been able to see. Skipping them is correct,
-// and a matcher that ignores the build context reports 57 false rejections.
+// containment tests/nixpacks-seeder-import-graph.test.mjs enforces on imports —
+// and a commit touching only repository-root `shared/` cannot change that image
+// however the watch patterns read. A matcher that ignores the build context
+// reports those 57 as false rejections.
+//
+// The full measurement and its methodology live in
+// docs/solutions/integration-issues/railway-seeder-watch-paths-can-skip-deployments.md,
+// which is the one place they are maintained.
 //
 // DIRECTION OF FAILURE
 //
@@ -47,10 +41,9 @@ export const NO_MATCHING_PATHS_REASON = 'No changes to watched files';
 // evaluates the commit's whole GitHub check suite, so a scheduled workflow that
 // re-reports a failure onto main's head SHA after the merge — the freshness
 // monitor, the security audit, the storage monitor — turns every service's
-// deploy into a skip. Measured over 600 commits it is the dominant lag source:
-// 1,068 of 6,037 closure-relevant merges, p90 4.7h against p90 0.01h when
-// Railway simply builds. It is also self-reinforcing, because the freshness
-// monitor goes red precisely when the fleet is behind.
+// deploy into a skip. It is the dominant lag source, and self-reinforcing: the
+// freshness monitor goes red precisely when the fleet is behind. Numbers in the
+// solutions document named above.
 export const CHECK_SUITE_FAILED_REASON = 'CI check suite failed';
 
 /**

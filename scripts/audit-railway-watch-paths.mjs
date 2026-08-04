@@ -1,8 +1,32 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+import {
+  RAILWAY_CALL_TIMEOUT_MS,
+  REPOSITORY,
+  isRepositoryService,
+  readArgument,
+  runRailway,
+} from './railway-cli.mjs';
+import {
+  ROOT_DIRECTORY_BY_DEPLOY_MODE,
+  normalizeRootDirectory,
+} from './railway-deploy-closure.mjs';
+
+// Re-exported so the existing importers of this module keep working; the
+// definitions live in the shared files above so the audit, the drift check and
+// the trigger cannot drift into three ideas of the same thing.
+export {
+  RAILWAY_CALL_TIMEOUT_MS,
+  REPOSITORY,
+  ROOT_DIRECTORY_BY_DEPLOY_MODE,
+  isRepositoryService,
+  normalizeRootDirectory,
+  readArgument,
+  runRailway,
+};
 
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 const DEFAULT_ENVIRONMENT = 'production';
@@ -49,24 +73,9 @@ function serviceIdFor(serviceIdsByName, serviceName) {
   return serviceIdsByName?.[serviceName];
 }
 
-function normalizeRootDirectory(value) {
-  return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
-}
-
 function normalizeDockerfilePath(value) {
   return typeof value === 'string' ? value.replace(/^\/+/, '') : '';
 }
-
-// deployMode is the registry's claim about where Railway roots the build. It
-// decides which build inputs and which shared-config prefix belong in a
-// service's dependency closure, so a registry entry that claims the wrong mode
-// produces watch paths that --apply then pushes to production. Auditing it
-// keeps the claim honest against the live service.
-export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
-  'nixpacks-root-scripts': 'scripts',
-  'nixpacks-root-repo': '',
-  dockerfile: '',
-});
 
 // Every field this audit derives production mutations from is validated here,
 // because the registry is hand-edited JSON with no runtime schema. A typo used
@@ -151,16 +160,6 @@ export function managedRailwayServices(registry) {
 // railway-seeder-watch-paths-can-skip-deployments.md).
 export const BROAD_WATCH_PATTERNS = Object.freeze(['scripts/**', 'shared/**']);
 
-export const REPOSITORY = 'koala73/worldmonitor';
-
-// Every live service Railway builds from this repository, which is a broader
-// set than the seeders below: it also covers the relays, the workers, the
-// consumer-prices trio and the collector. `check-railway-deploy-drift.mjs`
-// checks that set against main, so the two files share one definition of
-// "ours" rather than each carrying its own idea of which services count.
-export function isRepositoryService(service) {
-  return service?.source?.repo === REPOSITORY;
-}
 const SEED_COMMAND_RE = /^node\s+(?:\.\/)?(?:scripts\/)?(?:seed-[^\s]+|fetch-gpsjam\.mjs|publish-bootstrap-tiers\.mjs)(?:\s|$)/;
 const SEED_DOCKERFILE_RE = /(?:^|\/)Dockerfile\.(?:seed-[^/\s]+|digest-notifications|publish-bootstrap-tiers)$/;
 
@@ -396,29 +395,6 @@ export function serializeRailwayServiceConfigPatch(drift) {
   return `${JSON.stringify(buildRailwayServiceConfigPatch(drift))}\n`;
 }
 
-// A hung Railway call must not consume the whole job budget: this runs inside a
-// scheduled workflow with a wall-clock timeout, and a subprocess with no bound
-// turns one unresponsive API call into a cancelled monitor.
-export const RAILWAY_CALL_TIMEOUT_MS = 60_000;
-
-export function runRailway(args, options = {}) {
-  const result = spawnSync('railway', args, {
-    encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
-    timeout: RAILWAY_CALL_TIMEOUT_MS,
-    ...options,
-  });
-  if (result.signal) {
-    throw new Error(`railway ${args.join(' ')} timed out after ${RAILWAY_CALL_TIMEOUT_MS}ms`);
-  }
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `railway ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`,
-    );
-  }
-  return result.stdout;
-}
 
 function readEnvironmentConfig(environment) {
   return JSON.parse(runRailway([
@@ -526,25 +502,6 @@ function printAudit(drift) {
   }
 }
 
-// Accepts both `--flag value` and `--flag=value`. The equals form matters: an
-// exact indexOf match silently misses it, and this value selects which Railway
-// environment --apply mutates, so a missed `--environment=staging` would patch
-// production with no error and no signal.
-export function readArgument(argv, name, fallback) {
-  const inline = argv.find((arg) => arg.startsWith(`${name}=`));
-  if (inline) {
-    const value = inline.slice(name.length + 1);
-    if (!value) throw new Error(`${name} requires a value`);
-    return value;
-  }
-  const index = argv.indexOf(name);
-  if (index < 0) return fallback;
-  const value = argv[index + 1];
-  if (!value || value.startsWith('--')) {
-    throw new Error(`${name} requires a value`);
-  }
-  return value;
-}
 
 async function main() {
   const apply = process.argv.includes('--apply');

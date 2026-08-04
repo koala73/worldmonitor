@@ -199,7 +199,11 @@ describe('deploy planning', () => {
 });
 
 describe('plan summary', () => {
-  it('separates deploys from errors and fails the run on an error', () => {
+  it('reports one unreadable service without reddening the run', () => {
+    // A transient 429 on one service is ordinary third-party rot: the other
+    // services were planned correctly, and check-railway-deploy-drift.mjs
+    // alarms independently if that one really is behind. Failing the whole
+    // scheduled run for it is how a red workflow stops being read.
     const plans = [
       plan(),
       plan({ changedPathsSince: () => [] }),
@@ -207,9 +211,25 @@ describe('plan summary', () => {
     ];
     const summary = summarizeDeployPlan(plans);
     assert.equal(summary.deploys.length, 1);
-    assert.equal(summary.errors.length, 1);
-    assert.equal(summary.ok, false);
+    assert.equal(summary.unreadable.length, 1);
+    assert.equal(summary.errors.length, 0);
+    assert.equal(summary.ok, true);
     assert.equal(summary.counts.CLOSURE_CHANGED, 1);
+  });
+
+  it('fails the run when EVERY service is unreadable', () => {
+    // Not per-service rot: an auth or connectivity failure wearing per-service
+    // clothing. Planning nothing while reporting success is the silent no-op
+    // this script exists to remove.
+    const summary = summarizeDeployPlan([plan({ deployments: null }), plan({ deployments: null })]);
+    assert.equal(summary.unreadable.length, 2);
+    assert.equal(summary.errors.length, 2);
+    assert.equal(summary.ok, false);
+  });
+
+  it('does not call an empty run failed', () => {
+    const summary = summarizeDeployPlan([]);
+    assert.equal(summary.ok, true);
   });
 
   it('is ok when nothing needs deploying', () => {

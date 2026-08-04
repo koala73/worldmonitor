@@ -6,21 +6,19 @@
 // WHY THIS EXISTS
 //
 // Railway decides on its own whether a push produces a build, and it takes two
-// separate decisions. The watch-path one is fine: re-measured across the whole
-// 77-service fleet over 600 commits of main, 7,331 of 7,391 path-reason skips
-// were plainly correct, 57 more were correct once the build context is taken
-// into account, and the last 3 were the registry declaring a closure Railway
-// had not been given yet. That is not the defect #6141 took it for.
+// separate decisions. The watch-path one is fine — re-measured fleet-wide, its
+// skips are correct to within 3 of 7,391 — and is not the defect #6141 took it
+// for.
 //
 // The other decision is the problem. Railway also refuses to build a commit
 // whose GitHub check suite is failing, and it reads the WHOLE suite — including
 // scheduled workflows that re-report onto main's head SHA long after the merge
-// gates went green. The freshness monitor, the security audit and the storage
-// monitor all do this. Measured over the same window that accounts for 1,068 of
-// 6,037 closure-relevant merges, with p90 4.7h to a build against p90 0.01h
-// when Railway simply builds, and 93 that never built at all inside the window.
-// It is also self-reinforcing: the freshness monitor turns red precisely when
-// the fleet is behind, and its redness then blocks the fleet from catching up.
+// gates went green. It is the dominant lag source by a wide margin, and it is
+// self-reinforcing: the freshness monitor turns red precisely when the fleet is
+// behind, and its redness then blocks the fleet from catching up.
+//
+// Full measurement and methodology:
+// docs/solutions/integration-issues/railway-seeder-watch-paths-can-skip-deployments.md
 //
 // This script replaces that judgement with the repository's own. It runs after
 // the required gates are green and asks, per service, one question: has
@@ -43,24 +41,23 @@
 //   node scripts/trigger-railway-deploys.mjs --head <sha> --environment production
 //   node scripts/trigger-railway-deploys.mjs --only seed-earthquakes,seed-aviation
 
-import { execFile, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { promisify } from 'node:util';
 
 import {
-  RAILWAY_CALL_TIMEOUT_MS,
-  isRepositoryService,
-  readArgument,
-  runRailway,
-} from './audit-railway-watch-paths.mjs';
-import {
   DEFAULT_CONCURRENCY,
-  DEFAULT_DEPLOYMENT_WINDOW,
-  RUNNING_STATUSES,
-  createdAtMs,
   mapWithConcurrency,
-} from './check-railway-deploy-drift.mjs';
+  readArgument,
+  readDeployments,
+  readEnvironmentConfig,
+  readRepositoryServices,
+  runRailway,
+} from './railway-cli.mjs';
+import {
+  newestRunning,
+  orderByRecency,
+} from './railway-deployments.mjs';
 import {
   changeReachesService,
   createChangedPathsReader,
@@ -70,6 +67,17 @@ import {
 
 const DEFAULT_ENVIRONMENT = 'production';
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
+
+// Sized for THIS script's question, not inherited from the drift check's.
+//
+// The guarantee "never re-trigger a build Railway already ran and FAILED" holds
+// only while that FAILED record is still inside the window: past it the record
+// is invisible and the commit reads as never taken, so the trigger would retry
+// a build that is failing for a real reason and bury the alarm under a loop.
+// A service that records a tick per cron run — a 15-minute cron is 4/hour —
+// pushes a failure out of a 50-record window in half a day. 200 covers roughly
+// two days of the busiest cron in the fleet while staying one CLI call.
+export const DEFAULT_DEPLOYMENT_WINDOW = 200;
 
 // A build that is queued, running, finished or even failed for the head commit
 // all mean the same thing here: Railway has taken this commit, so triggering a
@@ -119,9 +127,7 @@ export function planServiceDeploy({
   // rewritten: both files decide "which deployment is running" from this sort,
   // and a second definition is how they come to disagree about one service. An
   // unparseable timestamp sorts oldest rather than producing NaN comparisons.
-  const ordered = [...deployments].sort(
-    (left, right) => createdAtMs(right) - createdAtMs(left),
-  );
+  const ordered = orderByRecency(deployments);
 
   // Any non-SKIPPED record for head means Railway has taken this commit —
   // queued it, built it, or built it and failed. This also subsumes "the
@@ -135,7 +141,7 @@ export function planServiceDeploy({
     return { ...base, action: 'skip', reason: HANDLED_BY_RAILWAY, detail: `Railway already has ${headSha.slice(0, 9)} (${taken.status})` };
   }
 
-  const running = ordered.find((deployment) => RUNNING_STATUSES.includes(deployment?.status));
+  const running = newestRunning(ordered);
   if (!running) {
     // Nothing has ever run. That is not a service lagging a merge — it is one
     // that was never started, is stopped, or is provisioned but idle, and
@@ -218,12 +224,38 @@ export function selectServices(services, only) {
   return services.filter((service) => wanted.includes(service.name));
 }
 
+/**
+ * Split the run's outcome by who can act on it.
+ *
+ * A service whose deployment history could not be read is a coverage gap, not a
+ * broken reconciler: the fleet-wide query succeeded, the other services were
+ * planned correctly, and a transient 429 or timeout on one of them is ordinary
+ * third-party rot. Reddening the whole scheduled run for it would make the job
+ * fail routinely, which is how a red workflow stops being read — and the
+ * service itself is not unmonitored, because check-railway-deploy-drift.mjs
+ * alarms independently if it really is behind.
+ *
+ * So unreadable services are reported loudly and do NOT fail the run. What does
+ * fail it is anything that means this script is broken or its work did not
+ * happen: a deploy call that failed or returned no deployment id.
+ */
 export function summarizeDeployPlan(plans) {
   const deploys = plans.filter((plan) => plan.action === 'deploy');
-  const errors = plans.filter((plan) => plan.action === 'error');
+  const unreadable = plans.filter((plan) => plan.action === 'error');
   const counts = {};
   for (const plan of plans) counts[plan.reason] = (counts[plan.reason] ?? 0) + 1;
-  return { counts, deploys, errors, ok: errors.length === 0 };
+  // Every service unreadable is not "some third-party rot" — it is an auth or
+  // connectivity failure wearing per-service clothing, and planning nothing
+  // while reporting success is exactly the silent no-op this script exists to
+  // remove.
+  const allUnreadable = plans.length > 0 && unreadable.length === plans.length;
+  return {
+    counts,
+    deploys,
+    unreadable,
+    errors: allUnreadable ? unreadable : [],
+    ok: !allUnreadable,
+  };
 }
 
 const GIT_CALL_TIMEOUT_MS = 30_000;
@@ -241,18 +273,6 @@ function runGit(args) {
   return result.stdout.trim();
 }
 
-const execFileAsync = promisify(execFile);
-
-async function readDeployments(service, environment, window) {
-  const { stdout } = await execFileAsync('railway', [
-    'deployment', 'list',
-    '--service', service.id ?? service.name,
-    '--environment', environment,
-    '--limit', String(window),
-    '--json',
-  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: RAILWAY_CALL_TIMEOUT_MS });
-  return JSON.parse(stdout);
-}
 
 function resolveEnvironmentId(environmentName) {
   const status = JSON.parse(runRailway(['status', '--json']));
@@ -303,10 +323,20 @@ function readRegistryByService() {
   return new Map(registry.map((entry) => [entry.service, entry]));
 }
 
-function printReport(plans, summary, headSha, { dryRun }) {
-  console.log(`Railway deploy trigger: head=${headSha.slice(0, 9)} services=${plans.length} mode=${dryRun ? 'dry-run' : 'deploy'} ${JSON.stringify(summary.counts)}`);
-  for (const plan of summary.errors) {
-    console.error(`- ${plan.service}: ${plan.reason}`);
+function printReport(plans, summary, headSha, { dryRun, elapsedMs }) {
+  // The service count IS the Railway read count (one `deployment list` each),
+  // and it plus the wall clock is what the next fan-out measurement needs — the
+  // schedule offset that keeps this job clear of the freshness monitor is only
+  // sound while both stay well under the interval, and nothing else records it.
+  console.log(
+    `Railway deploy trigger: head=${headSha.slice(0, 9)} services=${plans.length} `
+    + `reads=${plans.length} elapsed=${Math.round(elapsedMs / 1000)}s `
+    + `mode=${dryRun ? 'dry-run' : 'deploy'} ${JSON.stringify(summary.counts)}`,
+  );
+  for (const plan of summary.unreadable) {
+    // ::warning:: not ::error::, unless every service failed (summary.ok).
+    const level = summary.ok ? 'warning' : 'error';
+    console.error(`::${level}::${plan.service}: ${plan.detail}`);
   }
   for (const plan of summary.deploys) {
     const prefix = dryRun ? 'would deploy' : plan.deploymentId ? `deployed (${plan.deploymentId})` : 'FAILED to deploy';
@@ -332,6 +362,7 @@ async function main() {
   // run it with --only <service> from wherever they happen to be standing — so a
   // HEAD default would deploy an unmerged branch, or uncommitted-adjacent work,
   // straight to production.
+  const startedAt = Date.now();
   const headSha = readArgument(process.argv, '--head', null) ?? runGit(['rev-parse', 'origin/main']);
   // And whatever was passed must actually be on main. A SHA that is not reachable
   // from origin/main has not been through the gates this workflow exists to honour.
@@ -347,22 +378,13 @@ async function main() {
   }
 
   const registryByService = readRegistryByService();
-  const services = JSON.parse(runRailway(['service', 'list', '--environment', environment, '--json']));
-  if (!Array.isArray(services)) throw new Error('railway service list must return an array');
-  const fleet = services.filter(isRepositoryService);
+  const fleet = readRepositoryServices(environment);
   if (fleet.length === 0) {
     throw new Error('the Railway service query returned no repository services, which is a query failure rather than an empty fleet');
   }
   const repositoryServices = selectServices(fleet, readArgument(process.argv, '--only', null));
-  const config = JSON.parse(runRailway(['environment', 'config', '--environment', environment, '--json']));
-  // Fail closed exactly as audit-railway-watch-paths.mjs does. `?? {}` would turn
-  // a renamed key or a CLI output-shape change into "no live service is
-  // described", which resolveServiceClosure reads as "watches everything" — and
-  // this script would then deploy the entire fleet.
-  if (!config?.services || typeof config.services !== 'object' || Array.isArray(config.services)) {
-    throw new Error('Railway environment config must contain a services object');
-  }
-  const liveById = config.services;
+  // readEnvironmentConfig fails closed on an unexpected payload; see its comment.
+  const liveById = readEnvironmentConfig(environment).services;
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
   // `git merge-base --is-ancestor` exits non-zero both when the answer is no and
   // when the object is missing. Both collapse to "cannot prove it", which keeps
@@ -420,9 +442,14 @@ async function main() {
     }
   }
 
-  if (asJson) console.log(JSON.stringify({ environment, headSha, dryRun, summary, plans }, null, 2));
-  else printReport(plans, summary, headSha, { dryRun });
+  const elapsedMs = Date.now() - startedAt;
+  if (asJson) console.log(JSON.stringify({ environment, headSha, dryRun, elapsedMs, railwayReads: plans.length, summary, plans }, null, 2));
+  else printReport(plans, summary, headSha, { dryRun, elapsedMs });
 
+  // Hard-fail only on work that was supposed to happen and did not: a deploy
+  // call that errored or returned no deployment id, or a run in which nothing
+  // could be read at all. An individual unreadable service is warned about
+  // above and left to the drift check.
   const failed = summary.deploys.filter((plan) => !dryRun && !plan.deploymentId);
   if (!summary.ok || failed.length > 0) process.exitCode = 1;
 }
