@@ -142,6 +142,51 @@ test('release publishing is atomic — legs upload to a draft, one step publishe
   assert.match(publish.run, /gh release edit "\$TAG" --draft=false/);
   assert.match(publish.run, /KEEP_DRAFT/, 'the draft input must still be honorable');
   assert.match(publish.run, /Refusing to publish/, 'publishing must verify every platform asset exists first');
+
+  // A rebuild of an already-published tag would upload into the live release.
+  const rebuildGuard = theStepNamed(buildSteps, 'Refuse to rebuild an already-published release (#5908)');
+  assert.match(rebuildGuard.run, /isDraft/);
+  assert.match(rebuildGuard.run, /exit 1/);
+
+  // A dispatch can run from any ref while the tag comes from package.json.
+  assert.match(publish.run, /PUBLISHABLE_REF/, 'auto-publish must be limited to a release tag or the default branch');
+});
+
+test('the publish gate requires exactly the platforms /api/download can serve', () => {
+  // The workflow comment claims it "mirrors PLATFORM_PATTERNS". Nothing enforced
+  // that, so dropping a suffix from the bash loop would let a release publish
+  // without an artifact for a platform the endpoint and README advertise — and
+  // the gate asserting only the error string would have stayed green.
+  const publish = theStepNamed(desktopWorkflow.jobs['update-release-notes'].steps, 'Publish the release');
+
+  const handler = readRepoFile('api/download.js');
+  const endpointSuffixes = [...handler.matchAll(/endsWith\('([^']+)'\)/g)].map((m) => m[1]).sort();
+  assert.ok(endpointSuffixes.length > 0, 'no PLATFORM_PATTERNS suffixes parsed — this guard would be vacuous');
+
+  const loop = publish.run.match(/for suffix in ([^\n]+); do/);
+  assert.ok(loop, "publish step must iterate an explicit suffix list");
+  const gateSuffixes = [...loop[1].matchAll(/'([^']+)'/g)]
+    .map((m) => m[1].replace(/\\/g, '').replace(/\$$/, ''))
+    .sort();
+
+  assert.deepEqual(
+    gateSuffixes,
+    endpointSuffixes,
+    'the publish completeness gate and /api/download must advertise the same platform set — a suffix in one and not the other means a release can go live that the endpoint cannot serve, or a build blocked on an artifact nobody asks for'
+  );
+});
+
+test('the publish gate applies the same identity filter the endpoint does', () => {
+  // Checking the platform suffix alone would let a stray branded artifact
+  // satisfy the gate for a platform /api/download would then refuse to serve.
+  const publish = theStepNamed(desktopWorkflow.jobs['update-release-notes'].steps, 'Publish the release');
+  assert.match(publish.run, /worldmonitor/, 'publish must require the World Monitor identity, not just a platform suffix');
+  assert.match(publish.run, /SERVABLE/);
+  assert.doesNotMatch(
+    publish.run,
+    /printf '%s\\n' "\$ASSETS" \| grep -qE "\$suffix"/,
+    'the suffix check must run against identity-filtered assets, not the raw asset list'
+  );
 });
 
 test('the AppImage re-upload targets the same tag the build steps publish', () => {

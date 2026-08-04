@@ -170,8 +170,9 @@ each supported value resolves to the same World Monitor asset for the requested
 platform — the parameter records which variant the caller came from, it does not
 select a different download. An unrecognized value redirects to
 [releases/latest](https://github.com/koala73/worldmonitor/releases/latest)
-without calling GitHub. Omitting `variant` returns the first asset matching the
-platform.
+without calling GitHub. Omitting `variant` resolves the same way a supported value does —
+the identity filter applies on every path, so a release carrying a stray asset that merely
+matches the platform suffix never wins.
 
 Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
 

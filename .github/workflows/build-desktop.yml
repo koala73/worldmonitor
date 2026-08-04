@@ -158,6 +158,27 @@ jobs:
           fi
           echo "Tag ${GITHUB_REF_NAME} matches package.json ${VERSION}"
 
+      - name: Refuse to rebuild an already-published release (#5908)
+        # `releaseDraft: true` governs release *creation*. If this tag's release
+        # already exists and is published, tauri-action reuses it and every leg
+        # uploads straight into the live release that `/releases/latest` serves —
+        # so a re-run mutates what installed clients are being offered, with no
+        # draft stage and no completeness gate in front of it. Fail before the
+        # first upload rather than half-way through the matrix.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null || echo "absent")
+          case "$IS_DRAFT" in
+            absent) echo "No existing release for $TAG — this run will create it as a draft." ;;
+            true)   echo "Existing draft release for $TAG — this run will add to it." ;;
+            *)      echo "::error::Release $TAG is already published. Re-running would upload assets directly into the live release served by /releases/latest, bypassing the draft stage and the publish completeness gate. Bump the version, or delete/unpublish $TAG first."
+                    exit 1 ;;
+          esac
+
       - name: Rust dependency security floors (#5518)
         # The release build is the artifact users install, so verify the
         # lockfile it is about to compile still clears every recorded advisory
@@ -479,6 +500,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KEEP_DRAFT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.draft }}
+          # A dispatch can run from any ref, and the tag is taken from
+          # package.json rather than the ref — so without this, dispatching from
+          # a feature branch would build that branch and publish it over the live
+          # binary. Only a release tag or the default branch may auto-publish;
+          # anywhere else still builds and still uploads, but stops at the draft.
+          PUBLISHABLE_REF: ${{ github.ref_type == 'tag' || github.ref_name == github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -488,11 +515,29 @@ jobs:
           ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
           echo "Assets on $TAG:"; printf '  %s\n' $ASSETS
 
+          # Keep only assets that carry the World Monitor identity, applying the
+          # same canonicalisation `/api/download` uses (lowercase, strip
+          # non-alphanumerics, require `worldmonitor`). Checking the platform
+          # suffix alone would let a stray branded artifact satisfy this gate for
+          # a platform the endpoint would then refuse to serve — the publisher
+          # and the endpoint have to mean the same thing by "an asset exists".
+          SERVABLE=$(printf '%s\n' "$ASSETS" | while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            canon=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+            # Prefix-strip test rather than `case`: older bash refuses to parse a
+            # `case` nested inside this command substitution.
+            if [ "${canon#*worldmonitor}" != "$canon" ]; then
+              printf '%s\n' "$name"
+            fi
+          done)
+          echo "Servable (World Monitor identity) assets:"; printf '  %s\n' $SERVABLE
+
           MISSING=""
           # Mirrors PLATFORM_PATTERNS in api/download.js — every platform the
-          # download endpoint and README advertise.
+          # download endpoint and README advertise. Kept in lockstep by
+          # tests/desktop-one-binary-model.test.mjs, which parses both lists.
           for suffix in '_x64-setup\.exe$' '_x64_en-US\.msi$' '_aarch64\.dmg$' '_x64\.dmg$' '_amd64\.AppImage$' '_aarch64\.AppImage$'; do
-            printf '%s\n' "$ASSETS" | grep -qE "$suffix" || MISSING="$MISSING $suffix"
+            printf '%s\n' "$SERVABLE" | grep -qE "$suffix" || MISSING="$MISSING $suffix"
           done
           if [ -n "$MISSING" ]; then
             echo "::error::Refusing to publish $TAG — no asset matches:$MISSING. The release stays a draft; investigate the failed platform before publishing."
@@ -501,6 +546,11 @@ jobs:
 
           if [ "$KEEP_DRAFT" = "true" ]; then
             echo "::notice::$TAG left as a draft by request. It is NOT served by /api/version or /api/download until published."
+            exit 0
+          fi
+
+          if [ "$PUBLISHABLE_REF" != "true" ]; then
+            echo "::warning::$TAG left as a draft: ${GITHUB_REF_NAME} is neither a release tag nor the default branch, and auto-publishing from an arbitrary ref would overwrite the live binary. Publish it by hand if this build is genuinely the release."
             exit 0
           fi
 
