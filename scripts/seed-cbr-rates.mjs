@@ -30,23 +30,33 @@
 import { XMLParser } from 'fast-xml-parser';
 
 import { CHROME_UA, loadEnvFile, runSeed, withRetry } from './_seed-utils.mjs';
-import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
+import { DAY_MIN, periodTokenToMs, tokensToContentMeta } from './_content-age-helpers.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:cbr-rates:v1';
+
+// Durable activation marker (no TTL, #4927). Written after the first successful
+// publish; until it exists, /api/health softens a missing key from EMPTY/CRIT to
+// the on-demand warn. Without it, merging this PR reddens the every-15-minute
+// freshness monitor from the moment Vercel ships the reader until
+// seed-bundle-macro's next 08:00 UTC tick — up to ~24h of unactionable CRIT.
+export const CBR_ACTIVATION_KEY = 'seed-activated:economic:cbr-rates';
 
 // 4 days. Must outlive maxStaleMin (4320min = 3d) so a stale-but-present key is
 // still readable when health flags it, and must be >= 3x the bundle's daily
 // interval so two missed cron ticks cannot expire the key.
 const TTL = 4 * 86400;
 
-// Content-age budget. CBR publishes on Russian business days only, and the key
-// rate series (this contract's clock — see cbrContentMeta) skips them all. The
-// widest routine gap is the New Year non-working period, 1-8 January, which with
-// the weekends on either side reaches ~11 calendar days. 14 days clears that
-// with margin while still flipping /api/health to STALE_CONTENT roughly a week
-// into a genuine freeze.
+// Content-age budget, measured rather than assumed. Across two years of live
+// KeyRate rows (509 observations, 2024-08-05..2026-08-04) the largest real
+// publication gap is 6 days — the New Year non-working period, 2025-12-30 to
+// 2026-01-05 — with the May and February holiday clusters at 4. 14 days is
+// therefore a little over 2x the observed maximum: enough that a holiday plus a
+// missed cron cannot false-alarm, while still flipping /api/health to
+// STALE_CONTENT about a week into a genuine freeze. See cbrContentMeta for which
+// clock this is measured against (both of them — the older wins).
 const CBR_MAX_CONTENT_AGE_MIN = 14 * DAY_MIN;
 
 const DAILY_URL = 'https://www.cbr.ru/scripts/XML_daily.asp';
@@ -58,7 +68,33 @@ const KEY_RATE_URL = 'https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx';
 // several full tightening/easing cycles in a ~3KB response.
 const KEY_RATE_HISTORY_DAYS = 730;
 
-const FETCH_TIMEOUT_MS = 20_000;
+const FETCH_TIMEOUT_MS = 15_000;
+
+// Worst-case fetch ladder, kept provably inside the bundle section budget:
+// withRetry(fn, 1, 2000) is 2 attempts, so the daily table costs 2x15s + 2s = 32s,
+// the best-effort prior day 15s, and the key rate another 32s — 79s total. runSeed
+// wraps fetchFn in its OWN default withRetry (3 retries), so the ladder is only
+// bounded by fetchPhaseTimeoutMs; 90s caps it above the 79s design worst case and
+// well below the section's timeoutMs, which means a slow cbr.ru aborts through
+// runSeed's graceful last-good path instead of being SIGTERM'd mid-fetch by the
+// bundle runner (which counts the section as a hard failure).
+const FETCH_RETRIES = 1;
+const FETCH_PHASE_TIMEOUT_MS = 90_000;
+
+// Bound an untrusted body before it is buffered. The live XML_daily document is
+// ~9.5KB and the SOAP history ~3.5KB; 2MB is three orders of magnitude of
+// headroom. Without a cap, an oversized or bombed response is buffered whole
+// (arrayBuffer -> decoded string -> parsed tree) inside a container shared with
+// 16 other bundle sections, so an OOM takes all of them down instead of failing
+// this one seeder.
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+// Minimum currencies for a publishable table. CBR has quoted 54 for years, and a
+// body truncated by ddos-guard, a proxy, or a reset connection still parses — a
+// 10% truncation of the live document yields 4 well-formed rows. A floor of 3
+// would let that overwrite last-good with every monitoring surface green; 30
+// tolerates CBR retiring a handful of currencies but not a severed response.
+export const MIN_RATE_COUNT = 30;
 
 // `parseTagValue: false` is load-bearing: it keeps every element body a raw
 // string so number conversion goes through parseCbrDecimal. Letting the parser
@@ -287,9 +323,27 @@ function summariseKeyRate(observations) {
  * unavailable: the prior-day fetch is best-effort, and a failed fetch rendering
  * as "flat" would be indistinguishable from a genuinely unchanged rate.
  *
- * @param {{daily: {date: string|null, rates: Record<string, object>}, previousDaily: {date: string|null, rates: Record<string, object>}|null, keyRateObservations: Array<{date:string,value:number}>, seededAtMs: number}} input
+ * The quote direction is stated in the payload rather than left to convention.
+ * `base: 'RUB'` would read, under the usual base/quote reading, as "units of X
+ * per 1 RUB" — the exact inverse of these numbers (81.13 RUB buys 1 USD). An
+ * agent or client that guesses wrong inverts every rate by ~6600x on USD, so
+ * `quoteCurrency` + `rateUnit` say it outright.
+ *
+ * `previousDate` is the calendar day that was REQUESTED for the comparison;
+ * `previousEffectiveDate` is the day CBR stamped on the table it returned for it.
+ * They differ after a weekend or holiday — `date_req=03/08/2026` answers with the
+ * table in force since 01.08.2026 — so reporting only the latter makes a genuine
+ * one-day delta look like a three-day move.
+ *
+ * @param {{daily: {date: string|null, rates: Record<string, object>}, previousDaily: {date: string|null, rates: Record<string, object>}|null, previousRequestedDate?: string|null, keyRateObservations: Array<{date:string,value:number}>, seededAtMs: number}} input
  */
-export function buildCbrPayload({ daily, previousDaily, keyRateObservations, seededAtMs = Date.now() }) {
+export function buildCbrPayload({
+  daily,
+  previousDaily,
+  previousRequestedDate = null,
+  keyRateObservations,
+  seededAtMs = Date.now(),
+}) {
   const previousRates = previousDaily?.rates ?? null;
   const rates = {};
 
@@ -302,9 +356,13 @@ export function buildCbrPayload({ daily, previousDaily, keyRateObservations, see
   }
 
   return {
-    base: 'RUB',
+    quoteCurrency: 'RUB',
+    rateUnit: 'RUB per 1 unit of the listed currency',
     date: daily?.date ?? null,
-    previousDate: previousRates ? (previousDaily?.date ?? null) : null,
+    previousDate: previousRates
+      ? (previousRequestedDate ?? previousIsoDate(daily?.date) ?? null)
+      : null,
+    previousEffectiveDate: previousRates ? (previousDaily?.date ?? null) : null,
     rates,
     keyRate: summariseKeyRate(keyRateObservations),
     updatedAt: new Date(seededAtMs).toISOString(),
@@ -316,34 +374,57 @@ export function buildCbrPayload({ daily, previousDaily, keyRateObservations, see
  * Content-age contract: detect an upstream FREEZE (HTTP 200 forever with the
  * same numbers), which seeder liveness cannot see.
  *
- * The newest key-rate OBSERVATION date is the primary clock, and the FX date is
- * offered alongside it. That ordering matters: CBR publishes TOMORROW's official
- * rate, so on 2026-08-04 the FX document is dated 2026-08-05.
- * tokensToContentMeta drops tokens more than an hour in the future, so an
- * FX-date-only contract would collapse to null — an instant, permanent
- * STALE_CONTENT — on every evening run. Key-rate rows are always dated in the
- * past and stop advancing the moment cbr.ru freezes.
+ * This payload has TWO independent upstreams — XML_daily.asp and the KeyRate SOAP
+ * service — and either can freeze while the other keeps publishing. Handing both
+ * sets of dates to one tokensToContentMeta call would reduce them with max(), so
+ * the live series would hide the frozen one and the alarm could only ever fire
+ * when BOTH died at once. The clocks are therefore derived separately and the
+ * contract reports the OLDER of them: both halves must be current for the payload
+ * to read as fresh.
  *
- * The `path` dates only widen the reported span (oldestItemAt); they must never
- * be the newest token, because a rate on hold for six months has a six-month-old
- * newest STEP while the series itself is publishing daily.
+ * FX clock: the effective date, clamped to `nowMs`. CBR publishes TOMORROW's
+ * official rate, so on 2026-08-04 the document is dated 2026-08-05. An unclamped
+ * token is future-dated for part of every day, and tokensToContentMeta drops
+ * tokens more than an hour ahead — an FX-date-only contract would collapse to
+ * null (instant, permanent STALE_CONTENT) on every evening run. Clamping keeps a
+ * live table reading as fresh while a frozen one still ages honestly.
+ *
+ * Key-rate clock: the newest OBSERVATION date, never the newest `path` step — the
+ * path is run-length encoded, so a rate on hold for six months has a six-month-old
+ * newest step while the series is still publishing daily. The step dates only
+ * widen the reported span (oldestItemAt).
  *
  * @param {object} data canonical payload
  * @param {number} [nowMs] injectable clock for deterministic tests
  */
 export function cbrContentMeta(data, nowMs = Date.now()) {
-  const tokens = (data?.keyRate?.path ?? []).map((step) => step?.date);
-  tokens.push(data?.keyRate?.date, data?.date);
-  return tokensToContentMeta(tokens, nowMs);
+  const fxMs = periodTokenToMs(data?.date);
+  const fxClock = Number.isFinite(fxMs) && fxMs > 0 ? Math.min(fxMs, nowMs) : null;
+
+  const keyRateMeta = tokensToContentMeta([
+    data?.keyRate?.date,
+    ...(data?.keyRate?.path ?? []).map((step) => step?.date),
+  ], nowMs);
+
+  // Fail closed: a missing clock on either side is "we cannot date this half",
+  // which runSeed reads as STALE_CONTENT. That is the correct verdict — it is
+  // exactly the state a half-dead payload produces.
+  if (fxClock == null || keyRateMeta == null) return null;
+
+  return {
+    newestItemAt: Math.min(fxClock, keyRateMeta.newestItemAt),
+    oldestItemAt: Math.min(fxClock, keyRateMeta.oldestItemAt),
+  };
 }
 
 /**
  * Fail closed on a half-empty document.
  *
- * The key rate is half of what this seeder publishes, so a keyRate-less payload
- * must not overwrite last-good: runSeed preserves the existing key's TTL when
- * validation rejects, whereas publishing would leave /api/health green over a
- * silently truncated document.
+ * The key rate is half of what this seeder publishes, and MIN_RATE_COUNT is the
+ * floor for the other half — a truncated response still parses cleanly into a
+ * handful of well-formed rows. Neither may overwrite last-good: runSeed preserves
+ * the existing key's TTL when validation rejects, whereas publishing would leave
+ * /api/health green over a silently truncated document.
  */
 export function validateCbrPayload(data) {
   if (!data || typeof data !== 'object') return false;
@@ -351,7 +432,7 @@ export function validateCbrPayload(data) {
   if (!Number.isFinite(data.keyRate?.rate)) return false;
 
   const codes = Object.keys(data.rates ?? {});
-  if (codes.length < 3) return false;
+  if (codes.length < MIN_RATE_COUNT) return false;
   return codes.every((code) => {
     const entry = data.rates[code];
     return Number.isFinite(entry?.rate) && entry.rate > 0;
@@ -376,16 +457,46 @@ async function fetchCbrBytes(url, init = {}) {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!resp.ok) throw new Error(`CBR HTTP ${resp.status} for ${url}`);
-  return resp.arrayBuffer();
+
+  const declared = Number(resp.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+    throw new Error(`CBR response too large: ${declared} bytes > ${MAX_RESPONSE_BYTES} for ${url}`);
+  }
+  const bytes = await resp.arrayBuffer();
+  // Re-check after the read: content-length is absent under chunked encoding, so
+  // the declared check above is an early-out, not the guarantee.
+  if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+    throw new Error(`CBR response too large: ${bytes.byteLength} bytes > ${MAX_RESPONSE_BYTES} for ${url}`);
+  }
+  return bytes;
 }
 
-/** CBR's `date_req` wants DD/MM/YYYY. */
-function isoToCbrDateReq(iso) {
-  const [yyyy, mm, dd] = iso.split('-');
+/**
+ * CBR's `date_req` wants DD/MM/YYYY — the exact inverse of cbrDateToIso.
+ *
+ * Exported for the same reason cbrDateToIso is tested: a day/month swap here is
+ * invisible for the first twelve days of every month, and it would silently
+ * request the wrong reference day and publish a plausible-but-wrong change1d.
+ *
+ * @param {unknown} iso
+ * @returns {string|null}
+ */
+export function isoToCbrDateReq(iso) {
+  if (typeof iso !== 'string') return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  const [, yyyy, mm, dd] = m;
   return `${dd}/${mm}/${yyyy}`;
 }
 
-function previousIsoDate(iso) {
+/**
+ * The calendar day before an ISO date, in UTC.
+ *
+ * @param {unknown} iso
+ * @returns {string|null}
+ */
+export function previousIsoDate(iso) {
+  if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
   const ms = Date.parse(`${iso}T00:00:00Z`);
   if (!Number.isFinite(ms)) return null;
   return new Date(ms - 86_400_000).toISOString().slice(0, 10);
@@ -421,7 +532,7 @@ async function fetchKeyRateObservations(nowMs) {
 async function fetchCbrRates() {
   const seededAtMs = Date.now();
 
-  const daily = await withRetry(() => fetchDailyRates(null), 2, 2000);
+  const daily = await withRetry(() => fetchDailyRates(null), FETCH_RETRIES, 2000);
   if (!daily.date || Object.keys(daily.rates).length === 0) {
     throw new Error('CBR XML_daily returned no usable rate rows');
   }
@@ -440,7 +551,9 @@ async function fetchCbrRates() {
     }
   }
 
-  const keyRateObservations = await withRetry(() => fetchKeyRateObservations(seededAtMs), 2, 2000);
+  const keyRateObservations = await withRetry(
+    () => fetchKeyRateObservations(seededAtMs), FETCH_RETRIES, 2000,
+  );
   if (keyRateObservations.length === 0) {
     // Fail closed: publishing the FX table without the key rate would overwrite
     // last-good with a half-empty document while health stayed green.
@@ -449,7 +562,30 @@ async function fetchCbrRates() {
   const latestKeyRate = keyRateObservations.at(-1);
   console.log(`  CBR key rate: ${latestKeyRate.value}% as of ${latestKeyRate.date} (${keyRateObservations.length} observations)`);
 
-  return buildCbrPayload({ daily, previousDaily, keyRateObservations, seededAtMs });
+  return buildCbrPayload({
+    daily,
+    previousDaily,
+    previousRequestedDate: previousIso,
+    keyRateObservations,
+    seededAtMs,
+  });
+}
+
+/**
+ * Durable activation marker, written only after a successful publish.
+ *
+ * Best-effort by design: failing to write the marker must not fail a run that
+ * already published good data. The cost of a miss is one more cycle of on-demand
+ * softening, not a wrong verdict.
+ */
+async function markActivated() {
+  try {
+    const creds = getOptionalUpstashCreds();
+    if (!creds) return;
+    await upstashCommand(creds, ['SET', CBR_ACTIVATION_KEY, '1']);
+  } catch (err) {
+    console.warn(`  WARN: activation marker write failed: ${err?.message || err}`);
+  }
 }
 
 if (process.argv[1]?.endsWith('seed-cbr-rates.mjs')) {
@@ -457,12 +593,13 @@ if (process.argv[1]?.endsWith('seed-cbr-rates.mjs')) {
     validateFn: validateCbrPayload,
     ttlSeconds: TTL,
     sourceVersion: 'cbr-xml-daily+keyrate-soap',
-    recordCount: declareRecords,
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 4320,
     contentMeta: cbrContentMeta,
     maxContentAgeMin: CBR_MAX_CONTENT_AGE_MIN,
+    fetchPhaseTimeoutMs: FETCH_PHASE_TIMEOUT_MS,
+    afterPublish: markActivated,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

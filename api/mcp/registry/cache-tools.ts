@@ -995,7 +995,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_economic_data',
     _outputBudgetBytes: 131072,
-    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official RUB rates and key policy rate, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
+    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
     inputSchema: {
       type: 'object',
       properties: {

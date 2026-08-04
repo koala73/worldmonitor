@@ -650,7 +650,12 @@ const SEED_META = {
   spr:               { key: 'seed-meta:economic:spr',                 maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   refineryInputs:    { key: 'seed-meta:economic:refinery-inputs',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   ecbFxRates:        { key: 'seed-meta:economic:ecb-fx-rates',        maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap
-  cbrRates:          { key: 'seed-meta:economic:cbr-rates',           maxStaleMin: 4320 }, // daily seed (seed-bundle-macro); 4320min = 72h = 3x interval, and below the 4d canonical TTL so the key outlives its own gate
+  // daily seed (seed-bundle-macro); 4320min = 72h = 3x interval, and below the 4d
+  // canonical TTL so the key outlives its own gate. minRecordCount mirrors
+  // MIN_RATE_COUNT in scripts/seed-cbr-rates.mjs (30 currencies + the key rate):
+  // a truncated cbr.ru body still parses into a handful of well-formed rows, so
+  // a shrunken table must surface as COVERAGE_PARTIAL rather than OK.
+  cbrRates:          { key: 'seed-meta:economic:cbr-rates',           maxStaleMin: 4320, minRecordCount: 31 },
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   eurostatHousePrices: { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data; 50d threshold = 35d TTL + 15d buffer
   eurostatGovDebtQ:    { key: 'seed-meta:economic:eurostat-gov-debt-q',   maxStaleMin: 60 * 24 * 14 }, // 2d cron, quarterly data; 14d threshold matches TTL + quarterly release drift
@@ -788,6 +793,12 @@ const ON_DEMAND_KEYS = new Set([
   // activation marker after its first successful publish; after that, a
   // missing/stale summary is strict forever.
   'chinaCoverage',
+  // Same deployment-order bridge as chinaCoverage: Vercel can ship this reader
+  // before seed-bundle-macro's next 08:00 UTC tick publishes the first CBR
+  // table, and the every-15-minute freshness monitor would otherwise report an
+  // unactionable EMPTY/CRIT for up to a day. seed-cbr-rates.mjs SETs the durable
+  // marker after its first successful publish; from then on it is strict forever.
+  'cbrRates',
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
@@ -851,6 +862,9 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
+  // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
+  // afterPublish hook, so it exists only once a real table has been published.
+  cbrRates: 'seed-activated:economic:cbr-rates',
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
   // Written by scripts/_seed-history.mjs on every ingest-health report,

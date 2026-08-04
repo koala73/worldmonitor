@@ -25,9 +25,12 @@ import {
   cbrContentMeta,
   cbrDateToIso,
   decodeCbrXml,
+  isoToCbrDateReq,
+  MIN_RATE_COUNT,
   parseCbrDecimal,
   parseDailyRates,
   parseKeyRateSoap,
+  previousIsoDate,
   validateCbrPayload,
 } from '../scripts/seed-cbr-rates.mjs';
 import { DAY_MIN } from '../scripts/_content-age-helpers.mjs';
@@ -78,6 +81,19 @@ function dailyFixtureBytes({ date = '05.08.2026', usdValue = '81,1291' } = {}) {
     '</Name><Value>67,9347</Value><VunitRate>0,00679347</VunitRate></Valute>',
     '</ValCurs>',
   );
+}
+
+/**
+ * A rate table with `count` distinct currencies, for the validation floor.
+ * Codes are synthetic (AAA, AAB, ...) — only the cardinality matters here.
+ */
+function syntheticRates(count) {
+  const rates = {};
+  for (let i = 0; i < count; i++) {
+    const code = `A${String.fromCharCode(65 + Math.floor(i / 26))}${String.fromCharCode(65 + (i % 26))}`;
+    rates[code] = { rate: 1 + i / 100, value: 1 + i / 100, nominal: 1, name: '', numCode: '', id: '', change1d: null };
+  }
+  return rates;
 }
 
 /** A KeyRate SOAP response (this endpoint is UTF-8 and uses DOT decimals). */
@@ -283,8 +299,41 @@ test('buildCbrPayload computes change1d against the previous business day', () =
     seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
   });
   assert.equal(payload.previousDate, '2026-08-04');
+  assert.equal(payload.previousEffectiveDate, '2026-08-04');
   assert.equal(payload.rates.USD.change1d, 1);
   assert.equal(payload.rates.JPY.change1d, 0, 'unchanged pairs report a real zero');
+});
+
+test('buildCbrPayload separates the requested comparison day from CBR effective date', () => {
+  // cbr.ru answers date_req with the table IN FORCE on that day, stamped with the
+  // day it took effect: asking for 2026-08-03 (a Monday after a weekend) returns
+  // Date="01.08.2026". Reporting only the effective date makes a true one-day
+  // delta read as a three-day move.
+  const payload = buildCbrPayload({
+    daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes({ date: '04.08.2026' }))),
+    previousDaily: parseDailyRates(decodeCbrXml(dailyFixtureBytes({ date: '01.08.2026', usdValue: '80,1291' }))),
+    previousRequestedDate: '2026-08-03',
+    keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
+    seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
+  });
+  assert.equal(payload.previousDate, '2026-08-03', 'the day we asked for');
+  assert.equal(payload.previousEffectiveDate, '2026-08-01', 'the day CBR stamped on the answer');
+});
+
+test('buildCbrPayload states the quote direction instead of leaving it to convention', () => {
+  // `base: 'RUB'` would read, under the usual base/quote convention, as "units of
+  // X per 1 RUB" — the inverse of these numbers. A consumer that guesses wrong
+  // inverts USD by a factor of ~6600.
+  const payload = buildCbrPayload({
+    daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes())),
+    previousDaily: null,
+    keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
+    seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
+  });
+  assert.equal(payload.quoteCurrency, 'RUB');
+  assert.match(payload.rateUnit, /RUB per 1 unit/);
+  assert.equal(payload.base, undefined, 'the ambiguous field must not come back');
+  assert.equal(payload.rates.USD.rate, 81.1291, 'RUB per 1 USD, matching rateUnit');
 });
 
 test('buildCbrPayload reports change1d as null when the prior day is unavailable', () => {
@@ -295,6 +344,7 @@ test('buildCbrPayload reports change1d as null when the prior day is unavailable
     seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
   });
   assert.equal(payload.previousDate, null);
+  assert.equal(payload.previousEffectiveDate, null);
   // null, never 0 — a best-effort fetch that failed must not render as "flat".
   assert.equal(payload.rates.USD.change1d, null);
 });
@@ -318,15 +368,19 @@ test('cbrContentMeta ignores the next-day FX date and clocks off the key rate', 
   assert.equal(meta.oldestItemAt, Date.parse('2026-07-23T00:00:00Z'));
 });
 
-test('cbrContentMeta uses the FX date once it is no longer in the future', () => {
+test('cbrContentMeta reports the OLDER of the two clocks when both are current', () => {
+  // Both halves must be current for the payload to read as fresh, so the FX date
+  // — dated a day ahead — never pulls the verdict forward past the key rate.
   const payload = buildCbrPayload({
     daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes())),
     previousDaily: null,
     keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
     seededAtMs: Date.parse('2026-08-05T09:00:00Z'),
   });
-  const meta = cbrContentMeta(payload, Date.parse('2026-08-05T09:00:00Z'));
-  assert.equal(meta.newestItemAt, Date.parse('2026-08-05T00:00:00Z'));
+  const now = Date.parse('2026-08-05T09:00:00Z');
+  const meta = cbrContentMeta(payload, now);
+  assert.equal(meta.newestItemAt, Date.parse('2026-08-04T00:00:00Z'), 'the key-rate clock is the older one');
+  assert.ok((now - meta.newestItemAt) / 60000 < 14 * DAY_MIN, 'a live feed still reads as fresh');
 });
 
 test('cbrContentMeta stays fresh while the key rate is merely on hold', () => {
@@ -343,7 +397,7 @@ test('cbrContentMeta stays fresh while the key rate is merely on hold', () => {
   assert.ok((now - meta.newestItemAt) / 60000 < 14 * DAY_MIN);
 });
 
-test('cbrContentMeta goes stale when the upstream freezes', () => {
+test('cbrContentMeta goes stale when both upstreams freeze', () => {
   const frozen = {
     date: '2026-06-01',
     keyRate: { date: '2026-05-29', path: [{ date: '2026-05-29', rate: 14 }] },
@@ -354,17 +408,68 @@ test('cbrContentMeta goes stale when the upstream freezes', () => {
   assert.ok(ageMin > 14 * DAY_MIN, `a 64-day-old feed must exceed the 14-day budget (got ${ageMin}min)`);
 });
 
+test('cbrContentMeta reports a FROZEN FX table even while the key rate publishes daily', () => {
+  // The two halves come from independent cbr.ru services and either can freeze
+  // alone. Reducing both sets of dates with one max() would let the live series
+  // hide the dead one, so the alarm could only fire when BOTH died at once.
+  const now = Date.parse('2026-08-04T20:00:00Z');
+  const meta = cbrContentMeta({
+    date: '2026-06-01',
+    keyRate: { date: '2026-08-04', path: [{ date: '2026-07-27', rate: 14 }] },
+  }, now);
+  assert.equal(meta.newestItemAt, Date.parse('2026-06-01T00:00:00Z'));
+  assert.ok((now - meta.newestItemAt) / 60000 > 14 * DAY_MIN, 'a frozen FX table must trip the budget');
+});
+
+test('cbrContentMeta reports a FROZEN key rate even while the FX table advances daily', () => {
+  const now = Date.parse('2026-08-04T20:00:00Z');
+  const meta = cbrContentMeta({
+    date: '2026-08-05',
+    keyRate: { date: '2026-06-01', path: [{ date: '2026-05-01', rate: 14 }] },
+  }, now);
+  assert.equal(meta.newestItemAt, Date.parse('2026-06-01T00:00:00Z'));
+  assert.ok((now - meta.newestItemAt) / 60000 > 14 * DAY_MIN, 'a frozen key rate must trip the budget');
+});
+
+test('cbrContentMeta fails closed when either clock is missing entirely', () => {
+  const now = Date.parse('2026-08-04T20:00:00Z');
+  assert.equal(cbrContentMeta({ date: null, keyRate: { date: '2026-08-04', path: [] } }, now), null);
+  assert.equal(cbrContentMeta({ date: '2026-08-05', keyRate: null }, now), null);
+  assert.equal(cbrContentMeta({ date: '2026-08-05', keyRate: { date: null, path: [] } }, now), null);
+  assert.equal(cbrContentMeta(null, now), null);
+});
+
+test('cbrContentMeta never reports a future newestItemAt', () => {
+  // /api/health treats a negative content age as stale, and tokensToContentMeta
+  // accepts tokens up to an hour ahead — so an unclamped next-day FX date would
+  // fire a false STALE_CONTENT in the last hour of every UTC day.
+  const now = Date.parse('2026-08-04T23:30:00Z');
+  const meta = cbrContentMeta({
+    date: '2026-08-05',
+    keyRate: { date: '2026-08-04', path: [{ date: '2026-07-27', rate: 14 }] },
+  }, now);
+  assert.ok(meta.newestItemAt <= now, `newestItemAt ${meta.newestItemAt} must not exceed now ${now}`);
+});
+
 // ─── 7. fail-closed validation ─────────────────────────────────────────────────
 
-test('validateCbrPayload rejects a payload whose key rate went missing', () => {
-  const good = buildCbrPayload({
-    daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes())),
+/** A payload that passes validation: full-size rate table + a live key rate. */
+function publishablePayload(overrides = {}) {
+  const payload = buildCbrPayload({
+    daily: { date: '2026-08-05', rates: syntheticRates(MIN_RATE_COUNT) },
     previousDaily: null,
     keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
     seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
   });
-  assert.equal(validateCbrPayload(good), true);
+  return { ...payload, ...overrides };
+}
 
+test('validateCbrPayload accepts a full-size table with a live key rate', () => {
+  assert.equal(validateCbrPayload(publishablePayload()), true);
+});
+
+test('validateCbrPayload rejects a payload whose key rate went missing', () => {
+  const good = publishablePayload();
   // The key rate is half of what this seeder exists to publish. Letting a
   // keyRate-less payload through would overwrite last-good with a silently
   // half-empty document while /api/health stayed green.
@@ -372,24 +477,93 @@ test('validateCbrPayload rejects a payload whose key rate went missing', () => {
   assert.equal(validateCbrPayload({ ...good, keyRate: { ...good.keyRate, rate: null } }), false);
 });
 
-test('validateCbrPayload rejects an empty or shrunken rate table', () => {
-  const good = buildCbrPayload({
-    daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes())),
-    previousDaily: null,
-    keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
-    seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
-  });
-  assert.equal(validateCbrPayload({ ...good, rates: {} }), false);
-  assert.equal(validateCbrPayload({ ...good, rates: { USD: good.rates.USD } }), false);
+test('validateCbrPayload rejects a truncated table that still parses cleanly', () => {
+  // The failure this floor exists for: a cbr.ru body cut short by ddos-guard, a
+  // proxy, or a reset connection is still well-formed XML for the rows that did
+  // arrive. A floor of 3 would publish 4 currencies over a healthy 54 with every
+  // monitoring surface green, because nothing downstream counts rows.
+  assert.equal(validateCbrPayload(publishablePayload()), true);
+  assert.equal(
+    validateCbrPayload({ ...publishablePayload(), rates: syntheticRates(MIN_RATE_COUNT - 1) }),
+    false,
+    'one currency below the floor must not publish',
+  );
+  assert.equal(validateCbrPayload({ ...publishablePayload(), rates: syntheticRates(4) }), false);
+  assert.equal(validateCbrPayload({ ...publishablePayload(), rates: {} }), false);
   assert.equal(validateCbrPayload(null), false);
+  // The floor must stay well under CBR's real cohort (54 as of 2026-08) so a
+  // retired currency or two cannot wedge the seeder into never publishing.
+  assert.ok(MIN_RATE_COUNT >= 10 && MIN_RATE_COUNT <= 50, `implausible floor: ${MIN_RATE_COUNT}`);
+});
+
+test('validateCbrPayload rejects a table whose COUNT is fine but whose rates are not', () => {
+  // Mutation guard: without this, deleting the per-currency `rate > 0` predicate
+  // and returning true would not turn a single test red — every other case is
+  // decided by the count guard alone.
+  const rates = syntheticRates(MIN_RATE_COUNT);
+  const [firstCode] = Object.keys(rates);
+  for (const bad of [0, -1, Number.NaN, null, undefined]) {
+    const broken = { ...rates, [firstCode]: { ...rates[firstCode], rate: bad } };
+    assert.equal(
+      validateCbrPayload({ ...publishablePayload(), rates: broken }),
+      false,
+      `rate ${JSON.stringify(bad)} must fail validation`,
+    );
+  }
 });
 
 test('validateCbrPayload rejects a payload with no usable CBR date', () => {
-  const good = buildCbrPayload({
-    daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes())),
-    previousDaily: null,
-    keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
-    seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
-  });
-  assert.equal(validateCbrPayload({ ...good, date: null }), false);
+  assert.equal(validateCbrPayload({ ...publishablePayload(), date: null }), false);
+  assert.equal(validateCbrPayload({ ...publishablePayload(), date: '' }), false);
+});
+
+// ─── 8. hostile and malformed input ────────────────────────────────────────────
+
+test('parseDailyRates fails closed on unparseable XML', () => {
+  for (const junk of ['not xml at all <<<', '', '<ValCurs', '{"json":true}']) {
+    assert.deepEqual(parseDailyRates(junk), { date: null, rates: {} }, `junk: ${junk}`);
+  }
+});
+
+test('parseDailyRates fails closed on a document declaring an external entity', () => {
+  // fast-xml-parser 5.x refuses external entities outright, and the parser's
+  // try/catch turns that into an empty table, which fetchCbrRates then rejects.
+  // This locks the behaviour so a version float or a parser-option change that
+  // reintroduced entity resolution cannot pass silently.
+  const xxe = '<?xml version="1.0" encoding="windows-1251"?>'
+    + '<!DOCTYPE ValCurs [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>'
+    + '<ValCurs Date="05.08.2026"><Valute ID="R01235"><NumCode>840</NumCode>'
+    + '<CharCode>USD</CharCode><Nominal>1</Nominal><Name>&xxe;</Name>'
+    + '<Value>81,1291</Value></Valute></ValCurs>';
+  const parsed = parseDailyRates(xxe);
+  assert.deepEqual(parsed.rates, {}, 'an external-entity document must publish nothing');
+  assert.ok(!JSON.stringify(parsed).includes('root:'), 'no file content may leak into the payload');
+});
+
+// ─── 9. request-side date helpers ──────────────────────────────────────────────
+
+test('isoToCbrDateReq emits DD/MM/YYYY, the inverse of cbrDateToIso', () => {
+  assert.equal(isoToCbrDateReq('2026-08-05'), '05/08/2026');
+  assert.equal(isoToCbrDateReq('2025-12-31'), '31/12/2025');
+  // The same day/month swap cbrDateToIso guards against, in the outbound
+  // direction: it is invisible for the first twelve days of every month and
+  // would silently fetch the wrong reference day, yielding a plausible-but-wrong
+  // change1d rather than an error.
+  assert.notEqual(isoToCbrDateReq('2026-08-05'), '08/05/2026');
+  // Round-trips through cbrDateToIso once the separator is swapped: `date_req`
+  // takes slashes on the way out, the ValCurs Date attribute comes back dotted.
+  assert.equal(cbrDateToIso(isoToCbrDateReq('2026-08-05').replaceAll('/', '.')), '2026-08-05');
+  for (const bad of ['05.08.2026', '2026-8-5', '', null, undefined, 20260805]) {
+    assert.equal(isoToCbrDateReq(bad), null, `expected null for ${JSON.stringify(bad)}`);
+  }
+});
+
+test('previousIsoDate steps back one calendar day across month and year ends', () => {
+  assert.equal(previousIsoDate('2026-08-05'), '2026-08-04');
+  assert.equal(previousIsoDate('2026-08-01'), '2026-07-31');
+  assert.equal(previousIsoDate('2026-01-01'), '2025-12-31');
+  assert.equal(previousIsoDate('2024-03-01'), '2024-02-29', 'leap year');
+  for (const bad of ['05.08.2026', 'yesterday', '', null, undefined]) {
+    assert.equal(previousIsoDate(bad), null, `expected null for ${JSON.stringify(bad)}`);
+  }
 });

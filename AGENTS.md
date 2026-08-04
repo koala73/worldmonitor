@@ -235,7 +235,7 @@ Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in
 - Edge Functions cannot use `node:http`, `node:https`, `node:zlib`
 - Always include `User-Agent` header in server-side fetch calls
 - Yahoo Finance requests must be staggered (150ms delays)
-- New data sources MUST have bootstrap hydration wired in `api/bootstrap.js`
+- New data sources MUST have bootstrap hydration wired in `api/bootstrap.js` — unless nothing in `src/` renders them (MCP/API-only datasets such as `fxYoy`, `sharedFxRates`, `cbrRates`). Those register in `api/health.js` `STANDALONE_KEYS` instead and stay out of the tiered payload every client downloads; `tests/bootstrap.test.mjs` enforces the converse, that no tier key lacks a `getHydratedData`/`ensureHydrated` consumer
 - Redis seed scripts MUST write `seed-meta:<key>` for health monitoring
 - Seed credentials load only via `loadEnvFile()` (inert under test runtimes, resolves `.env.local` at the checkout root, `only:` narrows the keys) — never hand-roll a `.env` reader or resolve one from `$HOME` or an absolute literal. Note `worktree:bootstrap` symlinks the source checkout's `.env.local`, so a bootstrapped worktree shares real credentials when a seeder is actually run
 
