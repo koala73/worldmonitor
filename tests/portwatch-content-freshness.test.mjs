@@ -529,6 +529,22 @@ describe('content-freshness constant parity', () => {
     );
   });
 
+  it('matches the China activity nowcast PortWatch budget', () => {
+    const registry = read('shared/china-activity-nowcast-registry.ts');
+    const match = registry.match(
+      /id:\s*'portwatch_tanker_calls_trend'[\s\S]*?freshnessBudgetMinutes:\s*([\d\s*]+)/,
+    );
+    assert.ok(match, 'nowcast registry must declare the PortWatch proxy budget');
+    const registryBudgetMinutes = match[1].replace(/\s/g, '').split('*')
+      .reduce((product, term) => product * Number(term), 1);
+
+    assert.equal(
+      registryBudgetMinutes,
+      PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+      'nowcast PortWatch must use the same content budget as health and the corridor adapter',
+    );
+  });
+
   it('declares exactly the countries the corridor control towers read', () => {
     const towers = read('server/worldmonitor/supply-chain/v1/get-china-corridor-control-towers.ts');
     const prefix = 'supply_chain:portwatch-ports:v1:';

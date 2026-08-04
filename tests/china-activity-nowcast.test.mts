@@ -97,6 +97,37 @@ describe('China activity nowcast method contract (#5579)', () => {
     }
   });
 
+  it('keeps the PortWatch freshness boundary at two producer rotations', () => {
+    const portwatch = CHINA_ACTIVITY_PROXY_REGISTRY.find(
+      (definition) => definition.id === 'portwatch_tanker_calls_trend',
+    )!;
+    const budgetMs = portwatch.freshnessBudgetMinutes * 60_000;
+    const evaluatedAtMs = Date.parse(EVALUATED_AT);
+    const observationAtAge = (ageMs: number) =>
+      new Date(evaluatedAtMs - ageMs).toISOString();
+    const observation = (ageMs: number) => {
+      const observedAt = observationAtAge(ageMs);
+      return proxy(portwatch.id, 1, {
+        observedAt,
+        releasedAt: new Date(Date.parse(observedAt) + 1_000).toISOString(),
+        retrievedAt: new Date(evaluatedAtMs - 1_000).toISOString(),
+      });
+    };
+    const evaluatePortwatch = (ageMs: number) => evaluateChinaActivityNowcast({
+      evaluatedAt: EVALUATED_AT,
+      officialObservations: [],
+      proxyObservations: [observation(ageMs)],
+    }).contributions.find((item) => item.seriesId === portwatch.id)!;
+
+    assert.equal(portwatch.freshnessBudgetMinutes, 2 * 72 * 60);
+    assert.equal(evaluatePortwatch(budgetMs - 1).included, true);
+    assert.equal(evaluatePortwatch(budgetMs + 1).included, false);
+    assert.equal(
+      evaluatePortwatch(budgetMs + 1).exclusionReason,
+      'freshness_budget_exceeded',
+    );
+  });
+
   it('classifies agreement without emitting an unexplained aggregate score', () => {
     const result = evaluateChinaActivityNowcast({
       evaluatedAt: EVALUATED_AT,
