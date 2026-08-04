@@ -39,7 +39,6 @@ describe('Railway deploy trigger workflow', () => {
     for (const name of [
       'Install pinned Railway CLI',
       'Verify Railway production context',
-      'Trigger deploys for services this merge changed',
     ]) {
       assert.equal(
         stepNamed(name).if,
@@ -95,12 +94,46 @@ describe('Railway deploy trigger workflow', () => {
     assert.match(deploy.run, /--head/);
   });
 
-  it('only ever dry-runs when a human asked it to', () => {
-    // A --dry-run that could leak into the scheduled path would leave the
-    // workflow reporting a plan it never executed.
+  it('keeps previewing and deploying in separate steps', () => {
+    // One step carrying a conditional --dry-run flag would need its run
+    // condition and its flag expression to agree forever, and the day they
+    // diverge the arm that still runs is the one that deploys. Separate steps
+    // make each condition decide both whether it runs and what it does.
     const deploy = stepNamed('Trigger deploys for services this merge changed');
-    if (!deploy.run.includes('--dry-run')) return;
-    assert.match(deploy.run, /github\.event_name == 'workflow_dispatch'/);
+    assert.ok(
+      !deploy.run.includes('--dry-run'),
+      'the deploying step must never carry a conditional --dry-run flag',
+    );
+    const preview = stepNamed('Preview what would be deployed');
+    assert.ok(preview.run.includes('--dry-run'), 'the preview step must pass --dry-run');
+  });
+
+  it('only ever previews on an explicit human dry-run request', () => {
+    // A preview reachable from the schedule would leave the workflow reporting
+    // a plan it never executed.
+    const preview = stepNamed('Preview what would be deployed');
+    assert.match(String(preview.if), /github\.event_name == 'workflow_dispatch'/);
+    assert.match(String(preview.if), /inputs\.dryRun/);
+  });
+
+  it('never deploys on a run the operator asked to be a preview', () => {
+    const deploy = stepNamed('Trigger deploys for services this merge changed');
+    assert.match(
+      String(deploy.if),
+      /!\(github\.event_name == 'workflow_dispatch' && inputs\.dryRun\)/,
+      'a dry-run dispatch must not also take the deploying arm',
+    );
+  });
+
+  it('lets an operator preview while main is red', () => {
+    // The moment you most need to read the plan is when the gate is not green
+    // and the fleet is falling behind — which is exactly when the deploy step
+    // is correctly refusing to run. Previewing mutates nothing.
+    const preview = stepNamed('Preview what would be deployed');
+    assert.ok(
+      !String(preview.if).includes('steps.head.outputs.gate'),
+      'previewing must not require a green gate',
+    );
   });
 
   // Expand the minute field of the cron shapes these two workflows use into the

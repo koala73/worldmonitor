@@ -50,7 +50,12 @@ permissions:
 jobs:
   trigger:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Under the 15-minute interval on purpose. The offset cron below assumes
+    # this job and the freshness monitor do not overlap their fleet-wide Railway
+    # fan-outs; a 25-minute ceiling would let one run stretch across the next
+    # two ticks and land on top of the monitor anyway. The reconciler is
+    # idempotent, so being cut off costs a tick, not correctness.
+    timeout-minutes: 13
     environment:
       name: ingestion-acceptance-production
       deployment: false
@@ -89,9 +94,22 @@ jobs:
           )
           echo "gate=$gate_state" >> "$GITHUB_OUTPUT"
           echo "main is at ${head_sha:0:9}, gate=$gate_state"
-          if [ "$gate_state" = "pending" ] || [ "$gate_state" = "missing" ]; then
-            echo "::notice::Gate for ${head_sha:0:9} is $gate_state; deferring to the next run rather than deploying an unverified commit."
-          elif [ "$gate_state" != "success" ]; then
+          if [ "$gate_state" = "success" ]; then
+            :
+          elif [ "$gate_state" = "pending" ] || [ "$gate_state" = "missing" ]; then
+            # Deferring is right for a young commit — the gate genuinely has not
+            # resolved yet. But an UNBOUNDED defer is how this workflow stops
+            # reconciling forever while still reporting success every 15 minutes,
+            # which is the silent-green failure the whole change exists to
+            # remove. `missing` in particular is not a timing state once the
+            # commit is old: it means no `gate` status was ever posted.
+            age=$(( $(date -u +%s) - $(git log -1 --format=%ct "$head_sha") ))
+            if [ "$age" -gt 10800 ]; then
+              echo "::error::Gate for ${head_sha:0:9} has been $gate_state for $((age / 3600))h. The reconciler has not run in that time and the fleet is not being caught up."
+              exit 1
+            fi
+            echo "::notice::Gate for ${head_sha:0:9} is $gate_state ($((age / 60))m old); deferring to the next run rather than deploying an unverified commit."
+          else
             echo "::error::Refusing to deploy ${head_sha:0:9}: its required gates are $gate_state."
             exit 1
           fi
@@ -117,15 +135,29 @@ jobs:
           railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
           echo "Project-scoped Railway token is valid for the expected production context."
 
+      # Split from the deploy step rather than sharing one step with a
+      # conditional --dry-run flag. One step would need its run condition and
+      # its flag expression to agree forever, and the day they diverge the arm
+      # that still runs is the one that deploys. Here each step's own condition
+      # decides both whether it runs AND what it does, so there is nothing to
+      # drift apart.
+      #
+      # Deliberately NOT gated on the gate: previewing mutates nothing, and the
+      # moment an operator most needs to read the plan is when main is red and
+      # the fleet is falling behind — which is exactly when the gate is not
+      # green and the deploy step below is correctly refusing to run.
+      - name: Preview what would be deployed
+        if: github.event_name == 'workflow_dispatch' && inputs.dryRun
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+        run: node scripts/trigger-railway-deploys.mjs --dry-run --head "${{ steps.head.outputs.sha }}"
+
       # A failure here is a real one and must red the run: an unauthorized
       # mutation, an unreadable deployment history, or a deploy call that
       # returned no deployment id all mean services stayed behind while this
       # workflow reported that it had handled them.
       - name: Trigger deploys for services this merge changed
-        if: steps.head.outputs.gate == 'success'
+        if: steps.head.outputs.gate == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dryRun)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
-        run: |
-          node scripts/trigger-railway-deploys.mjs \
-            --head "${{ steps.head.outputs.sha }}" \
-            ${{ (github.event_name == 'workflow_dispatch' && inputs.dryRun) && '--dry-run' || '' }}
+        run: node scripts/trigger-railway-deploys.mjs --head "${{ steps.head.outputs.sha }}"

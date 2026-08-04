@@ -250,8 +250,17 @@ node scripts/trigger-railway-deploys.mjs --only <service-name>
 ```
 
 It is a no-op for a service that is already current, and omitting `--only`
-reconciles the whole fleet, so it is safe to run at any time. `--only` throws on
-a name the fleet does not have rather than silently selecting nothing.
+reconciles the whole fleet, so it is safe to run at any time. Three guards make
+it safe to run from any checkout:
+
+- The deployed commit defaults to **`origin/main`**, never your local `HEAD`, so
+  standing on a feature branch cannot ship it to production.
+- A `--head` that is not reachable from `origin/main` is refused outright.
+- `--only` throws on a name the fleet does not have rather than silently
+  selecting nothing — a typo that reported "no service needs a build" would read
+  exactly like a healthy fleet.
+
+Run `git fetch origin` first so `origin/main` is current.
 
 Do **not** use `railway redeploy`: Railway documents it as rebuilding the most
 recent deployment with the same code, so it cannot pick up a newer fixed commit.

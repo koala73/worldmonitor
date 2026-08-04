@@ -134,6 +134,45 @@ describe('deploy planning', () => {
     }
   });
 
+  it('keeps the reason the deployment history could not be read', () => {
+    // The run reds either way; without the reason the operator cannot tell a
+    // rate limit from an auth failure from a renamed service.
+    const result = plan({ deployments: null, readError: 'railway deployment list failed (1): 429 Too Many Requests' });
+    assert.equal(result.action, 'error');
+    assert.match(result.detail, /429/);
+  });
+
+  it('never deploys a service backwards onto an older commit', () => {
+    // `git diff A..B` is non-empty in BOTH directions, so a service Railway
+    // already advanced past the head this run read — routine when a merge lands
+    // mid-run — would otherwise look like it was missing those paths.
+    const newer = 'eeeeeeeee11111111111111111111111111111aa';
+    const result = plan({
+      deployments: [deployment('SUCCESS', newer)],
+      changedPathsSince: () => ['scripts/seed-aviation.mjs'],
+      isAncestor: (ancestor, descendant) => ancestor === HEAD && descendant === newer,
+    });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, 'AHEAD');
+  });
+
+  it('still deploys when ancestry cannot be proven', () => {
+    // The default isAncestor answers "cannot prove it". That must not become a
+    // silent skip: an unprovable ancestor is the ordinary case for a service
+    // that is genuinely behind.
+    const result = plan({ changedPathsSince: () => ['scripts/seed-aviation.mjs'] });
+    assert.equal(result.action, 'deploy');
+  });
+
+  it('does not start a service that has never run', () => {
+    // No running deployment at all is not a service lagging a merge — it is one
+    // never started, stopped, or idle. Starting it is a decision nobody made
+    // here, and UNKNOWN_SOURCE would have deployed it.
+    const result = plan({ deployments: [deployment('SKIPPED', HEAD, { skippedReason: 'CI check suite failed' })] });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, 'NEVER_DEPLOYED');
+  });
+
   it('reads the newest running deployment, not whatever Railway listed first', () => {
     const newer = 'bbbbbbbbbcccccccccddddddddd0000000011111';
     const result = plan({

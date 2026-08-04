@@ -9,11 +9,14 @@
 // motivated the build-context rule.
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 
+import { ROOT_DIRECTORY_BY_DEPLOY_MODE as AUDIT_ROOT_DIRECTORY_BY_DEPLOY_MODE } from '../scripts/audit-railway-watch-paths.mjs';
 import {
   CHECK_SUITE_FAILED_REASON,
   NO_MATCHING_PATHS_REASON,
+  ROOT_DIRECTORY_BY_DEPLOY_MODE,
   buildContextPrefix,
   changeReachesService,
   createChangedPathsReader,
@@ -59,6 +62,58 @@ describe('watch pattern compilation', () => {
   it('treats an unsupported pattern as reaching everything in the context', () => {
     const closure = { patterns: ['!scripts/ignored.mjs'], rootDirectory: '' };
     assert.ok(changeReachesService(closure, ['docs/unrelated.md']));
+  });
+
+  it('accepts the repository-rooted form Railway documents', () => {
+    // Railway's docs write watch paths as `/src/**` and `/*.go`. Compiled
+    // literally that anchors on a leading slash no repository-relative path
+    // has, producing a regex that can never match — a closure silently narrowed
+    // to nothing, which is the one direction this module must never fail in.
+    assert.ok(watchPatternToRegExp('/scripts/**').test('scripts/seed-aviation.mjs'));
+    assert.ok(watchPatternToRegExp('/*.go').test('main.go'));
+    assert.ok(watchPatternToRegExp('./scripts/**').test('scripts/seed-aviation.mjs'));
+    assert.ok(watchPatternToRegExp('/scripts/_seed-utils.mjs').test('scripts/_seed-utils.mjs'));
+  });
+});
+
+describe('build context from the registry alone', () => {
+  it('derives the root directory from deployMode, the field the registry has', () => {
+    // Registry entries carry deployMode, never a rootDirectory key. Reading one
+    // is a branch that can never fire, which leaves a registry-only service
+    // rooted at the repository — containment silently switched off.
+    const scriptsRooted = resolveServiceClosure({
+      registryEntry: { deployMode: 'nixpacks-root-scripts', watchPatterns: ['scripts/**', 'shared/**'] },
+    });
+    assert.equal(scriptsRooted.rootDirectory, 'scripts');
+    assert.ok(!changeReachesService(scriptsRooted, ['shared/china-decision-signals.ts']));
+    assert.ok(changeReachesService(scriptsRooted, ['scripts/seed-aviation.mjs']));
+
+    for (const deployMode of ['nixpacks-root-repo', 'dockerfile']) {
+      const repoRooted = resolveServiceClosure({
+        registryEntry: { deployMode, watchPatterns: ['shared/**'] },
+      });
+      assert.equal(repoRooted.rootDirectory, '', deployMode);
+      assert.ok(changeReachesService(repoRooted, ['shared/china-decision-signals.ts']), deployMode);
+    }
+  });
+
+  it('agrees with the map the live audit enforces', () => {
+    // Two copies of "where does this deployMode root its build" is how the
+    // trigger and the audit come to disagree about one service's containment.
+    assert.deepEqual(
+      { ...ROOT_DIRECTORY_BY_DEPLOY_MODE },
+      { ...AUDIT_ROOT_DIRECTORY_BY_DEPLOY_MODE },
+    );
+  });
+
+  it('lets the live root directory win over the registry\'s claim', () => {
+    // Railway builds from what Railway is configured with; the registry's
+    // deployMode is the repository's claim about it, which the audit reconciles.
+    const closure = resolveServiceClosure({
+      registryEntry: { deployMode: 'nixpacks-root-scripts', watchPatterns: ['shared/**'] },
+      liveService: { source: { rootDirectory: '' }, build: { watchPatterns: ['shared/**'] } },
+    });
+    assert.equal(closure.rootDirectory, '');
   });
 });
 
@@ -214,10 +269,14 @@ describe('changed-path reader', () => {
     assert.deepEqual(read(RUNNING), ['scripts/a.mjs', 'shared/b.ts']);
   });
 
-  it('asks git for the range between the two commits', () => {
+  it('asks git for the range between the two commits, with renames off', () => {
+    // --no-renames is load-bearing: with detection on (git's default),
+    // --name-only prints only a renamed file's DESTINATION path, so a closure
+    // naming the old path stops matching and the service is silently stranded.
+    // Verified against 3abc27af9, where the old path drops out entirely.
     let seen = null;
     createChangedPathsReader(HEAD, { git: (args) => { seen = args; return ''; } })(RUNNING);
-    assert.deepEqual(seen, ['diff', '--name-only', `${RUNNING}..${HEAD}`]);
+    assert.deepEqual(seen, ['diff', '--name-only', '--no-renames', `${RUNNING}..${HEAD}`]);
   });
 
   it('returns null rather than an empty list when git cannot answer', () => {
@@ -253,13 +312,62 @@ describe('changed-path reader', () => {
 // recorded on 2026-08-04. Each case is one of the shapes the fleet-wide
 // re-measurement turned up; together they pin the three rules that make our
 // matcher agree with Railway's (containment, exact-path matching, no filter =
-// everything). Trimmed to the files that decide each case.
+// everything).
+//
+// `changedPaths` is TRIMMED to the files that decide the case, which is what
+// makes the fixture readable and also what makes it silently corruptible: a
+// path that the commit never touched still produces a plausible-looking row,
+// and then the suite is testing an invented commit rather than the one Railway
+// judged. That already happened once. So each case also pins the commit's FULL
+// file list, `changedPaths` is asserted to be a subset of it, and the full list
+// itself is checked against git whenever the commit is reachable — which it is
+// locally and in the deep-history workflows, but not in CI's shallow unit job.
 
 const REPLAY = [
   {
     name: 'a desktop-only merge does not reach a broad-filter seeder',
     service: { source: { rootDirectory: 'scripts' }, build: { watchPatterns: ['scripts/**', 'shared/**'] } },
     commit: '045094590',
+    commitFiles: [
+      'AGENTS.md',
+      'docs/desktop-parity-matrix.md',
+      'docs/generated/stats.json',
+      'src-tauri/open-url-safety.test.mjs',
+      'src/App.ts',
+      'src/app/desktop-updater.ts',
+      'src/app/event-handlers.ts',
+      'src/components/Panel.ts',
+      'src/components/ResilienceWidget.ts',
+      'src/components/RouteExplorer/RouteExplorer.ts',
+      'src/components/RuntimeConfigPanel.ts',
+      'src/components/UnifiedSettings.ts',
+      'src/config/web-origin.ts',
+      'src/services/billing.ts',
+      'src/services/checkout-no-user-policy.ts',
+      'src/services/checkout-return-url.ts',
+      'src/services/checkout.ts',
+      'src/services/desktop-runtime.ts',
+      'src/services/external-navigation.ts',
+      'src/services/notifications-settings.ts',
+      'src/services/panel-gating.ts',
+      'src/services/runtime.ts',
+      'src/settings-main.ts',
+      'src/utils/follow-button.ts',
+      'tests/checkout-overlay-lifecycle.test.mts',
+      'tests/checkout-pending-dialog.test.mts',
+      'tests/checkout-report-error.test.mts',
+      'tests/checkout-return-url.test.mts',
+      'tests/checkout-unparsable-success-body.test.mts',
+      'tests/desktop-checkout-handoff.test.mts',
+      'tests/desktop-external-handoff.test.mts',
+      'tests/dom/export-gate-wiring.test.mts',
+      'tests/dom/gate-action.test.mts',
+      'tests/dom/unified-settings-upgrade-click-runtime.test.mts',
+      'tests/external-navigation-call-sites.test.mjs',
+      'tests/followed-countries-cap-drop-toast.test.mjs',
+      'tests/runtime-env-guards.test.mjs',
+      'tests/window-open-noopener.test.mjs',
+    ],
     changedPaths: ['AGENTS.md', 'docs/desktop-parity-matrix.md', 'src/App.ts', 'src/app/desktop-updater.ts'],
     railwayBuilt: false,
   },
@@ -267,6 +375,24 @@ const REPLAY = [
     name: 'a seeder-entry-point merge does reach a broad-filter seeder',
     service: { source: { rootDirectory: 'scripts' }, build: { watchPatterns: ['scripts/**', 'shared/**'] } },
     commit: '7bf19630e',
+    commitFiles: [
+      'consumer-prices-core/src/jobs/aggregate.ts',
+      'consumer-prices-core/src/jobs/publish.ts',
+      'consumer-prices-core/src/jobs/scrape.ts',
+      'scripts/fetch-gpsjam.mjs',
+      'scripts/process-deep-forecast-tasks.mjs',
+      'scripts/process-simulation-tasks.mjs',
+      'scripts/publish-bootstrap-tiers.mjs',
+      'scripts/seed-bundle-regional.mjs',
+      'scripts/seed-comtrade-bilateral-hs4.mjs',
+      'scripts/seed-electricity-prices.mjs',
+      'scripts/seed-ember-electricity.mjs',
+      'scripts/seed-energy-spine.mjs',
+      'scripts/seed-forecast-bets.mjs',
+      'scripts/seed-hs2-chokepoint-exposure.mjs',
+      'scripts/seed-regulatory-actions.mjs',
+      'tests/railway-entrypoint-terminal-marker.test.mts',
+    ],
     changedPaths: ['consumer-prices-core/src/jobs/aggregate.ts', 'scripts/fetch-gpsjam.mjs', 'scripts/process-simulation-tasks.mjs'],
     railwayBuilt: true,
   },
@@ -277,6 +403,20 @@ const REPLAY = [
       build: { watchPatterns: ['scripts/process-deep-forecast-tasks.mjs', 'scripts/_seed-utils.mjs', 'shared/**'] },
     },
     commit: '89de2e6b0',
+    commitFiles: [
+      'docs/china-logistics-corridors.mdx',
+      'docs/methodology/china-activity-nowcast.mdx',
+      'docs/zh/china-logistics-corridors.mdx',
+      'docs/zh/methodology/china-activity-nowcast.mdx',
+      'scripts/seed-supply-chain-trade.mjs',
+      'server/worldmonitor/economic/v1/get-china-activity-nowcast.ts',
+      'server/worldmonitor/supply-chain/v1/china-corridor-source-adapters.ts',
+      'shared/china-activity-nowcast-registry.ts',
+      'tests/china-activity-nowcast-handler.test.mts',
+      'tests/china-ccfi-period-change-seam.test.mts',
+      'tests/china-corridor-source-adapters.test.mts',
+      'tests/freight-indices.test.mjs',
+    ],
     changedPaths: ['docs/china-logistics-corridors.mdx', 'scripts/seed-supply-chain-trade.mjs', 'shared/china-activity-nowcast-registry.ts'],
     railwayBuilt: false,
   },
@@ -287,6 +427,16 @@ const REPLAY = [
       build: { watchPatterns: ['scripts/scenario-worker.mjs', 'scripts/_seed-utils.mjs', 'package.json', 'package-lock.json', 'shared/**'] },
     },
     commit: '1f113208c',
+    commitFiles: [
+      'CONCEPTS.md',
+      'docs/health-endpoints.mdx',
+      'docs/solutions/runtime-errors/ais-relay-self-request-configured-vs-bound-port.md',
+      'package.json',
+      'scripts/ais-relay-ingestion.test.cjs',
+      'scripts/ais-relay-test-preload.cjs',
+      'scripts/ais-relay.cjs',
+      'scripts/seed-military-flights.mjs',
+    ],
     changedPaths: ['CONCEPTS.md', 'package.json', 'scripts/ais-relay-ingestion.test.cjs'],
     railwayBuilt: false,
   },
@@ -294,7 +444,17 @@ const REPLAY = [
     name: 'an unfiltered service is reached by any merge at all',
     service: { source: { rootDirectory: '' }, build: { watchPatterns: [] } },
     commit: 'cf3ac8777',
-    changedPaths: ['src/App.ts', 'src/services/checkout.ts'],
+    commitFiles: [
+      'src/app/panel-layout.ts',
+      'src/services/checkout-return-url.ts',
+      'src/services/checkout-return.ts',
+      'src/services/checkout.ts',
+      'tests/checkout-return-discriminant.test.mts',
+      'tests/checkout-return-url.test.mts',
+      'tests/desktop-checkout-handoff.test.mts',
+      'tests/entitlement-reload-controller.test.mts',
+    ],
+    changedPaths: ['src/services/checkout-return.ts', 'src/services/checkout.ts'],
     railwayBuilt: true,
   },
 ];
@@ -314,5 +474,47 @@ describe('replay against recorded production verdicts (#6142)', () => {
   it('covers both verdicts, so a matcher stuck on one answer cannot pass', () => {
     assert.ok(REPLAY.some((testCase) => testCase.railwayBuilt), 'no build case');
     assert.ok(REPLAY.some((testCase) => !testCase.railwayBuilt), 'no skip case');
+  });
+
+  it('trims each case to real files, never invented ones', () => {
+    // Runs everywhere, including CI's shallow checkout. Catches the drift that
+    // already happened once: a decisive path that the commit never touched.
+    for (const testCase of REPLAY) {
+      assert.ok(Array.isArray(testCase.commitFiles) && testCase.commitFiles.length > 0,
+        `${testCase.commit} must pin the commit's full file list`);
+      const invented = testCase.changedPaths.filter((path) => !testCase.commitFiles.includes(path));
+      assert.deepEqual(invented, [],
+        `${testCase.commit} (${testCase.name}) cites path(s) the commit never changed — the case is judging an invented commit`);
+    }
+  });
+
+  it('pins file lists that match the commits themselves', (t) => {
+    // The subset check above is only as good as the pinned list, so verify the
+    // list against git wherever the commit is reachable. CI's unit job checks
+    // out depth 1, so this skips there — visibly, rather than passing quietly.
+    const reachable = REPLAY.filter((testCase) => {
+      try {
+        execFileSync('git', ['cat-file', '-e', `${testCase.commit}^{commit}`], { stdio: 'ignore' });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (reachable.length === 0) {
+      t.skip('no replay commit is reachable in this checkout (shallow clone) — pinned lists unverified here');
+      return;
+    }
+    for (const testCase of reachable) {
+      const actual = execFileSync(
+        'git',
+        ['diff-tree', '--no-commit-id', '--name-only', '-r', testCase.commit],
+        { encoding: 'utf8' },
+      ).split('\n').filter(Boolean).sort();
+      assert.deepEqual(
+        [...testCase.commitFiles].sort(),
+        actual,
+        `${testCase.commit} pinned file list no longer matches the commit`,
+      );
+    }
   });
 });

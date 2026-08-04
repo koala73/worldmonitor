@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  UNDETERMINABLE_VERDICTS,
   classifyServiceDeploy,
   isProblemVerdict,
   missingBaselinedServices,
@@ -686,8 +687,11 @@ describe('the shipped deploy-drift baseline', () => {
   // answer into a green one, which is the failure mode this whole issue is
   // about.
   it('never acknowledges a verdict that means the check failed', () => {
+    // Derived from the check, never re-typed here: a hand-copied list stops
+    // covering the next can't-tell verdict the moment one is added, which is
+    // how CLOSURE_UNKNOWN would have become baselineable.
     const undeterminable = baseline.acknowledged.filter((entry) =>
-      ['QUERY_FAILED', 'UNKNOWN_STATUS', 'NO_DEPLOYMENTS', 'NO_BUILD_IN_WINDOW'].includes(entry.status));
+      UNDETERMINABLE_VERDICTS.includes(entry.status));
     assert.deepEqual(
       undeterminable.map((entry) => entry.name),
       [],

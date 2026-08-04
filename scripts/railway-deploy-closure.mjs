@@ -64,11 +64,19 @@ export function watchPatternToRegExp(pattern) {
   if (typeof pattern !== 'string' || pattern.length === 0) return null;
   if (/[!{}[\]]/.test(pattern)) return null;
 
+  // Railway's own documentation writes watch paths rooted at the repository as
+  // `/src/**` and `/*.go`. Repository-relative paths carry no leading slash, so
+  // compiling that shape literally produces a regex that can never match — a
+  // closure silently narrowed to nothing, which is the one direction this
+  // module must never fail in. Strip it instead. Same for a `./` prefix.
+  const normalized = pattern.replace(/^\.?\/+/, '');
+  if (normalized.length === 0) return null;
+
   let source = '';
-  for (let index = 0; index < pattern.length; index += 1) {
-    const char = pattern[index];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
     if (char === '*') {
-      if (pattern[index + 1] === '*') {
+      if (normalized[index + 1] === '*') {
         source += '.*';
         index += 1;
       } else {
@@ -96,6 +104,16 @@ function compile(pattern) {
 export function normalizeRootDirectory(value) {
   return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
 }
+
+// Where each registry deployMode roots its build context. Mirrors the map
+// audit-railway-watch-paths.mjs enforces against live Railway config; kept here
+// rather than imported so this module stays dependency-free, and pinned to that
+// map by a test so the two cannot drift.
+export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
+  'nixpacks-root-scripts': 'scripts',
+  'nixpacks-root-repo': '',
+  dockerfile: '',
+});
 
 /** Repository-relative prefix of a service's build context (`''` for the root). */
 export function buildContextPrefix(rootDirectory) {
@@ -146,8 +164,15 @@ export function resolveServiceClosure({ registryEntry = null, liveService = null
   // A service neither source can describe is one we must not narrow.
   if (!opinionated || (!watchesEverything && declared.length === 0)) watchesEverything = true;
 
+  // Live config first, because that is what Railway actually builds from. The
+  // registry expresses the same thing as `deployMode`, never as a
+  // `rootDirectory` key — reading one would be a branch that can never fire and
+  // would leave a registry-only service silently rooted at the repository, i.e.
+  // with containment switched off.
   const rootDirectory = normalizeRootDirectory(
-    liveService?.source?.rootDirectory ?? registryEntry?.rootDirectory ?? '',
+    liveService?.source?.rootDirectory
+      ?? ROOT_DIRECTORY_BY_DEPLOY_MODE[registryEntry?.deployMode]
+      ?? '',
   );
   return {
     patterns: watchesEverything ? null : [...new Set(declared)].sort(),
@@ -193,6 +218,14 @@ export function changeReachesService(closure, changedPaths) {
  * rather than "nothing changed" — a service can legitimately be running a
  * commit older than the fetch depth, and that is exactly the service most
  * likely to be genuinely behind.
+ *
+ * `--no-renames` is load-bearing, not tidiness. Rename detection is on by
+ * default (git >= 2.9) and makes `--name-only` print ONLY a renamed file's
+ * DESTINATION path. A service whose closure names the old path exactly — which
+ * is most of the exact closures in the registry — would then not see the change
+ * at all and would sit on stale code, which is the precise failure this module
+ * exists to prevent. Verified against 3abc27af9: with detection on, the old
+ * path drops out of the change set entirely.
  */
 export function createChangedPathsReader(headSha, { git } = {}) {
   if (typeof git !== 'function') throw new TypeError('createChangedPathsReader requires a git runner');
@@ -201,7 +234,9 @@ export function createChangedPathsReader(headSha, { git } = {}) {
     if (!cache.has(fromSha)) {
       let paths = null;
       try {
-        paths = git(['diff', '--name-only', `${fromSha}..${headSha}`]).split('\n').filter(Boolean);
+        paths = git(['diff', '--name-only', '--no-renames', `${fromSha}..${headSha}`])
+          .split('\n')
+          .filter(Boolean);
       } catch {
         paths = null;
       }
@@ -225,7 +260,9 @@ export function createCommitPathsReader({ git } = {}) {
     if (!cache.has(sha)) {
       let paths = null;
       try {
-        paths = git(['show', '--name-only', '--format=', '--first-parent', sha])
+        // --no-renames for the same reason as above: a renamed file's old path
+        // must stay in the set, or a closure that names it stops matching.
+        paths = git(['show', '--name-only', '--format=', '--first-parent', '--no-renames', sha])
           .split('\n')
           .filter(Boolean);
       } catch {

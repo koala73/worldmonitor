@@ -118,6 +118,20 @@ export function isProblemVerdict(verdict) {
   return !HEALTHY_VERDICTS.has(verdict);
 }
 
+// Verdicts that mean "this check could not determine anything". Acknowledging
+// one in the baseline converts an unreadable answer into a green one, which is
+// the exact failure mode this file exists to prevent — so the baseline test
+// asserts against THIS list rather than re-typing it. A new can't-tell verdict
+// added here is refused by the baseline automatically; one enumerated only at
+// the test's call site would be silently baselineable.
+export const UNDETERMINABLE_VERDICTS = Object.freeze([
+  'QUERY_FAILED',
+  'UNKNOWN_STATUS',
+  'NO_DEPLOYMENTS',
+  'NO_BUILD_IN_WINDOW',
+  'CLOSURE_UNKNOWN',
+]);
+
 function isKnownStatus(status) {
   return status === REJECTED_STATUS
     || RUNNING_STATUSES.includes(status)
@@ -125,7 +139,10 @@ function isKnownStatus(status) {
     || FAILED_STATUSES.includes(status);
 }
 
-function createdAtMs(deployment) {
+// Exported so scripts/trigger-railway-deploys.mjs orders deployment records by
+// the same rule. Both files derive "which deployment is running" from this
+// sort, and two definitions is how they come to disagree about one service.
+export function createdAtMs(deployment) {
   const parsed = Date.parse(deployment?.createdAt ?? '');
   return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }
@@ -619,9 +636,17 @@ async function main() {
   const registryByService = new Map(
     JSON.parse(readFileSync(REGISTRY_URL, 'utf8')).map((entry) => [entry.service, entry]),
   );
-  const liveById = JSON.parse(runRailway([
+  const config = JSON.parse(runRailway([
     'environment', 'config', '--environment', environment, '--json',
-  ]))?.services ?? {};
+  ]));
+  // Fail closed exactly as audit-railway-watch-paths.mjs does. `?? {}` would
+  // turn a renamed key or a CLI output-shape change into "no live service is
+  // described", which resolveServiceClosure reads as "watches everything" —
+  // widening every closure and reporting the whole fleet behind.
+  if (!config?.services || typeof config.services !== 'object' || Array.isArray(config.services)) {
+    throw new Error('Railway environment config must contain a services object');
+  }
+  const liveById = config.services;
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
   const changedPathsIn = createCommitPathsReader({ git: runGit });
 

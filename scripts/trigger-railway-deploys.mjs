@@ -58,6 +58,7 @@ import {
   DEFAULT_CONCURRENCY,
   DEFAULT_DEPLOYMENT_WINDOW,
   RUNNING_STATUSES,
+  createdAtMs,
   mapWithConcurrency,
 } from './check-railway-deploy-drift.mjs';
 import {
@@ -77,7 +78,6 @@ export const HANDLED_BY_RAILWAY = 'ALREADY_TAKEN';
 
 // Deploying is the safe direction, so every "we could not tell" resolves here.
 export const DEPLOY_REASONS = Object.freeze({
-  CLOSURE_CHANGED: 'a change that reaches this service landed since the commit it is running',
   UNKNOWN_SOURCE: 'the running deployment carries no commit, so what it contains cannot be compared',
   HISTORY_UNAVAILABLE: 'the running commit is not in this checkout, so the change set cannot be computed',
 });
@@ -96,17 +96,31 @@ export function planServiceDeploy({
   deployments,
   headSha,
   changedPathsSince,
+  readError = null,
+  // Whether `ancestor` is an ancestor of (or equal to) `descendant`. Used to
+  // refuse deploying a service BACKWARDS. Defaults to "cannot prove it", which
+  // keeps the service reported rather than rolled back.
+  isAncestor = () => false,
 }) {
   const base = { service, serviceId, runningSha: null, matchedPaths: [] };
   if (!Array.isArray(deployments)) {
     // Never guess in either direction on a failed query: deploying would mutate
     // production on no information, and skipping would claim this service was
     // considered. Surface it and fail the run.
-    return { ...base, action: 'error', reason: 'the deployment history could not be read' };
+    return {
+      ...base,
+      action: 'error',
+      reason: 'the deployment history could not be read',
+      detail: readError ?? 'the deployment history could not be read',
+    };
   }
 
+  // Same ordering rule as check-railway-deploy-drift.mjs, imported rather than
+  // rewritten: both files decide "which deployment is running" from this sort,
+  // and a second definition is how they come to disagree about one service. An
+  // unparseable timestamp sorts oldest rather than producing NaN comparisons.
   const ordered = [...deployments].sort(
-    (left, right) => Date.parse(right?.createdAt ?? 0) - Date.parse(left?.createdAt ?? 0),
+    (left, right) => createdAtMs(right) - createdAtMs(left),
   );
 
   // Any non-SKIPPED record for head means Railway has taken this commit —
@@ -122,13 +136,38 @@ export function planServiceDeploy({
   }
 
   const running = ordered.find((deployment) => RUNNING_STATUSES.includes(deployment?.status));
-  const runningSha = running?.meta?.commitHash ?? null;
+  if (!running) {
+    // Nothing has ever run. That is not a service lagging a merge — it is one
+    // that was never started, is stopped, or is provisioned but idle, and
+    // starting it is a decision nobody made here. The drift check reports it as
+    // NO_BUILD_IN_WINDOW; this must not quietly turn that into a deploy.
+    return {
+      ...base,
+      action: 'skip',
+      reason: 'NEVER_DEPLOYED',
+      detail: 'no deployment in the window ever reached a running state — starting a service is not this script\'s call',
+    };
+  }
+  const runningSha = running.meta?.commitHash ?? null;
   if (!runningSha) {
     return {
       ...base,
       action: 'deploy',
       reason: 'UNKNOWN_SOURCE',
       detail: DEPLOY_REASONS.UNKNOWN_SOURCE,
+    };
+  }
+  // Never deploy a service backwards. `git diff A..B` is non-empty in BOTH
+  // directions, so a service Railway already advanced past the head this run
+  // read — routine when a merge lands mid-run — would otherwise look like it
+  // was missing those paths and get rolled back onto the older commit.
+  if (isAncestor(headSha, runningSha)) {
+    return {
+      ...base,
+      runningSha,
+      action: 'skip',
+      reason: 'AHEAD',
+      detail: `running ${runningSha.slice(0, 9)}, a descendant of ${headSha.slice(0, 9)} — main moved after this run read it`,
     };
   }
   const changedPaths = changedPathsSince(runningSha);
@@ -189,6 +228,9 @@ export function summarizeDeployPlan(plans) {
 
 const GIT_CALL_TIMEOUT_MS = 30_000;
 
+// Trims, matching the identically-shaped helper in check-railway-deploy-drift.mjs.
+// The two are private to their files but conceptually one wrapper, and a caller
+// that assumed the sibling's contract would silently get a trailing newline.
 function runGit(args) {
   const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: GIT_CALL_TIMEOUT_MS });
   if (result.signal) throw new Error(`git ${args.join(' ')} timed out`);
@@ -196,7 +238,7 @@ function runGit(args) {
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`);
   }
-  return result.stdout;
+  return result.stdout.trim();
 }
 
 const execFileAsync = promisify(execFile);
@@ -285,7 +327,24 @@ async function main() {
   const concurrency = Number(readArgument(process.argv, '--concurrency', String(DEFAULT_CONCURRENCY)));
   if (!Number.isInteger(window) || window <= 0) throw new Error('--window must be a positive integer');
   if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error('--concurrency must be a positive integer');
-  const headSha = readArgument(process.argv, '--head', null) ?? runGit(['rev-parse', 'HEAD']).trim();
+  // origin/main, never the local checkout's HEAD. This is the only script in
+  // the repository that mutates production, and the runbook tells an operator to
+  // run it with --only <service> from wherever they happen to be standing — so a
+  // HEAD default would deploy an unmerged branch, or uncommitted-adjacent work,
+  // straight to production.
+  const headSha = readArgument(process.argv, '--head', null) ?? runGit(['rev-parse', 'origin/main']);
+  // And whatever was passed must actually be on main. A SHA that is not reachable
+  // from origin/main has not been through the gates this workflow exists to honour.
+  if (!dryRun) {
+    try {
+      runGit(['merge-base', '--is-ancestor', headSha, 'origin/main']);
+    } catch {
+      throw new Error(
+        `refusing to deploy ${headSha.slice(0, 9)}: it is not reachable from origin/main. `
+        + 'Fetch main, or pass --head with a merged commit.',
+      );
+    }
+  }
 
   const registryByService = readRegistryByService();
   const services = JSON.parse(runRailway(['service', 'list', '--environment', environment, '--json']));
@@ -296,15 +355,36 @@ async function main() {
   }
   const repositoryServices = selectServices(fleet, readArgument(process.argv, '--only', null));
   const config = JSON.parse(runRailway(['environment', 'config', '--environment', environment, '--json']));
-  const liveById = config?.services ?? {};
+  // Fail closed exactly as audit-railway-watch-paths.mjs does. `?? {}` would turn
+  // a renamed key or a CLI output-shape change into "no live service is
+  // described", which resolveServiceClosure reads as "watches everything" — and
+  // this script would then deploy the entire fleet.
+  if (!config?.services || typeof config.services !== 'object' || Array.isArray(config.services)) {
+    throw new Error('Railway environment config must contain a services object');
+  }
+  const liveById = config.services;
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
+  // `git merge-base --is-ancestor` exits non-zero both when the answer is no and
+  // when the object is missing. Both collapse to "cannot prove it", which keeps
+  // the service reported rather than rolled back onto an older commit.
+  const isAncestor = (ancestor, descendant) => {
+    try {
+      runGit(['merge-base', '--is-ancestor', ancestor, descendant]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
     let deployments = null;
+    let readError = null;
     try {
       deployments = await readDeployments(service, environment, window);
-    } catch {
-      deployments = null;
+    } catch (error) {
+      // Keep the reason. A bare catch reds the run with "the deployment history
+      // could not be read" and no way to tell a 429 from an auth failure.
+      readError = error instanceof Error ? error.message : String(error);
     }
     return planServiceDeploy({
       service: service.name,
@@ -316,6 +396,8 @@ async function main() {
       deployments,
       headSha,
       changedPathsSince,
+      readError,
+      isAncestor,
     });
   })).sort((left, right) => left.service.localeCompare(right.service));
 
