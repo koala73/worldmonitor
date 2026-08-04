@@ -17,12 +17,19 @@
 //   node scripts/check-railway-deploy-drift.mjs
 //   node scripts/check-railway-deploy-drift.mjs --json
 //   node scripts/check-railway-deploy-drift.mjs --head <sha> --window 200
+//   node scripts/check-railway-deploy-drift.mjs --concurrency 4
 
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { execFile, spawnSync } from 'node:child_process';
+import { readFileSync, realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
-import { isRepositoryService, readArgument } from './audit-railway-watch-paths.mjs';
+import {
+  RAILWAY_CALL_TIMEOUT_MS,
+  isRepositoryService,
+  readArgument,
+  runRailway,
+} from './audit-railway-watch-paths.mjs';
 import { applyAcceptanceBaseline } from './check-seed-freshness.mjs';
 
 const DEFAULT_ENVIRONMENT = 'production';
@@ -63,10 +70,19 @@ export const FAILED_STATUSES = Object.freeze(['FAILED']);
 // including for umami, which has been 22 hours stale since #6064.
 export const DEFAULT_BUILD_GRACE_MS = 30 * 60 * 1000;
 
-// A */5 cron emits ~288 records a day, so this covers roughly ten hours on the
-// busiest service and months on a weekly one. It only has to reach past the
-// newest running deployment; anything older cannot change which source is live.
-export const DEFAULT_DEPLOYMENT_WINDOW = 120;
+// The classifier only reads back to the newest running deployment plus the
+// rejections after it; nothing older can change which source is live. Measured
+// against production, the deepest service needed 6 records. 50 keeps a wide
+// margin while cutting the per-service payload — this runs 77 times per tick
+// inside a job with a wall-clock budget.
+export const DEFAULT_DEPLOYMENT_WINDOW = 50;
+
+// One `railway deployment list` per service, run serially, took over ten
+// minutes against the 77-service production fleet — longer than the interval
+// this check runs on. The calls are independent read-only round trips, so they
+// fan out; the cap keeps us from opening 77 CLI processes and being rate
+// limited or starved of file descriptors.
+export const DEFAULT_CONCURRENCY = 8;
 
 // Everything that is not a positive "running the head commit" or "a build for
 // it is under way". The list is derived from the two healthy verdicts rather
@@ -107,6 +123,9 @@ export function classifyServiceDeploy({
   // head, which is the strict reading — a caller that cannot resolve it gets
   // the stricter answer, not the more forgiving one.
   graceSha = headSha,
+  // Used only to bound an in-flight build; every other decision is SHA-based.
+  now = Date.now(),
+  buildGraceMs = DEFAULT_BUILD_GRACE_MS,
   // Whether `ancestor` is an ancestor of (or equal to) `descendant`. Used to
   // accept a service running something NEWER than the head we were handed —
   // observed on the first live run, where two services had already built a
@@ -156,17 +175,59 @@ export function classifyServiceDeploy({
     };
   }
 
-  const rejectedShas = ordered
-    .filter((deployment) => deployment.status === REJECTED_STATUS
+  const runningSha = running?.meta?.commitHash ?? null;
+
+  // A rejection is outstanding until the running SOURCE contains it. Comparing
+  // against the newest deployment RECORD instead was wrong: a cron tick is a
+  // redeploy of the same image, so on a service that records its ticks the
+  // 05:10 tick buried the 05:06 rejection and the verdict decayed from
+  // REJECTED_PUSH to BEHIND — losing the evidence and, because the baseline
+  // matches on service:verdict, silently voiding that service's entry.
+  const supersededBySource = (rejection) => {
+    const rejectedSha = rejection.meta.commitHash;
+    if (!runningSha) return false;
+    if (runningSha === rejectedSha) return true;
+    if (isAncestor(rejectedSha, runningSha)) return true;
+    // Git could not prove containment (shallow clone, unfetched commit). Fall
+    // back to the one thing the records alone can show: whether the source
+    // actually CHANGED after the rejection. Same sha before and after means
+    // nothing was built, whatever else happened in between.
+    const shaBefore = ordered.find((deployment) => RUNNING_STATUSES.includes(deployment.status)
+      && createdAtMs(deployment) < createdAtMs(rejection))?.meta?.commitHash ?? null;
+    return ordered.some((deployment) => RUNNING_STATUSES.includes(deployment.status)
+      && createdAtMs(deployment) > createdAtMs(rejection)
       && deployment.meta?.commitHash
-      && newerThanRunning(deployment))
-    .map((deployment) => deployment.meta.commitHash);
+      && deployment.meta.commitHash !== shaBefore);
+  };
+
+  const outstandingRejections = ordered.filter((deployment) => deployment.status === REJECTED_STATUS
+    && deployment.meta?.commitHash
+    && !supersededBySource(deployment));
+  const rejectedShas = outstandingRejections.map((deployment) => deployment.meta.commitHash);
   const identified = {
     ...base,
-    runningSha: running?.meta?.commitHash ?? null,
+    runningSha,
     runningAt: running?.createdAt ?? null,
     rejectedShas,
   };
+
+  // A failed build for head outranks an outstanding rejection when it is the
+  // newer event: that is exactly the #6142 recovery path, where the trigger is
+  // fixed, the build finally fires, and it breaks. Reporting REJECTED_PUSH
+  // there would name a cause that has already been resolved.
+  const forHead = (statuses) => ordered.find((deployment) => statuses.includes(deployment.status)
+    && deployment.meta?.commitHash === headSha);
+  const failedForHead = forHead(FAILED_STATUSES);
+  const newestRejectionAt = outstandingRejections.length > 0
+    ? Math.max(...outstandingRejections.map(createdAtMs))
+    : Number.NEGATIVE_INFINITY;
+  if (failedForHead && createdAtMs(failedForHead) > newestRejectionAt) {
+    return {
+      ...identified,
+      verdict: 'BUILD_FAILED',
+      detail: `the build for ${headSha.slice(0, 9)} failed, so ${runningSha?.slice(0, 9) ?? 'an unidentified source'} is still serving`,
+    };
+  }
 
   if (rejectedShas.length > 0) {
     return {
@@ -196,16 +257,27 @@ export function classifyServiceDeploy({
     };
   }
 
-  const forHead = (statuses) => ordered.find((deployment) => statuses.includes(deployment.status)
-    && deployment.meta?.commitHash === headSha);
-  if (forHead(FAILED_STATUSES)) {
+  if (failedForHead) {
     return {
       ...identified,
       verdict: 'BUILD_FAILED',
       detail: `the build for ${headSha.slice(0, 9)} failed, so ${identified.runningSha.slice(0, 9)} is still serving`,
     };
   }
-  if (forHead(IN_FLIGHT_STATUSES)) {
+  // A build that started must also still be plausibly running. Without the age
+  // bound a build that wedged days ago kept reporting PENDING_BUILD — a healthy
+  // verdict — for as long as head did not move, which is precisely the
+  // green-while-stale outcome this check exists to prevent.
+  const inFlightForHead = forHead(IN_FLIGHT_STATUSES);
+  if (inFlightForHead) {
+    const startedMs = createdAtMs(inFlightForHead);
+    if (Number.isFinite(now) && now - startedMs > buildGraceMs) {
+      return {
+        ...identified,
+        verdict: 'BUILD_STALLED',
+        detail: `a build for ${headSha.slice(0, 9)} has been ${inFlightForHead.status} since ${inFlightForHead.createdAt}, longer than the ${Math.round(buildGraceMs / 60_000)}m grace`,
+      };
+    }
     return { ...identified, verdict: 'PENDING_BUILD', detail: `a build for ${headSha.slice(0, 9)} is under way` };
   }
   if (graceSha !== headSha && isAncestor(graceSha, identified.runningSha)) {
@@ -232,6 +304,24 @@ export function classifyServiceDeploy({
  * a recovered entry is reported but not fatal, and a service failing with a
  * DIFFERENT verdict than the one baselined blocks.
  */
+/**
+ * Every service the baseline speaks for must appear in the fleet we queried.
+ *
+ * Without this, a service whose Railway source is detached from the repository —
+ * or a partial `railway service list` — silently drops out of checking, and the
+ * baseline split then reports its entry as "recovered, prune it" for a service
+ * that may still be serving stale code and is now watched by nothing.
+ */
+export function missingBaselinedServices(results, baseline) {
+  if (!baseline?.acknowledged) return [];
+  const checked = new Set(results.map((result) => result.service));
+  return [...new Set(
+    baseline.acknowledged
+      .map((entry) => entry.name)
+      .filter((name) => !checked.has(name)),
+  )].sort();
+}
+
 export function summarizeDeployDrift(results, baseline = null, now = Date.now()) {
   const counts = {};
   for (const result of results) {
@@ -244,6 +334,7 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
     blocking: problems,
     acknowledged: [],
     cleared: [],
+    missing: [],
     expired: false,
     expiresAt: null,
   };
@@ -261,13 +352,18 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
       now,
     )
     : empty;
-  const ok = split.blocking.length === 0 && !split.expired;
+  // A baselined service that vanished from the fleet is an unchecked service,
+  // not a recovered one — so it must never reach the `cleared` prune list.
+  const missing = missingBaselinedServices(results, baseline);
+  const cleared = split.cleared.filter((entry) => !missing.includes(entry.name));
+  const ok = split.blocking.length === 0 && !split.expired && missing.length === 0;
   return {
     counts,
     problems,
     blocking: split.blocking,
     acknowledged: split.acknowledged,
-    cleared: split.cleared,
+    cleared,
+    missing,
     expired: split.expired,
     expiresAt: split.expiresAt ?? null,
     ok,
@@ -277,17 +373,11 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
   };
 }
 
-function runRailway(args) {
-  const result = spawnSync('railway', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`railway ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`);
-  }
-  return result.stdout;
-}
+const GIT_CALL_TIMEOUT_MS = 30_000;
 
 function runGit(args) {
-  const result = spawnSync('git', args, { encoding: 'utf8' });
+  const result = spawnSync('git', args, { encoding: 'utf8', timeout: GIT_CALL_TIMEOUT_MS });
+  if (result.signal) throw new Error(`git ${args.join(' ')} timed out`);
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`);
@@ -301,8 +391,10 @@ function readRepositoryServices(environment) {
   return services.filter(isRepositoryService);
 }
 
-function readDeployments(service, environment, window) {
-  return JSON.parse(runRailway([
+const execFileAsync = promisify(execFile);
+
+async function readDeployments(service, environment, window) {
+  const { stdout } = await execFileAsync('railway', [
     'deployment',
     'list',
     '--service',
@@ -312,7 +404,23 @@ function readDeployments(service, environment, window) {
     '--limit',
     String(window),
     '--json',
-  ]));
+  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: RAILWAY_CALL_TIMEOUT_MS });
+  return JSON.parse(stdout);
+}
+
+/** Run `worker` over `items` with at most `limit` in flight, preserving order. */
+export async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }
 
 function printReport(results, summary, headSha, graceSha) {
@@ -333,7 +441,7 @@ function printReport(results, summary, headSha, graceSha) {
     console.log(
       summary.acknowledged.length === 0
         ? `Every service this repository deploys is running ${headSha.slice(0, 9)} or building it.`
-        : `No unacknowledged drift: ${summary.acknowledged.length} of ${results.length} service(s) are knowingly stale against an owner issue, and the rest are running ${headSha.slice(0, 9)} or building it.`,
+        : `No unacknowledged drift: ${summary.acknowledged.length} of ${results.length} service(s) are knowingly behind against an owner issue, and the rest are running ${headSha.slice(0, 9)} or building it.`,
     );
     return;
   }
@@ -344,6 +452,9 @@ function printReport(results, summary, headSha, graceSha) {
     }
   } else {
     console.error(`- ${summary.detail}`);
+  }
+  for (const name of summary.missing ?? []) {
+    console.error(`- ${name} is acknowledged in the baseline but was not in the queried fleet — it is unchecked, not recovered`);
   }
   if (summary.expired) {
     console.error(`Deploy-drift baseline expired on ${summary.expiresAt}; re-review scripts/railway-deploy-drift-baseline.json.`);
@@ -357,7 +468,9 @@ async function main() {
   const graceMinutes = Number(
     readArgument(process.argv, '--grace-minutes', String(DEFAULT_BUILD_GRACE_MS / 60_000)),
   );
+  const concurrency = Number(readArgument(process.argv, '--concurrency', String(DEFAULT_CONCURRENCY)));
   if (!Number.isInteger(window) || window <= 0) throw new Error('--window must be a positive integer');
+  if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error('--concurrency must be a positive integer');
   if (!Number.isFinite(graceMinutes) || graceMinutes < 0) throw new Error('--grace-minutes must be a non-negative number');
 
   const headSha = readArgument(process.argv, '--head', null) ?? runGit(['rev-parse', 'HEAD']);
@@ -385,11 +498,11 @@ async function main() {
   }
 
   const services = readRepositoryServices(environment);
-  const results = services.map((service) => {
+  const results = (await mapWithConcurrency(services, concurrency, async (service) => {
     let deployments = null;
     let error = null;
     try {
-      deployments = readDeployments(service, environment, window);
+      deployments = await readDeployments(service, environment, window);
     } catch (queryError) {
       error = queryError instanceof Error ? queryError.message : String(queryError);
     }
@@ -401,7 +514,7 @@ async function main() {
       graceSha,
       isAncestor,
     });
-  }).sort((left, right) => left.service.localeCompare(right.service));
+  })).sort((left, right) => left.service.localeCompare(right.service));
 
   const summary = summarizeDeployDrift(results, JSON.parse(readFileSync(BASELINE_URL, 'utf8')));
   if (asJson) console.log(JSON.stringify({ environment, headSha, graceSha, summary, results }, null, 2));
@@ -409,7 +522,19 @@ async function main() {
   if (!summary.ok) process.exitCode = 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// realpath BOTH sides: Node sets import.meta.url to the realpath while argv[1]
+// keeps the symlink, so on a symlinked checkout (macOS /tmp) a bare comparison
+// makes this script exit 0 having done nothing — a silent fail-open for a gate.
+function isMainModule() {
+  try {
+    return pathToFileURL(realpathSync(process.argv[1])).href
+      === pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+  } catch {
+    return false;
+  }
+}
+
+if (process.argv[1] && isMainModule()) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

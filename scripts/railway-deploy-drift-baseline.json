@@ -3,7 +3,7 @@
     "Accepted-problem baseline for scripts/check-railway-deploy-drift.mjs.",
     "",
     "The drift check fails on any service that is not running the head commit and is",
-    "NOT listed here. An entry means: this service is known to be running stale code,",
+    "NOT listed here. An entry means: this service is known to be behind a refused push,",
     "it has an owner issue, and it must not page again until that issue moves.",
     "",
     "Entries are matched on service:verdict exactly, and the split is the same one",
@@ -38,373 +38,373 @@
       "name": "ais-relay",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "deep-forecast-worker",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "digest-notifications",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "notification-relay",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "scenario-worker",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-aaii-sentiment",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-aviation",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-bigmac",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-bundle-derived-signals",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-bundle-market-backup",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-bundle-portwatch",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-bundle-portwatch-port-activity",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-bundle-resilience-energy-v2",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-chokepoint-exposure",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-commodity-quotes",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-comtrade-bilateral-hs4",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-conflict-intel",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-consumer-aggregate",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-consumer-prices",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-consumer-prices-publish",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-cot",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-cyber-threats",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-earnings-calendar",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-earthquakes",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-economic-calendar",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-economy",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-electricity-prices",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-ember-electricity",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-energy-intelligence",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-energy-spine",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-fear-greed",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-fire-detections",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-forecast-bets",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-forecast-resolutions",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-forecasts",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-fuel-prices",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-fx-rates",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-fx-yoy",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-gdelt-intel",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-gpsjam",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-grocery-basket",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-hormuz",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-infra",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-insights",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-internet-outages",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-iran-events",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-market-breadth",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-military-cii",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-military-maritime",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-natural-events",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-prediction-markets",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-radiation-watch",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-regulatory-actions",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-research",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-sanctions-pressure",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-security-advisories",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-supply-chain-trade",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-thermal-escalation",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-trade-flows",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-unrest-events",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "seed-webcams",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     },
     {
       "name": "simulation-worker",
       "status": "REJECTED_PUSH",
       "issue": 6142,
-      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Measured 2026-08-04; the filter stays until #6142 moves deploy triggering into CI."
+      "reason": "Carries a Railway watch-path filter, which refused a push and has built nothing since. Railway builds the full tree at a SHA, so the change rides the next build that fires \u2014 this is lag (p90 19h, max 62.6h fleet-wide), not loss. Measured 2026-08-04; the filter stays until #6142 shortens the tail by triggering deploys from CI."
     }
   ]
 }

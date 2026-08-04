@@ -210,11 +210,16 @@ describe('seed freshness workflow control plane', () => {
 
     assert.ok(installIndex >= 0, 'workflow must install the Railway CLI');
     assert.ok(
-      installIndex < contextIndex
-        && contextIndex < auditIndex
-        && auditIndex < driftIndex
-        && driftIndex < healthIndex,
-      'Railway context, watch-path drift and deploy drift must be checked before compact health',
+      installIndex < contextIndex && contextIndex < auditIndex && auditIndex < healthIndex,
+      'Railway context and watch-path drift must be checked before compact health',
+    );
+    // Deploy drift runs LAST. It fails whenever any service is off head —
+    // including on a baseline expiry — and a failing step cancels the ones
+    // behind it, so ordering it before compact health would let a deploy-drift
+    // problem silently stop the data-health probe entirely.
+    assert.ok(
+      healthIndex < driftIndex,
+      'deploy drift must not be able to cancel the compact-health probe',
     );
 
     // `git merge-base --is-ancestor` cannot answer from a depth-1 checkout, and
@@ -239,7 +244,20 @@ describe('seed freshness workflow control plane', () => {
       undefined,
       'a merge that never reached production must fail the monitor, not annotate it',
     );
+    // No `if:` — default success() semantics keep this behind the fail-closed
+    // green-main gate, exactly as the compact-health step is.
     assert.equal(drift.if, undefined, 'deploy drift stays behind the fail-closed gate');
+
+    assert.equal(
+      workflow.jobs.monitor['timeout-minutes'],
+      20,
+      'the job budget must cover one Railway round trip per service',
+    );
+    assert.deepEqual(
+      workflow.concurrency,
+      { group: 'seed-freshness-monitor', 'cancel-in-progress': true },
+      'a run slower than the interval must be superseded, not stacked',
+    );
 
     assert.match(
       monitorSteps[installIndex].run,

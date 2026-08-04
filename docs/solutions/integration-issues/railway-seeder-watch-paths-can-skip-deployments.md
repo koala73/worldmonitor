@@ -38,6 +38,20 @@ from this repository:
   in the fleet — 24 exact paths — and still had its worst skip rate: 51% of its
   last 500 deployments.
 
+**The defect is a lag tail, not a loss rate.** Railway builds the full tree at a
+SHA, so a refused commit's changes ride along on the next build that does fire.
+Almost nothing is permanently lost — it arrives late. Hours from merge to a
+build actually containing the change: p50 **0h** on every service, but p90
+**19.0h** and max **62.6h** (`seed-conflict-intel`); p90 3.6h (`seed-gpsjam`);
+max 9.9h (`seed-military-flights` — and that maximum *is* the incident above,
+ended only by a manual `railway up`).
+
+That distinction decides what to build. Lag is harmless for a copy tweak and an
+outage when the delayed commit fixes an active crash loop, and nothing
+distinguishes the two from inside the repository: **unmonitored lag is
+indistinguishable from loss.** So the fix is not to make every push build — it
+is to measure how far behind each service actually is.
+
 The filter is therefore not a reliable deployment trigger at any width. That is
 a statement about Railway's matcher, not about the closures in the registry.
 
@@ -60,13 +74,16 @@ a statement about Railway's matcher, not about the closures in the registry.
   missed pushes because it was incomplete, so the registry pins each service's
   exact runtime dependency closure and a contract test keeps it complete as
   imports grow. The measurement above refutes the safety half of that: every
-  filtered service in the fleet was stale, and the service with the most
-  carefully maintained closure was the worst offender. The closures are still in
+  filtered service in the fleet was behind a refused push, and the service with
+  the most carefully maintained closure was the worst offender. The closures are still in
   the registry and still enforced (see the decision below), but a reader
   arriving from an older link must not read them as a guarantee that a merge
   deploys.
 - Applying `scripts/**` and `shared/**` to every seeder. Broad patterns are
-  refused exactly as narrow ones are; breadth only changes which merges vanish.
+  refused exactly as narrow ones are; breadth only changes which merges are
+  delayed. `scripts/**` is already maximally coarse for these services — any
+  `scripts/` change rebuilds all of them — so today's configuration pays the
+  no-filter cost *and* still lags. Narrower per-seeder patterns beat both.
 - Adding a newly missed helper only in Railway fixes one deployment but leaves
   repository and production configuration able to drift again.
 - `railway redeploy` rebuilds the most recent deployment with the same source;

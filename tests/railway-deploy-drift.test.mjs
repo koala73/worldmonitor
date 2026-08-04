@@ -17,6 +17,7 @@ import { describe, it } from 'node:test';
 import {
   classifyServiceDeploy,
   isProblemVerdict,
+  missingBaselinedServices,
   summarizeDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
 import { validateAcceptanceBaseline } from '../scripts/check-seed-freshness.mjs';
@@ -153,11 +154,17 @@ describe('Railway deploy drift classification', () => {
   // Ancestry must not excuse a rejection: the service can be running a
   // descendant of the head we read and still have had a later push refused.
   it('reports a rejected push even when the running build is ahead of head', () => {
+    const refused = 'aaaaaaaaa00000000000000000000000000000aa';
     const result = classify([
-      deployment('SKIPPED', { at: '2026-08-04T05:50:00Z', sha: 'aaaaaaaaa00000000000000000000000000000aa' }),
+      deployment('SKIPPED', { at: '2026-08-04T05:50:00Z', sha: refused }),
       deployment('SUCCESS', { at: '2026-08-04T05:44:55Z', sha: NEWER }),
-    ], { isAncestor: () => true });
+    ], {
+      // The running build descends from head, but it predates the refused push
+      // and therefore cannot contain it.
+      isAncestor: (ancestor, descendant) => ancestor === HEAD && descendant === NEWER,
+    });
     assert.equal(result.verdict, 'REJECTED_PUSH');
+    assert.deepEqual(result.rejectedShas, [refused]);
   });
 
   // The grace is spent on a commit, not on a service. A service running the
@@ -186,11 +193,14 @@ describe('Railway deploy drift classification', () => {
     assert.match(stale.detail, /predates ggggggggg/);
   });
 
-  it('reports a build in flight for head regardless of the grace', () => {
+  // `now` is pinned: this fixture asserts an age relative to the build grace,
+  // and a live Date.now() would make the same records read PENDING_BUILD today
+  // and BUILD_STALLED tomorrow.
+  it('accepts a build in flight for head even when the service lags the grace commit', () => {
     const result = classify([
       deployment('BUILDING', { at: '2026-08-04T05:59:00Z', sha: HEAD }),
       deployment('REMOVED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
-    ]);
+    ], { now: Date.parse('2026-08-04T06:00:00Z') });
     assert.equal(result.verdict, 'PENDING_BUILD');
   });
 
@@ -214,6 +224,72 @@ describe('Railway deploy drift classification', () => {
       deployment('CRASHED', { at: '2026-08-04T05:07:00Z', sha: HEAD }),
     ]);
     assert.equal(result.verdict, 'CURRENT');
+  });
+
+  // A cron tick is a REDEPLOY of the same image, so it proves nothing about the
+  // source. Superseding rejections by deployment TIMESTAMP let the 05:10 tick
+  // bury the 05:06 rejection: the verdict decayed from REJECTED_PUSH to BEHIND,
+  // the rejection evidence vanished, and — because the baseline matches on
+  // service:verdict — the service's acknowledgement silently stopped applying.
+  it('does not let a cron tick of the same image bury a rejection', () => {
+    const result = classify([
+      deployment('REMOVED', { at: '2026-08-04T05:10:28Z', sha: PREVIOUS }),
+      deployment('SKIPPED', { at: '2026-08-04T05:06:28Z', sha: HEAD }),
+      deployment('REMOVED', { at: '2026-08-04T04:55:21Z', sha: PREVIOUS }),
+    ]);
+    assert.equal(result.verdict, 'REJECTED_PUSH');
+    assert.deepEqual(result.rejectedShas, [HEAD]);
+  });
+
+  // The other side of the same rule: a real build DID change the source, so the
+  // rejection it superseded must stop being reported.
+  it('drops a rejection once a later build changed the source', () => {
+    const result = classify([
+      deployment('SUCCESS', { at: '2026-08-04T05:30:00Z', sha: HEAD }),
+      deployment('SKIPPED', { at: '2026-08-04T05:06:28Z', sha: 'ccc1111100000000000000000000000000000011' }),
+      deployment('REMOVED', { at: '2026-08-04T04:55:00Z', sha: PREVIOUS }),
+    ]);
+    assert.equal(result.verdict, 'CURRENT');
+    assert.deepEqual(result.rejectedShas, []);
+  });
+
+  // A build that started and never finished is not "under way" forever. Without
+  // an age bound this reported PENDING_BUILD — a HEALTHY verdict — for as long
+  // as head did not move, which is green-while-stale.
+  it('stops calling a wedged build pending once it outlives the grace', () => {
+    const wedged = [
+      deployment('BUILDING', { at: '2026-08-01T05:00:00Z', sha: HEAD }),
+      deployment('REMOVED', { at: '2026-08-01T04:00:00Z', sha: PREVIOUS }),
+    ];
+    const stalled = classify(wedged, { now: Date.parse('2026-08-04T06:00:00Z') });
+    assert.equal(stalled.verdict, 'BUILD_STALLED');
+    assert.equal(isProblemVerdict(stalled.verdict), true);
+
+    const fresh = classify(
+      [deployment('BUILDING', { at: '2026-08-04T05:55:00Z', sha: HEAD }),
+        deployment('REMOVED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS })],
+      { now: Date.parse('2026-08-04T06:00:00Z') },
+    );
+    assert.equal(fresh.verdict, 'PENDING_BUILD');
+  });
+
+  // #6142's recovery path: the trigger is fixed, the build finally fires, and
+  // it breaks. Naming the rejection there would blame a cause already resolved.
+  it('prefers a failed build over a rejection that predates it', () => {
+    const result = classify([
+      deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: HEAD }),
+      deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD }),
+      deployment('REMOVED', { at: '2026-08-04T04:55:00Z', sha: PREVIOUS }),
+    ]);
+    assert.equal(result.verdict, 'BUILD_FAILED');
+  });
+
+  it('reports a window whose only running record never built anything', () => {
+    const result = classify([
+      deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: PREVIOUS }),
+    ]);
+    assert.equal(result.verdict, 'NO_BUILD_IN_WINDOW');
+    assert.equal(isProblemVerdict(result.verdict), true);
   });
 
   it('reports an empty window rather than assuming health', () => {
@@ -322,13 +398,41 @@ describe('Railway deploy drift summary', () => {
   });
 
   it('reports a recovered baseline entry without failing the run', () => {
+    // `d` is still in the fleet and now reports CURRENT — that is recovery.
+    // A baselined service MISSING from the fleet is a different thing entirely
+    // and is covered by the fleet-floor test above.
     const summary = summarizeDeployDrift(
-      results.slice(0, 2),
+      [...results.slice(0, 2), { service: 'd', verdict: 'CURRENT' }],
       baseline([{ name: 'd', status: 'BEHIND', issue: 6064 }]),
       NOW,
     );
     assert.equal(summary.ok, true);
     assert.deepEqual(summary.cleared.map((entry) => entry.name), ['d']);
+    assert.deepEqual(summary.missing, []);
+  });
+
+  // A baselined service that vanished from the queried fleet is UNCHECKED, not
+  // recovered. Reporting it as "recovered, prune it" would retire the only
+  // watch on a service that may still be serving stale code.
+  it('never reports a service that left the fleet as recovered', () => {
+    const summary = summarizeDeployDrift(
+      results.slice(0, 2),
+      baseline([{ name: 'gone', status: 'BEHIND', issue: 6142 }]),
+      NOW,
+    );
+    assert.deepEqual(summary.missing, ['gone']);
+    assert.deepEqual(summary.cleared, []);
+    assert.equal(summary.ok, false);
+  });
+
+  it('names every baselined service absent from the checked fleet', () => {
+    assert.deepEqual(
+      missingBaselinedServices(
+        [{ service: 'a', verdict: 'CURRENT' }],
+        { expiresAt: '2026-09-04', acknowledged: [{ name: 'a', status: 'BEHIND', issue: 1 }, { name: 'b', status: 'BEHIND', issue: 1 }] },
+      ),
+      ['b'],
+    );
   });
 
   // Anti-rot: a suppression that outlives its cause is how a fleet ends up

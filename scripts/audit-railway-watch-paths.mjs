@@ -396,12 +396,21 @@ export function serializeRailwayServiceConfigPatch(drift) {
   return `${JSON.stringify(buildRailwayServiceConfigPatch(drift))}\n`;
 }
 
-function runRailway(args, options = {}) {
+// A hung Railway call must not consume the whole job budget: this runs inside a
+// scheduled workflow with a wall-clock timeout, and a subprocess with no bound
+// turns one unresponsive API call into a cancelled monitor.
+export const RAILWAY_CALL_TIMEOUT_MS = 60_000;
+
+export function runRailway(args, options = {}) {
   const result = spawnSync('railway', args, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
+    timeout: RAILWAY_CALL_TIMEOUT_MS,
     ...options,
   });
+  if (result.signal) {
+    throw new Error(`railway ${args.join(' ')} timed out after ${RAILWAY_CALL_TIMEOUT_MS}ms`);
+  }
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(

@@ -41,7 +41,7 @@ This keeps the declared closure complete without making unrelated changes under
 that plainly match the glob and records the refusal only as a deployment whose
 status is `SKIPPED` and whose `meta.commitHash` carries the commit it refused.
 Measured 2026-08-04 against production, 62 of the 62 repository-backed services
-carrying a filter were running code older than a push Railway had refused, while
+carrying a filter were behind a push Railway had refused, while
 13 of the 15 without one were at `origin/main` HEAD. Narrowness did not help:
 `seed-conflict-intel` pins the most careful closure in the fleet — 24 exact
 paths — and had its worst skip rate, 51% of its last 500 deployments.

@@ -5,6 +5,13 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
+# The drift check queries every service serially, so a slow run can outlast the
+# 15-minute interval. Superseding is correct for a read-only probe: the newer
+# run reads newer state and answers the same question better.
+concurrency:
+  group: seed-freshness-monitor
+  cancel-in-progress: true
+
 permissions:
   contents: read
   statuses: read
@@ -12,7 +19,11 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Was 5, which predates the deploy-drift step: that step alone makes one
+    # service-list plus one deployment-list call per service (77 in production),
+    # each a CLI auth + GraphQL round trip. Per-call timeouts bound a hung call;
+    # this bounds the run.
+    timeout-minutes: 20
     environment:
       name: ingestion-acceptance-production
       deployment: false
@@ -76,10 +87,18 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
         run: node scripts/audit-railway-watch-paths.mjs
 
-      # The audit above proves no service can silently skip a merge; this proves
-      # none actually did. They are separate because the causes are: a cleared
-      # filter does nothing for a webhook that stopped delivering (#6064), and
-      # this check catches that without knowing why.
+      - name: Check ingestion operational acceptance
+        run: node scripts/check-seed-freshness.mjs
+
+      # Runs AFTER compact health deliberately. This step fails whenever any
+      # service is off head — including on a baseline expiry — and a failing
+      # step cancels the ones behind it, so putting it earlier would let a
+      # deploy-drift problem silently stop the data-health probe entirely.
+      #
+      # The audit above proves no service CAN silently skip a merge; this proves
+      # none actually did. Both are needed: a cleared filter does nothing for a
+      # webhook that stopped delivering (#6064), and this check catches that
+      # without knowing why.
       - name: Check Railway deploy drift against main
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
@@ -89,6 +108,3 @@ jobs:
           # built one of them reads as ahead rather than behind.
           git fetch --quiet --depth=50 origin main || true
           node scripts/check-railway-deploy-drift.mjs
-
-      - name: Check ingestion operational acceptance
-        run: node scripts/check-seed-freshness.mjs
