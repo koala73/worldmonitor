@@ -272,6 +272,14 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/get-company-enrichment': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/list-company-signals': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
+  // Company Monitoring is contract-only and remains unrouted until #6003
+  // passes, but generated mutation routes still need a fail-closed policy
+  // before any later lane can wire them. Import can carry 100 rows, so keep its
+  // request budget lower than the single-company mutations.
+  '/api/company-monitoring/v1/create-monitored-company': { limit: 30, window: '60 s' },
+  '/api/company-monitoring/v1/update-monitored-company': { limit: 30, window: '60 s' },
+  '/api/company-monitoring/v1/set-monitored-company-state': { limit: 30, window: '60 s' },
+  '/api/company-monitoring/v1/import-monitored-company-batch': { limit: 10, window: '60 s' },
   // Lead capture: preserve the 3/hr and 5/hr budgets from legacy api/contact.js
   // and api/register-interest.js. Lower limits than normal IP rate limit since
   // these hit Convex + Resend per request.
@@ -357,6 +365,18 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/intelligence/v1/search-sec-filings': {
     reason: 'Full-text filing search proxies SEC EDGAR on cache miss with unbounded query cardinality.',
+  },
+  '/api/company-monitoring/v1/create-monitored-company': {
+    reason: 'Account-scoped portfolio mutation must not become fail-open when its dark contract is wired.',
+  },
+  '/api/company-monitoring/v1/update-monitored-company': {
+    reason: 'Account-scoped portfolio mutation must not become fail-open when its dark contract is wired.',
+  },
+  '/api/company-monitoring/v1/set-monitored-company-state': {
+    reason: 'Account-scoped lifecycle mutation must not become fail-open when its dark contract is wired.',
+  },
+  '/api/company-monitoring/v1/import-monitored-company-batch': {
+    reason: 'A bounded import can write up to 100 portfolio rows and must fail closed when its dark contract is wired.',
   },
   '/api/military/v1/get-aircraft-details-batch': {
     reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
