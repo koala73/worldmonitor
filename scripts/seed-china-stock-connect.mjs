@@ -40,6 +40,18 @@ export function validateChinaStockConnectSnapshot(snapshot) {
   return STOCK_CONNECT_SOURCE_IDS.every((id) => sourceIds.has(id));
 }
 
+// Counts sources that answered this run, NOT history rows. History only gains a
+// row when both exchanges of a pair agree on a trade date, so a history-derived
+// count is 0 whenever one exchange is down and there is no prior snapshot to
+// merge -- and with zeroIsValid:false that discards the working exchange's data
+// and never creates the key. SZSE being unreachable from Railway is the exact
+// failure the edge relay exists for, so that must degrade, not black-hole.
+// Zero here means every source failed, which is the only thing worth failing on.
+export function chinaStockConnectRecordCount(snapshot) {
+  return (Array.isArray(snapshot?.sources) ? snapshot.sources : [])
+    .filter((source) => source?.transportStatus === 'ok').length;
+}
+
 export function chinaStockConnectContentMeta(snapshot) {
   // Deliberately the two headline trade dates and nothing else: history carries
   // older days, and including it would let a frozen upstream keep the newest
@@ -70,9 +82,9 @@ if (process.argv[1]?.endsWith('seed-china-stock-connect.mjs')) {
       ttlSeconds: CHINA_STOCK_CONNECT_TTL_SECONDS,
       lockTtlMs: 240_000,
       validateFn: validateChinaStockConnectSnapshot,
-      declareRecords: (snapshot) => snapshot.history.length,
-      // An empty history means every source failed on a run with no prior
-      // snapshot to merge. That is a failure, not a quiet market.
+      declareRecords: chinaStockConnectRecordCount,
+      // Zero answering sources is a total outage, not a quiet market -- there is
+      // no market state these endpoints report by returning nothing.
       zeroIsValid: false,
       sourceVersion: 'china-stock-connect-sse-szse-v1',
       schemaVersion: 1,

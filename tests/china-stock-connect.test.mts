@@ -23,6 +23,7 @@ import {
 } from '../scripts/china-stock-connect/adapters.mjs';
 import {
   chinaStockConnectContentMeta,
+  chinaStockConnectRecordCount,
   validateChinaStockConnectSnapshot,
 } from '../scripts/seed-china-stock-connect.mjs';
 
@@ -337,6 +338,46 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.ok(snapshot.history.some((entry: { day: string }) => entry.day === '2026-08-03'));
       // Margin is independent and unaffected.
       assert.equal(snapshot.margin.totalBalanceCny.status, 'known');
+    });
+
+    it('still publishes a first run when only one exchange is reachable', async () => {
+      // The edge relay exists precisely because SZSE is often unreachable from
+      // Railway. If that happens on the very first run there is no prior
+      // snapshot to merge, so a record count derived from combined-only history
+      // is 0 -- and with zeroIsValid:false the seeder would discard a perfectly
+      // good SSE reading and never create the key, permanently.
+      const { snapshot } = await fetchWithFixtures({
+        previousSnapshot: null,
+        overrides: [['szse.cn', () => { throw new Error('fetch failed'); }]],
+      });
+      assert.equal(snapshot.status, 'degraded');
+      // The usable half must survive into the payload.
+      assert.equal(snapshot.northbound.exchanges.sse.turnoverCny, 135_449_000_000);
+      assert.equal(snapshot.margin.exchanges.sse.financingBalanceCny, 1_323_258_064_454);
+      // ...and the seeder must count it as records, or runSeed rejects the whole
+      // snapshot. Zero records has to mean "every source failed", nothing less.
+      assert.ok(
+        chinaStockConnectRecordCount(snapshot) > 0,
+        'a run with a working exchange must not report zero records',
+      );
+    });
+
+    it('reports zero records only when every source failed', () => {
+      const snapshot = buildChinaStockConnectSnapshot({
+        outcomes: STOCK_CONNECT_SOURCE_IDS.map((sourceId: string) => ({
+          sourceId,
+          ok: false,
+          requestCount: 1,
+          errorCode: 'FETCH_FAILED',
+          transportPath: 'direct',
+        })),
+        previousSnapshot: { history: [{ day: '2026-08-03', northboundTurnoverCny: 1 }] },
+        generatedAt: '2026-08-04T20:00:00.000Z',
+      });
+      // Prior history is still carried, but a total outage must not ride on it
+      // to look like a successful run.
+      assert.ok(snapshot.history.length > 0);
+      assert.equal(chinaStockConnectRecordCount(snapshot), 0);
     });
 
     it('merges history newest-first and bounds it', () => {
