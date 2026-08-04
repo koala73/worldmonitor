@@ -168,6 +168,103 @@ describe('internal China exchange egress', () => {
     });
   });
 
+  it('relays an allowlisted SZSE report route as a GET with a server-built URL', async () => {
+    const calls = [];
+    const payload = [{
+      metadata: { tabkey: 'tab1', subname: '2026-08-04' },
+      data: [{ label: '当日交易总额（亿元人民币）', total: '1,609.09' }],
+    }];
+    globalThis.fetch = async (input, init) => {
+      calls.push({ input: String(input), init });
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handler(request({
+      catalogId: 'SGT_SGTJYRB',
+      route: 'szse-report',
+      tabKey: 'tab1',
+      txtDate: '2026-08-04',
+    }));
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), payload);
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0].input,
+      'https://www.szse.cn/api/report/ShowReport/data'
+      + '?SHOWTYPE=JSON&CATALOGID=SGT_SGTJYRB&TABKEY=tab1&txtDate=2026-08-04',
+    );
+    assert.equal(calls[0].init.method, 'GET');
+    assert.equal(calls[0].init.redirect, 'error');
+    // A GET must not carry the caller's envelope upstream.
+    assert.equal(calls[0].init.body, undefined);
+  });
+
+  it('relays the allowlisted SZSE trading-calendar route', async () => {
+    const calls = [];
+    globalThis.fetch = async (input, init) => {
+      calls.push({ input: String(input), init });
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const response = await handler(request({ month: '2026-08', route: 'szse-calendar' }));
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      calls[0].input,
+      'https://www.szse.cn/api/report/exchange/onepersistenthour/monthList?month=2026-08',
+    );
+    assert.equal(calls[0].init.method, 'GET');
+  });
+
+  it('refuses report routes outside the reviewed allowlist', async () => {
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      return new Response('{}');
+    };
+    const report = {
+      catalogId: 'SGT_SGTJYRB',
+      route: 'szse-report',
+      tabKey: 'tab1',
+      txtDate: '2026-08-04',
+    };
+    const invalidBodies = [
+      // A catalogue outside the two reviewed reports.
+      { ...report, catalogId: 'SGT_SGTJYRB_BEFORE' },
+      { ...report, catalogId: '1837_xxfz' },
+      // tab2 is the per-security detail table, not the reviewed aggregate.
+      { ...report, tabKey: 'tab2' },
+      // Dropping txtDate makes SZSE dump the whole series since 2010.
+      { catalogId: 'SGT_SGTJYRB', route: 'szse-report', tabKey: 'tab1' },
+      { ...report, txtDate: '' },
+      { ...report, txtDate: '2026-02-31' },
+      { ...report, txtDate: '2019-01-02' },
+      { ...report, txtDate: '2030-01-02' },
+      { ...report, extra: 'unexpected' },
+      // Nothing may steer the URL itself.
+      { ...report, url: 'https://example.com/' },
+      { route: 'szse-report' },
+      { month: '2026-13', route: 'szse-calendar' },
+      { month: '2026-8', route: 'szse-calendar' },
+      { month: '2026-08', route: 'szse-calendar', extra: 1 },
+      { route: 'szse-unknown' },
+    ];
+
+    for (const body of invalidBodies) {
+      const response = await handler(request(body));
+      assert.equal(response.status, 400, JSON.stringify(body));
+      assert.deepEqual(await response.json(), { error: 'invalid_request' });
+    }
+    assert.equal(called, false);
+  });
+
   it('preserves upstream failure status for the seeder fallback chain', async () => {
     globalThis.fetch = async () => new Response('upstream timeout', { status: 522 });
 

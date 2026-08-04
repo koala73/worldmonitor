@@ -435,6 +435,23 @@ function szseReportUrl(contract, tradeDate) {
   return url;
 }
 
+// The relay is a POST allowlist, but these SZSE calls are GETs with no body,
+// so the envelope that tells the relay WHICH allowlisted URL to fetch has to be
+// built explicitly. The relay reconstructs the URL from these fields alone --
+// it never accepts a caller-supplied URL.
+export function szseReportEdgeBody(contract, tradeDate) {
+  return JSON.stringify({
+    catalogId: contract.queryId,
+    route: 'szse-report',
+    tabKey: 'tab1',
+    txtDate: tradeDate,
+  });
+}
+
+export function szseCalendarEdgeBody(month) {
+  return JSON.stringify({ month, route: 'szse-calendar' });
+}
+
 function szseCalendarUrl(month) {
   const url = new URL(SZSE_TRADING_CALENDAR_ENDPOINT);
   url.searchParams.set('month', month);
@@ -468,6 +485,7 @@ async function fetchThroughLadder(url, contract, {
   edgeTimeoutMs,
   budget,
   sticky = null,
+  edgeBody = null,
 }) {
   const routing = {
     transportPath: 'direct',
@@ -492,7 +510,11 @@ async function fetchThroughLadder(url, contract, {
     let edgeDiagnostic = null;
     try {
       const payload = await attempt(
-        (input, init) => edgeFetchFn(input, init, (entry) => { edgeDiagnostic = entry; }),
+        (input, init) => edgeFetchFn(
+          input,
+          { ...init, body: edgeBody },
+          (entry) => { edgeDiagnostic = entry; },
+        ),
         edgeTimeoutMs,
       );
       return { payload, routing };
@@ -567,7 +589,7 @@ async function fetchThroughLadder(url, contract, {
         const payload = await attempt(
           (input, init) => edgeFetchFn(
             input,
-            init,
+            { ...init, body: edgeBody },
             (entry) => { edgeDiagnostic = entry; },
           ),
           edgeTimeoutMs,
@@ -690,6 +712,7 @@ async function fetchSzseSource(contract, {
       szseReportUrl(contract, tradeDate),
       contract,
       {
+        edgeBody: szseReportEdgeBody(contract, tradeDate),
         fetchFn,
         proxyFetchFn,
         edgeFetchFn,
@@ -739,6 +762,7 @@ async function fetchSzseTradingDays(contract, {
       szseCalendarUrl(month),
       calendarContract,
       {
+        edgeBody: szseCalendarEdgeBody(month),
         fetchFn,
         proxyFetchFn,
         edgeFetchFn,

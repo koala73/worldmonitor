@@ -77,6 +77,9 @@ const SEED_DOMAINS = {
   // The bundle polls every 30min, but seed-health classifies at intervalMin*2.
   // Use half of /api/health's 180min alarm budget so both operator surfaces agree.
   'market:china-corporate-disclosures': { key: 'seed-meta:market:china-corporate-disclosures', intervalMin: 90 },
+  // Same halving rule against /api/health's 180min budget; the bundle polls
+  // this member hourly, so 90min still tolerates one missed run.
+  'market:china-stock-connect': { key: 'seed-meta:market:china-stock-connect', intervalMin: 90 },
   'market:gulf-quotes':       { key: 'seed-meta:market:gulf-quotes',       intervalMin: 15 },
   'market:stablecoins':       { key: 'seed-meta:market:stablecoins',       intervalMin: 30 },
   'shared:fx-rates':          { key: 'seed-meta:shared:fx-rates',          intervalMin: 1800 }, // 60h staleness budget in api/health.js

@@ -220,6 +220,9 @@ const BOOTSTRAP_KEYS = {
 
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
+  // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
+  // data layer only), so it is standalone rather than bootstrap-tiered.
+  chinaStockConnect:  'market:china:stock-connect:v1',
   hkoWarnings:        'weather:hko-warnings:v1',
   humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
@@ -477,6 +480,7 @@ const SEED_META = {
   chinaMacro:       { key: 'seed-meta:economic:china-macro-transport', maxStaleMin: 4_320 }, // oldest required-source last success; preserved failures do not refresh it
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
   chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
+  chinaStockConnect: { key: 'seed-meta:market:china-stock-connect', maxStaleMin: 180 },
   crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
   crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
   crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
