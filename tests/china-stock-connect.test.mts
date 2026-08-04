@@ -39,15 +39,6 @@ const szseCalendarFixture = fixture('szse-trading-calendar.json');
 
 const YI = 100_000_000;
 
-function jsonResponse(payload: unknown, url: string) {
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-    // Response.url is read-only via the constructor, so the adapter's
-    // redirect assertion is exercised through a plain object below instead.
-  }) as Response & { url: string };
-}
-
 // The adapter asserts on response.url, which cannot be set through the Response
 // constructor. This stub mirrors just enough of the interface.
 function stubResponse(payload: unknown, url: string) {
@@ -572,5 +563,3 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
     });
   });
 });
-
-void jsonResponse;
