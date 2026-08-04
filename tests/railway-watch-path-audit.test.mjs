@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -8,16 +8,13 @@ import {
   auditRailwayServiceConfig,
   buildRailwayEditArgs,
   buildRailwayServiceConfigPatch,
+  isRepositoryService,
   managedRailwayServices,
   readArgument,
   serializeRailwayServiceConfigPatch,
   waitForRailwayServiceConfigConvergence,
+  watchPatternDrift,
 } from '../scripts/audit-railway-watch-paths.mjs';
-import {
-  extractBundleMembers,
-  stripComments,
-  walkContainerGraph,
-} from './_lib/import-graph-walk.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,73 +35,11 @@ function service({
   };
 }
 
-const NIXPACKS_BUILD_FILES = Object.freeze([
-  'scripts/package.json',
-  'scripts/package-lock.json',
-  'scripts/nixpacks.toml',
-]);
-
-// walkContainerGraph only follows import/require/dynamic-import edges, so a data
-// file pulled in with fs is invisible to it -- and one already is:
-// scripts/seed-supply-chain-trade.mjs reads scripts/shared/un-to-iso2.json via
-// readFileSync(join(__dirname, ...)). Without this extractor the closure guard
-// cannot tell whether such a path is watched, which is exactly the
-// silently-skipped-deployment class the registry exists to prevent.
-function extractFileReadDependencies(files, repoRootDir) {
-  const dependencies = new Set();
-  const add = (fromFile, ...segments) => {
-    const resolved = resolve(dirname(fromFile), ...segments);
-    if (!resolved.startsWith(repoRootDir)) return;
-    if (!existsSync(resolved)) return;
-    dependencies.add(relative(repoRootDir, resolved));
-  };
-  for (const file of files) {
-    if (!/\.[cm]?[jt]s$/u.test(file)) continue;
-    const source = stripComments(readFileSync(file, 'utf8'));
-    // readFileSync(join(__dirname, 'shared', 'x.json')) -- any local alias of
-    // readFileSync/join (the seeders import them as _readFileSync/_join).
-    for (const match of source.matchAll(
-      /\b_?readFileSync\s*\(\s*_?join\(\s*__dirname\s*,\s*((?:['"][^'"]+['"]\s*,\s*)*['"][^'"]+['"])\s*\)/gu,
-    )) {
-      const segments = [...match[1].matchAll(/['"]([^'"]+)['"]/gu)].map((m) => m[1]);
-      if (segments.length > 0) add(file, ...segments);
-    }
-    // readFileSync(new URL('./x.json', import.meta.url))
-    for (const match of source.matchAll(
-      /new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/gu,
-    )) {
-      add(file, match[1]);
-    }
-  }
-  return dependencies;
-}
-
-function extractSharedConfigDependencies(files, deployMode) {
-  const prefix = deployMode === 'nixpacks-root-scripts'
-    ? 'scripts/shared'
-    : 'shared';
-  const dependencies = new Set();
-  for (const file of files) {
-    if (!/\.[cm]?[jt]s$/u.test(file)) continue;
-    const source = stripComments(readFileSync(file, 'utf8'));
-    for (const match of source.matchAll(/\bloadSharedConfig\(\s*['"]([^'"]+)['"]\s*\)/gu)) {
-      dependencies.add(`${prefix}/${match[1]}`);
-    }
-  }
-  return dependencies;
-}
-
 const managedRegistry = [
   {
     entry: 'scripts/seed-example.mjs',
     service: 'seed-example',
-    watchPatterns: [
-      'scripts/seed-example.mjs',
-      'scripts/_seed-utils.mjs',
-      'scripts/package.json',
-      'scripts/package-lock.json',
-      'scripts/nixpacks.toml',
-    ],
+    watchPatterns: [],
     cronSchedule: '*/15 * * * *',
   },
 ];
@@ -114,7 +49,7 @@ describe('Railway operational-config audit', () => {
   it('audits always-on services without reconciling their cron', () => {
     const registry = [{
       service: 'publisher',
-      watchPatterns: ['scripts/publish.mjs'],
+      watchPatterns: [],
       cronSchedule: null,
     }];
     assert.deepEqual(
@@ -136,14 +71,14 @@ describe('Railway operational-config audit', () => {
         missingService: false,
         watchPatterns: {
           actual: ['scripts/**'],
-          expected: ['scripts/publish.mjs'],
+          expected: [],
         },
         cronSchedule: null,
       }],
     );
   });
 
-  it('flags broad or missing watch paths and cron drift against the registry', () => {
+  it('flags any watch-path filter and cron drift against the registry', () => {
     const config = {
       services: {
         'svc-example': service({
@@ -160,7 +95,7 @@ describe('Railway operational-config audit', () => {
         missingService: false,
         watchPatterns: {
           actual: ['scripts/**', 'shared/**'],
-          expected: managedRegistry[0].watchPatterns,
+          expected: [],
         },
         cronSchedule: {
           actual: '0 * * * *',
@@ -170,11 +105,38 @@ describe('Railway operational-config audit', () => {
     ]);
   });
 
+  // An exact per-file closure is the shape this registry used to ship. It is
+  // no safer than the broad one — Railway skipped merges under both — so it
+  // must read as drift rather than as a narrower contract to preserve.
+  it('flags an exact per-file closure exactly as it flags a glob', () => {
+    const closure = [
+      'scripts/seed-example.mjs',
+      'scripts/_seed-utils.mjs',
+      'scripts/package.json',
+    ];
+    const drift = auditRailwayServiceConfig(
+      {
+        services: {
+          'svc-example': service({
+            watchPatterns: closure,
+            cronSchedule: managedRegistry[0].cronSchedule,
+          }),
+        },
+      },
+      serviceIds,
+      managedRegistry,
+    );
+    assert.deepEqual(drift[0].watchPatterns, { actual: closure, expected: [] });
+    assert.deepEqual(buildRailwayServiceConfigPatch(drift), {
+      services: { 'svc-example': { build: { watchPatterns: [] } } },
+    });
+  });
+
   it('builds a minimal patch containing only drifted fields', () => {
     const config = {
       services: {
         'svc-example': service({
-          watchPatterns: managedRegistry[0].watchPatterns,
+          watchPatterns: [],
           cronSchedule: '0 * * * *',
         }),
       },
@@ -194,7 +156,7 @@ describe('Railway operational-config audit', () => {
       '--environment',
       'production',
       '--message',
-      'ops: reconcile registry-managed Railway seeders',
+      'ops: clear watch-path filters and reconcile registry-managed config',
       '--json',
     ]);
     assert.ok(serializeRailwayServiceConfigPatch(drift).endsWith('\n'));
@@ -450,8 +412,8 @@ describe('registry shape validation', () => {
   });
 
   it('rejects a non-array watchPatterns instead of comparing it clean', () => {
-    // sortedUniqueStrings() collapses a non-array to [], which compares equal to
-    // a whole-repo filter — and the closure contract test skips the same entry
+    // sortedUniqueStrings() collapsed a non-array to [], which compared equal to
+    // a whole-repo filter — and the closure contract test skipped the same entry
     // on `Array.isArray`, so this shape escaped BOTH gates.
     const asString = [{ ...managedRegistry[0], watchPatterns: 'scripts/seed-example.mjs' }];
     assert.throws(
@@ -462,6 +424,36 @@ describe('registry shape validation', () => {
     assert.throws(
       () => auditRailwayServiceConfig(liveConfig, serviceIds, withNonString),
       /watchPatterns must be an array of strings/,
+    );
+  });
+
+  // The registry is where a filter would be reintroduced — a reviewer reads an
+  // exact per-file closure as care, not as the mechanism that drops merges. Make
+  // the shape unrepresentable rather than discouraged, so --apply can never
+  // push a filter back to production.
+  it('rejects a registry entry that declares any watch-path filter', () => {
+    for (const watchPatterns of [['scripts/**'], ['scripts/seed-example.mjs']]) {
+      assert.throws(
+        () => auditRailwayServiceConfig(
+          liveConfig,
+          serviceIds,
+          [{ ...managedRegistry[0], watchPatterns }],
+        ),
+        /declares a watch-path filter.*only supported value is \[\]/s,
+      );
+    }
+    assert.deepEqual(
+      auditRailwayServiceConfig(
+        {
+          services: {
+            'svc-example': service({ cronSchedule: managedRegistry[0].cronSchedule }),
+          },
+        },
+        serviceIds,
+        managedRegistry,
+      ),
+      [],
+      'an entry declaring [] must still audit clean',
     );
   });
 
@@ -507,7 +499,7 @@ describe('planned Railway service lifecycle', () => {
     dockerfile: 'Dockerfile.umami-retention',
     lifecycle: 'planned',
     requiredEnv: ['PGHOST'],
-    watchPatterns: ['scripts/umami-retention.sql', 'Dockerfile.umami-retention'],
+    watchPatterns: [],
     cronSchedule: '7,22,37,52 * * * *',
   };
 
@@ -626,7 +618,7 @@ describe('requiredEnv any-of groups', () => {
     // name every drifted service so an operator sees the whole picture.
     const registry = [
       { ...managedRegistry[0], requiredEnv: [['SZSE_PROXY_URL', 'PROXY_URL']] },
-      { service: 'seed-other', deployMode: 'nixpacks-root-scripts', watchPatterns: ['scripts/seed-other.mjs'], cronSchedule: '0 * * * *' },
+      { service: 'seed-other', deployMode: 'nixpacks-root-scripts', watchPatterns: [], cronSchedule: '0 * * * *' },
     ];
     const config = {
       services: {
@@ -645,24 +637,29 @@ describe('requiredEnv any-of groups', () => {
     assert.deepEqual(drift.map((entry) => entry.service), ['seed-example', 'seed-other']);
     assert.deepEqual(drift[1].watchPatterns, {
       actual: ['scripts/WRONG.mjs'],
-      expected: ['scripts/seed-other.mjs'],
+      expected: [],
     });
   });
 });
 
-// Restores the coverage the registry rewrite dropped. Before this sweep the
-// audit only ever looked at registry-managed services, so a narrow watch filter
-// on any of the ~30 other live seeders — the "merged is not ran" failure this
-// guard exists to prevent — returned [] and printed "audit passed".
-describe('unmanaged live seeders', () => {
+// The sweep that makes "audit passed" mean the whole fleet. Registry coverage
+// is opt-in — 41 entries against 80 live services — so a contract enforced only
+// on registered services leaves the majority free to carry the filter that
+// skips merges.
+describe('live services this repository deploys', () => {
   const registry = [managedRegistry[0]];
   const ids = new Map([['seed-example', 'svc-example'], ['seed-forecasts', 'svc-forecasts']]);
 
-  function unmanagedSeeder({ watchPatterns, rootDirectory = 'scripts' }) {
+  function unregisteredService({
+    watchPatterns,
+    rootDirectory = 'scripts',
+    repo = 'koala73/worldmonitor',
+    startCommand = 'node seed-forecasts.mjs',
+  }) {
     return {
-      source: { repo: 'koala73/worldmonitor', rootDirectory },
+      source: { repo, rootDirectory },
       build: { watchPatterns },
-      deploy: { startCommand: 'node seed-forecasts.mjs' },
+      deploy: { startCommand },
       variables: {},
     };
   }
@@ -674,14 +671,11 @@ describe('unmanaged live seeders', () => {
     cronSchedule: managedRegistry[0].cronSchedule,
   });
 
-  it('flags a narrow watch filter on a seeder the registry does not manage', () => {
+  it('flags a watch filter on a service the registry does not manage', () => {
     const config = {
       services: {
-        'svc-example': service({
-          watchPatterns: managedRegistry[0].watchPatterns,
-          cronSchedule: managedRegistry[0].cronSchedule,
-        }),
-        'svc-forecasts': unmanagedSeeder({ watchPatterns: ['scripts/seed-forecasts.mjs'] }),
+        'svc-example': managedService(),
+        'svc-forecasts': unregisteredService({ watchPatterns: ['scripts/seed-forecasts.mjs'] }),
       },
     };
     const drift = auditRailwayServiceConfig(config, ids, registry);
@@ -689,78 +683,100 @@ describe('unmanaged live seeders', () => {
       service: 'seed-forecasts',
       serviceId: 'svc-forecasts',
       missingService: false,
-      unmanagedSeeder: true,
+      unregisteredService: true,
       watchPatterns: {
         actual: ['scripts/seed-forecasts.mjs'],
-        expected: ['scripts/**', 'shared/**'],
+        expected: [],
       },
       cronSchedule: null,
     }]);
     assert.deepEqual(buildRailwayServiceConfigPatch(drift), {
-      services: { 'svc-forecasts': { build: { watchPatterns: ['scripts/**', 'shared/**'] } } },
+      services: { 'svc-forecasts': { build: { watchPatterns: [] } } },
     });
   });
 
-  it('accepts a whole-repository filter, however it is expressed', () => {
+  it('accepts an unfiltered service, however Railway expresses it', () => {
     for (const watchPatterns of [[], undefined]) {
       const config = {
         services: {
           'svc-example': managedService(),
-          'svc-forecasts': unmanagedSeeder({ watchPatterns }),
+          'svc-forecasts': unregisteredService({ watchPatterns }),
         },
       };
       assert.deepEqual(auditRailwayServiceConfig(config, ids, registry), []);
     }
   });
 
-  it('accepts the broad contract and preserves extras outside scripts/ and shared/', () => {
-    const broad = {
-      services: {
-        'svc-example': managedService(),
-        'svc-forecasts': unmanagedSeeder({ watchPatterns: ['scripts/**', 'shared/**'] }),
-      },
-    };
-    assert.deepEqual(auditRailwayServiceConfig(broad, ids, registry), []);
+  // The old contract accepted these two: `scripts/** + shared/**` was the
+  // broad floor, and a repo-rooted service kept its extras. Both were measured
+  // to skip merges, so both must now read as drift.
+  it('flags the broad filter and a Dockerfile extra that used to be accepted', () => {
+    for (const watchPatterns of [['scripts/**', 'shared/**'], ['Dockerfile.seed-forecasts']]) {
+      const config = {
+        services: {
+          'svc-example': managedService(),
+          'svc-forecasts': unregisteredService({ watchPatterns, rootDirectory: '' }),
+        },
+      };
+      const drift = auditRailwayServiceConfig(config, ids, registry);
+      assert.deepEqual(drift[0].watchPatterns, { actual: watchPatterns, expected: [] });
+    }
+  });
 
-    // A repo-rooted service can legitimately watch a Dockerfile or a server
-    // helper; the fix must ADD the broad patterns, not replace those.
-    const repoRooted = {
+  // The old sweep keyed on `node seed-*` / `Dockerfile.seed-*`, which excluded
+  // the relays, the workers and the consumer-prices trio. All of them deploy
+  // this repository on every merge, and all of them carried a filter.
+  it('covers every service in this repository, not only the ones named seed-*', () => {
+    const config = {
       services: {
         'svc-example': managedService(),
-        'svc-forecasts': unmanagedSeeder({
-          rootDirectory: '',
-          watchPatterns: ['Dockerfile.seed-forecasts'],
+        'svc-relay': unregisteredService({
+          watchPatterns: ['scripts/notification-relay.cjs'],
+          startCommand: 'node notification-relay.cjs',
         }),
       },
     };
-    const drift = auditRailwayServiceConfig(repoRooted, ids, registry);
-    assert.deepEqual(drift[0].watchPatterns.expected, [
-      'Dockerfile.seed-forecasts',
-      'scripts/**',
-      'shared/**',
-    ]);
+    const drift = auditRailwayServiceConfig(
+      config,
+      new Map([['seed-example', 'svc-example'], ['notification-relay', 'svc-relay']]),
+      registry,
+    );
+    assert.deepEqual(drift.map((entry) => entry.service), ['notification-relay']);
   });
 
-  it('does not second-guess a managed service or a non-seeder', () => {
-    // A managed seeder's exact closure is intentionally narrow; the broad
-    // contract must not fight it.
-    assert.deepEqual(
-      auditRailwayServiceConfig({ services: { 'svc-example': managedService() } }, ids, registry),
-      [],
-    );
-
-    const notASeeder = {
+  it('leaves services this repository does not deploy alone', () => {
+    const foreign = {
       services: {
         'svc-example': managedService(),
-        'svc-web': {
-          source: { repo: 'koala73/worldmonitor', rootDirectory: '' },
-          build: { watchPatterns: ['src/**'] },
-          deploy: { startCommand: 'npm run start' },
-          variables: {},
-        },
+        'svc-vendor': unregisteredService({
+          repo: 'someone-else/other-repo',
+          watchPatterns: ['src/**'],
+        }),
       },
     };
-    assert.deepEqual(auditRailwayServiceConfig(notASeeder, ids, registry), []);
+    assert.deepEqual(auditRailwayServiceConfig(foreign, ids, registry), []);
+
+    // A database service has no source at all.
+    const database = {
+      services: {
+        'svc-example': managedService(),
+        'svc-pg': { build: { watchPatterns: [] }, deploy: {}, variables: {} },
+      },
+    };
+    assert.deepEqual(auditRailwayServiceConfig(database, ids, registry), []);
+  });
+
+  // Railway answering with a shape we cannot read must not audit clean: the
+  // old code ran it through sortedUniqueStrings, which collapsed a non-array
+  // to [] and compared it equal to "no filter".
+  it('treats an unreadable watchPatterns as a filter, not as no filter', () => {
+    assert.deepEqual(
+      watchPatternDrift({ source: { repo: 'koala73/worldmonitor' }, build: { watchPatterns: 'scripts/**' } }),
+      { actual: [], expected: [] },
+    );
+    assert.equal(isRepositoryService({ source: { repo: 'koala73/worldmonitor' } }), true);
+    assert.equal(isRepositoryService({ source: { repo: 'other/repo' } }), false);
+    assert.equal(isRepositoryService({}), false);
   });
 });
 
@@ -801,13 +817,6 @@ describe('critical ingestion Railway registry contract', () => {
     ['seed-bundle-portwatch-port-activity', '0 */12 * * *'],
   ]);
 
-  // Closure coverage is DERIVED from the same predicate the audit uses to decide
-  // what --apply pushes to Railway. A hardcoded list here would let a future
-  // registry entry ship narrow watch paths to production with its dependency
-  // closure never verified.
-  const closureManaged = managedRailwayServices(registry)
-    .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
-
   it('audit-manages the always-on Umami collector with whole-repository rebuilds', () => {
     const collector = registry.find((entry) => entry.service === 'umami');
     assert.ok(collector, 'umami must be registered');
@@ -843,94 +852,41 @@ describe('critical ingestion Railway registry contract', () => {
     }]);
   });
 
-  it('every cron pin names a service that is registry-managed', () => {
-    const managedNames = new Set(closureManaged.map((entry) => entry.service));
+  it('every cron pin names a service the registry manages', () => {
+    const managedNames = new Set(managedRailwayServices(registry).map((entry) => entry.service));
     for (const serviceName of expected.keys()) {
       assert.ok(managedNames.has(serviceName), `${serviceName} must be registry-managed`);
     }
   });
 
-  it('covers every managed service with watch paths', () => {
-    assert.ok(closureManaged.length >= expected.size);
+  it('pins the cron of every service this contract names', () => {
+    for (const [serviceName, cronSchedule] of expected) {
+      const entry = registry.find((candidate) => candidate.service === serviceName);
+      assert.ok(entry, `${serviceName} must be registered`);
+      assert.equal(entry.cronSchedule, cronSchedule, `${serviceName} cron pin`);
+    }
   });
 
-  for (const entry of closureManaged) {
-    const serviceName = entry.service;
-    it(`${serviceName} pins its cron and complete runtime dependency closure`, () => {
-      if (expected.has(serviceName)) {
-        assert.equal(entry.cronSchedule, expected.get(serviceName));
-      }
-      assert.ok(Array.isArray(entry.watchPatterns), `${serviceName} must declare watchPatterns`);
-      assert.ok(entry.watchPatterns.length > 0, `${serviceName} watchPatterns must not be empty`);
-      assert.equal(
-        new Set(entry.watchPatterns).size,
-        entry.watchPatterns.length,
-        `${serviceName} watchPatterns must not contain duplicates`,
-      );
-      assert.ok(!entry.watchPatterns.includes('scripts/**'), `${serviceName} must not watch every seeder`);
-      assert.ok(!entry.watchPatterns.includes('shared/**'), `${serviceName} must not watch all shared data`);
-      for (const watchedPath of entry.watchPatterns) {
-        assert.ok(!watchedPath.includes('*'), `${serviceName} must use exact watch paths`);
-        assert.ok(
-          existsSync(resolve(repoRoot, watchedPath)),
-          `${serviceName} watchPatterns references missing ${watchedPath}`,
-        );
-      }
+  // The contract that replaced the per-service dependency closures. Enumerating
+  // a closure was never the safe option — it was the option whose cost is paid
+  // by whoever adds the next helper — and a filter of any width skips merges,
+  // so no entry may declare one.
+  it('no registry entry declares a watch-path filter', () => {
+    const filtered = registry
+      .filter((entry) => entry.watchPatterns?.length > 0)
+      .map((entry) => entry.service);
+    assert.deepEqual(filtered, [], 'watch-path filters silently skip merges (#6141)');
+  });
 
-      const entryPath = resolve(repoRoot, entry.entry);
-      const source = readFileSync(entryPath, 'utf8');
-      const roots = [
-        entryPath,
-        ...extractBundleMembers(source).map((member) => resolve(repoRoot, 'scripts', member)),
-      ];
-      const scriptsDir = resolve(repoRoot, 'scripts');
-      const { visited, unresolved } = walkContainerGraph(roots, {
-        repoRoot,
-        copyRootDirs: [scriptsDir, repoRoot],
-        dynamicRootDirs: [scriptsDir],
-        installedPackages: new Set(),
-        hasTsx: false,
-      });
-      assert.deepEqual(unresolved, [], `${serviceName} runtime graph must resolve`);
-
-      const watched = new Set(entry.watchPatterns);
-      const runtimeFiles = new Set([
-        ...[...visited].map((file) => relative(repoRoot, file)),
-        ...extractSharedConfigDependencies(visited, entry.deployMode),
-        ...extractFileReadDependencies(visited, repoRoot),
-      ]);
-      const missingRuntimeFiles = [...runtimeFiles]
-        .filter((file) => !watched.has(file))
-        .sort();
-      assert.deepEqual(
-        missingRuntimeFiles,
-        [],
-        `${serviceName} watchPatterns omit runtime dependencies`,
-      );
-
-      // The reverse direction. Without it a watch path that drops out of the
-      // import graph lingers forever in a hand-typed 44-entry array, rebuilding
-      // the service on changes it no longer depends on -- the exact cost the
-      // exact-path registry was introduced to eliminate.
-      const staleWatchedFiles = [...watched]
-        .filter((file) => !runtimeFiles.has(file)
-          && file !== entry.dockerfile
-          && !NIXPACKS_BUILD_FILES.includes(file))
-        .sort();
-      assert.deepEqual(
-        staleWatchedFiles,
-        [],
-        `${serviceName} watchPatterns contain paths that are no longer runtime dependencies`,
-      );
-
-      if (entry.deployMode === 'nixpacks-root-scripts') {
-        for (const buildFile of NIXPACKS_BUILD_FILES) {
-          assert.ok(watched.has(buildFile), `${serviceName} must watch ${buildFile}`);
-        }
-      }
-      if (entry.dockerfile) {
-        assert.ok(watched.has(entry.dockerfile), `${serviceName} must watch its Dockerfile`);
-      }
-    });
-  }
+  // Registry coverage is opt-in and always has been: 30 of 41 entries exist for
+  // Dockerfile/source coverage and name bundle members rather than services.
+  // The fleet-wide guarantee therefore cannot come from the registry — it comes
+  // from the live sweep over every service whose source is this repository,
+  // which is what the suite above pins.
+  it('states the unfiltered contract for every entry it does audit-manage', () => {
+    const undeclared = managedRailwayServices(registry)
+      .filter((entry) => !Array.isArray(entry.watchPatterns))
+      .map((entry) => entry.service);
+    assert.deepEqual(undeclared, []);
+  });
 });

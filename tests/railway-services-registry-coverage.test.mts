@@ -306,21 +306,20 @@ describe('Railway service registry coverage', () => {
     }
   });
 
-  it('every nixpacks-root-scripts entry with watchPatterns lists the GDELT bulk contract for seed-conflict-intel', () => {
-    const conflictIntel = registry.find(
-      (r) => r.service === 'seed-conflict-intel',
-    );
-    assert.ok(conflictIntel, 'seed-conflict-intel must be registered');
-    const watchPatterns = conflictIntel.watchPatterns;
-    assert.ok(
-      Array.isArray(watchPatterns),
-      'seed-conflict-intel must declare watchPatterns',
-    );
-    assert.ok(
-      watchPatterns.includes('scripts/_gdelt-bulk-contract.mjs'),
-      'seed-conflict-intel watchPaths must include scripts/_gdelt-bulk-contract.mjs ' +
-        '(the GDELT bulk Redis key contract shared by the materializer, conflict intel, ' +
-        'and unrest consumers)',
+  // This used to require seed-conflict-intel to enumerate the GDELT bulk Redis
+  // key contract in its watch paths, so a change to the shared contract would
+  // rebuild the consumer. The enumeration never made the trigger reliable —
+  // seed-conflict-intel was the worst service in the fleet at a 51% skip rate
+  // while carrying that exact closure — so the contract is now that no entry
+  // filters at all and every merge rebuilds every service (#6141).
+  it('no registry entry filters which merges reach it', () => {
+    const filtered = registry
+      .filter((r) => (r.watchPatterns?.length ?? 0) > 0)
+      .map((r) => r.service);
+    assert.deepEqual(
+      filtered,
+      [],
+      'a watch-path filter of any width silently skips merges; declare [] instead',
     );
   });
 

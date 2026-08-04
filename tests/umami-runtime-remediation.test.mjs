@@ -234,10 +234,7 @@ describe('Umami runtime remediation (#6024)', () => {
       service: 'umami-retention',
       lifecycle: 'planned',
       requiredEnv: ['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD'],
-      watchPatterns: [
-        'scripts/umami-retention.sql',
-        'Dockerfile.umami-retention',
-      ],
+      watchPatterns: [],
       cronSchedule: '7,22,37,52 * * * *',
       documentedAt: 'docs/analytics-collector-operations.md#retention-runner',
     });
