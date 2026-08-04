@@ -41,6 +41,7 @@
 //   node scripts/trigger-railway-deploys.mjs
 //   node scripts/trigger-railway-deploys.mjs --dry-run --json
 //   node scripts/trigger-railway-deploys.mjs --head <sha> --environment production
+//   node scripts/trigger-railway-deploys.mjs --only seed-earthquakes,seed-aviation
 
 import { execFile, spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -160,6 +161,24 @@ export function planServiceDeploy({
   };
 }
 
+/**
+ * Restrict the run to named services, for recovering one by hand.
+ *
+ * Throws on a name the fleet does not have rather than quietly selecting
+ * nothing: a typo'd `--only` that reported "no service needs a build" would
+ * read exactly like a healthy fleet.
+ */
+export function selectServices(services, only) {
+  if (!only) return services;
+  const wanted = only.split(',').map((name) => name.trim()).filter(Boolean);
+  const available = new Set(services.map((service) => service.name));
+  const unknown = wanted.filter((name) => !available.has(name));
+  if (unknown.length > 0) {
+    throw new Error(`--only names ${unknown.join(', ')}, which this repository does not deploy to Railway`);
+  }
+  return services.filter((service) => wanted.includes(service.name));
+}
+
 export function summarizeDeployPlan(plans) {
   const deploys = plans.filter((plan) => plan.action === 'deploy');
   const errors = plans.filter((plan) => plan.action === 'error');
@@ -271,10 +290,11 @@ async function main() {
   const registryByService = readRegistryByService();
   const services = JSON.parse(runRailway(['service', 'list', '--environment', environment, '--json']));
   if (!Array.isArray(services)) throw new Error('railway service list must return an array');
-  const repositoryServices = services.filter(isRepositoryService);
-  if (repositoryServices.length === 0) {
+  const fleet = services.filter(isRepositoryService);
+  if (fleet.length === 0) {
     throw new Error('the Railway service query returned no repository services, which is a query failure rather than an empty fleet');
   }
+  const repositoryServices = selectServices(fleet, readArgument(process.argv, '--only', null));
   const config = JSON.parse(runRailway(['environment', 'config', '--environment', environment, '--json']));
   const liveById = config?.services ?? {};
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });

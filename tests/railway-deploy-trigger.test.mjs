@@ -15,6 +15,7 @@ import {
   buildDeployArgs,
   planServiceDeploy,
   readDeploymentId,
+  selectServices,
   summarizeDeployPlan,
 } from '../scripts/trigger-railway-deploys.mjs';
 
@@ -176,6 +177,29 @@ describe('plan summary', () => {
     const summary = summarizeDeployPlan([plan({ changedPathsSince: () => [] })]);
     assert.equal(summary.ok, true);
     assert.equal(summary.deploys.length, 0);
+  });
+});
+
+describe('service selection', () => {
+  const fleet = [{ name: 'seed-earthquakes' }, { name: 'seed-aviation' }, { name: 'ais-relay' }];
+
+  it('runs the whole fleet when no filter is given', () => {
+    assert.equal(selectServices(fleet, null).length, 3);
+    assert.equal(selectServices(fleet, undefined).length, 3);
+  });
+
+  it('restricts to the named services', () => {
+    assert.deepEqual(
+      selectServices(fleet, 'seed-aviation, ais-relay').map((service) => service.name),
+      ['seed-aviation', 'ais-relay'],
+    );
+  });
+
+  it('throws on a name the fleet does not have rather than selecting nothing', () => {
+    // A typo'd --only that selected nothing would report "no service needs a
+    // build", which reads exactly like a healthy fleet.
+    assert.throws(() => selectServices(fleet, 'seed-earthquake'), /does not deploy/);
+    assert.throws(() => selectServices(fleet, 'seed-aviation,nope'), /nope/);
   });
 });
 
