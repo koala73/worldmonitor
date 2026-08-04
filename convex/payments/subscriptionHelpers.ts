@@ -699,8 +699,20 @@ async function resolveUserId(
     return DEV_USER_ID;
   }
 
+  // The message names the inputs that were actually tried, because it is the
+  // only diagnostic an operator gets: it lands in `paymentWebhookFailures.
+  // errorMessage` and is forwarded to Sentry by Convex auto-Sentry, where the
+  // payload itself is deliberately absent. The prior wording asserted "no
+  // dodoCustomerId" unconditionally, which sent triage down the wrong path on
+  // events that carried one (WORLDMONITOR-YA). Only presence is reported for
+  // the metadata fields — `wm_user_id` is our internal user id and must not be
+  // copied into a Sentry-forwarded string.
   throw new Error(
-    `[subscriptionHelpers] Cannot resolve userId: no verified metadata, no customer record, no dodoCustomerId.`,
+    `[subscriptionHelpers] Cannot resolve userId ` +
+      `(dodoCustomerId=${dodoCustomerId ? `"${dodoCustomerId}"` : "<absent>"}, ` +
+      `wm_user_id=${metadata?.wm_user_id ? "present" : "absent"}, ` +
+      `wm_user_id_sig=${metadata?.wm_user_id_sig ? "present" : "absent"}): ` +
+      `no verified metadata and no customer record.`,
   );
 }
 
@@ -1399,11 +1411,28 @@ export async function handlePaymentOrRefundEvent(
   eventType: string,
   eventTimestamp: number,
 ): Promise<void> {
-  const userId = await resolveUserId(
-    ctx,
-    data.customer?.customer_id ?? "",
-    data.metadata,
-  );
+  // Subscription-first resolution, mirroring handleDisputeEvent below over the
+  // identical `DodoPaymentData` shape. Dodo's payment payloads routinely drop
+  // the checkout-session metadata, and `customers` rows are only written by the
+  // subscription handlers — so a renewal charge or a refund on a subscription we
+  // already track was resolvable from our own row all along, while this handler
+  // threw and sent the whole webhook to the dead-letter (WORLDMONITOR-YA). The
+  // row is as trustworthy as the customers table: both are written by this same
+  // webhook path from an already-verified identity.
+  const existingSubscription = data.subscription_id
+    ? await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", data.subscription_id ?? ""),
+        )
+        .unique()
+    : null;
+  const userId = existingSubscription?.userId
+    ?? await resolveUserId(
+      ctx,
+      data.customer?.customer_id ?? "",
+      data.metadata,
+    );
 
   const type = eventType.startsWith("refund.") ? "refund" : "charge";
   // Non-terminal payment states (processing, requires_customer_action / 3DS-SCA)

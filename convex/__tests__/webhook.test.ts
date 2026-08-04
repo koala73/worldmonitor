@@ -699,6 +699,80 @@ describe("webhook processWebhookEvent", () => {
     expect(paymentEvents[0].status).toBe("failed");
   });
 
+  // WORLDMONITOR-YA — every other test in this file routes through `processEvent`,
+  // which pre-seeds a `customers` row, so the production shape (no customer row,
+  // unsigned metadata) was never exercised. These two dispatch the mutation
+  // directly to cover it.
+  test("payment.failed resolves the userId from a known subscription when no customer row exists", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_known_via_sub",
+        dodoSubscriptionId: "sub_no_customer_row",
+        dodoCustomerId: "cust_never_recorded",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP,
+        currentPeriodEnd: BASE_TIMESTAMP + 86_400_000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP,
+      });
+    });
+
+    // Unsigned metadata is ignored by resolveUserId, and no `customers` row
+    // exists — the subscription row is the only identity source.
+    const payload = makePaymentPayload("payment.failed", {
+      payment_id: "pay_no_customer_row",
+      subscription_id: "sub_no_customer_row",
+      customer: { customer_id: "cust_never_recorded", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_sub_fallback",
+      eventType: "payment.failed",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    const paymentEvents = await t.run(async (ctx) => {
+      return ctx.db.query("paymentEvents").collect();
+    });
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].userId).toBe("user_known_via_sub");
+    expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  test("payment.failed for a wholly unknown customer still fails closed, naming the inputs it tried", async () => {
+    const t = convexTest(schema, modules);
+
+    // No customers row, no subscriptions row, unsigned metadata: genuinely
+    // unattributable, so the webhook must keep throwing (dead-letter + Dodo
+    // retry) rather than silently dropping a payment record.
+    const payload = makePaymentPayload("payment.failed", {
+      payment_id: "pay_unattributable",
+      subscription_id: "sub_unattributable",
+      customer: { customer_id: "cust_unattributable", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await expect(
+      t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+        webhookId: "wh_ya_unattributable",
+        eventType: "payment.failed",
+        rawPayload: payload,
+        timestamp: BASE_TIMESTAMP,
+      }),
+    ).rejects.toThrow(/dodoCustomerId="cust_unattributable"/);
+
+    const paymentEvents = await t.run(async (ctx) => {
+      return ctx.db.query("paymentEvents").collect();
+    });
+    expect(paymentEvents).toHaveLength(0);
+  });
+
   // #5056 — entitlement lifecycle integrity across claim, active webhook, and dispute races.
   test("subscription.active keeps claimed real owner when stale signed anon metadata arrives", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;

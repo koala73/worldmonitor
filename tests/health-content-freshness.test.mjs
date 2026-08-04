@@ -63,6 +63,9 @@ function portwatchCtx(meta) {
 
 // Default context is post-activation: the producer has published the block at
 // least once, so a later absence is a real regression rather than a deploy lag.
+// `activated` is three-valued (#6095): true = marker read and present, false =
+// marker read and absent (the only state that earns grace), null = the marker
+// read failed, so its state is unknown and it is missing from the map entirely.
 function classifyPortwatch(meta, { activated = true } = {}) {
   return classifyKey(
     'portwatchPortActivity',
@@ -70,7 +73,9 @@ function classifyPortwatch(meta, { activated = true } = {}) {
     {},
     {
       ...portwatchCtx(meta),
-      activatedNames: new Set(activated ? ['portwatchContentFreshness'] : []),
+      activationStates: activated === null
+        ? new Map()
+        : new Map([['portwatchContentFreshness', activated]]),
     },
   );
 }
@@ -420,6 +425,20 @@ describe('portwatchPortActivity classification', () => {
       entry.status,
       'COVERAGE_DEGRADED',
       'losing a block the producer proved it can write is a regression',
+    );
+  });
+
+  // #6095 — the grace is earned by evidence, never by the absence of evidence.
+  // A marker health could not read says nothing about whether the producer ever
+  // published, and a grace granted on that never expires: an UNREADABLE marker
+  // would disable the content alarm permanently. (An evicted or renamed marker
+  // reads as a clean absence and still earns the grace — see #6111.)
+  it('refuses grace when the marker state is unknown rather than read-absent', () => {
+    const entry = classifyPortwatch(completeRun(undefined), { activated: null });
+    assert.equal(
+      entry.status,
+      'COVERAGE_DEGRADED',
+      'an unread marker must fail closed, not re-enter an expired grace',
     );
   });
 
