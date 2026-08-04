@@ -36,6 +36,15 @@ const HOUR_MS = 60 * MINUTE_MS;
 // Frozen to the audit hour in #6060 so ages are exact rather than clock-seeded.
 const NOW = Date.parse('2026-08-02T14:40:00.000Z');
 
+function parseProductExpression(expression) {
+  const terms = expression.replace(/\s/g, '').split('*').map(Number);
+  assert.ok(
+    terms.length > 0 && terms.every((term) => Number.isFinite(term)),
+    `expected a finite product expression, got ${expression}`,
+  );
+  return terms.reduce((product, term) => product * term, 1);
+}
+
 function payload(iso2, fetchedAt) {
   return {
     iso2,
@@ -477,7 +486,7 @@ describe('decision-critical cache-hit refresh deadline', () => {
   });
 });
 
-// Three constants claim equality with sources they cannot import: the seeder is
+// These constants claim equality with sources they cannot import: the seeder is
 // a Railway script, api/health.js is an Edge function limited to api/_*.js, and
 // the corridor adapter is server-side TypeScript. Comments asserting "this
 // mirrors X" are exactly the kind of claim that rots silently — the same class
@@ -491,9 +500,7 @@ describe('content-freshness constant parity', () => {
     const budgets = [
       ...adapter.matchAll(/contentFreshness\(observedAt,\s*([\d\s*]+),\s*assessedAt\)/g),
     ]
-      // eslint-disable-next-line no-eval -- bounded to a digit/asterisk literal
-      .map(([, expression]) => Number(expression.replace(/\s/g, '').split('*')
-        .reduce((product, term) => product * Number(term), 1)));
+      .map(([, expression]) => parseProductExpression(expression));
 
     assert.ok(
       budgets.includes(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES),
@@ -531,12 +538,12 @@ describe('content-freshness constant parity', () => {
 
   it('matches the China activity nowcast PortWatch budget', () => {
     const registry = read('shared/china-activity-nowcast-registry.ts');
-    const match = registry.match(
-      /id:\s*'portwatch_tanker_calls_trend'[\s\S]*?freshnessBudgetMinutes:\s*([\d\s*]+)/,
-    );
+    const definition = registry.match(
+      /proxyDefinition\(\{\s*id:\s*'portwatch_tanker_calls_trend',([\s\S]*?)\n\s*\}\),/,
+    )?.[1];
+    const match = definition?.match(/freshnessBudgetMinutes:\s*([\d\s*]+)/);
     assert.ok(match, 'nowcast registry must declare the PortWatch proxy budget');
-    const registryBudgetMinutes = match[1].replace(/\s/g, '').split('*')
-      .reduce((product, term) => product * Number(term), 1);
+    const registryBudgetMinutes = parseProductExpression(match[1]);
 
     assert.equal(
       registryBudgetMinutes,

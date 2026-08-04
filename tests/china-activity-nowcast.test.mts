@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+} from '../scripts/_portwatch-content-freshness.mjs';
+
+import {
   CHINA_ACTIVITY_NOWCAST_METHOD_VERSION,
   CHINA_ACTIVITY_PROXY_REGISTRY,
   backtestChinaActivityNowcast,
@@ -119,11 +123,15 @@ describe('China activity nowcast method contract (#5579)', () => {
       proxyObservations: [observation(ageMs)],
     }).contributions.find((item) => item.seriesId === portwatch.id)!;
 
-    assert.equal(portwatch.freshnessBudgetMinutes, 2 * 72 * 60);
-    assert.equal(evaluatePortwatch(budgetMs - 1).included, true);
-    assert.equal(evaluatePortwatch(budgetMs + 1).included, false);
     assert.equal(
-      evaluatePortwatch(budgetMs + 1).exclusionReason,
+      portwatch.freshnessBudgetMinutes,
+      PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+    );
+    assert.equal(evaluatePortwatch(budgetMs - 1).included, true);
+    const justOutside = evaluatePortwatch(budgetMs + 1);
+    assert.equal(justOutside.included, false);
+    assert.equal(
+      justOutside.exclusionReason,
       'freshness_budget_exceeded',
     );
   });
