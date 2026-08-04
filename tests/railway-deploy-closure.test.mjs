@@ -64,6 +64,33 @@ describe('watch pattern compilation', () => {
     assert.ok(changeReachesService(closure, ['docs/unrelated.md']));
   });
 
+  it('lets ** match zero path segments, not just one or more', () => {
+    // A character-wise compiler turns `scripts/**/*.mjs` into
+    // `scripts/.*/[^/]*\.mjs`, whose literal slashes demand an intervening
+    // directory — so the pattern silently stops matching top-level files. The
+    // closure is then narrowed by the compiler rather than by anything the
+    // service declared, which strands it on stale code.
+    const nested = watchPatternToRegExp('scripts/**/*.mjs');
+    assert.ok(nested.test('scripts/seed-foo.mjs'), 'zero intervening segments');
+    assert.ok(nested.test('scripts/lib/seed-foo.mjs'), 'one intervening segment');
+    assert.ok(nested.test('scripts/lib/a/b.mjs'), 'several intervening segments');
+    assert.ok(!nested.test('scripts/seed-foo.cjs'), 'extension still binds');
+
+    const anyDepth = watchPatternToRegExp('**/foo.mjs');
+    assert.ok(anyDepth.test('foo.mjs'), 'at the repository root');
+    assert.ok(anyDepth.test('a/b/foo.mjs'), 'nested');
+  });
+
+  it('keeps a trailing ** meaning everything below', () => {
+    // The fleet's most common pattern by far — 46 services carry
+    // `scripts/**` + `shared/**`.
+    const under = watchPatternToRegExp('scripts/**');
+    assert.ok(under.test('scripts/seed-aviation.mjs'));
+    assert.ok(under.test('scripts/lib/llm-telemetry.cjs'));
+    assert.ok(!under.test('shared/country-names.json'));
+    assert.ok(watchPatternToRegExp('**').test('anything/at/all'));
+  });
+
   it('accepts the repository-rooted form Railway documents', () => {
     // Railway's docs write watch paths as `/src/**` and `/*.go`. Compiled
     // literally that anchors on a leading slash no repository-relative path

@@ -72,23 +72,30 @@ export function watchPatternToRegExp(pattern) {
   const normalized = pattern.replace(/^\.?\/+/, '');
   if (normalized.length === 0) return null;
 
+  // Compiled per PATH SEGMENT, not per character. `**` means "zero or more
+  // segments", and a character-wise compiler cannot express the zero case: it
+  // turns `scripts/**/*.mjs` into `scripts/.*/[^/]*\.mjs`, whose literal `/`
+  // around the `.*` demands at least one intervening directory. That pattern
+  // then silently stops matching `scripts/seed-foo.mjs` — a closure narrowed by
+  // the compiler rather than by anything the service declared, which is the one
+  // direction this module must never fail in.
+  const segments = normalized.split('/');
   let source = '';
-  for (let index = 0; index < normalized.length; index += 1) {
-    const char = normalized[index];
-    if (char === '*') {
-      if (normalized[index + 1] === '*') {
-        source += '.*';
-        index += 1;
-      } else {
-        source += '[^/]*';
-      }
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const isLast = index === segments.length - 1;
+    if (segment === '**') {
+      // Trailing `**` (the fleet's common `scripts/**`) is everything below.
+      // Interior `**/` swallows its own separator so it can also match nothing.
+      source += isLast ? '.+' : '(?:[^/]+/)*';
       continue;
     }
-    if (char === '?') {
-      source += '[^/]';
-      continue;
+    for (const char of segment) {
+      if (char === '*') source += '[^/]*';
+      else if (char === '?') source += '[^/]';
+      else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
     }
-    source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    if (!isLast) source += '/';
   }
   return new RegExp(`^${source}$`);
 }
