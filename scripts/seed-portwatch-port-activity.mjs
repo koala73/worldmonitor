@@ -214,6 +214,12 @@ const CONCURRENCY = 6;
 // run — negligible against the 570s bundle budget.
 const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
+// A country-level ArcGIS request can be rate-limited even when the run has
+// ample bundle time left. Retry that country once after a short cooldown;
+// the outer per-country timeout remains the hard ceiling for the whole retry
+// sequence, so a slow upstream cannot extend the run indefinitely.
+const RATE_LIMIT_RETRY_DELAY_MS = 2_000;
+const MAX_RATE_LIMIT_RETRIES = 1;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
 // even when upstream maxDate is unchanged. Protects against window-shift drift
 // (cached aggregates were computed against a window that's now 7+ days offset
@@ -985,9 +991,75 @@ function refreshFailureCode(reason) {
   if (reason?.refreshFailureCode) return reason.refreshFailureCode;
   const text = `${reason?.code || ''} ${reason?.message || reason || ''}`;
   if (/invalid query parameters/i.test(text)) return 'invalid_query';
-  if (/\b429\b|rate.?limit/i.test(text)) return 'rate_limited';
+  if (/\b429\b|rate.?limit|too many requests/i.test(text)) return 'rate_limited';
   if (/timeout|timed out|abort/i.test(text)) return 'timeout';
   return 'fetch_error';
+}
+
+function waitForRetry(delayMs, signal) {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, delayMs));
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new Error('aborted'));
+      return;
+    }
+    let timer;
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(signal.reason ?? new Error('aborted'));
+    };
+    const done = () => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    timer = setTimeout(done, delayMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+// Retry only the rate-limit failure class. Other ArcGIS errors (invalid query,
+// timeout, empty result) must retain their existing failure semantics so a
+// global upstream regression still reaches the circuit-breaker and coverage
+// gates without being hidden by a generic retry loop.
+export async function retryRateLimited(
+  operation,
+  {
+    signal,
+    delayMs = RATE_LIMIT_RETRY_DELAY_MS,
+    maxRetries = MAX_RATE_LIMIT_RETRIES,
+    sleepFn = waitForRetry,
+    label = 'country',
+  } = {},
+) {
+  let retries = 0;
+  while (true) {
+    const attemptController = new AbortController();
+    const attemptSignal = signal
+      ? AbortSignal.any([signal, attemptController.signal])
+      : attemptController.signal;
+    try {
+      return await operation(attemptSignal);
+    } catch (reason) {
+      // fetchCountryAccum runs its two windows in parallel. Abort the sibling
+      // window before retrying so one fast 429 cannot overlap a second full
+      // country attempt and amplify the upstream rate limit.
+      attemptController.abort(reason);
+      if (
+        retries >= maxRetries
+        || refreshFailureCode(reason) !== 'rate_limited'
+        || signal?.aborted
+      ) {
+        throw reason;
+      }
+      retries += 1;
+      console.warn(
+        `  [port-activity] ${label}: rate-limited — retrying ` +
+        `after ${delayMs}ms (${retries}/${maxRetries})`,
+      );
+      await sleepFn(delayMs, signal);
+    }
+  }
 }
 
 export function buildRefreshFailureState(item, reason, attemptedAt = Date.now()) {
@@ -1253,7 +1325,10 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
       // Falls back to Date.now() when preflight returned null.
       const anchorEpochMs = parseMaxDateToAnchor(upstreamMaxDate);
       const p = withPerCountryTimeout(
-        (childSignal) => fetchCountryAccum(iso3, { signal: childSignal, anchorEpochMs, dateField }),
+        (childSignal) => retryRateLimited(
+          (attemptSignal) => fetchCountryAccum(iso3, { signal: attemptSignal, anchorEpochMs, dateField }),
+          { signal: childSignal, label: iso3 },
+        ),
         iso3,
       );
       // Eager error flush so a SIGTERM mid-batch captures rejections that

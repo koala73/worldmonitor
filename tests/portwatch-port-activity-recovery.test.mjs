@@ -139,6 +139,74 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(invalidQueryState.refreshFailure.code, 'invalid_query');
     assert.equal(rateLimitedState.refreshFailure.code, 'rate_limited');
   });
+
+  it('retries one ArcGIS rate-limit failure when the country still has run budget', async () => {
+    const retryRateLimited = portwatchSeed.retryRateLimited;
+    assert.equal(typeof retryRateLimited, 'function');
+    let attempts = 0;
+    let firstAttemptSignal;
+
+    const result = await retryRateLimited(async (attemptSignal) => {
+      attempts += 1;
+      if (attempts === 1) {
+        firstAttemptSignal = attemptSignal;
+        throw new Error('ArcGIS error: Unable to perform query. Too many requests.');
+      }
+      assert.equal(firstAttemptSignal.aborted, true);
+      return 'recovered';
+    }, { sleepFn: async () => {} });
+
+    assert.equal(result, 'recovered');
+    assert.equal(attempts, 2);
+  });
+
+  it('does not retry unrelated ArcGIS failures', async () => {
+    const retryRateLimited = portwatchSeed.retryRateLimited;
+    let attempts = 0;
+
+    await assert.rejects(
+      retryRateLimited(async () => {
+        attempts += 1;
+        throw new Error('ArcGIS error: Invalid query parameters');
+      }, { sleepFn: async () => {} }),
+      /Invalid query parameters/,
+    );
+
+    assert.equal(attempts, 1);
+  });
+
+  it('bounds repeated rate-limit failures to one retry', async () => {
+    const retryRateLimited = portwatchSeed.retryRateLimited;
+    let attempts = 0;
+
+    await assert.rejects(
+      retryRateLimited(async () => {
+        attempts += 1;
+        throw new Error('ArcGIS HTTP 429 rate-limited');
+      }, { sleepFn: async () => {} }),
+      /429 rate-limited/,
+    );
+
+    assert.equal(attempts, 2);
+  });
+
+  it('aborts the retry cooldown when the parent run is cancelled', async () => {
+    const retryRateLimited = portwatchSeed.retryRateLimited;
+    const controller = new AbortController();
+    let attempts = 0;
+
+    const retrying = retryRateLimited(async () => {
+      attempts += 1;
+      throw new Error('ArcGIS HTTP 429 rate-limited');
+    }, {
+      signal: controller.signal,
+      delayMs: 100,
+    });
+    setTimeout(() => controller.abort(new Error('run cancelled')), 0);
+
+    await assert.rejects(retrying, /run cancelled/);
+    assert.equal(attempts, 1);
+  });
 });
 
 describe('PortWatch canonical reference guard', () => {
