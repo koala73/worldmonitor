@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 
-// Alarms on "the merge never reached production", whatever the cause.
+// Alarms on "production is not running this merge yet", whatever the cause.
 //
 // Every repository gate can be green while a Railway service keeps running an
 // older image: the watch-path filter refuses the push (#6141), the GitHub
 // integration stops delivering it (#6064), or the build fails after the merge
 // lands. None of those produce a repository signal, and the seeder's own health
-// checks cannot see them either — a stale container publishes fresh-looking
-// data from stale code.
+// checks cannot see them either — a container on old code publishes
+// fresh-looking data.
+//
+// The #6141 case is a LAG tail rather than a loss: Railway builds the full tree
+// at a SHA, so a refused commit rides the next build that fires (p50 0h, p90
+// 19h, max 62.6h). That is harmless for a copy tweak and an outage when the
+// delayed commit fixes an active crash loop, and nothing inside the repository
+// tells the two apart — which is the whole reason to measure the lag.
 //
 // The check is deliberately independent of why. For every service this
 // repository deploys it asks one question: is the source Railway is running the
@@ -67,7 +73,7 @@ export const FAILED_STATUSES = Object.freeze(['FAILED']);
 // newest commit older than this window and every service must be running that
 // commit or a descendant. Excusing a service because head happens to be young
 // would have gone green on the whole fleet on any run that followed a merge —
-// including for umami, which has been 22 hours stale since #6064.
+// including for umami, which has been a day behind since #6064.
 export const DEFAULT_BUILD_GRACE_MS = 30 * 60 * 1000;
 
 // The classifier only reads back to the newest running deployment plus the
