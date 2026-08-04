@@ -17,6 +17,9 @@ lint:
       - worldmonitor/news/v1/service.proto
   ignore:
     - sebuf
+# Public APIs are JSON over HTTP, so WIRE_JSON protects the generated JSON
+# field/name mapping. There are currently no binary protobuf consumers, so the
+# binary WIRE rule is intentionally omitted; FILE and PACKAGE remain enforced.
 breaking:
   use:
     - FILE
