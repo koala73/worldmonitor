@@ -356,14 +356,40 @@ describe('the shipped deploy-drift baseline', () => {
     }
   });
 
-  // The file exists to hold #6064, which is a real open failure. If it is ever
-  // used to hold a REJECTED_PUSH the watch-path contract is supposed to have
-  // eliminated, the alarm this issue added has been turned off.
-  it('does not acknowledge a rejected push', () => {
+  // The rejected-push entries are a measured snapshot of the fleet, owned by
+  // one issue, so pruning them is mechanical when that issue lands: every
+  // service the fix reaches is reported as recovered on the next run.
+  it('routes every acknowledged rejected push to the single owner issue', () => {
+    const rejected = baseline.acknowledged.filter((entry) => entry.status === 'REJECTED_PUSH');
+    assert.ok(rejected.length > 0, 'the fleet snapshot must be recorded, not implied');
+    for (const entry of rejected) {
+      assert.equal(
+        entry.issue,
+        6142,
+        `${entry.name} must point at the issue that replaces the deploy trigger, not at #6141`,
+      );
+    }
+  });
+
+  // A verdict that means "this check could not determine anything" is not a
+  // degradation anyone can accept — acknowledging one converts an unreadable
+  // answer into a green one, which is the failure mode this whole issue is
+  // about.
+  it('never acknowledges a verdict that means the check failed', () => {
+    const undeterminable = baseline.acknowledged.filter((entry) =>
+      ['QUERY_FAILED', 'UNKNOWN_STATUS', 'NO_DEPLOYMENTS', 'NO_BUILD_IN_WINDOW'].includes(entry.status));
     assert.deepEqual(
-      baseline.acknowledged.filter((entry) => entry.status === 'REJECTED_PUSH'),
+      undeterminable.map((entry) => entry.name),
       [],
-      'a refused push is the failure #6141 fixed; acknowledging one re-hides it',
+      'these verdicts mean the check does not know, not that the degradation is accepted',
     );
+  });
+
+  // Entries are matched by exact name, so a wildcard would silently match
+  // nothing while reading like it covers a family of services.
+  it('names services exactly rather than by pattern', () => {
+    for (const entry of baseline.acknowledged) {
+      assert.doesNotMatch(entry.name, /[*?[\]]/, `${entry.name} must be an exact service name`);
+    }
   });
 });

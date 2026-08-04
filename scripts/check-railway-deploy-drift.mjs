@@ -327,7 +327,14 @@ function printReport(results, summary, headSha, graceSha) {
     console.log(`- recovered: ${entry.name}:${entry.status} is running head again; remove it from scripts/railway-deploy-drift-baseline.json (#${entry.issue}).`);
   }
   if (summary.ok) {
-    console.log(`Every service this repository deploys is running ${headSha.slice(0, 9)} or building it.`);
+    // Never claim the fleet is current while entries are acknowledged. A
+    // suppression that reads as health in the summary line is the same failure
+    // as no alarm at all, one indirection further back.
+    console.log(
+      summary.acknowledged.length === 0
+        ? `Every service this repository deploys is running ${headSha.slice(0, 9)} or building it.`
+        : `No unacknowledged drift: ${summary.acknowledged.length} of ${results.length} service(s) are knowingly stale against an owner issue, and the rest are running ${headSha.slice(0, 9)} or building it.`,
+    );
     return;
   }
   if (summary.blocking.length > 0) {
