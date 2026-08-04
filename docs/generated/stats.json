@@ -75,6 +75,7 @@
     "publish-go.yml",
     "publish-python.yml",
     "publish-ruby.yml",
+    "railway-deploy-trigger.yml",
     "security-audit.yml",
     "seed-freshness-monitor.yml",
     "test-linux-app.yml",
@@ -82,7 +83,7 @@
     "typecheck.yml",
     "umami-storage-monitor.yml"
   ],
-  "workflowCount": 26,
+  "workflowCount": 27,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 628,
