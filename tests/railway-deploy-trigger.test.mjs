@@ -1,0 +1,212 @@
+// #6142 — the CI-side deploy trigger.
+//
+// The decision under test is "does this merge have to build this service", and
+// every way of getting it wrong has a different cost: a missed deploy strands a
+// service on old code silently, a spurious one burns a build, and a retry of a
+// build Railway already failed buries the alarm that owns it. Each of those is
+// pinned below.
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import { resolveServiceClosure } from '../scripts/railway-deploy-closure.mjs';
+import {
+  HANDLED_BY_RAILWAY,
+  buildDeployArgs,
+  planServiceDeploy,
+  readDeploymentId,
+  summarizeDeployPlan,
+} from '../scripts/trigger-railway-deploys.mjs';
+
+const HEAD = 'cf3ac8777fdd2de42b3740a4b9a18c7159ad5b4e';
+const RUNNING = '045094590aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+const SCRIPTS_SEEDER = resolveServiceClosure({
+  liveService: {
+    source: { rootDirectory: 'scripts' },
+    build: { watchPatterns: ['scripts/**', 'shared/**'] },
+  },
+});
+
+function deployment(status, commitHash, { createdAt = '2026-08-04T09:00:00.000Z', skippedReason } = {}) {
+  return { status, createdAt, meta: { commitHash, ...(skippedReason ? { skippedReason } : {}) } };
+}
+
+function plan(overrides = {}) {
+  return planServiceDeploy({
+    service: 'seed-aviation',
+    serviceId: 'svc-1',
+    closure: SCRIPTS_SEEDER,
+    headSha: HEAD,
+    changedPathsSince: () => ['scripts/seed-aviation.mjs'],
+    deployments: [deployment('SUCCESS', RUNNING)],
+    ...overrides,
+  });
+}
+
+describe('deploy planning', () => {
+  it('deploys when a change reaching the service landed since the running commit', () => {
+    const result = plan();
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'CLOSURE_CHANGED');
+    assert.deepEqual(result.matchedPaths, ['scripts/seed-aviation.mjs']);
+    assert.equal(result.runningSha, RUNNING);
+  });
+
+  it('does not deploy when nothing reaching the service changed', () => {
+    const result = plan({ changedPathsSince: () => ['src/App.ts', 'docs/a.md'] });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, 'CLOSURE_UNCHANGED');
+  });
+
+  it('does not deploy a change that matches the filter but is outside the build context', () => {
+    // The 57-case finding: a scripts-rooted container cannot see repository-root
+    // shared/, so a shared/**-listing service must not be rebuilt for it.
+    const result = plan({ changedPathsSince: () => ['shared/china-decision-signals.ts'] });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, 'CLOSURE_UNCHANGED');
+  });
+
+  it('stands down once Railway has already built the head commit', () => {
+    const result = plan({ deployments: [deployment('SUCCESS', HEAD, { createdAt: '2026-08-04T12:00:00.000Z' }), deployment('SUCCESS', RUNNING)] });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, HANDLED_BY_RAILWAY);
+  });
+
+  it('stands down while Railway is still building the head commit', () => {
+    // Without this the trigger races Railway's own webhook on every merge and
+    // doubles the build cost it exists to keep down.
+    for (const status of ['QUEUED', 'BUILDING', 'DEPLOYING', 'INITIALIZING']) {
+      const result = plan({ deployments: [deployment(status, HEAD, { createdAt: '2026-08-04T12:00:00.000Z' }), deployment('SUCCESS', RUNNING)] });
+      assert.equal(result.action, 'skip', status);
+      assert.equal(result.reason, HANDLED_BY_RAILWAY, status);
+    }
+  });
+
+  it('does not retry a build Railway already ran and failed', () => {
+    // check-railway-deploy-drift.mjs reports BUILD_FAILED for this. Retrying it
+    // here would turn one visible failure into a silent retry loop.
+    const result = plan({ deployments: [deployment('FAILED', HEAD, { createdAt: '2026-08-04T12:00:00.000Z' }), deployment('SUCCESS', RUNNING)] });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, HANDLED_BY_RAILWAY);
+  });
+
+  it('still deploys when the only record for head is Railway refusing it', () => {
+    // This is the whole point: a SKIPPED record means Railway declined, so it
+    // must never count as "already taken".
+    const result = plan({
+      deployments: [
+        deployment('SKIPPED', HEAD, { createdAt: '2026-08-04T12:00:00.000Z', skippedReason: 'CI check suite failed' }),
+        deployment('SUCCESS', RUNNING),
+      ],
+    });
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'CLOSURE_CHANGED');
+  });
+
+  it('deploys when the running deployment carries no commit', () => {
+    // A `railway up` recovery leaves the service on an unidentifiable source;
+    // seed-military-flights has been in that state since its manual repair.
+    const result = plan({ deployments: [deployment('SUCCESS', undefined)] });
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'UNKNOWN_SOURCE');
+  });
+
+  it('deploys when the checkout cannot reach the running commit', () => {
+    const result = plan({ changedPathsSince: () => null });
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'HISTORY_UNAVAILABLE');
+  });
+
+  it('stands down when the service is already running head', () => {
+    // Subsumed by the already-taken arm: a running deployment for head is one
+    // of the records that proves Railway took the commit.
+    const result = plan({ deployments: [deployment('SUCCESS', HEAD)] });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, HANDLED_BY_RAILWAY);
+  });
+
+  it('errors rather than guessing when the deployment history cannot be read', () => {
+    for (const deployments of [null, undefined, 'nope', {}]) {
+      const result = plan({ deployments });
+      assert.equal(result.action, 'error', JSON.stringify(deployments));
+    }
+  });
+
+  it('reads the newest running deployment, not whatever Railway listed first', () => {
+    const newer = 'bbbbbbbbbcccccccccddddddddd0000000011111';
+    const result = plan({
+      deployments: [
+        deployment('SUCCESS', RUNNING, { createdAt: '2026-08-01T00:00:00.000Z' }),
+        deployment('SUCCESS', newer, { createdAt: '2026-08-04T00:00:00.000Z' }),
+      ],
+      changedPathsSince: (sha) => (sha === newer ? [] : ['scripts/seed-aviation.mjs']),
+    });
+    assert.equal(result.runningSha, newer);
+    assert.equal(result.action, 'skip');
+  });
+
+  it('ignores a SKIPPED record when deciding what the service is running', () => {
+    // A refusal never produced an image, so it can never be the running source.
+    const result = plan({
+      deployments: [
+        deployment('SKIPPED', HEAD, { createdAt: '2026-08-04T12:00:00.000Z', skippedReason: 'CI check suite failed' }),
+        deployment('SUCCESS', RUNNING, { createdAt: '2026-08-01T00:00:00.000Z' }),
+      ],
+    });
+    assert.equal(result.runningSha, RUNNING);
+  });
+});
+
+describe('plan summary', () => {
+  it('separates deploys from errors and fails the run on an error', () => {
+    const plans = [
+      plan(),
+      plan({ changedPathsSince: () => [] }),
+      plan({ deployments: null }),
+    ];
+    const summary = summarizeDeployPlan(plans);
+    assert.equal(summary.deploys.length, 1);
+    assert.equal(summary.errors.length, 1);
+    assert.equal(summary.ok, false);
+    assert.equal(summary.counts.CLOSURE_CHANGED, 1);
+  });
+
+  it('is ok when nothing needs deploying', () => {
+    const summary = summarizeDeployPlan([plan({ changedPathsSince: () => [] })]);
+    assert.equal(summary.ok, true);
+    assert.equal(summary.deploys.length, 0);
+  });
+});
+
+describe('deploy call', () => {
+  it('pins the exact commit as a string variable', () => {
+    const args = buildDeployArgs({ serviceId: 'svc-1', environmentId: 'env-1', commitSha: HEAD });
+    assert.equal(args[0], 'api');
+    assert.match(args[1], /serviceInstanceDeployV2/);
+    // --raw-var, not --var: --var parses the value as JSON when it can, and a
+    // commit SHA of all digits would arrive as a number.
+    assert.ok(args.includes('--raw-var'));
+    assert.ok(args.includes(`commitSha=${HEAD}`));
+    assert.ok(args.includes('serviceId=svc-1'));
+    assert.ok(args.includes('environmentId=env-1'));
+    assert.ok(!args.includes('--var'));
+  });
+
+  it('returns the deployment id Railway assigned', () => {
+    assert.equal(readDeploymentId('{"data":{"serviceInstanceDeployV2":"dep-1"}}'), 'dep-1');
+  });
+
+  it('throws on a GraphQL error instead of reporting a deploy', () => {
+    assert.throws(
+      () => readDeploymentId('{"errors":[{"message":"Not authorized"}]}'),
+      /Not authorized/,
+    );
+  });
+
+  it('throws on a null payload instead of reporting a deploy', () => {
+    for (const response of ['{"data":{"serviceInstanceDeployV2":null}}', '{"data":{}}', '{}']) {
+      assert.throws(() => readDeploymentId(response), /no deployment id/, response);
+    }
+  });
+});
