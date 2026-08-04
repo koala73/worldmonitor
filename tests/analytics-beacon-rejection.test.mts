@@ -34,6 +34,7 @@ before(() => {
 });
 
 const { track, identifyUser, resetAnalyticsForTesting } = await import('../src/services/analytics.ts');
+const { COLLECTOR_QUEUE_LIMIT } = await import('../src/services/analytics-collector-transport.ts');
 
 type WinWithUmami = {
   umami?: { track: (...a: unknown[]) => unknown; identify: (...a: unknown[]) => unknown };
@@ -639,8 +640,11 @@ describe('Umami client retry policy (#5715)', () => {
     };
 
     try {
-      // Fill well past UMAMI_COLLECTOR_QUEUE_LIMIT (25) with non-critical events.
-      for (let index = 0; index < 30; index += 1) track('search-open');
+      // Fill past the queue bound with non-critical events. Sized from the real
+      // constant: this loop used to be a literal 30 against a bound of 25, so
+      // raising the bound to 50 left it filling only 60% of the queue — the
+      // eviction under test simply stopped happening.
+      for (let index = 0; index < COLLECTOR_QUEUE_LIMIT + 5; index += 1) track('search-open');
       await drainPromiseHandlers(
         () => warnings.some((w) => w.failureKind === 'queue-overflow'),
         'a queued non-critical write is dropped',

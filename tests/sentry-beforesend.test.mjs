@@ -1372,3 +1372,78 @@ describe('`Failed to fetch (abacus.worldmonitor.app)` — Umami beacon (WORLDMON
     assert.ok(beforeSend(event) !== null, 'API-outage canary must never be masked by the beacon allowlist');
   });
 });
+
+// ─── WORLDMONITOR-Y4: bare minified trampoline hop in a DebugBear stack ───────
+//
+// Third build-rename of the VC/VQ wrapper. Vite emitted one hop of the
+// `window.fetch` trampoline as a bare minified `t`, which no fetch-anchored
+// pattern matches, so the identical class re-surfaced as a new issue. The
+// tolerance is bounded to ≤2 chars inside the two fetch-free chunks; the VQ
+// safety tests above (named receiver, `fetchContent`, non-allowlisted chunk)
+// still hold and are what stop this from becoming a blanket chunk allowlist.
+describe('sentry beforeSend — Y4 bare minified trampoline hop', () => {
+  const y4Stack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
+    { filename: '/assets/widget-store-MD1xhCc9.js', lineno: 2, function: 'window.fetch' },
+    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'Pi.window.fetch' },
+  ];
+
+  it('suppresses the exact Y4 production stack', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', y4Stack)), null,
+      'a bare minified hop is the same DebugBear wrapper class as VC/VQ');
+  });
+
+  it('does NOT suppress a longer minified name in the same chunk', () => {
+    // The bound is what separates a trampoline hop from a real minified caller.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'loadPanels' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a named function in the chunk is a real caller');
+  });
+
+  it('does NOT suppress a bare minified frame without a DebugBear frame present', () => {
+    // The collector frame is the reason these trampolines appear at all.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
+  });
+});
+
+// ─── WORLDMONITOR-WK: zero-frame RangeError confined to iOS ───────────────────
+//
+// 23 events / 20 users, 100% iOS, 21 inside the Google app's in-app WebView.
+// A blown stack is exactly when the SDK cannot collect frames, so zero frames
+// alone proves nothing — the OS gate is the load-bearing half.
+describe('sentry beforeSend — WK iOS zero-frame call-stack overflow', () => {
+  const withOs = (event, name) => ({ ...event, contexts: { os: { name } } });
+
+  it('suppresses the exact WK shape on iOS', () => {
+    const event = withOs(makeEvent('Maximum call stack size exceeded.', 'RangeError', []), 'iOS');
+    assert.equal(beforeSend(event), null, 'iOS in-app WebView recursion is not our bundle');
+  });
+
+  it('does NOT suppress the same message on a desktop OS', () => {
+    const event = withOs(makeEvent('Maximum call stack size exceeded.', 'RangeError', []), 'Mac OS X');
+    assert.ok(beforeSend(event) !== null, 'a real recursion regression must still reach Sentry');
+  });
+
+  it('does NOT suppress an iOS call-stack overflow that carries a first-party frame', () => {
+    const event = withOs(
+      makeEvent('Maximum call stack size exceeded.', 'RangeError', [firstPartyFrame()]),
+      'iOS',
+    );
+    assert.ok(beforeSend(event) !== null, 'an attributable recursion is signal, not noise');
+  });
+
+  it('does NOT suppress an unrelated zero-frame iOS RangeError', () => {
+    const event = withOs(makeEvent('Invalid array length', 'RangeError', []), 'iOS');
+    assert.ok(beforeSend(event) !== null, 'the gate is scoped to the call-stack message');
+  });
+});
