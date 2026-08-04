@@ -164,6 +164,43 @@ describe('SearchAdapter recovery path', () => {
     expect(firecrawl.extract).toHaveBeenCalledTimes(3);
   });
 
+  it('keeps Exa extraction cooldown independent from successful discovery', async () => {
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+      extract: vi.fn().mockRejectedValue(new Error('Exa extraction timeout')),
+    } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({ data: {} }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig());
+
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('extraction cooldown');
+
+    expect(exa.search).toHaveBeenCalledTimes(2);
+    expect(exa.extract).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not rediscover after Firecrawl cooldown when no extraction fallback is configured', async () => {
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+    } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockRejectedValue(new Error('Firecrawl HTTP 503')),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig({ extractionFallback: 'none' }));
+
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('Firecrawl extraction cooldown');
+
+    expect(exa.search).toHaveBeenCalledTimes(2);
+    expect(firecrawl.extract).toHaveBeenCalledTimes(2);
+  });
+
   it('opens an Exa discovery cooldown after repeated search errors', async () => {
     const exa = {
       search: vi.fn().mockRejectedValue(new Error('Exa search HTTP 503')),

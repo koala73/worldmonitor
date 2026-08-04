@@ -219,8 +219,10 @@ export class SearchAdapter implements RetailerAdapter {
   // make one bounded attempt per candidate.
   private firecrawlFailureStreak = 0;
   private firecrawlCooldownOpen = false;
-  private exaFailureStreak = 0;
-  private exaCooldownOpen = false;
+  private exaExtractionFailureStreak = 0;
+  private exaExtractionCooldownOpen = false;
+  private exaDiscoveryFailureStreak = 0;
+  private exaDiscoveryCooldownOpen = false;
 
   constructor(
     private readonly exa: ExaProvider,
@@ -236,8 +238,10 @@ export class SearchAdapter implements RetailerAdapter {
   async discoverTargets(ctx: AdapterContext): Promise<Target[]> {
     this.firecrawlFailureStreak = 0;
     this.firecrawlCooldownOpen = false;
-    this.exaFailureStreak = 0;
-    this.exaCooldownOpen = false;
+    this.exaExtractionFailureStreak = 0;
+    this.exaExtractionCooldownOpen = false;
+    this.exaDiscoveryFailureStreak = 0;
+    this.exaDiscoveryCooldownOpen = false;
 
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
     const domain = new URL(ctx.config.baseUrl).hostname;
@@ -330,7 +334,7 @@ export class SearchAdapter implements RetailerAdapter {
         failures.push({ provider, reason: 'provider-cooldown' });
         continue;
       }
-      if (provider === 'exa' && this.exaCooldownOpen) {
+      if (provider === 'exa' && this.exaExtractionCooldownOpen) {
         failures.push({ provider, reason: 'provider-cooldown' });
         continue;
       }
@@ -343,7 +347,7 @@ export class SearchAdapter implements RetailerAdapter {
             : await this.exa.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 });
         data = result.data ?? {};
         if (provider === 'firecrawl') this.firecrawlFailureStreak = 0;
-        if (provider === 'exa') this.exaFailureStreak = 0;
+        if (provider === 'exa') this.exaExtractionFailureStreak = 0;
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         failures.push({ provider, reason: 'provider-error', detail });
@@ -357,11 +361,11 @@ export class SearchAdapter implements RetailerAdapter {
           }
         }
         if (provider === 'exa') {
-          this.exaFailureStreak++;
-          if (this.exaFailureStreak >= 2) {
-            this.exaCooldownOpen = true;
+          this.exaExtractionFailureStreak++;
+          if (this.exaExtractionFailureStreak >= 2) {
+            this.exaExtractionCooldownOpen = true;
             ctx.logger.warn(
-              `  [search:provider-cooldown] ${ctx.config.slug}: Exa extraction disabled for the remainder of this scrape after ${this.exaFailureStreak} consecutive errors`,
+              `  [search:provider-cooldown] ${ctx.config.slug}: Exa extraction disabled for the remainder of this scrape after ${this.exaExtractionFailureStreak} consecutive errors`,
             );
           }
         }
@@ -477,9 +481,18 @@ export class SearchAdapter implements RetailerAdapter {
       }
     }
 
-    if (this.exaCooldownOpen) {
+    if (this.firecrawlCooldownOpen && ctx.config.searchConfig?.extractionFallback !== 'exa') {
       throw new SearchTargetError(
-        `Exa discovery cooldown is open for "${canonicalName}"`,
+        `Firecrawl extraction cooldown is open for "${canonicalName}"`,
+        0,
+        [{ provider: 'firecrawl', reason: 'provider-cooldown' }],
+      );
+    }
+
+    if (this.exaDiscoveryCooldownOpen || this.exaExtractionCooldownOpen) {
+      const cooldownKind = this.exaDiscoveryCooldownOpen ? 'discovery' : 'extraction';
+      throw new SearchTargetError(
+        `Exa ${cooldownKind} cooldown is open for "${canonicalName}"`,
         0,
         [{ provider: 'exa', reason: 'provider-cooldown' }],
       );
@@ -505,14 +518,14 @@ export class SearchAdapter implements RetailerAdapter {
         includeDomains: hostAllowlist,
         timeout: 30_000,
       });
-      this.exaFailureStreak = 0;
+      this.exaDiscoveryFailureStreak = 0;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      this.exaFailureStreak++;
-      if (this.exaFailureStreak >= 2) {
-        this.exaCooldownOpen = true;
+      this.exaDiscoveryFailureStreak++;
+      if (this.exaDiscoveryFailureStreak >= 2) {
+        this.exaDiscoveryCooldownOpen = true;
         ctx.logger.warn(
-          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery disabled for the remainder of this scrape after ${this.exaFailureStreak} consecutive errors`,
+          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery disabled for the remainder of this scrape after ${this.exaDiscoveryFailureStreak} consecutive errors`,
         );
       }
       throw new SearchTargetError(`Exa search failed for "${canonicalName}"`, 0, [
