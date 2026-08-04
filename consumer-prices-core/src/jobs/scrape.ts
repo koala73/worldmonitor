@@ -10,7 +10,7 @@ import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js'
 import { initProviders, teardownAll } from '../acquisition/registry.js';
 import { GenericPlaywrightAdapter } from '../adapters/generic.js';
 import { ExaSearchAdapter } from '../adapters/exa-search.js';
-import { SearchAdapter } from '../adapters/search.js';
+import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
@@ -295,6 +295,7 @@ export async function scrapeRetailer(slug: string) {
       pagesSucceeded++;
     } catch (err) {
       errorsCount++;
+      if (err instanceof SearchTargetError) rejectedCount += err.rejectedCount;
       logger.error(`  [${target.id}] failed: ${err}`);
       if (isDirect && pinnedProductId && pinnedMatchId) {
         await handlePinError(pinnedProductId, pinnedMatchId, target.id);

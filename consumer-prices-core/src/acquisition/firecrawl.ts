@@ -21,6 +21,7 @@ interface FirecrawlExtractResponse {
     extract?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   };
+  error?: string;
 }
 
 export class FirecrawlProvider implements AcquisitionProvider {
@@ -115,11 +116,15 @@ export class FirecrawlProvider implements AcquisitionProvider {
         extract: { schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
         timeout: opts.timeout ?? 30_000,
       }),
+      signal: AbortSignal.timeout(opts.timeout ?? 30_000),
     });
 
     if (!resp.ok) throw new Error(`Firecrawl extract failed: HTTP ${resp.status}`);
 
     const data = (await resp.json()) as FirecrawlExtractResponse;
+    if (!data.success || !data.data || !data.data.extract) {
+      throw new Error(`Firecrawl extract error: ${data.error ?? 'unknown'}`);
+    }
 
     return {
       url,

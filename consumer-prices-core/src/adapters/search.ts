@@ -2,11 +2,13 @@
  * SearchAdapter — two-stage grocery price pipeline.
  *
  * Stage 1 (Exa): neural search on retailer domain → ranked product page URLs
- * Stage 2 (Firecrawl): structured LLM extraction from the confirmed URL → {price, currency, inStock}
+ * Stage 2 (Firecrawl, with an opt-in bounded Exa fallback): structured LLM extraction
+ * from the confirmed URL → {price, currency, inStock}
  *
- * Pin path: if a matching pin exists in ctx.pinnedUrls, Exa is skipped and Firecrawl
- * is called directly on the stored URL. On failure, falls back to the normal Exa flow
- * in the same run so the basket item is never left uncovered.
+ * Pin path: if a matching pin exists in ctx.pinnedUrls, discovery is skipped and the
+ * configured extraction providers are called directly on the stored URL. On failure,
+ * the adapter falls back to the normal Exa discovery flow in the same run so the basket
+ * item is never left uncovered.
  *
  * Replaces ExaSearchAdapter's fragile regex-on-AI-summary approach.
  * Firecrawl renders JS so dynamic prices (Noon, etc.) are visible.
@@ -22,6 +24,7 @@ import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
 import { validateSearchHit, type ValidatorResult } from './validator.js';
 import type { BasketItem } from '../config/types.js';
+import type { AcquisitionProviderName } from '../acquisition/types.js';
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
@@ -78,13 +81,36 @@ export function extractSizeHint(canonicalName: string): string | null {
  * Safe host boundary check. Prevents evilluluhypermarket.com from passing
  * when allowedHost is luluhypermarket.com.
  */
-export function isAllowedHost(url: string, allowedHost: string): boolean {
+export function normalizeAllowedHosts(baseHost: string | readonly string[], aliases: readonly string[] = []): string[] {
+  const hosts = typeof baseHost === 'string' ? [baseHost, ...aliases] : [...baseHost, ...aliases];
+  return [...new Set(hosts.map((host) => host.trim().toLowerCase()).filter(Boolean))];
+}
+
+export function isAllowedHost(url: string, allowedHost: string | readonly string[]): boolean {
   try {
     const { hostname, protocol } = new URL(url);
-    return (protocol === 'http:' || protocol === 'https:') && hostname === allowedHost;
+    const allowedHosts = normalizeAllowedHosts(allowedHost);
+    return (protocol === 'http:' || protocol === 'https:') && allowedHosts.includes(hostname.toLowerCase());
   } catch {
     return false;
   }
+}
+
+/**
+ * Firecrawl occasionally returns a product quantity as the retail price when
+ * a dynamic page exposes the size but not the currency-denominated price.
+ * Reject only the unambiguous weighted-unit echo; count-based products and
+ * ordinary prices remain untouched.
+ */
+export function looksLikeQuantityAsPrice(
+  price: number,
+  sizeText: string | undefined,
+  item: Pick<BasketItem, 'baseUnit'>,
+): boolean {
+  if (item.baseUnit === 'ct' || !sizeText || !Number.isFinite(price) || price < 20) return false;
+  const parsed = parseSize(sizeText);
+  if (!parsed || parsed.baseUnit !== item.baseUnit || parsed.baseQuantity < 100) return false;
+  return Math.abs(price - parsed.baseQuantity) < 0.005;
 }
 
 /**
@@ -115,6 +141,34 @@ interface ExtractedProduct {
   sizeText?: string;
 }
 
+export type ExtractionProviderName = Extract<AcquisitionProviderName, 'firecrawl' | 'exa'>;
+
+export type ExtractionFailureReason =
+  | 'provider-error'
+  | 'provider-cooldown'
+  | 'missing-price'
+  | 'title-mismatch'
+  | 'validator-rejected'
+  | 'quantity-as-price'
+  | 'currency-mismatch';
+
+export interface ExtractionFailure {
+  provider: ExtractionProviderName;
+  reason: ExtractionFailureReason;
+  detail?: string;
+}
+
+interface ExtractionSuccess {
+  extracted: ExtractedProduct;
+  validator: ValidatorResult;
+  provider: ExtractionProviderName;
+}
+
+interface ExtractionAttempt {
+  result: ExtractionSuccess | null;
+  failures: ExtractionFailure[];
+}
+
 type ItemConstraints = Pick<BasketItem, 'baseUnit' | 'minBaseQty' | 'maxBaseQty' | 'negativeTokens' | 'substitutionGroup'>;
 
 interface SearchPayload {
@@ -123,15 +177,50 @@ interface SearchPayload {
   canonicalName: string;
   basketSlug: string;
   itemCategory: string;
-  itemConstraints: ItemConstraints;
+  itemConstraints?: ItemConstraints;
   validator?: ValidatorResult;
+  extractionProvider?: ExtractionProviderName;
   direct?: boolean;
   pinnedProductId?: string;
   matchId?: string;
 }
 
+const REJECTION_FAILURES = new Set<ExtractionFailureReason>([
+  'validator-rejected',
+  'quantity-as-price',
+  'currency-mismatch',
+  'title-mismatch',
+]);
+
+export class SearchTargetError extends Error {
+  constructor(
+    message: string,
+    readonly rejectedCount: number,
+    readonly failures: readonly ExtractionFailure[] = [],
+  ) {
+    super(message);
+    this.name = 'SearchTargetError';
+  }
+}
+
+function formatExtractionFailures(failures: readonly ExtractionFailure[]): string {
+  if (failures.length === 0) return 'unknown';
+  return failures
+    .map(({ provider, reason, detail }) => `${provider}:${reason}${detail ? `(${detail})` : ''}`)
+    .join(',');
+}
+
 export class SearchAdapter implements RetailerAdapter {
   readonly key = 'search';
+
+  // A provider outage should not multiply into one failed call per candidate
+  // URL for the rest of a retailer's scrape. Two consecutive transport errors
+  // open a per-scrape cooldown; an explicitly configured fallback can still
+  // make one bounded attempt per candidate.
+  private firecrawlFailureStreak = 0;
+  private firecrawlCooldownOpen = false;
+  private exaFailureStreak = 0;
+  private exaCooldownOpen = false;
 
   constructor(
     private readonly exa: ExaProvider,
@@ -145,8 +234,14 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async discoverTargets(ctx: AdapterContext): Promise<Target[]> {
+    this.firecrawlFailureStreak = 0;
+    this.firecrawlCooldownOpen = false;
+    this.exaFailureStreak = 0;
+    this.exaCooldownOpen = false;
+
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
     const domain = new URL(ctx.config.baseUrl).hostname;
+    const allowedHosts = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
     const targets: Target[] = [];
 
     for (const basket of baskets) {
@@ -161,7 +256,7 @@ export class SearchAdapter implements RetailerAdapter {
           substitutionGroup: item.substitutionGroup,
         };
 
-        if (pinned && isAllowedHost(pinned.sourceUrl, domain)) {
+        if (pinned && isAllowedHost(pinned.sourceUrl, allowedHosts)) {
           targets.push({
             id: item.id,
             url: pinned.sourceUrl,
@@ -207,7 +302,7 @@ export class SearchAdapter implements RetailerAdapter {
     canonicalName: string,
     currency: string,
     itemConstraints?: ItemConstraints,
-  ): Promise<{ extracted: ExtractedProduct; validator: ValidatorResult } | null> {
+  ): Promise<ExtractionAttempt> {
     const sizeHint = extractSizeHint(canonicalName);
     const sizeClause = sizeHint
       ? ` You are looking for "${canonicalName}". The product MUST be ${sizeHint}. If the page shows a different size, pack count, or bulk case, return null for price.`
@@ -224,43 +319,113 @@ export class SearchAdapter implements RetailerAdapter {
       },
     };
 
-    const result = await this.firecrawl.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 });
-    const data = result.data;
-    const price = data?.price;
+    const failures: ExtractionFailure[] = [];
+    const providers: ExtractionProviderName[] = ['firecrawl'];
+    if (ctx.config.searchConfig?.extractionFallback === 'exa') providers.push('exa');
+    const strictMode = ctx.config.searchConfig?.requireStrictValidator === true;
+    const validationConstraints: ItemConstraints = itemConstraints ?? { baseUnit: '' };
 
-    if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
-      return null;
+    for (const provider of providers) {
+      if (provider === 'firecrawl' && this.firecrawlCooldownOpen) {
+        failures.push({ provider, reason: 'provider-cooldown' });
+        continue;
+      }
+      if (provider === 'exa' && this.exaCooldownOpen) {
+        failures.push({ provider, reason: 'provider-cooldown' });
+        continue;
+      }
+
+      let data: ExtractedProduct;
+      try {
+        const result =
+          provider === 'firecrawl'
+            ? await this.firecrawl.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 })
+            : await this.exa.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 });
+        data = result.data ?? {};
+        if (provider === 'firecrawl') this.firecrawlFailureStreak = 0;
+        if (provider === 'exa') this.exaFailureStreak = 0;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        failures.push({ provider, reason: 'provider-error', detail });
+        if (provider === 'firecrawl') {
+          this.firecrawlFailureStreak++;
+          if (this.firecrawlFailureStreak >= 2) {
+            this.firecrawlCooldownOpen = true;
+            ctx.logger.warn(
+              `  [search:provider-cooldown] ${ctx.config.slug}: Firecrawl disabled for the remainder of this scrape after ${this.firecrawlFailureStreak} consecutive errors`,
+            );
+          }
+        }
+        if (provider === 'exa') {
+          this.exaFailureStreak++;
+          if (this.exaFailureStreak >= 2) {
+            this.exaCooldownOpen = true;
+            ctx.logger.warn(
+              `  [search:provider-cooldown] ${ctx.config.slug}: Exa extraction disabled for the remainder of this scrape after ${this.exaFailureStreak} consecutive errors`,
+            );
+          }
+        }
+        continue;
+      }
+
+      const price = data.price;
+      if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
+        failures.push({ provider, reason: 'missing-price' });
+        continue;
+      }
+
+      if (data.currency && data.currency.toUpperCase() !== currency.toUpperCase()) {
+        failures.push({ provider, reason: 'currency-mismatch', detail: `${data.currency}≠${currency}` });
+        continue;
+      }
+
+      if (!isTitlePlausible(canonicalName, data.productName)) {
+        failures.push({ provider, reason: 'title-mismatch', detail: data.productName ?? 'missing productName' });
+        continue;
+      }
+
+      if (strictMode && !itemConstraints) {
+        failures.push({ provider, reason: 'validator-rejected', detail: 'missing-item-constraints' });
+        continue;
+      }
+
+      if (strictMode && looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints)) {
+        failures.push({ provider, reason: 'quantity-as-price', detail: `${price} for ${data.sizeText}` });
+        continue;
+      }
+
+      const validator = validateSearchHit({
+        canonicalName,
+        productName: data.productName,
+        sizeText: data.sizeText,
+        item: validationConstraints,
+      });
+
+      if (strictMode && !validator.ok) {
+        failures.push({ provider, reason: 'validator-rejected', detail: validator.reasons.join(',') || 'unknown' });
+        continue;
+      }
+
+      // Shadow-mode: the strict validator runs alongside the legacy boolean gate
+      // but does NOT block a hit on its own for unaffected retailers. Priority
+      // recovery retailers opt into the hard gate above.
+      if (!validator.ok) {
+        ctx.logger.warn(
+          `  [search:shadow-reject] "${canonicalName}" would reject productName="${data.productName}" reasons=${validator.reasons.join(',')} score=${validator.score.toFixed(2)}`,
+        );
+      }
+
+      // inStockFromPrice: some retailers (e.g. BigBasket) gate on delivery pincode, not product
+      // availability. Firecrawl misreads the gate as out-of-stock. If price > 0, treat as in-stock.
+      if (ctx.config.searchConfig?.inStockFromPrice && price > 0) {
+        ctx.logger.info(`  [search:extract] ${canonicalName}: inStockFromPrice override (price=${price})`);
+        data.inStock = true;
+      }
+
+      return { result: { extracted: data, validator, provider }, failures };
     }
-    const legacyPass = isTitlePlausible(canonicalName, data.productName);
-    const validator = validateSearchHit({
-      canonicalName,
-      productName: data.productName,
-      sizeText: data.sizeText,
-      item: itemConstraints ?? { baseUnit: '' },
-    });
 
-    // Shadow-mode: the strict validator runs alongside the legacy boolean gate
-    // but does NOT block a hit on its own yet. When validator.ok=false and
-    // legacy would have accepted, log a wouldReject with reasons so the diff
-    // report can inform the rollout decision to flip the hard gate.
-    if (legacyPass && !validator.ok) {
-      ctx.logger.warn(
-        `  [search:shadow-reject] "${canonicalName}" would reject productName="${data.productName}" reasons=${validator.reasons.join(',')} score=${validator.score.toFixed(2)}`,
-      );
-    }
-
-    if (!legacyPass) {
-      return null;
-    }
-
-    // inStockFromPrice: some retailers (e.g. BigBasket) gate on delivery pincode, not product
-    // availability. Firecrawl misreads the gate as out-of-stock. If price > 0, treat as in-stock.
-    if (ctx.config.searchConfig?.inStockFromPrice && price > 0) {
-      ctx.logger.info(`  [search:extract] ${canonicalName}: inStockFromPrice override (price=${price})`);
-      data.inStock = true;
-    }
-
-    return { extracted: data, validator };
+    return { result: null, failures };
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
@@ -269,19 +434,21 @@ export class SearchAdapter implements RetailerAdapter {
       domain: string;
       currency: string;
       basketSlug: string;
-      itemConstraints: ItemConstraints;
+      itemConstraints?: ItemConstraints;
       direct: boolean;
       pinnedProductId?: string;
       matchId?: string;
     };
+    const hostAllowlist = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
 
-    // Direct path: skip Exa, call Firecrawl on pinned URL
+    // Direct path: skip Exa discovery, call the configured extractor on the pinned URL.
     if (direct) {
       try {
-        const result = await this._extractFromUrl(ctx, target.url, canonicalName, currency, itemConstraints);
-        if (result) {
+        const attempt = await this._extractFromUrl(ctx, target.url, canonicalName, currency, itemConstraints);
+        if (attempt.result) {
+          const result = attempt.result;
           ctx.logger.info(
-            `  [search:pin] ${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} from ${target.url}`,
+            `  [search:pin] ${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} provider=${result.provider} from ${target.url}`,
           );
           return {
             url: target.url,
@@ -293,6 +460,7 @@ export class SearchAdapter implements RetailerAdapter {
               itemCategory: target.category,
               itemConstraints,
               validator: result.validator,
+              extractionProvider: result.provider,
               direct: true,
               pinnedProductId,
               matchId,
@@ -301,10 +469,20 @@ export class SearchAdapter implements RetailerAdapter {
             fetchedAt: new Date(),
           };
         }
-        ctx.logger.warn(`  [search:pin] ${canonicalName}: pin extraction failed, falling back to Exa`);
+        ctx.logger.warn(
+          `  [search:pin] ${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa`,
+        );
       } catch (err) {
         ctx.logger.warn(`  [search:pin] ${canonicalName}: pin fetch error, falling back to Exa: ${err}`);
       }
+    }
+
+    if (this.exaCooldownOpen) {
+      throw new SearchTargetError(
+        `Exa discovery cooldown is open for "${canonicalName}"`,
+        0,
+        [{ provider: 'exa', reason: 'provider-cooldown' }],
+      );
     }
 
     const marketName = MARKET_NAMES[ctx.config.marketCode] ?? ctx.config.marketCode.toUpperCase();
@@ -320,22 +498,41 @@ export class SearchAdapter implements RetailerAdapter {
       : `${canonicalName} grocery ${marketName} ${currency}`.trim();
 
     // Stage 1: Exa URL discovery
-    const exaResults = await this.exa.search(searchQuery, {
-      numResults: cfg?.numResults ?? 3,
-      includeDomains: [domain],
-    });
+    let exaResults;
+    try {
+      exaResults = await this.exa.search(searchQuery, {
+        numResults: cfg?.numResults ?? 3,
+        includeDomains: hostAllowlist,
+        timeout: 30_000,
+      });
+      this.exaFailureStreak = 0;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.exaFailureStreak++;
+      if (this.exaFailureStreak >= 2) {
+        this.exaCooldownOpen = true;
+        ctx.logger.warn(
+          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery disabled for the remainder of this scrape after ${this.exaFailureStreak} consecutive errors`,
+        );
+      }
+      throw new SearchTargetError(`Exa search failed for "${canonicalName}"`, 0, [
+        { provider: 'exa', reason: 'provider-error', detail },
+      ]);
+    }
 
     if (exaResults.length === 0) {
       throw new Error(`Exa: no pages found for "${canonicalName}" on ${domain}`);
     }
 
     const pathFilters = normalizePathFilters(cfg?.urlPathContains);
-    const safeUrls = exaResults
+    const attemptedUrls = direct ? new Set([target.url]) : new Set<string>();
+    const discoveredUrls = exaResults
       .map((r) => r.url)
-      .filter((url) => !!url && isAllowedHost(url, domain) && matchesAnyPathFilter(url, pathFilters));
+      .filter((url) => !!url && isAllowedHost(url, hostAllowlist) && matchesAnyPathFilter(url, pathFilters));
+    const safeUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
 
     ctx.logger.info(
-      `  [search:discovery] ${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed domain check`,
+      `  [search:discovery] ${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed host/path check`,
     );
 
     if (safeUrls.length === 0) {
@@ -345,43 +542,54 @@ export class SearchAdapter implements RetailerAdapter {
       // run goes from "0 passed domain check" straight to a thrown error
       // with no record of what Exa actually returned.
       const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
+      const excludedPinnedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
       ctx.logger.warn(
-        `  [search:discovery] ${canonicalName}: 0 of ${exaResults.length} URLs passed filter (host=${domain}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}). Rejected: ${sample}`,
+        `  [search:discovery] ${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
       );
+      if (excludedPinnedUrl) {
+        throw new Error(`Exa: all ${exaResults.length} results repeated the pinned URL already attempted for "${canonicalName}"`);
+      }
       throw new Error(
-        `Exa: all ${exaResults.length} results failed domain check (expected hostname: ${domain}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''})`,
+        `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''})`,
       );
     }
 
-    // Stage 2: Firecrawl structured extraction — iterate safe URLs until one yields a valid price
-    let picked: { extracted: ExtractedProduct; validator: ValidatorResult } | null = null;
+    // Stage 2: structured extraction — iterate safe URLs until one yields a valid price.
+    // _extractFromUrl keeps the provider fallback bounded per candidate and records
+    // the reason each provider/page was rejected for the scrape-run diagnostics.
+    let picked: ExtractionSuccess | null = null;
     let usedUrl = safeUrls[0];
-    const lastErrors: string[] = [];
+    const failures: ExtractionFailure[] = [];
 
     for (const url of safeUrls) {
       try {
-        const result = await this._extractFromUrl(ctx, url, canonicalName, currency, itemConstraints);
-        if (result) {
-          picked = result;
+        const attempt = await this._extractFromUrl(ctx, url, canonicalName, currency, itemConstraints);
+        failures.push(...attempt.failures);
+        if (attempt.result) {
+          picked = attempt.result;
           usedUrl = url;
           break;
         }
-        ctx.logger.warn(`  [search:extract] ${canonicalName}: no price or title mismatch at ${url}, trying next`);
+        ctx.logger.warn(
+          `  [search:extract] ${canonicalName}: rejected ${url} (${formatExtractionFailures(attempt.failures)}), trying next`,
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        ctx.logger.warn(`  [search:extract] ${canonicalName}: Firecrawl error on ${url}: ${msg}`);
-        lastErrors.push(msg);
+        ctx.logger.warn(`  [search:extract] ${canonicalName}: extraction error on ${url}: ${msg}`);
+        failures.push({ provider: 'firecrawl', reason: 'provider-error', detail: msg });
       }
     }
 
     if (picked === null) {
-      throw new Error(
-        `All ${safeUrls.length} URLs failed extraction for "${canonicalName}".${lastErrors.length ? ` Last: ${lastErrors.at(-1)}` : ''}`,
+      throw new SearchTargetError(
+        `All ${safeUrls.length} URLs failed extraction for "${canonicalName}". Last: ${formatExtractionFailures(failures.slice(-3))}`,
+        failures.some(({ reason }) => REJECTION_FAILURES.has(reason)) ? 1 : 0,
+        failures,
       );
     }
 
     ctx.logger.info(
-      `  [search:extract] ${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} from ${usedUrl}`,
+      `  [search:extract] ${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} provider=${picked.provider} from ${usedUrl}`,
     );
 
     return {
@@ -394,6 +602,7 @@ export class SearchAdapter implements RetailerAdapter {
         itemCategory: target.category,
         itemConstraints,
         validator: picked.validator,
+        extractionProvider: picked.provider,
         direct: false,
       } satisfies SearchPayload),
       statusCode: 200,
@@ -402,7 +611,7 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async parseListing(ctx: AdapterContext, result: FetchResult): Promise<ParsedProduct[]> {
-    const { extracted, productUrl, canonicalName, basketSlug, itemCategory, itemConstraints, validator, direct, pinnedProductId, matchId } =
+    const { extracted, productUrl, canonicalName, basketSlug, itemCategory, itemConstraints, validator, extractionProvider, direct, pinnedProductId, matchId } =
       JSON.parse(result.html) as SearchPayload;
 
     const priceResult = z.number().positive().finite().safeParse(extracted?.price);
@@ -418,10 +627,12 @@ export class SearchAdapter implements RetailerAdapter {
       return [];
     }
 
-    // Require Firecrawl to return a real product name — using canonical name as rawTitle
+    // Require the structured extractor to return a real product name — using canonical name as rawTitle
     // silently poisons the DB with unverifiable matches (e.g. extraction failures, wrong pages).
     if (!extracted.productName) {
-      ctx.logger.warn(`  [search] ${canonicalName}: no productName from Firecrawl, rejecting ${productUrl}`);
+      ctx.logger.warn(
+        `  [search] ${canonicalName}: no productName from ${extractionProvider ?? 'structured extractor'}, rejecting ${productUrl}`,
+      );
       return [];
     }
 
@@ -438,10 +649,10 @@ export class SearchAdapter implements RetailerAdapter {
         listPrice: null,
         promoPrice: null,
         promoText: null,
-        // inStock defaults to true when Firecrawl does not return the field.
+        // inStock defaults to true when the structured extractor does not return the field.
         // This is a conservative assumption — monitor for out-of-stock false positives.
         inStock: extracted.inStock ?? true,
-        rawPayload: { extracted, basketSlug, itemCategory, canonicalName, itemConstraints, validator, direct, pinnedProductId, matchId },
+        rawPayload: { extracted, basketSlug, itemCategory, canonicalName, itemConstraints, validator, extractionProvider, direct, pinnedProductId, matchId },
       },
     ];
   }

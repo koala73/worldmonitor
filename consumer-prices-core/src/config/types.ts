@@ -57,7 +57,17 @@ export const SearchConfigSchema = z.object({
   // and VTEX `<slug>/p` for product pages). A URL passes if it contains ANY
   // of the listed substrings.
   urlPathContains: z.union([z.string(), z.array(z.string()).min(1)]).optional(),
+  // Explicit storefront aliases for provider results that are still owned by
+  // the configured retailer (for example minutes.noon.com). The base URL
+  // hostname is always allowed; aliases never broaden the check implicitly.
+  allowedHosts: z.array(z.string().min(1)).min(1).optional(),
   inStockFromPrice: z.boolean().default(false),
+  // A single bounded provider fallback is opt-in per retailer. `none` keeps
+  // the historical Firecrawl-only extraction path.
+  extractionFallback: z.enum(['none', 'exa']).default('none'),
+  // Keep the strict validator opt-in while existing shadow-mode rollouts
+  // remain unchanged for unaffected retailers.
+  requireStrictValidator: z.boolean().default(false),
 });
 
 export const RetailerConfigSchema = z.object({

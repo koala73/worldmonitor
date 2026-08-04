@@ -9,6 +9,10 @@ retailer:
 
   searchConfig:
     numResults: 5
+    # Pinned product URLs historically used the bare hostname while the
+    # configured base URL uses `www`; both are the same storefront.
+    allowedHosts:
+      - carrefouruae.com
 
   rateLimit:
     requestsPerMinute: 20

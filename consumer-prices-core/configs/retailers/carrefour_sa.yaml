@@ -9,8 +9,12 @@ retailer:
 
   searchConfig:
     numResults: 5
-    queryTemplate: "{canonicalName} carrefour saudi"
+    queryTemplate: "{canonicalName} grocery carrefour saudi {currency}"
+    allowedHosts:
+      - www.carrefourksa.com
     urlPathContains: /p/
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10

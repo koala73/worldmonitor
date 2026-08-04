@@ -13,6 +13,7 @@ export interface SearchOptions {
   includeDomains?: string[];
   startPublishedDate?: string;
   type?: 'keyword' | 'neural';
+  timeout?: number;
 }
 
 export interface ExtractSchema {

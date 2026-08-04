@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { isTitlePlausible, isAllowedHost, normalizePathFilters, matchesAnyPathFilter } from './search.js';
+import {
+  isTitlePlausible,
+  isAllowedHost,
+  normalizeAllowedHosts,
+  normalizePathFilters,
+  matchesAnyPathFilter,
+  looksLikeQuantityAsPrice,
+} from './search.js';
 
 describe('isAllowedHost', () => {
   it('accepts exact domain match', () => {
@@ -24,6 +31,20 @@ describe('isAllowedHost', () => {
   it('handles malformed URLs gracefully', () => {
     expect(isAllowedHost('not-a-url', 'noon.com')).toBe(false);
     expect(isAllowedHost('', 'noon.com')).toBe(false);
+  });
+
+  it('accepts only explicitly configured host aliases', () => {
+    expect(isAllowedHost('https://minutes.noon.com/uae-en/now-product/ABC', ['www.noon.com', 'minutes.noon.com'])).toBe(true);
+    expect(isAllowedHost('https://evil-noon.com/uae-en/now-product/ABC', ['www.noon.com', 'minutes.noon.com'])).toBe(false);
+  });
+});
+
+describe('normalizeAllowedHosts', () => {
+  it('keeps the base host, removes duplicates, and normalizes aliases', () => {
+    expect(normalizeAllowedHosts('www.noon.com', [' minutes.noon.com ', 'www.noon.com'])).toEqual([
+      'www.noon.com',
+      'minutes.noon.com',
+    ]);
   });
 });
 
@@ -120,5 +141,17 @@ describe('matchesAnyPathFilter', () => {
     expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/promocoes/semana', filters)).toBe(true);
     expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/pages/about', filters)).toBe(true);
     expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/popular/today', filters)).toBe(true);
+  });
+});
+
+describe('looksLikeQuantityAsPrice', () => {
+  it('rejects a quantity echoed as a price for weighted products', () => {
+    expect(looksLikeQuantityAsPrice(400, '400g', { baseUnit: 'g' })).toBe(true);
+    expect(looksLikeQuantityAsPrice(1000, '1kg', { baseUnit: 'g' })).toBe(true);
+  });
+
+  it('does not reject normal prices or count-based products', () => {
+    expect(looksLikeQuantityAsPrice(4.95, '500g', { baseUnit: 'g' })).toBe(false);
+    expect(looksLikeQuantityAsPrice(12, '12 ct', { baseUnit: 'ct' })).toBe(false);
   });
 });

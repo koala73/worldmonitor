@@ -15,6 +15,10 @@ retailer:
     # result for years (logged 2026-05-09: "5 URLs from Exa, 0 passed
     # domain check" for every basket item).
     urlPathContains: /p/
+    allowedHosts:
+      - www.coldstorage.com.sg
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10
