@@ -20,13 +20,17 @@ const {
   healthResponseBody,
   STATUS_COUNTS,
   SEED_META,
+  ACTIVATION_MARKERS,
+  CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
 } = __testing__;
 
-const NOW = Date.parse('2026-08-02T14:42:58.000Z');
+const NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const MINUTE_MS = 60_000;
 const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PORTWATCH_DATA_KEY = 'supply_chain:portwatch-ports:v1:_countries';
+const PORTWATCH_ACTIVATION_KEY = ACTIVATION_MARKERS.portwatchContentFreshness;
+const CONTENT_FRESHNESS_ROLLOUT_UNTIL = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_ACTIVATION_KEY];
 
 function contentFreshnessOf(overrides = {}) {
   return {
@@ -52,13 +56,13 @@ function contentFreshnessOf(overrides = {}) {
   };
 }
 
-function portwatchCtx(meta) {
+function portwatchCtx(meta, now = NOW) {
   return {
     keyStrens: new Map([[PORTWATCH_DATA_KEY, 4096]]),
     keyErrors: new Map(),
     keyMetaValues: new Map([[PORTWATCH_META_KEY, JSON.stringify(meta)]]),
     keyMetaErrors: new Map(),
-    now: NOW,
+    now,
   };
 }
 
@@ -67,13 +71,13 @@ function portwatchCtx(meta) {
 // `activated` is three-valued (#6095): true = marker read and present, false =
 // marker read and absent (the only state that earns grace), null = the marker
 // read failed, so its state is unknown and it is missing from the map entirely.
-function classifyPortwatch(meta, { activated = true } = {}) {
+function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
   return classifyKey(
     'portwatchPortActivity',
     PORTWATCH_DATA_KEY,
     {},
     {
-      ...portwatchCtx(meta),
+      ...portwatchCtx(meta, now),
       activationStates: activated === null
         ? new Map()
         : new Map([['portwatchContentFreshness', activated]]),
@@ -124,7 +128,10 @@ describe('readSeedMeta content-freshness parsing', () => {
     assert.equal(meta.contentFreshness.contentStale, true);
     assert.equal(meta.contentFreshness.staleCount, 1);
     assert.deepEqual(meta.contentFreshness.criticalStaleCountries, ['CN']);
-    assert.equal(meta.contentFreshness.criticalOldestAgeMinutes, 10_240);
+    assert.equal(
+      meta.contentFreshness.criticalOldestAgeMinutes,
+      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
+    );
   });
 
   it('does not alarm on fleet-wide rotation lag outside the decision-critical set', () => {
@@ -398,7 +405,10 @@ describe('portwatchPortActivity classification', () => {
       'CN',
       'operators get the stale source family, not a generic warning',
     );
-    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 10_240);
+    assert.equal(
+      entry.contentFreshness.criticalOldestAgeMinutes,
+      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
+    );
   });
 
   it('alarms when a decision-critical country drops out of the run entirely', () => {
@@ -429,11 +439,10 @@ describe('portwatchPortActivity classification', () => {
     );
   });
 
-  // #6095 — the grace is earned by evidence, never by the absence of evidence.
-  // A marker health could not read says nothing about whether the producer ever
-  // published, and a grace granted on that never expires: an UNREADABLE marker
-  // would disable the content alarm permanently. (An evicted or renamed marker
-  // reads as a clean absence and still earns the grace — see #6111.)
+  // #6095/#6111 — the grace is earned by evidence, then bounded by the
+  // deployment window. A marker health could not read says nothing about
+  // whether the producer ever published; an evicted or renamed marker can only
+  // earn clean-absent grace until the compiled deadline.
   it('refuses grace when the marker state is unknown rather than read-absent', () => {
     const entry = classifyPortwatch(completeRun(undefined), { activated: null });
     assert.equal(
@@ -441,6 +450,25 @@ describe('portwatchPortActivity classification', () => {
       'COVERAGE_DEGRADED',
       'an unread marker must fail closed, not re-enter an expired grace',
     );
+  });
+
+  it('bounds clean-absent grace and publishes its deadline', () => {
+    const pending = classifyPortwatch(completeRun(undefined), {
+      activated: false,
+      now: NOW,
+    });
+    assert.equal(pending.status, 'OK');
+    assert.equal(
+      pending.contentFreshnessPendingUntil,
+      new Date(CONTENT_FRESHNESS_ROLLOUT_UNTIL).toISOString(),
+    );
+
+    const expired = classifyPortwatch(completeRun(undefined), {
+      activated: false,
+      now: CONTENT_FRESHNESS_ROLLOUT_UNTIL,
+    });
+    assert.equal(expired.status, 'COVERAGE_DEGRADED');
+    assert.ok(expired.contentFreshness, 'the expired block is evaluated and published for diagnosis');
   });
 
   it('still evaluates a block that is present before activation is observed', () => {

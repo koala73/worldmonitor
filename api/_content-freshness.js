@@ -29,6 +29,59 @@ function entityList(value) {
     : [];
 }
 
+// #6111 — content-freshness activation is a deployment-order bridge, not a
+// permanent exemption. The producer publishes on a 12h Railway cron; this
+// window starts when the schema shipped and ends after the first complete cron
+// window plus six hours of scheduling slack. Keep the source timestamps here
+// so health, seed-health, and MCP cannot silently invent different deadlines.
+export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
+  'seed-activated:supply_chain:portwatch-ports:content-freshness';
+
+export const CONTENT_FRESHNESS_ROLLOUT = Object.freeze({
+  [PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY]: Object.freeze({
+    from: '2026-08-03T10:24:42Z',
+    until: '2026-08-04T06:00:00Z',
+  }),
+});
+
+const CONTENT_FRESHNESS_ROLLOUT_WINDOWS = new Map(
+  Object.entries(CONTENT_FRESHNESS_ROLLOUT).map(([key, window]) => [key, {
+    ...window,
+    fromMs: Date.parse(window.from),
+    untilMs: Date.parse(window.until),
+  }]),
+);
+
+export const CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS = Object.freeze(
+  Object.fromEntries(
+    [...CONTENT_FRESHNESS_ROLLOUT_WINDOWS.entries()]
+      .filter(([, window]) => Number.isFinite(window.untilMs))
+      .map(([key, window]) => [key, window.untilMs]),
+  ),
+);
+
+export function getContentFreshnessActivationWindow(activationKey) {
+  const window = CONTENT_FRESHNESS_ROLLOUT_WINDOWS.get(activationKey);
+  if (!window || !Number.isFinite(window.fromMs) || !Number.isFinite(window.untilMs)) return null;
+  if (window.untilMs <= window.fromMs) return null;
+  return window;
+}
+
+export function getActiveContentFreshnessActivationWindow(activationKey, activationState, now) {
+  const window = getContentFreshnessActivationWindow(activationKey);
+  return activationState === false
+    && window !== null
+    && Number.isFinite(now)
+    && now >= window.fromMs
+    && now < window.untilMs
+    ? window
+    : null;
+}
+
+export function isContentFreshnessGraceActive(activationKey, activationState, now) {
+  return getActiveContentFreshnessActivationWindow(activationKey, activationState, now) !== null;
+}
+
 // Returns a private `fieldPresent` bit in addition to the wire fields. A JSON
 // field that is present but malformed is a producer regression; only a truly
 // absent field can receive deployment-order activation grace.

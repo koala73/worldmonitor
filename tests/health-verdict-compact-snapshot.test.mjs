@@ -32,7 +32,7 @@ function fullVerdict(checkCount = 228, problemCount = 5) {
 
 test('the two snapshot keys are distinct', () => {
   assert.notEqual(HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY, HEALTH_VERDICT_SNAPSHOT_KEY);
-  assert.match(HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY, /health:verdict:compact:v1$/);
+  assert.match(HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY, /health:verdict:compact:v2$/);
 });
 
 // THE POINT OF THE CHANGE. ?compact=1 is the browser poll — every client, every 5

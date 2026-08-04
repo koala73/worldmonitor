@@ -5,7 +5,7 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
-const { default: handler, __testing__ } = await import('../api/health.js');
+const { default: handler, handleHealth, __testing__ } = await import('../api/health.js');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
@@ -35,7 +35,7 @@ function healthySnapshot(checkedAt = new Date().toISOString()) {
 }
 
 test('scopes health verdict Redis keys to non-production deployments', () => {
-  const baseKey = 'health:verdict:v1';
+  const baseKey = 'health:verdict:v2';
   const lockBaseKey = `${baseKey}:refresh-lock`;
 
   assert.equal(__testing__.healthVerdictRedisKey(baseKey, undefined, undefined), baseKey);
@@ -45,11 +45,11 @@ test('scopes health verdict Redis keys to non-production deployments', () => {
   );
   assert.equal(
     __testing__.healthVerdictRedisKey(baseKey, 'preview', '1234567890abcdef'),
-    'preview:12345678:health:verdict:v1',
+    'preview:12345678:health:verdict:v2',
   );
   assert.equal(
     __testing__.healthVerdictRedisKey(lockBaseKey, 'preview', undefined),
-    'preview:dev:health:verdict:v1:refresh-lock',
+    'preview:dev:health:verdict:v2:refresh-lock',
   );
 });
 
@@ -429,4 +429,96 @@ test('validates snapshot age after the Redis read completes', async () => {
   assert.equal(response.status, 200);
   assert.equal(sweepCount, 1, 'a snapshot that expires in flight must be recomputed');
   assert.notEqual(body.checkedAt, almostExpired.checkedAt);
+});
+
+test('serves the auditable content-freshness deadline from full and compact snapshots', async () => {
+  const now = Date.parse('2026-08-03T14:42:58.000Z');
+  const checkedAt = new Date(now - 30_000).toISOString();
+  const pendingUntil = '2026-08-04T06:00:00.000Z';
+  const snapshot = {
+    status: 'HEALTHY',
+    summary: {
+      total: 1,
+      ok: 1,
+      warn: 0,
+      onDemandWarn: 0,
+      staleContent: 0,
+      crit: 0,
+      contentFreshnessPendingUntil: { portwatchPortActivity: pendingUntil },
+    },
+    checkedAt,
+    checks: {
+      portwatchPortActivity: { status: 'OK', records: 174, contentFreshnessPendingUntil: pendingUntil },
+    },
+  };
+
+  for (const [query, key, headers] of [
+    ['?compact=1', HEALTH_COMPACT_SNAPSHOT_KEY, {}],
+    ['', HEALTH_SNAPSHOT_KEY, { 'x-worldmonitor-key': 'test-health-admin-key' }],
+  ]) {
+    globalThis.fetch = async (_url, init) => {
+      assert.deepEqual(JSON.parse(init.body), [['GET', key]]);
+      return new Response(JSON.stringify([{ result: JSON.stringify(
+        query === '?compact=1' ? buildCompactVerdictSnapshot(snapshot) : snapshot,
+      ) }]), { status: 200 });
+    };
+
+    const response = await handleHealth(new Request(`https://api.worldmonitor.app/api/health${query}`, { headers }), undefined, { now });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      body.summary.contentFreshnessPendingUntil.portwatchPortActivity,
+      pendingUntil,
+    );
+    if (query === '?compact=1') assert.equal(body.checks, undefined);
+    else assert.equal(body.checks.portwatchPortActivity.contentFreshnessPendingUntil, pendingUntil);
+  }
+});
+
+test('does not serve a full or compact snapshot after content-freshness grace expires', async () => {
+  const now = Date.parse('2026-08-04T06:00:00.000Z');
+  const pendingUntil = new Date(now).toISOString();
+  const snapshot = {
+    status: 'HEALTHY',
+    summary: {
+      total: 1,
+      ok: 1,
+      warn: 0,
+      onDemandWarn: 0,
+      staleContent: 0,
+      crit: 0,
+      contentFreshnessPendingUntil: { portwatchPortActivity: pendingUntil },
+    },
+    checkedAt: new Date(now - 30_000).toISOString(),
+    checks: {
+      portwatchPortActivity: { status: 'OK', contentFreshnessPendingUntil: pendingUntil },
+    },
+  };
+
+  for (const [query, key, headers] of [
+    ['?compact=1', HEALTH_COMPACT_SNAPSHOT_KEY, {}],
+    ['', HEALTH_SNAPSHOT_KEY, { 'x-worldmonitor-key': 'test-health-admin-key' }],
+  ]) {
+    const calls = [];
+    globalThis.fetch = async (_url, init) => {
+      const commands = JSON.parse(init.body);
+      calls.push(commands);
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+        const value = query === '?compact=1' ? buildCompactVerdictSnapshot(snapshot) : snapshot;
+        return new Response(JSON.stringify([{ result: JSON.stringify(value) }]), { status: 200 });
+      }
+      if (commands.length === 1 && commands[0][0] === 'SET') {
+        return new Response(JSON.stringify([{ result: 'OK' }]), { status: 200 });
+      }
+      throw new Error('stop after proving the expired snapshot was not served');
+    };
+
+    const response = await handleHealth(new Request(`https://api.worldmonitor.app/api/health${query}`, { headers }), undefined, { now });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(body.status, 'REDIS_DOWN');
+    assert.ok(calls.some((commands) => commands.length > 1), 'expired cache must fall through to a fresh sweep');
+  }
 });

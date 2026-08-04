@@ -31,6 +31,11 @@ export declare function getRedisCredentials(): {
   token: string;
 } | null;
 
+export declare function readExistsFlags(
+  results: unknown,
+  keys: readonly string[],
+): Map<string, boolean>;
+
 export declare function redisPipeline(
   commands: Array<Array<string | number>>,
   timeoutMs?: number,

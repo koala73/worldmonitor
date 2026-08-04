@@ -245,22 +245,39 @@ never has to reconstruct the verdict from the raw counts; `expectedCriticalCount
 publishes the pinned scope alongside the declared one.
 
 Because the edge function redeploys within minutes of a merge while the producer
-is a 12-hour cron, the absent-block case is softened until the seeder has
-published the field at least once, tracked by the durable marker
-`seed-activated:supply_chain:portwatch-ports:content-freshness`. The softening
-covers **absence only** — a block that is present is always evaluated, and once
-the marker exists a block that disappears fails closed.
+is a 12-hour cron, the absent-block case has a bounded deployment-order grace.
+The durable marker
+`seed-activated:supply_chain:portwatch-ports:content-freshness` may grant it
+only inside the compiled window `2026-08-03T10:24:42Z` →
+`2026-08-04T06:00:00Z`: one complete producer interval plus six hours of
+scheduling slack after the schema shipped. The softening covers **absence only**
+— a block that is present is always evaluated, and once the marker exists a
+block that disappears fails closed. At or after the deadline, a clean
+`EXISTS=0` is no longer enough and the missing block is
+`COVERAGE_DEGRADED`.
 
-The grace also needs **positive proof**, not merely the lack of a marker. The
+The grace needs **positive proof**, not merely the lack of a marker. The
 `EXISTS` read is three-valued: read-and-present revokes the softening,
-read-and-absent grants it, and a read that *failed* is unknown state and grants
-nothing. A grace given on the absence of evidence would never expire, so an
-**unreadable** marker would otherwise disable this alarm permanently.
+read-and-absent grants it while the window is open, and a read that *failed* or
+returned a malformed pipeline entry is unknown state and grants nothing. A
+pending health entry publishes `contentFreshnessPendingUntil`; compact health
+responses repeat the same per-key deadlines in
+`summary.contentFreshnessPendingUntil`, so the bound is auditable without
+reading the implementation. `/api/seed-health` publishes the same deadline on
+its PortWatch entry, and MCP applies the same shared window to its `stale`
+boolean while exposing the optional top-level `contentFreshnessPendingUntil`
+field in cache-tool output. The cache refresh path also refuses to serve a warm
+snapshot past this deadline.
 
-That closes the unreadable case only. A marker that was **evicted, renamed, or
-restored into an empty Redis** returns a clean `EXISTS=0` — the read-and-absent
-case — and still grants the grace indefinitely. Bounding that needs a compiled
-deadline the way the consumer-price rollout has one, tracked in
+The `cfg.activationKey` `pending-activation` path in `/api/seed-health` (and the
+matching `ON_DEMAND` policy in `/api/health`) intentionally remains separate and
+does not reuse this PortWatch window. Those markers describe optional or
+operator-triggered producers for which “no metadata because the producer has
+never run” is the expected state, not a newly deployed data schema; there is no
+single producer cadence from which to derive a safe deadline. This path never
+softens a meta-bearing content-freshness failure. A scheduled content schema
+must use `contentFreshnessActivation` and its reviewed window instead. This
+closes the clean-absent activation gap in
 [#6111](https://github.com/koala73/worldmonitor/issues/6111).
 
 Any check whose verdict rested on an unreadable marker carries

@@ -10,10 +10,12 @@ import { unwrapEnvelope } from './_seed-envelope.js';
 import { projectChinaDecisionGroupDiagnostics } from './_china-decision-health.js';
 import {
   buildContentFreshnessAssessment,
+  getActiveContentFreshnessActivationWindow,
+  PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
 // @ts-expect-error — JS module, no declaration file
-import { redisPipeline } from './_upstash-json.js';
+import { readExistsFlags, redisPipeline } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -43,9 +45,6 @@ const CHINA_DECISION_SIGNAL_STATES = new Set([
 // source failure. Mirrors CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE in
 // scripts/seed-china-decision-signals.mjs.
 const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
-const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
-  'seed-activated:supply_chain:portwatch-ports:content-freshness';
-
 const SEED_DOMAINS = {
   'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
   // Phase 1 — Snapshot endpoints
@@ -413,26 +412,22 @@ async function getSeedBatch(entries) {
     probeMap.set(slot.domain, data[slot.index]?.result ?? null);
   }
   // Both maps are THREE-valued (#6095, matching api/health.js and
-  // api/mcp/freshness.ts): an entry exists only when the EXISTS command itself
-  // succeeded. Upstash reports per-command failures as `error` inside an
-  // otherwise-successful 200, so a domain missing from these maps means "the
-  // read failed and the state is unknown" — distinguishable from a marker that
-  // was read and came back absent. Each consumer below decides which way
-  // unknown resolves, and they deliberately differ.
-  const activatedMap = new Map();
-  for (const slot of activationSlots) {
-    const entry = data[slot.index];
-    if (entry && !entry.error) activatedMap.set(slot.domain, Number(entry.result) === 1);
-  }
-  const contentFreshnessActivatedMap = new Map();
-  for (const slot of contentFreshnessActivationSlots) {
-    const entry = data[slot.index];
-    if (entry && !entry.error) contentFreshnessActivatedMap.set(slot.domain, Number(entry.result) === 1);
-  }
+  // api/mcp/freshness.ts): `readExistsFlags` adds a domain only when the
+  // EXISTS entry has an explicit result of 0 or 1. Per-command errors,
+  // `{}`, null results, and missing slots remain unknown, so a malformed
+  // pipeline body can never be interpreted as clean absence (#6115).
+  const activatedMap = readExistsFlags(
+    activationSlots.map((slot) => data[slot.index]),
+    activationSlots.map((slot) => slot.domain),
+  );
+  const contentFreshnessActivatedMap = readExistsFlags(
+    contentFreshnessActivationSlots.map((slot) => data[slot.index]),
+    contentFreshnessActivationSlots.map((slot) => slot.domain),
+  );
   return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
 
-export default async function handler(req) {
+export async function handleSeedHealth(req, { now = Date.now() } = {}) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
 
@@ -444,7 +439,6 @@ export default async function handler(req) {
   if (!apiKeyResult.valid || apiKeyResult.kind !== 'enterprise')
     return jsonResponse({ error: 'Operator API key required' }, 401, cors);
 
-  const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
 
   let metaMap;
@@ -536,22 +530,19 @@ export default async function handler(req) {
     // absent. An unreadable marker is unknown state, not evidence of a producer
     // that never ran — the same rule api/health.js and api/mcp/freshness.ts
     // apply, so the three surfaces cannot answer differently for one input
-    // class. The opposite policy from the activation grace above, and for a
-    // reason: this one suppresses an alarm on a domain that HAS meta and IS
-    // running, and its strict verdict is 'coverage_degraded' — "cannot prove
-    // content freshness", which an unread marker makes literally true. A grace
-    // granted on the absence of evidence never expires, so an UNREADABLE marker
-    // would otherwise disable the alarm for good.
-    //
-    // Closes the unreadable arm ONLY: a marker that was evicted, renamed, or
-    // restored into an empty Redis returns a clean EXISTS=0 — the read-and-
-    // absent arm — and still grants the grace indefinitely. Tracked in #6111.
-    const contentFreshnessPending = Boolean(
-      contentFreshness
+    // class. The clean-absent arm is also bounded by the shared rollout window
+    // (#6111), so marker eviction or an empty Redis restore cannot excuse the
+    // missing block forever.
+    const contentFreshnessActivationWindow = contentFreshness
       && !contentFreshness.fieldPresent
       && cfg.contentFreshnessActivationKey
-      && contentFreshnessActivatedMap.get(domain) === false,
-    );
+      ? getActiveContentFreshnessActivationWindow(
+        cfg.contentFreshnessActivationKey,
+        contentFreshnessActivatedMap.get(domain),
+        now,
+      )
+      : null;
+    const contentFreshnessPending = contentFreshnessActivationWindow !== null;
     const contentFreshnessInvalid = Boolean(
       cfg.requireContentFreshness
       && contentFreshness
@@ -607,6 +598,11 @@ export default async function handler(req) {
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
     if (activationUnknown) seeds[domain].activationUnknown = true;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;
+    if (contentFreshnessActivationWindow) {
+      seeds[domain].contentFreshnessPendingUntil = new Date(
+        contentFreshnessActivationWindow.untilMs,
+      ).toISOString();
+    }
     if (contentFreshness && !contentFreshnessPending) {
       seeds[domain].contentFreshness = projectContentFreshnessForWire(contentFreshness);
     }
@@ -642,4 +638,8 @@ export default async function handler(req) {
     ...cors,
     'Cache-Control': 'no-cache',
   });
+}
+
+export default async function handler(req) {
+  return handleSeedHealth(req);
 }

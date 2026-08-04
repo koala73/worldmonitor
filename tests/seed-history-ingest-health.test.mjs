@@ -42,6 +42,7 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
+const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
   'seed-activated:supply_chain:portwatch-ports:content-freshness';
 
@@ -1032,6 +1033,28 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
               _formula: 'pc',
               methodology: RESILIENCE_INTERVAL_METHODOLOGY,
               computedAt: '2026-06-11T12:00:00.000Z',
+            }),
+          };
+        }
+        if (key === PORTWATCH_META_KEY) {
+          const observedAt = Date.now() - 60 * 60_000;
+          return {
+            result: JSON.stringify({
+              fetchedAt: Date.now(),
+              recordCount: 174,
+              contentFreshness: {
+                coveredCount: 174,
+                freshCount: 174,
+                staleCount: 0,
+                unknownCount: 0,
+                staleCountries: [],
+                criticalCountries: ['CN', 'HK'],
+                criticalFreshCount: 2,
+                criticalStaleCountries: [],
+                criticalMissingCountries: 0,
+                criticalOldestObservedAt: observedAt,
+                criticalOldestObservedCountry: 'CN',
+              },
             }),
           };
         }

@@ -267,7 +267,7 @@ export function summarizeData(data: Record<string, unknown>): Record<string, unk
 // ---------------------------------------------------------------------------
 // Every cache tool returns a uniform envelope from `executeTool`:
 //
-//   { cached_at: string|null, stale: boolean, data: { [label]: ... } }
+//   { cached_at: string|null, stale: boolean, contentFreshnessPendingUntil?: string, data: { [label]: ... } }
 //
 // where each `label` is derived from one of the tool's `_cacheKeys` via the
 // NON_LABEL regex in executeTool. `cacheEnvelope(dataProps)` returns the spec
@@ -280,6 +280,8 @@ export function summarizeData(data: Record<string, unknown>): Record<string, unk
 //     single captured fixture (an inferred schema would freeze every observed
 //     enum value + required flag forever and reject valid future responses).
 //   - Only the envelope (`cached_at`, `stale`, `data`) is `required`. The
+//     activation-grace deadline is optional because most tools have no
+//     content-freshness rollout contract.
 //     per-label `data` properties are intentionally NOT required because any
 //     single cache key may be transiently null without tripping the
 //     `cache_all_null` guard (which fires only when ALL keys are null).
@@ -300,6 +302,11 @@ export function cacheEnvelope(dataProperties: Record<string, object>): object {
       stale: {
         type: 'boolean',
         description: 'True when any contributing cache key is older than its per-key maxStaleMin freshness budget.',
+      },
+      contentFreshnessPendingUntil: {
+        type: 'string',
+        format: 'date-time',
+        description: 'Optional ISO-8601 deadline while a cleanly absent content-freshness block is temporarily covered by deployment-order grace.',
       },
       data: { type: 'object', properties: dataProperties },
     },

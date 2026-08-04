@@ -1,6 +1,6 @@
 import type { FreshnessCheck } from './types';
 // @ts-expect-error — JS module, no declaration file
-import { buildContentFreshnessAssessment } from '../_content-freshness.js';
+import { buildContentFreshnessAssessment, getActiveContentFreshnessActivationWindow } from '../_content-freshness.js';
 
 function parseFiniteRecordCount(raw: unknown): number | null {
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
@@ -24,8 +24,13 @@ export function evaluateFreshness(
   metas: unknown[],
   now = Date.now(),
   activationStates?: ReadonlyMap<string, boolean>,
-): { cached_at: string | null; stale: boolean } {
+): {
+  cached_at: string | null;
+  stale: boolean;
+  contentFreshnessPendingUntil?: string;
+} {
   let stale = false;
+  let contentFreshnessPendingUntil: string | undefined;
   let oldestFetchedAt = Number.POSITIVE_INFINITY;
   let hasAnyValidMeta = false;
   let hasAllValidMeta = true;
@@ -66,12 +71,20 @@ export function evaluateFreshness(
       // Grace requires positive proof the producer has never published: the
       // marker was read AND came back absent. Anything else — unread, errored,
       // or present — evaluates the block normally.
-      const pendingActivation = Boolean(
-        assessment
-        && !assessment.fieldPresent
-        && check.contentFreshnessActivationKey
-        && activationStates?.get(check.contentFreshnessActivationKey) === false,
-      );
+      const pendingWindow = assessment && !assessment.fieldPresent && check.contentFreshnessActivationKey
+        ? getActiveContentFreshnessActivationWindow(
+          check.contentFreshnessActivationKey,
+          activationStates?.get(check.contentFreshnessActivationKey),
+          now,
+        )
+        : null;
+      const pendingActivation = pendingWindow !== null;
+      if (pendingWindow !== null) {
+        const deadline = new Date(pendingWindow.untilMs).toISOString();
+        if (contentFreshnessPendingUntil === undefined || deadline < contentFreshnessPendingUntil) {
+          contentFreshnessPendingUntil = deadline;
+        }
+      }
       if (!pendingActivation) {
         stale ||= !assessment?.usable || assessment.contentStale;
       }
@@ -81,5 +94,6 @@ export function evaluateFreshness(
   return {
     cached_at: hasAnyValidMeta && hasAllValidMeta ? new Date(oldestFetchedAt).toISOString() : null,
     stale,
+    ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
   };
 }

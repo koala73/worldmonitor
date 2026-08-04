@@ -9,6 +9,8 @@ import { getSourceProvenanceState } from '../../../shared/source-provenance';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
+// @ts-expect-error — Edge-safe JS policy shared with health and seed-health
+import { PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY } from '../../_content-freshness.js';
 import { DEFAULT_LIST_LIMIT, MARKET_FRESHNESS_CHECKS } from '../constants';
 import {
   argBool,
@@ -2103,7 +2105,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         maxStaleMin: 2160, // 12h cron; 36h = 3× interval
         minRecordCount: 174,
         requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
-        contentFreshnessActivationKey: 'seed-activated:supply_chain:portwatch-ports:content-freshness',
+        contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
       },
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
       { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval

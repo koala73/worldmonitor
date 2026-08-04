@@ -12,7 +12,7 @@ import {
 // as `.data`), so importing it is behavior-preserving.
 import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
-import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
+import { redisPipeline, getRedisCredentials, readExistsFlags } from './_upstash-json.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
 import {
@@ -20,6 +20,9 @@ import {
 } from './_china-decision-health.js';
 import {
   buildContentFreshnessAssessment,
+  CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
+  getActiveContentFreshnessActivationWindow,
+  PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
 
@@ -53,7 +56,10 @@ const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
 // HTTP responses stay `no-store`, but the expensive Redis-wide verdict is
 // shared briefly at the origin. At the measured browser poll rate this turns
 // ~390 Redis commands per request into one GET, plus one sweep per minute.
-const HEALTH_VERDICT_SNAPSHOT_BASE_KEY = 'health:verdict:v1';
+// v2 invalidates pre-#6111 snapshots because they cannot carry the bounded
+// content-freshness activation deadline used to decide whether a cache hit is
+// still allowed to soften a missing producer block.
+const HEALTH_VERDICT_SNAPSHOT_BASE_KEY = 'health:verdict:v2';
 function healthVerdictRedisKey(baseKey, vercelEnv, commitSha) {
   if (!vercelEnv || vercelEnv === 'production') return baseKey;
   return `${vercelEnv}:${commitSha?.slice(0, 8) || 'dev'}:${baseKey}`;
@@ -73,7 +79,7 @@ const HEALTH_VERDICT_SNAPSHOT_KEY = healthVerdictRedisKey(
 // of Redis to render ~1 KB of it, which is ~2.2 GB/day of egress for bytes the
 // caller throws away (#5300). One sweep writes both keys, so they can never
 // disagree.
-const HEALTH_VERDICT_COMPACT_SNAPSHOT_BASE_KEY = 'health:verdict:compact:v1';
+const HEALTH_VERDICT_COMPACT_SNAPSHOT_BASE_KEY = 'health:verdict:compact:v2';
 const HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY = healthVerdictRedisKey(
   HEALTH_VERDICT_COMPACT_SNAPSHOT_BASE_KEY,
   process.env.VERCEL_ENV,
@@ -857,7 +863,7 @@ const ACTIVATION_MARKERS = {
   // on the first run that publishes a contentFreshness block, so "the producer
   // has never shipped this field" reads as pending rather than as a fault —
   // while a block that DISAPPEARS after activation still fails closed.
-  portwatchContentFreshness: 'seed-activated:supply_chain:portwatch-ports:content-freshness',
+  portwatchContentFreshness: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
 };
 
 // #6059 — consumer-price coverage rollout handshake.
@@ -1367,18 +1373,20 @@ function classifyKey(name, redisKey, opts, ctx) {
   // granted on the absence of evidence never expires, so an UNREADABLE marker
   // would otherwise disable the alarm for good.
   //
-  // Scope, stated because the hazard is wider than the fix: this closes the
-  // unreadable arm ONLY. A marker that was evicted, renamed, or restored into
-  // an empty Redis returns a clean EXISTS=0 — the read-and-absent arm above —
-  // and still grants the grace indefinitely. Bounding that needs a compiled
-  // deadline the way ROLLOUT_PENDING_UNTIL_MS does; tracked in #6111.
-  const contentFreshnessPending = Boolean(
-    seedCfg?.requireContentFreshness
+  // The clean-absent arm is separately bounded by CONTENT_FRESHNESS_ROLLOUT.
+  // A marker that was evicted, renamed, or restored into an empty Redis can
+  // therefore delay strictness only until the compiled deadline (#6111).
+  const contentFreshnessActivationWindow = seedCfg?.requireContentFreshness
     && contentFreshness
     && !contentFreshness.fieldPresent
     && seedCfg.contentFreshnessActivation
-    && ctx.activationStates?.get(seedCfg.contentFreshnessActivation) === false,
-  );
+    ? getActiveContentFreshnessActivationWindow(
+      ACTIVATION_MARKERS[seedCfg.contentFreshnessActivation],
+      ctx.activationStates?.get(seedCfg.contentFreshnessActivation),
+      now,
+    )
+    : null;
+  const contentFreshnessPending = contentFreshnessActivationWindow !== null;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -1489,6 +1497,9 @@ function classifyKey(name, redisKey, opts, ctx) {
   // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
   // exactly when this key stops being excused without reading api/health.js.
   if (status === 'ROLLOUT_PENDING') entry.rolloutPendingUntil = new Date(rolloutPendingUntil).toISOString();
+  if (contentFreshnessActivationWindow) {
+    entry.contentFreshnessPendingUntil = new Date(contentFreshnessActivationWindow.untilMs).toISOString();
+  }
   // Activation is emitted for EVERY status on a rollout-registered key, not just
   // the pending one — `rolloutPendingUntil` exists precisely when the market has
   // NOT activated, so on its own it can never answer "which markets have gone
@@ -1728,22 +1739,50 @@ function isProblemStatus(status) {
 }
 
 /**
- * True when a cached verdict still carries a ROLLOUT_PENDING entry whose own
- * published deadline has already passed — i.e. the cache is about to serve a
- * softening that expired. Reads both snapshot shapes: the full one keyed by
- * `checks`, the compact one by `problems`.
+ * True when a cached verdict still carries a rollout or content-freshness
+ * softening whose published deadline has passed. Reads both snapshot shapes:
+ * the full one keyed by `checks`, the compact one by `problems`.
  */
-function hasExpiredRolloutPending(snapshot, now) {
+function isExpiredDeadline(raw, now) {
+  const until = Date.parse(typeof raw === 'string' ? raw : '');
+  // An unparseable deadline is treated as expired: a pending entry that
+  // cannot prove it is still inside its window must not be served warm.
+  return !Number.isFinite(until) || now >= until;
+}
+
+function hasExpiredActivationGrace(snapshot, now, { includeRollout = true, includeContent = true } = {}) {
   const entries = snapshot?.checks ?? snapshot?.problems;
-  if (!entries || typeof entries !== 'object') return false;
-  for (const entry of Object.values(entries)) {
-    if (entry?.status !== 'ROLLOUT_PENDING') continue;
-    const until = Date.parse(entry?.rolloutPendingUntil ?? '');
-    // An unparseable deadline is treated as expired: a ROLLOUT_PENDING entry
-    // that cannot prove it is still inside its window must not be served warm.
-    if (!Number.isFinite(until) || now >= until) return true;
+  if (entries && typeof entries === 'object') {
+    for (const entry of Object.values(entries)) {
+      if (
+        includeRollout
+        && entry?.status === 'ROLLOUT_PENDING'
+        && isExpiredDeadline(entry.rolloutPendingUntil, now)
+      ) return true;
+      if (
+        includeContent
+        && Object.prototype.hasOwnProperty.call(entry ?? {}, 'contentFreshnessPendingUntil')
+        && isExpiredDeadline(entry.contentFreshnessPendingUntil, now)
+      ) return true;
+    }
+  }
+  if (includeContent) {
+    const summaryDeadlines = snapshot?.summary?.contentFreshnessPendingUntil;
+    if (summaryDeadlines && typeof summaryDeadlines === 'object') {
+      for (const deadline of Object.values(summaryDeadlines)) {
+        if (isExpiredDeadline(deadline, now)) return true;
+      }
+    }
   }
   return false;
+}
+
+function hasExpiredRolloutPending(snapshot, now) {
+  return hasExpiredActivationGrace(snapshot, now, { includeContent: false });
+}
+
+function hasExpiredContentFreshnessPending(snapshot, now) {
+  return hasExpiredActivationGrace(snapshot, now, { includeRollout: false });
 }
 
 /**
@@ -1859,7 +1898,13 @@ function healthResponse(snapshot, compact, headers) {
   });
 }
 
-export default async function handler(req, ctx) {
+export async function handleHealth(req, ctx, options = {}) {
+  const hasInjectedClock = Object.prototype.hasOwnProperty.call(options, 'now');
+  const now = hasInjectedClock ? options.now : Date.now();
+  // The explicit clock is a deterministic test seam. Production callers keep
+  // sampling wall time after Redis I/O so a snapshot that expires in flight is
+  // not served as fresh merely because the request started before its TTL.
+  const snapshotNow = () => (hasInjectedClock ? now : Date.now());
   if (isDisallowedOrigin(req)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -1942,8 +1987,6 @@ export default async function handler(req, ctx) {
     return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
   }
 
-  const now = Date.now();
-
   // A snapshot hit is one Redis command instead of the ~390-command registry
   // sweep below. A failed snapshot read is a real Redis outage, not a cache
   // miss: returning 503 preserves UptimeRobot's hard-down signal.
@@ -1958,14 +2001,12 @@ export default async function handler(req, ctx) {
     const snapshotResult = await redisPipeline([['GET', snapshotKey]], 4_000);
     if (!snapshotResult) throw new Error('Redis request failed');
     if (snapshotResult[0]?.error) throw new Error('Redis snapshot read failed');
-    const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, Date.now(), { requireChecks: !compact });
-    // A rollout deadline is the one promise in this payload that is exact to the
-    // second, so the 60s verdict cache must not outlive it: a snapshot written
-    // just before a deadline would otherwise keep serving ROLLOUT_PENDING (and
-    // keep excusing the key downstream) for up to a minute after the softening
-    // was supposed to end. Sweep fresh instead — this can only fire in the one
-    // minute straddling a deadline, at most once per rollout.
-    if (cachedSnapshot && !hasExpiredRolloutPending(cachedSnapshot, Date.now())) {
+    const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, snapshotNow(), { requireChecks: !compact });
+    // Activation deadlines are exact to the second, so the 60s verdict cache
+    // must not outlive either rollout grace. A snapshot written just before a
+    // deadline would otherwise keep serving a softened verdict for up to a
+    // minute after strictness was supposed to begin. Sweep fresh instead.
+    if (cachedSnapshot && !hasExpiredActivationGrace(cachedSnapshot, snapshotNow())) {
       return healthResponse(cachedSnapshot, compact, headers);
     }
 
@@ -2001,8 +2042,13 @@ export default async function handler(req, ctx) {
         const redisTimeoutMs = Math.min(4_000, remainingMs);
         const refreshedResult = await redisPipeline([['GET', snapshotKey]], redisTimeoutMs);
         if (!refreshedResult || refreshedResult[0]?.error) throw new Error('Redis snapshot wait failed');
-        const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, Date.now(), { requireChecks: !compact });
-        if (refreshedSnapshot) return healthResponse(refreshedSnapshot, compact, headers);
+        const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, snapshotNow(), { requireChecks: !compact });
+        if (
+          refreshedSnapshot
+          && !hasExpiredActivationGrace(refreshedSnapshot, snapshotNow())
+        ) {
+          return healthResponse(refreshedSnapshot, compact, headers);
+        }
 
         lockResult = await redisPipeline([[
           'SET',
@@ -2086,30 +2132,22 @@ export default async function handler(req, ctx) {
     keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
   // activationStates: health name -> whether its durable activation marker
-  // exists. THREE-valued on purpose (#6095, matching api/mcp/freshness.ts): an
-  // entry is present ONLY when the EXISTS command itself succeeded. `true` =
-  // read and present (the key has left ON_DEMAND softening permanently, #4927
-  // re-review P1); `false` = read and absent (the producer has demonstrably
-  // never published); a MISSING entry = the read failed, so the state is
-  // unknown. Which way "unknown" resolves is the consumer's call and the two
-  // policies differ deliberately — see classifyKey.
-  // Test the entry ITSELF, never `!r?.error` — that reads TRUE for a slot that
-  // never arrived (`undefined?.error` is undefined), so a response array
-  // shorter than the command list would record every missing marker as `false`
-  // = "read and confirmed absent" and hand back the exact grace this three-
-  // valued read exists to revoke. The EXISTS commands sit at the tail of the
-  // sweep, which is precisely where a truncated response stops short. Same
-  // guard as api/seed-health.js and api/mcp/dispatch.ts.
-  const activationStates = new Map();
-  for (let i = 0; i < activationEntries.length; i++) {
-    const r = results[allDataKeys.length + allMetaKeys.length + i];
-    if (r && !r.error) activationStates.set(activationEntries[i][0], Number(r.result) === 1);
-  }
+  // exists. `readExistsFlags` is the one shared three-valued parser for all
+  // three consumers (#6115): only an entry with an explicit result of 0 or 1
+  // enters the map. Missing, malformed, null-result, and errored entries stay
+  // unknown, so no surface can turn an absent response slot into proof of
+  // pre-activation.
+  const activationOffset = allDataKeys.length + allMetaKeys.length;
+  const activationStates = readExistsFlags(
+    results.slice(activationOffset, activationOffset + activationEntries.length),
+    activationEntries.map(([name]) => name),
+  );
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
 
   const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activationStates, now };
   const checks = {};
+  const contentFreshnessPendingUntil = {};
   const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0 };
   let totalChecks = 0;
 
@@ -2125,6 +2163,9 @@ export default async function handler(req, ctx) {
         entry = composeChinaCoverageStatus(entry, chinaCoverageRaw, Boolean(chinaCoverageResult?.error));
       }
       checks[name] = entry;
+      if (typeof entry.contentFreshnessPendingUntil === 'string') {
+        contentFreshnessPendingUntil[name] = entry.contentFreshnessPendingUntil;
+      }
       const bucket = STATUS_COUNTS[entry.status] ?? 'warn';
       counts[bucket]++;
       if (entry.status === 'EMPTY_ON_DEMAND') counts.onDemandWarn++;
@@ -2202,6 +2243,9 @@ export default async function handler(req, ctx) {
       // Bounded: each entry carries a `rolloutPendingUntil` deadline, after
       // which it becomes EMPTY (crit).
       rolloutPending: counts.rolloutPending,
+      ...(Object.keys(contentFreshnessPendingUntil).length > 0
+        ? { contentFreshnessPendingUntil }
+        : {}),
       crit: critCount,
     },
     checkedAt: new Date(now).toISOString(),
@@ -2250,6 +2294,10 @@ export default async function handler(req, ctx) {
   return healthResponse(verdictSnapshot, compact, headers);
 }
 
+export default async function handler(req, ctx) {
+  return handleHealth(req, ctx);
+}
+
 // Test-only exports. Not part of the public edge handler surface — Vercel's
 // runtime invokes only `default export`. These let scoped unit tests exercise
 // the classifier without standing up the full bootstrap-keys + Redis pipeline.
@@ -2260,10 +2308,13 @@ export const __testing__ = {
   healthResponseBody,
   collectFailureLogProblems,
   ACTIVATION_MARKERS,
+  CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
   ROLLOUT_PENDING_UNTIL_MS,
   ROLLOUT_PENDING_FROM_MS,
   computeOverallStatus,
   hasExpiredRolloutPending,
+  hasExpiredContentFreshnessPending,
+  hasExpiredActivationGrace,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,
