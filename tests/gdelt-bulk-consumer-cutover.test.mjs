@@ -32,10 +32,8 @@ describe('GDELT bulk materializer deployment contract', () => {
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
     ]);
-    // The service used to enumerate its dependency closure here. It no longer
-    // does: a watch-path filter of any width silently skips merges (#6141), so
-    // the contract is that every push rebuilds this service.
-    assert.deepEqual(materializer.watchPatterns, []);
+    assert.ok(materializer.watchPatterns.includes('scripts/_gdelt-bulk-contract.mjs'));
+    assert.ok(materializer.watchPatterns.includes('scripts/_gdelt-bulk-materializer.mjs'));
     assert.equal(
       services.some((service) => service.entry === 'scripts/seed-gdelt-intel.mjs'),
       false,

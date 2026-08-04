@@ -39,10 +39,12 @@ describe('critical ingestion Railway registry drift regressions', () => {
     const umami = registry.find((entry) => entry.service === 'umami');
     assert.ok(derivedSignals, 'derived-signals bundle must be registered');
     assert.ok(umami, 'umami must be registered');
-    assert.deepEqual(
-      derivedSignals.watchPatterns,
-      [],
-      'derived-signals must build on every push, not on an enumerated closure',
+
+    const correlationRuntimeModePath = 'scripts/shared/correlation-runtime-mode.js';
+    const expectedDerivedWatchPatterns = [...derivedSignals.watchPatterns];
+    assert.ok(
+      expectedDerivedWatchPatterns.includes(correlationRuntimeModePath),
+      'derived-signals registry must pin the correlation runtime-mode helper',
     );
     assert.equal(umami.dockerfile, 'Dockerfile.umami');
 
@@ -54,7 +56,7 @@ describe('critical ingestion Railway registry drift regressions', () => {
     ]);
     const liveDerivedSignals = service({
       cronSchedule: derivedSignals.cronSchedule,
-      watchPatterns: [],
+      watchPatterns: [...expectedDerivedWatchPatterns],
       variables: { JAPAN_MOD_PROXY_URL: 'https://proxy.example' },
     });
     const liveUmami = service({
@@ -94,34 +96,24 @@ describe('critical ingestion Railway registry drift regressions', () => {
     };
     const cases = [
       {
-        // The regression this file now guards: someone re-enters a filter in
-        // the Railway dashboard to save build minutes on a */5 bundle, and the
-        // service quietly stops receiving merges. The exact closure below is
-        // the one this service shipped until #6141 — narrowness is not what
-        // makes a filter safe, because nothing about it is.
-        name: 'derived-signals watch-path filter restored in the dashboard',
+        name: 'derived-signals watch path',
         serviceId: derivedServiceId,
         mutate(config) {
-          config.services[derivedServiceId].build.watchPatterns = [
-            'scripts/seed-bundle-derived-signals.mjs',
-            'scripts/_bundle-runner.mjs',
-          ];
+          config.services[derivedServiceId].build.watchPatterns =
+            derivedSignals.watchPatterns.filter((path) => path !== correlationRuntimeModePath);
         },
         expectedDrift: {
           service: derivedSignals.service,
           serviceId: derivedServiceId,
           missingService: false,
           watchPatterns: {
-            actual: [
-              'scripts/seed-bundle-derived-signals.mjs',
-              'scripts/_bundle-runner.mjs',
-            ],
-            expected: [],
+            actual: expectedDerivedWatchPatterns.filter((path) => path !== correlationRuntimeModePath),
+            expected: [...expectedDerivedWatchPatterns],
           },
           cronSchedule: null,
         },
         expectedPatch: {
-          build: { watchPatterns: [] },
+          build: { watchPatterns: [...expectedDerivedWatchPatterns] },
         },
       },
       {
@@ -161,7 +153,7 @@ describe('critical ingestion Railway registry drift regressions', () => {
     }
     assert.deepEqual(
       derivedSignals.watchPatterns,
-      [],
+      expectedDerivedWatchPatterns,
       'audit and patch construction must not mutate the registry watch-path contract',
     );
   });

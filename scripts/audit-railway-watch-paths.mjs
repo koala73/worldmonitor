@@ -35,6 +35,15 @@ export function unsatisfiedRequiredEnv(requiredEnv, variables) {
   return unsatisfied;
 }
 
+function sortedUniqueStrings(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.filter((value) => typeof value === 'string'))].sort();
+}
+
+function sameStringSet(left, right) {
+  return JSON.stringify(sortedUniqueStrings(left)) === JSON.stringify(sortedUniqueStrings(right));
+}
+
 function serviceIdFor(serviceIdsByName, serviceName) {
   if (serviceIdsByName instanceof Map) return serviceIdsByName.get(serviceName);
   return serviceIdsByName?.[serviceName];
@@ -91,18 +100,6 @@ function assertRegistryEntry(entry) {
       || entry.watchPatterns.some((pattern) => typeof pattern !== 'string')) {
       throw new Error(`${name} watchPatterns must be an array of strings`);
     }
-    // A filter is unrepresentable rather than discouraged. Railway rejects
-    // pushes that plainly match the glob: measured 2026-08-04 against every
-    // repo-backed production service, 62 of 62 with a filter were running code
-    // older than a push Railway had refused, while 13 of 15 without one were at
-    // origin/main HEAD. The rejection is recorded only as a SKIPPED deployment
-    // nobody reads, so a narrower closure does not make the filter safer — it
-    // just changes which merges vanish (#6141).
-    if (entry.watchPatterns.length > 0) {
-      throw new Error(
-        `${name} declares a watch-path filter (${entry.watchPatterns.join(', ')}); Railway silently skips pushes that match it, so the only supported value is []`,
-      );
-    }
   }
   if (hasOwn(entry, 'cronSchedule')
     && entry.cronSchedule !== null
@@ -147,40 +144,63 @@ export function managedRailwayServices(registry) {
   );
 }
 
+// Repository-wide fallback contract for a live seeder the registry does not
+// manage with an exact dependency closure. Broad watch paths over-trigger, but
+// they cannot MISS a transitive helper change — which is the failure this guard
+// exists to prevent (docs/solutions/integration-issues/
+// railway-seeder-watch-paths-can-skip-deployments.md).
+export const BROAD_WATCH_PATTERNS = Object.freeze(['scripts/**', 'shared/**']);
+
 export const REPOSITORY = 'koala73/worldmonitor';
 
-// The only supported filter, for every service in this repository. See the
-// measurement in assertRegistryEntry: a watch-path filter does not select which
-// pushes to skip, it randomly drops between a fifth and all of them.
-export const UNFILTERED_WATCH_PATTERNS = Object.freeze([]);
-
-// Deliberately keyed on the source repository rather than on "does this look
-// like a seeder". The previous predicate matched a `node seed-*` start command
-// or a `Dockerfile.seed-*` build, which excluded the relays, the workers, the
-// consumer-prices trio and the collector — all of which deploy this repository
-// on every merge and all of which carried a filter.
+// Every live service Railway builds from this repository, which is a broader
+// set than the seeders below: it also covers the relays, the workers, the
+// consumer-prices trio and the collector. `check-railway-deploy-drift.mjs`
+// checks that set against main, so the two files share one definition of
+// "ours" rather than each carrying its own idea of which services count.
 export function isRepositoryService(service) {
   return service?.source?.repo === REPOSITORY;
 }
+const SEED_COMMAND_RE = /^node\s+(?:\.\/)?(?:scripts\/)?(?:seed-[^\s]+|fetch-gpsjam\.mjs|publish-bootstrap-tiers\.mjs)(?:\s|$)/;
+const SEED_DOCKERFILE_RE = /(?:^|\/)Dockerfile\.(?:seed-[^/\s]+|digest-notifications|publish-bootstrap-tiers)$/;
+
+function isSeederService(service) {
+  return service?.source?.repo === REPOSITORY
+    && (
+      SEED_COMMAND_RE.test(service?.deploy?.startCommand || '')
+      || SEED_DOCKERFILE_RE.test(service?.build?.dockerfilePath || '')
+    );
+}
 
 /**
- * Watch-path contract for any service deployed from this repository.
+ * Watch-path contract for a live seeder with no registry-managed closure.
  *
  * Returns null when the service is acceptable, or the {actual, expected} shape
- * the patch builder consumes. Missing and `[]` both mean "build every push",
- * which is the contract.
+ * the patch builder consumes. Missing and `[]` both mean "watch the whole
+ * repository", which is broader than this contract and therefore safe.
  */
-export function watchPatternDrift(service) {
+export function unmanagedWatchPatternDrift(service) {
   const watchPatterns = service?.build?.watchPatterns;
   if (watchPatterns == null) return null;
   if (!Array.isArray(watchPatterns)) {
-    // Railway answered with a shape we cannot read. Treat it as a filter rather
-    // than as "no filter": the whole point of this guard is that an unreadable
-    // trigger config must not audit clean.
-    return { actual: [], expected: [...UNFILTERED_WATCH_PATTERNS] };
+    return { actual: [], expected: [...BROAD_WATCH_PATTERNS] };
   }
   if (watchPatterns.length === 0) return null;
-  return { actual: watchPatterns, expected: [...UNFILTERED_WATCH_PATTERNS] };
+
+  const scriptsRoot = normalizeRootDirectory(service?.source?.rootDirectory) === 'scripts';
+  // A scripts-rooted seeder gets exactly the two broad patterns: anything it
+  // enumerates beyond them is already covered, and leaving the enumeration in
+  // place is how the next helper goes missing. Repo-root and Dockerfile
+  // services keep their extras — those can legitimately point outside
+  // scripts/ and shared/ (a Dockerfile, a server helper).
+  const expected = scriptsRoot
+    ? [...BROAD_WATCH_PATTERNS]
+    : [
+      ...watchPatterns,
+      ...BROAD_WATCH_PATTERNS.filter((pattern) => !watchPatterns.includes(pattern)),
+    ];
+  if (sameStringSet(watchPatterns, expected)) return null;
+  return { actual: watchPatterns, expected };
 }
 
 export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
@@ -206,23 +226,22 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
     ).map(([name, id]) => [id, name]),
   );
 
-  // Every live service deployed from this repository, whether or not the
-  // registry manages it. Without this sweep the audit only ever looks at the
-  // handful of services that opted in, and a filter on any of the other ~65 —
-  // the "merged is not ran" failure — passes silently while the summary line
-  // still reads "audit passed".
+  // Live seeders the registry does not manage. Without this sweep the audit
+  // only ever looks at the handful of services that opted in, and a narrow
+  // watch filter on any other seeder — the "merged is not ran" failure — passes
+  // silently while the summary line still reads "audit passed".
   const unmanagedDrift = Object.entries(services)
     .filter(([serviceId, service]) => !managedServiceIds.has(serviceId)
       && !plannedServiceIds.has(serviceId)
-      && isRepositoryService(service))
+      && isSeederService(service))
     .flatMap(([serviceId, service]) => {
-      const watchPatterns = watchPatternDrift(service);
+      const watchPatterns = unmanagedWatchPatternDrift(service);
       if (!watchPatterns) return [];
       return [{
         service: nameByServiceId.get(serviceId) ?? serviceId,
         serviceId,
         missingService: false,
-        unregisteredService: true,
+        unmanagedSeeder: true,
         watchPatterns,
         cronSchedule: null,
       }];
@@ -266,12 +285,14 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         ? { actual: actualDockerfilePath, expected: expectedDockerfilePath }
         : null;
       const missingRequiredEnv = unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables);
-      // Registered and unregistered services share one contract, so they share
-      // one predicate. A registry entry cannot declare anything but [] (see
-      // assertRegistryEntry), so re-deriving the expectation from the entry only
-      // creates a second definition of "clean" that can drift from the first.
+      const expectedWatchPatterns = entry.watchPatterns;
+      const actualWatchPatterns = service?.build?.watchPatterns ?? [];
       const watchPatterns = hasOwn(entry, 'watchPatterns')
-        ? watchPatternDrift(service)
+        && !sameStringSet(actualWatchPatterns, expectedWatchPatterns)
+        ? {
+            actual: Array.isArray(actualWatchPatterns) ? actualWatchPatterns : [],
+            expected: expectedWatchPatterns,
+          }
         : null;
 
       const expectedCronSchedule = entry.cronSchedule ?? null;
@@ -364,7 +385,7 @@ export function buildRailwayEditArgs(
     '--environment',
     environment,
     '--message',
-    'ops: clear watch-path filters and reconcile registry-managed config',
+    'ops: reconcile registry-managed Railway seeders',
     '--json',
   ];
 }
@@ -441,11 +462,9 @@ export async function waitForRailwayServiceConfigConvergence(
   return remaining;
 }
 
-const MAX_REPORTED_PATTERNS = 6;
-
 function printAudit(drift) {
   if (drift.length === 0) {
-    console.log('Railway operational-config audit passed: registry-managed Dockerfile paths and cron schedules match production, and no service deployed from this repository carries a watch-path filter that could skip a merge.');
+    console.log('Railway operational-config audit passed: registry-managed Dockerfile paths, cron schedules, and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
     return;
   }
 
@@ -456,25 +475,25 @@ function printAudit(drift) {
       continue;
     }
     const details = [];
-    if (entry.unregisteredService) {
-      details.push('live service deploys this repository but is not in scripts/railway-services.json');
+    if (entry.unmanagedSeeder) {
+      details.push(
+        `live seeder is not registry-managed, so it must watch ${BROAD_WATCH_PATTERNS.join(' + ')} (or the whole repository) — add an exact dependency closure to scripts/railway-services.json to narrow it`,
+      );
     }
     if (entry.missingWatchPatterns) {
-      details.push('pins a cron but does not declare watchPatterns: []');
+      details.push('pins a cron but declares no watchPatterns');
     }
     if (entry.watchPatterns) {
-      // Name the patterns — they are what an operator deletes in the dashboard
-      // when the apply path is unavailable — but cap the list. One service
-      // carried 50 of them, and an unreadable audit is one nobody reads.
-      const { actual } = entry.watchPatterns;
-      const shown = actual.slice(0, MAX_REPORTED_PATTERNS).join(', ');
-      const overflow = actual.length - MAX_REPORTED_PATTERNS;
-      const named = actual.length === 0
-        ? '(unreadable)'
-        : overflow > 0 ? `${shown} (+${overflow} more)` : shown;
-      details.push(
-        `watch-path filter ${named} must be cleared — Railway skips pushes that match it`,
-      );
+      // Name the paths, not the counts. With exact per-file lists the common
+      // drift is a content difference at equal length, which a count renders as
+      // two identical numbers and no way to act on it.
+      const { actual, expected } = entry.watchPatterns;
+      const missing = expected.filter((pattern) => !actual.includes(pattern));
+      const unexpected = actual.filter((pattern) => !expected.includes(pattern));
+      const parts = [];
+      if (missing.length > 0) parts.push(`missing ${missing.join(', ')}`);
+      if (unexpected.length > 0) parts.push(`unexpected ${unexpected.join(', ')}`);
+      details.push(`watch paths ${parts.join('; ') || 'differ in order only'}`);
     }
     if (entry.rootDirectory) {
       details.push(
