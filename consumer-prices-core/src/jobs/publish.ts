@@ -305,5 +305,13 @@ export async function publishAll() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  publishAll().finally(() => closePool()).catch(console.error);
+  // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+  // diagnostic can distinguish a clean run from a silent death. Chained BEFORE .catch so a
+  // rejection skips it. Plain console.log, not the logger, so the marker survives whatever
+  // transport/format the logger uses.
+  const runStartedAt = Date.now();
+  publishAll()
+    .then(() => console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`))
+    .finally(() => closePool())
+    .catch(console.error);
 }

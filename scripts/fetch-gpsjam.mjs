@@ -182,14 +182,26 @@ async function main() {
   await seedRedis(output);
 }
 
-main().catch(async err => {
-  // Preserve-last-good: gpsjam.org is a daily feed; a transient fetch/parse
-  // failure must not blow away yesterday's hexes. Extend the existing TTLs and
-  // exit 0 (graceful), matching the seeder convention. seed-meta.fetchedAt is
-  // intentionally NOT refreshed, so a persistent outage still surfaces via the
-  // age-based STALE_SEED alarm (api/health.js gpsjam maxStaleMin=1440).
-  console.error(`[gpsjam] Fetch failed: ${err.message} — extending TTL on stale data`);
-  await extendExistingTtl([REDIS_KEY_V2, REDIS_KEY_V1, 'seed-meta:intelligence:gpsjam'], REDIS_TTL)
-    .catch(e => console.error(`[gpsjam] TTL extend failed: ${e.message}`));
-  process.exit(0);
-});
+// Terminal markers. Both paths here exit 0, so both must say so: this seeder's last real line was
+// `[gpsjam] Wrote seed-meta: …`, which the crash diagnostic cannot treat as proof of a clean finish
+// (the identical shape appears in runs that go on to die — that is how #6092 hid). Emitted from
+// .then()/after the recovery so a throw in between can never reach them. Format mirrors runSeed().
+const __runStartedAt = Date.now();
+
+main()
+  .then(() => console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`))
+  .catch(async err => {
+    // Preserve-last-good: gpsjam.org is a daily feed; a transient fetch/parse
+    // failure must not blow away yesterday's hexes. Extend the existing TTLs and
+    // exit 0 (graceful), matching the seeder convention. seed-meta.fetchedAt is
+    // intentionally NOT refreshed, so a persistent outage still surfaces via the
+    // age-based STALE_SEED alarm (api/health.js gpsjam maxStaleMin=1440).
+    console.error(`[gpsjam] Fetch failed: ${err.message} — extending TTL on stale data`);
+    await extendExistingTtl([REDIS_KEY_V2, REDIS_KEY_V1, 'seed-meta:intelligence:gpsjam'], REDIS_TTL)
+      .catch(e => console.error(`[gpsjam] TTL extend failed: ${e.message}`));
+    // Deliberate exit 0, not a crash — say so with the STALE PRESERVED suffix. RE_DONE_OK matches
+    // it (only `RETRY FAILED` disqualifies a `=== Done` line), so the run reads as clean rather
+    // than unknown, while the suffix keeps the log honest about what actually happened.
+    console.log(`\n=== Done (${Date.now() - __runStartedAt}ms, STALE PRESERVED) ===`);
+    process.exit(0);
+  });

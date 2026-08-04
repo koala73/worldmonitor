@@ -380,4 +380,15 @@ async function main() {
 // process.exit() is required to flush lingering Playwright/Chromium handles
 // that would otherwise prevent the process from exiting naturally.
 // process.exitCode preserves failure signaling set in the catch block above.
-main().catch(() => { process.exitCode = 1; }).then(() => process.exit(process.exitCode ?? 0));
+const __runStartedAt = Date.now();
+main()
+  .then(() => {
+    // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+    // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
+    // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
+    // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
+    // rather than the logger: the marker must survive whatever transport/format the logger uses.
+    if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+  })
+  .catch(() => { process.exitCode = 1; })
+  .then(() => process.exit(process.exitCode ?? 0));

@@ -647,8 +647,16 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
 
 const isMain = process.argv[1]?.endsWith('seed-comtrade-bilateral-hs4.mjs');
 if (isMain) {
-  main().catch(err => {
-    console.error(err);
-    process.exit(1);
-  });
+  // Terminal success marker. Emitted from .then() so it can ONLY print after main() has fully
+  // resolved — a throw anywhere inside, including a late publish step, skips it. A marker written
+  // INSIDE main() would print before later work and could vouch for a run that then died (exactly
+  // how #6092 stayed invisible). Format matches the shared runner so the crash diagnostic
+  // recognises it; without it a clean run is indistinguishable from a silent death.
+  const __runStartedAt = Date.now();
+  main()
+    .then(() => console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`))
+    .catch(err => {
+      console.error(err);
+      process.exit(1);
+    });
 }
