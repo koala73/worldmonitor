@@ -8,8 +8,9 @@
  *   2. A listed entry in api/api-route-exceptions.json with category, reason,
  *      owner, and (for temporary categories) a removal_issue.
  *
- * Also checks the reverse: every generated service has a gateway. This catches
- * the case where a proto is deleted but the gateway wrapper is left behind.
+ * Also checks the reverse: every generated service has a gateway unless it is
+ * explicitly deferred behind a tracked acceptance gate. Deferred entries are
+ * rejected once their service disappears or an HTTP gateway is added.
  *
  * Skips: underscore-prefixed helpers, *.test.*, and anything gitignored (the
  * compiled sidecar bundles at api/[[...path]].js and api/<domain>/v1/[rpc].js
@@ -27,6 +28,13 @@ const ROOT = process.cwd();
 const API_DIR = join(ROOT, 'api');
 const GEN_SERVER_DIR = join(ROOT, 'src/generated/server/worldmonitor');
 const MANIFEST_PATH = join(API_DIR, 'api-route-exceptions.json');
+
+// Contract-first services may exist before their runtime is allowed to route.
+// Keep this list narrow and self-expiring: each entry must name the issue whose
+// acceptance removes the exception, and the checks below reject stale entries.
+const DEFERRED_GENERATED_SERVICES = new Map([
+  ['company_monitoring/v1', '#6003'],
+]);
 
 const VALID_CATEGORIES = new Set([
   'external-protocol',
@@ -226,6 +234,7 @@ function kebabToSnake(s) {
 }
 
 const seenGatewayDomains = new Set();
+const seenGeneratedServices = new Set();
 
 for (const absolute of candidateFiles) {
   const rel = relative(ROOT, absolute).split(sep).join('/');
@@ -285,7 +294,8 @@ if (existsSync(GEN_SERVER_DIR)) {
       );
       if (!existsSync(serviceServer)) continue;
       const key = `${snakeDomain}/${versionDir.name}`;
-      if (!seenGatewayDomains.has(key)) {
+      seenGeneratedServices.add(key);
+      if (!seenGatewayDomains.has(key) && !DEFERRED_GENERATED_SERVICES.has(key)) {
         const kebabDomain = snakeDomain.replace(/_/g, '-');
         violation(
           relative(ROOT, serviceServer),
@@ -294,6 +304,22 @@ if (existsSync(GEN_SERVER_DIR)) {
         );
       }
     }
+  }
+}
+
+for (const [key, removalIssue] of DEFERRED_GENERATED_SERVICES) {
+  if (!seenGeneratedServices.has(key)) {
+    violation(
+      'scripts/enforce-sebuf-api-contract.mjs',
+      `deferred generated service ${key} no longer exists`,
+      `Remove its DEFERRED_GENERATED_SERVICES entry (tracked by ${removalIssue}).`,
+    );
+  } else if (seenGatewayDomains.has(key)) {
+    violation(
+      'scripts/enforce-sebuf-api-contract.mjs',
+      `deferred generated service ${key} now has an HTTP gateway`,
+      `Remove its DEFERRED_GENERATED_SERVICES entry (tracked by ${removalIssue}).`,
+    );
   }
 }
 
