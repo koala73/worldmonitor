@@ -320,6 +320,31 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.deepEqual(snapshot.history, []);
     });
 
+    it('logs the snapshot verdict, not just per-source transport', async () => {
+      // A frozen exchange still ANSWERS -- every source reports ok, so a
+      // per-source-only decision log emits 4x accepted while the published
+      // snapshot is degraded. The freeze detector has to be visible to an
+      // operator tailing the log, not only to someone who reads the Redis key.
+      const events: Array<Record<string, unknown>> = [];
+      // A successful response pinned one session behind SSE -- the shape a
+      // frozen exchange actually produces.
+      const stale = structuredClone(szseNorthboundFixture);
+      stale[0].metadata.subname = '2026-07-31';
+      await fetchWithFixtures({
+        onDecision: (entry: Record<string, unknown>) => events.push(entry),
+        overrides: [['CATALOGID=SGT_SGTJYRB', stale]],
+      });
+      assert.equal(
+        events.filter((entry) => entry.scope === 'source' && entry.status === 'accepted').length,
+        4,
+        'every source must still look individually healthy -- that is the trap',
+      );
+      const verdict = events.find((entry) => entry.scope === 'snapshot');
+      assert.ok(verdict, 'a snapshot-level decision entry must be emitted');
+      assert.equal(verdict.status, 'degraded');
+      assert.equal(verdict.northboundReason, 'TRADE_DATE_MISMATCH');
+    });
+
     it('degrades and keeps prior history when one exchange is unreachable', async () => {
       const previousSnapshot = {
         history: [{ day: '2026-08-03', northboundTurnoverCny: 1 }],

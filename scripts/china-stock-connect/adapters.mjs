@@ -1154,10 +1154,35 @@ export async function fetchChinaStockConnectSnapshot({
     generatedAt: new Date(now).toISOString(),
   });
 
+  // Emitted BEFORE the per-source entries and separately from them, because the
+  // two degradations are independent. A frozen exchange still answers: every
+  // source reports ok while the combined value degrades to TRADE_DATE_MISMATCH.
+  // Without this entry the log reads "4/4 accepted" during exactly the failure
+  // the trade-date agreement check exists to catch, and the only other place
+  // that verdict appears is the published Redis key.
+  onDecision({
+    scope: 'snapshot',
+    status: snapshot.status,
+    calendarStatus,
+    ...(snapshot.northbound.turnoverCny.reason
+      ? { northboundReason: snapshot.northbound.turnoverCny.reason }
+      : {}),
+    ...(snapshot.margin.totalBalanceCny.reason
+      ? { marginReason: snapshot.margin.totalBalanceCny.reason }
+      : {}),
+    ...(snapshot.northbound.tradeDate
+      ? { northboundTradeDate: snapshot.northbound.tradeDate }
+      : {}),
+    ...(snapshot.margin.tradeDate ? { marginTradeDate: snapshot.margin.tradeDate } : {}),
+    historyDays: snapshot.history.length,
+    generatedAt: snapshot.generatedAt,
+  });
+
   const outcomeMap = new Map(outcomes.map((outcome) => [outcome.sourceId, outcome]));
   for (const source of snapshot.sources) {
     const outcome = outcomeMap.get(source.id);
     onDecision({
+      scope: 'source',
       sourceId: source.id,
       status: source.transportStatus === 'ok' ? 'accepted' : 'degraded',
       requestCount: source.requestCount,
