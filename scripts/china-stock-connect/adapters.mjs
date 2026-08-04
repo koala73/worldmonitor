@@ -62,6 +62,12 @@ const SZSE_MAX_PROXY_ATTEMPTS = 2;
 // (how many trading days are still unpublished), so the product of probes and
 // timeouts would otherwise overrun the bundle's per-section allowance.
 const SZSE_RUN_BUDGET_MS = 100_000;
+// Split into reservations rather than one pot. A single shared deadline is
+// drained in call order, so the calendar and the first report source could
+// consume all of it and leave szse-margin with nothing -- a source starved by
+// scheduling rather than by anything wrong with it.
+const SZSE_CALENDAR_BUDGET_MS = 30_000;
+const SZSE_REPORT_BUDGET_MS = (SZSE_RUN_BUDGET_MS - SZSE_CALENDAR_BUDGET_MS) / 2;
 
 // Every response we want is 1-6 KiB. The ceiling matters because dropping
 // SZSE's txtDate makes the same endpoint dump its entire history since 2010
@@ -85,7 +91,7 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: 'FW_HGTZL_HGTSCSJ_HGTCJGK_MRTJ',
     maxRequestsPerRun: 3,
     maxProxyRequestsPerRun: SSE_MAX_PROXY_ATTEMPTS,
-    maxEdgeRequestsPerRun: 0,
+    edgeFallbackEnabled: false,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     proxyEnvironmentVariable: 'SSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -117,7 +123,7 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: null,
     maxRequestsPerRun: 3,
     maxProxyRequestsPerRun: SSE_MAX_PROXY_ATTEMPTS,
-    maxEdgeRequestsPerRun: 0,
+    edgeFallbackEnabled: false,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     proxyEnvironmentVariable: 'SSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -148,7 +154,7 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: 'SGT_SGTJYRB',
     maxRequestsPerRun: 8,
     maxProxyRequestsPerRun: SZSE_MAX_PROXY_ATTEMPTS,
-    maxEdgeRequestsPerRun: 1,
+    edgeFallbackEnabled: true,
     fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -179,7 +185,7 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: '1837_xxpl',
     maxRequestsPerRun: 8,
     maxProxyRequestsPerRun: SZSE_MAX_PROXY_ATTEMPTS,
-    maxEdgeRequestsPerRun: 1,
+    edgeFallbackEnabled: true,
     fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -601,7 +607,7 @@ async function fetchThroughLadder(url, contract, {
       routing.proxyFailureReason = proxyError ? transportFailureReason(proxyError) : null;
     }
 
-    if (edgeFetchFn && contract.maxEdgeRequestsPerRun > 0) {
+    if (edgeFetchFn && contract.edgeFallbackEnabled) {
       routing.transportPath = 'edge';
       let edgeDiagnostic = null;
       try {
@@ -713,6 +719,16 @@ async function fetchSseSource(contract, { fetchFn, proxyFetchFn, normalize }) {
   return outcomeFrom(contract, { observations, routing, requestCount: budget.count });
 }
 
+async function withSourceContext(run, budget, probedDates) {
+  try {
+    return await run();
+  } catch (error) {
+    error.requestCount ??= budget.count;
+    error.probedDates ??= [...probedDates];
+    throw error;
+  }
+}
+
 async function fetchSzseSource(contract, {
   fetchFn,
   proxyFetchFn,
@@ -730,7 +746,9 @@ async function fetchSzseSource(contract, {
     // A throw here aborts the whole source deliberately: once a request fails
     // through the full ladder the transport is down, and walking further dates
     // would report NO_PUBLISHED_TRADE_DATE for what is really a network fault.
-    const { payload, routing } = await fetchThroughLadder(
+    // The dial count and probed dates are attached on the way out, or the
+    // decision log claims 0 requests for a source that really did try.
+    const { payload, routing } = await withSourceContext(() => fetchThroughLadder(
       szseReportUrl(contract, tradeDate),
       contract,
       {
@@ -746,7 +764,7 @@ async function fetchSzseSource(contract, {
         budget,
         sticky,
       },
-    );
+    ), budget, probedDates);
     lastRouting = routing;
     const normalized = normalize(payload);
     // An empty tab is how SZSE says "that date has not been published yet",
@@ -830,8 +848,36 @@ function valueOrUnavailable(value, reason) {
   return value === null || value === undefined ? unavailable(reason) : known(value);
 }
 
+// Every derived metric carries the reason from ITS OWN combine. Reusing the
+// headline's reason made a single absent field report EXCHANGE_UNAVAILABLE even
+// though both exchanges had answered, pointing the reader at the wrong problem.
+function combinedValue(combined) {
+  return valueOrUnavailable(combined.value, combined.reason ?? 'EXCHANGE_UNAVAILABLE');
+}
+
 function latestObservation(outcome) {
   return outcome?.ok && outcome.observations?.length ? outcome.observations[0] : null;
+}
+
+// SSE's margin endpoint returns a page of dated rows while SZSE returns exactly
+// one. When SZSE lags by a session, the matching SSE row is already in hand --
+// pairing by position would report TRADE_DATE_MISMATCH and throw away a
+// perfectly good combined figure we could compute for the older date.
+function observationForDate(outcome, tradeDate) {
+  if (!outcome?.ok || !Array.isArray(outcome.observations)) return null;
+  return outcome.observations.find((row) => row?.tradeDate === tradeDate) ?? null;
+}
+
+function alignedPair(sseOutcome, szseOutcome) {
+  const sse = latestObservation(sseOutcome);
+  const szse = latestObservation(szseOutcome);
+  if (!sse || !szse || sse.tradeDate === szse.tradeDate) return [sse, szse];
+  // Fall back to the newest session both sides actually published.
+  const older = sse.tradeDate < szse.tradeDate ? sse.tradeDate : szse.tradeDate;
+  return [
+    observationForDate(sseOutcome, older) ?? sse,
+    observationForDate(szseOutcome, older) ?? szse,
+  ];
 }
 
 // The combined figure is only meaningful when both exchanges report the same
@@ -842,7 +888,14 @@ function combineByTradeDate(sse, szse, combiner) {
   if (sse.tradeDate !== szse.tradeDate) {
     return { value: null, reason: 'TRADE_DATE_MISMATCH' };
   }
-  return { value: combiner(sse, szse), tradeDate: sse.tradeDate, reason: null };
+  const value = combiner(sse, szse);
+  // Both exchanges answered for the same session; a null here means one of them
+  // omitted the field, which is a different diagnosis from a missing exchange.
+  return {
+    value,
+    tradeDate: sse.tradeDate,
+    reason: value === null ? 'INCOMPLETE_EXCHANGE_FIELDS' : null,
+  };
 }
 
 function sumOrNull(...values) {
@@ -924,8 +977,10 @@ export function buildChinaStockConnectSnapshot({
 
   const sseNorthbound = latestObservation(outcomeMap.get('sse-northbound'));
   const szseNorthbound = latestObservation(outcomeMap.get('szse-northbound'));
-  const sseMargin = latestObservation(outcomeMap.get('sse-margin'));
-  const szseMargin = latestObservation(outcomeMap.get('szse-margin'));
+  const [sseMargin, szseMargin] = alignedPair(
+    outcomeMap.get('sse-margin'),
+    outcomeMap.get('szse-margin'),
+  );
 
   const northboundTurnover = combineByTradeDate(
     sseNorthbound,
@@ -945,26 +1000,17 @@ export function buildChinaStockConnectSnapshot({
 
   const northbound = {
     tradeDate: northboundTurnover.tradeDate ?? null,
-    turnoverCny: valueOrUnavailable(
-      northboundTurnover.value,
-      northboundTurnover.reason ?? 'EXCHANGE_UNAVAILABLE',
-    ),
-    etfTurnoverCny: valueOrUnavailable(
-      combineByTradeDate(
-        sseNorthbound,
-        szseNorthbound,
-        (sse, szse) => sumOrNull(sse.etfTurnoverCny, szse.etfTurnoverCny),
-      ).value,
-      northboundTurnover.reason ?? 'EXCHANGE_UNAVAILABLE',
-    ),
-    tradeCount: valueOrUnavailable(
-      combineByTradeDate(
-        sseNorthbound,
-        szseNorthbound,
-        (sse, szse) => sumOrNull(sse.tradeCount, szse.tradeCount),
-      ).value,
-      northboundTurnover.reason ?? 'EXCHANGE_UNAVAILABLE',
-    ),
+    turnoverCny: combinedValue(northboundTurnover),
+    etfTurnoverCny: combinedValue(combineByTradeDate(
+      sseNorthbound,
+      szseNorthbound,
+      (sse, szse) => sumOrNull(sse.etfTurnoverCny, szse.etfTurnoverCny),
+    )),
+    tradeCount: combinedValue(combineByTradeDate(
+      sseNorthbound,
+      szseNorthbound,
+      (sse, szse) => sumOrNull(sse.tradeCount, szse.tradeCount),
+    )),
     // Stated on every payload: turnover is gross two-way activity, never a flow.
     netFlow: unavailable(NORTHBOUND_NET_FLOW_UNAVAILABLE_REASON),
     netFlowDiscontinuedOn: NORTHBOUND_NET_FLOW_DISCONTINUED_ON,
@@ -976,25 +1022,16 @@ export function buildChinaStockConnectSnapshot({
 
   const margin = {
     tradeDate: marginTotal.tradeDate ?? null,
-    totalBalanceCny: valueOrUnavailable(
-      marginTotal.value,
-      marginTotal.reason ?? 'EXCHANGE_UNAVAILABLE',
-    ),
-    financingBalanceCny: valueOrUnavailable(
-      marginFinancing.value,
-      marginFinancing.reason ?? 'EXCHANGE_UNAVAILABLE',
-    ),
-    securitiesLendingBalanceCny: valueOrUnavailable(
-      combineByTradeDate(
-        sseMargin,
-        szseMargin,
-        (sse, szse) => sumOrNull(
-          sse.securitiesLendingBalanceCny,
-          szse.securitiesLendingBalanceCny,
-        ),
-      ).value,
-      marginTotal.reason ?? 'EXCHANGE_UNAVAILABLE',
-    ),
+    totalBalanceCny: combinedValue(marginTotal),
+    financingBalanceCny: combinedValue(marginFinancing),
+    securitiesLendingBalanceCny: combinedValue(combineByTradeDate(
+      sseMargin,
+      szseMargin,
+      (sse, szse) => sumOrNull(
+        sse.securitiesLendingBalanceCny,
+        szse.securitiesLendingBalanceCny,
+      ),
+    )),
     exchanges: {
       sse: exchangeBlock(sseMargin),
       szse: exchangeBlock(szseMargin),
@@ -1089,7 +1126,7 @@ export async function fetchChinaStockConnectSnapshot({
   // both report sources share a host, so whichever hop reaches it once reaches
   // it for the rest of the run.
   const szseSticky = { preferred: null };
-  const szseDeadline = createRunDeadline(SZSE_RUN_BUDGET_MS, clock);
+  const szseCalendarDeadline = createRunDeadline(SZSE_CALENDAR_BUDGET_MS, clock);
 
   let calendarStatus = 'exchange';
   let candidateDates;
@@ -1100,7 +1137,7 @@ export async function fetchChinaStockConnectSnapshot({
       edgeFetchFn,
       today,
       sticky: szseSticky,
-      deadline: szseDeadline,
+      deadline: szseCalendarDeadline,
     });
     candidateDates = tradingDayCandidates(calendar.days, today);
     if (candidateDates.length === 0) throw sourceError('EMPTY_TRADING_CALENDAR');
@@ -1119,7 +1156,7 @@ export async function fetchChinaStockConnectSnapshot({
       edgeFetchFn,
       candidateDates,
       sticky: szseSticky,
-      deadline: szseDeadline,
+      deadline: createRunDeadline(SZSE_REPORT_BUDGET_MS, clock),
       normalize: normalizeSzseNorthbound,
     })],
     ['szse-margin', (contract) => fetchSzseSource(contract, {
@@ -1128,7 +1165,7 @@ export async function fetchChinaStockConnectSnapshot({
       edgeFetchFn,
       candidateDates,
       sticky: szseSticky,
-      deadline: szseDeadline,
+      deadline: createRunDeadline(SZSE_REPORT_BUDGET_MS, clock),
       normalize: normalizeSzseMargin,
     })],
     ['sse-northbound', (contract) => fetchSseSource(contract, {

@@ -337,6 +337,67 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       );
     });
 
+    it('pairs margin on the newest session both exchanges published', () => {
+      // SSE returns a page of dated rows; SZSE returns one. When SZSE lags a
+      // session the matching SSE row is already in hand, so pairing by position
+      // would report TRADE_DATE_MISMATCH and discard a computable figure.
+      const snapshot = buildChinaStockConnectSnapshot({
+        outcomes: [
+          {
+            sourceId: 'sse-margin',
+            ok: true,
+            requestCount: 1,
+            transportPath: 'direct',
+            observations: [
+              { tradeDate: '2026-08-03', financingBalanceCny: 30, securitiesLendingBalanceCny: 3, totalBalanceCny: 33, financingBuyCny: 1 },
+              { tradeDate: '2026-07-31', financingBalanceCny: 20, securitiesLendingBalanceCny: 2, totalBalanceCny: 22, financingBuyCny: 1 },
+            ],
+          },
+          {
+            sourceId: 'szse-margin',
+            ok: true,
+            requestCount: 1,
+            transportPath: 'direct',
+            observations: [
+              { tradeDate: '2026-07-31', financingBalanceCny: 10, securitiesLendingBalanceCny: 1, totalBalanceCny: 11, financingBuyCny: 1 },
+            ],
+          },
+        ],
+        generatedAt: '2026-08-04T20:00:00.000Z',
+      });
+      assert.equal(snapshot.margin.tradeDate, '2026-07-31');
+      assert.equal(snapshot.margin.totalBalanceCny.status, 'known');
+      // 22 (SSE's 07-31 row) + 11, NOT 33 + 11.
+      assert.equal(snapshot.margin.totalBalanceCny.value, 33);
+    });
+
+    it('separates a missing field from a missing exchange', () => {
+      const withHole = buildChinaStockConnectSnapshot({
+        outcomes: [
+          {
+            sourceId: 'sse-northbound',
+            ok: true,
+            requestCount: 1,
+            transportPath: 'direct',
+            observations: [{ tradeDate: '2026-08-04', turnoverCny: 1, tradeCount: null, etfTurnoverCny: 1 }],
+          },
+          {
+            sourceId: 'szse-northbound',
+            ok: true,
+            requestCount: 1,
+            transportPath: 'direct',
+            observations: [{ tradeDate: '2026-08-04', turnoverCny: 1, tradeCount: 5, etfTurnoverCny: 1 }],
+          },
+        ],
+        generatedAt: '2026-08-04T20:00:00.000Z',
+      });
+      // Both exchanges answered for the same session, so blaming an absent
+      // exchange would send an operator hunting the wrong problem.
+      assert.equal(withHole.northbound.tradeCount.status, 'unavailable');
+      assert.equal(withHole.northbound.tradeCount.reason, 'INCOMPLETE_EXCHANGE_FIELDS');
+      assert.equal(withHole.northbound.turnoverCny.status, 'known');
+    });
+
     it('refuses to add two exchanges that report different sessions', () => {
       const snapshot = buildChinaStockConnectSnapshot({
         outcomes: [
@@ -670,12 +731,17 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-margin');
       assert.equal(source.errorCode, 'FETCH_FAILED');
       assert.notEqual(source.errorCode, 'NO_PUBLISHED_TRADE_DATE');
+      // The dials it really made must reach the decision log; reporting 0 here
+      // reads as "never tried" and sends the reader to the wrong layer.
+      assert.equal(source.requestCount, marginCalls.length);
+      assert.deepEqual(source.probedDates, ['2026-08-05']);
     });
 
-    it('stops dialling SZSE once the shared run budget is spent', async () => {
-      let ticks = 0;
-      // Advances past the 100s budget after the calendar call.
-      const clock = () => (ticks++ === 0 ? 0 : 10_000_000);
+    it('stops dialling SZSE once its wall-clock reservation is spent', async () => {
+      // Jumps far past every reservation between creating a deadline and
+      // checking it, so each SZSE consumer trips its own budget.
+      let now = 0;
+      const clock = () => (now += 1_000_000_000);
       const { snapshot } = await fetchWithFixtures({ clock });
       for (const id of ['szse-northbound', 'szse-margin']) {
         const source = snapshot.sources.find((s: { id: string }) => s.id === id);
@@ -882,11 +948,10 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       // the removed transportRecoverySuccessRuns field did, implying a recovery
       // hysteresis this module never had.
       for (const contract of Object.values(STOCK_CONNECT_SOURCE_CONTRACTS)) {
-        const reachesEdge = contract.fallbackPolicy.includes('then_edge');
         assert.equal(
-          reachesEdge,
-          contract.maxEdgeRequestsPerRun > 0,
-          `${contract.id}: fallbackPolicy and maxEdgeRequestsPerRun disagree`,
+          contract.fallbackPolicy.includes('then_edge'),
+          contract.edgeFallbackEnabled,
+          `${contract.id}: fallbackPolicy and edgeFallbackEnabled disagree`,
         );
         assert.equal(
           contract.proxyEnvironmentVariable,
