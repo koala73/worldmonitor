@@ -38,6 +38,7 @@
     "vitest": "^3.2.6"
   },
   "overrides": {
+    "fast-uri": "^3.1.5",
     "ws": "8.21.0",
     "form-data": "4.0.6"
   }
