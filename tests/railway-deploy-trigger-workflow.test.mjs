@@ -218,6 +218,22 @@ describe('Railway deploy trigger workflow', () => {
     assert.deepEqual(collisions, [], 'deploy trigger and freshness monitor fire on the same minute');
   });
 
+  it('gives every Railway-invoking step the project id, not just the verify step', () => {
+    // A clean runner has no .railway link, so `railway status` — which
+    // resolveEnvironmentId calls on the deploy path — answers "No linked
+    // project found" without --project, and JSON.parse fails at the moment of
+    // deploying. Verified locally from an unlinked directory.
+    for (const step of steps) {
+      const run = String(step.run ?? '');
+      const usesRailway = run.includes('trigger-railway-deploys.mjs') || run.includes('railway ');
+      if (!usesRailway) continue;
+      assert.ok(
+        step.env?.RAILWAY_PROJECT_ID,
+        `"${step.name}" talks to Railway but is not given RAILWAY_PROJECT_ID`,
+      );
+    }
+  });
+
   it('runs against the environment that holds the production Railway token', () => {
     assert.equal(workflow.jobs.trigger.environment?.name, 'ingestion-acceptance-production');
     assert.equal(

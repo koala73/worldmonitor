@@ -160,6 +160,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.dryRun
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: node scripts/trigger-railway-deploys.mjs --dry-run --head "${{ steps.head.outputs.sha }}"
 
       # A failure here is a real one and must red the run: an unauthorized
@@ -170,4 +171,7 @@ jobs:
         if: steps.head.outputs.gate == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dryRun)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          # Needed by resolveEnvironmentId: a clean runner has no .railway link,
+          # so `railway status` must be told which project to answer for.
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: node scripts/trigger-railway-deploys.mjs --head "${{ steps.head.outputs.sha }}"

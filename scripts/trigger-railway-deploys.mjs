@@ -56,6 +56,8 @@ import {
   runRailway,
 } from './railway-cli.mjs';
 import {
+  REJECTED_STATUS,
+  isKnownStatus,
   newestRunning,
   orderByRecency,
 } from './railway-deployments.mjs';
@@ -133,16 +135,37 @@ export function planServiceDeploy({
   // unparseable timestamp sorts oldest rather than producing NaN comparisons.
   const ordered = orderByRecency(deployments);
 
-  // Any non-SKIPPED record for head means Railway has taken this commit —
-  // queued it, built it, or built it and failed. This also subsumes "the
-  // service is already running head", since a running deployment for head is
-  // one of those records. SKIPPED is excluded on purpose: that record IS the
-  // refusal this script exists to compensate.
-  const taken = ordered.find(
-    (deployment) => deployment?.meta?.commitHash === headSha && deployment.status !== 'SKIPPED',
+  // A record for head in a status we RECOGNISE as non-refusal means Railway has
+  // taken this commit — queued it, built it, or built it and failed. This also
+  // subsumes "the service is already running head". SKIPPED is excluded on
+  // purpose: that record IS the refusal this script exists to compensate.
+  //
+  // "Recognise" is load-bearing. `status !== 'SKIPPED'` treats every UNKNOWN
+  // status as handled, and Railway's enum already carries two this file does
+  // not classify: NEEDS_APPROVAL (a deployment waiting on a human) and
+  // REMOVING. Under the loose test, a service whose head deployment sits in
+  // NEEDS_APPROVAL reads as "Railway has it" on every run forever, and the
+  // trigger never retries — the unmatched case silently meaning HEALTHY, which
+  // is the failure this whole change exists to remove.
+  const forHead = ordered.filter((deployment) => deployment?.meta?.commitHash === headSha);
+  const taken = forHead.find(
+    (deployment) => deployment.status !== REJECTED_STATUS && isKnownStatus(deployment.status),
   );
   if (taken) {
     return { ...base, action: 'skip', reason: HANDLED_BY_RAILWAY, detail: `Railway already has ${headSha.slice(0, 9)} (${taken.status})` };
+  }
+  const unclassified = forHead.find((deployment) => !isKnownStatus(deployment.status));
+  if (unclassified) {
+    // Railway has SOMETHING for head that this script cannot read. Deploying
+    // again could duplicate an approval or fight a transition; skipping quietly
+    // strands the service. Report it and let a human decide — the drift check
+    // reports the same record as UNKNOWN_STATUS independently.
+    return {
+      ...base,
+      action: 'report',
+      reason: 'UNKNOWN_STATUS',
+      detail: `Railway reports ${unclassified.status} for ${headSha.slice(0, 9)}, which this script cannot classify — not deploying over it, and not calling it handled`,
+    };
   }
 
   const running = newestRunning(ordered);
@@ -269,6 +292,9 @@ export function selectServices(services, only) {
 export function summarizeDeployPlan(plans) {
   const deploys = plans.filter((plan) => plan.action === 'deploy');
   const unreadable = plans.filter((plan) => plan.action === 'error');
+  // Neither deployed nor dismissed: Railway has a record this script cannot
+  // classify. Surfaced so it cannot become a silent skip.
+  const needsAttention = plans.filter((plan) => plan.action === 'report');
   const counts = {};
   for (const plan of plans) counts[plan.reason] = (counts[plan.reason] ?? 0) + 1;
   // Every service unreadable is not "some third-party rot" — it is an auth or
@@ -280,6 +306,7 @@ export function summarizeDeployPlan(plans) {
     counts,
     deploys,
     unreadable,
+    needsAttention,
     errors: allUnreadable ? unreadable : [],
     ok: !allUnreadable,
   };
@@ -287,8 +314,25 @@ export function summarizeDeployPlan(plans) {
 
 
 
-function resolveEnvironmentId(environmentName) {
-  const status = JSON.parse(runRailway(['status', '--json']));
+/**
+ * The environment's id, for the deploy mutation.
+ *
+ * `--project` is not optional on a CI runner. A clean runner has no `.railway`
+ * link, and a bare `railway status --json` answers "No linked project found" —
+ * which JSON.parse then fails on, at the moment of deploying. Every other call
+ * this script makes (service list, environment config, deployment list) is
+ * proven to work on just the project-scoped RAILWAY_TOKEN by the freshness
+ * monitor that has been running them every 15 minutes; `railway status` is the
+ * one call that workflow passes `--project` to, and this had been the only
+ * place in the new code without that precedent.
+ */
+function resolveEnvironmentId(environmentName, projectId = process.env.RAILWAY_PROJECT_ID) {
+  const status = JSON.parse(runRailway([
+    'status',
+    ...(projectId ? ['--project', projectId] : []),
+    '--environment', environmentName,
+    '--json',
+  ]));
   const nodes = (status?.environments?.edges ?? []).map((edge) => edge?.node).filter(Boolean);
   const match = nodes.find((node) => node.name === environmentName);
   if (!match?.id) {
@@ -346,6 +390,9 @@ function printReport(plans, summary, headSha, { dryRun, elapsedMs }) {
     + `reads=${plans.length} elapsed=${Math.round(elapsedMs / 1000)}s `
     + `mode=${dryRun ? 'dry-run' : 'deploy'} ${JSON.stringify(summary.counts)}`,
   );
+  for (const plan of summary.needsAttention) {
+    console.error(`::warning::${plan.service}: ${plan.detail}`);
+  }
   for (const plan of summary.unreadable) {
     // ::warning:: not ::error::, unless every service failed (summary.ok).
     const level = summary.ok ? 'warning' : 'error';

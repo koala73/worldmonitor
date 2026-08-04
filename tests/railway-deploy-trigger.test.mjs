@@ -130,6 +130,39 @@ describe('deploy planning', () => {
     assert.equal(result.reason, HANDLED_BY_RAILWAY);
   });
 
+  it('does not call an unrecognised status "already taken"', () => {
+    // Railway's live DeploymentStatus enum carries NEEDS_APPROVAL and REMOVING,
+    // neither of which this script classifies. Under a bare
+    // `status !== 'SKIPPED'` test, a service whose head deployment sits in
+    // NEEDS_APPROVAL reads as handled on EVERY run forever and is never
+    // retried — the unmatched case silently meaning healthy.
+    for (const status of ['NEEDS_APPROVAL', 'REMOVING', 'A_STATUS_FROM_2027']) {
+      const result = plan({
+        deployments: [
+          deployment(status, HEAD, { createdAt: '2026-08-04T12:00:00.000Z' }),
+          deployment('SUCCESS', RUNNING),
+        ],
+      });
+      assert.notEqual(result.reason, HANDLED_BY_RAILWAY, `${status} must not read as handled`);
+      assert.equal(result.action, 'report', status);
+      assert.equal(result.reason, 'UNKNOWN_STATUS', status);
+    }
+  });
+
+  it('still recognises every status it does classify as taken', () => {
+    // The other half: narrowing the test must not make known statuses stop
+    // counting, which would re-deploy commits Railway already has.
+    for (const status of ['SUCCESS', 'REMOVED', 'CRASHED', 'SLEEPING', 'QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING', 'FAILED']) {
+      const result = plan({
+        deployments: [
+          deployment(status, HEAD, { createdAt: '2026-08-04T12:00:00.000Z' }),
+          deployment('SUCCESS', RUNNING),
+        ],
+      });
+      assert.equal(result.reason, HANDLED_BY_RAILWAY, status);
+    }
+  });
+
   it('errors rather than guessing when the deployment history cannot be read', () => {
     for (const deployments of [null, undefined, 'nope', {}]) {
       const result = plan({ deployments });
