@@ -292,6 +292,19 @@ describe('Railway deploy drift classification', () => {
     assert.equal(isProblemVerdict(result.verdict), true);
   });
 
+  // An unparseable timestamp sorts as oldest, which would silently demote a
+  // record out of the running/rejection split rather than fail.
+  it('does not let an unreadable timestamp reorder the split', () => {
+    const malformed = { id: 'x', status: 'REMOVED', createdAt: 'not-a-date', meta: { commitHash: HEAD } };
+    const result = classify([
+      malformed,
+      deployment('REMOVED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ]);
+    // The dated record wins as newest; the malformed one cannot claim it.
+    assert.equal(result.runningSha, PREVIOUS);
+    assert.equal(result.verdict, 'BEHIND');
+  });
+
   it('reports an empty window rather than assuming health', () => {
     const result = classify([]);
     assert.equal(result.verdict, 'NO_DEPLOYMENTS');
@@ -473,6 +486,18 @@ describe('the shipped deploy-drift baseline', () => {
         `${entry.name} must point at the issue that replaces the deploy trigger, not at #6141`,
       );
     }
+  });
+
+  // 62 of the 63 entries carry one canonical sentence. A partial hand-edit
+  // during pruning would leave the file looking maintained while quietly
+  // disagreeing with itself, so the identity is asserted rather than assumed.
+  it('keeps one canonical reason across every rejected-push entry', () => {
+    const reasons = new Set(
+      baseline.acknowledged
+        .filter((entry) => entry.status === 'REJECTED_PUSH')
+        .map((entry) => entry.reason),
+    );
+    assert.equal(reasons.size, 1, 'rejected-push entries must share one reason string');
   });
 
   // A verdict that means "this check could not determine anything" is not a

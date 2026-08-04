@@ -24,6 +24,7 @@
 //   node scripts/check-railway-deploy-drift.mjs --json
 //   node scripts/check-railway-deploy-drift.mjs --head <sha> --window 200
 //   node scripts/check-railway-deploy-drift.mjs --concurrency 4
+//   node scripts/check-railway-deploy-drift.mjs --verbose   # list acknowledged
 
 import { execFile, spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -249,7 +250,7 @@ export function classifyServiceDeploy({
     return {
       ...identified,
       verdict: 'UNKNOWN_SOURCE',
-      detail: `the running deployment carries no commit SHA (a \`railway up\` upload), so its source cannot be compared with ${headSha.slice(0, 9)}`,
+      detail: `the running deployment (${running.createdAt}) carries no commit SHA — a \`railway up\` upload — so its source cannot be compared with ${headSha.slice(0, 9)}. Expected right after a manual recovery and cleared by the next git-triggered build; a stale timestamp here means it never came.`,
     };
   }
   if (identified.runningSha === headSha) {
@@ -353,6 +354,9 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
   }
   const split = baseline
     ? applyAcceptanceBaseline(
+      // `name`/`status` are aliases of `service`/`verdict`: they are the field
+      // names the shared baseline matcher expects, and they survive into the
+      // --json output alongside the originals.
       problems.map((problem) => ({ ...problem, name: problem.service, status: problem.verdict })),
       baseline,
       now,
@@ -429,41 +433,60 @@ export async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
-function printReport(results, summary, headSha, graceSha) {
+function printReport(results, summary, headSha, graceSha, { verbose = false } = {}) {
   console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
-  // The acknowledged and recovered lines come first and go to stdout: they are
-  // never the reason a run fails, and burying them under the blocking list is
-  // how a suppression that should have been pruned survives another month.
-  for (const problem of summary.acknowledged) {
-    console.log(`- acknowledged (#${problem.issue}): ${problem.service} [${problem.verdict}] ${problem.detail}`);
-  }
-  for (const entry of summary.cleared) {
-    console.log(`- recovered: ${entry.name}:${entry.status} is running head again; remove it from scripts/railway-deploy-drift-baseline.json (#${entry.issue}).`);
-  }
-  if (summary.ok) {
-    // Never claim the fleet is current while entries are acknowledged. A
-    // suppression that reads as health in the summary line is the same failure
-    // as no alarm at all, one indirection further back.
-    console.log(
-      summary.acknowledged.length === 0
-        ? `Every service this repository deploys is running ${headSha.slice(0, 9)} or building it.`
-        : `No unacknowledged drift: ${summary.acknowledged.length} of ${results.length} service(s) are knowingly behind against an owner issue, and the rest are running ${headSha.slice(0, 9)} or building it.`,
-    );
-    return;
-  }
+
+  // The actionable list goes FIRST. This ordering is deliberately NOT the one
+  // check-seed-freshness.mjs uses: that baseline holds 2 entries, this one
+  // holds 63, and GitHub renders stdout and stderr interleaved in one
+  // chronological log — so listing the acknowledged services first would make
+  // an operator scroll past 63 lines of "ignore this" to reach the one line
+  // that needs them.
   if (summary.blocking.length > 0) {
     console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) not running the head commit:`);
     for (const problem of summary.blocking) {
       console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}`);
     }
-  } else {
-    console.error(`- ${summary.detail}`);
   }
   for (const name of summary.missing ?? []) {
     console.error(`- ${name} is acknowledged in the baseline but was not in the queried fleet — it is unchecked, not recovered`);
   }
   if (summary.expired) {
     console.error(`Deploy-drift baseline expired on ${summary.expiresAt}; re-review scripts/railway-deploy-drift-baseline.json.`);
+  }
+
+  // Recovered entries stay visible unconditionally — they are the prune list,
+  // they are never numerous, and losing them is how a suppression rots.
+  for (const entry of summary.cleared) {
+    console.log(`- recovered: ${entry.name}:${entry.status} is running head again; remove it from scripts/railway-deploy-drift-baseline.json (#${entry.issue}).`);
+  }
+  // The acknowledged roll-up collapses to one line unless asked for. Use
+  // --verbose or --json to enumerate it.
+  if (summary.acknowledged.length > 0) {
+    if (verbose) {
+      for (const problem of summary.acknowledged) {
+        console.log(`- acknowledged (#${problem.issue}): ${problem.service} [${problem.verdict}] ${problem.detail}`);
+      }
+    } else {
+      const byIssue = {};
+      for (const problem of summary.acknowledged) {
+        byIssue[problem.issue] = (byIssue[problem.issue] ?? 0) + 1;
+      }
+      const owners = Object.entries(byIssue)
+        .map(([issue, count]) => `${count} against #${issue}`)
+        .join(', ');
+      console.log(`${summary.acknowledged.length} service(s) knowingly behind and acknowledged (${owners}) — re-run with --verbose to list them.`);
+    }
+  }
+
+  if (summary.ok) {
+    console.log(
+      summary.acknowledged.length === 0
+        ? `Every service this repository deploys is running ${headSha.slice(0, 9)} or building it.`
+        : `No unacknowledged drift: the rest are running ${headSha.slice(0, 9)} or building it.`,
+    );
+  } else if (summary.blocking.length === 0 && !summary.expired && (summary.missing ?? []).length === 0) {
+    console.error(`- ${summary.detail}`);
   }
 }
 
@@ -524,7 +547,7 @@ async function main() {
 
   const summary = summarizeDeployDrift(results, JSON.parse(readFileSync(BASELINE_URL, 'utf8')));
   if (asJson) console.log(JSON.stringify({ environment, headSha, graceSha, summary, results }, null, 2));
-  else printReport(results, summary, headSha, graceSha);
+  else printReport(results, summary, headSha, graceSha, { verbose: process.argv.includes('--verbose') });
   if (!summary.ok) process.exitCode = 1;
 }
 
