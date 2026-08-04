@@ -52,6 +52,7 @@ import {
   readDeployments,
   readEnvironmentConfig,
   readRepositoryServices,
+  runGit,
   runRailway,
 } from './railway-cli.mjs';
 import {
@@ -60,6 +61,7 @@ import {
 } from './railway-deployments.mjs';
 import {
   changeReachesService,
+  createAncestryResolver,
   createChangedPathsReader,
   pathsReachingService,
   resolveServiceClosure,
@@ -105,10 +107,12 @@ export function planServiceDeploy({
   headSha,
   changedPathsSince,
   readError = null,
-  // Whether `ancestor` is an ancestor of (or equal to) `descendant`. Used to
-  // refuse deploying a service BACKWARDS. Defaults to "cannot prove it", which
-  // keeps the service reported rather than rolled back.
-  isAncestor = () => false,
+  // Tri-state: 'yes' | 'no' | 'unknown'. Used to refuse deploying a service
+  // BACKWARDS. Defaults to 'unknown', which REFUSES rather than deploys — the
+  // one place in this script where uncertainty must not resolve toward
+  // deploying, because deploying over a commit you cannot evaluate is how
+  // production moves backwards.
+  ancestry = () => 'unknown',
 }) {
   const base = { service, serviceId, runningSha: null, matchedPaths: [] };
   if (!Array.isArray(deployments)) {
@@ -163,19 +167,42 @@ export function planServiceDeploy({
       detail: DEPLOY_REASONS.UNKNOWN_SOURCE,
     };
   }
-  // Never deploy a service backwards. `git diff A..B` is non-empty in BOTH
-  // directions, so a service Railway already advanced past the head this run
-  // read — routine when a merge lands mid-run — would otherwise look like it
-  // was missing those paths and get rolled back onto the older commit.
-  if (isAncestor(headSha, runningSha)) {
+  // PROVE forward motion before deploying anything.
+  //
+  // `git diff A..B` is non-empty in BOTH directions, so "this service is
+  // missing paths" is not evidence that head is newer than what it runs. The
+  // only safe basis is ancestry, and it has to be tri-state: a commit this
+  // checkout cannot reach is NOT the same as a commit that is not an ancestor.
+  // Railway builds a merge in seconds, so a commit that landed after checkout
+  // and was built immediately is ordinary — and treating "cannot reach" as
+  // "not an ancestor" deploys head over it, rolling production backwards.
+  const runningToHead = ancestry(runningSha, headSha);
+  if (runningToHead === 'unknown') {
     return {
       ...base,
       runningSha,
       action: 'skip',
-      reason: 'AHEAD',
-      detail: `running ${runningSha.slice(0, 9)}, a descendant of ${headSha.slice(0, 9)} — main moved after this run read it`,
+      reason: 'ANCESTRY_UNKNOWN',
+      detail: `running ${runningSha.slice(0, 9)}, which this checkout cannot reach even after fetching — refusing to deploy ${headSha.slice(0, 9)} over a commit whose age cannot be established`,
     };
   }
+  if (runningToHead === 'no') {
+    // Head is not a descendant of what it runs. Either the service is AHEAD
+    // (main moved after this run read it) or the two have diverged.
+    const headToRunning = ancestry(headSha, runningSha);
+    return {
+      ...base,
+      runningSha,
+      action: 'skip',
+      reason: headToRunning === 'yes' ? 'AHEAD' : 'DIVERGED',
+      detail: headToRunning === 'yes'
+        ? `running ${runningSha.slice(0, 9)}, a descendant of ${headSha.slice(0, 9)} — main moved after this run read it`
+        : `running ${runningSha.slice(0, 9)}, which is neither an ancestor nor a descendant of ${headSha.slice(0, 9)} — the branch was rewritten, and deploying either way is a decision nobody made here`,
+    };
+  }
+
+  // runningToHead === 'yes': head provably contains what the service runs, so
+  // any deploy from here moves it forward.
   const changedPaths = changedPathsSince(runningSha);
   if (changedPaths === null) {
     return {
@@ -258,20 +285,6 @@ export function summarizeDeployPlan(plans) {
   };
 }
 
-const GIT_CALL_TIMEOUT_MS = 30_000;
-
-// Trims, matching the identically-shaped helper in check-railway-deploy-drift.mjs.
-// The two are private to their files but conceptually one wrapper, and a caller
-// that assumed the sibling's contract would silently get a trailing newline.
-function runGit(args) {
-  const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: GIT_CALL_TIMEOUT_MS });
-  if (result.signal) throw new Error(`git ${args.join(' ')} timed out`);
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`git ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`);
-  }
-  return result.stdout.trim();
-}
 
 
 function resolveEnvironmentId(environmentName) {
@@ -391,18 +404,22 @@ async function main() {
   const repositoryServices = selectServices(fleet, readArgument(process.argv, '--only', null));
   // readEnvironmentConfig fails closed on an unexpected payload; see its comment.
   const liveById = readEnvironmentConfig(environment).services;
+  // Merges that landed after the checkout are the main source of "this commit
+  // is not in my history", and one fetch removes most of them before any
+  // ancestry question is asked.
+  try {
+    runGit(['fetch', '--quiet', '--no-tags', 'origin', 'main']);
+  } catch {
+    // Best effort; the ancestry resolver still refuses rather than guesses.
+  }
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
-  // `git merge-base --is-ancestor` exits non-zero both when the answer is no and
-  // when the object is missing. Both collapse to "cannot prove it", which keeps
-  // the service reported rather than rolled back onto an older commit.
-  const isAncestor = (ancestor, descendant) => {
-    try {
-      runGit(['merge-base', '--is-ancestor', ancestor, descendant]);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  // Tri-state, and given a chance to FETCH a commit it cannot see rather than
+  // guessing about it. Railway builds a merge in seconds, so a service running
+  // a commit that landed after this checkout is the ordinary case.
+  const ancestry = createAncestryResolver({
+    git: runGit,
+    fetchMissing: (sha) => runGit(['fetch', '--quiet', '--no-tags', 'origin', sha]),
+  });
 
   const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
     let deployments = null;
@@ -425,7 +442,7 @@ async function main() {
       headSha,
       changedPathsSince,
       readError,
-      isAncestor,
+      ancestry,
     });
   })).sort((left, right) => left.service.localeCompare(right.service));
 

@@ -36,14 +36,28 @@ describe('Railway deploy trigger workflow', () => {
     assert.match(gate.run, /context == "gate"/);
     assert.match(gate.run, /rev-parse origin\/main/);
 
-    for (const name of [
-      'Install pinned Railway CLI',
-      'Verify Railway production context',
-    ]) {
-      assert.equal(
-        stepNamed(name).if,
-        GATE_GUARD,
-        `"${name}" must not run unless the gate is green`,
+    // Only the MUTATING step is gate-gated. Installing the CLI and validating
+    // the token mutate nothing, and gating those on a green gate is what broke
+    // previewing while main was red — so the guard belongs on the deploy, not
+    // on its prerequisites.
+    const deploy = stepNamed('Trigger deploys for services this merge changed');
+    assert.ok(
+      String(deploy.if).includes(GATE_GUARD),
+      'the deploying step must not run unless the gate is green',
+    );
+  });
+
+  it('gates nothing that mutates production on anything weaker than the gate', () => {
+    // The inverse of the above, so a future edit cannot quietly move a
+    // production mutation into a step with a laxer condition. The preview is
+    // the only step allowed to run without a green gate, and it is --dry-run.
+    for (const step of steps) {
+      const run = String(step.run ?? '');
+      if (!run.includes('trigger-railway-deploys.mjs')) continue;
+      const guarded = String(step.if ?? '').includes(GATE_GUARD);
+      assert.ok(
+        guarded || run.includes('--dry-run'),
+        `"${step.name}" invokes the deploy trigger without a green-gate guard and without --dry-run`,
       );
     }
   });
@@ -129,10 +143,45 @@ describe('Railway deploy trigger workflow', () => {
     // The moment you most need to read the plan is when the gate is not green
     // and the fleet is falling behind — which is exactly when the deploy step
     // is correctly refusing to run. Previewing mutates nothing.
+    //
+    // Asserting only that the preview's `if` omits the gate is NOT enough: that
+    // passed while previewing on a red gate was broken two different ways —
+    // the gate step exited 1 before the preview could run, and the CLI it
+    // shells out to was installed only on a green gate. Both are pinned below.
     const preview = stepNamed('Preview what would be deployed');
     assert.ok(
       !String(preview.if).includes('steps.head.outputs.gate'),
       'previewing must not require a green gate',
+    );
+  });
+
+  it('installs the Railway CLI on any run that shells out to it', () => {
+    // The preview runs `railway` too. Gating the install on a green gate made
+    // `railway: command not found` the actual behaviour of previewing while
+    // main was red.
+    const install = stepNamed('Install pinned Railway CLI');
+    const preview = stepNamed('Preview what would be deployed');
+    for (const clause of String(preview.if).split('&&').map((part) => part.trim())) {
+      assert.ok(
+        String(install.if).includes(clause),
+        `the CLI install must also run when the preview does — missing "${clause}"`,
+      );
+    }
+  });
+
+  it('does not let the gate step hard-fail a dry run before it previews', () => {
+    // The gate step `exit 1`s on a failed gate, and the preview defaults to
+    // success() — so without an explicit dry-run carve-out the preview is
+    // skipped entirely on exactly the runs it exists for.
+    const gate = steps.find((step) => step.id === 'head');
+    assert.ok(
+      String(gate.env?.DRY_RUN ?? '').includes('inputs.dryRun'),
+      'the gate step must know whether this run is a dry run',
+    );
+    assert.match(
+      gate.run,
+      /DRY_RUN[^\n]*!=\s*"success"|"\$\{DRY_RUN:-false\}"\s*=\s*"true"/,
+      'the gate step must branch on the dry run before it can exit 1',
     );
   });
 

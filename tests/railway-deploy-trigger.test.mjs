@@ -41,6 +41,9 @@ function plan(overrides = {}) {
     headSha: HEAD,
     changedPathsSince: () => ['scripts/seed-aviation.mjs'],
     deployments: [deployment('SUCCESS', RUNNING)],
+    // Proven forward by default: these cases are about the arms AFTER the
+    // rollback guard. The guard's own cases pass ancestry explicitly.
+    ancestry: (ancestor, descendant) => (ancestor === RUNNING && descendant === HEAD ? 'yes' : 'no'),
     ...overrides,
   });
 }
@@ -143,25 +146,63 @@ describe('deploy planning', () => {
   });
 
   it('never deploys a service backwards onto an older commit', () => {
-    // `git diff A..B` is non-empty in BOTH directions, so a service Railway
-    // already advanced past the head this run read — routine when a merge lands
-    // mid-run — would otherwise look like it was missing those paths.
+    // `git diff A..B` is non-empty in BOTH directions, so "this service is
+    // missing paths" is not evidence that head is newer than what it runs.
     const newer = 'eeeeeeeee11111111111111111111111111111aa';
     const result = plan({
       deployments: [deployment('SUCCESS', newer)],
       changedPathsSince: () => ['scripts/seed-aviation.mjs'],
-      isAncestor: (ancestor, descendant) => ancestor === HEAD && descendant === newer,
+      ancestry: (a, d) => (a === HEAD && d === newer ? 'yes' : 'no'),
     });
     assert.equal(result.action, 'skip');
     assert.equal(result.reason, 'AHEAD');
   });
 
-  it('still deploys when ancestry cannot be proven', () => {
-    // The default isAncestor answers "cannot prove it". That must not become a
-    // silent skip: an unprovable ancestor is the ordinary case for a service
-    // that is genuinely behind.
-    const result = plan({ changedPathsSince: () => ['scripts/seed-aviation.mjs'] });
+  it('REFUSES to deploy when ancestry cannot be established', () => {
+    // The rollback this whole guard exists for. Railway builds a merge in
+    // seconds, so a service running a commit that landed after this checkout is
+    // ordinary — and if we cannot reach that commit, we cannot prove head is
+    // not OLDER than it. Deploying anyway rolls production backwards.
+    //
+    // The unreachable commit also makes changedPathsSince return null, so
+    // before this guard the plan fell through to HISTORY_UNAVAILABLE -> deploy.
+    const result = plan({
+      deployments: [deployment('SUCCESS', 'eeeeeeeee11111111111111111111111111111aa')],
+      changedPathsSince: () => null,
+      ancestry: () => 'unknown',
+    });
+    assert.equal(result.action, 'skip', 'must not deploy over a commit it cannot evaluate');
+    assert.equal(result.reason, 'ANCESTRY_UNKNOWN');
+  });
+
+  it('defaults to refusing rather than deploying', () => {
+    // The parameter default is the last line of defence: a caller that forgets
+    // to pass an ancestry resolver must not silently get the rollback.
+    const result = planServiceDeploy({
+      service: 'seed-aviation',
+      closure: SCRIPTS_SEEDER,
+      headSha: HEAD,
+      deployments: [deployment('SUCCESS', RUNNING)],
+      changedPathsSince: () => ['scripts/seed-aviation.mjs'],
+    });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, 'ANCESTRY_UNKNOWN');
+  });
+
+  it('refuses a diverged branch rather than picking a direction', () => {
+    const result = plan({
+      deployments: [deployment('SUCCESS', 'eeeeeeeee11111111111111111111111111111aa')],
+      changedPathsSince: () => ['scripts/seed-aviation.mjs'],
+      ancestry: () => 'no',
+    });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, 'DIVERGED');
+  });
+
+  it('deploys only once forward motion is proven', () => {
+    const result = plan({ ancestry: (a, d) => (a === RUNNING && d === HEAD ? 'yes' : 'no') });
     assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'CLOSURE_CHANGED');
   });
 
   it('does not start a service that has never run', () => {

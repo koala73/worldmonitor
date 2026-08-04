@@ -18,6 +18,38 @@ const execFileAsync = promisify(execFile);
 
 export const REPOSITORY = 'koala73/worldmonitor';
 
+const GIT_CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * Run git, throwing an error that PRESERVES the exit status.
+ *
+ * The status is not decoration: `git merge-base --is-ancestor` answers "no"
+ * with exit 1 and "that object is not here" with 128, and a caller that cannot
+ * tell those apart has to collapse them into one guess. For an ancestry
+ * question feeding a deploy decision, guessing "no" means deploying over a
+ * commit you could not evaluate.
+ *
+ * maxBuffer is generous because `git diff --name-only` across a service weeks
+ * behind runs to thousands of paths, and the default 1MB cap would turn that
+ * into a thrown error for exactly the services that most need classifying.
+ */
+export function runGit(args, options = {}) {
+  const result = spawnSync('git', args, {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: GIT_CALL_TIMEOUT_MS,
+    ...options,
+  });
+  if (result.signal) throw new Error(`git ${args.join(' ')} timed out`);
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const error = new Error(`git ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`);
+    error.status = result.status;
+    throw error;
+  }
+  return result.stdout.trim();
+}
+
 // A hung Railway call must not consume the whole job budget: these run inside
 // scheduled workflows with a wall-clock timeout, and a subprocess with no bound
 // turns one unresponsive API call into a cancelled monitor.

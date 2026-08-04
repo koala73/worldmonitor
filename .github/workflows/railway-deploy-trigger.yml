@@ -79,6 +79,7 @@ jobs:
         id: head
         env:
           GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
         run: |
           set -o pipefail
           head_sha=$(git rev-parse origin/main)
@@ -94,7 +95,13 @@ jobs:
           )
           echo "gate=$gate_state" >> "$GITHUB_OUTPUT"
           echo "main is at ${head_sha:0:9}, gate=$gate_state"
-          if [ "$gate_state" = "success" ]; then
+          # A dry run mutates nothing, so the gate has no authority over it —
+          # and the moment an operator most needs to read the plan is when main
+          # is red and the fleet is falling behind. Report the state and stop
+          # short of failing, so the preview step below still runs.
+          if [ "${DRY_RUN:-false}" = "true" ] && [ "$gate_state" != "success" ]; then
+            echo "::notice::Gate for ${head_sha:0:9} is $gate_state — previewing only, nothing will be deployed."
+          elif [ "$gate_state" = "success" ]; then
             :
           elif [ "$gate_state" = "pending" ] || [ "$gate_state" = "missing" ]; then
             # Deferring is right for a young commit — the gate genuinely has not
@@ -114,12 +121,15 @@ jobs:
             exit 1
           fi
 
+      # Also for a dry run: the preview shells out to the same CLI, and gating
+      # the install on a green gate made `railway: command not found` the actual
+      # behaviour of previewing while main was red.
       - name: Install pinned Railway CLI
-        if: steps.head.outputs.gate == 'success'
+        if: steps.head.outputs.gate == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dryRun)
         run: npm install --global @railway/cli@5.30.1
 
       - name: Verify Railway production context
-        if: steps.head.outputs.gate == 'success'
+        if: steps.head.outputs.gate == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dryRun)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}

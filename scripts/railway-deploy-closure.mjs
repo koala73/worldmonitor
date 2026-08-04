@@ -247,6 +247,63 @@ export function createChangedPathsReader(headSha, { git } = {}) {
 }
 
 /**
+ * Tri-state ancestry: is `ancestor` an ancestor of (or equal to) `descendant`?
+ *
+ * Returns `'yes'`, `'no'`, or `'unknown'`. The third value is the point.
+ * `git merge-base --is-ancestor` exits 1 for a definitive NO and 128 when an
+ * object is missing, and collapsing those two into `false` loses exactly the
+ * distinction a deploy decision turns on:
+ *
+ *   - `'no'`  — proven not an ancestor. Safe to reason about.
+ *   - `'unknown'` — the commit is not in this checkout, so we cannot prove the
+ *     service is not already running something NEWER than the head we read.
+ *     Deploying head there would roll production BACKWARDS. Railway builds a
+ *     merge in seconds, so a commit that landed after checkout and was built
+ *     immediately is the ordinary case, not a corner one.
+ *
+ * `fetchMissing` is given one chance to obtain an unknown commit before the
+ * answer is settled — "fetch more history" is a better response to `'unknown'`
+ * than either guess.
+ */
+export function createAncestryResolver({ git, fetchMissing = null } = {}) {
+  if (typeof git !== 'function') throw new TypeError('createAncestryResolver requires a git runner');
+  const cache = new Map();
+  const fetched = new Set();
+
+  const probe = (ancestor, descendant) => {
+    try {
+      git(['merge-base', '--is-ancestor', ancestor, descendant]);
+      return 'yes';
+    } catch (error) {
+      // Only a clean exit 1 is a definitive "no". Anything else — a missing
+      // object (128), a timeout, a broken repository — is "we could not tell".
+      return error?.status === 1 ? 'no' : 'unknown';
+    }
+  };
+
+  return (ancestor, descendant) => {
+    const key = `${ancestor}..${descendant}`;
+    if (cache.has(key)) return cache.get(key);
+    let answer = probe(ancestor, descendant);
+    if (answer === 'unknown' && fetchMissing) {
+      for (const sha of [ancestor, descendant]) {
+        if (fetched.has(sha)) continue;
+        fetched.add(sha);
+        try {
+          fetchMissing(sha);
+        } catch {
+          // Best effort. A fetch that fails leaves the answer unknown, which is
+          // the safe value.
+        }
+      }
+      answer = probe(ancestor, descendant);
+    }
+    cache.set(key, answer);
+    return answer;
+  };
+}
+
+/**
  * Memoised reader for "what did this one commit change", used to judge a single
  * refusal rather than the whole backlog.
  *
