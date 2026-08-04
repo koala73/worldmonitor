@@ -302,6 +302,48 @@ describe('sector valuation collection', () => {
     assert.ok(result.valuations.XLE, 'should have XLE from v10 fallback');
   });
 
+  it('uses a bounded v7 batch fallback for symbols omitted from individual responses', async () => {
+    let batchCalls = 0;
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when batch v7 recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'missing_fields',
+          value: null,
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+        }),
+        fetchV7BatchDetailed: async (symbols) => {
+          batchCalls++;
+          assert.deepEqual(symbols, ['XLK', 'SMH']);
+          return {
+            kind: 'success',
+            value: {
+              source: 'yahoo_v7_quote_authenticated_direct',
+              valuations: {
+                XLK: { trailingPE: 25, forwardPE: null, beta: 1.1 },
+                SMH: { trailingPE: 37, forwardPE: null, beta: 1.2 },
+              },
+              outcomes: {
+                XLK: { kind: 'success', value: { trailingPE: 25, forwardPE: null, beta: 1.1 } },
+                SMH: { kind: 'success', value: { trailingPE: 37, forwardPE: null, beta: 1.2 } },
+              },
+            },
+            diagnostics: [{ route: 'v7Quote', transport: 'direct', attempts: 1, status: 200, responseClass: 'success' }],
+          };
+        },
+      },
+    });
+
+    assert.equal(batchCalls, 1);
+    assert.equal(result.valuationCount, 2);
+    assert.deepEqual(result.valuationSources, ['yahoo_v7_quote_authenticated_direct']);
+    assert.ok(result.valuationDiagnostics.every((entry) => entry.outcomes.some((outcome) => outcome.responseClass === 'success')));
+  });
+
   it('records authenticated v7 coverage and explicit last-good metric provenance', async () => {
     const result = await collectSectorValuations({
       symbols: ['XLK'],
@@ -343,6 +385,95 @@ describe('sector valuation collection', () => {
     assert.deepEqual(result.lastGoodMetricsUsed, ['XLK']);
     assert.equal(result.lastGoodFetchedAt, 1_700_000_000_000);
     assert.deepEqual(result.valuationSources, ['yahoo_v7_quote_authenticated_direct']);
+  });
+
+  it('persists a complete v7 valuation snapshot when return metrics are unavailable', async () => {
+    let written = null;
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'XLF'],
+      fetchValue: async () => { throw new Error('v10 must not run for a v7 success'); },
+      parseValue: (raw) => raw,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async (symbol) => ({
+          kind: 'success',
+          value: {
+            trailingPE: symbol === 'XLK' ? 25 : 15,
+            forwardPE: symbol === 'XLK' ? 22 : 14,
+            beta: 1.1,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => null,
+      upstashSet: async (_key, value) => {
+        written = value;
+        return true;
+      },
+    });
+
+    assert.equal(result.valuationCount, 2);
+    assert.deepEqual(written?.valuations, {
+      XLK: { trailingPE: 25, forwardPE: 22, beta: 1.1 },
+      XLF: { trailingPE: 15, forwardPE: 14, beta: 1.1 },
+    });
+  });
+
+  it('reuses complete last-good valuations for symbols missing from both live routes', async () => {
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'XLF'],
+      fetchValue: async () => { throw new Error('v10 fallback must use the detailed route'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async (symbol) => symbol === 'XLK'
+          ? {
+            kind: 'success',
+            value: {
+              trailingPE: 25,
+              forwardPE: 22,
+              beta: 1.1,
+              source: 'yahoo_v7_quote_authenticated_direct',
+            },
+            diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+          }
+          : {
+            kind: 'missing_fields',
+            value: null,
+            diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+          },
+      },
+      fetchValueDetailed: async () => ({
+        kind: 'missing_fields',
+        value: null,
+        diagnostics: [{ route: 'quoteSummary', transport: 'direct', responseClass: 'missing_fields' }],
+      }),
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        valuations: {
+          XLK: { trailingPE: 24, forwardPE: 21, beta: 1.05 },
+          XLF: { trailingPE: 15, forwardPE: 14, beta: 1.1 },
+        },
+      }),
+      upstashSet: async () => { throw new Error('partial run must not replace last-good'); },
+    });
+
+    assert.equal(result.valuationCount, 2);
+    assert.equal(result.currentValuationCount, 1);
+    assert.deepEqual(result.valuations.XLF, {
+      trailingPE: 15,
+      forwardPE: 14,
+      beta: 1.1,
+    });
+    assert.deepEqual(result.lastGoodValuationSymbols, ['XLF']);
+    assert.deepEqual(result.unavailableSymbols, ['XLF']);
+    assert.equal(result.lastGoodFetchedAt, 1_700_000_000_000);
   });
 
   it('does not re-date borrowed last-good metrics after a partial run', async () => {

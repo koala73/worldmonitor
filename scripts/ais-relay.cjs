@@ -2394,8 +2394,10 @@ async function seedSectorSummary() {
     valuationCount: valCount,
     unavailableSymbols,
     valuationDiagnostics,
+    currentValuationCount,
     lastGoodFetchedAt,
     lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
   } = await collectSectorValuations({
     symbols: SECTOR_SYMBOLS,
     fetchValue: fetchYahooQuoteSummary,
@@ -2416,8 +2418,10 @@ async function seedSectorSummary() {
     sources: valuationSources,
     unavailableSymbols,
     valuationDiagnostics,
+    currentValuationCount,
     lastGoodFetchedAt,
     lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
   });
   const { payload, meta: sectorMeta } = buildSectorValuationPublication({
     sectors,

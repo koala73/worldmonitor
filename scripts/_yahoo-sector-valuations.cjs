@@ -304,6 +304,55 @@ function parseV7Quote(body, expectedSymbol = null) {
   };
 }
 
+function parseV7QuoteBatch(body, expectedSymbols = []) {
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    return { kind: 'invalid_json', value: null };
+  }
+  const quoteResponse = data?.quoteResponse;
+  if (quoteResponse?.error) {
+    return { kind: 'upstream_error', value: null, failure: 'quote_response_error' };
+  }
+  const results = quoteResponse?.result;
+  if (!Array.isArray(results) || results.length === 0) {
+    return { kind: 'no_data', value: null };
+  }
+
+  const resultBySymbol = new Map(
+    results
+      .filter((result) => typeof result?.symbol === 'string')
+      .map((result) => [result.symbol.toUpperCase(), result]),
+  );
+  const valuations = {};
+  const outcomes = {};
+  for (const symbol of [...new Set(expectedSymbols)]) {
+    const result = resultBySymbol.get(String(symbol).toUpperCase());
+    if (!result) {
+      outcomes[symbol] = { kind: 'no_data', value: null };
+      continue;
+    }
+    const parsed = parseV7Quote(
+      JSON.stringify({ quoteResponse: { result: [result] } }),
+      symbol,
+    );
+    outcomes[symbol] = parsed;
+    if (parsed.kind === 'success') valuations[symbol] = parsed.value;
+  }
+
+  if (Object.keys(valuations).length > 0) {
+    return { kind: 'success', value: { valuations, outcomes } };
+  }
+  const firstOutcome = Object.values(outcomes)[0];
+  return {
+    kind: firstOutcome?.kind || 'no_data',
+    value: { valuations, outcomes },
+    ...(firstOutcome?.missingFields ? { missingFields: firstOutcome.missingFields } : {}),
+    ...(firstOutcome?.failure ? { failure: firstOutcome.failure } : {}),
+  };
+}
+
 async function fetchYahooV7QuoteDirect(symbol, { userAgent, timeoutMs = 10_000 } = {}) {
   const url = `${YAHOO_V7_QUOTE_URL}?symbols=${encodeURIComponent(symbol)}`;
   try {
@@ -381,6 +430,53 @@ async function collectV7Valuations(
     const remainingMs = deadlineAt == null ? DEFAULT_REQUEST_SPACING_MS : Math.max(0, deadlineAt - now());
     if (remainingMs > 0) await sleepFn(Math.min(DEFAULT_REQUEST_SPACING_MS, remainingMs));
   }
+
+  // Yahoo's individual v7 responses can lose valuation fields for a stable
+  // subset of ETFs even while the same authenticated endpoint returns them in
+  // one bounded batch. Use the batch shape only for symbols still uncovered;
+  // the normal per-symbol route remains the primary path and its diagnostics
+  // stay intact.
+  const batchSymbols = symbols.filter((symbol) => !freshVals[symbol]);
+  if (
+    batchSymbols.length > 0
+    && client?.fetchV7BatchDetailed
+    && (deadlineAt == null || now() < deadlineAt)
+  ) {
+    let batchResult = null;
+    try {
+      batchResult = await client.fetchV7BatchDetailed(batchSymbols, { deadlineAt });
+    } catch {
+      batchResult = null;
+    }
+    const batchValues = batchResult?.value?.valuations;
+    const batchOutcomes = batchResult?.value?.outcomes;
+    const transportDiagnostic = batchResult?.diagnostics?.[batchResult.diagnostics.length - 1]
+      || batchResult?.diagnostic;
+    for (const symbol of batchSymbols) {
+      const outcome = batchOutcomes?.[symbol];
+      const diagnostic = {
+        route: 'v7Quote',
+        ...(transportDiagnostic?.transport ? { transport: transportDiagnostic.transport } : {}),
+        ...(transportDiagnostic?.attempts != null ? { attempts: transportDiagnostic.attempts } : {}),
+        ...(transportDiagnostic?.status != null ? { status: transportDiagnostic.status } : {}),
+        responseClass: outcome?.kind || transportDiagnostic?.responseClass || batchResult?.kind || 'failed',
+        ...(outcome?.missingFields?.length ? { missingFields: outcome.missingFields } : {}),
+        ...(outcome?.failure ? { failure: boundedFailure(outcome.failure) } : {}),
+      };
+      const entry = diagnostics.find((item) => item.symbol === symbol);
+      if (entry) entry.outcomes.push(diagnostic);
+      else diagnostics.push({ symbol, outcomes: [diagnostic] });
+
+      const value = batchValues?.[symbol];
+      if (value) {
+        freshVals[symbol] = {
+          ...value,
+          ...(batchResult.value.source ? { source: batchResult.value.source } : {}),
+        };
+        if (batchResult.value.source) valuationSources.add(batchResult.value.source);
+      }
+    }
+  }
   return { valuations: freshVals, diagnostics, valuationSources: [...valuationSources] };
 }
 
@@ -405,6 +501,28 @@ function mergeReturnMetrics(freshVals, lastGoodValuations) {
       used = true;
     }
     if (used) usedSymbols.push(s);
+  }
+  return usedSymbols;
+}
+
+function hasCoreValuation(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && (value.trailingPE != null || value.forwardPE != null),
+  );
+}
+
+function mergeLastGoodValuations(freshVals, lastGoodValuations, symbols) {
+  if (!lastGoodValuations || typeof lastGoodValuations !== 'object') return [];
+  const usedSymbols = [];
+  for (const symbol of symbols) {
+    if (freshVals[symbol]) continue;
+    const lastGood = lastGoodValuations[symbol];
+    if (!hasCoreValuation(lastGood)) continue;
+    freshVals[symbol] = { ...lastGood };
+    usedSymbols.push(symbol);
   }
   return usedSymbols;
 }
@@ -828,6 +946,19 @@ class YahooQuoteSummaryClient {
     });
   }
 
+  async fetchV7BatchDetailed(symbols, { deadlineAt = null } = {}) {
+    const requestedSymbols = [...new Set(symbols)].filter(Boolean);
+    return this._fetchRoute('v7QuoteBatch', requestedSymbols.join(','), {
+      buildUrl: (tickers, crumb) => {
+        const query = new URLSearchParams({ symbols: tickers, crumb });
+        return `${YAHOO_V7_QUOTE_URL}?${query}`;
+      },
+      parseResponse: (body) => parseV7QuoteBatch(body, requestedSymbols),
+      source: 'yahoo_v7_quote_authenticated',
+      deadlineAt,
+    });
+  }
+
   async fetchV7(symbol) {
     const result = await this.fetchV7Detailed(symbol);
     return result.kind === 'success' ? result.value : null;
@@ -843,24 +974,36 @@ function buildSectorValuationCoverage({
   valuationDiagnostics = [],
   lastGoodFetchedAt = null,
   lastGoodMetricsUsed = [],
+  currentValuationCount = null,
+  lastGoodValuationSymbols = [],
 }) {
   const count = Number.isFinite(valuationCount) ? Math.max(0, valuationCount) : 0;
   const expected = Number.isFinite(expectedCount) ? Math.max(0, expectedCount) : 0;
+  const currentCount = Number.isFinite(currentValuationCount)
+    ? Math.max(0, currentValuationCount)
+    : null;
   const orderedSources = [...new Set((sources || []).filter(Boolean))].sort();
   const source = orderedSources.length > 0
     ? orderedSources.join('+')
     : 'yahoo_quote_summary_authenticated';
   const unavailable = [...new Set(unavailableSymbols.filter(Boolean))].sort();
   const diagnostics = valuationDiagnostics.filter(Boolean);
-  const lastGood = lastGoodFetchedAt && lastGoodMetricsUsed.length > 0
+  const staleValuations = [...new Set(lastGoodValuationSymbols.filter(Boolean))].sort();
+  const lastGoodSymbols = [...new Set([
+    ...lastGoodMetricsUsed,
+    ...staleValuations,
+  ])].sort();
+  const lastGood = lastGoodFetchedAt && lastGoodSymbols.length > 0
     ? {
       fetchedAt: lastGoodFetchedAt,
       stale: true,
-      symbols: [...new Set(lastGoodMetricsUsed)].sort(),
+      symbols: lastGoodSymbols,
     }
     : null;
 
   const extras = {
+    ...(currentCount != null && currentCount !== count ? { currentValuationCount: currentCount } : {}),
+    ...(staleValuations.length > 0 ? { staleValuationSymbols: staleValuations } : {}),
     ...(unavailable.length > 0 ? { unavailableSymbols: unavailable } : {}),
     ...(diagnostics.length > 0 ? { valuationDiagnostics: diagnostics } : {}),
     ...(lastGood ? { lastGood } : {}),
@@ -879,7 +1022,7 @@ function buildSectorValuationCoverage({
       ...extras,
     };
   }
-  if (count < expected) {
+  if (count < expected || staleValuations.length > 0 || (currentCount != null && currentCount < expected)) {
     return {
       valuationCount: count,
       expectedValuationCount: expected,
@@ -944,6 +1087,7 @@ async function collectSectorValuations({
   let lastGood = null;
   let lastGoodFetchedAt = null;
   let lastGoodMetricsUsed = [];
+  let lastGoodValuationSymbols = [];
 
   // Tier 3: v10/quoteSummary for symbols v7 didn't cover
   for (const symbol of symbols) {
@@ -971,7 +1115,7 @@ async function collectSectorValuations({
     if (remainingMs > 0) await sleepFn(Math.min(DEFAULT_REQUEST_SPACING_MS, remainingMs));
   }
 
-  if (Object.keys(v7Vals).length > 0 && typeof upstashGet === 'function') {
+  if (typeof upstashGet === 'function') {
     try {
       const raw = await upstashGet(LAST_GOOD_KEY);
       if (raw && typeof raw === 'object' && raw.valuations) {
@@ -980,47 +1124,68 @@ async function collectSectorValuations({
       }
     } catch {}
   }
-  if (lastGood) lastGoodMetricsUsed = mergeReturnMetrics(v7Vals, lastGood);
+
+  const currentValuationCount = Object.keys(v7Vals).length;
+  const currentValuations = {};
+  for (const symbol of symbols) {
+    if (!v7Vals[symbol]) continue;
+    const { source: _source, ...valuation } = v7Vals[symbol];
+    currentValuations[symbol] = valuation;
+  }
+
+  if (lastGood) {
+    lastGoodValuationSymbols = mergeLastGoodValuations(v7Vals, lastGood, symbols);
+    lastGoodMetricsUsed = mergeReturnMetrics(v7Vals, lastGood);
+  }
 
   const valuations = {};
-  const unavailableSymbols = [];
+  const unavailableSymbols = symbols.filter((symbol) => !currentValuations[symbol]);
   for (const symbol of symbols) {
-    if (!v7Vals[symbol]) {
-      unavailableSymbols.push(symbol);
-      continue;
-    }
+    if (!v7Vals[symbol]) continue;
     const { source: _source, ...valuation } = v7Vals[symbol];
     valuations[symbol] = valuation;
   }
   const valuationCount = Object.keys(valuations).length;
   if (valuationCount > 0 && valuationSources.size === 0) valuationSources.add('yahoo_v7_quote');
 
-  const hasCompleteReturnMetrics = valuationCount === symbols.length
+  const hasCompleteReturnMetrics = currentValuationCount === symbols.length
     && symbols.length > 0
     && symbols.every((symbol) => {
-      const valuation = valuations[symbol];
+      const valuation = currentValuations[symbol];
       return valuation
         && valuation.ytdReturn != null
         && valuation.threeYearReturn != null
         && valuation.fiveYearReturn != null;
     });
+  const hasCompleteCoreCoverage = currentValuationCount === symbols.length
+    && symbols.length > 0
+    && symbols.every((symbol) => hasCoreValuation(currentValuations[symbol]));
+  const lastGoodCoreCount = lastGood
+    ? symbols.filter((symbol) => hasCoreValuation(lastGood[symbol])).length
+    : 0;
+  const canPersistCoreSnapshot = hasCompleteCoreCoverage
+    && !hasCompleteReturnMetrics
+    && (!lastGood || (lastGoodCoreCount > 0 && lastGoodCoreCount < symbols.length));
 
-  // Persist last-good only when the current snapshot is complete at the
-  // field level. A v7-only run intentionally leaves return metrics null, and
-  // a partial quoteSummary fallback must never replace an older complete
-  // snapshot with that incomplete shape.
-  // A partial run may borrow return metrics from the previous snapshot. Do not
-  // rewrite that snapshot with a new fetchedAt: doing so would make borrowed
-  // metrics appear fresh forever across repeated partial cycles. Also retain a
-  // full last-good snapshot until a full current run replaces it; otherwise a
-  // partial outage would discard the symbols that were healthy previously.
-  if (
-    hasCompleteReturnMetrics
-    && lastGoodMetricsUsed.length === 0
-    && typeof upstashSet === 'function'
-  ) {
+  // Persist a complete core snapshot even when a v7-only run leaves return
+  // metrics null. A partial quoteSummary fallback must never replace an older
+  // snapshot with an incomplete shape. A partial run may borrow return metrics
+  // or core valuations from the previous snapshot; do not rewrite that
+  // snapshot with a new fetchedAt because that would make borrowed data appear
+  // fresh forever across repeated partial cycles.
+  const shouldPersistLastGood = (
+    hasCompleteReturnMetrics && lastGoodMetricsUsed.length === 0
+  ) || canPersistCoreSnapshot;
+  if (shouldPersistLastGood && typeof upstashSet === 'function') {
     try {
-      const ok = await upstashSet(LAST_GOOD_KEY, { valuations, fetchedAt: now() }, LAST_GOOD_TTL);
+      const snapshotValuations = Object.fromEntries(
+        Object.entries(hasCompleteReturnMetrics ? valuations : currentValuations)
+          .map(([symbol, valuation]) => [
+            symbol,
+            Object.fromEntries(Object.entries(valuation).filter(([, value]) => value != null)),
+          ]),
+      );
+      const ok = await upstashSet(LAST_GOOD_KEY, { valuations: snapshotValuations, fetchedAt: now() }, LAST_GOOD_TTL);
       // upstashSet resolves false on disable/timeout/non-OK without throwing.
       if (!ok) {
         console.warn('[Sector] last-good valuation snapshot write failed');
@@ -1034,10 +1199,15 @@ async function collectSectorValuations({
     valuations,
     valuationSources: [...valuationSources],
     valuationCount,
+    ...(currentValuationCount !== valuationCount ? { currentValuationCount } : {}),
     ...(unavailableSymbols.length > 0 ? { unavailableSymbols } : {}),
     ...(valuationDiagnostics.length > 0 ? { valuationDiagnostics } : {}),
-    ...(lastGoodFetchedAt && lastGoodMetricsUsed.length > 0
-      ? { lastGoodFetchedAt, lastGoodMetricsUsed }
+    ...(lastGoodFetchedAt && (lastGoodMetricsUsed.length > 0 || lastGoodValuationSymbols.length > 0)
+      ? {
+        lastGoodFetchedAt,
+        ...(lastGoodMetricsUsed.length > 0 ? { lastGoodMetricsUsed } : {}),
+        ...(lastGoodValuationSymbols.length > 0 ? { lastGoodValuationSymbols } : {}),
+      }
       : {}),
   };
 }
@@ -1067,6 +1237,9 @@ function buildSectorValuationPublication({
       valuationSourceStatus: valuationCoverage.sourceStatus,
       valuationSource: valuationCoverage.source,
       sourceState: seedSourceState,
+      ...(valuationCoverage.currentValuationCount != null
+        ? { valuationCurrentRecordCount: valuationCoverage.currentValuationCount }
+        : {}),
       sourceVersion: 'market-sectors',
       ...(valuationCoverage.unavailableSymbols?.length > 0
         ? { valuationUnavailableSymbols: valuationCoverage.unavailableSymbols }
@@ -1075,6 +1248,9 @@ function buildSectorValuationPublication({
         ? { valuationDiagnostics: valuationCoverage.valuationDiagnostics }
         : {}),
       ...(valuationCoverage.lastGood ? { valuationLastGood: valuationCoverage.lastGood } : {}),
+      ...(valuationCoverage.staleValuationSymbols?.length > 0
+        ? { valuationStaleSymbols: valuationCoverage.staleValuationSymbols }
+        : {}),
       ...(errorCode ? { errorCode } : {}),
     },
   };
@@ -1104,6 +1280,7 @@ module.exports = {
   mergeReturnMetrics,
   parseCurlResponse,
   parseV7Quote,
+  parseV7QuoteBatch,
   parseQuoteSummary,
   requestHttpsText,
   requestCurlText,

@@ -302,10 +302,12 @@ export const CACHE_TOOLS: ToolDef[] = [
             properties: {
               valuationCount: { type: 'number' },
               expectedValuationCount: { type: 'number' },
+              currentValuationCount: { type: 'number' },
               sourceStatus: { type: 'string', enum: ['ok', 'partial', 'degraded'] },
               source: { type: 'string' },
               fetchedAt: { type: 'number' },
               stale: { type: 'boolean' },
+              staleValuationSymbols: { type: 'array', items: { type: 'string' } },
               unavailableSymbols: { type: 'array', items: { type: 'string' } },
               valuationDiagnostics: {
                 type: 'array',
@@ -425,6 +427,16 @@ export const CACHE_TOOLS: ToolDef[] = [
                 coverageRecord.unavailableSymbols = filteredUnavailable;
               }
             }
+            const filteredStaleValuationSymbols = Array.isArray(coverageRecord.staleValuationSymbols)
+              ? coverageRecord.staleValuationSymbols
+                .filter((symbol): symbol is string => typeof symbol === 'string')
+                .filter((symbol) => requestedSectorSymbols.includes(symbol.toLowerCase()))
+              : [];
+            if (filteredStaleValuationSymbols.length === 0) {
+              delete coverageRecord.staleValuationSymbols;
+            } else {
+              coverageRecord.staleValuationSymbols = filteredStaleValuationSymbols;
+            }
             if (coverageRecord.lastGood && typeof coverageRecord.lastGood === 'object' && !Array.isArray(coverageRecord.lastGood)) {
               const lastGoodRecord = coverageRecord.lastGood as Record<string, unknown>;
               if (Array.isArray(lastGoodRecord.symbols)) {
@@ -453,14 +465,27 @@ export const CACHE_TOOLS: ToolDef[] = [
               ? Object.keys(sector.valuations).length
               : 0;
             const expectedValuationCount = requestedSectorSymbols.length;
+            const staleValuationCount = sector.valuations && typeof sector.valuations === 'object' && !Array.isArray(sector.valuations)
+              ? filteredStaleValuationSymbols.filter((symbol) => Object.prototype.hasOwnProperty.call(sector.valuations, symbol)).length
+              : 0;
+            const hasCurrentValuationCount = typeof coverageRecord.currentValuationCount === 'number'
+              && Number.isFinite(coverageRecord.currentValuationCount);
+            const filteredCurrentValuationCount = Math.max(0, filteredValuationCount - staleValuationCount);
             coverageRecord.valuationCount = filteredValuationCount;
             coverageRecord.expectedValuationCount = expectedValuationCount;
+            if (hasCurrentValuationCount) {
+              coverageRecord.currentValuationCount = filteredCurrentValuationCount;
+            }
             // Empty request set (no sector symbols matched): complete empty view, not degraded.
             coverageRecord.sourceStatus = expectedValuationCount === 0
               ? 'ok'
               : filteredValuationCount === 0
                 ? 'degraded'
-                : filteredValuationCount < expectedValuationCount ? 'partial' : 'ok';
+                : filteredValuationCount < expectedValuationCount
+                  || filteredStaleValuationSymbols.length > 0
+                  || (hasCurrentValuationCount && filteredCurrentValuationCount < expectedValuationCount)
+                  ? 'partial'
+                  : 'ok';
           }
         }
         narrowNested(data, 'etf-flows', 'etfs', (e) => matchesCode(e.ticker, symbols));

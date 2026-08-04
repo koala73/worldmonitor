@@ -9,6 +9,7 @@ import {
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   parseV7Quote,
+  parseV7QuoteBatch,
   parseCurlResponse,
   parseQuoteSummary,
   requestCurlText,
@@ -732,6 +733,24 @@ describe('parseV7Quote', () => {
   });
 });
 
+describe('parseV7QuoteBatch', () => {
+  it('maps one authenticated batch response back to requested symbols', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: {
+        result: [
+          { symbol: 'XLK', trailingPE: 25.3, beta: 1.05 },
+          { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
+        ],
+      },
+    }), ['XLK', 'SMH', 'XLV']);
+
+    assert.equal(result.kind, 'success');
+    assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
+    assert.equal(result.value.valuations.SMH.trailingPE, 37.2);
+    assert.equal(result.value.outcomes.XLV.kind, 'no_data');
+  });
+});
+
 describe('parseCurlResponse', () => {
   it('ignores the proxy CONNECT preamble and parses the upstream response', () => {
     const parsed = parseCurlResponse([
@@ -838,6 +857,31 @@ describe('buildSectorValuationCoverage', () => {
       fetchedAt: fetchedAt - 60_000,
       stale: true,
       symbols: ['XLF'],
+    });
+  });
+
+  it('keeps coverage partial when stale last-good records fill missing symbols', () => {
+    const coverage = buildSectorValuationCoverage({
+      valuationCount: 12,
+      expectedCount: 12,
+      currentValuationCount: 8,
+      fetchedAt,
+      sources: ['yahoo_v7_quote_authenticated_direct'],
+      unavailableSymbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+      lastGoodFetchedAt: fetchedAt - 60_000,
+      lastGoodValuationSymbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+    });
+
+    assert.equal(coverage.valuationCount, 12);
+    assert.equal(coverage.currentValuationCount, 8);
+    assert.equal(coverage.sourceStatus, 'partial');
+    assert.equal(coverage.seedSourceState, 'partial');
+    assert.equal(coverage.errorCode, 'SECTOR_VALUATIONS_PARTIAL');
+    assert.deepEqual(coverage.staleValuationSymbols, ['SMH', 'XLK', 'XLV', 'XLY']);
+    assert.deepEqual(coverage.lastGood, {
+      fetchedAt: fetchedAt - 60_000,
+      stale: true,
+      symbols: ['SMH', 'XLK', 'XLV', 'XLY'],
     });
   });
 });

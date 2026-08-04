@@ -18,12 +18,14 @@ describe('get_market_data sector valuation coverage contract', () => {
     assert.deepEqual(
       Object.keys(coverage.properties || {}).sort(),
       [
+        'currentValuationCount',
         'expectedValuationCount',
         'fetchedAt',
         'lastGood',
         'source',
         'sourceStatus',
         'stale',
+        'staleValuationSymbols',
         'unavailableSymbols',
         'valuationCount',
         'valuationDiagnostics',
@@ -163,6 +165,36 @@ describe('get_market_data sector valuation coverage contract', () => {
       data.sectors.valuationCoverage.valuationDiagnostics.map((entry) => entry.symbol),
       ['XLK', 'SMH'],
     );
+  });
+
+  it('keeps fallback-filled valuation coverage partial and preserves current count', () => {
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_market_data');
+    assert.ok(tool?._postFilter);
+    const data = {
+      sectors: {
+        sectors: [{ symbol: 'XLK' }, { symbol: 'SMH' }],
+        valuations: {
+          XLK: { trailingPE: 25 },
+          SMH: { trailingPE: 35 },
+        },
+        valuationCoverage: {
+          valuationCount: 2,
+          expectedValuationCount: 2,
+          currentValuationCount: 1,
+          sourceStatus: 'partial',
+          fetchedAt: Date.now(),
+          staleValuationSymbols: ['SMH'],
+          unavailableSymbols: ['SMH'],
+        },
+      },
+    };
+
+    tool._postFilter(data, { symbols: ['XLK', 'SMH'], limit: 0 });
+    assert.equal(data.sectors.valuationCoverage.valuationCount, 2);
+    assert.equal(data.sectors.valuationCoverage.expectedValuationCount, 2);
+    assert.equal(data.sectors.valuationCoverage.currentValuationCount, 1);
+    assert.equal(data.sectors.valuationCoverage.sourceStatus, 'partial');
+    assert.deepEqual(data.sectors.valuationCoverage.staleValuationSymbols, ['SMH']);
   });
 
   it('marks filtered coverage degraded when every requested sector symbol is unavailable', () => {
