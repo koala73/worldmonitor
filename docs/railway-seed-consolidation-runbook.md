@@ -26,7 +26,7 @@
 
 ## Deployment safety guardrails
 
-### Watch paths are a live contract, and an unreliable one
+### Watch paths are a live contract, and an accurate one
 
 Railway stores watch paths in each service's environment configuration, not in
 the repository. The repo-side contract is
@@ -37,28 +37,35 @@ imports and fails when that closure grows without a matching registry update.
 This keeps the declared closure complete without making unrelated changes under
 `scripts/**` or `shared/**` rebuild every seeder.
 
-**A complete closure does not make the filter reliable.** Railway refuses pushes
-that plainly match the glob and records the refusal only as a deployment whose
-status is `SKIPPED` and whose `meta.commitHash` carries the commit it refused.
-Measured 2026-08-04 against production, 62 of the 62 repository-backed services
-carrying a filter were behind a push Railway had refused, while
-13 of the 15 without one were at `origin/main` HEAD. Narrowness did not help:
-`seed-conflict-intel` pins the most careful closure in the fleet — 24 exact
-paths — and had its worst skip rate, 51% of its last 500 deployments.
+**The filter matches accurately — read `meta.skippedReason` before concluding
+otherwise.** Railway records a refused push as a `SKIPPED` deployment carrying
+`meta.commitHash` and a reason, and the two reasons it uses mean opposite
+things. Re-measured 2026-08-04 across all 77 repository-backed services and 600
+commits of main, of 7,391 `No changes to watched files` skips, 7,331 were
+plainly correct, 57 matched a pattern pointing **outside the service's build
+context** (a `rootDirectory: scripts` container cannot see repository-root
+`shared/`, so the `shared/**` several of them carry is unreachable by
+construction), and 3 were a registry closure not yet applied to Railway. None
+were unexplained.
 
-Clearing the filters fleet-wide was considered and rejected on cost: roughly 75
-build-minutes per push to main across 77 services at ~30 merges a day, and three
-always-on services (ais-relay, notification-relay, scenario-worker) would
-restart on every merge, dropping the AIS websocket connections among them. So
-the closures stay for now,
-what ships today is **detection** ([Deploy-drift check](#deploy-drift-check)
-below), and the permanent fix is to move change detection out of Railway
-entirely — compute which services' closures actually changed in CI and call
-`railway redeploy` for exactly those, so the matching happens in code we own and
-test. That is tracked in
-[#6142](https://github.com/koala73/worldmonitor/issues/6142). The full
-measurement and the history behind it are in
-[Railway watch paths skip deployments, however narrow the pattern](solutions/integration-issues/railway-seeder-watch-paths-can-skip-deployments.md).
+The lag comes from the other reason. `CI check suite failed` — 1,504 skips —
+is Railway refusing to build a commit whose **whole** GitHub check suite is
+failing, including scheduled workflows that re-report onto main's head SHA long
+after the merge gates went green. Over closure-relevant merges that is p90
+**4.7h** against p90 **0.01h** when Railway simply builds, and it is
+self-reinforcing: the freshness monitor goes red exactly when the fleet is
+behind.
+
+So the closures stay, and
+`.github/workflows/railway-deploy-trigger.yml` deploys the services whose
+closure actually changed, gated on main's own `gate` status rather than on
+Railway's reading of the entire suite. Clearing the filters fleet-wide remains
+rejected on cost: roughly 75 build-minutes per push across 77 services at ~30
+merges a day, and three always-on services (ais-relay, notification-relay,
+scenario-worker) restarting on every merge, dropping the AIS websocket
+connections among them — and it would not fix the dominant cause anyway. The
+full measurement is in
+[Railway defers deploys on a red check suite, not on watch paths](solutions/integration-issues/railway-seeder-watch-paths-can-skip-deployments.md).
 
 The always-on bootstrap publisher is the deliberate exception: its empty watch
 path list means Railway watches the whole repository. That broader trigger
@@ -197,39 +204,62 @@ integration that stopped delivering (#6064) and a build that failed after the
 merge landed are others. This check is deliberately agnostic about which. For
 every service whose Railway source is this repository it takes the newest
 deployment that actually reached a running state, reads `meta.commitHash` off
-it, and compares that with main's head. Three verdicts are healthy — `CURRENT`,
-`AHEAD`, `PENDING_BUILD` — and the problem set is derived from them by negation,
-so the reported verdicts are `REJECTED_PUSH`, `BEHIND`, `BUILD_FAILED`,
-`UNKNOWN_SOURCE`, `UNKNOWN_STATUS`, `NO_DEPLOYMENTS`, `NO_BUILD_IN_WINDOW` and
-`QUERY_FAILED`. The file's header comment and exported constants are the exact
-semantics. `REJECTED_PUSH` is the filter rejection this runbook's watch-path
-section describes: the named SHAs are merges Railway refused.
+it, and asks whether that source contains everything that can reach the service.
+Four verdicts are healthy — `CURRENT`, `CURRENT_FOR_CLOSURE`, `AHEAD`,
+`PENDING_BUILD` — and the problem set is derived from them by negation, so the
+reported verdicts are `REJECTED_PUSH`, `BEHIND`, `CLOSURE_UNKNOWN`,
+`BUILD_FAILED`, `UNKNOWN_SOURCE`, `UNKNOWN_STATUS`, `NO_DEPLOYMENTS`,
+`NO_BUILD_IN_WINDOW` and `QUERY_FAILED`. The file's header comment and exported
+constants are the exact semantics.
 
-Ancestry is answered with `git merge-base --is-ancestor`, which needs the
-commits present locally: the workflow checks out with `fetch-depth: 50` and
-re-fetches main before the step. An unanswerable question reports the service
-rather than excusing it.
+`CURRENT_FOR_CLOSURE` is what makes this compatible with watch-path filtering:
+the service is not on head, and that is correct, because nothing it can see has
+changed since. `REJECTED_PUSH` now means Railway refused a push that **did**
+reach the service, and the reason Railway gave is printed with it — a
+`CI check suite failed` refusal and a path refusal have different owners.
+
+Two questions need local history: ancestry (`git merge-base --is-ancestor`) and
+the diff between the commit each service is **running** and head. A service
+legitimately weeks behind sits outside any fixed depth, so both workflows check
+out full history with `filter: blob:none` — the diff walks trees and never needs
+blobs. Never re-fetch with `--depth` afterwards: that re-shallows the clone and
+strands exactly those commits. An unanswerable question reports the service
+(`CLOSURE_UNKNOWN`) rather than excusing it.
 
 Accepted degradations go in `scripts/railway-deploy-drift-baseline.json`, each
 with an owner issue and the whole file with an expiry, split by the same
 `applyAcceptanceBaseline` that `scripts/check-seed-freshness.mjs` applies to
 compact health — so expiry, prune-on-recovery, and "a service failing with a
 different verdict than the one baselined still blocks" cannot acquire two
-meanings. Today it holds the measured fleet: 62 `REJECTED_PUSH` entries against
-[#6142](https://github.com/koala73/worldmonitor/issues/6142) plus `umami` at
-`BEHIND` against #6064. Those are printed on every run as `acknowledged` and do
-not fail it, so a green monitor here means "nothing new went stale", not "every
-service is on head". The list should shrink as #6142 lands; a service that
-recovers is printed as `recovered` — prune it.
+meanings. It held 62 `REJECTED_PUSH` entries — every filtered service — until
+[#6142](https://github.com/koala73/worldmonitor/issues/6142) made the check
+closure-aware; those were not degradations, they were the check demanding that a
+filtered service run head. Today only `umami` at `BEHIND` against #6064 remains.
+Acknowledged entries are printed on every run and do not fail it, so a green
+monitor here means "nothing new went stale", not "every service is on head". A
+service that recovers is printed as `recovered` — prune it.
 
 #### Recovering a stale service
 
-Do not use `railway redeploy` to recover a bad or stale source deployment.
-Railway documents redeploy as rebuilding the most recent deployment with the
-same code, so it cannot pick up a newer fixed commit. Upload the source from a
-**clean detached worktree at `origin/main`**, never from your own worktree:
-`railway up` uploads the current working directory, so an unclean one deploys
-uncommitted state to production.
+Use the deploy trigger. It builds the service from git at an exact commit, so
+the resulting deployment carries a SHA the drift check can compare:
+
+```bash
+node scripts/trigger-railway-deploys.mjs --only <service-name> --dry-run
+node scripts/trigger-railway-deploys.mjs --only <service-name>
+```
+
+It is a no-op for a service that is already current, and omitting `--only`
+reconciles the whole fleet, so it is safe to run at any time. `--only` throws on
+a name the fleet does not have rather than silently selecting nothing.
+
+Do **not** use `railway redeploy`: Railway documents it as rebuilding the most
+recent deployment with the same code, so it cannot pick up a newer fixed commit.
+
+`railway up` remains the last resort for a service whose git source is broken.
+It uploads the current working directory, so run it only from a **clean detached
+worktree at `origin/main`** — never from your own worktree, or you deploy
+uncommitted state to production:
 
 ```bash
 git fetch origin
@@ -241,14 +271,11 @@ railway up --service <service-name> --environment production --detach
 
 An upload carries no commit SHA, so `check-railway-deploy-drift.mjs` reports
 that service as `UNKNOWN_SOURCE` until the next git-triggered build replaces it.
-That is expected after a recovery upload, not a second failure.
+That is expected after a recovery upload, not a second failure — and the deploy
+trigger treats it as a reason to deploy, so it self-heals on the next run.
 
-Alternatively, Railway's dashboard **Deploy Latest Commit** action deploys the
-latest commit from the service's default GitHub branch — preferable when the
-service's git source is healthy, because the resulting deployment carries a SHA
-the drift check can compare. After either recovery path, verify the deployment
-commit SHA and the relevant compact-health problem
-have both advanced. See Railway's official
+After any recovery path, verify the deployment commit SHA and the relevant
+compact-health problem have both advanced. See Railway's official
 [redeploy CLI reference](https://docs.railway.com/cli/redeploy) and
 [deployment actions reference](https://docs.railway.com/deployments/deployment-actions).
 
