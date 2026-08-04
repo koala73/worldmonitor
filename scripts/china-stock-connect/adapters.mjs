@@ -233,12 +233,17 @@ const REQUEST_HEADERS = Object.freeze({
 // SSE and SZSE both render numerics as grouped strings ("1,354.49"); SSE's
 // margin endpoint is the one that returns real JSON numbers. Reject anything
 // else rather than coercing, so a changed field type surfaces as missing data.
+// The grouping is validated BEFORE the separators are stripped. Stripping
+// first would turn a malformed "1,2," into a confident 12 -- a wrong number is
+// far worse here than a missing one, because a missing one degrades visibly.
+const GROUPED_NUMBER_RE = /^-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/u;
+
 export function parseExchangeNumber(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
-  const trimmed = value.replace(/,/gu, '').trim();
-  if (!/^-?\d+(?:\.\d+)?$/u.test(trimmed)) return null;
-  const parsed = Number(trimmed);
+  const trimmed = value.trim();
+  if (!GROUPED_NUMBER_RE.test(trimmed)) return null;
+  const parsed = Number(trimmed.replace(/,/gu, ''));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
