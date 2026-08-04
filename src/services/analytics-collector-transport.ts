@@ -142,21 +142,26 @@ async function sendCollectorHealthReport(
   report: CollectorHealthReport,
 ): Promise<boolean> {
   if (typeof globalThis.fetch !== 'function') return false;
+  // Bound through the same compatibility path as the collector write itself
+  // (#6086). The previous `if (AbortSignal.timeout) init.signal = ...` left this
+  // POST with NO deadline on exactly the browsers withManualTimeout exists for,
+  // so a hung /api/analytics-health kept the reporting promise pending forever —
+  // the same defect this module fixes one layer down.
+  let bound: TimeoutBoundInit | undefined;
   try {
-    const init: RequestInit = {
+    bound = withTimeout({
       method: 'POST',
       credentials: 'omit',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(report),
-    };
-    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-      init.signal = AbortSignal.timeout(COLLECTOR_HEALTH_REPORT_TIMEOUT_MS);
-    }
-    const response = await globalThis.fetch(endpoint, init);
+    }, COLLECTOR_HEALTH_REPORT_TIMEOUT_MS);
+    const response = await globalThis.fetch(endpoint, bound.init);
     return response.ok;
   } catch {
     return false;
+  } finally {
+    bound?.cleanup();
   }
 }
 
@@ -603,14 +608,17 @@ type TimeoutBoundInit = {
   cleanup: () => void;
 };
 
-function createTimeoutError(): Error {
-  const error = new Error(`Umami collector request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+function createTimeoutError(timeoutMs: number = REQUEST_TIMEOUT_MS): Error {
+  const error = new Error(`Umami collector request timed out after ${timeoutMs}ms`);
   error.name = 'TimeoutError';
   return error;
 }
 
-function withManualTimeout(init: RequestInit | undefined): TimeoutBoundInit {
-  if (typeof AbortController === 'undefined') throw createTimeoutError();
+function withManualTimeout(
+  init: RequestInit | undefined,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): TimeoutBoundInit {
+  if (typeof AbortController === 'undefined') throw createTimeoutError(timeoutMs);
 
   const controller = new AbortController();
   const existing = init?.signal;
@@ -619,8 +627,8 @@ function withManualTimeout(init: RequestInit | undefined): TimeoutBoundInit {
   else existing?.addEventListener('abort', forwardAbort, { once: true });
 
   const timeoutId = setTimeout(
-    () => controller.abort(createTimeoutError()),
-    REQUEST_TIMEOUT_MS,
+    () => controller.abort(createTimeoutError(timeoutMs)),
+    timeoutMs,
   );
   return {
     init: { ...(init ?? {}), signal: controller.signal },
@@ -631,24 +639,27 @@ function withManualTimeout(init: RequestInit | undefined): TimeoutBoundInit {
   };
 }
 
-function withTimeout(init: RequestInit | undefined): TimeoutBoundInit {
+function withTimeout(
+  init: RequestInit | undefined,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): TimeoutBoundInit {
   if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
-    return withManualTimeout(init);
+    return withManualTimeout(init, timeoutMs);
   }
   const existing = init?.signal;
   if (!existing) {
     return {
-      init: { ...(init ?? {}), signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+      init: { ...(init ?? {}), signal: AbortSignal.timeout(timeoutMs) },
       cleanup: () => {},
     };
   }
   if (typeof AbortSignal.any === 'function') {
     return {
-      init: { ...init, signal: AbortSignal.any([existing, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) },
+      init: { ...init, signal: AbortSignal.any([existing, AbortSignal.timeout(timeoutMs)]) },
       cleanup: () => {},
     };
   }
-  return withManualTimeout(init);
+  return withManualTimeout(init, timeoutMs);
 }
 
 async function runCollectorRequest(request: CollectorRequest, generation: number): Promise<void> {

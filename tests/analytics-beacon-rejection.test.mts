@@ -902,6 +902,72 @@ describe('collector request timeout compatibility (#6086)', () => {
       if (anyDescriptor) Object.defineProperty(AbortSignal, 'any', anyDescriptor);
     }
   });
+
+  // The three tests above each DISABLE a native API to reach withManualTimeout.
+  // Nothing covered the branches almost all real traffic takes, so a regression
+  // dropping the deadline on the native path would have shipped green.
+  it('binds the deadline on the native AbortSignal path, with and without a caller signal', async () => {
+    const seen: (AbortSignal | null | undefined)[] = [];
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(init?.signal);
+      return Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    // No caller signal -> the AbortSignal.timeout branch.
+    await window.fetch(UMAMI_SEND_URL, collectorEventInit());
+    assert.ok(seen[0] instanceof AbortSignal, 'the native path must still bind a deadline signal');
+
+    // Caller signal present -> the AbortSignal.any composition branch.
+    const caller = new AbortController();
+    await window.fetch(UMAMI_SEND_URL, collectorEventInit(caller.signal));
+    const composed = seen[1];
+    assert.ok(composed instanceof AbortSignal, 'a caller signal must not drop the collector deadline');
+    assert.notEqual(composed, caller.signal, 'the caller signal must be composed with the deadline, not used raw');
+    caller.abort(new Error('caller cancelled collector write'));
+    assert.ok(composed.aborted, 'caller cancellation must propagate through the composed signal');
+  });
+
+  // Bounded explicitly: if the pre-aborted branch regresses, an already-aborted
+  // signal never fires a future 'abort' event, so nothing aborts the controller
+  // and BOTH awaits below hang forever. node:test has no default timeout, so
+  // without this the regression would stall CI instead of failing it.
+  it('forwards a caller signal that was already aborted before dispatch', { timeout: 10_000 }, async () => {
+    const anyDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    let calls = 0;
+    console.warn = () => {};
+    Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      return calls === 1
+        ? rejectWhenAborted(init?.signal)
+        : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const caller = new AbortController();
+      const reason = new Error('cancelled before the write was dispatched');
+      // Aborted BEFORE the write reaches withManualTimeout, so the synchronous
+      // `if (existing?.aborted) forwardAbort()` branch runs instead of the
+      // addEventListener path the other tests exercise.
+      caller.abort(reason);
+
+      const request = window.fetch(UMAMI_SEND_URL, collectorEventInit(caller.signal));
+      await assert.rejects(request, (error) => error === reason);
+
+      const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      assert.equal((await queued).status, 200, 'a pre-aborted write must not wedge the serialized queue');
+      assert.ok(fakeTimers.timers.length > 0, 'the pre-aborted path still schedules a deadline');
+      assert.ok(fakeTimers.timers.every((timer) => timer.cancelled), 'the pre-aborted path still clears its timer');
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (anyDescriptor) Object.defineProperty(AbortSignal, 'any', anyDescriptor);
+    }
+  });
 });
 
 /**
@@ -1067,6 +1133,44 @@ describe('collector alert policy is wired into the reporting path', () => {
       false,
       'an accepted aggregate report does not duplicate the server-side Sentry event locally',
     );
+  });
+
+  // Deliberately does NOT stub the reporter: resetAnalyticsForTesting restores the
+  // real sendCollectorHealthReport, so this exercises the actual POST. Without a
+  // deadline here a hung /api/analytics-health leaves the reporting promise pending
+  // forever — the same unbounded-fetch defect this PR fixes for collector writes.
+  it('binds a deadline on the health-report POST when AbortSignal.timeout is unavailable', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const originalGlobalFetch = globalThis.fetch;
+    const healthInits: (RequestInit | undefined)[] = [];
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const stub = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/api/analytics-health')) {
+        healthInits.push(init);
+        return Promise.resolve(collectorResponse(true, 200, '{}'));
+      }
+      return Promise.resolve(collectorResponse(true, 200, '{}'));
+    }) as typeof window.fetch;
+    // sendCollectorHealthReport dispatches through globalThis.fetch, which is a
+    // DIFFERENT binding from window.fetch in this environment — stubbing only
+    // window.fetch silently misses the health POST entirely.
+    window.fetch = stub;
+    globalThis.fetch = stub;
+    stubFailingUmami();
+
+    try {
+      track('panel-open' as Parameters<typeof track>[0], {});
+      await drainPromiseHandlers();
+
+      assert.equal(healthInits.length, 1, 'the environment failure must reach the aggregate endpoint');
+      assert.ok(
+        healthInits[0]?.signal instanceof AbortSignal,
+        'the health report must carry a deadline even without AbortSignal.timeout',
+      );
+    } finally {
+      globalThis.fetch = originalGlobalFetch;
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
   });
 
   it('keeps critical-event health separate from successful ordinary writes', async () => {
