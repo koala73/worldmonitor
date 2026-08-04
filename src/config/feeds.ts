@@ -981,8 +981,85 @@ const ENERGY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+// India / South Asia desk feed preset. Reuses the full geopolitical feed set
+// but replaces the regional news category with an India- and South-Asia-first
+// source list (national dailies, business press, Hindi outlets, and neighbour
+// papers). Sources not yet in SOURCE_TIERS/SOURCE_TYPES fall back to the
+// default tier/type — add tier metadata when promoting this past a starter.
+const INDIA_FEEDS: Record<string, Feed[]> = {
+  ...FULL_FEEDS,
+  asia: [
+    // India — national
+    { name: 'The Hindu', url: rss('https://www.thehindu.com/news/national/feeder/default.rss'), lang: 'en' },
+    { name: 'Times of India', url: rss('https://timesofindia.indiatimes.com/rssfeedstopstories.cms') },
+    { name: 'Indian Express', url: rss('https://indianexpress.com/section/india/feed/') },
+    { name: 'Hindustan Times', url: rss('https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml') },
+    { name: 'NDTV', url: rss('https://feeds.feedburner.com/ndtvnews-top-stories') },
+    { name: 'The Print', url: rss('https://theprint.in/feed/') },
+    { name: 'Scroll.in', url: rss('https://scroll.in/feeds/all.rss') },
+    { name: 'WION', url: rss('https://news.google.com/rss/search?q=site:wionews.com+when:1d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'PIB India (Gov)', url: rss('https://news.google.com/rss/search?q=site:pib.gov.in+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    // India — business & markets
+    { name: 'Economic Times', url: rss('https://economictimes.indiatimes.com/rssfeedstopstories.cms') },
+    { name: 'Livemint', url: rss('https://www.livemint.com/rss/news') },
+    { name: 'Business Standard', url: rss('https://www.business-standard.com/rss/home_page_top_stories.rss') },
+    { name: 'Moneycontrol', url: rss('https://www.moneycontrol.com/rss/latestnews.xml') },
+    // India — Hindi
+    { name: 'BBC Hindi', url: rss('https://feeds.bbci.co.uk/hindi/rss.xml'), lang: 'hi' },
+    { name: 'Aaj Tak', url: rss('https://www.aajtak.in/rssfeeds/?id=home'), lang: 'hi' },
+    { name: 'Amar Ujala', url: rss('https://www.amarujala.com/rss/national.xml'), lang: 'hi' },
+    // South Asia — neighbours
+    { name: 'Dawn (Pakistan)', url: rss('https://www.dawn.com/feeds/home') },
+    { name: 'The Daily Star (Bangladesh)', url: rss('https://www.thedailystar.net/rss.xml') },
+    { name: 'Kathmandu Post (Nepal)', url: rss('https://kathmandupost.com/rss') },
+    { name: 'Daily Mirror (Sri Lanka)', url: rss('https://news.google.com/rss/search?q=site:dailymirror.lk+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    // Regional analysis & context
+    { name: 'The Diplomat', url: rss('https://thediplomat.com/feed/') },
+    { name: 'BBC Asia', url: rss('https://feeds.bbci.co.uk/news/world/asia/rss.xml') },
+  ],
+};
+
+// Cinema / entertainment feed preset. Category keys match the CINEMA_PANELS
+// keys in panels.ts so each renders as a news panel. Global coverage with an
+// India lens (Bollywood + regional). Uses Google News RSS for resilient
+// resolution of publishers without stable public feeds.
+const CINEMA_FEEDS: Record<string, Feed[]> = {
+  entertainment: [
+    { name: 'Variety', url: rss('https://variety.com/feed/') },
+    { name: 'The Hollywood Reporter', url: rss('https://www.hollywoodreporter.com/feed/') },
+    { name: 'Deadline', url: rss('https://deadline.com/feed/') },
+    { name: 'IndieWire', url: rss('https://www.indiewire.com/feed/') },
+    { name: 'Screen Daily', url: rss('https://www.screendaily.com/feed') },
+    { name: 'Entertainment Weekly', url: rss('https://ew.com/feed/') },
+  ],
+  'india-cinema': [
+    { name: 'Film Companion', url: rss('https://www.filmcompanion.in/feed') },
+    { name: 'TOI Entertainment', url: rss('https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms') },
+    { name: 'Bollywood Hungama', url: rss('https://news.google.com/rss/search?q=site:bollywoodhungama.com+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Pinkvilla', url: rss('https://news.google.com/rss/search?q=site:pinkvilla.com+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Bollywood', url: rss('https://news.google.com/rss/search?q=Bollywood+film+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'South Indian Cinema', url: rss('https://news.google.com/rss/search?q=(Tollywood+OR+Kollywood+OR+"Telugu+cinema"+OR+"Tamil+cinema"+OR+"Malayalam+cinema")+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  boxoffice: [
+    { name: 'Box Office (Global)', url: rss('https://news.google.com/rss/search?q=("box+office"+(weekend+OR+collection+OR+gross+OR+opening))+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Box Office India', url: rss('https://news.google.com/rss/search?q=("box+office"+India+(crore+OR+collection+OR+opening))+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  'ott-streaming': [
+    { name: 'Streaming News', url: rss('https://news.google.com/rss/search?q=(Netflix+OR+"Prime+Video"+OR+"Disney+Plus"+OR+"Apple+TV")+(release+OR+series+OR+film)+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'India OTT', url: rss('https://news.google.com/rss/search?q=(JioCinema+OR+"Disney+Hotstar"+OR+"Prime+Video+India"+OR+"OTT+release")+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  'festivals-awards': [
+    { name: 'Festivals & Awards', url: rss('https://news.google.com/rss/search?q=("film+festival"+OR+Oscars+OR+"Academy+Awards"+OR+Cannes+OR+Venice+OR+Berlinale+OR+TIFF)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'India Festivals & Awards', url: rss('https://news.google.com/rss/search?q=(IFFI+OR+Filmfare+OR+"National+Film+Awards"+OR+MAMI)+when:5d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+};
+
 // Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech'
+export const FEEDS = SITE_VARIANT === 'cinema'
+  ? CINEMA_FEEDS
+  : SITE_VARIANT === 'india'
+  ? INDIA_FEEDS
+  : SITE_VARIANT === 'tech'
   ? TECH_FEEDS
   : SITE_VARIANT === 'finance'
     ? FINANCE_FEEDS
@@ -1008,6 +1085,8 @@ export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
   COMMODITY_FEEDS,
   ENERGY_FEEDS,
   HAPPY_FEEDS,
+  INDIA_FEEDS,
+  CINEMA_FEEDS,
 ]);
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {

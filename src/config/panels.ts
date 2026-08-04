@@ -1124,6 +1124,16 @@ function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | 
     : undefined;
 }
 
+// Cinema / entertainment variant panels. These keys double as feed categories
+// (see CINEMA_FEEDS in feeds.ts) so each renders as a news panel.
+const CINEMA_PANELS: Record<string, PanelConfig> = {
+  entertainment:      { name: 'Entertainment', enabled: true, priority: 1 },
+  'india-cinema':     { name: 'Indian Cinema', enabled: true, priority: 1 },
+  boxoffice:          { name: 'Box Office', enabled: true, priority: 1 },
+  'ott-streaming':    { name: 'OTT & Streaming', enabled: true, priority: 1 },
+  'festivals-awards': { name: 'Festivals & Awards', enabled: true, priority: 1 },
+};
+
 /** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
@@ -1131,6 +1141,7 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
   ...ENERGY_PANELS,
   ...TECH_PANELS,
   ...FINANCE_PANELS,
+  ...CINEMA_PANELS,
   ...FULL_PANELS,
 };
 
@@ -1142,6 +1153,25 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
   commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
   energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
   happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
+  // India / South Asia desk — curated subset of the full geopolitical panels,
+  // ordered for a regional focus (Asia + energy/markets first, Western-region
+  // desks dropped). Panels resolve their config from ALL_PANELS via
+  // getEffectivePanelConfig, so no separate *_PANELS table is required.
+  india: [
+    'map', 'live-news', 'insights', 'strategic-posture', 'cii', 'strategic-risk',
+    'intel', 'gdelt-intel', 'threat-timeline', 'cascade',
+    'asia', 'politics', 'middleeast',
+    'energy', 'energy-complex', 'commodities', 'gold-intelligence',
+    'markets', 'economic', 'supply-chain', 'trade-policy', 'finance', 'polymarket',
+    'gov', 'thinktanks', 'security-advisories',
+    'disease-outbreaks', 'displacement', 'climate', 'satellite-fires', 'ucdp-events',
+    'national-debt', 'world-clock', 'monitors',
+  ],
+  // Cinema / entertainment desk — global with an India lens.
+  cinema: [
+    'map', 'live-news', 'entertainment', 'india-cinema', 'boxoffice',
+    'ott-streaming', 'festivals-awards', 'insights', 'world-clock', 'monitors',
+  ],
 };
 
 /**
@@ -1171,6 +1201,18 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
   },
   happy: {
     map:         { name: 'World Map' },
+  },
+  india: {
+    map:         { name: 'South Asia Map' },
+    'live-news': { name: 'South Asia Headlines' },
+    insights:    { name: 'AI Regional Insights' },
+    asia:        { name: 'India & South Asia' },
+    politics:    { name: 'World News' },
+  },
+  cinema: {
+    map:         { name: 'Cinema Map' },
+    'live-news': { name: 'Entertainment Headlines' },
+    insights:    { name: 'AI Cinema Insights' },
   },
 };
 
@@ -1364,6 +1406,15 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
   )
 );
 
+// Cinema variant: geopolitical layers off, the static Cinema Hubs layer on.
+const CINEMA_MAP_LAYERS: MapLayers = {
+  ...FULL_MAP_LAYERS,
+  conflicts: false, bases: false, nuclear: false, hotspots: false,
+  sanctions: false, waterways: false, outages: false, iranAttacks: false,
+  weather: false,
+  cinemaHubs: true,
+};
+
 export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
   ? HAPPY_MAP_LAYERS
   : SITE_VARIANT === 'tech'
@@ -1374,7 +1425,9 @@ export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
         ? COMMODITY_MAP_LAYERS
         : SITE_VARIANT === 'energy'
           ? ENERGY_MAP_LAYERS
-          : FULL_MAP_LAYERS;
+          : SITE_VARIANT === 'cinema'
+            ? CINEMA_MAP_LAYERS
+            : FULL_MAP_LAYERS;
 
 export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
   ? HAPPY_MOBILE_MAP_LAYERS
@@ -1386,7 +1439,9 @@ export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
         ? COMMODITY_MOBILE_MAP_LAYERS
         : SITE_VARIANT === 'energy'
           ? ENERGY_MOBILE_MAP_LAYERS
-          : FULL_MOBILE_MAP_LAYERS;
+          : SITE_VARIANT === 'cinema'
+            ? CINEMA_MAP_LAYERS
+            : FULL_MOBILE_MAP_LAYERS;
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
