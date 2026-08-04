@@ -22,6 +22,10 @@ const workflowSource = readFileSync(
 const workflow = YAML.parse(workflowSource);
 const monitorSteps = workflow.jobs.monitor.steps;
 
+// The one condition allowed to stop a probe: the fail-closed green-main gate.
+// Anything else (an earlier probe failing) must leave the later probes running.
+const GATE_GUARD = "${{ !cancelled() && steps.gate.conclusion != 'failure' }}";
+
 function stepNamed(name) {
   const step = monitorSteps.find((candidate) => candidate.name === name);
   assert.ok(step, `seed freshness workflow must define "${name}"`);
@@ -164,11 +168,13 @@ describe('seed freshness workflow control plane', () => {
     assert.match(gate.run, /map\(select\(\.context == "gate"\)\) \| first/);
     assert.doesNotMatch(gate.run, /sort_by\(\.updated_at\)/);
     const acceptance = stepNamed('Check ingestion operational acceptance');
-    assert.equal(
-      acceptance.if,
-      undefined,
-      'default success() semantics must keep acceptance behind the fail-closed gate',
-    );
+    // Explicitly gated on the green-main check rather than on "every earlier
+    // step passed". Default success() semantics skipped this probe on every run
+    // from 2026-08-03, because an unrelated watch-path drift failed the config
+    // audit above it — one red step silently switched off data-freshness
+    // monitoring for the whole fleet.
+    assert.equal(acceptance.if, GATE_GUARD, 'acceptance must stay behind the fail-closed gate and nothing else');
+    assert.match(GATE_GUARD, /steps\.gate\.conclusion != 'failure'/);
     assert.equal(acceptance['continue-on-error'], undefined);
   });
 
@@ -244,9 +250,9 @@ describe('seed freshness workflow control plane', () => {
       undefined,
       'a merge that never reached production must fail the monitor, not annotate it',
     );
-    // No `if:` — default success() semantics keep this behind the fail-closed
-    // green-main gate, exactly as the compact-health step is.
-    assert.equal(drift.if, undefined, 'deploy drift stays behind the fail-closed gate');
+    // Gated on the green-main check only, exactly as compact health is: an
+    // earlier probe's failure must not be able to skip this one.
+    assert.equal(drift.if, GATE_GUARD, 'deploy drift stays behind the fail-closed gate and nothing else');
 
     assert.equal(
       workflow.jobs.monitor['timeout-minutes'],

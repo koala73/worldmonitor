@@ -87,19 +87,24 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
         run: node scripts/audit-railway-watch-paths.mjs
 
+      # `if` is an explicit gate reference, not decoration. With default success()
+      # semantics this step was SKIPPED on every run from 2026-08-03 onward
+      # because the config audit above failed on one service's watch paths —
+      # so a single unrelated drift silently switched off data-freshness
+      # monitoring for the whole fleet. Each probe now reports independently and
+      # the only thing that can stop it is the fail-closed green-main gate.
       - name: Check ingestion operational acceptance
+        if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         run: node scripts/check-seed-freshness.mjs
 
-      # Runs AFTER compact health deliberately. This step fails whenever any
-      # service is off head — including on a baseline expiry — and a failing
-      # step cancels the ones behind it, so putting it earlier would let a
-      # deploy-drift problem silently stop the data-health probe entirely.
+      # Last, and independently gated for the same reason compact health is.
       #
       # The audit above proves no service CAN silently skip a merge; this proves
       # none actually did. Both are needed: a cleared filter does nothing for a
       # webhook that stopped delivering (#6064), and this check catches that
       # without knowing why.
       - name: Check Railway deploy drift against main
+        if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
         run: |
