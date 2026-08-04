@@ -61,7 +61,12 @@ const BEFORE_DEADLINE = US_UNTIL - 60_000;
 const AT_DEADLINE = US_UNTIL;
 const AFTER_DEADLINE = US_UNTIL + 60_000;
 
-// Same ctx shape the handler builds (api/health.js), plus `activatedNames`.
+// Same ctx shape the handler builds (api/health.js), plus `activationStates`.
+// That map is three-valued (#6095): every registered marker gets an entry here
+// because a clean sweep reads them all, and only a marker whose EXISTS command
+// FAILED is absent from the map. Modelling it as "listed = true, everything
+// else = false" rather than "listed = true, everything else missing" keeps
+// these fixtures on the production path instead of the unread-marker one.
 function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, activated = [], now } = {}) {
   return {
     keyStrens: new Map(Object.entries(strens)),
@@ -70,7 +75,9 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, a
       Object.entries(metaValues).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]),
     ),
     keyMetaErrors: new Map(Object.entries(metaErrors)),
-    activatedNames: new Set(activated),
+    activationStates: new Map(
+      Object.keys(ACTIVATION_MARKERS).map((name) => [name, activated.includes(name)]),
+    ),
     now,
   };
 }
@@ -238,6 +245,36 @@ test('deploy-before-cron: absent coverage key inside the window is ROLLOUT_PENDI
     new Date(US_UNTIL).toISOString(),
     'the deadline must be on the wire so the softening is auditable from the payload alone',
   );
+});
+
+// #6095 kept ROLLOUT_PENDING soft when the marker read FAILS, deliberately and
+// for a different reason than the content-freshness gate (which fails closed).
+// makeCtx models a clean sweep, so every marker gets an entry and the unknown
+// state is unreachable from it — this drives the third state directly, since a
+// policy asserted only in a comment is a policy nothing defends.
+test('an unreadable marker keeps rollout softening, and says so in the payload', () => {
+  const ctx = makeCtx({ now: BEFORE_DEADLINE });
+  ctx.activationStates.delete(US); // the EXISTS command failed for this market only
+
+  const entry = classifyKey(US, BOOTSTRAP_KEYS[US], { allowOnDemand: false }, ctx);
+
+  assert.equal(
+    entry.status,
+    'ROLLOUT_PENDING',
+    'unknown must not manufacture a crit for a market that may genuinely never have run',
+  );
+  assert.equal(entry.activated, false, '`activated` reports read-AND-present, so unknown reads false');
+  assert.equal(
+    entry.activationUnknown,
+    true,
+    'and the flag distinguishes it from a market whose marker was read and found absent',
+  );
+
+  // The neighbouring market read cleanly, so it must carry no flag — otherwise
+  // the assertion above would pass on a sweep that lost every marker.
+  const clean = classifyKey(SG, BOOTSTRAP_KEYS[SG], { allowOnDemand: false }, ctx);
+  assert.equal(clean.status, 'ROLLOUT_PENDING');
+  assert.equal(clean.activationUnknown, undefined);
 });
 
 test('activation state is readable from the payload in every status, not just while pending', () => {

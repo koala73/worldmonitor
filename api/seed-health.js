@@ -114,6 +114,7 @@ const SEED_DOMAINS = {
   'military:cross-strait-activity:japan-mod': { key: 'seed-meta:military:cross-strait-activity:japan-mod', intervalMin: 180 },
   'military:defense-patents': { key: 'seed-meta:military:defense-patents', intervalMin: 12600 },
   'military-forecast-inputs': { key: 'seed-meta:military-forecast-inputs', intervalMin: 8 },
+  'military-surges':         { key: 'seed-meta:military-surges',         intervalMin: 8 },
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
   'supply_chain:shipping':    { key: 'seed-meta:supply_chain:shipping',    intervalMin: 120 },
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
@@ -411,13 +412,22 @@ async function getSeedBatch(entries) {
   for (const slot of probeSlots) {
     probeMap.set(slot.domain, data[slot.index]?.result ?? null);
   }
+  // Both maps are THREE-valued (#6095, matching api/health.js and
+  // api/mcp/freshness.ts): an entry exists only when the EXISTS command itself
+  // succeeded. Upstash reports per-command failures as `error` inside an
+  // otherwise-successful 200, so a domain missing from these maps means "the
+  // read failed and the state is unknown" — distinguishable from a marker that
+  // was read and came back absent. Each consumer below decides which way
+  // unknown resolves, and they deliberately differ.
   const activatedMap = new Map();
   for (const slot of activationSlots) {
-    activatedMap.set(slot.domain, Number(data[slot.index]?.result) === 1);
+    const entry = data[slot.index];
+    if (entry && !entry.error) activatedMap.set(slot.domain, Number(entry.result) === 1);
   }
   const contentFreshnessActivatedMap = new Map();
   for (const slot of contentFreshnessActivationSlots) {
-    contentFreshnessActivatedMap.set(slot.domain, Number(data[slot.index]?.result) === 1);
+    const entry = data[slot.index];
+    if (entry && !entry.error) contentFreshnessActivatedMap.set(slot.domain, Number(entry.result) === 1);
   }
   return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
@@ -454,15 +464,31 @@ export default async function handler(req) {
   for (const [domain, cfg] of entries) {
     const meta = metaMap.get(cfg.key);
     const maxStalenessMs = cfg.intervalMin * 2 * 60 * 1000;
+    // #6095 review: mirrors api/health.js's `activationUnknown`. A verdict
+    // reached from an UNREADABLE marker is otherwise byte-identical to one
+    // reached from evidence, so an operator cannot tell "the EXISTS command
+    // failed" from "the producer genuinely never published" — different
+    // remediations. Reports which evidence the verdict rests on; softens and
+    // hardens nothing on its own.
+    const activationUnknown = (cfg.activationKey && !activatedMap.has(domain))
+      || (cfg.contentFreshnessActivationKey && !contentFreshnessActivatedMap.has(domain));
 
     if (!meta) {
-      if (cfg.activationKey && !activatedMap.get(domain)) {
+      if (cfg.activationKey && activatedMap.get(domain) !== true) {
         // Never seeded (durable marker absent) AND operator-activation-
         // gated: healthy pending state, not an alarm (#4927 review P1).
         // Once the marker exists, missing meta falls through to
         // 'missing' — a publisher that ran once and died must alarm
         // (#4927 re-review P1).
+        // #6095 audited this grace and kept it soft on an UNREADABLE marker,
+        // unlike the content-freshness grace below, and mirrors the same call
+        // api/health.js makes for ON_DEMAND: the strict verdict here is
+        // 'missing' (which drives `overall: degraded` and HTTP 503), so
+        // resolving unknown to "activated" would turn a marker blip into a
+        // hard-down page for a domain that may genuinely never have run.
+        // There is no meta to be wrong about — absence is the whole input.
         seeds[domain] = { status: 'pending-activation', fetchedAt: null, recordCount: null, stale: false };
+        if (activationUnknown) seeds[domain].activationUnknown = true;
         continue;
       }
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
@@ -506,11 +532,25 @@ export default async function handler(req) {
       cfg.requireContentFreshness,
       now,
     );
+    // Grace requires POSITIVE proof (#6095): the marker was READ and came back
+    // absent. An unreadable marker is unknown state, not evidence of a producer
+    // that never ran — the same rule api/health.js and api/mcp/freshness.ts
+    // apply, so the three surfaces cannot answer differently for one input
+    // class. The opposite policy from the activation grace above, and for a
+    // reason: this one suppresses an alarm on a domain that HAS meta and IS
+    // running, and its strict verdict is 'coverage_degraded' — "cannot prove
+    // content freshness", which an unread marker makes literally true. A grace
+    // granted on the absence of evidence never expires, so an UNREADABLE marker
+    // would otherwise disable the alarm for good.
+    //
+    // Closes the unreadable arm ONLY: a marker that was evicted, renamed, or
+    // restored into an empty Redis returns a clean EXISTS=0 — the read-and-
+    // absent arm — and still grants the grace indefinitely. Tracked in #6111.
     const contentFreshnessPending = Boolean(
       contentFreshness
       && !contentFreshness.fieldPresent
       && cfg.contentFreshnessActivationKey
-      && !contentFreshnessActivatedMap.get(domain),
+      && contentFreshnessActivatedMap.get(domain) === false,
     );
     const contentFreshnessInvalid = Boolean(
       cfg.requireContentFreshness
@@ -565,6 +605,7 @@ export default async function handler(req) {
     };
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
+    if (activationUnknown) seeds[domain].activationUnknown = true;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;
     if (contentFreshness && !contentFreshnessPending) {
       seeds[domain].contentFreshness = projectContentFreshnessForWire(contentFreshness);

@@ -531,7 +531,7 @@ describe('recordHistoryIngestHealth', () => {
           JSON.stringify(retained),
         ]]),
         keyMetaErrors: new Map(),
-        activatedNames: new Set(['intelHistoryIngestConflictAcled']),
+        activationStates: new Map([['intelHistoryIngestConflictAcled', true]]),
         now: AT + (maxStaleMin + 1) * MINUTE,
       },
     );
@@ -850,7 +850,7 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
       keyMetaErrors: new Map(),
       // Past the deployment window: softening is revoked, so this is the real
       // classification an operator would see in production.
-      activatedNames: new Set([collector.healthName]),
+      activationStates: new Map([[collector.healthName, true]]),
       now,
     };
 
@@ -906,7 +906,9 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
         keyErrors: new Map(),
         keyMetaValues: new Map([[SEED_META[collector.healthName].key, null]]),
         keyMetaErrors: new Map(),
-        activatedNames: new Set(),   // marker absent: nothing has reported yet
+        // Marker READ and absent: nothing has reported yet (#6095 — an
+        // unreadable marker is a different, non-softening state).
+        activationStates: new Map([[collector.healthName, false]]),
         now: AT,
       };
 
@@ -920,7 +922,7 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
         collector.healthName,
         ingestKey,
         { allowOnDemand: true },
-        { ...ctx, activatedNames: new Set([collector.healthName]) },
+        { ...ctx, activationStates: new Map([[collector.healthName, true]]) },
       );
       assert.equal(activated.status, 'EMPTY');
       assert.equal(healthTesting.STATUS_COUNTS.EMPTY, 'crit');
@@ -984,7 +986,7 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
         keyErrors: new Map(),
         keyMetaValues: new Map([[SEED_META[collector.healthName].key, JSON.stringify(meta)]]),
         keyMetaErrors: new Map(),
-        activatedNames: new Set([collector.healthName]),
+        activationStates: new Map([[collector.healthName, true]]),
         now: AT + (maxStaleMin + 1) * MINUTE,
       };
 

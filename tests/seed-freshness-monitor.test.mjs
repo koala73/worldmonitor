@@ -127,7 +127,7 @@ describe('scheduled seed freshness monitor', () => {
         recordCount: 9,
       })]]),
       keyMetaErrors: new Map(),
-      activatedNames: new Set(),
+      activationStates: new Map(),
       now,
     });
     const committed = readCommittedBaseline();
@@ -172,7 +172,7 @@ describe('scheduled seed freshness monitor', () => {
         recordCount: 9,
       })]]),
       keyMetaErrors: new Map(),
-      activatedNames: new Set(),
+      activationStates: new Map(),
       now,
     });
     const result = applyAcceptanceBaseline(

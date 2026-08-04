@@ -297,6 +297,7 @@ const STANDALONE_KEYS = {
   thermalEscalationBootstrap: 'thermal:escalation-bootstrap:v1',
   tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
   militaryForecastInputs:   'military:forecast-inputs:stale:v1',
+  militarySurges:           'military:surges:stale:v1',
   gscpi:                    'economic:fred:v1:GSCPI:0',
   forecastFredWalcl:        'economic:fred:v1:WALCL:0',
   forecastFredT10y2y:       'economic:fred:v1:T10Y2Y:0',
@@ -526,6 +527,12 @@ const SEED_META = {
   ucdpEventsBootstrap: { key: 'seed-meta:conflict:ucdp-events-bootstrap', maxStaleMin: 420 }, // Same cron. Monitored separately because the bootstrap tier now hydrates from the compact projection, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
   acledIntel:       { key: 'seed-meta:conflict:acled-intel',      maxStaleMin: 38 }, // conflict:acled:v1:all:0:0, now ACLED-or-GDELT fallback for the forecast EMA input (#5099).
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 30 }, // cron ~10min (LIVE_TTL=600s); 30min = 3x interval,
+  // These are late-stage outputs of the same ~10min seeder. Keep their
+  // budgets tied to the cron rather than the payload TTL (24h), so a run that
+  // writes flights and then dies still becomes visible as the downstream
+  // snapshots age.
+  militaryForecastInputs: { key: 'seed-meta:military-forecast-inputs', maxStaleMin: 30 },
+  militarySurges:     { key: 'seed-meta:military-surges',      maxStaleMin: 30 },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
@@ -785,7 +792,6 @@ const ON_DEMAND_KEYS = new Set([
   'cyberThreatsRpc', 'militaryBases', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
-  'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
   // chronic LLM-provider failures must surface as CRIT.
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
@@ -998,6 +1004,9 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  // A completed surge calculation can legitimately contain no surge events;
+  // the canonical snapshot must still exist and remain fresh.
+  'militarySurges',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -1265,16 +1274,52 @@ function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
 function classifyKey(name, redisKey, opts, ctx) {
   const { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now } = ctx;
   const seedCfg = SEED_META[name];
+  // #6095 audited this grace and DELIBERATELY kept it soft when the marker read
+  // failed, unlike the content-freshness grace below. What it gates is why:
+  //   1. It downgrades exactly the two "no records" verdicts — EMPTY (key
+  //      absent) and EMPTY_DATA (key present, zero records), both crit — to
+  //      EMPTY_ON_DEMAND. Resolving unknown to "activated" would manufacture a
+  //      crit for a key that may genuinely never have run, which is the
+  //      deployment-order noise ON_DEMAND_KEYS exists to remove.
+  //   2. It never softens a fault that has DATA behind it. Every fault branch is
+  //      decided above these two, so an on-demand key that HAS data and goes
+  //      stale or errors still falls through to STALE_SEED/SEED_ERROR (see the
+  //      ON_DEMAND_KEYS policy block).
+  //   3. It is not free, and the cost is bounded rather than absent. For a key
+  //      whose marker is ALREADY present, an unreadable marker re-enters the
+  //      softening and downgrades EMPTY (crit — #4927's "ran once and died"
+  //      alarm) to EMPTY_ON_DEMAND, which scripts/check-seed-freshness.mjs then
+  //      excuses. That lasts only as long as the marker is unreadable, and
+  //      `entry.activationUnknown` marks every entry softened on unknown state
+  //      so the window is visible instead of silent.
+  // The content-freshness grace below has none of those bounds, which is why it
+  // takes the opposite policy on the same unknown state.
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
-    && !(ctx.activatedNames && ctx.activatedNames.has(name));
+    && ctx.activationStates?.get(name) !== true;
   // #6059 rollout bridge — see ROLLOUT_PENDING_UNTIL_MS. Unlike ON_DEMAND this
   // needs no per-registry opt-in (`allowOnDemand`): the window is bounded by a
   // compiled deadline and revoked by a durable marker, so it cannot rot into a
   // silent permanent exemption the way a registry-wide soften could.
+  // Soft on an unreadable marker for the same reasons as ON_DEMAND above, plus
+  // the deadline: an unknown state can delay strictness only until
+  // `rolloutPendingUntil`, so it can never grant a grace that never expires.
   const rolloutPendingUntil = ROLLOUT_PENDING_UNTIL_MS[name];
   const isRolloutPending = rolloutPendingUntil != null
     && now < rolloutPendingUntil
-    && !(ctx.activatedNames && ctx.activatedNames.has(name));
+    && ctx.activationStates?.get(name) !== true;
+  // #6095 review: without this the verdict produced from an UNREADABLE marker is
+  // byte-identical to the one produced from evidence, so an operator cannot tell
+  // "the EXISTS command failed" from "the producer genuinely never published" —
+  // two different remediations. This file already treats a failed read as
+  // information ops needs (a data/meta read error becomes REDIS_PARTIAL rather
+  // than "key missing"); the marker commands are the one read with no status of
+  // their own, so they get a flag instead. Emitted for every status, like
+  // `onDemand`, and covers BOTH markers a check can consult: its own, and the
+  // separate content-freshness marker its seed config names.
+  const activationUnknown = Boolean(ctx.activationStates) && [
+    ACTIVATION_MARKERS[name] ? name : null,
+    seedCfg?.contentFreshnessActivation ?? null,
+  ].some((markerName) => markerName !== null && !ctx.activationStates.has(markerName));
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
 
@@ -1310,12 +1355,29 @@ function classifyKey(name, redisKey, opts, ctx) {
   // block, so this deployment simply predates the feature. Softened only for
   // ABSENCE — a block that is present is always evaluated, and once the marker
   // exists a disappearing block is a regression that fails closed.
+  //
+  // Grace requires POSITIVE proof (#6095): the marker was READ and came back
+  // absent. An unreadable marker is unknown state, not evidence of a producer
+  // that never ran, and earns nothing — the same rule api/mcp/freshness.ts and
+  // api/seed-health.js apply, so the three surfaces cannot answer differently
+  // for one input class. The opposite policy from the ON_DEMAND grace above,
+  // and for a reason: this one suppresses an alarm on a key that HAS data and
+  // IS running, and its strict verdict is COVERAGE_DEGRADED — "cannot prove
+  // content freshness", which an unread marker makes literally true. A grace
+  // granted on the absence of evidence never expires, so an UNREADABLE marker
+  // would otherwise disable the alarm for good.
+  //
+  // Scope, stated because the hazard is wider than the fix: this closes the
+  // unreadable arm ONLY. A marker that was evicted, renamed, or restored into
+  // an empty Redis returns a clean EXISTS=0 — the read-and-absent arm above —
+  // and still grants the grace indefinitely. Bounding that needs a compiled
+  // deadline the way ROLLOUT_PENDING_UNTIL_MS does; tracked in #6111.
   const contentFreshnessPending = Boolean(
     seedCfg?.requireContentFreshness
     && contentFreshness
     && !contentFreshness.fieldPresent
     && seedCfg.contentFreshnessActivation
-    && !ctx.activatedNames?.has(seedCfg.contentFreshnessActivation),
+    && ctx.activationStates?.get(seedCfg.contentFreshnessActivation) === false,
   );
 
   // When the data key is gone the meta count is meaningless; force records=0
@@ -1420,6 +1482,9 @@ function classifyKey(name, redisKey, opts, ctx) {
   // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
   // ON_DEMAND_KEYS policy block above exists to prevent).
   if (isOnDemand) entry.onDemand = true;
+  // See the activationUnknown derivation above. Never softens or hardens
+  // anything by itself — it only says which evidence the verdict rests on.
+  if (activationUnknown) entry.activationUnknown = true;
   // Publish the deadline with the state so the softening is auditable from the
   // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
   // exactly when this key stops being excused without reading api/health.js.
@@ -1429,9 +1494,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // NOT activated, so on its own it can never answer "which markets have gone
   // live?". Without this, auditing rollout progress (or telling
   // "activated-then-broke" apart from "never ran") means EXISTS-probing Redis by
-  // hand. ctx.activatedNames already holds the answer at classify time.
+  // hand. ctx.activationStates already holds the answer at classify time.
+  // Reported as "read AND present", so an unreadable marker publishes `false` —
+  // the same soft-on-unknown reading `isRolloutPending` takes above, kept
+  // aligned so this flag can never contradict the status it accompanies.
   if (rolloutPendingUntil != null) {
-    entry.activated = Boolean(ctx.activatedNames && ctx.activatedNames.has(name));
+    entry.activated = ctx.activationStates?.get(name) === true;
   }
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
@@ -2017,18 +2085,30 @@ export default async function handler(req, ctx) {
     if (r?.error) keyMetaErrors.set(allMetaKeys[i], r.error);
     keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
-  // activatedNames: keys whose durable activation marker exists — these
-  // leave ON_DEMAND softening permanently (#4927 re-review P1). A marker
-  // read error degrades to not-activated (soft), never to a false alarm.
-  const activatedNames = new Set();
+  // activationStates: health name -> whether its durable activation marker
+  // exists. THREE-valued on purpose (#6095, matching api/mcp/freshness.ts): an
+  // entry is present ONLY when the EXISTS command itself succeeded. `true` =
+  // read and present (the key has left ON_DEMAND softening permanently, #4927
+  // re-review P1); `false` = read and absent (the producer has demonstrably
+  // never published); a MISSING entry = the read failed, so the state is
+  // unknown. Which way "unknown" resolves is the consumer's call and the two
+  // policies differ deliberately — see classifyKey.
+  // Test the entry ITSELF, never `!r?.error` — that reads TRUE for a slot that
+  // never arrived (`undefined?.error` is undefined), so a response array
+  // shorter than the command list would record every missing marker as `false`
+  // = "read and confirmed absent" and hand back the exact grace this three-
+  // valued read exists to revoke. The EXISTS commands sit at the tail of the
+  // sweep, which is precisely where a truncated response stops short. Same
+  // guard as api/seed-health.js and api/mcp/dispatch.ts.
+  const activationStates = new Map();
   for (let i = 0; i < activationEntries.length; i++) {
     const r = results[allDataKeys.length + allMetaKeys.length + i];
-    if (!r?.error && Number(r?.result) === 1) activatedNames.add(activationEntries[i][0]);
+    if (r && !r.error) activationStates.set(activationEntries[i][0], Number(r.result) === 1);
   }
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
 
-  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activatedNames, now };
+  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activationStates, now };
   const checks = {};
   const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0 };
   let totalChecks = 0;
