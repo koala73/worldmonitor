@@ -435,6 +435,7 @@
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_china-exchange-transport.mjs",
       "scripts/_content-age-helpers.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
