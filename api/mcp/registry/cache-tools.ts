@@ -995,7 +995,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_economic_data',
     _outputBudgetBytes: 131072,
-    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
+    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official RUB rates and key policy rate, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1003,7 +1003,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'array',
           items: {
             type: 'string',
-            enum: ['fedfunds', 'econ-calendar', 'china-macro', 'china-release-calendar', 'fuel-prices', 'ecb-fx-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
+            enum: ['fedfunds', 'econ-calendar', 'china-macro', 'china-release-calendar', 'fuel-prices', 'ecb-fx-rates', 'cbr-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full economic bundle.',
         },
@@ -1052,6 +1052,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: { countries: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, price: { type: 'number' }, currency: { type: 'string' } } } } },
       },
       'ecb-fx-rates': { type: ['object', 'null'] },
+      'cbr-rates': { type: ['object', 'null'] },
       'yield-curve-eu': { type: ['object', 'null'] },
       spending: {
         type: ['object', 'null'],
@@ -1102,6 +1103,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar,
       'economic:fuel-prices:v1',
       'economic:ecb-fx-rates:v1',
+      'economic:cbr-rates:v1',
       'economic:yield-curve-eu:v1',
       'economic:spending:v1',
       'market:earnings-calendar:v1',
@@ -1127,6 +1129,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       { key: 'seed-meta:economic:bis-dsr', maxStaleMin: 1440 }, // 12h cron × 2
       { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
       { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
+      { key: 'seed-meta:economic:cbr-rates', maxStaleMin: 4320 }, // daily cron × 3
     ],
     _apiPaths: [
       "GET /api/economic/v1/get-ecb-fx-rates",

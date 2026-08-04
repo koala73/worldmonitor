@@ -243,7 +243,16 @@ test('buildCbrPayload summarises the key-rate path, not just the spot value', ()
   // The cut landed on 2026-07-27 — the FIRST day at the current rate, not the
   // last day at the old one, and not the newest observation.
   assert.equal(payload.keyRate.changedAt, '2026-07-27');
+  assert.equal(payload.keyRate.previousDate, '2026-07-24');
   assert.equal(payload.keyRate.change, -0.25);
+
+  // CBR repeats the same rate on every business day between decisions, so the
+  // series is run-length encoded to its steps. 6 observations, 2 levels.
+  assert.equal(payload.keyRate.observationCount, 6);
+  assert.deepEqual(payload.keyRate.path, [
+    { date: '2026-07-23', rate: 14.25 },
+    { date: '2026-07-27', rate: 14 },
+  ]);
 });
 
 test('buildCbrPayload reports no prior rate when the whole window is flat', () => {
@@ -260,6 +269,8 @@ test('buildCbrPayload reports no prior rate when the whole window is flat', () =
   // changedAt is only known to be "at or before the oldest observation we have",
   // so it must not claim the start of the window as a policy change.
   assert.equal(payload.keyRate.changedAt, null);
+  // The single path entry is the window's left edge for the same reason.
+  assert.deepEqual(payload.keyRate.path, [{ date: '2026-07-27', rate: 14 }]);
 });
 
 // ─── 5. change1d ───────────────────────────────────────────────────────────────
@@ -318,10 +329,24 @@ test('cbrContentMeta uses the FX date once it is no longer in the future', () =>
   assert.equal(meta.newestItemAt, Date.parse('2026-08-05T00:00:00Z'));
 });
 
+test('cbrContentMeta stays fresh while the key rate is merely on hold', () => {
+  // The rate last MOVED eight months ago but CBR is still publishing daily.
+  // Clocking off the newest step instead of the newest observation would report
+  // eight-month-old content and fire STALE_CONTENT on a perfectly live feed.
+  const onHold = {
+    date: '2026-08-05',
+    keyRate: { date: '2026-08-04', path: [{ date: '2025-12-15', rate: 14 }] },
+  };
+  const now = Date.parse('2026-08-04T20:00:00Z');
+  const meta = cbrContentMeta(onHold, now);
+  assert.equal(meta.newestItemAt, Date.parse('2026-08-04T00:00:00Z'));
+  assert.ok((now - meta.newestItemAt) / 60000 < 14 * DAY_MIN);
+});
+
 test('cbrContentMeta goes stale when the upstream freezes', () => {
   const frozen = {
     date: '2026-06-01',
-    keyRate: { observations: [{ date: '2026-05-29', value: 14 }] },
+    keyRate: { date: '2026-05-29', path: [{ date: '2026-05-29', rate: 14 }] },
   };
   const now = Date.parse('2026-08-04T20:00:00Z');
   const meta = cbrContentMeta(frozen, now);

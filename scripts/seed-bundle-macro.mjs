@@ -4,6 +4,10 @@ import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
 
 await runBundle('macro', [
   { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', canonicalKey: 'economic:bis:policy:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
+  // Bank of Russia official RUB rates + key policy rate. Three cbr.ru calls
+  // (daily table, prior day for change1d, KeyRate SOAP history), each with one
+  // retry at a 20s timeout — 120s covers the worst case with margin.
+  { label: 'CBR-Rates', script: 'seed-cbr-rates.mjs', seedMetaKey: 'economic:cbr-rates', canonicalKey: 'economic:cbr-rates:v1', intervalMs: DAY, timeoutMs: 120_000 },
   // Official-source requests are sequential and bounded per host. Blocked
   // PBoC/GACC candidates stay explicitly unavailable rather than using proxies.
   { label: 'China-Macro', script: 'seed-china-macro.mjs', seedMetaKey: 'economic:china-macro', freshnessMetaKey: 'seed-meta:economic:china-macro-transport', completionMetaKey: 'seed-meta:economic:china-macro-complete', canonicalKey: CHINA_MACRO_CACHE_KEY, requireCanonical: true, intervalMs: 36 * HOUR, timeoutMs: 240_000 },

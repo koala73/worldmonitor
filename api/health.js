@@ -229,6 +229,12 @@ const STANDALONE_KEYS = {
   sharedFxRates:          'shared:fx-rates:v1',
   bisCredit:             'economic:bis:credit:v1',
   bisDsr:                'economic:bis:dsr:v1',
+  // Bank of Russia official rates: health-monitored but deliberately NOT a
+  // bootstrap key. No dashboard panel reads it — it is served through
+  // get_economic_data, which reads the canonical key straight from Redis — so
+  // registering it in a tier would add ~6KB to a payload every client downloads
+  // and nothing consumes.
+  cbrRates:              'economic:cbr-rates:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
   bisPropertyCommercial:  'economic:bis:property-commercial:v1',
   imfMacro:             'economic:imf:macro:v2',
@@ -644,6 +650,7 @@ const SEED_META = {
   spr:               { key: 'seed-meta:economic:spr',                 maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   refineryInputs:    { key: 'seed-meta:economic:refinery-inputs',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   ecbFxRates:        { key: 'seed-meta:economic:ecb-fx-rates',        maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap
+  cbrRates:          { key: 'seed-meta:economic:cbr-rates',           maxStaleMin: 4320 }, // daily seed (seed-bundle-macro); 4320min = 72h = 3x interval, and below the 4d canonical TTL so the key outlives its own gate
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   eurostatHousePrices: { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data; 50d threshold = 35d TTL + 15d buffer
   eurostatGovDebtQ:    { key: 'seed-meta:economic:eurostat-gov-debt-q',   maxStaleMin: 60 * 24 * 14 }, // 2d cron, quarterly data; 14d threshold matches TTL + quarterly release drift

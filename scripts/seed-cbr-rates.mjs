@@ -240,6 +240,16 @@ export function parseKeyRateSoap(xml) {
  * last day at the old one. When the whole window is flat the cut predates the
  * window, so previousRate/change/changedAt are null rather than claiming the
  * oldest observation as a policy move.
+ *
+ * `path` run-length-encodes the series: CBR repeats the same rate on every
+ * business day between decisions, so ~500 daily observations collapse to ~20
+ * steps carrying the identical information at a twentieth of the payload. Its
+ * FIRST entry is the left edge of the requested window, not necessarily a
+ * policy change — same reasoning as `changedAt` above.
+ *
+ * `date` stays the newest OBSERVATION date, not the newest step: it is what
+ * cbrContentMeta clocks freshness against, and a rate that has been on hold for
+ * six months must not read as six-month-old content.
  */
 function summariseKeyRate(observations) {
   if (!Array.isArray(observations) || observations.length === 0) return null;
@@ -251,6 +261,13 @@ function summariseKeyRate(observations) {
   const changed = runStart > 0;
   const previous = changed ? observations[runStart - 1] : null;
 
+  const path = [];
+  for (const obs of observations) {
+    if (path.length === 0 || path.at(-1).rate !== obs.value) {
+      path.push({ date: obs.date, rate: obs.value });
+    }
+  }
+
   return {
     rate: latest.value,
     date: latest.date,
@@ -258,7 +275,8 @@ function summariseKeyRate(observations) {
     previousDate: previous ? previous.date : null,
     changedAt: changed ? observations[runStart].date : null,
     change: previous ? cleanFloat(latest.value - previous.value) : null,
-    observations,
+    observationCount: observations.length,
+    path,
   };
 }
 
@@ -298,20 +316,24 @@ export function buildCbrPayload({ daily, previousDaily, keyRateObservations, see
  * Content-age contract: detect an upstream FREEZE (HTTP 200 forever with the
  * same numbers), which seeder liveness cannot see.
  *
- * The key-rate observation dates are the primary clock, and the FX date is
- * offered alongside them. That ordering matters: CBR publishes TOMORROW's
- * official rate, so on 2026-08-04 the FX document is dated 2026-08-05.
+ * The newest key-rate OBSERVATION date is the primary clock, and the FX date is
+ * offered alongside it. That ordering matters: CBR publishes TOMORROW's official
+ * rate, so on 2026-08-04 the FX document is dated 2026-08-05.
  * tokensToContentMeta drops tokens more than an hour in the future, so an
  * FX-date-only contract would collapse to null — an instant, permanent
  * STALE_CONTENT — on every evening run. Key-rate rows are always dated in the
  * past and stop advancing the moment cbr.ru freezes.
  *
+ * The `path` dates only widen the reported span (oldestItemAt); they must never
+ * be the newest token, because a rate on hold for six months has a six-month-old
+ * newest STEP while the series itself is publishing daily.
+ *
  * @param {object} data canonical payload
  * @param {number} [nowMs] injectable clock for deterministic tests
  */
 export function cbrContentMeta(data, nowMs = Date.now()) {
-  const tokens = (data?.keyRate?.observations ?? []).map((o) => o?.date);
-  tokens.push(data?.date);
+  const tokens = (data?.keyRate?.path ?? []).map((step) => step?.date);
+  tokens.push(data?.keyRate?.date, data?.date);
   return tokensToContentMeta(tokens, nowMs);
 }
 
