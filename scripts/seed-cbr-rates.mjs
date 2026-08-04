@@ -529,7 +529,14 @@ async function fetchKeyRateObservations(nowMs) {
   return parseKeyRateSoap(new TextDecoder().decode(bytes));
 }
 
-async function fetchCbrRates() {
+/**
+ * Orchestrate the three cbr.ru calls into one publishable payload.
+ *
+ * Exported for tests: the encoding fix lives in the WIRING (arrayBuffer() +
+ * decodeCbrXml, not text()), not in any single pure function, so a regression
+ * that swapped them back would leave every parser test green.
+ */
+export async function fetchCbrRates() {
   const seededAtMs = Date.now();
 
   const daily = await withRetry(() => fetchDailyRates(null), FETCH_RETRIES, 2000);

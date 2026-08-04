@@ -25,6 +25,7 @@ import {
   cbrContentMeta,
   cbrDateToIso,
   decodeCbrXml,
+  fetchCbrRates,
   isoToCbrDateReq,
   MIN_RATE_COUNT,
   parseCbrDecimal,
@@ -566,4 +567,140 @@ test('previousIsoDate steps back one calendar day across month and year ends', (
   for (const bad of ['05.08.2026', 'yesterday', '', null, undefined]) {
     assert.equal(previousIsoDate(bad), null, `expected null for ${JSON.stringify(bad)}`);
   }
+});
+
+// ─── 10. fetch-layer wiring ────────────────────────────────────────────────────
+//
+// The encoding fix lives in the WIRING, not in any pure function: fetchCbrBytes
+// must hand raw bytes to decodeCbrXml rather than calling Response.text().
+// Swapping those back would leave every parser test above green, so the stubs
+// here deliberately expose BOTH — text() returns the UTF-8 mojibake a naive
+// implementation would get, arrayBuffer() returns the real cp1251 bytes — and
+// the assertions can only pass on the arrayBuffer path.
+
+const DAILY_HOST_PATH = 'https://www.cbr.ru/scripts/XML_daily.asp';
+const KEY_RATE_HOST_PATH = 'https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx';
+
+function stubResponse(body, { contentLength = null } = {}) {
+  const bytes = Buffer.isBuffer(body) ? body : Buffer.from(body, 'utf8');
+  return {
+    ok: true,
+    status: 200,
+    headers: new Map([['content-length', contentLength ?? String(bytes.byteLength)]]),
+    // A naive implementation would take this and mojibake every Cyrillic name.
+    text: async () => new TextDecoder().decode(bytes),
+    arrayBuffer: async () => bytes,
+  };
+}
+
+/**
+ * Install a fetch stub for one run and restore it afterwards.
+ * `routes` maps a URL substring to a handler receiving (url, init).
+ */
+async function withFetchStub(routes, fn) {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    for (const [needle, handler] of routes) {
+      if (String(url).includes(needle)) return handler(String(url), init);
+    }
+    throw new Error(`unstubbed fetch: ${url}`);
+  };
+  try {
+    return { result: await fn(), calls };
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+/** A full-size daily document: MIN_RATE_COUNT rows plus the three real fixtures. */
+function fullDailyBytes(date = '05.08.2026', usdValue = '81,1291') {
+  const filler = [];
+  for (let i = 0; i < MIN_RATE_COUNT; i++) {
+    const code = `Z${String.fromCharCode(65 + Math.floor(i / 26))}${String.fromCharCode(65 + (i % 26))}`;
+    filler.push(
+      `<Valute ID="R9${String(i).padStart(4, '0')}"><NumCode>${900 + i}</NumCode>`
+      + `<CharCode>${code}</CharCode><Nominal>1</Nominal><Name>x</Name>`
+      + `<Value>${10 + i},5000</Value></Valute>`,
+    );
+  }
+  const head = dailyFixtureBytes({ date, usdValue });
+  // Splice the filler in before the closing tag, keeping the cp1251 name bytes.
+  const closing = Buffer.from('</ValCurs>', 'ascii');
+  return Buffer.concat([
+    head.subarray(0, head.length - closing.length),
+    Buffer.from(filler.join(''), 'ascii'),
+    closing,
+  ]);
+}
+
+test('fetchCbrRates decodes the daily table from BYTES, not Response.text()', async () => {
+  const { result, calls } = await withFetchStub([
+    [DAILY_HOST_PATH, () => stubResponse(fullDailyBytes())],
+    [KEY_RATE_HOST_PATH, () => stubResponse(KEY_RATE_SOAP)],
+  ], () => fetchCbrRates());
+
+  // Only reachable through arrayBuffer() + TextDecoder('windows-1251').
+  assert.equal(result.rates.USD.name, USD_NAME_UNICODE);
+  assert.equal(result.rates.USD.rate, 81.1291);
+  assert.equal(result.rates.JPY.rate, 0.515171, 'Nominal division survives the wiring');
+  assert.equal(result.keyRate.rate, 14);
+  assert.equal(validateCbrPayload(result), true);
+
+  // Three sequential calls: current table, prior day, key rate.
+  assert.equal(calls.length, 3);
+  assert.ok(calls[1].url.includes('date_req=04/08/2026'), `prior-day URL: ${calls[1].url}`);
+  assert.equal(calls[2].init.method, 'POST');
+  assert.match(calls[2].init.headers.SOAPAction, /KeyRate$/);
+});
+
+test('fetchCbrRates fails closed when the daily table comes back empty', async () => {
+  await assert.rejects(
+    withFetchStub([
+      [DAILY_HOST_PATH, () => stubResponse('<?xml version="1.0"?><ValCurs Date="05.08.2026"></ValCurs>')],
+      [KEY_RATE_HOST_PATH, () => stubResponse(KEY_RATE_SOAP)],
+    ], () => fetchCbrRates()),
+    /no usable rate rows/,
+  );
+});
+
+test('fetchCbrRates fails closed when the key rate comes back empty', async () => {
+  // The FX half succeeded here — publishing it alone would overwrite last-good
+  // with a half-empty document while /api/health stayed green.
+  await assert.rejects(
+    withFetchStub([
+      [DAILY_HOST_PATH, () => stubResponse(fullDailyBytes())],
+      [KEY_RATE_HOST_PATH, () => stubResponse('<soap:Envelope/>')],
+    ], () => fetchCbrRates()),
+    /KeyRate returned no observations/,
+  );
+});
+
+test('fetchCbrRates survives a failed prior-day fetch with change1d null', async () => {
+  let dailyCalls = 0;
+  const { result } = await withFetchStub([
+    [DAILY_HOST_PATH, (url) => {
+      dailyCalls++;
+      // Only the dated (prior-day) request fails; the current table succeeds.
+      if (url.includes('date_req=')) throw new Error('simulated upstream 503');
+      return stubResponse(fullDailyBytes());
+    }],
+    [KEY_RATE_HOST_PATH, () => stubResponse(KEY_RATE_SOAP)],
+  ], () => fetchCbrRates());
+
+  assert.equal(dailyCalls, 2, 'the prior-day call is attempted once, best-effort');
+  assert.equal(result.rates.USD.change1d, null, 'null, never 0 — a failed fetch is not "flat"');
+  assert.equal(result.previousDate, null);
+  assert.equal(validateCbrPayload(result), true, 'the run still publishes');
+});
+
+test('fetchCbrRates rejects an oversized body before parsing it', async () => {
+  await assert.rejects(
+    withFetchStub([
+      [DAILY_HOST_PATH, () => stubResponse(fullDailyBytes(), { contentLength: String(9 * 1024 * 1024) })],
+      [KEY_RATE_HOST_PATH, () => stubResponse(KEY_RATE_SOAP)],
+    ], () => fetchCbrRates()),
+    /response too large/,
+  );
 });

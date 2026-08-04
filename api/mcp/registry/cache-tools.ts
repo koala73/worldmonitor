@@ -1129,7 +1129,15 @@ export const CACHE_TOOLS: ToolDef[] = [
       { key: 'seed-meta:economic:bis-dsr', maxStaleMin: 1440 }, // 12h cron × 2
       { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
       { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
-      { key: 'seed-meta:economic:cbr-rates', maxStaleMin: 4320 }, // daily cron × 3
+      // No cbr-rates entry, matching its closest peer in this tool (ecb-fx-rates)
+      // and 8 of the 14 datasets here. evaluateFreshness treats a missing
+      // seed-meta as stale and ORs every check into ONE tool-level flag, so a
+      // brand-new key would mark every UNRELATED dataset stale — with
+      // cached_at: null — from the Vercel deploy until the first Railway tick.
+      // The activation-marker grace only covers requireContentFreshness blocks,
+      // so it cannot bridge that. CBR freshness is owned by /api/health, which
+      // models it per-key and with a content-age contract this shape cannot
+      // express (see cbrContentMeta in scripts/seed-cbr-rates.mjs).
     ],
     _apiPaths: [
       "GET /api/economic/v1/get-ecb-fx-rates",
