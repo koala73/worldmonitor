@@ -84,7 +84,7 @@ export async function reserveQuota(
   const key = dailyCounterKey(userId);
   if (!key) return { ok: false, reason: 'redis-unavailable' };
 
-  let pipeResult: Array<{ result: unknown }> | null;
+  let pipeResult: Array<{ result?: unknown; error?: unknown }> | null;
   try {
     pipeResult = await pipeline([
       ['INCR', key],

@@ -1777,12 +1777,11 @@ function hasExpiredActivationGrace(snapshot, now, { includeRollout = true, inclu
   return false;
 }
 
+// Retained as a named test seam: tests/consumer-prices-coverage-rollout.test.mjs
+// asserts the rollout-only half of the shared predicate. Production reads the
+// general function directly, so both graces are checked on every cache hit.
 function hasExpiredRolloutPending(snapshot, now) {
   return hasExpiredActivationGrace(snapshot, now, { includeContent: false });
-}
-
-function hasExpiredContentFreshnessPending(snapshot, now) {
-  return hasExpiredActivationGrace(snapshot, now, { includeRollout: false });
 }
 
 /**
@@ -2313,7 +2312,6 @@ export const __testing__ = {
   ROLLOUT_PENDING_FROM_MS,
   computeOverallStatus,
   hasExpiredRolloutPending,
-  hasExpiredContentFreshnessPending,
   hasExpiredActivationGrace,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,

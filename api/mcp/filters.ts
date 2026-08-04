@@ -280,11 +280,12 @@ export function summarizeData(data: Record<string, unknown>): Record<string, unk
 //     single captured fixture (an inferred schema would freeze every observed
 //     enum value + required flag forever and reject valid future responses).
 //   - Only the envelope (`cached_at`, `stale`, `data`) is `required`. The
-//     activation-grace deadline is optional because most tools have no
-//     content-freshness rollout contract.
 //     per-label `data` properties are intentionally NOT required because any
 //     single cache key may be transiently null without tripping the
 //     `cache_all_null` guard (which fires only when ALL keys are null).
+//     `contentFreshnessPendingUntil` is likewise optional: it is advertised on
+//     every cache envelope but only a tool whose freshness check declares a
+//     `contentFreshnessActivationKey` can ever populate it.
 //   - `additionalProperties` is left implicit (true) so forward-compat fields
 //     added to a payload by a producer don't suddenly fail validation.
 //   - Per-array `items.properties` lists known top-level fields with types but

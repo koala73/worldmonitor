@@ -39,7 +39,7 @@ export declare function readExistsFlags(
 export declare function redisPipeline(
   commands: Array<Array<string | number>>,
   timeoutMs?: number,
-): Promise<Array<{ result: unknown }> | null>;
+): Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export declare function setCachedData(
   key: string,

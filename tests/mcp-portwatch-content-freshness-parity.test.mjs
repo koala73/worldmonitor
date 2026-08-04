@@ -433,6 +433,11 @@ describe('#6080 — executeTool reads the activation marker', () => {
       activationEntryEmpty = false,
       malformedPipelineBody,
       now = Date.now(),
+      // Omit the explicit clock so executeTool samples its own — the only way
+      // to observe WHEN it samples. `onFetch` fires on each Redis round trip,
+      // letting a test advance a stubbed clock mid-request.
+      useInternalClock = false,
+      onFetch,
     } = {},
   ) {
     const originalFetch = globalThis.fetch;
@@ -442,6 +447,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     const present = new Set(markers);
     globalThis.fetch = async (url, init) => {
+      onFetch?.();
       if (String(url).endsWith('/pipeline')) {
         if (failActivationRead) throw new TypeError('fetch failed');
         if (malformedPipelineBody !== undefined) {
@@ -462,7 +468,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
       return new Response(JSON.stringify({ result: value }), { status: 200 });
     };
     try {
-      return await executeTool(CHOKEPOINT, {}, now);
+      return await executeTool(CHOKEPOINT, {}, useInternalClock ? undefined : now);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -617,6 +623,39 @@ describe('#6080 — executeTool reads the activation marker', () => {
       true,
       'an errored EXISTS entry is unknown state, not a marker that is absent',
     );
+  });
+
+  // The deadline is exact to the second, so WHEN the clock is read decides the
+  // verdict for any request straddling it. api/health.js re-samples after its
+  // Redis I/O (snapshotNow); MCP must do the same or the two surfaces disagree
+  // for the duration of one request. Sampling at function entry — a
+  // `now = Date.now()` default parameter — reintroduces exactly that skew.
+  it('samples the freshness clock after its Redis reads, not at entry', async () => {
+    const realNow = Date.now;
+    let clock = CONTENT_FRESHNESS_ROLLOUT_UNTIL - 60_000; // inside the window
+    Date.now = () => clock;
+    try {
+      const result = await runWithRedis(
+        baseKeys(blockLessMeta(clock), clock),
+        {
+          useInternalClock: true,
+          // The grace expires while the reads are in flight.
+          onFetch: () => { clock = CONTENT_FRESHNESS_ROLLOUT_UNTIL + 60_000; },
+        },
+      );
+      assert.equal(
+        result.stale,
+        true,
+        'grace ended mid-request, so the missing block must be evaluated',
+      );
+      assert.equal(
+        result.contentFreshnessPendingUntil,
+        undefined,
+        'a window that closed during the request publishes no deadline',
+      );
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it('does not treat an empty pipeline entry as a read absence', async () => {

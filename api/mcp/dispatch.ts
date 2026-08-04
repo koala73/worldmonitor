@@ -39,7 +39,7 @@ import { utf8ByteLength } from './utils';
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
-  now = Date.now(),
+  now?: number,
 ): Promise<{
   cached_at: string | null;
   stale: boolean;
@@ -84,10 +84,16 @@ export async function executeTool(
       tags: { route: 'api/mcp', step: 'activation-marker', tool: tool.name },
     });
   }
+  // Sample wall time AFTER the Redis reads, never at function entry. The same
+  // rule api/health.js applies via snapshotNow(): a request that begins inside
+  // an activation window but finishes after it must not report the grace as
+  // still live, or MCP briefly disagrees with the health surfaces at the exact
+  // instant the deadline passes. `now` stays injectable as a test seam.
+  const evaluatedAt = now ?? Date.now();
   const { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
     freshnessChecks,
     metas,
-    now,
+    evaluatedAt,
     activationStates,
   );
 

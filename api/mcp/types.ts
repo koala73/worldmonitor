@@ -269,7 +269,12 @@ export interface PublicToolShape {
 // ---------------------------------------------------------------------------
 // Daily-quota pipeline types
 // ---------------------------------------------------------------------------
-export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result: unknown }> | null>;
+// Mirrors redisPipeline in api/_upstash-json.d.ts. `result` is OPTIONAL and
+// `error` exists because Upstash reports per-command failures inside an
+// otherwise-successful 200 — the shape readExistsFlags branches on. While this
+// omitted `error`, a consumer could not read that field without a local cast
+// (api/mcp/dispatch.ts carried one, with a comment saying so, until #6152).
+export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export interface QuotaReserved {
   ok: true;

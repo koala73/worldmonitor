@@ -60,7 +60,7 @@ export const CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS = Object.freeze(
   ),
 );
 
-export function getContentFreshnessActivationWindow(activationKey) {
+function getContentFreshnessActivationWindow(activationKey) {
   const window = CONTENT_FRESHNESS_ROLLOUT_WINDOWS.get(activationKey);
   if (!window || !Number.isFinite(window.fromMs) || !Number.isFinite(window.untilMs)) return null;
   if (window.untilMs <= window.fromMs) return null;
@@ -76,10 +76,6 @@ export function getActiveContentFreshnessActivationWindow(activationKey, activat
     && now < window.untilMs
     ? window
     : null;
-}
-
-export function isContentFreshnessGraceActive(activationKey, activationState, now) {
-  return getActiveContentFreshnessActivationWindow(activationKey, activationState, now) !== null;
 }
 
 // Returns a private `fieldPresent` bit in addition to the wire fields. A JSON

@@ -28,7 +28,7 @@ process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { handleHealth, __testing__ } = await import('../api/health.js');
 const { handleSeedHealth } = await import('../api/seed-health.js');
-const { redisPipeline } = await import('../api/_upstash-json.js');
+const { readExistsFlags, redisPipeline } = await import('../api/_upstash-json.js');
 
 const {
   ACTIVATION_MARKERS,
@@ -147,6 +147,20 @@ describe('#6095 — /api/health treats an unreadable activation marker as unknow
     assert.equal(entry?.contentFreshnessPendingUntil, PORTWATCH_PENDING_UNTIL);
   });
 
+  // A graced check is OK, so it is filtered OUT of the compact `problems` map —
+  // `summary.contentFreshnessPendingUntil` is the ONLY thing carrying the
+  // deadline on the compact shape, and therefore the only thing that lets
+  // hasExpiredActivationGrace refuse an expired compact snapshot. Drive it
+  // through a real sweep; the other tests build that summary by hand.
+  it('publishes the graced deadline in the summary a live sweep produces', async () => {
+    const { body } = await healthResponseFor({ [PORTWATCH_MARKER]: ABSENT });
+    assert.equal(
+      body.summary?.contentFreshnessPendingUntil?.portwatchPortActivity,
+      PORTWATCH_PENDING_UNTIL,
+      'the sweep must accumulate per-check deadlines into the summary map',
+    );
+  });
+
   it('fails closed once the marker proves the producer has published the block', async () => {
     const entry = await portwatchHealthCheck(PRESENT);
     assert.equal(entry?.status, 'COVERAGE_DEGRADED', 'a block that disappears after activation is a regression');
@@ -165,19 +179,22 @@ describe('#6095 — /api/health treats an unreadable activation marker as unknow
   });
 
   // The same bug through a second door. "Unread" is not only an entry carrying
-  // an error — it is also a slot that never arrived. A guard written as
-  // `!r?.error` is TRUE for `r === undefined`, so a short response would record
-  // every missing activation slot as `false` ("read and confirmed absent") and
-  // hand back the very grace this issue exists to revoke. The sibling guards in
-  // api/seed-health.js and api/mcp/dispatch.ts both test the entry itself, and
-  // health must not be the one surface that trusts a slot it never received.
-  it('does not treat a slot missing from a short pipeline response as read-absent', async () => {
-    const checks = await healthChecks({}, { truncateBeforeActivation: true });
-    assert.notEqual(
-      checks.portwatchPortActivity?.status,
-      'OK',
-      'a slot that never arrived is unknown state, not a marker read and found absent',
-    );
+  // an error — it is also a slot that never arrived, and a guard written as
+  // `!r?.error` is TRUE for `r === undefined`.
+  //
+  // #6115 moved the defence one layer OUT: redisPipeline now rejects any body
+  // that is not an array of exactly commands.length entries, so a truncated
+  // response never reaches the classifier at all — the request fails closed as
+  // REDIS_DOWN instead. Assert THAT, not a status: a short response leaves no
+  // `checks` map, so the old `assert.notEqual(checks.x?.status, 'OK')` compared
+  // `undefined` and passed even with the length guard deleted. The classifier's
+  // own unknown-marker behaviour is covered by the ERRORED and EMPTY_ENTRY
+  // cases above, which do reach it.
+  it('fails a short pipeline response closed instead of classifying it', async () => {
+    const { res, body } = await healthResponseFor({}, { truncateBeforeActivation: true });
+    assert.equal(res.status, 503, 'a truncated pipeline body must not produce a verdict');
+    assert.equal(body.status, 'REDIS_DOWN');
+    assert.equal(body.checks, undefined, 'no check may be classified from a body we never fully received');
   });
 
   it('does not treat an empty pipeline entry as read-absent', async () => {
@@ -222,6 +239,61 @@ describe('#6115 — redisPipeline rejects malformed pipeline response envelopes'
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+  }
+});
+
+// readExistsFlags is the ONE parser all three surfaces now share, so its
+// contract is asserted here directly rather than only through the handlers.
+// Every call site happens to hand it a length-matched array today, which means
+// the length clause is unreachable from them and would survive deletion — the
+// exact shape a handler-only test cannot pin.
+describe('#6115 — readExistsFlags is the shared three-valued marker parser', () => {
+  const KEYS = ['marker-a', 'marker-b'];
+
+  it('maps only an explicit 0 or 1 to a known state', () => {
+    const states = readExistsFlags([{ result: 1 }, { result: 0 }], KEYS);
+    assert.deepEqual([...states], [['marker-a', true], ['marker-b', false]]);
+  });
+
+  it('accepts the string forms Upstash may serialise', () => {
+    const states = readExistsFlags([{ result: '1' }, { result: '0' }], KEYS);
+    assert.deepEqual([...states], [['marker-a', true], ['marker-b', false]]);
+  });
+
+  // The old parser was `Number(r.result) === 1`, which coerced. Each of these
+  // became a CONFIDENT verdict under it — `{result: null}` read as "absent"
+  // (granting grace) and `{result: true}` read as "present". All must now be
+  // absent from the map, i.e. unknown.
+  for (const [label, entry] of [
+    ['a truthy non-1 result', { result: true }],
+    ['a null result', { result: null }],
+    ['an out-of-range number', { result: 2 }],
+    ['an out-of-range string', { result: '2' }],
+    ['an array result', { result: [] }],
+    ['an entry with no result at all', {}],
+    ['a per-command error', { error: 'ERR max request size exceeded' }],
+    ['a result alongside an error', { result: 0, error: 'ERR marker read' }],
+    ['a non-object entry', 'ok'],
+    ['a null entry', null],
+  ]) {
+    it(`leaves ${label} unknown`, () => {
+      const states = readExistsFlags([entry, { result: 1 }], KEYS);
+      assert.equal(states.has('marker-a'), false, `${label} must not become a verdict`);
+      assert.equal(states.get('marker-b'), true, 'the sibling slot still resolves');
+    });
+  }
+
+  // Fail-closed on the envelope itself: one short body must not let slot 0 be
+  // read as authoritative just because it happens to be well-formed.
+  for (const [label, results] of [
+    ['a short array', [{ result: 0 }]],
+    ['a long array', [{ result: 0 }, { result: 0 }, { result: 0 }]],
+    ['a non-array', { 0: { result: 0 }, 1: { result: 0 } }],
+    ['null', null],
+  ]) {
+    it(`returns an empty map for ${label}`, () => {
+      assert.equal(readExistsFlags(results, KEYS).size, 0);
     });
   }
 });
