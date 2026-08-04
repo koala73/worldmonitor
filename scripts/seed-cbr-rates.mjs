@@ -202,7 +202,11 @@ export function parseDailyRates(xml) {
 
     rates[code] = {
       rate,
-      value,
+      // Named for what it is, not `value`: for the ~third of the table quoted
+      // per 100 or per 10 000 units, a consumer that reaches for a field called
+      // `value` over one called `rate` is off by that factor. The name has to
+      // carry the distinction, because nothing else in the payload does.
+      valuePerNominal: value,
       nominal,
       name: typeof row?.Name === 'string' ? row.Name : '',
       numCode: typeof row?.NumCode === 'string' ? row.NumCode : '',
@@ -277,15 +281,16 @@ export function parseKeyRateSoap(xml) {
  * window, so previousRate/change/changedAt are null rather than claiming the
  * oldest observation as a policy move.
  *
- * `path` run-length-encodes the series: CBR repeats the same rate on every
- * business day between decisions, so ~500 daily observations collapse to ~20
- * steps carrying the identical information at a twentieth of the payload. Its
- * FIRST entry is the left edge of the requested window, not necessarily a
- * policy change — same reasoning as `changedAt` above.
+ * The series is run-length encoded: CBR repeats the same rate on every business
+ * day between decisions, so ~500 daily observations collapse to ~20 steps
+ * carrying identical information at a twentieth of the payload. That encoding is
+ * split in two — `windowStart` is where the lookback opened (NOT a decision) and
+ * `changes` holds only transitions actually observed, so `changes` is
+ * legitimately empty for a window with no move.
  *
- * `date` stays the newest OBSERVATION date, not the newest step: it is what
- * cbrContentMeta clocks freshness against, and a rate that has been on hold for
- * six months must not read as six-month-old content.
+ * `observedAt` is the newest OBSERVATION date, not the newest step: it is what
+ * cbrContentMeta clocks freshness against, and a rate on hold for six months
+ * must not read as six-month-old content.
  */
 function summariseKeyRate(observations) {
   if (!Array.isArray(observations) || observations.length === 0) return null;
@@ -297,22 +302,30 @@ function summariseKeyRate(observations) {
   const changed = runStart > 0;
   const previous = changed ? observations[runStart - 1] : null;
 
-  const path = [];
+  // Run-length encode, then split the window's left edge away from the real
+  // transitions. The oldest observation is where our query window opened, NOT a
+  // policy decision — CBR may have been holding that rate for years before it.
+  // Emitting it inside the same list as genuine cuts and hikes invites any
+  // consumer (a chart, an LLM narrating "the CBR moved on X") to report the
+  // lookback boundary as a decision date. `changes` therefore contains only
+  // transitions actually observed, and is legitimately empty for a flat window.
+  const levels = [];
   for (const obs of observations) {
-    if (path.length === 0 || path.at(-1).rate !== obs.value) {
-      path.push({ date: obs.date, rate: obs.value });
+    if (levels.length === 0 || levels.at(-1).rate !== obs.value) {
+      levels.push({ date: obs.date, rate: obs.value });
     }
   }
 
   return {
     rate: latest.value,
-    date: latest.date,
+    observedAt: latest.date,
     previousRate: previous ? previous.value : null,
-    previousDate: previous ? previous.date : null,
+    previousObservedAt: previous ? previous.date : null,
     changedAt: changed ? observations[runStart].date : null,
     change: previous ? cleanFloat(latest.value - previous.value) : null,
     observationCount: observations.length,
-    path,
+    windowStart: levels[0],
+    changes: levels.slice(1),
   };
 }
 
@@ -358,7 +371,11 @@ export function buildCbrPayload({
   return {
     quoteCurrency: 'RUB',
     rateUnit: 'RUB per 1 unit of the listed currency',
-    date: daily?.date ?? null,
+    // `effectiveDate`, not `date`: CBR sets the official rate for the NEXT
+    // calendar day, so this is routinely tomorrow. A field called `date` reads
+    // as "as of", and a consumer narrating it that way is a day off on every
+    // single call — the steady state, not an edge case.
+    effectiveDate: daily?.date ?? null,
     previousDate: previousRates
       ? (previousRequestedDate ?? previousIsoDate(daily?.date) ?? null)
       : null,
@@ -389,21 +406,22 @@ export function buildCbrPayload({
  * null (instant, permanent STALE_CONTENT) on every evening run. Clamping keeps a
  * live table reading as fresh while a frozen one still ages honestly.
  *
- * Key-rate clock: the newest OBSERVATION date, never the newest `path` step — the
- * path is run-length encoded, so a rate on hold for six months has a six-month-old
- * newest step while the series is still publishing daily. The step dates only
- * widen the reported span (oldestItemAt).
+ * Key-rate clock: the newest OBSERVATION date (`observedAt`), never the newest
+ * `changes` step — the series is run-length encoded, so a rate on hold for six
+ * months has a six-month-old newest step while it is still publishing daily. The
+ * step dates only widen the reported span (oldestItemAt).
  *
  * @param {object} data canonical payload
  * @param {number} [nowMs] injectable clock for deterministic tests
  */
 export function cbrContentMeta(data, nowMs = Date.now()) {
-  const fxMs = periodTokenToMs(data?.date);
+  const fxMs = periodTokenToMs(data?.effectiveDate);
   const fxClock = Number.isFinite(fxMs) && fxMs > 0 ? Math.min(fxMs, nowMs) : null;
 
   const keyRateMeta = tokensToContentMeta([
-    data?.keyRate?.date,
-    ...(data?.keyRate?.path ?? []).map((step) => step?.date),
+    data?.keyRate?.observedAt,
+    data?.keyRate?.windowStart?.date,
+    ...(data?.keyRate?.changes ?? []).map((step) => step?.date),
   ], nowMs);
 
   // Fail closed: a missing clock on either side is "we cannot date this half",
@@ -428,7 +446,7 @@ export function cbrContentMeta(data, nowMs = Date.now()) {
  */
 export function validateCbrPayload(data) {
   if (!data || typeof data !== 'object') return false;
-  if (typeof data.date !== 'string' || data.date === '') return false;
+  if (typeof data.effectiveDate !== 'string' || data.effectiveDate === '') return false;
   if (!Number.isFinite(data.keyRate?.rate)) return false;
 
   const codes = Object.keys(data.rates ?? {});

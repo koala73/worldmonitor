@@ -74,7 +74,7 @@ Apply whenever **one** canonical key is fed by **more than one** independently-f
 
 The diagnostic question when reviewing any freshness contract: *"Which single upstream can stop publishing without changing `newestItemAt`?"* If the answer is anything other than "none," the reduction is wrong.
 
-A related trap in the same family: do not clock off a **run-length-encoded** series' newest step. A value on hold for six months has a six-month-old newest step while the series publishes daily — track the newest raw observation separately and let the compressed steps only widen `oldestItemAt`.
+A related trap in the same family: do not clock off a **run-length-encoded** series' newest step. A value on hold for six months has a six-month-old newest step while the series publishes daily — track the newest raw observation separately (`keyRate.observedAt`) and let the compressed steps only widen `oldestItemAt`.
 
 ## Examples
 
@@ -83,8 +83,8 @@ The defect, reproduced against the shipped payload shape. Both cases are locked 
 ```js
 // FX table frozen since June; the key rate is still publishing daily.
 const payload = {
-  date: '2026-06-01',                                       // FX: 64 days stale
-  keyRate: { date: '2026-08-04', path: [{ date: '2026-07-27', rate: 14 }] },
+  effectiveDate: '2026-06-01',                              // FX: 64 days stale
+  keyRate: { observedAt: '2026-08-04', changes: [{ date: '2026-07-27', rate: 14 }] },
 };
 
 // Under max(): newestItemAt = 2026-08-04 -> age 0 -> HEALTHY. The FX table is dead.

@@ -163,7 +163,7 @@ test('parseDailyRates divides by Nominal instead of publishing the block price',
 
   // JPY is quoted per 100 units: 51.5171 RUB per 100 JPY.
   assert.equal(rates.JPY.nominal, 100);
-  assert.equal(rates.JPY.value, 51.5171);
+  assert.equal(rates.JPY.valuePerNominal, 51.5171);
   assert.equal(rates.JPY.rate, 0.515171);
   assert.notEqual(rates.JPY.rate, 51.5171, 'publishing Value as the per-unit rate is a 100x error');
 
@@ -255,21 +255,19 @@ test('buildCbrPayload summarises the key-rate path, not just the spot value', ()
   });
 
   assert.equal(payload.keyRate.rate, 14);
-  assert.equal(payload.keyRate.date, '2026-08-04');
+  assert.equal(payload.keyRate.observedAt, '2026-08-04');
   assert.equal(payload.keyRate.previousRate, 14.25);
   // The cut landed on 2026-07-27 — the FIRST day at the current rate, not the
   // last day at the old one, and not the newest observation.
   assert.equal(payload.keyRate.changedAt, '2026-07-27');
-  assert.equal(payload.keyRate.previousDate, '2026-07-24');
+  assert.equal(payload.keyRate.previousObservedAt, '2026-07-24');
   assert.equal(payload.keyRate.change, -0.25);
 
   // CBR repeats the same rate on every business day between decisions, so the
   // series is run-length encoded to its steps. 6 observations, 2 levels.
   assert.equal(payload.keyRate.observationCount, 6);
-  assert.deepEqual(payload.keyRate.path, [
-    { date: '2026-07-23', rate: 14.25 },
-    { date: '2026-07-27', rate: 14 },
-  ]);
+  assert.deepEqual(payload.keyRate.windowStart, { date: '2026-07-23', rate: 14.25 });
+  assert.deepEqual(payload.keyRate.changes, [{ date: '2026-07-27', rate: 14 }]);
 });
 
 test('buildCbrPayload reports no prior rate when the whole window is flat', () => {
@@ -287,7 +285,8 @@ test('buildCbrPayload reports no prior rate when the whole window is flat', () =
   // so it must not claim the start of the window as a policy change.
   assert.equal(payload.keyRate.changedAt, null);
   // The single path entry is the window's left edge for the same reason.
-  assert.deepEqual(payload.keyRate.path, [{ date: '2026-07-27', rate: 14 }]);
+  assert.deepEqual(payload.keyRate.windowStart, { date: '2026-07-27', rate: 14 });
+  assert.deepEqual(payload.keyRate.changes, [], 'a flat window has NO observed transitions');
 });
 
 // ─── 5. change1d ───────────────────────────────────────────────────────────────
@@ -389,8 +388,8 @@ test('cbrContentMeta stays fresh while the key rate is merely on hold', () => {
   // Clocking off the newest step instead of the newest observation would report
   // eight-month-old content and fire STALE_CONTENT on a perfectly live feed.
   const onHold = {
-    date: '2026-08-05',
-    keyRate: { date: '2026-08-04', path: [{ date: '2025-12-15', rate: 14 }] },
+    effectiveDate: '2026-08-05',
+    keyRate: { observedAt: '2026-08-04', changes: [{ date: '2025-12-15', rate: 14 }] },
   };
   const now = Date.parse('2026-08-04T20:00:00Z');
   const meta = cbrContentMeta(onHold, now);
@@ -400,8 +399,8 @@ test('cbrContentMeta stays fresh while the key rate is merely on hold', () => {
 
 test('cbrContentMeta goes stale when both upstreams freeze', () => {
   const frozen = {
-    date: '2026-06-01',
-    keyRate: { date: '2026-05-29', path: [{ date: '2026-05-29', rate: 14 }] },
+    effectiveDate: '2026-06-01',
+    keyRate: { observedAt: '2026-05-29', changes: [{ date: '2026-05-29', rate: 14 }] },
   };
   const now = Date.parse('2026-08-04T20:00:00Z');
   const meta = cbrContentMeta(frozen, now);
@@ -415,8 +414,8 @@ test('cbrContentMeta reports a FROZEN FX table even while the key rate publishes
   // hide the dead one, so the alarm could only fire when BOTH died at once.
   const now = Date.parse('2026-08-04T20:00:00Z');
   const meta = cbrContentMeta({
-    date: '2026-06-01',
-    keyRate: { date: '2026-08-04', path: [{ date: '2026-07-27', rate: 14 }] },
+    effectiveDate: '2026-06-01',
+    keyRate: { observedAt: '2026-08-04', changes: [{ date: '2026-07-27', rate: 14 }] },
   }, now);
   assert.equal(meta.newestItemAt, Date.parse('2026-06-01T00:00:00Z'));
   assert.ok((now - meta.newestItemAt) / 60000 > 14 * DAY_MIN, 'a frozen FX table must trip the budget');
@@ -425,8 +424,8 @@ test('cbrContentMeta reports a FROZEN FX table even while the key rate publishes
 test('cbrContentMeta reports a FROZEN key rate even while the FX table advances daily', () => {
   const now = Date.parse('2026-08-04T20:00:00Z');
   const meta = cbrContentMeta({
-    date: '2026-08-05',
-    keyRate: { date: '2026-06-01', path: [{ date: '2026-05-01', rate: 14 }] },
+    effectiveDate: '2026-08-05',
+    keyRate: { observedAt: '2026-06-01', changes: [{ date: '2026-05-01', rate: 14 }] },
   }, now);
   assert.equal(meta.newestItemAt, Date.parse('2026-06-01T00:00:00Z'));
   assert.ok((now - meta.newestItemAt) / 60000 > 14 * DAY_MIN, 'a frozen key rate must trip the budget');
@@ -434,9 +433,9 @@ test('cbrContentMeta reports a FROZEN key rate even while the FX table advances 
 
 test('cbrContentMeta fails closed when either clock is missing entirely', () => {
   const now = Date.parse('2026-08-04T20:00:00Z');
-  assert.equal(cbrContentMeta({ date: null, keyRate: { date: '2026-08-04', path: [] } }, now), null);
-  assert.equal(cbrContentMeta({ date: '2026-08-05', keyRate: null }, now), null);
-  assert.equal(cbrContentMeta({ date: '2026-08-05', keyRate: { date: null, path: [] } }, now), null);
+  assert.equal(cbrContentMeta({ effectiveDate: null, keyRate: { observedAt: '2026-08-04', changes: [] } }, now), null);
+  assert.equal(cbrContentMeta({ effectiveDate: '2026-08-05', keyRate: null }, now), null);
+  assert.equal(cbrContentMeta({ date: '2026-08-05', keyRate: { date: null, changes: [] } }, now), null);
   assert.equal(cbrContentMeta(null, now), null);
 });
 
@@ -446,8 +445,8 @@ test('cbrContentMeta never reports a future newestItemAt', () => {
   // fire a false STALE_CONTENT in the last hour of every UTC day.
   const now = Date.parse('2026-08-04T23:30:00Z');
   const meta = cbrContentMeta({
-    date: '2026-08-05',
-    keyRate: { date: '2026-08-04', path: [{ date: '2026-07-27', rate: 14 }] },
+    effectiveDate: '2026-08-05',
+    keyRate: { observedAt: '2026-08-04', changes: [{ date: '2026-07-27', rate: 14 }] },
   }, now);
   assert.ok(meta.newestItemAt <= now, `newestItemAt ${meta.newestItemAt} must not exceed now ${now}`);
 });
@@ -514,8 +513,8 @@ test('validateCbrPayload rejects a table whose COUNT is fine but whose rates are
 });
 
 test('validateCbrPayload rejects a payload with no usable CBR date', () => {
-  assert.equal(validateCbrPayload({ ...publishablePayload(), date: null }), false);
-  assert.equal(validateCbrPayload({ ...publishablePayload(), date: '' }), false);
+  assert.equal(validateCbrPayload({ ...publishablePayload(), effectiveDate: null }), false);
+  assert.equal(validateCbrPayload({ ...publishablePayload(), effectiveDate: '' }), false);
 });
 
 // ─── 8. hostile and malformed input ────────────────────────────────────────────
@@ -703,4 +702,52 @@ test('fetchCbrRates rejects an oversized body before parsing it', async () => {
     ], () => fetchCbrRates()),
     /response too large/,
   );
+});
+
+// ─── 11. agent-facing payload contract ─────────────────────────────────────────
+//
+// This dataset has no dashboard panel — an MCP caller is its only reader, so
+// there is no UI for a user to cross-check a misreading against. Each field name
+// below was chosen to defeat a specific misreading, and each assertion here
+// fails if the name reverts to the ambiguous one.
+
+test('the published payload names every field a consumer could misread', () => {
+  const payload = buildCbrPayload({
+    daily: parseDailyRates(decodeCbrXml(dailyFixtureBytes())),
+    previousDaily: null,
+    keyRateObservations: parseKeyRateSoap(KEY_RATE_SOAP),
+    seededAtMs: Date.parse('2026-08-04T20:00:00Z'),
+  });
+
+  // Direction: `base: 'RUB'` reads, by FX-API convention, as "units of X per 1
+  // RUB" — the reciprocal. Inverting USD is a ~6600x error.
+  assert.equal(payload.quoteCurrency, 'RUB');
+  assert.match(payload.rateUnit, /RUB per 1 unit/);
+  assert.equal(payload.base, undefined);
+
+  // Date: CBR sets tomorrow's rate, so a field called `date` reads as "as of"
+  // and is a day off on every call.
+  assert.equal(payload.effectiveDate, '2026-08-05');
+  assert.equal(payload.date, undefined, 'the ambiguous name must not come back');
+
+  // Block price vs unit rate: `value` reads as authoritative as `rate` to a
+  // consumer with no other signal, and is 100x off for JPY.
+  assert.equal(payload.rates.JPY.rate, 0.515171);
+  assert.equal(payload.rates.JPY.valuePerNominal, 51.5171);
+  assert.equal(payload.rates.JPY.value, undefined, 'the ambiguous name must not come back');
+
+  // Window edge vs policy decision: the oldest observation is where the lookback
+  // opened, not a rate move, so it must not sit in the same list as real ones.
+  assert.equal(payload.keyRate.path, undefined, 'the conflated list must not come back');
+  assert.deepEqual(payload.keyRate.windowStart, { date: '2026-07-23', rate: 14.25 });
+  assert.ok(Array.isArray(payload.keyRate.changes));
+  for (const step of payload.keyRate.changes) {
+    assert.notEqual(step.date, payload.keyRate.windowStart.date,
+      'the window boundary must never appear as an observed transition');
+  }
+
+  // observedAt is the newest OBSERVATION, distinct from when the rate last moved.
+  assert.equal(payload.keyRate.observedAt, '2026-08-04');
+  assert.equal(payload.keyRate.changedAt, '2026-07-27');
+  assert.notEqual(payload.keyRate.observedAt, payload.keyRate.changedAt);
 });
