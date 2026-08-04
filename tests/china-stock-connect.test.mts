@@ -619,6 +619,38 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       }
     });
 
+    it('keeps the descriptive contract fields bound to real behaviour', () => {
+      // These fields document how each source is reached. Nothing in the
+      // adapter reads them, so without this test they are inert prose that can
+      // drift away from the code and mislead the next reader -- which is what
+      // the removed transportRecoverySuccessRuns field did, implying a recovery
+      // hysteresis this module never had.
+      for (const contract of Object.values(STOCK_CONNECT_SOURCE_CONTRACTS)) {
+        const reachesEdge = contract.fallbackPolicy.includes('then_edge');
+        assert.equal(
+          reachesEdge,
+          contract.maxEdgeRequestsPerRun > 0,
+          `${contract.id}: fallbackPolicy and maxEdgeRequestsPerRun disagree`,
+        );
+        assert.equal(
+          contract.proxyEnvironmentVariable,
+          contract.exchange === 'SSE' ? 'SSE_PROXY_URL' : 'SZSE_PROXY_URL',
+          `${contract.id}: declares a proxy variable the resolver does not use`,
+        );
+        // The compliance record that justified admitting the source.
+        assert.equal(contract.preflight.reachable, true, contract.id);
+        assert.match(contract.preflight.checkedOn, /^\d{4}-\d{2}-\d{2}$/u);
+        assert.equal(contract.preflight.metadataHttpStatus, 200, contract.id);
+      }
+      // ...and the resolver really does read those two variables.
+      const source = readFileSync(
+        resolve(import.meta.dirname, '../scripts/china-stock-connect/adapters.mjs'),
+        'utf8',
+      );
+      assert.match(source, /process\.env\.SZSE_PROXY_URL \|\| process\.env\.PROXY_URL/);
+      assert.match(source, /process\.env\.SSE_PROXY_URL \|\| proxyUrl/);
+    });
+
     it('reuses the terms already recorded for the two exchange hosts', () => {
       const byHost = new Map(
         Object.values(STOCK_CONNECT_SOURCE_CONTRACTS)

@@ -1,9 +1,18 @@
-// Shared transport for the mainland Chinese exchange hosts (query.sse.com.cn,
-// www.szse.cn). Extracted verbatim from china-corporate-disclosures/adapters.mjs
-// so a second consumer -- china-stock-connect -- reaches those hosts through the
-// exact same direct -> proxy -> edge ladder instead of growing a parallel stack.
-// Behaviour is unchanged; china-corporate-disclosures re-exports the two names
-// that were already part of its public surface.
+// Shared transport PRIMITIVES for the mainland Chinese exchange hosts
+// (query.sse.com.cn, www.szse.cn), extracted verbatim from
+// china-corporate-disclosures/adapters.mjs so a second consumer --
+// china-stock-connect -- reuses the proxy hop, the edge hop, the bounded reads
+// and the failure classification instead of reimplementing them. Behaviour is
+// unchanged; china-corporate-disclosures re-exports the two names that were
+// already part of its public surface.
+//
+// SCOPE: the primitives are shared, the CASCADE is not. Each consumer still
+// sequences direct -> proxy -> edge itself, because their shapes differ (a
+// single request per issuer vs a bounded walk over candidate trade dates with a
+// sticky hop and a shared wall-clock budget). That leaves the fallback ORDER
+// written in two places; consolidating it means rewriting a launched seeder's
+// cascade and is deliberately not done here. If you change retry or fallback
+// semantics, change both.
 
 import { createRequire } from 'node:module';
 

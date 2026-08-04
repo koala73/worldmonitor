@@ -44,7 +44,6 @@ export const HISTORY_LIMIT = 180;
 // not closed and the previous one has not settled. Four probes clears that plus
 // a spare once non-trading days are removed by the exchange calendar.
 export const SZSE_MAX_DATE_PROBES = 4;
-export const SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS = 2;
 
 const SSE_DIRECT_TIMEOUT_MS = 20_000;
 const SSE_PROXY_TIMEOUT_MS = 12_000;
@@ -147,7 +146,6 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     maxRequestsPerRun: 8,
     maxProxyRequestsPerRun: SZSE_MAX_PROXY_ATTEMPTS,
     maxEdgeRequestsPerRun: 1,
-    transportRecoverySuccessRuns: SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS,
     fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -179,7 +177,6 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     maxRequestsPerRun: 8,
     maxProxyRequestsPerRun: SZSE_MAX_PROXY_ATTEMPTS,
     maxEdgeRequestsPerRun: 1,
-    transportRecoverySuccessRuns: SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS,
     fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
