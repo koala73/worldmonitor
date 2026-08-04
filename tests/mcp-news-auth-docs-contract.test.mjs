@@ -138,6 +138,20 @@ describe('MCP news/auth public contract', () => {
     );
   });
 
+  it('keeps geo_context as compatibility-only input', async () => {
+    const withContext = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
+    const withoutContext = await captureRpcFetches('get_world_brief', {});
+    const requestShape = ({ calls }) => calls.map((call) => [call.url, String(call.init.body ?? '')]);
+    const resultWithoutTimestamp = ({ result }) => {
+      const { generatedAt, ...stable } = result;
+      assert.match(generatedAt, /^\d{4}-\d{2}-\d{2}T/);
+      return stable;
+    };
+
+    assert.deepEqual(resultWithoutTimestamp(withContext), resultWithoutTimestamp(withoutContext));
+    assert.deepEqual(requestShape(withContext), requestShape(withoutContext));
+  });
+
   it('RPC brief tools return sources from producer records, not generated text', async () => {
     const { result: worldResult } = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
     const { result: countryResult, calls: countryCalls } = await captureRpcFetches('get_country_brief', { country_code: 'US' });
@@ -162,6 +176,9 @@ describe('MCP news/auth public contract', () => {
   it('fails closed when the shared dashboard payload has no accepted brief', async () => {
     const rejectedPayloads = [
       { worldBrief: '', status: 'degraded' },
+      { worldBrief: 'Degraded but non-empty', status: 'degraded' },
+      { status: 'unknown' },
+      { status: undefined },
       { generatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
       { generatedAt: 'not-a-timestamp' },
       { topStories: [], generatedAt: new Date().toISOString() },

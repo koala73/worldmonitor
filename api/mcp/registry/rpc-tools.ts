@@ -102,13 +102,11 @@ function projectSeededWorldBrief(raw: unknown): Record<string, unknown> | null {
   const generatedAt = typeof payload.generatedAt === 'string' ? payload.generatedAt : '';
   const topStories = Array.isArray(payload.topStories) ? payload.topStories : [];
 
-  // Mirror the dashboard's validateInsights contract. In particular, never
-  // substitute an on-demand LLM result when the seeded producer has degraded:
-  // an empty or stale snapshot is safer than returning an ungated brief.
-  if (
-    !brief
-    || payload.status === 'degraded'
-  ) return null;
+  // Reuse the dashboard's freshness/shape acceptance, then apply MCP-specific
+  // output requirements. Never substitute an on-demand LLM result when the
+  // seeded producer has degraded: an empty or stale snapshot is safer than
+  // returning an ungated brief.
+  if (!brief || payload.status !== 'ok') return null;
 
   const headlines: string[] = [];
   for (const story of topStories) {
