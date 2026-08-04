@@ -211,6 +211,26 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(normalizeSzseNorthbound(szseNorthboundEmptyFixture), null);
       assert.equal(normalizeSzseMargin(szseNorthboundEmptyFixture), null);
     });
+
+    it('drops only the unusable SSE margin rows, keeping the rest', () => {
+      // The per-row skip is degrade-not-crash behaviour, so it has to be
+      // exercised with an actually-bad row: a payload of all-good rows would
+      // pass even if the skip condition were inverted.
+      const good = sseMarginFixture.pageHelp.data[0];
+      const payload = {
+        pageHelp: {
+          data: [
+            { ...good, opDate: null },
+            { ...good, opDate: '20260731' },
+            { ...good, rzye: 'n/a' },
+            { ...good, opDate: 'not-a-date' },
+          ],
+        },
+      };
+      const rows = normalizeSseMargin(payload);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].tradeDate, '2026-07-31');
+    });
   });
 
   describe('trading calendar and date probing', () => {
@@ -236,6 +256,34 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
         weekdayCandidates('2026-08-05', 4),
         ['2026-08-05', '2026-08-04', '2026-08-03', '2026-07-31'],
       );
+    });
+
+    it('walks back a month when the current one has too few trading days', async () => {
+      // NOW sits early enough in August that the fixture yields fewer than
+      // SZSE_MAX_DATE_PROBES eligible days, so previousMonth() must be asked
+      // for July. Without asserting the month params this branch runs but is
+      // never checked -- the fixture answers identically for any month.
+      const { log } = await fetchWithFixtures();
+      const months = log
+        .filter((entry) => entry.url.includes('onepersistenthour/monthList'))
+        .map((entry) => new URL(entry.url).searchParams.get('month'));
+      assert.deepEqual(months, ['2026-08', '2026-07']);
+    });
+
+    it('rolls the month walk-back across a year boundary', async () => {
+      const log: FetchLogEntry[] = [];
+      await fetchChinaStockConnectSnapshot({
+        fetchFn: fixtureFetch(log, [['onepersistenthour/monthList', { data: [] }]]),
+        proxyUrl: '',
+        sseProxyUrl: '',
+        edgeEgress: null,
+        now: Date.parse('2026-01-02T00:00:00.000Z'),
+        onDecision: () => {},
+      });
+      const months = log
+        .filter((entry) => entry.url.includes('onepersistenthour/monthList'))
+        .map((entry) => new URL(entry.url).searchParams.get('month'));
+      assert.deepEqual(months, ['2026-01', '2025-12']);
     });
 
     it('marks the snapshot when the weekday fallback was used', async () => {
@@ -444,9 +492,37 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
     it('derives content age from the trade dates, not from the fetch time', async () => {
       const { snapshot } = await fetchWithFixtures();
       const meta = chinaStockConnectContentMeta(snapshot);
-      assert.equal(meta.newestItemAt, Date.parse('2026-08-04T00:00:00.000Z'));
-      // The laggier margin series sets the oldest bound.
+      // Anchored on the laggier of the two series -- see the freeze test below.
+      assert.equal(meta.newestItemAt, Date.parse('2026-08-03T00:00:00.000Z'));
       assert.equal(meta.oldestItemAt, Date.parse('2026-08-03T00:00:00.000Z'));
+    });
+
+    it('lets either series alone drive the content-age alarm', () => {
+      // Health reads newestItemAt. If that were the newer of the two series, a
+      // normally-advancing northbound would mask a margin series frozen for
+      // months -- and a margin freeze that both exchanges share never trips
+      // TRADE_DATE_MISMATCH either, so nothing else would catch it.
+      const frozenMargin = chinaStockConnectContentMeta({
+        northbound: { tradeDate: '2026-08-04' },
+        margin: { tradeDate: '2026-06-01' },
+      });
+      assert.equal(frozenMargin.newestItemAt, Date.parse('2026-06-01T00:00:00.000Z'));
+
+      // Symmetric: a frozen northbound must not hide behind fresh margin.
+      const frozenNorthbound = chinaStockConnectContentMeta({
+        northbound: { tradeDate: '2026-06-01' },
+        margin: { tradeDate: '2026-08-03' },
+      });
+      assert.equal(frozenNorthbound.newestItemAt, Date.parse('2026-06-01T00:00:00.000Z'));
+
+      // A series with no date at all falls back to the one that has one; the
+      // missing series is already reported unavailable and degrades status.
+      const partial = chinaStockConnectContentMeta({
+        northbound: { tradeDate: '2026-08-04' },
+        margin: { tradeDate: null },
+      });
+      assert.equal(partial.newestItemAt, Date.parse('2026-08-04T00:00:00.000Z'));
+      assert.equal(chinaStockConnectContentMeta({}), null);
     });
   });
 
@@ -487,6 +563,102 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(snapshot.status, 'degraded');
     });
 
+    it('calls a malformed SZSE 200 malformed, not an unpublished session', async () => {
+      // A schema change upstream returns HTTP 200 with an unexpected body. If
+      // that reads as "this date is not published yet" the probe walks every
+      // candidate and reports NO_PUBLISHED_TRADE_DATE -- indistinguishable from
+      // a market holiday, and a whole diagnostic session wasted.
+      const { snapshot, log } = await fetchWithFixtures({
+        overrides: [['CATALOGID=SGT_SGTJYRB', { unexpected: 'shape' }]],
+      });
+      const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-northbound');
+      assert.equal(source.errorCode, 'MALFORMED_RESPONSE');
+      // ...and it must stop on the first bad payload rather than burn the budget.
+      assert.equal(
+        log.filter((e) => e.url.includes('CATALOGID=SGT_SGTJYRB')).length,
+        1,
+      );
+    });
+
+    it('re-walks the ladder when the sticky hop blips', async () => {
+      // Sticky exists to stop each date probe re-paying the escalation, but a
+      // one-off failure on the remembered hop must not kill the source when
+      // another transport is working -- that turns an optimisation into a
+      // single point of failure.
+      const log: FetchLogEntry[] = [];
+      const served = fixtureFetch(log);
+      let directCalls = 0;
+      let edgeCalls = 0;
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        fetchFn: async (input: unknown, init: RequestInit) => {
+          if (String(input).includes('szse.cn')) {
+            directCalls += 1;
+            // The calendar cannot be reached directly; the reports can.
+            if (String(input).includes('monthList')) throw new Error('fetch failed');
+          }
+          return served(input, init);
+        },
+        proxyUrl: '',
+        sseProxyUrl: '',
+        edgeEgress: { url: 'https://api.worldmonitor.app/x', secret: 's' },
+        edgeRequestFn: async (_url: unknown, init: RequestInit) => {
+          edgeCalls += 1;
+          const body = JSON.parse(String(init.body));
+          // Calendar succeeds over the edge, which pins sticky='edge'...
+          if (body.route === 'szse-calendar') {
+            return new Response(JSON.stringify(szseCalendarFixture), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          // ...then the edge blips for the reports.
+          throw new Error('fetch failed');
+        },
+        now: NOW,
+        onDecision: () => {},
+      });
+      assert.ok(edgeCalls > 1, 'the edge hop must have been retried as sticky');
+      assert.ok(directCalls > 1, 'the direct hop must have been re-tried after the blip');
+      assert.equal(
+        snapshot.northbound.turnoverCny.status,
+        'known',
+        'a working direct hop must still produce data after a sticky blip',
+      );
+    });
+
+    it('gives SZSE its full wall-clock budget regardless of SSE latency', async () => {
+      // The budget is shared across every szse.cn request. If SSE work runs
+      // between the calendar and the SZSE reports, slow SSE silently eats the
+      // SZSE allowance and the reports die on TRANSPORT_BUDGET_EXCEEDED without
+      // SZSE ever being at fault.
+      const order: string[] = [];
+      const log: FetchLogEntry[] = [];
+      const served = fixtureFetch(log);
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        fetchFn: async (input: unknown, init: RequestInit) => {
+          order.push(String(input).includes('szse.cn') ? 'szse' : 'sse');
+          return served(input, init);
+        },
+        proxyUrl: '',
+        sseProxyUrl: '',
+        edgeEgress: null,
+        now: NOW,
+        onDecision: () => {},
+      });
+      // Guard against a vacuous pass: both halves must actually have dialled.
+      assert.ok(order.includes('szse'), 'SZSE must have made requests');
+      assert.ok(order.includes('sse'), 'SSE must have made requests');
+      // Every szse.cn request must precede the first sse request, so the shared
+      // deadline only ever measures SZSE's own work.
+      const firstSse = order.indexOf('sse');
+      const lastSzse = order.lastIndexOf('szse');
+      assert.ok(
+        lastSzse < firstSse,
+        `SZSE work must be contiguous before SSE; saw ${order.join(',')}`,
+      );
+      assert.equal(snapshot.status, 'healthy');
+    });
+
     it('abandons a source on transport failure instead of blaming the trade date', async () => {
       const { snapshot, log } = await fetchWithFixtures({
         overrides: [['CATALOGID=1837_xxpl', () => { throw new Error('fetch failed'); }]],
@@ -512,6 +684,90 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       // SSE is on a different host and keeps working.
       const sse = snapshot.sources.find((s: { id: string }) => s.id === 'sse-northbound');
       assert.equal(sse.transportStatus, 'ok');
+    });
+
+    it('routes each exchange through its own configured proxy', async () => {
+      // The registration test only regex-matches the two declaration lines, so
+      // it stays green if a call site swaps which URL feeds which exchange.
+      // This asserts the actual wiring.
+      const dialled: Array<{ url: string; proxy: string }> = [];
+      const proxyRequestFn = async (input: string, config: { port: number }) => {
+        dialled.push({ url: input, proxy: String(config.port) });
+        throw new Error('proxy refused');
+      };
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        // Force every direct hop to fail so the proxy hop is always reached.
+        fetchFn: async () => { throw new Error('fetch failed'); },
+        proxyUrl: 'http://user:pw@szse-exit.example:7001',
+        sseProxyUrl: 'http://user:pw@sse-exit.example:9001',
+        proxyRequestFn,
+        edgeEgress: null,
+        now: NOW,
+        onDecision: () => {},
+      });
+      const sseDials = dialled.filter((d) => d.url.includes('sse.com.cn'));
+      const szseDials = dialled.filter((d) => d.url.includes('szse.cn'));
+      assert.ok(sseDials.length > 0, 'SSE must reach its proxy');
+      assert.ok(szseDials.length > 0, 'SZSE must reach its proxy');
+      for (const dial of sseDials) assert.equal(dial.proxy, '9001', dial.url);
+      for (const dial of szseDials) assert.equal(dial.proxy, '7001', dial.url);
+      assert.equal(snapshot.status, 'degraded');
+    });
+
+    it('keeps the exchange calendar when SZSE is only reachable over the edge hop', async () => {
+      // A full ladder escalation costs direct + 2 proxy + edge = 4 requests. The
+      // calendar can need two months, and the second costs one more through the
+      // sticky hop. A budget of exactly one escalation therefore threw
+      // REQUEST_BUDGET_EXCEEDED and silently dropped holiday awareness at the
+      // precise moment the transport was already degraded.
+      const log: FetchLogEntry[] = [];
+      const served = fixtureFetch(log);
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        // Direct fails for SZSE only; SSE keeps working.
+        fetchFn: async (input: unknown, init: RequestInit) => {
+          if (String(input).includes('szse.cn')) throw new Error('fetch failed');
+          return served(input, init);
+        },
+        proxyUrl: 'http://user:pw@exit.example:7001',
+        sseProxyUrl: '',
+        proxyRequestFn: async () => { throw new Error('proxy refused'); },
+        edgeEgress: { url: 'https://api.worldmonitor.app/x', secret: 's' },
+        // The edge hop works, so the calendar must survive.
+        edgeRequestFn: async (_url: unknown, init: RequestInit) => {
+          const body = JSON.parse(String(init.body));
+          const payload = body.route === 'szse-calendar'
+            ? szseCalendarFixture
+            : body.catalogId === 'SGT_SGTJYRB'
+              ? (body.txtDate === '2026-08-04' ? szseNorthboundFixture : szseNorthboundEmptyFixture)
+              : (body.txtDate === '2026-08-03' ? szseMarginFixture : szseNorthboundEmptyFixture);
+          return new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        },
+        now: NOW,
+        onDecision: () => {},
+      });
+      assert.equal(
+        snapshot.calendarStatus,
+        'exchange',
+        'the calendar must not be abandoned just because it took the edge hop',
+      );
+      assert.equal(snapshot.northbound.turnoverCny.status, 'known');
+    });
+
+    it('rejects an oversized SZSE response, which is how the full-history dump fails', async () => {
+      // Dropping txtDate makes SZSE return every session since 2010 (~438 KiB
+      // observed). That must exceed the ceiling rather than parse.
+      const enormous = [{
+        metadata: { tabkey: 'tab1', subname: '2026-08-04' },
+        data: Array.from({ length: 20_000 }, () => ({ label: '当日交易总额', total: '1.00' })),
+      }];
+      const { snapshot } = await fetchWithFixtures({
+        overrides: [['CATALOGID=SGT_SGTJYRB', enormous]],
+      });
+      const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-northbound');
+      assert.equal(source.errorCode, 'RESPONSE_TOO_LARGE');
     });
 
     it('rejects an oversized response instead of parsing the full-history dump', async () => {

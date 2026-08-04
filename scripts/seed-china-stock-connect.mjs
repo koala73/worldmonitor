@@ -53,13 +53,20 @@ export function chinaStockConnectRecordCount(snapshot) {
 }
 
 export function chinaStockConnectContentMeta(snapshot) {
-  // Deliberately the two headline trade dates and nothing else: history carries
-  // older days, and including it would let a frozen upstream keep the newest
-  // token fresh through backfill it had already published.
-  return tokensToContentMeta([
-    snapshot?.northbound?.tradeDate,
-    snapshot?.margin?.tradeDate,
-  ]);
+  // Deliberately the headline trade dates and nothing else: history carries
+  // older days, and including it would let a frozen upstream keep the token
+  // fresh through backfill it had already published.
+  //
+  // Anchored on the OLDEST of the two, because health reads newestItemAt. The
+  // two series publish on independent schedules, so passing both would let a
+  // normally-advancing northbound mask a margin series frozen for months -- and
+  // a margin freeze both exchanges share never trips TRADE_DATE_MISMATCH
+  // either, leaving nothing at all to catch it. Either series going quiet has
+  // to be able to raise the alarm on its own.
+  const dates = [snapshot?.northbound?.tradeDate, snapshot?.margin?.tradeDate]
+    .filter((value) => typeof value === 'string' && value !== '');
+  if (dates.length === 0) return tokensToContentMeta([]);
+  return tokensToContentMeta([dates.reduce((a, b) => (a < b ? a : b))]);
 }
 
 export async function buildChinaStockConnectSeedSnapshot({

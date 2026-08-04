@@ -44,6 +44,9 @@ export const HISTORY_LIMIT = 180;
 // not closed and the previous one has not settled. Four probes clears that plus
 // a spare once non-trading days are removed by the exchange calendar.
 export const SZSE_MAX_DATE_PROBES = 4;
+// The current Beijing month, plus the previous one when the current month has
+// not yet accumulated SZSE_MAX_DATE_PROBES trading days.
+const CALENDAR_MAX_MONTHS = 2;
 
 const SSE_DIRECT_TIMEOUT_MS = 20_000;
 const SSE_PROXY_TIMEOUT_MS = 12_000;
@@ -311,10 +314,16 @@ export function normalizeSseMargin(payload) {
   return normalized;
 }
 
+// Throws rather than returning null when the payload is not a report envelope
+// at all. The probe loop reads null as "that session is not published yet" and
+// walks to the next date, so collapsing the two would report an upstream schema
+// change as NO_PUBLISHED_TRADE_DATE -- indistinguishable from a market holiday.
 function szseReportTab(payload) {
-  if (!Array.isArray(payload) || payload.length === 0) return null;
+  if (!Array.isArray(payload) || payload.length === 0) throw sourceError('MALFORMED_RESPONSE');
   const tab = payload[0];
-  if (!tab || typeof tab !== 'object' || !Array.isArray(tab.data)) return null;
+  if (!tab || typeof tab !== 'object' || !Array.isArray(tab.data)) {
+    throw sourceError('MALFORMED_RESPONSE');
+  }
   return tab;
 }
 
@@ -493,6 +502,7 @@ async function fetchThroughLadder(url, contract, {
     transportPath: 'direct',
     fallbackReason: null,
     proxyFailureReason: null,
+    stickyFailureReason: null,
     edgeFailureReason: null,
     edgeFailureDiagnostic: null,
     proxyExitPorts: [],
@@ -507,6 +517,10 @@ async function fetchThroughLadder(url, contract, {
     if (sticky) sticky.preferred = path;
   };
 
+  // The remembered hop is tried first, but a failure here DEMOTES it and falls
+  // through to the full ladder rather than aborting: sticky is a latency
+  // optimisation, and letting one blip on the remembered hop kill the source
+  // would turn it into a single point of failure while other transports work.
   if (sticky?.preferred === 'edge' && edgeFetchFn) {
     routing.transportPath = 'edge';
     let edgeDiagnostic = null;
@@ -521,12 +535,13 @@ async function fetchThroughLadder(url, contract, {
       );
       return { payload, routing };
     } catch (edgeError) {
-      routing.edgeFailureReason = transportFailureReason(edgeError);
+      if (errorCodeFor(edgeError) === 'TRANSPORT_BUDGET_EXCEEDED') throw edgeError;
+      routing.stickyFailureReason = transportFailureReason(edgeError);
       routing.edgeFailureDiagnostic = edgeError?.edgeFailureDiagnostic ?? edgeDiagnostic;
-      throw withRouting(edgeError, routing);
+      sticky.preferred = null;
+      routing.transportPath = 'direct';
     }
-  }
-  if (sticky?.preferred === 'proxy' && proxyFetchFn) {
+  } else if (sticky?.preferred === 'proxy' && proxyFetchFn) {
     routing.transportPath = 'proxy';
     try {
       const payload = await attempt(
@@ -540,8 +555,10 @@ async function fetchThroughLadder(url, contract, {
       );
       return { payload, routing };
     } catch (proxyError) {
-      routing.proxyFailureReason = transportFailureReason(proxyError);
-      throw withRouting(proxyError, routing);
+      if (errorCodeFor(proxyError) === 'TRANSPORT_BUDGET_EXCEEDED') throw proxyError;
+      routing.stickyFailureReason = transportFailureReason(proxyError);
+      sticky.preferred = null;
+      routing.transportPath = 'direct';
     }
   }
 
@@ -660,6 +677,9 @@ function outcomeFrom(contract, { observations, routing, requestCount, probedDate
     ...(routing.proxyFailureReason
       ? { proxyFailureReason: routing.proxyFailureReason }
       : {}),
+    ...(routing.stickyFailureReason
+      ? { stickyFailureReason: routing.stickyFailureReason }
+      : {}),
     ...(routing.proxyExitPorts.length
       ? { proxyExitPorts: [...routing.proxyExitPorts] }
       : {}),
@@ -755,7 +775,13 @@ async function fetchSzseTradingDays(contract, {
   sticky,
   deadline = null,
 }) {
-  const calendarContract = { ...contract, maxRequestsPerRun: 4 };
+  // One full ladder escalation is direct + SZSE_MAX_PROXY_ATTEMPTS + edge, and
+  // the second month costs one more request through the hop that just worked.
+  // Sizing this to exactly one escalation made a degraded-but-working transport
+  // abandon the calendar and fall back to weekdays, losing holiday awareness
+  // precisely when the run was already struggling.
+  const calendarRequestBudget = (1 + SZSE_MAX_PROXY_ATTEMPTS + 1) + CALENDAR_MAX_MONTHS;
+  const calendarContract = { ...contract, maxRequestsPerRun: calendarRequestBudget };
   const budget = requestBudget(calendarContract, deadline);
   const months = [today.slice(0, 7)];
   const days = [];
@@ -781,7 +807,7 @@ async function fetchSzseTradingDays(contract, {
     // Early in a month there may not be SZSE_MAX_DATE_PROBES trading days yet,
     // so reach back one month rather than probing days that cannot exist.
     if (
-      months.length === 1
+      months.length < CALENDAR_MAX_MONTHS
       && tradingDayCandidates(days, today).length < SZSE_MAX_DATE_PROBES
     ) {
       months.push(previousMonth(month));
@@ -1083,17 +1109,10 @@ export async function fetchChinaStockConnectSnapshot({
     candidateDates = weekdayCandidates(today, SZSE_MAX_DATE_PROBES);
   }
 
+  // SZSE first, and contiguously: every szse.cn request draws on one shared
+  // wall-clock budget that starts with the calendar fetch, so interleaving the
+  // SSE calls would let SSE latency spend SZSE's allowance.
   const plan = [
-    ['sse-northbound', (contract) => fetchSseSource(contract, {
-      fetchFn,
-      proxyFetchFn: proxyFetchFor(sseProxyUrl, contract, SSE_PROXY_TIMEOUT_MS),
-      normalize: normalizeSseNorthbound,
-    })],
-    ['sse-margin', (contract) => fetchSseSource(contract, {
-      fetchFn,
-      proxyFetchFn: proxyFetchFor(sseProxyUrl, contract, SSE_PROXY_TIMEOUT_MS),
-      normalize: normalizeSseMargin,
-    })],
     ['szse-northbound', (contract) => fetchSzseSource(contract, {
       fetchFn,
       proxyFetchFn: proxyFetchFor(proxyUrl, contract, SZSE_PROXY_TIMEOUT_MS),
@@ -1111,6 +1130,16 @@ export async function fetchChinaStockConnectSnapshot({
       sticky: szseSticky,
       deadline: szseDeadline,
       normalize: normalizeSzseMargin,
+    })],
+    ['sse-northbound', (contract) => fetchSseSource(contract, {
+      fetchFn,
+      proxyFetchFn: proxyFetchFor(sseProxyUrl, contract, SSE_PROXY_TIMEOUT_MS),
+      normalize: normalizeSseNorthbound,
+    })],
+    ['sse-margin', (contract) => fetchSseSource(contract, {
+      fetchFn,
+      proxyFetchFn: proxyFetchFor(sseProxyUrl, contract, SSE_PROXY_TIMEOUT_MS),
+      normalize: normalizeSseMargin,
     })],
   ];
 
