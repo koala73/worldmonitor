@@ -11,6 +11,7 @@
 // commit, and the first is why "the service has deployments" cannot be assumed
 // to mean it received the merge.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -18,6 +19,7 @@ import {
   isProblemVerdict,
   summarizeDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
+import { validateAcceptanceBaseline } from '../scripts/check-seed-freshness.mjs';
 
 const HEAD = '1d9dcd0ef0d282961e6af75bbe469478ef57c22f';
 const PREVIOUS = 'f1a85003e99cd762e67ad561f5155b53a359e4e6';
@@ -267,6 +269,8 @@ describe('Railway deploy drift summary', () => {
     { service: 'c', verdict: 'REJECTED_PUSH' },
     { service: 'd', verdict: 'BEHIND' },
   ];
+  const NOW = Date.parse('2026-08-04T06:00:00.000Z');
+  const baseline = (acknowledged, expiresAt = '2026-09-04') => ({ expiresAt, acknowledged });
 
   it('counts every verdict and names only the problems', () => {
     const summary = summarizeDeployDrift(results);
@@ -292,5 +296,74 @@ describe('Railway deploy drift summary', () => {
     const summary = summarizeDeployDrift(results.slice(0, 2));
     assert.equal(summary.ok, true);
     assert.deepEqual(summary.problems, []);
+  });
+
+  it('stops an acknowledged service from blocking while still reporting it', () => {
+    const summary = summarizeDeployDrift(
+      results.slice(0, 3),
+      baseline([{ name: 'c', status: 'REJECTED_PUSH', issue: 6141 }]),
+      NOW,
+    );
+    assert.equal(summary.ok, true);
+    assert.deepEqual(summary.blocking, []);
+    assert.deepEqual(summary.acknowledged.map((entry) => entry.service), ['c']);
+  });
+
+  // A service failing a DIFFERENT way than the one that was acknowledged is a
+  // new failure wearing an old name.
+  it('blocks a service whose verdict is not the one baselined', () => {
+    const summary = summarizeDeployDrift(
+      results,
+      baseline([{ name: 'd', status: 'REJECTED_PUSH', issue: 6064 }]),
+      NOW,
+    );
+    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['c', 'd']);
+    assert.equal(summary.ok, false);
+  });
+
+  it('reports a recovered baseline entry without failing the run', () => {
+    const summary = summarizeDeployDrift(
+      results.slice(0, 2),
+      baseline([{ name: 'd', status: 'BEHIND', issue: 6064 }]),
+      NOW,
+    );
+    assert.equal(summary.ok, true);
+    assert.deepEqual(summary.cleared.map((entry) => entry.name), ['d']);
+  });
+
+  // Anti-rot: a suppression that outlives its cause is how a fleet ends up
+  // silently a week behind with a green monitor.
+  it('fails once the baseline expires, even with nothing else wrong', () => {
+    const summary = summarizeDeployDrift(
+      results.slice(0, 2),
+      baseline([], '2026-08-01'),
+      NOW,
+    );
+    assert.equal(summary.expired, true);
+    assert.equal(summary.ok, false);
+  });
+});
+
+describe('the shipped deploy-drift baseline', () => {
+  const baseline = JSON.parse(
+    readFileSync(new URL('../scripts/railway-deploy-drift-baseline.json', import.meta.url), 'utf8'),
+  );
+
+  it('is a valid baseline every entry of which names an owner issue', () => {
+    assert.equal(validateAcceptanceBaseline(baseline), baseline);
+    for (const entry of baseline.acknowledged) {
+      assert.ok(entry.reason, `${entry.name} must say why it is acknowledged`);
+    }
+  });
+
+  // The file exists to hold #6064, which is a real open failure. If it is ever
+  // used to hold a REJECTED_PUSH the watch-path contract is supposed to have
+  // eliminated, the alarm this issue added has been turned off.
+  it('does not acknowledge a rejected push', () => {
+    assert.deepEqual(
+      baseline.acknowledged.filter((entry) => entry.status === 'REJECTED_PUSH'),
+      [],
+      'a refused push is the failure #6141 fixed; acknowledging one re-hides it',
+    );
   });
 });

@@ -19,11 +19,14 @@
 //   node scripts/check-railway-deploy-drift.mjs --head <sha> --window 200
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { isRepositoryService, readArgument } from './audit-railway-watch-paths.mjs';
+import { applyAcceptanceBaseline } from './check-seed-freshness.mjs';
 
 const DEFAULT_ENVIRONMENT = 'production';
+const BASELINE_URL = new URL('./railway-deploy-drift-baseline.json', import.meta.url);
 
 // Railway records a refused push as a deployment whose status is SKIPPED and
 // whose meta still carries the commit it refused. That record is the only
@@ -219,27 +222,58 @@ export function classifyServiceDeploy({
   };
 }
 
-export function summarizeDeployDrift(results) {
+/**
+ * Split the fleet into what blocks and what is a known, owned degradation.
+ *
+ * The baseline split is `check-seed-freshness.mjs`'s, called with this check's
+ * fields renamed onto its `name`/`status` contract. Reusing it rather than
+ * reimplementing it keeps one definition of what an acknowledged problem is,
+ * including the parts that are easy to get subtly wrong: expiry fails the run,
+ * a recovered entry is reported but not fatal, and a service failing with a
+ * DIFFERENT verdict than the one baselined blocks.
+ */
+export function summarizeDeployDrift(results, baseline = null, now = Date.now()) {
   const counts = {};
   for (const result of results) {
     counts[result.verdict] = (counts[result.verdict] ?? 0) + 1;
   }
   const problems = results.filter((result) => isProblemVerdict(result.verdict));
+  const empty = {
+    counts,
+    problems,
+    blocking: problems,
+    acknowledged: [],
+    cleared: [],
+    expired: false,
+    expiresAt: null,
+  };
   if (results.length === 0) {
     return {
-      counts,
-      problems,
+      ...empty,
       ok: false,
       detail: 'no services to check — the Railway service query returned nothing, which is a query failure rather than a healthy fleet',
     };
   }
+  const split = baseline
+    ? applyAcceptanceBaseline(
+      problems.map((problem) => ({ ...problem, name: problem.service, status: problem.verdict })),
+      baseline,
+      now,
+    )
+    : empty;
+  const ok = split.blocking.length === 0 && !split.expired;
   return {
     counts,
     problems,
-    ok: problems.length === 0,
-    detail: problems.length === 0
+    blocking: split.blocking,
+    acknowledged: split.acknowledged,
+    cleared: split.cleared,
+    expired: split.expired,
+    expiresAt: split.expiresAt ?? null,
+    ok,
+    detail: ok
       ? `${results.length} service(s) are running the head commit or building it`
-      : `${problems.length} of ${results.length} service(s) are not running the head commit`,
+      : `${split.blocking.length} of ${results.length} service(s) are not running the head commit`,
   };
 }
 
@@ -283,15 +317,30 @@ function readDeployments(service, environment, window) {
 
 function printReport(results, summary, headSha, graceSha) {
   console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
+  // The acknowledged and recovered lines come first and go to stdout: they are
+  // never the reason a run fails, and burying them under the blocking list is
+  // how a suppression that should have been pruned survives another month.
+  for (const problem of summary.acknowledged) {
+    console.log(`- acknowledged (#${problem.issue}): ${problem.service} [${problem.verdict}] ${problem.detail}`);
+  }
+  for (const entry of summary.cleared) {
+    console.log(`- recovered: ${entry.name}:${entry.status} is running head again; remove it from scripts/railway-deploy-drift-baseline.json (#${entry.issue}).`);
+  }
   if (summary.ok) {
     console.log(`Every service this repository deploys is running ${headSha.slice(0, 9)} or building it.`);
     return;
   }
-  console.error(`Railway deploy-drift check found ${summary.problems.length} service(s) not running the head commit:`);
-  for (const problem of summary.problems) {
-    console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}`);
+  if (summary.blocking.length > 0) {
+    console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) not running the head commit:`);
+    for (const problem of summary.blocking) {
+      console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}`);
+    }
+  } else {
+    console.error(`- ${summary.detail}`);
   }
-  if (summary.problems.length === 0) console.error(`- ${summary.detail}`);
+  if (summary.expired) {
+    console.error(`Deploy-drift baseline expired on ${summary.expiresAt}; re-review scripts/railway-deploy-drift-baseline.json.`);
+  }
 }
 
 async function main() {
@@ -347,7 +396,7 @@ async function main() {
     });
   }).sort((left, right) => left.service.localeCompare(right.service));
 
-  const summary = summarizeDeployDrift(results);
+  const summary = summarizeDeployDrift(results, JSON.parse(readFileSync(BASELINE_URL, 'utf8')));
   if (asJson) console.log(JSON.stringify({ environment, headSha, graceSha, summary, results }, null, 2));
   else printReport(results, summary, headSha, graceSha);
   if (!summary.ok) process.exitCode = 1;

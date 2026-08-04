@@ -201,15 +201,45 @@ describe('seed freshness workflow control plane', () => {
     const auditIndex = monitorSteps.findIndex(
       (step) => step.name === 'Audit Railway ingestion deployment controls',
     );
+    const driftIndex = monitorSteps.findIndex(
+      (step) => step.name === 'Check Railway deploy drift against main',
+    );
     const healthIndex = monitorSteps.findIndex(
       (step) => step.name === 'Check ingestion operational acceptance',
     );
 
     assert.ok(installIndex >= 0, 'workflow must install the Railway CLI');
     assert.ok(
-      installIndex < contextIndex && contextIndex < auditIndex && auditIndex < healthIndex,
-      'Railway context and watch-path drift must be checked before compact health',
+      installIndex < contextIndex
+        && contextIndex < auditIndex
+        && auditIndex < driftIndex
+        && driftIndex < healthIndex,
+      'Railway context, watch-path drift and deploy drift must be checked before compact health',
     );
+
+    // `git merge-base --is-ancestor` cannot answer from a depth-1 checkout, and
+    // every unanswerable question becomes a reported service. Without this the
+    // check is correct but reds on any run that overlaps a merge.
+    assert.equal(
+      checkout.with?.['fetch-depth'],
+      50,
+      'the deploy-drift check needs enough history to resolve commit ancestry',
+    );
+
+    const drift = monitorSteps[driftIndex];
+    assert.equal(drift.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
+    assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
+    assert.match(
+      drift.run,
+      /git fetch --quiet --depth=50 origin main/,
+      'a merge landing mid-run must be resolvable as ahead, not reported as behind',
+    );
+    assert.equal(
+      drift['continue-on-error'],
+      undefined,
+      'a merge that never reached production must fail the monitor, not annotate it',
+    );
+    assert.equal(drift.if, undefined, 'deploy drift stays behind the fail-closed gate');
 
     assert.match(
       monitorSteps[installIndex].run,

@@ -18,6 +18,14 @@ jobs:
       deployment: false
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The deploy-drift check answers "is this service running head, or
+          # something newer that landed while we were running" with
+          # `git merge-base --is-ancestor`, which needs the commits to exist
+          # locally. A depth-1 checkout has neither the grace window's history
+          # nor the newer commit, and every such question then answers "cannot
+          # prove it" — correct but noisy on any run that overlaps a merge.
+          fetch-depth: 50
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -67,6 +75,20 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
         run: node scripts/audit-railway-watch-paths.mjs
+
+      # The audit above proves no service can silently skip a merge; this proves
+      # none actually did. They are separate because the causes are: a cleared
+      # filter does nothing for a webhook that stopped delivering (#6064), and
+      # this check catches that without knowing why.
+      - name: Check Railway deploy drift against main
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+        run: |
+          set -o pipefail
+          # Pick up commits merged since the checkout so a service that already
+          # built one of them reads as ahead rather than behind.
+          git fetch --quiet --depth=50 origin main || true
+          node scripts/check-railway-deploy-drift.mjs
 
       - name: Check ingestion operational acceptance
         run: node scripts/check-seed-freshness.mjs

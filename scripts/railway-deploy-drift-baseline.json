@@ -1,0 +1,30 @@
+{
+  "$comment": [
+    "Accepted-problem baseline for scripts/check-railway-deploy-drift.mjs.",
+    "",
+    "The drift check fails on any service that is not running the head commit and is",
+    "NOT listed here. An entry means: this service is known to be running stale code,",
+    "it has an owner issue, and it must not page again until that issue moves.",
+    "",
+    "Entries are matched on service:verdict exactly, and the split is the same one",
+    "scripts/check-seed-freshness.mjs applies to compact health — same function, so",
+    "expiry and prune-on-recovery cannot drift into two different meanings.",
+    "",
+    "A service that recovers is reported as 'recovered' on the next run (prune it).",
+    "A service that fails with a DIFFERENT verdict than the one baselined blocks,",
+    "which is the point: REJECTED_PUSH on a service baselined for BEHIND is a new",
+    "failure wearing an old name.",
+    "",
+    "expiresAt forces a re-review of the whole file. A stale-deploy suppression that",
+    "outlives its cause is how a fleet ends up silently a week behind."
+  ],
+  "expiresAt": "2026-09-04",
+  "acknowledged": [
+    {
+      "name": "umami",
+      "status": "BEHIND",
+      "issue": 6064,
+      "reason": "The analytics collector stopped receiving deployments from the GitHub integration on 2026-08-03 — its watch paths are already empty, so this is the webhook-side sibling of #6141 rather than a filter rejection. It is the failure that proves the check must not key on the filter: no SKIPPED record exists, and the service is a day behind head."
+    }
+  ]
+}
