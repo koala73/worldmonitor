@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import {
@@ -11,6 +13,7 @@ import {
   computeForecastDigest,
   computeGoldLabelSetDigest,
   computePredictionSetDigest,
+  computeScoreReportDigest,
   forecastBlindEvaluation,
   scoreBlindEvaluation,
   type BlindCorpus,
@@ -59,13 +62,21 @@ function examples(namespace: string, count: number, offset = 0): BlindExample[] 
   });
 }
 
-function labelsFor(corpus: BlindCorpus, eligibleCount: number): GoldLabelSet {
+// materialCount defaults to eligibleCount so existing fixtures keep their shape, but it is a
+// SEPARATE axis on purpose: publicationEligible and goldMateriality are independent fields in
+// the contract, and tying them together makes the whole material-vs-eligible distinction
+// unobservable -- including the forecast's projection basis and the materiality matrix.
+function labelsFor(
+  corpus: BlindCorpus,
+  eligibleCount: number,
+  materialCount: number = eligibleCount,
+): GoldLabelSet {
   const labels: GoldLabel[] = corpus.examples.map((example, index) => {
     const publicationEligible = index < eligibleCount;
     return {
       opaqueExampleId: example.opaqueExampleId,
       publicationEligible,
-      goldMateriality: publicationEligible ? 'material' : 'immaterial',
+      goldMateriality: index < materialCount ? 'material' : 'immaterial',
       goldDirection: directions[index % directions.length]!,
       canonicalCorporateFamilyDigest: example.corporateFamilyDigest,
       customerUseful: publicationEligible ? index % 5 !== 0 : null,
@@ -167,6 +178,7 @@ function lockedBundle(options: {
   namespace?: string;
   count?: number;
   eligibleCount?: number;
+  materialCount?: number;
   purpose?: 'tracer_gate' | 'stage3_gate';
   publishLimit?: number;
   mistakes?: number;
@@ -190,7 +202,7 @@ function lockedBundle(options: {
       },
     };
   }
-  let gold = labelsFor(draft, eligibleCount);
+  let gold = labelsFor(draft, eligibleCount, options.materialCount ?? eligibleCount);
   draft = setSealedGold(draft, gold);
   const forecast = makeForecast(draft, gold);
   const corpus: BlindCorpus = {
@@ -222,7 +234,11 @@ function score(bundle: ReturnType<typeof lockedBundle>, previous?: {
   });
 }
 
-function continuationScenario(): {
+function continuationScenario(options: {
+  namespace?: string;
+  eligibleCount?: number;
+  publishLimit?: number;
+} = {}): {
   previousBundle: ReturnType<typeof lockedBundle>;
   previousReport: ScoreReport;
   childBundle: ReturnType<typeof lockedBundle>;
@@ -235,9 +251,9 @@ function continuationScenario(): {
 } {
   const expansion = examples('expansion', 60, 40_000);
   const previousBundle = lockedBundle({
-    namespace: 'continuation-base',
-    eligibleCount: 90,
-    publishLimit: 90,
+    namespace: options.namespace ?? 'continuation-base',
+    eligibleCount: options.eligibleCount ?? 90,
+    publishLimit: options.publishLimit ?? 90,
     precommittedExpansion: expansion,
   });
   const previousReport = score(previousBundle);
@@ -305,7 +321,23 @@ describe('Company Monitoring blind evaluation forecast', () => {
     assert.equal(forecast.denominatorForecasts.published_material_impact_precision.minimum, 100);
     assert.equal(forecast.denominatorForecasts.direction_accuracy_mixed.minimum, 25);
     assert.equal(JSON.stringify(forecast).includes('cm_example_'), false);
-    assert.equal(JSON.stringify(forecast).includes('goldLabel'), false);
+    // Assert on the real GoldLabel field names. The forecast's own keys are pilotGoldLabel-
+    // Version / targetGoldLabelVersion / targetGoldLabelSetSha256 (capital G), so a needle of
+    // 'goldLabel' matches nothing the type can ever contain and cannot fail -- and a genuinely
+    // leaked label would surface as these fields, not that token.
+    // Note `publicationEligible` is deliberately NOT in this list: candidateStrata reports it
+    // as an aggregate count, which is exactly what the forecast is allowed to carry. These are
+    // the per-row GoldLabel fields that must never appear.
+    const serializedForecast = JSON.stringify(forecast);
+    for (const leakedField of [
+      'goldMateriality',
+      'goldDirection',
+      'canonicalCorporateFamilyDigest',
+      'customerUseful',
+      'opaqueExampleId',
+    ]) {
+      assert.equal(serializedForecast.includes(leakedField), false, leakedField);
+    }
 
     let pilot = baseCorpus('overlap-pilot', 'pilot', 200, 'locked', 20_000);
     const pilotGold = labelsFor(pilot, 120);
@@ -365,6 +397,36 @@ describe('Company Monitoring blind evaluation forecast', () => {
     assert.ok(forecast.gaps.length > 0);
     assert.ok((forecast.recommendedUntouchedGrowth.totalExamples ?? 0) > 0);
     assert.equal(forecast.gating, false);
+  });
+
+  it('projects direction denominators from eligible-AND-material rows, not eligibility alone', () => {
+    // publicationEligible and goldMateriality are independent fields. directionRates is a rate
+    // over eligible-AND-material pilot rows, and the scorer only counts eligible-and-material
+    // rows into direction_accuracy_* denominators -- so projecting with a plain eligibility
+    // count over-states the forecast by 1/P(material|eligible) and can report forecast_ok for
+    // a corpus that will actually come up short.
+    let draft = baseCorpus('basis', 'stage3_gate', 200, 'draft', 70_000);
+    // 150 eligible, but only 60 of those are material.
+    const gold = labelsFor(draft, 150, 60);
+    draft = setSealedGold(draft, gold);
+    const forecast = makeForecast(draft, gold);
+
+    // candidateStrata keeps reporting ELIGIBILITY, as the docs describe.
+    assert.equal(forecast.candidateStrata.publicationEligible, 150);
+    const eligibleByDirection = forecast.candidateStrata.eligibleDirections;
+    assert.equal(
+      eligibleByDirection.positive + eligibleByDirection.negative + eligibleByDirection.mixed,
+      150,
+    );
+
+    // The projection must be bounded by the 60 material-and-eligible rows, not the 150
+    // eligible ones. Summed across directions it cannot exceed 60.
+    const projected = (['positive', 'negative', 'mixed'] as const).reduce(
+      (sum, direction) => sum + forecast.denominatorForecasts[`direction_accuracy_${direction}`].estimated,
+      0,
+    );
+    assert.ok(projected <= 60, `projected ${projected} exceeds the 60 material-eligible rows`);
+    assert.equal(forecast.denominatorForecasts.direction_accuracy_overall.estimated, projected);
   });
 
   it('reports no finite growth recommendation when the pilot realized rate is zero', () => {
@@ -530,8 +592,36 @@ describe('Company Monitoring deterministic blind scorer', () => {
     assert.equal(report.confusionMatrices.publication.truePositive, 105);
     assert.equal(report.discovery.denominator, 105);
     assert.ok(report.calibration.pointEstimate <= 0.1);
-    assert.ok(report.latency.p95Ms >= report.latency.p50Ms);
-    assert.ok(report.cost.totalUsd > 0);
+    // Pin the arithmetic, not an inequality. `p95 >= p50` holds for ANY sorted array, so it
+    // cannot distinguish a correct percentile from one that always returns sorted[0].
+    // latencyMs is 100 + index over 200 examples => 100..299.
+    assert.equal(report.latency.count, 200);
+    assert.equal(report.latency.minMs, 100);
+    assert.equal(report.latency.maxMs, 299);
+    assert.equal(report.latency.p50Ms, 199);
+    assert.equal(report.latency.p95Ms, 289);
+    // costUsd is 0.005 + index/1e6 over 200 examples => 200*0.005 + (0+..+199)/1e6.
+    const expectedCost = 200 * 0.005 + (199 * 200 / 2) / 1_000_000;
+    assert.ok(Math.abs(report.cost.totalUsd - expectedCost) < 1e-9, String(report.cost.totalUsd));
+    assert.ok(
+      Math.abs(report.cost.averagePerExampleUsd - expectedCost / 200) < 1e-9,
+      String(report.cost.averagePerExampleUsd),
+    );
+    // Matrices, which this test's own name promises but never checked.
+    assert.equal(report.confusionMatrices.publication.falsePositive, 0);
+    assert.equal(report.confusionMatrices.publication.falseNegative, 0);
+    assert.equal(report.confusionMatrices.publication.trueNegative, 95);
+    assert.equal(report.confusionMatrices.materiality.material.material, 105);
+    assert.equal(report.confusionMatrices.materiality.material.immaterial, 0);
+    assert.equal(report.confusionMatrices.materiality.immaterial.immaterial, 95);
+    assert.equal(report.confusionMatrices.attribution.correct, 105);
+    assert.equal(report.confusionMatrices.attribution.incorrect, 0);
+    assert.equal(report.discovery.numerator, 105);
+    assert.equal(report.discovery.rate, 1);
+    // customerUseful is `index % 5 !== 0` across the 105 eligible rows => 21 falses.
+    assert.equal(report.customerUsefulness.denominator, 105);
+    assert.equal(report.customerUsefulness.numerator, 84);
+    assert.equal(report.customerUsefulness.rate, 84 / 105);
     assert.equal(report.stage4.included, false);
     assert.equal(report.stage4.minimumExamples, 500);
 
@@ -552,6 +642,159 @@ describe('Company Monitoring deterministic blind scorer', () => {
     assert.equal(report.outcome, 'incomplete');
     assert.ok(report.reasons.includes('published_material_impact_precision_denominator_insufficient'));
     assert.ok(report.reasons.some((reason) => reason.endsWith('_point_below_floor')));
+  });
+
+  it('returns fail when every denominator is met but a frozen floor is breached', () => {
+    // The counterpart to the incomplete case above, and the arm nothing exercised: with all
+    // 200 rows eligible and published, every rate denominator clears its minimum, so the only
+    // surviving reasons are quality breaches. Mutating the `fail` arm to `pass` must go red.
+    const bundle = lockedBundle({ eligibleCount: 200, mistakes: 60 });
+    const report = score(bundle);
+    assert.equal(report.outcome, 'fail');
+    assert.equal(
+      report.reasons.some((reason) => reason.endsWith('_denominator_insufficient')),
+      false,
+      report.reasons.join(','),
+    );
+    assert.ok(report.reasons.some((reason) => reason.endsWith('_point_below_floor')));
+  });
+
+  it('rejects duplicate identity dimensions across corpus rows', () => {
+    for (const dimension of [
+      'occurrenceDigest',
+      'contentFingerprint',
+      'corporateFamilyDigest',
+      'sourceOriginDigest',
+    ] as const) {
+      const bundle = lockedBundle({ namespace: `dup-${dimension.toLowerCase()}` });
+      const mutated = structuredClone(bundle);
+      mutated.corpus.examples[1]![dimension] = mutated.corpus.examples[0]![dimension];
+      if (dimension === 'corporateFamilyDigest') {
+        // Keep the gold set consistent so the rejection isolates the duplicate guard rather
+        // than tripping gold_corporate_family_mismatch first.
+        mutated.gold.labels[1]!.canonicalCorporateFamilyDigest =
+          mutated.corpus.examples[1]!.corporateFamilyDigest;
+        mutated.corpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(mutated.gold);
+      }
+      assert.throws(() => scoreBlindEvaluation({
+        protocol,
+        anchors,
+        corpus: mutated.corpus,
+        expectedCorpusSha256: computeBlindCorpusDigest(mutated.corpus),
+        goldLabels: mutated.gold,
+        predictions: mutated.predictions,
+        forecast: mutated.forecast,
+      }), expectCode(`corpus_duplicate_${dimension}`), dimension);
+    }
+  });
+
+  it('rejects a gold label whose corporate family diverges from its corpus row', () => {
+    const bundle = lockedBundle({ namespace: 'gold-family' });
+    const mutated = structuredClone(bundle);
+    mutated.gold.labels[0]!.canonicalCorporateFamilyDigest = syntheticDigest('unrelated-family');
+    mutated.corpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(mutated.gold);
+    assert.throws(() => scoreBlindEvaluation({
+      protocol,
+      anchors,
+      corpus: mutated.corpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(mutated.corpus),
+      goldLabels: mutated.gold,
+      predictions: mutated.predictions,
+      forecast: mutated.forecast,
+    }), expectCode('gold_corporate_family_mismatch'));
+  });
+
+  it('rejects a prediction that publishes what it never discovered', () => {
+    const bundle = lockedBundle({ namespace: 'undiscovered' });
+    const mutated = structuredClone(bundle);
+    mutated.predictions.predictions[0]!.discovered = false;
+    assert.throws(() => score(mutated), expectCode('undiscovered_prediction_published'));
+  });
+
+  it('enforces the frozen corpus size floors at their exact boundary', () => {
+    // 199 is the largest stage-3 corpus that must still be rejected; 99 likewise for tracer.
+    // validateCorpusShape guards both the forecast and the score path, so the rejection
+    // surfaces while the bundle is still being built.
+    assert.throws(
+      () => lockedBundle({ namespace: 'short-stage3', count: 199, eligibleCount: 105 }),
+      expectCode('stage3_corpus_below_200'),
+    );
+    assert.throws(
+      () => lockedBundle({
+        namespace: 'short-tracer',
+        purpose: 'tracer_gate',
+        count: 99,
+        eligibleCount: 50,
+      }),
+      expectCode('tracer_corpus_below_100'),
+    );
+    // One row more and the floor is satisfied, so the rejection is the size and nothing else.
+    assert.equal(lockedBundle({ namespace: 'exact-stage3', count: 200 }).corpus.examples.length, 200);
+  });
+
+  it('rejects a frozen contract carrying a metric this engine does not score', () => {
+    const extended = structuredClone(protocol);
+    const admission = extended.admissionQuality as JsonObject;
+    (admission.metrics as JsonObject[]).push({
+      id: 'published_sentiment_precision',
+      kind: 'rate',
+      minimumDenominator: 100,
+      minimumPointEstimate: 0.9,
+      minimumLowerBound: 0.8,
+    });
+    const digest = thresholdDigest(extended);
+    (extended.approval as JsonObject).approvedThresholdsSha256 = digest;
+    const bundle = lockedBundle({ namespace: 'extra-metric' });
+    assert.throws(() => scoreBlindEvaluation({
+      protocol: extended,
+      anchors: { approvedThresholdDigest: digest },
+      corpus: bundle.corpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(bundle.corpus),
+      goldLabels: bundle.gold,
+      predictions: bundle.predictions,
+      forecast: bundle.forecast,
+    }), expectCode('admission_metric_not_scored'));
+
+    // A duplicate id used to last-win silently, quietly choosing one of two conflicting
+    // threshold sets for the same metric.
+    const duplicated = structuredClone(protocol);
+    const duplicatedAdmission = duplicated.admissionQuality as JsonObject;
+    const metrics = duplicatedAdmission.metrics as JsonObject[];
+    metrics.push({ ...metrics[0]!, minimumPointEstimate: 0.1 });
+    const duplicateDigest = thresholdDigest(duplicated);
+    (duplicated.approval as JsonObject).approvedThresholdsSha256 = duplicateDigest;
+    assert.throws(() => scoreBlindEvaluation({
+      protocol: duplicated,
+      anchors: { approvedThresholdDigest: duplicateDigest },
+      corpus: bundle.corpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(bundle.corpus),
+      goldLabels: bundle.gold,
+      predictions: bundle.predictions,
+      forecast: bundle.forecast,
+    }), expectCode('admission_metric_duplicate_id'));
+  });
+
+  it('rejects a forecast carrying an unknown field or a violated literal', () => {
+    const bundle = lockedBundle({ namespace: 'forecast-shape' });
+    // Rebinding forecastSha256 changes the corpus digest, so the prediction set's recorded
+    // corpusSha256 has to follow or the rejection lands on that guard instead of this one.
+    const reseal = (mutant: ReturnType<typeof lockedBundle>): ReturnType<typeof lockedBundle> => {
+      mutant.corpus.forecastSha256 = computeForecastDigest(mutant.forecast);
+      mutant.predictions.corpusSha256 = computeBlindCorpusDigest(mutant.corpus);
+      return mutant;
+    };
+
+    const extraField = structuredClone(bundle);
+    (extraField.forecast as unknown as JsonObject).curatorNote = 'looks fine to me';
+    assert.throws(() => score(reseal(extraField)), expectCode('forecast_field_forbidden'));
+
+    const badStatus = structuredClone(bundle);
+    (badStatus.forecast as unknown as JsonObject).status = 'forecast_excellent';
+    assert.throws(() => score(reseal(badStatus)), expectCode('forecast_status_invalid'));
+
+    const badStage4 = structuredClone(bundle);
+    (badStage4.forecast as unknown as JsonObject).stage4Excluded = false;
+    assert.throws(() => score(reseal(badStage4)), expectCode('forecast_stage4_exclusion_invalid'));
   });
 
   it('rejects Stage 4 corpora in this v1 lane', () => {
@@ -629,6 +872,87 @@ describe('Company Monitoring cumulative continuation', () => {
     }
   });
 
+  it('recomputes the parent verdict instead of trusting the retained report', () => {
+    // The self-digest proves the parent report is internally consistent, not that anybody
+    // authorised it -- computeScoreReportDigest is exported and unsalted, so a curator whose
+    // gate run said `pass` (or `fail`) can edit `outcome` to `incomplete`, re-digest, and
+    // reopen a closed gate. The scorer holds the parent's corpus, gold labels and predictions,
+    // so the verdict must be re-derived from rows.
+    const scenario = continuationScenario({
+      namespace: 'forged-parent',
+      eligibleCount: 150,
+      publishLimit: 150,
+    });
+    assert.equal(scenario.previousReport.outcome, 'pass');
+
+    const forgedReport = structuredClone(scenario.previousReport);
+    forgedReport.outcome = 'incomplete';
+    forgedReport.reportSha256 = computeScoreReportDigest(forgedReport);
+    // The forgery is internally perfect: the digest verifies against its own contents.
+    assert.equal(computeScoreReportDigest(forgedReport), forgedReport.reportSha256);
+
+    const child = structuredClone(scenario.childBundle);
+    child.corpus.continuation!.parentReportSha256 = forgedReport.reportSha256;
+    child.predictions.corpusSha256 = computeBlindCorpusDigest(child.corpus);
+
+    assert.throws(() => score(child, {
+      corpus: scenario.previousBundle.corpus,
+      goldLabels: scenario.previousBundle.gold,
+      predictions: scenario.previousBundle.predictions,
+      report: forgedReport,
+    }), expectCode('previous_report_outcome_not_reproducible'));
+  });
+
+  it('rejects a continuation that changes the corpus purpose or curator access version', () => {
+    // A tracer_gate corpus is structurally always `incomplete` (its 100-example floor sits
+    // below confidence_calibration_stage3's minimumDenominator of 200), so without a purpose
+    // check it could be continued into a stage3_gate child that is forced to carry every
+    // tracer row -- silently merging two populations the lifecycle keeps apart.
+    const { childBundle, previous } = continuationScenario({ namespace: 'purpose-drift' });
+    const drifted = structuredClone(childBundle);
+    drifted.corpus.purpose = 'tracer_gate';
+    drifted.predictions.corpusSha256 = computeBlindCorpusDigest(drifted.corpus);
+    assert.throws(() => score(drifted, previous), expectCode('continuation_purpose_mismatch'));
+
+    const curatorDrift = structuredClone(childBundle);
+    curatorDrift.corpus.curatorAccessVersion = 'cm_curator_access_v2';
+    curatorDrift.gold.curatorAccessVersion = 'cm_curator_access_v2';
+    curatorDrift.corpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(curatorDrift.gold);
+    curatorDrift.predictions.corpusSha256 = computeBlindCorpusDigest(curatorDrift.corpus);
+    assert.throws(
+      () => score(curatorDrift, previous),
+      expectCode('continuation_curator_access_version_mismatch'),
+    );
+  });
+
+  it('distinguishes an uncommitted expansion from one that is not the precommitted manifest', () => {
+    const { childBundle, previous } = continuationScenario({ namespace: 'expansion-codes' });
+    // Same row count, different rows: the parent DID precommit, these are not those rows.
+    const swapped = structuredClone(childBundle);
+    const substitute = examples('substitute-expansion', 60, 90_000);
+    swapped.corpus.examples.splice(200, 60, ...substitute);
+    swapped.gold.labels = swapped.gold.labels.map((label, index) => (
+      index >= 200
+        ? { ...label, opaqueExampleId: swapped.corpus.examples[index]!.opaqueExampleId,
+            canonicalCorporateFamilyDigest: swapped.corpus.examples[index]!.corporateFamilyDigest }
+        : label
+    ));
+    swapped.predictions.predictions = swapped.predictions.predictions.map((prediction, index) => (
+      index >= 200
+        ? { ...prediction, opaqueExampleId: swapped.corpus.examples[index]!.opaqueExampleId,
+            attributedCorporateFamilyDigest: prediction.publish
+              ? swapped.corpus.examples[index]!.corporateFamilyDigest
+              : null }
+        : prediction
+    ));
+    swapped.corpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(swapped.gold);
+    swapped.predictions.corpusSha256 = computeBlindCorpusDigest(swapped.corpus);
+    assert.throws(
+      () => score(swapped, previous),
+      expectCode('continuation_expansion_manifest_mismatch'),
+    );
+  });
+
   it('rejects supplied parent score sets that do not match the retained parent report', () => {
     const predictionMutation = continuationScenario();
     const mutatedPredictions = structuredClone(predictionMutation.previous);
@@ -661,5 +985,82 @@ describe('Company Monitoring blind evaluation CLI', () => {
     );
     assert.equal(result.status, 1);
     assert.match(result.stderr, /digest-corpus input schema invalid/);
+  });
+
+  it('separates a passing gate, a rejected gate, and an engine error by exit code', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'cm-blind-cli-'));
+    const cli = fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url));
+    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
+    const protocolPath = fileURLToPath(
+      new URL('./fixtures/company-monitoring-evaluation/protocol.json', import.meta.url),
+    );
+
+    const runScore = (bundle: ReturnType<typeof lockedBundle>): { status: number | null; stdout: string } => {
+      const write = (name: string, value: unknown): string => {
+        const path = join(workspace, name);
+        writeFileSync(path, JSON.stringify(value));
+        return path;
+      };
+      const result = spawnSync(tsx, [
+        cli, 'score',
+        '--protocol', protocolPath,
+        '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
+        '--corpus', write('corpus.json', bundle.corpus),
+        '--expected-corpus-digest', computeBlindCorpusDigest(bundle.corpus),
+        '--gold', write('gold.json', bundle.gold),
+        '--predictions', write('predictions.json', bundle.predictions),
+        '--forecast', write('forecast.json', bundle.forecast),
+      ], { encoding: 'utf8' });
+      return { status: result.status, stdout: result.stdout };
+    };
+
+    try {
+      const passing = runScore(lockedBundle({ namespace: 'cli-pass' }));
+      assert.equal(passing.status, 0);
+      assert.equal((JSON.parse(passing.stdout) as ScoreReport).outcome, 'pass');
+
+      // A rejected gate must NOT look like success to a wrapper checking $?.
+      const rejected = runScore(lockedBundle({
+        namespace: 'cli-fail',
+        eligibleCount: 200,
+        mistakes: 60,
+      }));
+      assert.equal(rejected.status, 2);
+      assert.equal((JSON.parse(rejected.stdout) as ScoreReport).outcome, 'fail');
+
+      const shortfall = runScore(lockedBundle({
+        namespace: 'cli-incomplete',
+        publishLimit: 90,
+        mistakes: 20,
+      }));
+      assert.equal(shortfall.status, 2);
+      assert.equal((JSON.parse(shortfall.stdout) as ScoreReport).outcome, 'incomplete');
+
+      const usageError = spawnSync(tsx, [cli, 'score', '--corpus'], { encoding: 'utf8' });
+      assert.equal(usageError.status, 1);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('requires all four continuation inputs together', () => {
+    const result = spawnSync(
+      fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
+      [
+        fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
+        'score',
+        '--protocol', 'unused.json',
+        '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
+        '--corpus', 'unused.json',
+        '--expected-corpus-digest', APPROVED_THRESHOLD_DIGEST,
+        '--gold', 'unused.json',
+        '--predictions', 'unused.json',
+        '--forecast', 'unused.json',
+        '--previous-corpus', 'unused.json',
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /continuation requires all four --previous-\* inputs/);
   });
 });

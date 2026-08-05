@@ -117,7 +117,7 @@ function forecast(values: string[]): string {
   }));
 }
 
-function score(values: string[]): string {
+function score(values: string[]): { json: string; outcome: ScoreReport['outcome'] } {
   const options = parseOptions(values);
   exactOptions(options, [
     'protocol',
@@ -148,7 +148,7 @@ function score(values: string[]): string {
     predictions: readJson<PredictionSet>(required(options, 'previous-predictions')),
     report: readJson<ScoreReport>(required(options, 'previous-report')),
   };
-  return canonicalReportJson(scoreBlindEvaluation({
+  const report = scoreBlindEvaluation({
     protocol: readJson<JsonObject>(required(options, 'protocol')),
     anchors: { approvedThresholdDigest: required(options, 'approved-threshold-digest') },
     corpus: readJson<BlindCorpus>(required(options, 'corpus')),
@@ -157,16 +157,28 @@ function score(values: string[]): string {
     predictions: readJson<PredictionSet>(required(options, 'predictions')),
     forecast: readJson<BlindForecast>(required(options, 'forecast')),
     previous,
-  }));
+  });
+  return { json: canonicalReportJson(report), outcome: report.outcome };
 }
+
+// Exit codes are a contract for anything that ever wraps this CLI:
+//   0 = the gate passed
+//   1 = the engine refused to score (bad input, tampered evidence, usage error)
+//   2 = the engine scored and the gate did NOT pass (fail or incomplete)
+// Collapsing 2 into 0 would let a wrapper read a rejected gate as success.
+const EXIT_ENGINE_ERROR = 1;
+const EXIT_GATE_NOT_PASSED = 2;
 
 function main(): void {
   const [commandValue, ...values] = process.argv.slice(2);
   const command = commandValue as Command | undefined;
   if (!command) usage();
   if (command === 'forecast') process.stdout.write(`${forecast(values)}\n`);
-  else if (command === 'score') process.stdout.write(`${score(values)}\n`);
-  else process.stdout.write(`${digestCommand(command, values)}\n`);
+  else if (command === 'score') {
+    const { json, outcome } = score(values);
+    process.stdout.write(`${json}\n`);
+    if (outcome !== 'pass') process.exitCode = EXIT_GATE_NOT_PASSED;
+  } else process.stdout.write(`${digestCommand(command, values)}\n`);
 }
 
 try {
@@ -176,5 +188,5 @@ try {
     ? error.code
     : error instanceof Error ? error.message : String(error);
   process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
+  process.exitCode = EXIT_ENGINE_ERROR;
 }

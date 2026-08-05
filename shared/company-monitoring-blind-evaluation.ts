@@ -5,6 +5,7 @@
 // version-locked prediction sets to produce aggregate forecasts and deterministic score reports.
 import { createHash } from 'node:crypto';
 import {
+  OPAQUE_EXAMPLE_ID,
   adaptiveExpectedCalibrationError,
   asNumber,
   asObject,
@@ -12,6 +13,7 @@ import {
   compareCodePoints,
   evaluateAdmissionMetric,
   exactBinomialLowerBound,
+  hasExactKeys,
   isEvidenceDigest,
   parseRfc3339Timestamp,
   stratifiedBootstrapUpperBound,
@@ -270,7 +272,6 @@ export class BlindEvaluationError extends Error {
 
 const DIRECTIONS: Direction[] = ['positive', 'negative', 'mixed'];
 const MATERIALITIES: Materiality[] = ['material', 'immaterial'];
-const OPAQUE_EXAMPLE_ID = /^cm_example_[a-f0-9]{6}$/;
 const VERSION = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const STAGE3_METRIC_IDS: Stage3MetricId[] = [
   'published_material_impact_precision',
@@ -287,6 +288,34 @@ const EVALUATION_VERSION_FIELDS = [
   ['modelVersion', 'model_version'],
   ['queryVersion', 'query_version'],
 ] as const;
+const OPAQUE_EXAMPLE_ID_PREFIX = 'cm_example_';
+const FORECAST_KEYS = new Set([
+  'schemaVersion',
+  'status',
+  'gating',
+  'protocolVersion',
+  'approvedThresholdsSha256',
+  'pilotCorpusVersion',
+  'pilotCorpusSha256',
+  'targetCorpusVersion',
+  'targetCandidateSha256',
+  'targetGoldLabelSetSha256',
+  'versions',
+  'candidateStrata',
+  'pilotRealizedRates',
+  'denominatorForecasts',
+  'gaps',
+  'recommendedUntouchedGrowth',
+  'stage4Excluded',
+]);
+const FORECAST_VERSIONS_KEYS = new Set([
+  'policyVersion',
+  'modelVersion',
+  'queryVersion',
+  'pilotGoldLabelVersion',
+  'targetGoldLabelVersion',
+  'curatorAccessVersion',
+]);
 
 function fail(code: string): never {
   throw new BlindEvaluationError(code);
@@ -382,28 +411,37 @@ function validateApprovedProtocol(protocol: JsonObject, approvedThresholdDigest:
   return admission;
 }
 
-function metricDefinitions(admission: JsonObject): Record<Stage3MetricId, JsonObject> {
+type AdmissionMetricDefinitions = {
+  stage3: Record<Stage3MetricId, JsonObject>;
+  stage4: JsonObject;
+};
+
+function metricDefinitions(admission: JsonObject): AdmissionMetricDefinitions {
   if (!Array.isArray(admission.metrics)) fail('admission_metrics_missing');
   const byId = new Map<string, JsonObject>();
   for (const value of admission.metrics) {
     const definition = asObject(value, 'admissionMetric');
-    byId.set(String(definition.id ?? ''), definition);
+    const id = String(definition.id ?? '');
+    // Last-wins on a duplicate id would silently pick one of two conflicting thresholds.
+    if (byId.has(id)) fail('admission_metric_duplicate_id');
+    byId.set(id, definition);
   }
-  const result = {} as Record<Stage3MetricId, JsonObject>;
+  const stage3 = {} as Record<Stage3MetricId, JsonObject>;
   for (const id of STAGE3_METRIC_IDS) {
     const definition = byId.get(id);
     if (!definition) fail(`admission_metric_missing_${id}`);
-    result[id] = definition;
+    stage3[id] = definition;
   }
-  if (!byId.has('confidence_calibration_stage4')) fail('stage4_metric_missing_from_protocol');
-  return result;
+  const stage4 = byId.get('confidence_calibration_stage4');
+  if (!stage4) fail('stage4_metric_missing_from_protocol');
+  // Closed-world: the engine scores exactly these metrics. A metric added to the frozen
+  // contract that this engine cannot score must stop the run, not be dropped from it.
+  if (byId.size !== STAGE3_METRIC_IDS.length + 1) fail('admission_metric_not_scored');
+  return { stage3, stage4 };
 }
 
-function stage4MinimumExamples(admission: JsonObject): number {
-  const metrics = admission.metrics as JsonObject[];
-  const definition = metrics.find((metric) => metric.id === 'confidence_calibration_stage4');
-  if (!definition) fail('stage4_metric_missing_from_protocol');
-  return asNumber(definition.minimumDenominator, 'confidence_calibration_stage4.minimumDenominator');
+function stage4MinimumExamples(stage4: JsonObject): number {
+  return asNumber(stage4.minimumDenominator, 'confidence_calibration_stage4.minimumDenominator');
 }
 
 function validateBlindExample(example: BlindExample): void {
@@ -621,12 +659,23 @@ export function forecastBlindEvaluation(input: {
     }
   }
 
+  // candidateStrata.eligibleDirections reports ELIGIBILITY, as documented. The projection basis
+  // below must instead be eligible-AND-material, because that is the population whose rate
+  // directionRates measures (see pilotDirectionEligible) and whose rows the scorer actually
+  // counts into direction_accuracy_* denominators. Multiplying one by the other's rate
+  // over-projects by 1/P(material|eligible) and can report forecast_ok for a short corpus.
   const targetDirectionCounts: Record<Direction, number> = { positive: 0, negative: 0, mixed: 0 };
+  const targetMaterialDirectionCounts: Record<Direction, number> = { positive: 0, negative: 0, mixed: 0 };
   let targetEligible = 0;
+  let targetMaterialEligible = 0;
   for (const label of targetLabels.values()) {
     if (label.publicationEligible) {
       targetEligible += 1;
       targetDirectionCounts[label.goldDirection] += 1;
+      if (label.goldMateriality === 'material') {
+        targetMaterialEligible += 1;
+        targetMaterialDirectionCounts[label.goldDirection] += 1;
+      }
     }
   }
 
@@ -656,12 +705,13 @@ export function forecastBlindEvaluation(input: {
   ])) as Record<Direction, number>;
   const expectedDirection = Object.fromEntries(DIRECTIONS.map((direction) => [
     direction,
-    targetDirectionCounts[direction] * directionRates[direction],
+    targetMaterialDirectionCounts[direction] * directionRates[direction],
   ])) as Record<Direction, number>;
   const expectedPublished = input.targetCorpus.examples.length * publishedRate;
   const expectedDirectionOverall = DIRECTIONS.reduce((sum, direction) => sum + expectedDirection[direction], 0);
 
-  const minimum = (id: Stage3MetricId) => asNumber(definitions[id].minimumDenominator, `${id}.minimumDenominator`);
+  const minimum = (id: Stage3MetricId) =>
+    asNumber(definitions.stage3[id].minimumDenominator, `${id}.minimumDenominator`);
   const denominatorForecasts: Record<Stage3MetricId, DenominatorForecast> = {
     published_material_impact_precision: forecastDenominator(
       minimum('published_material_impact_precision'), expectedPublished,
@@ -702,9 +752,23 @@ export function forecastBlindEvaluation(input: {
     correctlyAttributedRate,
   );
   const eligibleGrowthValues = Object.values(eligibleGrowth);
-  const directionGrowth = eligibleGrowthValues.some((value) => value === null)
+  // eligibleGrowth is denominated in ELIGIBLE-AND-MATERIAL rows (directionRates divides by
+  // pilotDirectionEligible), while publishedGrowth/overallGrowth are denominated in TOTAL
+  // examples (publishedRate/correctlyAttributedRate divide by the whole pilot corpus). Convert
+  // before taking the max, or totalExamples under-states growth by 1/materialEligibleRate
+  // whenever a direction stratum dominates. Assumption, matching the one expectedPublished
+  // already makes: untouched growth arrives at the candidate's own eligible-and-material rate.
+  const materialEligibleRate = targetMaterialEligible / input.targetCorpus.examples.length;
+  const eligibleRowGrowth = eligibleGrowthValues.some((value) => value === null)
     ? null
     : (eligibleGrowthValues as number[]).reduce((sum, value) => sum + value, 0);
+  const directionGrowth = eligibleRowGrowth === null
+    ? null
+    : eligibleRowGrowth === 0
+      ? 0
+      : materialEligibleRate <= 0
+        ? null
+        : Math.ceil(eligibleRowGrowth / materialEligibleRate);
 
   return {
     schemaVersion: 'cm_blind_forecast_v1',
@@ -759,6 +823,24 @@ function validateForecast(input: {
   const { corpus, forecast, approvedThresholdDigest } = input;
   if (forecast.schemaVersion !== 'cm_blind_forecast_v1' || forecast.gating !== false) {
     fail('forecast_schema_invalid');
+  }
+  // The forecast is embedded verbatim in the durable report, so its shape is part of what
+  // gets recorded. Gate it the way the sibling module gates every pinned container, and
+  // enforce the fields whose literal types would otherwise be erased at runtime.
+  if (!hasExactKeys(forecast as unknown as JsonObject, FORECAST_KEYS)) {
+    fail('forecast_field_forbidden');
+  }
+  if (!hasExactKeys(forecast.versions as unknown as JsonObject, FORECAST_VERSIONS_KEYS)) {
+    fail('forecast_versions_field_forbidden');
+  }
+  if (forecast.status !== 'forecast_ok' && forecast.status !== 'forecast_warning') {
+    fail('forecast_status_invalid');
+  }
+  if (forecast.stage4Excluded !== true) fail('forecast_stage4_exclusion_invalid');
+  // Aggregate-only: no per-example identity may ride into the report through this blob.
+  // OPAQUE_EXAMPLE_ID is anchored, so match on the id prefix across the serialized blob.
+  if (canonicalJson(forecast).includes(OPAQUE_EXAMPLE_ID_PREFIX)) {
+    fail('forecast_contains_example_id');
   }
   if (forecast.approvedThresholdsSha256 !== approvedThresholdDigest) fail('forecast_protocol_digest_mismatch');
   if (forecast.protocolVersion !== corpus.protocolVersion) fail('forecast_protocol_version_mismatch');
@@ -815,6 +897,17 @@ function validateContinuation(input: {
   const samePolicy = EVALUATION_VERSION_FIELDS
     .every(([field]) => corpus[field] === previous.corpus[field]);
   if (!samePolicy) fail('continuation_version_mismatch');
+  // The curator-access contract is as much a frozen version as policy/model/query: a
+  // continuation that changes who may see what is not the same evaluation.
+  if (corpus.curatorAccessVersion !== previous.corpus.curatorAccessVersion) {
+    fail('continuation_curator_access_version_mismatch');
+  }
+  // Purpose continuity. Without this, a tracer_gate corpus -- which is structurally always
+  // `incomplete`, since its 100-example floor sits below confidence_calibration_stage3's
+  // minimumDenominator -- can be continued into a stage3_gate child that is forced to carry
+  // every tracer row. That silently merges two populations the lifecycle keeps separate, the
+  // same separation pilot_gate_overlap_* enforces for pilot vs gate.
+  if (corpus.purpose !== previous.corpus.purpose) fail('continuation_purpose_mismatch');
   if (previous.report.outcome !== 'incomplete') fail('continuation_requires_incomplete_parent');
   if (corpus.continuation === null) fail('fresh_corpus_retry_forbidden');
   const reference = corpus.continuation;
@@ -835,8 +928,11 @@ function validateContinuation(input: {
     fail('continuation_expansion_count_mismatch');
   }
   const appended = corpus.examples.slice(previous.corpus.examples.length);
+  // Distinct from continuation_expansion_not_precommitted above (parent committed to no
+  // expansion at all): here the parent DID precommit, but these are not the rows it named.
+  // The two need different remediation, so they need different codes.
   if (computeExpansionManifestDigest(appended) !== expansion.manifestSha256) {
-    fail('continuation_expansion_not_precommitted');
+    fail('continuation_expansion_manifest_mismatch');
   }
   const previousPredictionDigest = computePredictionSetDigest(previous.predictions);
   const previousGoldDigest = computeGoldLabelSetDigest(previous.goldLabels);
@@ -917,53 +1013,32 @@ function metricReasons(metrics: Record<Stage3MetricId, Stage3MetricReport>): str
   return [...new Set(reasons)].sort();
 }
 
-export function scoreBlindEvaluation(input: {
-  protocol: JsonObject;
-  anchors: { approvedThresholdDigest: string };
-  corpus: BlindCorpus;
-  expectedCorpusSha256: string;
-  goldLabels: GoldLabelSet;
-  predictions: PredictionSet;
-  forecast: BlindForecast;
-  previous?: {
-    corpus: BlindCorpus;
-    goldLabels: GoldLabelSet;
-    predictions: PredictionSet;
-    report: ScoreReport;
-  };
-}): ScoreReport {
-  const admission = validateApprovedProtocol(input.protocol, input.anchors.approvedThresholdDigest);
-  const definitions = metricDefinitions(admission);
-  const protocolVersion = String(input.protocol.protocolVersion);
-  validateLockedCorpus(input.corpus, protocolVersion, input.expectedCorpusSha256);
-  if (input.corpus.continuation !== null && !input.previous) {
-    fail('continuation_parent_inputs_missing');
-  }
-  if (input.previous) {
-    if (computeScoreReportDigest(input.previous.report) !== input.previous.report.reportSha256) {
-      fail('previous_report_digest_invalid');
-    }
-    if (input.previous.report.corpus.version !== input.previous.corpus.corpusVersion
-      || input.previous.report.corpus.sha256 !== computeBlindCorpusDigest(input.previous.corpus)) {
-      fail('previous_report_corpus_mismatch');
-    }
-    validateContinuation({
-      corpus: input.corpus,
-      goldLabels: input.goldLabels,
-      predictions: input.predictions,
-      previous: input.previous,
-    });
-  }
-  const labels = validateGoldLabels(input.corpus, input.goldLabels);
-  const predictions = validatePredictionSet(input.corpus, input.predictions);
-  validateForecast({
-    corpus: input.corpus,
-    goldLabels: input.goldLabels,
-    forecast: input.forecast,
-    approvedThresholdDigest: input.anchors.approvedThresholdDigest,
-    previous: input.previous,
-  });
+type ScoredAggregates = {
+  publication: { truePositive: number; falsePositive: number; trueNegative: number; falseNegative: number };
+  materiality: Record<Materiality, Record<Materiality, number>>;
+  direction: Record<Direction, Record<Direction | 'none', number>>;
+  attribution: { correct: number; incorrect: number };
+  metrics: Record<Stage3MetricId, Stage3MetricReport>;
+  observedDenominators: Record<Stage3MetricId, number>;
+  reasons: string[];
+  outcome: ScoreOutcome;
+  discovery: { denominator: number; numerator: number; rate: number | null };
+  customerUsefulness: { denominator: number; numerator: number; rate: number | null };
+  calibration: { denominator: number; pointEstimate: number; upperBound: number };
+  latencies: number[];
+  totalCost: number;
+};
 
+// The scoring core, isolated from every validation and identity concern so that the SAME
+// computation can be replayed over a continuation parent. An `outcome` must always be
+// derived from rows -- never read from an artifact a caller supplied.
+function computeScoredAggregates(
+  admission: JsonObject,
+  definitions: AdmissionMetricDefinitions,
+  corpus: BlindCorpus,
+  labels: Map<string, GoldLabel>,
+  predictions: Map<string, Prediction>,
+): ScoredAggregates {
   const publication = { truePositive: 0, falsePositive: 0, trueNegative: 0, falseNegative: 0 };
   const materiality = emptyMaterialityMatrix();
   const direction = emptyDirectionMatrix();
@@ -981,7 +1056,7 @@ export function scoreBlindEvaluation(input: {
   const latencies: number[] = [];
   let totalCost = 0;
 
-  for (const example of [...input.corpus.examples].sort((left, right) =>
+  for (const example of [...corpus.examples].sort((left, right) =>
     compareCodePoints(left.opaqueExampleId, right.opaqueExampleId))) {
     const label = labels.get(example.opaqueExampleId)!;
     const prediction = predictions.get(example.opaqueExampleId)!;
@@ -1043,7 +1118,7 @@ export function scoreBlindEvaluation(input: {
   const directionOverallCorrect = DIRECTIONS.reduce(
     (sum, value) => sum + directionCorrect[value], 0,
   );
-  const calibrationDefinition = definitions.confidence_calibration_stage3;
+  const calibrationDefinition = definitions.stage3.confidence_calibration_stage3;
   const calibrationConfig = asObject(admission.calibration, 'admissionQuality.calibration');
   const calibrationPoint = adaptiveExpectedCalibrationError(calibrationExamples);
   const calibrationUpper = stratifiedBootstrapUpperBound(calibrationExamples, calibrationConfig);
@@ -1054,24 +1129,26 @@ export function scoreBlindEvaluation(input: {
   }).reasons;
   const metrics: Record<Stage3MetricId, Stage3MetricReport> = {
     published_material_impact_precision: buildRateMetric(
-      admission, definitions.published_material_impact_precision, published, publishedMaterial,
+      admission, definitions.stage3.published_material_impact_precision, published, publishedMaterial,
     ),
     published_company_attribution_precision: buildRateMetric(
-      admission, definitions.published_company_attribution_precision, published, publishedAttributionCorrect,
+      admission, definitions.stage3.published_company_attribution_precision,
+      published, publishedAttributionCorrect,
     ),
     direction_accuracy_overall: buildRateMetric(
-      admission, definitions.direction_accuracy_overall, directionOverallDenominator, directionOverallCorrect,
+      admission, definitions.stage3.direction_accuracy_overall,
+      directionOverallDenominator, directionOverallCorrect,
     ),
     direction_accuracy_positive: buildRateMetric(
-      admission, definitions.direction_accuracy_positive,
+      admission, definitions.stage3.direction_accuracy_positive,
       directionDenominators.positive, directionCorrect.positive,
     ),
     direction_accuracy_negative: buildRateMetric(
-      admission, definitions.direction_accuracy_negative,
+      admission, definitions.stage3.direction_accuracy_negative,
       directionDenominators.negative, directionCorrect.negative,
     ),
     direction_accuracy_mixed: buildRateMetric(
-      admission, definitions.direction_accuracy_mixed,
+      admission, definitions.stage3.direction_accuracy_mixed,
       directionDenominators.mixed, directionCorrect.mixed,
     ),
     confidence_calibration_stage3: {
@@ -1092,10 +1169,126 @@ export function scoreBlindEvaluation(input: {
     metrics[id].denominator,
   ])) as Record<Stage3MetricId, number>;
 
+  return {
+    publication,
+    materiality,
+    direction,
+    attribution,
+    metrics,
+    observedDenominators,
+    reasons,
+    outcome,
+    discovery: {
+      denominator: discoveryDenominator,
+      numerator: discoveredEligible,
+      rate: discoveryDenominator === 0 ? null : discoveredEligible / discoveryDenominator,
+    },
+    customerUsefulness: {
+      denominator: usefulnessDenominator,
+      numerator: usefulnessNumerator,
+      rate: usefulnessDenominator === 0 ? null : usefulnessNumerator / usefulnessDenominator,
+    },
+    calibration: {
+      denominator: calibrationExamples.length,
+      pointEstimate: calibrationPoint,
+      upperBound: calibrationUpper,
+    },
+    latencies,
+    totalCost,
+  };
+}
+
+export function scoreBlindEvaluation(input: {
+  protocol: JsonObject;
+  anchors: { approvedThresholdDigest: string };
+  corpus: BlindCorpus;
+  expectedCorpusSha256: string;
+  goldLabels: GoldLabelSet;
+  predictions: PredictionSet;
+  forecast: BlindForecast;
+  previous?: {
+    corpus: BlindCorpus;
+    goldLabels: GoldLabelSet;
+    predictions: PredictionSet;
+    report: ScoreReport;
+  };
+}): ScoreReport {
+  const admission = validateApprovedProtocol(input.protocol, input.anchors.approvedThresholdDigest);
+  const definitions = metricDefinitions(admission);
+  const protocolVersion = String(input.protocol.protocolVersion);
+  validateLockedCorpus(input.corpus, protocolVersion, input.expectedCorpusSha256);
+  if (input.corpus.continuation !== null && !input.previous) {
+    fail('continuation_parent_inputs_missing');
+  }
+  if (input.previous) {
+    if (input.previous.report.schemaVersion !== 'cm_blind_score_report_v1') {
+      fail('previous_report_schema_version_invalid');
+    }
+    // Self-consistency only: computeScoreReportDigest is exported and unsalted, so this
+    // proves the file was not corrupted -- it proves nothing about who wrote it.
+    if (computeScoreReportDigest(input.previous.report) !== input.previous.report.reportSha256) {
+      fail('previous_report_digest_invalid');
+    }
+    if (input.previous.report.corpus.version !== input.previous.corpus.corpusVersion
+      || input.previous.report.corpus.sha256 !== computeBlindCorpusDigest(input.previous.corpus)) {
+      fail('previous_report_corpus_mismatch');
+    }
+    validateContinuation({
+      corpus: input.corpus,
+      goldLabels: input.goldLabels,
+      predictions: input.predictions,
+      previous: input.previous,
+    });
+    // The parent must have been scored under the SAME approved protocol. Otherwise a corpus
+    // can be scored under a variant protocol (same protocolVersion string, inflated
+    // minimumDenominator, re-anchored digest) purely to manufacture the `incomplete` that
+    // unlocks a continuation, then continued under the real one -- every other parent check
+    // survives, because the corpus/gold/prediction digests are protocol-independent and the
+    // report digest is self-consistent by construction. Ordered after validateContinuation so
+    // plain corpus-vs-corpus version drift still reports continuation_version_mismatch.
+    if (input.previous.report.protocol.version !== protocolVersion
+      || input.previous.report.protocol.approvedThresholdsSha256
+        !== input.anchors.approvedThresholdDigest) {
+      fail('previous_report_protocol_mismatch');
+    }
+    // THE continuation gate. validateContinuation has by now re-validated the parent's gold
+    // labels and predictions against the parent corpus, so replaying the scoring core over
+    // them re-derives the parent verdict from rows instead of reading it out of a
+    // caller-supplied artifact. Without this, editing `outcome` to "incomplete" and
+    // recomputing the self-digest reopens a gate that already said fail.
+    const parentScored = computeScoredAggregates(
+      admission,
+      definitions,
+      input.previous.corpus,
+      validateGoldLabels(input.previous.corpus, input.previous.goldLabels),
+      validatePredictionSet(input.previous.corpus, input.previous.predictions),
+    );
+    if (parentScored.outcome !== input.previous.report.outcome) {
+      fail('previous_report_outcome_not_reproducible');
+    }
+    if (canonicalJson(parentScored.reasons) !== canonicalJson(input.previous.report.reasons)) {
+      fail('previous_report_reasons_not_reproducible');
+    }
+    if (parentScored.outcome !== 'incomplete') fail('continuation_requires_incomplete_parent');
+  }
+  const labels = validateGoldLabels(input.corpus, input.goldLabels);
+  const predictions = validatePredictionSet(input.corpus, input.predictions);
+  validateForecast({
+    corpus: input.corpus,
+    goldLabels: input.goldLabels,
+    forecast: input.forecast,
+    approvedThresholdDigest: input.anchors.approvedThresholdDigest,
+    previous: input.previous,
+  });
+
+  const scored = computeScoredAggregates(admission, definitions, input.corpus, labels, predictions);
+
+  const calibrationConfig = asObject(admission.calibration, 'admissionQuality.calibration');
+  const { latencies } = scored;
   const reportBase: Omit<ScoreReport, 'reportSha256'> = {
     schemaVersion: 'cm_blind_score_report_v1',
-    outcome,
-    reasons,
+    outcome: scored.outcome,
+    reasons: scored.reasons,
     protocol: {
       version: protocolVersion,
       approvedThresholdsSha256: input.anchors.approvedThresholdDigest,
@@ -1115,23 +1308,20 @@ export function scoreBlindEvaluation(input: {
       curatorAccessVersion: input.corpus.curatorAccessVersion,
     },
     forecast: input.forecast,
-    observedDenominators,
-    metrics,
-    discovery: {
-      denominator: discoveryDenominator,
-      numerator: discoveredEligible,
-      rate: discoveryDenominator === 0 ? null : discoveredEligible / discoveryDenominator,
+    observedDenominators: scored.observedDenominators,
+    metrics: scored.metrics,
+    discovery: scored.discovery,
+    customerUsefulness: scored.customerUsefulness,
+    confusionMatrices: {
+      publication: scored.publication,
+      materiality: scored.materiality,
+      direction: scored.direction,
+      attribution: scored.attribution,
     },
-    customerUsefulness: {
-      denominator: usefulnessDenominator,
-      numerator: usefulnessNumerator,
-      rate: usefulnessDenominator === 0 ? null : usefulnessNumerator / usefulnessDenominator,
-    },
-    confusionMatrices: { publication, materiality, direction, attribution },
     calibration: {
-      denominator: calibrationExamples.length,
-      pointEstimate: calibrationPoint,
-      upperBound: calibrationUpper,
+      denominator: scored.calibration.denominator,
+      pointEstimate: scored.calibration.pointEstimate,
+      upperBound: scored.calibration.upperBound,
       metric: String(calibrationConfig.metric),
       binning: String(calibrationConfig.binning),
       bootstrapMethod: String(calibrationConfig.bootstrapMethod),
@@ -1146,14 +1336,14 @@ export function scoreBlindEvaluation(input: {
       maxMs: latencies[latencies.length - 1]!,
     },
     cost: {
-      totalUsd: totalCost,
-      averagePerExampleUsd: totalCost / input.corpus.examples.length,
+      totalUsd: scored.totalCost,
+      averagePerExampleUsd: scored.totalCost / input.corpus.examples.length,
     },
     predictionSetSha256: computePredictionSetDigest(input.predictions),
     goldLabelSetSha256: computeGoldLabelSetDigest(input.goldLabels),
     stage4: {
       included: false,
-      minimumExamples: stage4MinimumExamples(admission),
+      minimumExamples: stage4MinimumExamples(definitions.stage4),
       releaseInput: 'separate_post_v1',
     },
   };
