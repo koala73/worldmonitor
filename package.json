@@ -129,6 +129,7 @@
     "typecheck:dom-tests": "tsc --noEmit -p tsconfig.dom-tests.json",
     "typecheck:contract-tests": "tsc --noEmit -p tsconfig.contract-tests.json",
     "company-monitoring:digest": "tsx scripts/recompute-company-monitoring-digest.mjs",
+    "company-monitoring:blind-evaluation": "tsx scripts/company-monitoring-blind-evaluation.mts",
     "test:convex:watch": "vitest --config vitest.config.mts"
   },
   "devDependencies": {
