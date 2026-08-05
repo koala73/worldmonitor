@@ -732,7 +732,26 @@ const SEED_META = {
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // written by seed-internet-outages afterPublish; outages cron ~15min; 60 = 4x interval
   economicStress:       { key: 'seed-meta:economic:stress-index',            maxStaleMin: 180 }, // computed in seed-economy afterPublish; cron ~1h; 180min = 3x interval
-  marketImplications:   { key: 'seed-meta:intelligence:market-implications', maxStaleMin: 120 }, // LLM-generated in seed-forecasts; cron ~1h; 120min = 2x interval
+  marketImplications:   {
+    key: 'seed-meta:intelligence:market-implications',
+    maxStaleMin: 120, // LLM-generated in seed-forecasts; cron ~1h; 120min = 2x interval
+    // The tail LLM stage misses regularly — an observed five-attempt window
+    // produced three publications and two provider timeouts — while the cards
+    // it publishes stay useful for hours. seed-forecasts holds `fetchedAt` at
+    // the served vintage on a miss (so the 120min gate above still governs)
+    // and records the streak here. Thresholds are sized to the SAME hourly
+    // cadence as maxStaleMin: two consecutive misses is ~2h without a fresh
+    // generation, and a failure with no follow-up attempt for 120min means
+    // the stage stopped running at all. `warnWithoutSuccess` is deliberately
+    // absent: the producer only records a streak when it has a served payload
+    // to point at, which is itself proof of an earlier success, so the flag
+    // could never fire here.
+    synthesisFailure: {
+      warnAfterConsecutive: 2,
+      warnAfterAgeMin: 120,
+      failureCodePattern: /^MARKET_IMPLICATIONS_(LLM_NO_RESPONSE|NO_PARSEABLE_CARDS|VALIDATION|UNKNOWN)$/,
+    },
+  },
   trafficAnomalies:     { key: 'seed-meta:cf:radar:traffic-anomalies',       maxStaleMin: 60 }, // written by seed-internet-outages afterPublish; outages cron ~15min; 60 = 4x interval
   chokepointExposure:   { key: 'seed-meta:supply_chain:chokepoint-exposure', maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
   recoveryFiscalSpace:     { key: 'seed-meta:resilience:recovery:fiscal-space',     maxStaleMin: 129600 }, // monthly cron; 129600min = 90d = 3x interval (bumped from 86400/60d = 2x in PR #3669 for month-2 hiccup margin)
@@ -1257,8 +1276,13 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     const synthesisFailureAgeMin = lastAttemptAt == null
       ? null
       : Math.round((now - lastAttemptAt) / 60_000);
+    // The code vocabulary is per-producer and closed: health echoes this value
+    // back to operators, so anything outside the owning key's pattern is
+    // dropped rather than relayed.
+    const failureCodePattern = seedCfg.synthesisFailure.failureCodePattern
+      ?? /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER)$/;
     const lastSynthesisFailureCode = typeof meta?.lastSynthesisFailureCode === 'string'
-      && /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER)$/.test(meta.lastSynthesisFailureCode)
+      && failureCodePattern.test(meta.lastSynthesisFailureCode)
       ? meta.lastSynthesisFailureCode
       : null;
     const servedGeneratedAt = typeof meta?.servedGeneratedAt === 'string'

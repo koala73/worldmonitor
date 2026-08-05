@@ -17070,25 +17070,139 @@ function marketImplicationsMetaErrorReason(reason) {
   return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
 }
 
-// Surface a producer-side LLM failure to /api/health instead of silently
-// returning. Without this the success-only seed-meta write freezes at the
-// last-good fetchedAt; the canonical key then TTLs out and health reports
-// `marketImplications: EMPTY` — indistinguishable from a stopped cron. Writing
-// a `status:'error'` seed-meta makes api/health.js classifyKey emit SEED_ERROR
-// (warn: producer failing) per the socialVelocity precedent (PR #4084). We also
-// re-EXPIRE the canonical key so the last-good cards survive while the LLM step
-// retries on the next cron, rather than expiring to EMPTY mid-outage.
+// Closed failure vocabulary surfaced to /api/health as
+// seed-meta.lastSynthesisFailureCode. api/health.js validates against a
+// matching pattern, so a code added here needs the pattern widened there.
+const MARKET_IMPLICATIONS_FAILURE_CODES = Object.freeze({
+  llm_no_response: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  no_parseable_cards: 'MARKET_IMPLICATIONS_NO_PARSEABLE_CARDS',
+  all_cards_failed_validation: 'MARKET_IMPLICATIONS_VALIDATION',
+});
+const MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE = 'MARKET_IMPLICATIONS_UNKNOWN';
+// Matches INSIGHTS_MAX_CONSECUTIVE_FAILURES and api/health.js's own clamp: the
+// streak is a signal, not a counter anyone reads past the warn threshold.
+const MARKET_IMPLICATIONS_MAX_CONSECUTIVE_FAILURES = 100;
+
+/**
+ * Decide what a failed attempt does to seed-meta.
+ *
+ * This stage is ALLOWED to miss — it is one 2,500-token completion per hour
+ * against a panel whose cards stay useful for hours. Writing
+ * `{recordCount: 0, status: 'error'}` on every miss (the original behavior)
+ * meant a single transient provider timeout flipped /api/health to SEED_ERROR
+ * while the canonical key still served five valid cards, and — because that
+ * write also advanced `fetchedAt` to now — a chronic outage refreshed its own
+ * freshness clock forever and could never age into STALE_SEED.
+ *
+ * So a miss with usable last-good becomes a BOUNDED degraded state: the
+ * content clock holds at the served vintage (age escalation still works), the
+ * record count describes what is actually being served, and the miss is
+ * recorded as a streak + reason for api/health.js's synthesisFailure contract
+ * to escalate on the second consecutive miss. A miss with nothing servable
+ * keeps the immediate `status:'error'` — there the panel really is broken.
+ */
+export function buildMarketImplicationsFailureMeta({
+  previousMeta,
+  lastGoodPayload,
+  reason,
+  nowMs = Date.now(),
+} = {}) {
+  const now = Number.isFinite(nowMs) && nowMs > 0 ? Math.floor(nowMs) : Date.now();
+  const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
+  const cards = Array.isArray(lastGoodPayload?.cards) ? lastGoodPayload.cards : [];
+  const servedGeneratedAt = typeof lastGoodPayload?.generatedAt === 'string'
+    && lastGoodPayload.generatedAt.length <= 64
+    ? lastGoodPayload.generatedAt
+    : null;
+  const servedMs = servedGeneratedAt == null ? Number.NaN : Date.parse(servedGeneratedAt);
+
+  // Fail closed. No cards, or no parseable content clock to hold `fetchedAt`
+  // at, means we cannot prove anything usable is being served — and softening
+  // the alarm on an unproven assumption is how a real outage goes unnoticed.
+  if (cards.length === 0 || !Number.isFinite(servedMs)) {
+    return {
+      fetchedAt: now,
+      recordCount: 0,
+      status: 'error',
+      errorReason: marketImplicationsMetaErrorReason(reason),
+    };
+  }
+
+  const previousFailures = Number.isInteger(previous.consecutiveFailures) && previous.consecutiveFailures > 0
+    ? previous.consecutiveFailures
+    : 0;
+  const previousSuccessAt = Number.isFinite(previous.lastSuccessAt) && previous.lastSuccessAt > 0
+    ? previous.lastSuccessAt
+    : null;
+  return {
+    // Held at the served vintage, NOT advanced to now: this is the clock
+    // /api/health ages against, and the served cards are what it describes.
+    fetchedAt: servedMs,
+    recordCount: cards.length,
+    status: 'ok',
+    lastAttemptAt: now,
+    // The payload being served is itself proof of an earlier publish, so a
+    // pre-contract meta (no lastSuccessAt field) still reports one.
+    lastSuccessAt: previousSuccessAt ?? servedMs,
+    servedGeneratedAt,
+    consecutiveFailures: Math.min(MARKET_IMPLICATIONS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
+    lastSynthesisFailureCode: MARKET_IMPLICATIONS_FAILURE_CODES[reason] || MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE,
+  };
+}
+
+// A successful publish must clear the diagnostics it may be recovering from:
+// a stale `consecutiveFailures` left behind would keep health warning long
+// after the provider came back.
+function buildMarketImplicationsSuccessMeta(payload, recordCount, nowMs = Date.now()) {
+  return {
+    fetchedAt: nowMs,
+    recordCount,
+    status: 'ok',
+    lastAttemptAt: nowMs,
+    lastSuccessAt: nowMs,
+    servedGeneratedAt: typeof payload?.generatedAt === 'string' ? payload.generatedAt : null,
+    consecutiveFailures: 0,
+    lastSynthesisFailureCode: null,
+  };
+}
+
+// Record a producer-side LLM failure for /api/health. Without any write the
+// success-only seed-meta freezes at the last-good fetchedAt, the canonical key
+// TTLs out, and health reports `marketImplications: EMPTY` — indistinguishable
+// from a stopped cron. What the write says depends on whether anything is
+// still servable (see buildMarketImplicationsFailureMeta). Either way we
+// re-EXPIRE the canonical key so the last-good cards survive while the LLM
+// step retries on the next cron, rather than expiring to EMPTY mid-outage.
 async function writeMarketImplicationsFailureMeta(reason) {
   const { url, token } = getRedisCredentials();
-  const meta = {
-    fetchedAt: Date.now(),
-    recordCount: 0,
-    status: 'error',
-    errorReason: marketImplicationsMetaErrorReason(reason),
-  };
+  let previousMeta = null;
+  let lastGoodPayload = null;
+  try {
+    previousMeta = await redisGet(url, token, MARKET_IMPLICATIONS_META_KEY);
+    lastGoodPayload = await redisGet(url, token, MARKET_IMPLICATIONS_KEY);
+  } catch (err) {
+    // Fail closed: an unread last-good is an unproven last-good, so this
+    // degrades into the immediate-error branch rather than softening blind.
+    console.warn(`  [MarketImplications] last-good read failed during failure write: ${err.message}`);
+    previousMeta = null;
+    lastGoodPayload = null;
+  }
+
+  const meta = buildMarketImplicationsFailureMeta({ previousMeta, lastGoodPayload, reason });
   await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
+  if (meta.status === 'error') {
+    console.warn(`  [MarketImplications] ${reason}: nothing servable — writing error seed-meta`);
+  } else {
+    console.warn(`  [MarketImplications] ${reason}: serving ${meta.recordCount} last-good cards from ${meta.servedGeneratedAt} (consecutive misses: ${meta.consecutiveFailures})`);
+  }
+  console.log(JSON.stringify({
+    event: 'llm_market_implications',
+    failed: reason,
+    degraded: meta.status !== 'error',
+    consecutiveFailures: meta.consecutiveFailures ?? null,
+  }));
   // EXPIRE is a best-effort last-good preservation hint — failure here only
-  // shortens how long stale cards linger, it never loses the error signal above.
+  // shortens how long stale cards linger, it never loses the signal above.
   try {
     await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
   } catch (err) {
@@ -17150,7 +17264,7 @@ async function buildAndSeedMarketImplications(inputs) {
     if (Array.isArray(cachedStage?.cards) && cachedStage.cards.length > 0) {
       const payload = { cards: cachedStage.cards, generatedAt: new Date().toISOString(), model: cachedStage.model || '' };
       await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
-      const meta = { fetchedAt: Date.now(), recordCount: cachedStage.cards.length, status: 'ok' };
+      const meta = buildMarketImplicationsSuccessMeta(payload, cachedStage.cards.length);
       await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
       console.log(JSON.stringify({ event: 'llm_market_implications', cached: true, hash: fingerprint, count: cachedStage.cards.length }));
       console.log(`  [MarketImplications] Republished ${cachedStage.cards.length} cached cards (inputs unchanged, ${Math.round(Date.now() - startMs)}ms)`);
@@ -17200,7 +17314,7 @@ async function buildAndSeedMarketImplications(inputs) {
       await preserveMarketImplicationsLastGoodOnStarve();
       return;
     }
-    console.warn('  [MarketImplications] LLM returned no response — writing error seed-meta');
+    console.warn('  [MarketImplications] LLM returned no response');
     await writeMarketImplicationsFailureMeta('llm_no_response');
     return;
   }
@@ -17235,7 +17349,7 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const cards = validateMarketImplications(rawCards, effectiveTickers);
   if (cards.length === 0) {
-    console.warn('  [MarketImplications] All cards failed validation — writing error seed-meta');
+    console.warn('  [MarketImplications] All cards failed validation');
     await writeMarketImplicationsFailureMeta('all_cards_failed_validation');
     return;
   }
@@ -17246,7 +17360,7 @@ async function buildAndSeedMarketImplications(inputs) {
   const payload = { cards, generatedAt: new Date().toISOString(), model: result.model || '' };
   await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
 
-  const meta = { fetchedAt: Date.now(), recordCount: cards.length, status: 'ok' };
+  const meta = buildMarketImplicationsSuccessMeta(payload, cards.length);
   await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
 
   // Only validated live generations feed the input-hash guard; failures above
