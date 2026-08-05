@@ -173,6 +173,36 @@ export async function subscribeToPush(expectedUserId?: string): Promise<Subscrip
   return payload;
 }
 
+/**
+ * Shape the error thrown when `/api/notification-channels` rejects a
+ * subscription.
+ *
+ * Every rejection on that route answers with a distinct `error` code —
+ * `endpoint host is not a recognised push service`, `pro_required`,
+ * `Invalid JSON body`, `MISSING_USER_ID`, … — but the throw used to carry only
+ * the HTTP status. That made WORLDMONITOR-XR (3 events / 2 users, Chrome on
+ * macOS) permanently undiagnosable: a bare "(400)" cannot distinguish an
+ * unrecognised push host from a malformed body from an entitlement denial, and
+ * the response was already discarded by the time Sentry saw it.
+ *
+ * Only a JSON `error` string is appended, so the message stays bounded to the
+ * route's own fixed code set — a proxy/CDN HTML interstitial can't blow up
+ * Sentry's issue cardinality with one group per body.
+ */
+export async function describePushRegistrationFailure(
+  res: Pick<Response, 'status' | 'text'>,
+): Promise<string> {
+  let code = '';
+  try {
+    const parsed: unknown = JSON.parse(await res.text());
+    const error = (parsed as { error?: unknown } | null)?.error;
+    if (typeof error === 'string' && error) code = error.slice(0, 120);
+  } catch {
+    // Non-JSON body (or an unreadable stream) — the status is all we have.
+  }
+  return `Failed to register push subscription (${res.status})${code ? `: ${code}` : ''}.`;
+}
+
 async function postSubscription(
   payload: SubscriptionPayload,
   expectedUserId?: string,
@@ -182,7 +212,7 @@ async function postSubscription(
     body: JSON.stringify({ action: 'set-web-push', ...payload }),
   }, expectedUserId);
   if (!res.ok) {
-    throw new Error(`Failed to register push subscription (${res.status}).`);
+    throw new Error(await describePushRegistrationFailure(res));
   }
 }
 
