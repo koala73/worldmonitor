@@ -9,6 +9,7 @@ import {
   asNumber,
   asObject,
   canonicalJson,
+  compareCodePoints,
   evaluateAdmissionMetric,
   exactBinomialLowerBound,
   isEvidenceDigest,
@@ -278,6 +279,12 @@ const STAGE3_METRIC_IDS: Stage3MetricId[] = [
   'direction_accuracy_mixed',
   'confidence_calibration_stage3',
 ];
+const EVALUATION_VERSION_FIELDS = [
+  ['protocolVersion', 'protocol_version'],
+  ['policyVersion', 'policy_version'],
+  ['modelVersion', 'model_version'],
+  ['queryVersion', 'query_version'],
+] as const;
 
 function fail(code: string): never {
   throw new BlindEvaluationError(code);
@@ -299,12 +306,12 @@ function requireVersion(value: unknown, code: string): string {
 
 function normalizedGoldLabelSet(gold: GoldLabelSet): GoldLabelSet {
   return { ...gold, labels: [...gold.labels].sort((left, right) =>
-    left.opaqueExampleId.localeCompare(right.opaqueExampleId, 'en')) };
+    compareCodePoints(left.opaqueExampleId, right.opaqueExampleId)) };
 }
 
 function normalizedPredictionSet(predictions: PredictionSet): PredictionSet {
   return { ...predictions, predictions: [...predictions.predictions].sort((left, right) =>
-    left.opaqueExampleId.localeCompare(right.opaqueExampleId, 'en')) };
+    compareCodePoints(left.opaqueExampleId, right.opaqueExampleId)) };
 }
 
 export function computeBlindCorpusDigest(corpus: BlindCorpus): string {
@@ -499,12 +506,7 @@ function validateGoldLabels(corpus: BlindCorpus, gold: GoldLabelSet): Map<string
 function validatePredictionSet(corpus: BlindCorpus, predictions: PredictionSet): Map<string, Prediction> {
   if (predictions.schemaVersion !== 'cm_predictions_v1') fail('prediction_schema_version_invalid');
   if (predictions.corpusVersion !== corpus.corpusVersion) fail('prediction_corpus_version_mismatch');
-  for (const [field, code] of [
-    ['protocolVersion', 'protocol_version'],
-    ['policyVersion', 'policy_version'],
-    ['modelVersion', 'model_version'],
-    ['queryVersion', 'query_version'],
-  ] as const) {
+  for (const [field, code] of EVALUATION_VERSION_FIELDS) {
     if (predictions[field] !== corpus[field]) fail(`prediction_${code}_mismatch`);
   }
   if (predictions.corpusSha256 !== computeBlindCorpusDigest(corpus)) fail('prediction_corpus_digest_mismatch');
@@ -546,8 +548,8 @@ function validatePredictionSet(corpus: BlindCorpus, predictions: PredictionSet):
 }
 
 function assertVersionsMatch(left: BlindCorpus, right: BlindCorpus, prefix: string): void {
-  for (const field of ['protocolVersion', 'policyVersion', 'modelVersion', 'queryVersion'] as const) {
-    if (left[field] !== right[field]) fail(`${prefix}_${field}_mismatch`);
+  for (const [field, code] of EVALUATION_VERSION_FIELDS) {
+    if (left[field] !== right[field]) fail(`${prefix}_${code}_mismatch`);
   }
 }
 
@@ -773,8 +775,8 @@ function validateContinuation(input: {
   };
 }): void {
   const { corpus, goldLabels, predictions, previous } = input;
-  const samePolicy = ['protocolVersion', 'policyVersion', 'modelVersion', 'queryVersion']
-    .every((field) => corpus[field as keyof BlindCorpus] === previous.corpus[field as keyof BlindCorpus]);
+  const samePolicy = EVALUATION_VERSION_FIELDS
+    .every(([field]) => corpus[field] === previous.corpus[field]);
   if (!samePolicy) return;
   if (previous.report.outcome !== 'incomplete') fail('continuation_requires_incomplete_parent');
   if (corpus.continuation === null) fail('fresh_corpus_retry_forbidden');
@@ -929,7 +931,7 @@ export function scoreBlindEvaluation(input: {
   let totalCost = 0;
 
   for (const example of [...input.corpus.examples].sort((left, right) =>
-    left.opaqueExampleId.localeCompare(right.opaqueExampleId, 'en'))) {
+    compareCodePoints(left.opaqueExampleId, right.opaqueExampleId))) {
     const label = labels.get(example.opaqueExampleId)!;
     const prediction = predictions.get(example.opaqueExampleId)!;
     if (label.publicationEligible) {
