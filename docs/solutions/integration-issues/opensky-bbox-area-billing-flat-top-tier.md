@@ -29,10 +29,12 @@ tags:
 
 # OpenSky bills /states/all by bbox AREA with a flat top tier — two big regional boxes cost double a global query and cover less
 
-> **Status: verified diagnosis, fix pending.** The root cause below is proven against
-> production; the remediation is filed as #6222 (quota) and #6224 (keyless ADS-B
-> redundancy) and is **not** merged as of this writing. Every `file:line` citation
-> points at the current, still-unfixed tree.
+> **Status: fixed in #6244 (closes #6222).** Root cause proven against production;
+> remediation is one global `/states/all` per seeder/relay cycle (flat top tier = 4
+> credits), drop anonymous fallbacks, and global `LIVE_SEED_COVERAGE`. #6224 (keyless
+> ADS-B redundancy) remains separate. Historical `file:line` citations below describe
+> the pre-fix tree; post-fix call sites are `fetchOpenSkyAuthenticated` /
+> `fetchOpenSkyGlobal` (seeder) and `fetchTheaterFlightsFromOpenSky` (relay).
 
 ## Problem
 
@@ -144,7 +146,7 @@ for (const region of QUERY_REGIONS) {
 relay's own `seedTheaterPosture()` cascade (`ais-relay.cjs:4517-4537`) gets this right —
 adsb.lol first, Wingbits next, OpenSky only if both fail. The seeder never adopted it.
 
-### The fix (filed, unmerged)
+### The fix (landed in #6244)
 
 1. Collapse both region loops to **one global `/states/all`** — 8 credits → 4 per run, and
    coverage goes from two boxes to the planet. Filter military hex/callsign client-side as today.

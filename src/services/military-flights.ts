@@ -163,9 +163,11 @@ function mapProtoFlight(pf: ProtoMilitaryFlight, nowDate: Date): MilitaryFlight 
 const MAX_REGION_PAGES = 50;
 
 async function fetchViaProto(): Promise<MilitaryFlight[]> {
-  // Iterate the same PACIFIC/WESTERN regions the server-side seed cron uses
-  // so dashboard coverage matches the analytic pipeline. The proto handler
-  // caches per-bbox, so parallel region calls warm independent cache keys.
+  // Dashboard still requests the historical PACIFIC/WESTERN viewports only
+  // (MILITARY_QUERY_REGIONS). The seeder's OpenSky path is global (#6222), so
+  // seed data outside these boxes exists for API/MCP callers but this SPA path
+  // does not enumerate it yet. Proto handler caches per-bbox, so parallel
+  // region calls warm independent cache keys.
   const results = await Promise.all(
     MILITARY_QUERY_REGIONS.map(async (region) => {
       // The server now bounds every response to a page, so follow next_cursor

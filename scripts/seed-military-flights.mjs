@@ -42,7 +42,9 @@ const FORECAST_REFRESH_REQUEST_TTL = 60 * 60;
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 const PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
-// ── Query Regions ──────────────────────────────────────────
+// ── Wingbits query regions ─────────────────────────────────
+// OpenSky is a single global /states/all (#6222). These boxes remain the
+// Wingbits multi-area POST shape only — not OpenSky bboxes.
 const QUERY_REGIONS = [
   { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
   { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
