@@ -253,6 +253,12 @@ function epochToTimestamp(epochMs) {
   return `timestamp '${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}'`;
 }
 
+export function createArcgisProxyError(reason, errInfo) {
+  const error = new Error(`ArcGIS error (via proxy after ${reason}): ${errInfo}`);
+  error.refreshFailureCode = refreshFailureCode(errInfo);
+  return error;
+}
+
 // Retry an ArcGIS request through the Decodo proxy. Used as the fallback
 // path when the direct request returns 429 OR silently times out — both
 // are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
@@ -274,7 +280,7 @@ async function arcgisProxyRetry(url, reason, { signal } = {}) {
     // with no message field. Fall back to code, then JSON.stringify so the
     // thrown error message stays informative on unexpected error shapes.
     const errInfo = proxied.error.message ?? proxied.error.code ?? JSON.stringify(proxied.error);
-    throw new Error(`ArcGIS error (via proxy after ${reason}): ${errInfo}`);
+    throw createArcgisProxyError(reason, errInfo);
   }
   return proxied;
 }
