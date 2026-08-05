@@ -302,13 +302,24 @@ export const CACHE_TOOLS: ToolDef[] = [
             properties: {
               valuationCount: { type: 'number' },
               expectedValuationCount: { type: 'number' },
-              currentValuationCount: { type: 'number' },
+              currentValuationCount: {
+                type: 'number',
+                description: 'Valuations fetched live this cycle. Omitted when it equals valuationCount (nothing stale). When present it is lower than valuationCount, and the difference is the records replayed from the last-good snapshot -- valuationCount alone does NOT mean that many symbols are current.',
+              },
               sourceStatus: { type: 'string', enum: ['ok', 'partial', 'degraded'] },
               source: { type: 'string' },
               fetchedAt: { type: 'number' },
               stale: { type: 'boolean' },
-              staleValuationSymbols: { type: 'array', items: { type: 'string' } },
-              unavailableSymbols: { type: 'array', items: { type: 'string' } },
+              staleValuationSymbols: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Symbols whose valuation record was replayed from the last-good snapshot rather than fetched this cycle. These symbols DO have values in `valuations`; read lastGood.fetchedAt for their age (bounded by a 7-day snapshot TTL). Disjoint from unavailableSymbols.',
+              },
+              unavailableSymbols: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Symbols with no valuation published at all -- absent from `valuations`. Disjoint from staleValuationSymbols.',
+              },
               valuationDiagnostics: {
                 type: 'array',
                 description: 'Bounded per-symbol direct/proxy outcomes from the final Yahoo valuation routes. This is diagnostic metadata, not a valuation record.',
@@ -321,7 +332,7 @@ export const CACHE_TOOLS: ToolDef[] = [
                       items: {
                         type: 'object',
                         properties: {
-                          route: { type: 'string', enum: ['v7Quote', 'quoteSummary'] },
+                          route: { type: 'string', enum: ['v7Quote', 'v7QuoteBatch', 'quoteSummary'] },
                           transport: { type: 'string', enum: ['direct', 'proxy'] },
                           attempts: { type: 'number' },
                           status: { type: 'number' },
@@ -473,13 +484,22 @@ export const CACHE_TOOLS: ToolDef[] = [
             const filteredCurrentValuationCount = Math.max(0, filteredValuationCount - staleValuationCount);
             coverageRecord.valuationCount = filteredValuationCount;
             coverageRecord.expectedValuationCount = expectedValuationCount;
-            if (hasCurrentValuationCount) {
+            // Mirror the producer's omit-when-equal rule (see
+            // buildSectorValuationCoverage): emitting the field when it equals
+            // valuationCount makes the two surfaces disagree on the field's own
+            // emission contract.
+            if (hasCurrentValuationCount && filteredCurrentValuationCount !== filteredValuationCount) {
               coverageRecord.currentValuationCount = filteredCurrentValuationCount;
+            } else {
+              delete coverageRecord.currentValuationCount;
             }
             // Empty request set (no sector symbols matched): complete empty view, not degraded.
+            // Zero CURRENT records is degraded even when stale fills keep the
+            // filtered count non-zero -- mirrors the seeder's own escalation.
             coverageRecord.sourceStatus = expectedValuationCount === 0
               ? 'ok'
               : filteredValuationCount === 0
+                || (hasCurrentValuationCount && filteredCurrentValuationCount === 0)
                 ? 'degraded'
                 : filteredValuationCount < expectedValuationCount
                   || filteredStaleValuationSymbols.length > 0

@@ -742,12 +742,54 @@ describe('parseV7QuoteBatch', () => {
           { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
         ],
       },
-    }), ['XLK', 'SMH', 'XLV']);
+    }), ['XLK', 'SMH']);
 
     assert.equal(result.kind, 'success');
     assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
     assert.equal(result.value.valuations.SMH.trailingPE, 37.2);
+  });
+
+  // A batch that covered only some requested symbols must NOT report route
+  // success: _fetchRoute returns on the first successful transport, so calling
+  // this 'success' would deny the uncovered symbols the proxy leg.
+  it('reports partial (not success) when some requested symbols are uncovered', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: {
+        result: [
+          { symbol: 'XLK', trailingPE: 25.3, beta: 1.05 },
+          { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
+        ],
+      },
+    }), ['XLK', 'SMH', 'XLV']);
+
+    assert.equal(result.kind, 'partial');
+    assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
     assert.equal(result.value.outcomes.XLV.kind, 'no_data');
+    assert.ok(!('XLV' in result.value.valuations));
+  });
+
+  it('reports a fully unmatched batch by its first outcome, not success', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: { result: [{ symbol: 'SPY', trailingPE: 21 }] },
+    }), ['XLK', 'SMH']);
+
+    assert.equal(result.kind, 'no_data');
+    assert.deepEqual(result.value.valuations, {});
+    assert.equal(result.value.outcomes.XLK.kind, 'no_data');
+  });
+
+  it('classifies an upstream error envelope without inventing valuations', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: { error: 'Invalid crumb', result: null },
+    }), ['XLK']);
+
+    assert.equal(result.kind, 'upstream_error');
+    assert.equal(result.failure, 'quote_response_error');
+    assert.equal(result.value, null);
+  });
+
+  it('returns invalid_json for a garbage body', () => {
+    assert.equal(parseV7QuoteBatch('<html>429</html>', ['XLK']).kind, 'invalid_json');
   });
 });
 

@@ -2262,6 +2262,14 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Sector heatmap: always attempt loading regardless of market rate-limit status
+      // Symbols whose valuation was replayed from the seeder's last-good snapshot
+      // rather than fetched this cycle. Without this the panel would present
+      // records up to 7 days old as current.
+      const readStaleValuationSymbols = (resp: unknown): string[] => {
+        const coverage = (resp as { valuationCoverage?: { staleValuationSymbols?: unknown } })?.valuationCoverage;
+        const symbols = coverage?.staleValuationSymbols;
+        return Array.isArray(symbols) ? symbols.filter((s): s is string => typeof s === 'string') : [];
+      };
       const hydratedSectors = getHydratedData('sectors') as (GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> }) | undefined;
       const heatmapPanel = this.ctx.panels['heatmap'] as HeatmapPanel | undefined;
       const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
@@ -2283,7 +2291,10 @@ export class DataLoaderManager implements AppModule {
         const items = hydratedSectors.sectors.map(toHeatmapItem);
         const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
         heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
-        heatmapPanel?.updateValuations(hydratedSectors.valuations);
+        heatmapPanel?.updateValuations(
+          hydratedSectors.valuations,
+          readStaleValuationSymbols(hydratedSectors),
+        );
       } else {
         // If hydrated had sectors but no valuations field, render performance
         // tiles immediately so users see heatmap data while the live fetch runs.
@@ -2301,7 +2312,10 @@ export class DataLoaderManager implements AppModule {
           // payload without `valuations` must NOT clear prior valuations that
           // may already be rendered from a previous (successful) fetch.
           if (Object.prototype.hasOwnProperty.call(sectorsResp, 'valuations')) {
-            heatmapPanel?.updateValuations(sectorsResp.valuations);
+            heatmapPanel?.updateValuations(
+              sectorsResp.valuations,
+              readStaleValuationSymbols(sectorsResp),
+            );
           }
         } else if (stocksResult.skipped) {
           this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);

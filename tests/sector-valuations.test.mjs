@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  buildSectorValuationCoverage,
   collectSectorValuations,
   collectV7Valuations,
   mergeReturnMetrics,
@@ -150,6 +151,13 @@ describe('authenticated Yahoo quoteSummary integration (static analysis)', () =>
     assert.match(sectorSeedSrc, /v7Client: _yahooQuoteSummaryClient/);
     assert.match(sectorSeedSrc, /valuationDiagnostics/);
     assert.match(sectorSeedSrc, /buildSectorSeedMeta\(sectorMeta, ok\)/);
+    // seedSectorSummary is the only place these provenance fields become
+    // production behaviour; a dropped or renamed passthrough is otherwise
+    // invisible to the unit tests, which exercise collect/build separately.
+    assert.match(sectorSeedSrc, /currentValuationCount/);
+    assert.match(sectorSeedSrc, /lastGoodValuationSymbols/);
+    // The operator log must not report replayed records as live coverage.
+    assert.match(sectorSeedSrc, /live, \$\{valCount - liveCount\} stale/);
   });
 });
 
@@ -418,10 +426,20 @@ describe('sector valuation collection', () => {
     });
 
     assert.equal(result.valuationCount, 2);
+    // The snapshot keeps the canonical six-key shape with explicit nulls.
+    // Stripping null keys makes a replayed record fail `=== null` guards in
+    // MarketPanel and reach `undefined.toFixed()`.
     assert.deepEqual(written?.valuations, {
-      XLK: { trailingPE: 25, forwardPE: 22, beta: 1.1 },
-      XLF: { trailingPE: 15, forwardPE: 14, beta: 1.1 },
+      XLK: { trailingPE: 25, forwardPE: 22, beta: 1.1, ytdReturn: null, threeYearReturn: null, fiveYearReturn: null },
+      XLF: { trailingPE: 15, forwardPE: 14, beta: 1.1, ytdReturn: null, threeYearReturn: null, fiveYearReturn: null },
     });
+    for (const record of Object.values(written.valuations)) {
+      assert.deepEqual(
+        Object.keys(record).sort(),
+        ['beta', 'fiveYearReturn', 'forwardPE', 'threeYearReturn', 'trailingPE', 'ytdReturn'],
+        'every persisted record must carry all six keys',
+      );
+    }
   });
 
   it('reuses complete last-good valuations for symbols missing from both live routes', async () => {
@@ -466,14 +484,201 @@ describe('sector valuation collection', () => {
 
     assert.equal(result.valuationCount, 2);
     assert.equal(result.currentValuationCount, 1);
+    // Replayed records are normalized back to the canonical shape on read, so
+    // a snapshot persisted with null keys stripped cannot reach the dashboard
+    // formatters as `undefined`.
     assert.deepEqual(result.valuations.XLF, {
       trailingPE: 15,
       forwardPE: 14,
       beta: 1.1,
+      ytdReturn: null,
+      threeYearReturn: null,
+      fiveYearReturn: null,
     });
     assert.deepEqual(result.lastGoodValuationSymbols, ['XLF']);
-    assert.deepEqual(result.unavailableSymbols, ['XLF']);
+    // XLF carries a published value, so it is stale -- NOT unavailable.
+    // unavailableSymbols means "nothing published for this symbol at all", and
+    // is omitted entirely when empty.
+    assert.deepEqual(result.unavailableSymbols ?? [], []);
+    assert.ok(result.valuations.XLF, 'a stale symbol still publishes a valuation');
     assert.equal(result.lastGoodFetchedAt, 1_700_000_000_000);
+  });
+
+  it('reports degraded, not partial, when every symbol is served from last-good', async () => {
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'XLF'],
+      fetchValue: async () => { throw new Error('v10 unavailable'); },
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'failed',
+          value: null,
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'http_500' }],
+        }),
+      },
+      fetchValueDetailed: async () => ({
+        kind: 'failed',
+        value: null,
+        diagnostics: [{ route: 'quoteSummary', transport: 'direct', responseClass: 'http_500' }],
+      }),
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        valuations: {
+          XLK: { trailingPE: 24, forwardPE: 21, beta: 1.05 },
+          XLF: { trailingPE: 15, forwardPE: 14, beta: 1.1 },
+        },
+      }),
+      upstashSet: async () => { throw new Error('a fully stale run must not persist'); },
+    });
+
+    assert.equal(result.valuationCount, 2);
+    assert.equal(result.currentValuationCount, 0);
+    // Provenance must not name a live route when nothing was fetched live.
+    assert.deepEqual(result.valuationSources, []);
+
+    const coverage = buildSectorValuationCoverage({
+      valuationCount: result.valuationCount,
+      expectedCount: 2,
+      fetchedAt: 1_700_000_100_000,
+      sources: result.valuationSources,
+      currentValuationCount: result.currentValuationCount,
+      lastGoodFetchedAt: result.lastGoodFetchedAt,
+      lastGoodValuationSymbols: result.lastGoodValuationSymbols,
+    });
+    // A totally dead upstream must stay distinguishable from partial coverage,
+    // even while stale records keep valuationCount at full strength.
+    assert.equal(coverage.sourceStatus, 'degraded');
+    assert.equal(coverage.seedSourceState, 'error');
+    assert.equal(coverage.errorCode, 'SECTOR_VALUATIONS_UNAVAILABLE');
+  });
+
+  it('refreshes a resident core-only snapshot instead of freezing until its TTL', async () => {
+    let written = null;
+    await collectSectorValuations({
+      symbols: ['XLK', 'XLF'],
+      fetchValue: async () => { throw new Error('v10 must not run for a v7 success'); },
+      parseValue: (raw) => raw,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async (symbol) => ({
+          kind: 'success',
+          value: {
+            trailingPE: symbol === 'XLK' ? 26 : 16,
+            forwardPE: symbol === 'XLK' ? 23 : 15,
+            beta: 1.1,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      // A snapshot this module already wrote: complete core coverage, no return
+      // metrics. The previous gate required lastGoodCoreCount < symbols.length,
+      // which this fails, so the key could never be rewritten before its TTL.
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        valuations: {
+          XLK: { trailingPE: 24, forwardPE: 21, beta: 1.05, ytdReturn: null, threeYearReturn: null, fiveYearReturn: null },
+          XLF: { trailingPE: 15, forwardPE: 14, beta: 1.1, ytdReturn: null, threeYearReturn: null, fiveYearReturn: null },
+        },
+      }),
+      upstashSet: async (_key, value) => { written = value; return true; },
+      now: () => 1_700_000_500_000,
+    });
+
+    assert.ok(written, 'a fully live core-complete run must refresh the snapshot');
+    assert.equal(written.fetchedAt, 1_700_000_500_000);
+    assert.equal(written.valuations.XLK.trailingPE, 26, 'fresh values replace stored ones');
+  });
+
+  it('preserves stored return metrics when a core-only run refreshes the snapshot', async () => {
+    let written = null;
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => { throw new Error('v10 must not run for a v7 success'); },
+      parseValue: (raw) => raw,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'success',
+          value: {
+            trailingPE: 26, forwardPE: 23, beta: 1.1,
+            ytdReturn: null, threeYearReturn: null, fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        // Already carries return metrics AND core, so mergeReturnMetrics
+        // borrows -> the run is not standing on its own data -> no rewrite.
+        valuations: {
+          XLK: { trailingPE: 24, forwardPE: 21, beta: 1.05, ytdReturn: 0.08, threeYearReturn: 0.12, fiveYearReturn: 0.1 },
+        },
+      }),
+      upstashSet: async (_key, value) => { written = value; return true; },
+    });
+
+    assert.equal(written, null, 'a run borrowing return metrics must not re-date the snapshot');
+  });
+
+  it('skips the batch fallback when the remaining budget is below the floor', async () => {
+    let batchCalls = 0;
+    let clock = 1_000;
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      maxDurationMs: 1_000,
+      now: () => clock,
+      v7Client: {
+        fetchV7Detailed: async () => {
+          // Burn the budget inside the per-symbol tier.
+          clock = 1_999;
+          return {
+            kind: 'missing_fields',
+            value: null,
+            diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+          };
+        },
+        fetchV7BatchDetailed: async () => { batchCalls++; return { kind: 'failed', value: null }; },
+      },
+    });
+
+    assert.equal(batchCalls, 0, 'batch must not start with no meaningful budget left');
+  });
+
+  it('records a batch_error diagnostic instead of swallowing a thrown fallback', async () => {
+    const result = await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'missing_fields',
+          value: null,
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+        }),
+        fetchV7BatchDetailed: async () => { throw new Error('boom in batch'); },
+      },
+    });
+
+    const outcomes = result.valuationDiagnostics.flatMap((entry) => entry.outcomes);
+    const batchOutcome = outcomes.find((outcome) => outcome.route === 'v7QuoteBatch');
+    assert.ok(batchOutcome, 'the batch attempt must be reported under its own route label');
+    assert.equal(batchOutcome.responseClass, 'batch_error');
+    assert.match(batchOutcome.failure, /boom in batch/);
   });
 
   it('does not re-date borrowed last-good metrics after a partial run', async () => {

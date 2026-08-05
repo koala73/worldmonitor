@@ -2438,7 +2438,14 @@ async function seedSectorSummary() {
   const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: sectorQuotes.length, sourceVersion: 'market-sectors' });
   const persistedSectorMeta = buildSectorSeedMeta(sectorMeta, ok);
   const ok3 = await upstashSet('seed-meta:market:sectors', persistedSectorMeta, 604800);
-  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount}/${SECTOR_SYMBOLS.length} valuations (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  // valCount includes records replayed from the last-good snapshot, so report
+  // the live count alongside it: "12/12 (partial)" during a total upstream
+  // outage reads as healthy coverage to anyone scanning the logs.
+  const liveCount = currentValuationCount == null ? valCount : currentValuationCount;
+  const valuationSummary = liveCount === valCount
+    ? `${valCount}/${SECTOR_SYMBOLS.length} valuations`
+    : `${valCount}/${SECTOR_SYMBOLS.length} valuations (${liveCount} live, ${valCount - liveCount} stale)`;
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valuationSummary} (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }
 
