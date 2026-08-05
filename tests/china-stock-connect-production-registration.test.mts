@@ -22,10 +22,15 @@ const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 describe('China Stock Connect production registration (#6155)', () => {
   it('schedules the seeder inside the market-backup bundle with edge auth declared', () => {
     const bundle = read('scripts/seed-bundle-market-backup.mjs');
-    assert.match(
-      bundle,
-      /\{\s*label:\s*'China-Stock-Connect'[^}]*script:\s*'seed-china-stock-connect\.mjs'[^}]*requiredEnv:\s*\['RELAY_SHARED_SECRET'\][^}]*\}/,
-      'the bundle must fail this section when the fixed edge auth is unavailable',
+    const member = /\{[^\n]*'China-Stock-Connect'[^\n]*\}/u.exec(bundle)?.[0] ?? '';
+    assert.match(member, /script:\s*'seed-china-stock-connect\.mjs'/u);
+    // A seeder fetches upstream and writes Redis; the web tier serves from
+    // Redis. This member never routes an exchange fetch through the edge
+    // function, so it must not declare that function's shared secret.
+    assert.doesNotMatch(member, /RELAY_SHARED_SECRET/u);
+    assert.doesNotMatch(
+      read('scripts/china-stock-connect/adapters.mjs'),
+      /edgeEgress|fetchViaEdgeEgress|china-exchange-egress/u,
     );
     assert.match(
       bundle,

@@ -16,10 +16,8 @@ import {
   assertMetadataResponse,
   errorCodeFor,
   fetchViaConfiguredProxy,
-  fetchViaEdgeEgress,
   proxyFetch,
   readBoundedJsonResponse,
-  resolveChinaExchangeEdgeEgress,
   shouldProxyExchangeFailure,
   shouldRetryExchangeProxyFailure,
   sourceError,
@@ -53,7 +51,6 @@ const SSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
 const SZSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PROXY_RETRY_DELAY_MS = 250;
-const SZSE_EDGE_TIMEOUT_MS = 16_000;
 const SSE_MAX_PROXY_ATTEMPTS = 1;
 const SZSE_MAX_PROXY_ATTEMPTS = 2;
 // Wall-clock ceiling shared by every www.szse.cn request in a run: the calendar
@@ -91,7 +88,6 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: 'FW_HGTZL_HGTSCSJ_HGTCJGK_MRTJ',
     maxRequestsPerRun: 3,
     maxProxyRequestsPerRun: SSE_MAX_PROXY_ATTEMPTS,
-    edgeFallbackEnabled: false,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     proxyEnvironmentVariable: 'SSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -123,7 +119,6 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: null,
     maxRequestsPerRun: 3,
     maxProxyRequestsPerRun: SSE_MAX_PROXY_ATTEMPTS,
-    edgeFallbackEnabled: false,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     proxyEnvironmentVariable: 'SSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
@@ -154,8 +149,7 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: 'SGT_SGTJYRB',
     maxRequestsPerRun: 8,
     maxProxyRequestsPerRun: SZSE_MAX_PROXY_ATTEMPTS,
-    edgeFallbackEnabled: true,
-    fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
+    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
     redirectPolicy: 'error',
@@ -185,8 +179,7 @@ export const STOCK_CONNECT_SOURCE_CONTRACTS = Object.freeze({
     queryId: '1837_xxpl',
     maxRequestsPerRun: 8,
     maxProxyRequestsPerRun: SZSE_MAX_PROXY_ATTEMPTS,
-    edgeFallbackEnabled: true,
-    fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
+    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: EXCHANGE_MAX_RESPONSE_BYTES,
     redirectPolicy: 'error',
@@ -217,7 +210,7 @@ export const STOCK_CONNECT_SOURCE_IDS = Object.freeze(
 // half is bounded by request count alone: one call per source, direct + proxy.
 export const CHINA_STOCK_CONNECT_MAX_NETWORK_MS = (
   SZSE_RUN_BUDGET_MS
-  + SZSE_EDGE_TIMEOUT_MS
+  + SZSE_DIRECT_TIMEOUT_MS
   + 2 * (SSE_DIRECT_TIMEOUT_MS + SSE_MAX_PROXY_ATTEMPTS * SSE_PROXY_TIMEOUT_MS)
 );
 
@@ -452,23 +445,6 @@ function szseReportUrl(contract, tradeDate) {
   return url;
 }
 
-// The relay is a POST allowlist, but these SZSE calls are GETs with no body,
-// so the envelope that tells the relay WHICH allowlisted URL to fetch has to be
-// built explicitly. The relay reconstructs the URL from these fields alone --
-// it never accepts a caller-supplied URL.
-export function szseReportEdgeBody(contract, tradeDate) {
-  return JSON.stringify({
-    catalogId: contract.queryId,
-    route: 'szse-report',
-    tabKey: 'tab1',
-    txtDate: tradeDate,
-  });
-}
-
-export function szseCalendarEdgeBody(month) {
-  return JSON.stringify({ month, route: 'szse-calendar' });
-}
-
 function szseCalendarUrl(month) {
   const url = new URL(SZSE_TRADING_CALENDAR_ENDPOINT);
   url.searchParams.set('month', month);
@@ -494,23 +470,18 @@ function requestInit(headers, contract, timeoutMs) {
 async function fetchThroughLadder(url, contract, {
   fetchFn,
   proxyFetchFn,
-  edgeFetchFn,
   headers,
   directTimeoutMs,
   proxyTimeoutMs,
   proxyRetryDelayMs,
-  edgeTimeoutMs,
   budget,
   sticky = null,
-  edgeBody = null,
 }) {
   const routing = {
     transportPath: 'direct',
     fallbackReason: null,
     proxyFailureReason: null,
     stickyFailureReason: null,
-    edgeFailureReason: null,
-    edgeFailureDiagnostic: null,
     proxyExitPorts: [],
   };
   const attempt = async (requestFn, timeoutMs) => {
@@ -527,27 +498,7 @@ async function fetchThroughLadder(url, contract, {
   // through to the full ladder rather than aborting: sticky is a latency
   // optimisation, and letting one blip on the remembered hop kill the source
   // would turn it into a single point of failure while other transports work.
-  if (sticky?.preferred === 'edge' && edgeFetchFn) {
-    routing.transportPath = 'edge';
-    let edgeDiagnostic = null;
-    try {
-      const payload = await attempt(
-        (input, init) => edgeFetchFn(
-          input,
-          { ...init, body: edgeBody },
-          (entry) => { edgeDiagnostic = entry; },
-        ),
-        edgeTimeoutMs,
-      );
-      return { payload, routing };
-    } catch (edgeError) {
-      if (errorCodeFor(edgeError) === 'TRANSPORT_BUDGET_EXCEEDED') throw edgeError;
-      routing.stickyFailureReason = transportFailureReason(edgeError);
-      routing.edgeFailureDiagnostic = edgeError?.edgeFailureDiagnostic ?? edgeDiagnostic;
-      sticky.preferred = null;
-      routing.transportPath = 'direct';
-    }
-  } else if (sticky?.preferred === 'proxy' && proxyFetchFn) {
+  if (sticky?.preferred === 'proxy' && proxyFetchFn) {
     routing.transportPath = 'proxy';
     try {
       const payload = await attempt(
@@ -605,27 +556,6 @@ async function fetchThroughLadder(url, contract, {
         }
       }
       routing.proxyFailureReason = proxyError ? transportFailureReason(proxyError) : null;
-    }
-
-    if (edgeFetchFn && contract.edgeFallbackEnabled) {
-      routing.transportPath = 'edge';
-      let edgeDiagnostic = null;
-      try {
-        const payload = await attempt(
-          (input, init) => edgeFetchFn(
-            input,
-            { ...init, body: edgeBody },
-            (entry) => { edgeDiagnostic = entry; },
-          ),
-          edgeTimeoutMs,
-        );
-        remember('edge');
-        return { payload, routing };
-      } catch (edgeError) {
-        routing.edgeFailureReason = transportFailureReason(edgeError);
-        routing.edgeFailureDiagnostic = edgeError?.edgeFailureDiagnostic ?? edgeDiagnostic;
-        throw withRouting(edgeError, routing);
-      }
     }
 
     throw withRouting(proxyError ?? directError, routing);
@@ -702,12 +632,10 @@ async function fetchSseSource(contract, { fetchFn, proxyFetchFn, normalize }) {
     {
       fetchFn,
       proxyFetchFn,
-      edgeFetchFn: null,
       headers: REQUEST_HEADERS.sse,
       directTimeoutMs: SSE_DIRECT_TIMEOUT_MS,
       proxyTimeoutMs: SSE_PROXY_TIMEOUT_MS,
       proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
-      edgeTimeoutMs: 0,
       budget,
     },
   );
@@ -732,7 +660,6 @@ async function withSourceContext(run, budget, probedDates) {
 async function fetchSzseSource(contract, {
   fetchFn,
   proxyFetchFn,
-  edgeFetchFn,
   candidateDates,
   normalize,
   sticky = { preferred: null },
@@ -752,15 +679,12 @@ async function fetchSzseSource(contract, {
       szseReportUrl(contract, tradeDate),
       contract,
       {
-        edgeBody: szseReportEdgeBody(contract, tradeDate),
         fetchFn,
         proxyFetchFn,
-        edgeFetchFn,
         headers: REQUEST_HEADERS.szse,
         directTimeoutMs: SZSE_DIRECT_TIMEOUT_MS,
         proxyTimeoutMs: SZSE_PROXY_TIMEOUT_MS,
         proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
-        edgeTimeoutMs: SZSE_EDGE_TIMEOUT_MS,
         budget,
         sticky,
       },
@@ -788,17 +712,16 @@ async function fetchSzseSource(contract, {
 async function fetchSzseTradingDays(contract, {
   fetchFn,
   proxyFetchFn,
-  edgeFetchFn,
   today,
   sticky,
   deadline = null,
 }) {
-  // One full ladder escalation is direct + SZSE_MAX_PROXY_ATTEMPTS + edge, and
-  // the second month costs one more request through the hop that just worked.
-  // Sizing this to exactly one escalation made a degraded-but-working transport
-  // abandon the calendar and fall back to weekdays, losing holiday awareness
-  // precisely when the run was already struggling.
-  const calendarRequestBudget = (1 + SZSE_MAX_PROXY_ATTEMPTS + 1) + CALENDAR_MAX_MONTHS;
+  // One full escalation is direct + SZSE_MAX_PROXY_ATTEMPTS, and the second
+  // month costs one more request through the hop that just worked. Sizing this
+  // to exactly one escalation made a degraded-but-working transport abandon the
+  // calendar and fall back to weekdays, losing holiday awareness precisely when
+  // the run was already struggling.
+  const calendarRequestBudget = (1 + SZSE_MAX_PROXY_ATTEMPTS) + CALENDAR_MAX_MONTHS;
   const calendarContract = { ...contract, maxRequestsPerRun: calendarRequestBudget };
   const budget = requestBudget(calendarContract, deadline);
   const months = [today.slice(0, 7)];
@@ -808,15 +731,12 @@ async function fetchSzseTradingDays(contract, {
       szseCalendarUrl(month),
       calendarContract,
       {
-        edgeBody: szseCalendarEdgeBody(month),
         fetchFn,
         proxyFetchFn,
-        edgeFetchFn,
         headers: REQUEST_HEADERS.szse,
         directTimeoutMs: SZSE_DIRECT_TIMEOUT_MS,
         proxyTimeoutMs: SZSE_PROXY_TIMEOUT_MS,
         proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
-        edgeTimeoutMs: SZSE_EDGE_TIMEOUT_MS,
         budget,
         sticky,
       },
@@ -1095,8 +1015,6 @@ export async function fetchChinaStockConnectSnapshot({
   proxyUrl = process.env.SZSE_PROXY_URL || process.env.PROXY_URL || '',
   sseProxyUrl = process.env.SSE_PROXY_URL || proxyUrl,
   proxyRequestFn = proxyFetch,
-  edgeEgress = undefined,
-  edgeRequestFn = globalThis.fetch,
   now = Date.now(),
   // Separate from `now`: `now` stamps the snapshot and may be pinned by a test,
   // while the run budget has to read a real advancing clock.
@@ -1112,17 +1030,6 @@ export async function fetchChinaStockConnectSnapshot({
         timeoutMs,
         proxyRequestFn,
         onExitPort,
-      })
-    : null;
-  const resolvedEdgeEgress = edgeEgress === undefined
-    ? resolveChinaExchangeEdgeEgress()
-    : edgeEgress;
-  const edgeFetchFn = resolvedEdgeEgress?.url && resolvedEdgeEgress?.secret
-    ? (input, init, onDiagnostic = undefined) => fetchViaEdgeEgress(input, init, {
-        edgeEgress: resolvedEdgeEgress,
-        maxBytes: EXCHANGE_MAX_RESPONSE_BYTES,
-        edgeRequestFn,
-        onDiagnostic,
       })
     : null;
 
@@ -1141,7 +1048,6 @@ export async function fetchChinaStockConnectSnapshot({
     const calendar = await fetchSzseTradingDays(szseContract, {
       fetchFn,
       proxyFetchFn: szseProxyFetchFn,
-      edgeFetchFn,
       today,
       sticky: szseSticky,
       deadline: szseCalendarDeadline,
@@ -1160,7 +1066,6 @@ export async function fetchChinaStockConnectSnapshot({
     ['szse-northbound', (contract) => fetchSzseSource(contract, {
       fetchFn,
       proxyFetchFn: proxyFetchFor(proxyUrl, contract, SZSE_PROXY_TIMEOUT_MS),
-      edgeFetchFn,
       candidateDates,
       sticky: szseSticky,
       deadline: createRunDeadline(SZSE_REPORT_BUDGET_MS, clock),
@@ -1169,7 +1074,6 @@ export async function fetchChinaStockConnectSnapshot({
     ['szse-margin', (contract) => fetchSzseSource(contract, {
       fetchFn,
       proxyFetchFn: proxyFetchFor(proxyUrl, contract, SZSE_PROXY_TIMEOUT_MS),
-      edgeFetchFn,
       candidateDates,
       sticky: szseSticky,
       deadline: createRunDeadline(SZSE_REPORT_BUDGET_MS, clock),

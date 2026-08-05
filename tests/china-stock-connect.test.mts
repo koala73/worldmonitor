@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
-import egressHandler from '../api/internal/china-exchange-egress.js';
 import {
   CHINA_STOCK_CONNECT_MAX_NETWORK_MS,
   HISTORY_LIMIT,
@@ -685,38 +684,35 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       // single point of failure.
       const log: FetchLogEntry[] = [];
       const served = fixtureFetch(log);
-      let directCalls = 0;
-      let edgeCalls = 0;
+      let directReportCalls = 0;
       const snapshot = await fetchChinaStockConnectSnapshot({
         fetchFn: async (input: unknown, init: RequestInit) => {
-          if (String(input).includes('szse.cn')) {
-            directCalls += 1;
-            // The calendar cannot be reached directly; the reports can.
-            if (String(input).includes('monthList')) throw new Error('fetch failed');
-          }
+          const url = String(input);
+          // The calendar cannot be reached directly, so it escalates to the
+          // proxy and pins sticky='proxy'. The reports can.
+          if (url.includes('monthList')) throw new Error('fetch failed');
+          if (url.includes('szse.cn')) directReportCalls += 1;
           return served(input, init);
         },
-        proxyUrl: '',
+        proxyUrl: 'http://user:pw@exit.example:7001',
         sseProxyUrl: '',
-        edgeEgress: { url: 'https://api.worldmonitor.app/x', secret: 's' },
-        edgeRequestFn: async (_url: unknown, init: RequestInit) => {
-          edgeCalls += 1;
-          const body = JSON.parse(String(init.body));
-          // Calendar succeeds over the edge, which pins sticky='edge'...
-          if (body.route === 'szse-calendar') {
-            return new Response(JSON.stringify(szseCalendarFixture), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          // ...then the edge blips for the reports.
-          throw new Error('fetch failed');
+        proxyRequestFn: async (input: string) => {
+          // Proxy serves the calendar, then blips for every report.
+          if (!input.includes('monthList')) throw new Error('fetch failed');
+          const body = JSON.stringify(szseCalendarFixture);
+          return {
+            status: 200,
+            contentType: 'application/json',
+            buffer: new TextEncoder().encode(body),
+          };
         },
         now: NOW,
         onDecision: () => {},
       });
-      assert.ok(edgeCalls > 1, 'the edge hop must have been retried as sticky');
-      assert.ok(directCalls > 1, 'the direct hop must have been re-tried after the blip');
+      assert.ok(
+        directReportCalls > 0,
+        'the direct hop must be re-tried after the sticky proxy blip',
+      );
       assert.equal(
         snapshot.northbound.turnoverCny.status,
         'known',
@@ -817,36 +813,35 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(snapshot.status, 'degraded');
     });
 
-    it('keeps the exchange calendar when SZSE is only reachable over the edge hop', async () => {
-      // A full ladder escalation costs direct + 2 proxy + edge = 4 requests. The
-      // calendar can need two months, and the second costs one more through the
-      // sticky hop. A budget of exactly one escalation therefore threw
+    it('keeps the exchange calendar when SZSE is only reachable over the proxy', async () => {
+      // A full escalation costs direct + SZSE_MAX_PROXY_ATTEMPTS, and the
+      // calendar can need two months, the second costing one more through the
+      // hop that just worked. A budget sized to exactly one escalation threw
       // REQUEST_BUDGET_EXCEEDED and silently dropped holiday awareness at the
       // precise moment the transport was already degraded.
       const log: FetchLogEntry[] = [];
       const served = fixtureFetch(log);
       const snapshot = await fetchChinaStockConnectSnapshot({
-        // Direct fails for SZSE only; SSE keeps working.
         fetchFn: async (input: unknown, init: RequestInit) => {
           if (String(input).includes('szse.cn')) throw new Error('fetch failed');
           return served(input, init);
         },
         proxyUrl: 'http://user:pw@exit.example:7001',
         sseProxyUrl: '',
-        proxyRequestFn: async () => { throw new Error('proxy refused'); },
-        edgeEgress: { url: 'https://api.worldmonitor.app/x', secret: 's' },
-        // The edge hop works, so the calendar must survive.
-        edgeRequestFn: async (_url: unknown, init: RequestInit) => {
-          const body = JSON.parse(String(init.body));
-          const payload = body.route === 'szse-calendar'
+        proxyRequestFn: async (input: string) => {
+          const url = new URL(input);
+          const day = url.searchParams.get('txtDate');
+          const payload = url.pathname.includes('monthList')
             ? szseCalendarFixture
-            : body.catalogId === 'SGT_SGTJYRB'
-              ? (body.txtDate === '2026-08-04' ? szseNorthboundFixture : szseNorthboundEmptyFixture)
-              : (body.txtDate === '2026-08-03' ? szseMarginFixture : szseNorthboundEmptyFixture);
-          return new Response(JSON.stringify(payload), {
+            : url.searchParams.get('CATALOGID') === 'SGT_SGTJYRB'
+              ? (day === '2026-08-04' ? szseNorthboundFixture : szseNorthboundEmptyFixture)
+              : (day === '2026-08-03' ? szseMarginFixture : szseNorthboundEmptyFixture);
+          const body = JSON.stringify(payload);
+          return {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
+            contentType: 'application/json',
+            buffer: new TextEncoder().encode(body),
+          };
         },
         now: NOW,
         onDecision: () => {},
@@ -854,9 +849,162 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(
         snapshot.calendarStatus,
         'exchange',
-        'the calendar must not be abandoned just because it took the edge hop',
+        'the calendar must not be abandoned just because it took the proxy hop',
       );
       assert.equal(snapshot.northbound.turnoverCny.status, 'known');
+    });
+
+    it('calls a malformed SZSE 200 malformed, not an unpublished session', async () => {
+      // A schema change upstream returns HTTP 200 with an unexpected body. If
+      // that reads as "this date is not published yet" the probe walks every
+      // candidate and reports NO_PUBLISHED_TRADE_DATE -- indistinguishable from
+      // a market holiday, and a whole diagnostic session wasted.
+      const { snapshot, log } = await fetchWithFixtures({
+        overrides: [['CATALOGID=SGT_SGTJYRB', { unexpected: 'shape' }]],
+      });
+      const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-northbound');
+      assert.equal(source.errorCode, 'MALFORMED_RESPONSE');
+      // ...and it must stop on the first bad payload rather than burn the budget.
+      assert.equal(
+        log.filter((e) => e.url.includes('CATALOGID=SGT_SGTJYRB')).length,
+        1,
+      );
+    });
+
+    it('re-walks the ladder when the sticky hop blips', async () => {
+      // Sticky exists to stop each date probe re-paying the escalation, but a
+      // one-off failure on the remembered hop must not kill the source when
+      // another transport is working -- that turns an optimisation into a
+      // single point of failure.
+      const log: FetchLogEntry[] = [];
+      const served = fixtureFetch(log);
+      let directReportCalls = 0;
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        fetchFn: async (input: unknown, init: RequestInit) => {
+          const url = String(input);
+          // The calendar cannot be reached directly, so it escalates to the
+          // proxy and pins sticky='proxy'. The reports can.
+          if (url.includes('monthList')) throw new Error('fetch failed');
+          if (url.includes('szse.cn')) directReportCalls += 1;
+          return served(input, init);
+        },
+        proxyUrl: 'http://user:pw@exit.example:7001',
+        sseProxyUrl: '',
+        proxyRequestFn: async (input: string) => {
+          // Proxy serves the calendar, then blips for every report.
+          if (!input.includes('monthList')) throw new Error('fetch failed');
+          const body = JSON.stringify(szseCalendarFixture);
+          return {
+            status: 200,
+            contentType: 'application/json',
+            buffer: new TextEncoder().encode(body),
+          };
+        },
+        now: NOW,
+        onDecision: () => {},
+      });
+      assert.ok(
+        directReportCalls > 0,
+        'the direct hop must be re-tried after the sticky proxy blip',
+      );
+      assert.equal(
+        snapshot.northbound.turnoverCny.status,
+        'known',
+        'a working direct hop must still produce data after a sticky blip',
+      );
+    });
+
+    it('gives SZSE its full wall-clock budget regardless of SSE latency', async () => {
+      // The budget is shared across every szse.cn request. If SSE work runs
+      // between the calendar and the SZSE reports, slow SSE silently eats the
+      // SZSE allowance and the reports die on TRANSPORT_BUDGET_EXCEEDED without
+      // SZSE ever being at fault.
+      const order: string[] = [];
+      const log: FetchLogEntry[] = [];
+      const served = fixtureFetch(log);
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        fetchFn: async (input: unknown, init: RequestInit) => {
+          order.push(String(input).includes('szse.cn') ? 'szse' : 'sse');
+          return served(input, init);
+        },
+        proxyUrl: '',
+        sseProxyUrl: '',
+        edgeEgress: null,
+        now: NOW,
+        onDecision: () => {},
+      });
+      // Guard against a vacuous pass: both halves must actually have dialled.
+      assert.ok(order.includes('szse'), 'SZSE must have made requests');
+      assert.ok(order.includes('sse'), 'SSE must have made requests');
+      // Every szse.cn request must precede the first sse request, so the shared
+      // deadline only ever measures SZSE's own work.
+      const firstSse = order.indexOf('sse');
+      const lastSzse = order.lastIndexOf('szse');
+      assert.ok(
+        lastSzse < firstSse,
+        `SZSE work must be contiguous before SSE; saw ${order.join(',')}`,
+      );
+      assert.equal(snapshot.status, 'healthy');
+    });
+
+    it('abandons a source on transport failure instead of blaming the trade date', async () => {
+      const { snapshot, log } = await fetchWithFixtures({
+        overrides: [['CATALOGID=1837_xxpl', () => { throw new Error('fetch failed'); }]],
+      });
+      const marginCalls = log.filter((entry) => entry.url.includes('CATALOGID=1837_xxpl'));
+      // One attempt, not one per candidate date: the network is down, and
+      // reporting NO_PUBLISHED_TRADE_DATE here would misdiagnose it.
+      assert.equal(marginCalls.length, 1);
+      const source = snapshot.sources.find((s: { id: string }) => s.id === 'szse-margin');
+      assert.equal(source.errorCode, 'FETCH_FAILED');
+      assert.notEqual(source.errorCode, 'NO_PUBLISHED_TRADE_DATE');
+      // The dials it really made must reach the decision log; reporting 0 here
+      // reads as "never tried" and sends the reader to the wrong layer.
+      assert.equal(source.requestCount, marginCalls.length);
+      assert.deepEqual(source.probedDates, ['2026-08-05']);
+    });
+
+    it('stops dialling SZSE once its wall-clock reservation is spent', async () => {
+      // Jumps far past every reservation between creating a deadline and
+      // checking it, so each SZSE consumer trips its own budget.
+      let now = 0;
+      const clock = () => (now += 1_000_000_000);
+      const { snapshot } = await fetchWithFixtures({ clock });
+      for (const id of ['szse-northbound', 'szse-margin']) {
+        const source = snapshot.sources.find((s: { id: string }) => s.id === id);
+        assert.equal(source.errorCode, 'TRANSPORT_BUDGET_EXCEEDED', id);
+      }
+      // SSE is on a different host and keeps working.
+      const sse = snapshot.sources.find((s: { id: string }) => s.id === 'sse-northbound');
+      assert.equal(sse.transportStatus, 'ok');
+    });
+
+    it('routes each exchange through its own configured proxy', async () => {
+      // The registration test only regex-matches the two declaration lines, so
+      // it stays green if a call site swaps which URL feeds which exchange.
+      // This asserts the actual wiring.
+      const dialled: Array<{ url: string; proxy: string }> = [];
+      const proxyRequestFn = async (input: string, config: { port: number }) => {
+        dialled.push({ url: input, proxy: String(config.port) });
+        throw new Error('proxy refused');
+      };
+      const snapshot = await fetchChinaStockConnectSnapshot({
+        // Force every direct hop to fail so the proxy hop is always reached.
+        fetchFn: async () => { throw new Error('fetch failed'); },
+        proxyUrl: 'http://user:pw@szse-exit.example:7001',
+        sseProxyUrl: 'http://user:pw@sse-exit.example:9001',
+        proxyRequestFn,
+        edgeEgress: null,
+        now: NOW,
+        onDecision: () => {},
+      });
+      const sseDials = dialled.filter((d) => d.url.includes('sse.com.cn'));
+      const szseDials = dialled.filter((d) => d.url.includes('szse.cn'));
+      assert.ok(sseDials.length > 0, 'SSE must reach its proxy');
+      assert.ok(szseDials.length > 0, 'SZSE must reach its proxy');
+      for (const dial of sseDials) assert.equal(dial.proxy, '9001', dial.url);
+      for (const dial of szseDials) assert.equal(dial.proxy, '7001', dial.url);
+      assert.equal(snapshot.status, 'degraded');
     });
 
     it('rejects an oversized SZSE response, which is how the full-history dump fails', async () => {
@@ -897,74 +1045,6 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
     });
   });
 
-  describe('edge egress fallback', () => {
-    it('reaches the real relay handler with an envelope it accepts', async () => {
-      // End-to-end across the seam: the adapter builds the envelope, the
-      // deployed handler validates it and rebuilds the upstream URL. A drift on
-      // either side turns this red, which a stubbed relay would not catch.
-      const previousSecret = process.env.RELAY_SHARED_SECRET;
-      process.env.RELAY_SHARED_SECRET = 'test-relay-secret';
-      const upstreamCalls: string[] = [];
-      const realFetch = globalThis.fetch;
-      globalThis.fetch = (async (input: unknown) => {
-        const url = String(input);
-        upstreamCalls.push(url);
-        if (url.includes('onepersistenthour/monthList')) {
-          return new Response(JSON.stringify(szseCalendarFixture), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        const day = new URL(url).searchParams.get('txtDate');
-        if (url.includes('CATALOGID=SGT_SGTJYRB')) {
-          return new Response(
-            JSON.stringify(day === '2026-08-04' ? szseNorthboundFixture : szseNorthboundEmptyFixture),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          );
-        }
-        return new Response(
-          JSON.stringify(day === '2026-08-03' ? szseMarginFixture : szseNorthboundEmptyFixture),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
-      }) as typeof globalThis.fetch;
-
-      try {
-        const snapshot = await fetchChinaStockConnectSnapshot({
-          // Every direct SZSE call fails; SSE is served from fixtures.
-          fetchFn: async (input: unknown, init: RequestInit) => {
-            const url = String(input);
-            if (url.includes('szse.cn')) throw new Error('fetch failed');
-            return fixtureFetch([])(input, init);
-          },
-          proxyUrl: '',
-          sseProxyUrl: '',
-          edgeEgress: { url: 'https://api.worldmonitor.app/x', secret: 'test-relay-secret' },
-          edgeRequestFn: async (_url: unknown, init: RequestInit) =>
-            egressHandler(new Request('https://api.worldmonitor.app/api/internal/china-exchange-egress', {
-              method: 'POST',
-              headers: init.headers as HeadersInit,
-              body: init.body as BodyInit,
-            })),
-          now: NOW,
-          onDecision: () => {},
-        });
-
-        assert.equal(snapshot.northbound.turnoverCny.status, 'known');
-        assert.equal(snapshot.margin.totalBalanceCny.status, 'known');
-        for (const id of ['szse-northbound', 'szse-margin']) {
-          const source = snapshot.sources.find((s: { id: string }) => s.id === id);
-          assert.equal(source.transportPath, 'edge', id);
-        }
-        assert.ok(upstreamCalls.some((url) => url.includes('CATALOGID=SGT_SGTJYRB')));
-        assert.ok(upstreamCalls.some((url) => url.includes('CATALOGID=1837_xxpl')));
-      } finally {
-        globalThis.fetch = realFetch;
-        if (previousSecret === undefined) delete process.env.RELAY_SHARED_SECRET;
-        else process.env.RELAY_SHARED_SECRET = previousSecret;
-      }
-    });
-  });
-
   describe('source contracts', () => {
     it('records terms and robots for every endpoint on both hosts', () => {
       for (const contract of Object.values(STOCK_CONNECT_SOURCE_CONTRACTS)) {
@@ -985,10 +1065,13 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       // the removed transportRecoverySuccessRuns field did, implying a recovery
       // hysteresis this module never had.
       for (const contract of Object.values(STOCK_CONNECT_SOURCE_CONTRACTS)) {
+        // Every source stops at the proxy: a seeder fetches upstream data, the
+        // web tier serves it from Redis, and routing an exchange fetch through
+        // an edge function to borrow its egress inverts that.
         assert.equal(
-          contract.fallbackPolicy.includes('then_edge'),
-          contract.edgeFallbackEnabled,
-          `${contract.id}: fallbackPolicy and edgeFallbackEnabled disagree`,
+          contract.fallbackPolicy,
+          'direct_then_proxy_on_transport_failure',
+          `${contract.id}: unexpected fallback policy`,
         );
         assert.equal(
           contract.proxyEnvironmentVariable,

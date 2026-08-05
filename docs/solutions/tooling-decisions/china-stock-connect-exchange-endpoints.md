@@ -167,18 +167,26 @@ northbound turnover  2026-08-04   SSE ¥135.449bn + SZSE ¥160.909bn = ¥296.358
 margin balance       2026-08-03   SSE ¥1.337tn  + SZSE ¥1.257tn    = ¥2.594tn
 ```
 
-Reachability differs sharply by environment, which is why the direct → proxy →
-edge ladder in `scripts/_china-exchange-transport.mjs` is load-bearing rather
-than defensive:
+Reachability differs sharply by environment, which is why the direct → proxy
+ladder in `scripts/_china-exchange-transport.mjs` is load-bearing rather than
+defensive:
 
 | Host | From a workstation | From Railway |
 |---|---|---|
 | `query.sse.com.cn` | direct, always | direct **and** proxy |
-| `www.szse.cn` | direct, always | **never direct** — proxy/edge |
+| `www.szse.cn` | direct, always | **never direct** — proxy |
 
 A seeder that only did direct fetches would pass every local check and fail in
 production. Verify China-source reachability against the Railway decision log of
 an existing seeder on the same host, not against a laptop.
+
+The ladder stops at the proxy deliberately. A seeder fetches upstream data and
+writes it to Redis; the web tier reads Redis and serves it. Routing an exchange
+fetch through an edge function to borrow its egress inverts that — the web tier
+becomes a hop in data acquisition. A sibling seeder does have such a hop, added
+as defence in depth for an outage that its own change record says had already
+recovered without it; in production it is the hop that answers with a gateway
+error while the proxy works.
 
 ## Related
 
