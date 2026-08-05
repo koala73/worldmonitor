@@ -351,7 +351,14 @@ export class SearchAdapter implements RetailerAdapter {
       : ` You are looking for "${canonicalName}".`;
 
     const extractSchema = {
-      prompt: `Extract the retail price of THIS specific product from the main product section of the page.${sizeClause} The price may be displayed as two parts split across lines — like "3" and ".95" next to "${currency}" — combine them to get 3.95. ONLY extract the price shown for the main product itself. If the page shows "Out of Stock" and no price is displayed for the main product, return null for price — do NOT use prices from related products, recommendations, or carousels. Return the product name, the numeric price in ${currency} (null if not shown), the currency code, whether it is in stock, and the size or quantity shown on the page.`,
+      // No numeric example here, deliberately. A worked example ("combine them
+      // to get 3.95") is an anchor the extractor emits VERBATIM when the page
+      // has no price: varying only the example on a priceless page returned
+      // 3.95, then 7.31, then 12.48, each with the canonical name echoed back
+      // as the product name — a fabricated observation that clears the price,
+      // currency, title and strict-validator gates alike. Describe the split
+      // layout in words instead.
+      prompt: `Extract the retail price of THIS specific product from the main product section of the page.${sizeClause} The price may be rendered split across separate elements, with the whole-currency part and the fractional part in different nodes; join them into one number. Never invent, estimate, or complete a price: read every digit off the page, and if the main product's price is not printed on the page return null for price. ONLY extract the price shown for the main product itself. If the page shows "Out of Stock" and no price is displayed for the main product, return null for price — do NOT use prices from related products, recommendations, or carousels. If the page is an error, "not found", or empty-state page, return null for price. Return the product name EXACTLY as printed on the page (never restate the product you were asked to find), the numeric price in ${currency} (null if not shown), the currency code, whether it is in stock, and the size or quantity shown on the page.`,
       fields: {
         productName: { type: 'string' as const, required: true, description: 'Name or title of the product' },
         price: {
@@ -605,6 +612,9 @@ export class SearchAdapter implements RetailerAdapter {
       exaResults = await this.exa.search(searchQuery, {
         numResults: cfg?.numResults ?? 3,
         includeDomains: hostAllowlist,
+        // Omitted unless configured so retailers on the provider default are
+        // untouched; ExaProvider.search falls back to neural on undefined.
+        ...(cfg?.searchType ? { type: cfg.searchType } : {}),
         timeout: 30_000,
       });
       this.exaDiscoveryFailureStreak = 0;
@@ -641,10 +651,23 @@ export class SearchAdapter implements RetailerAdapter {
           matchesAnyPathFilter(url, pathFilters) &&
           matchesRequiredPathSegments(url, requiredSegments),
       );
-    const safeUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
+    const survivingUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
+    // Discovery may legitimately need a wide net (a retailer whose live route
+    // ranks low), but extraction cost must not scale with it — each extra
+    // candidate is up to two more paid provider calls on a page that may never
+    // price. Truncation happens AFTER host/path filtering so the bound spends
+    // its budget on in-policy URLs, never on rejects.
+    const candidateLimit = cfg?.maxExtractionCandidates;
+    const safeUrls = candidateLimit ? survivingUrls.slice(0, candidateLimit) : survivingUrls;
 
+    // Report the pre-truncation count and the bound separately. Logging only
+    // the truncated number would read as "the filter rejected the rest",
+    // hiding a deliberate cost bound behind what looks like a policy reject.
     ctx.logger.info(
-      `  [search:discovery] ${ctx.config.slug}/${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed host/path check`,
+      `  [search:discovery] ${ctx.config.slug}/${canonicalName}: ${exaResults.length} URLs from Exa, ${survivingUrls.length} passed host/path check` +
+        (safeUrls.length < survivingUrls.length
+          ? `, extracting from the first ${safeUrls.length} (maxExtractionCandidates=${candidateLimit})`
+          : ''),
     );
 
     if (safeUrls.length === 0) {
