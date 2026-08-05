@@ -54,11 +54,21 @@ export const DEFAULT_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
 // working, which is exactly the state that stranded the fleet for 19.5h.
 export const DEFAULT_MAX_RECONCILE_AGE_MS = 3 * 60 * 60 * 1000;
 
-// Deep enough that the "we looked far enough back to conclude" branch can
-// actually be reached: at the hourly backstop alone this window spans well
-// over a day, so a fleet that has not reconciled in three hours is inside it
-// many times over.
-export const DEFAULT_RUN_LIMIT = 30;
+// The listing is bounded by TIME, never by a run count.
+//
+// A count was the original design and it was unusable: this workflow is woken
+// by every Deploy Gate evaluation in the repository — measured at ~33/hour —
+// so the newest 30 runs span under an hour and can never reach back past a
+// three-hour threshold. STALE became unreachable and the alarm degraded to a
+// permanent shrug. A count cannot be raised out of the problem either, because
+// the API caps per_page at 100 and 100 runs is still only ~3h at that rate.
+//
+// With a `created:>=` filter the window spans the threshold BY CONSTRUCTION,
+// which also collapses the old three-state result into two: if no run inside
+// the window reconciled, that IS the alarm — including the case where the
+// workflow did not run at all, which is precisely the #6203 failure and the
+// one a count-based window reported as "cannot tell".
+export const RUN_PAGE_SIZE = 100;
 
 function parseTimestamp(value) {
   if (typeof value !== 'string') return null;
@@ -91,51 +101,43 @@ export function readRunReconciled(jobsPayload) {
 }
 
 /**
- * Summarise "when did the fleet last get reconciled" from this workflow's runs.
+ * Summarise "did anything reconcile the fleet inside the window".
  *
- * `runs` is newest-first, and must be the runs that were actually INSPECTED —
- * callers may stop as soon as they find a reconciled one, because everything
- * older than it cannot change the answer. Passing a truncated tail instead
- * would make the "nothing reconciled" branch below reason about a window it
- * never looked at.
+ * `runs` MUST be every completed run created within `maxAgeMs` of `now` — the
+ * caller guarantees that with a `created:>=` API filter, which is what makes
+ * the negative answer decidable. Given that guarantee there are only two
+ * outcomes, and the absence of evidence is the alarm rather than a shrug:
  *
- * Returns one of three states, and `UNKNOWN` is never a pass:
- *
- *   RECENT  — a run reconciled within `maxAgeMs`.
- *   STALE   — a run reconciled longer ago than that, OR nothing reconciled
- *             across a window that itself reaches back past `maxAgeMs`.
- *   UNKNOWN — nothing reconciled and the window is too short to conclude.
+ *   RECENT — some run in the window reconciled.
+ *   STALE  — none did. That includes the window being EMPTY, which is the
+ *            #6203 failure itself: the workflow never ran.
  */
 export function summarizeReconcileHistory(runs, { now, maxAgeMs = DEFAULT_MAX_RECONCILE_AGE_MS } = {}) {
   if (!Number.isFinite(now)) throw new TypeError('summarizeReconcileHistory requires a numeric now');
   const inspected = Array.isArray(runs) ? runs : [];
-  const timestamps = [];
 
   for (const run of inspected) {
-    const completedAt = parseTimestamp(run?.completedAt);
-    if (completedAt === null) continue;
-    timestamps.push(completedAt);
     if (run?.reconciled !== true) continue;
-    // Runner and API clocks disagree by seconds. A future-dated run must read
-    // as "just now", not as a negative age that prints as -0h.
-    const ageMs = Math.max(0, now - completedAt);
+    const completedAt = parseTimestamp(run?.completedAt);
+    // A reconciled run whose timestamp is unreadable still proves a reconcile
+    // happened inside the window — the window is the caller's guarantee, not
+    // this field's. Report it without an age rather than discarding the proof.
+    const ageMs = completedAt === null
+      // Runner and API clocks disagree by seconds; a future-dated run must read
+      // as "just now", not as a negative age that prints as -0h.
+      ? null : Math.max(0, now - completedAt);
     return {
-      state: ageMs > maxAgeMs ? 'STALE' : 'RECENT',
+      state: 'RECENT',
       ageMs,
-      lastReconciledAt: new Date(completedAt).toISOString(),
+      lastReconciledAt: completedAt === null ? null : new Date(completedAt).toISOString(),
       runId: run.id ?? null,
       inspected: inspected.length,
       maxAgeMs,
     };
   }
 
-  const oldest = timestamps.length > 0 ? Math.min(...timestamps) : null;
-  // Only claim staleness once the window we looked at genuinely spans the
-  // threshold. Short of that we have not disproved a reconcile, we have just
-  // run out of history — which is a different sentence and a different action.
-  const reachesPastThreshold = oldest !== null && now - oldest > maxAgeMs;
   return {
-    state: reachesPastThreshold ? 'STALE' : 'UNKNOWN',
+    state: 'STALE',
     ageMs: null,
     lastReconciledAt: null,
     runId: null,
@@ -148,15 +150,13 @@ export function summarizeReconcileHistory(runs, { now, maxAgeMs = DEFAULT_MAX_RE
 export function describeReconcileSummary(summary) {
   const hours = (ms) => (ms / (60 * 60 * 1000)).toFixed(1);
   if (summary.state === 'RECENT') {
-    return `Fleet last reconciled ${hours(summary.ageMs)}h ago (run ${summary.runId}).`;
+    return summary.ageMs === null
+      ? `Fleet reconciled inside the last ${hours(summary.maxAgeMs)}h (run ${summary.runId}).`
+      : `Fleet last reconciled ${hours(summary.ageMs)}h ago (run ${summary.runId}).`;
   }
-  if (summary.state === 'UNKNOWN') {
-    return `Cannot tell when the fleet was last reconciled: none of the ${summary.inspected} run(s) inspected reconciled, and that window does not reach back ${hours(summary.maxAgeMs)}h.`;
-  }
-  if (summary.lastReconciledAt === null) {
-    return `The fleet has not been reconciled by any of the last ${summary.inspected} runs, a window reaching back past ${hours(summary.maxAgeMs)}h. Neither the Deploy Gate event nor the hourly backstop is reconciling.`;
-  }
-  return `The fleet has not been reconciled for ${hours(summary.ageMs)}h (last run ${summary.runId}), past the ${hours(summary.maxAgeMs)}h backstop tolerance.`;
+  return summary.inspected === 0
+    ? `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h: this workflow produced NO completed run in that window at all. Neither the Deploy Gate event nor the hourly backstop is firing.`
+    : `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h. ${summary.inspected} run(s) completed in that window and none of them deployed.`;
 }
 
 const GH_CALL_TIMEOUT_MS = 30_000;
@@ -175,16 +175,34 @@ function runGh(args) {
   return result.stdout;
 }
 
-function readCompletedRuns({ repository, workflowFile, limit, excludeRunId }) {
+/** ISO-8601 to the second, which is the granularity the `created` filter takes. */
+export function toCreatedFilter(instantMs) {
+  return `${new Date(instantMs).toISOString().replace(/\.\d{3}Z$/, 'Z')}`;
+}
+
+function readRunsSince({ repository, workflowFile, sinceMs, excludeRunId }) {
+  // `created:>=` is what makes the negative answer decidable: the returned set
+  // IS the window, so "none of these reconciled" means the fleet went
+  // un-reconciled for the whole window rather than "the page ran out".
+  const query = [
+    'status=completed',
+    `created=%3E%3D${encodeURIComponent(toCreatedFilter(sinceMs))}`,
+    `per_page=${RUN_PAGE_SIZE}`,
+  ].join('&');
   const payload = JSON.parse(runGh([
-    'api',
-    `repos/${repository}/actions/workflows/${workflowFile}/runs?status=completed&per_page=${limit}`,
+    'api', '--paginate', '--slurp',
+    `repos/${repository}/actions/workflows/${workflowFile}/runs?${query}`,
   ]));
-  const runs = payload?.workflow_runs;
-  // An unreadable listing must not be summarised as an empty history: empty
-  // reads as UNKNOWN, which is quiet, and this is a hard failure.
-  if (!Array.isArray(runs)) {
-    throw new Error(`the run listing for ${workflowFile} was not an array of workflow runs`);
+  // --slurp wraps paginated responses in an array of pages.
+  const pages = Array.isArray(payload) ? payload : [payload];
+  const runs = [];
+  for (const page of pages) {
+    // An unreadable listing must never be summarised as an empty window: empty
+    // now means STALE, which is loud, but it would be loud for a false reason.
+    if (!Array.isArray(page?.workflow_runs)) {
+      throw new Error(`the run listing for ${workflowFile} was not an array of workflow runs`);
+    }
+    runs.push(...page.workflow_runs);
   }
   return runs
     .filter((run) => String(run?.id) !== String(excludeRunId))
@@ -194,30 +212,28 @@ function readCompletedRuns({ repository, workflowFile, limit, excludeRunId }) {
 async function main() {
   const repository = readArgument(process.argv, '--repo', process.env.GITHUB_REPOSITORY || REPOSITORY);
   const workflowFile = readArgument(process.argv, '--workflow', DEFAULT_WORKFLOW_FILE);
-  const limit = Number(readArgument(process.argv, '--limit', String(DEFAULT_RUN_LIMIT)));
   const maxAgeHours = Number(readArgument(
     process.argv,
     '--max-age-hours',
     String(DEFAULT_MAX_RECONCILE_AGE_MS / (60 * 60 * 1000)),
   ));
   const warnOnly = process.argv.includes('--warn-only');
-  if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
-    throw new Error('--limit must be an integer between 1 and 100');
-  }
   if (!Number.isFinite(maxAgeHours) || maxAgeHours <= 0) {
     throw new Error('--max-age-hours must be a positive number');
   }
 
-  const candidates = readCompletedRuns({
+  const now = Date.now();
+  const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
+  const candidates = readRunsSince({
     repository,
     workflowFile,
-    limit,
+    sinceMs: now - maxAgeMs,
     excludeRunId: process.env.GITHUB_RUN_ID ?? null,
   });
 
   // Newest-first, stopping at the first run that reconciled: everything older
   // than it cannot change the answer, so the healthy case costs one extra API
-  // call rather than `limit` of them.
+  // call rather than one per run in the window.
   const inspected = [];
   for (const candidate of candidates) {
     const jobs = JSON.parse(runGh(['api', `repos/${repository}/actions/runs/${candidate.id}/jobs`]));
@@ -226,21 +242,17 @@ async function main() {
     if (reconciled) break;
   }
 
-  const summary = summarizeReconcileHistory(inspected, {
-    now: Date.now(),
-    maxAgeMs: maxAgeHours * 60 * 60 * 1000,
-  });
+  const summary = summarizeReconcileHistory(inspected, { now, maxAgeMs });
   const message = describeReconcileSummary(summary);
 
   if (summary.state === 'RECENT') {
     console.log(message);
     return;
   }
-  // STALE is the alarm; UNKNOWN is "we could not disprove it", which is louder
-  // than silence and quieter than a failure.
-  const level = summary.state === 'STALE' && !warnOnly ? 'error' : 'warning';
-  console.log(`::${level}::${message}`);
-  if (summary.state === 'STALE' && !warnOnly) process.exitCode = 1;
+  // STALE is the alarm, and it is the ONLY other state: the time-bounded window
+  // makes "nothing reconciled" a proof rather than a shortfall of evidence.
+  console.log(`::${warnOnly ? 'warning' : 'error'}::${message}`);
+  if (!warnOnly) process.exitCode = 1;
 }
 
 // realpath BOTH sides: Node sets import.meta.url to the realpath while argv[1]

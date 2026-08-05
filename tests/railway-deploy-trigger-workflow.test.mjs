@@ -6,7 +6,7 @@
 // the workflow still reported success.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -204,6 +204,32 @@ describe('Railway deploy trigger workflow', () => {
     }
     return minutes;
   }
+
+  it('contains no empty GitHub expression, which fails the whole file to parse', () => {
+    // Cost a full cycle. An EMPTY GitHub expression — the opener, whitespace,
+    // the closer — written inside a shell COMMENT in a `run:` block is still
+    // seen by GitHub's expression parser, which scans the entire block scalar,
+    // and it rejects the workflow with "An expression was expected". (The
+    // literal is deliberately not written here: this test would then flag its
+    // own source.) The consequences are exactly the failure mode this file exists
+    // to prevent, one level up: a workflow that fails to parse publishes NO
+    // check run, so the PR stays green, it is absent from the deploy gate's
+    // required list, and every trigger — event, cron and dispatch alike — stops
+    // producing runs. Observed as run 30981164081: conclusion=failure, zero
+    // jobs, and `name` reported as the file path instead of the workflow name.
+    //
+    // The `yaml` parser this file uses accepts it, so nothing else in CI can
+    // catch this. Scan every workflow, not just this one.
+    const workflowDir = resolve(repoRoot, '.github/workflows');
+    const offenders = [];
+    for (const file of readdirSync(workflowDir).filter((name) => /\.ya?ml$/.test(name))) {
+      const text = readFileSync(resolve(workflowDir, file), 'utf8');
+      text.split('\n').forEach((line, index) => {
+        if (/\$\{\{\s*\}\}/.test(line)) offenders.push(`${file}:${index + 1}`);
+      });
+    }
+    assert.deepEqual(offenders, [], 'empty GitHub expression(s) found; these make the workflow unparseable');
+  });
 
   it('reconciles when the gate it waits on has just resolved', () => {
     // #6203: a 5-minute cron on this repository is not a cadence we have.

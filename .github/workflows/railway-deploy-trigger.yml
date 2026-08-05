@@ -35,16 +35,22 @@ on:
   # Seed Freshness Monitor landing every 25-50 minutes. A 5-minute cron is not
   # a cadence this repository has.
   #
-  # `branches: [main]` filters on the TRIGGERING run's branch, so every PR's
-  # Deploy Gate run is excluded and only main's reaches here. Deploy Gate's own
-  # 30-minute sweep runs carry the default branch, which makes them a second
-  # backstop for free.
+  # `branches: [main]` is NOT a PR filter here, and must not be read as one.
+  # Deploy Gate is itself `workflow_run`-triggered, and GitHub stamps such a run
+  # with the DEFAULT branch rather than the branch that triggered it — measured
+  # 2026-08-05, 40 of 40 recent Deploy Gate runs carry head_branch=main and
+  # head_sha = main's head, including ones triggered by PR Test runs. (That is
+  # exactly why deploy-gate.yml reads `github.event.workflow_run.head_sha`
+  # instead of `github.sha`.) So this fires on roughly every gate evaluation in
+  # the repository, PRs included — about 33/hour measured over 72 minutes.
   #
-  # A fork PR whose branch happens to be named `main` also passes that filter.
-  # It is harmless and needs no extra guard: nothing below reads the event. The
-  # job resolves its own `git rev-parse origin/main` and refuses to deploy
-  # unless THAT commit carries a green `gate`, so the worst a fork can cause is
-  # one extra idempotent reconcile of the real main.
+  # That is safe rather than merely tolerable, for two independent reasons:
+  # nothing below reads the event at all — the job resolves its own
+  # `git rev-parse origin/main` and refuses to deploy unless THAT commit carries
+  # a green `gate` — and the concurrency group cancels the pending member on
+  # each new arrival, so the executing rate is bounded by one run's duration,
+  # not by the arrival rate. The extra wakeups cost a checkout and exit at the
+  # gate step.
   #
   # Chain depth is Test -> Deploy Gate -> here. GitHub refuses to chain
   # workflow_run more than three levels deep, so this is the last link
@@ -251,10 +257,15 @@ jobs:
           # red their preview for it.
           WARN_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
         run: |
-          # Two explicit arms rather than an interpolated flag: a `${{ }}`
-          # ternary spliced into the command line has to agree with the env var
-          # above forever, and the day they diverge the arm that still runs is
-          # the one that stays quiet.
+          # Two explicit arms rather than an interpolated flag. A GitHub
+          # expression ternary spliced into the command line would have to agree
+          # with the env var above forever, and the day they diverge the arm
+          # that still runs is the one that stays quiet.
+          #
+          # NOTE: never write a literal GitHub expression opener inside a `run:`
+          # block, even in a comment. The expression parser scans the whole
+          # block scalar, so an empty one fails the WORKFLOW to parse — which
+          # publishes no check run, leaves the PR green, and stops every trigger.
           if [ "${WARN_ONLY:-false}" = "true" ]; then
             node scripts/check-railway-reconcile-age.mjs --warn-only
           else
@@ -281,11 +292,22 @@ jobs:
               ;;
             failure)
               summary="**Reconcile FAILED** against \`$short\` — services named in the log above stayed behind."
+              # The deploy step reds the run, but it emits per-service errors;
+              # nothing otherwise states the run-level outcome in the summary.
+              echo "::error::Reconcile FAILED for ${short}. Services named above stayed behind."
               ;;
             *)
               if [ "$PREVIEW_OUTCOME" = "success" ]; then
                 summary="Previewed \`$short\` only; this run deployed nothing by request."
                 echo "::notice::$summary"
+              elif [ "$GATE" = "success" ]; then
+                # The gate was GREEN and the deploy still did not run, so an
+                # earlier step stopped it — an expired RAILWAY_PRODUCTION_TOKEN,
+                # a missing RAILWAY_PROJECT_ID, Railway unreachable. Calling
+                # that "declined" would file an infrastructure failure under the
+                # benign no-op label this step exists to separate out.
+                summary="**Reconcile did not run** for \`$short\` even though its gate was green — a step before the deploy failed (Railway credentials or API). This is not a routine decline."
+                echo "::error::Reconcile did not run for ${short} despite gate=success; a prerequisite step failed."
               else
                 summary="**Declined to reconcile.** main's head \`$short\` has gate=\`$GATE\`, so no service was deployed by this run."
                 # A warning, not a notice: this is the outcome that used to be
