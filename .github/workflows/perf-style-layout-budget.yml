@@ -53,23 +53,28 @@ jobs:
 
       - name: Capture desktop main-thread decomposition
         id: capture
-        # cpu 1 matches the committed baseline capture. Failure here is
-        # environmental (page down, browser launch failed), and the gate below
-        # treats a missing/empty report as "could not measure", not as a pass.
-        continue-on-error: true
+        # cpu 1 matches the committed baseline capture. A crashed harness must
+        # NOT be swallowed: this job's only channel is pass/fail, so a capture
+        # that never happened has to be visible. `set -o pipefail` so a failing
+        # node exit is not masked by the redirect.
         run: |
+          set -euo pipefail
           node scripts/measure-desktop-mainthread.mjs \
             "${{ github.event.inputs.url || 'https://www.worldmonitor.app/dashboard' }}" \
             --cpu 1 --settle 15000 --json > style-layout-report.json
 
       - name: Enforce the styleLayout budget
+        # The checker exits 3 when the capture contract is unmet (wrong URL,
+        # harness warning, implausibly low attribution) — nonzero, never green.
         run: |
+          set -euo pipefail
           if [ ! -s style-layout-report.json ]; then
-            echo "[style-layout-budget] WARNING — harness produced no report; treating as unmeasured"
-            exit 0
+            echo "::error::harness produced no report — the capture did not happen"
+            exit 1
           fi
           node scripts/check-style-layout-budget.mjs style-layout-report.json \
-            --max-pct "${{ github.event.inputs.max_pct || '28' }}"
+            --max-pct "${{ github.event.inputs.max_pct || '28' }}" \
+            --expect-url /dashboard
 
       - name: Upload decomposition
         if: always()

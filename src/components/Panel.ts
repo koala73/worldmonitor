@@ -1241,6 +1241,20 @@ export class Panel {
       return;
     }
     if (this.lastCommittedHtml === html) {
+      // The DOM already shows `html`, but a DIFFERENT write may still be queued
+      // behind the debounce — and returning without cancelling it lets that
+      // stale write land afterwards, permanently. World Clock reproduces it:
+      // open settings, then close within the debounce window, and the settings
+      // markup commits after the clock has been asked to come back (which also
+      // strands the cached row handles, so the clock stops ticking).
+      if (this.pendingContentHtml !== null) {
+        this.pendingContentHtml = null;
+        this.pendingContentCallback = null;
+        if (this.contentDebounceTimer) {
+          clearTimeout(this.contentDebounceTimer);
+          this.contentDebounceTimer = null;
+        }
+      }
       afterUpdate?.();
       return;
     }

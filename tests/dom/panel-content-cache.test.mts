@@ -113,6 +113,21 @@ describe('Panel content dirty-check', () => {
     expect(content().querySelector('.panel-error-state')).toBeNull();
   });
 
+  it('cancels a pending different write when content returns to the committed value', () => {
+    // A is committed; B is queued behind the debounce; then the caller asks for A
+    // again. Taking the "already committed" fast path without cancelling B lets B
+    // land afterwards — the DOM ends up showing content nobody asked for, and it
+    // stays that way until the next render.
+    setBody(BODY_A);
+    panel.setSafeContent(unsafeRawHtml(BODY_B, 'test fixture'));
+    panel.setSafeContent(unsafeRawHtml(BODY_A, 'test fixture'));
+
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS * 3);
+
+    expect(content().querySelector('.probe-b')).toBeNull();
+    expect(content().querySelector('.probe-a')).not.toBeNull();
+  });
+
   it('re-renders identical content after clearSensitiveContent emptied it', () => {
     setBody(BODY_A);
     // Protected: it is the entitlement-change path, and it is one of the

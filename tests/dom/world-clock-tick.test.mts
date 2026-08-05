@@ -125,6 +125,58 @@ describe('WorldClockPanel 1 Hz tick', () => {
     expect(timeTexts().every((s) => /^\d{2}:\d{2}:\d{2}$/.test(s))).toBe(true);
   });
 
+  it('survives opening and closing settings inside the debounce window', () => {
+    // The user-visible half of the Panel fast-path bug: open settings, close it
+    // before the 150 ms debounce commits, and the settings markup could still
+    // land afterwards — leaving the settings view on screen AND stranding the
+    // cached row handles, so the clock stopped ticking for good.
+    const settingsBtn = document.querySelector<HTMLButtonElement>('.wc-settings-btn');
+    expect(settingsBtn).not.toBeNull();
+
+    settingsBtn?.click();
+    settingsBtn?.click();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS * 3);
+
+    expect(content().querySelector('.wc-settings-view')).toBeNull();
+    expect(rows().length).toBeGreaterThan(0);
+
+    // …and the clock is still live, not frozen against detached nodes.
+    const before = timeTexts();
+    tick(1000);
+    expect(timeTexts()).not.toEqual(before);
+  });
+
+  it('refreshes the timezone abbreviation across a DST fall-back', () => {
+    // America/New_York repeats 01:xx on 2026-11-01: 05:30Z is 01:30 EDT and
+    // 06:30Z is 01:30 EST — same weekday, same hour, different zone. Caching the
+    // abbreviation on an hour-granular key served the stale zone for that whole
+    // repeated hour.
+    panel.destroy();
+    document.body.innerHTML = '';
+    vi.setSystemTime(new Date('2026-11-01T05:30:00.000Z'));
+    panel = new WorldClockPanel();
+    document.body.appendChild((panel as unknown as { element: HTMLElement }).element);
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    // A tick must run INSIDE the pre-fallback hour first, so the abbreviation
+    // cache is actually populated with EDT. Without this the cache is still
+    // empty at the crossing and would refresh either way — the assertion below
+    // would pass against the stale-key bug it exists to catch.
+    vi.advanceTimersByTime(1000);
+    const zonesBefore = Array.from(content().querySelectorAll<HTMLElement>('.wc-tz > span'))
+      .map((el) => el.textContent ?? '');
+    expect(zonesBefore.some((z) => z.includes('EDT'))).toBe(true);
+
+    // Cross the fall-back, then let one tick run.
+    vi.setSystemTime(new Date('2026-11-01T06:30:00.000Z'));
+    vi.advanceTimersByTime(1000);
+
+    const zonesAfter = Array.from(content().querySelectorAll<HTMLElement>('.wc-tz > span'))
+      .map((el) => el.textContent ?? '');
+    expect(zonesAfter.some((z) => z.includes('EST'))).toBe(true);
+    expect(zonesAfter.some((z) => z.includes('EDT'))).toBe(false);
+  });
+
   it('stops ticking after destroy', () => {
     const before = timeTexts();
     panel.destroy();

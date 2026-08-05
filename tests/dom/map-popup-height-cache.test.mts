@@ -7,14 +7,18 @@
  * GlobeMap.ts. `offsetHeight` forces a synchronous layout of the whole
  * document, so that read landed squarely on the task INP measures.
  *
- * The fix caches the measured height per popup type. What matters is not that
- * "a height is used" but that the SECOND popup of a type performs NO layout read
- * during `show()`. These tests count reads through a patched `offsetHeight`
- * getter, which is the only way to observe the property that actually costs.
+ * Three defects found in review of the first revision, each pinned below:
  *
- * The post-paint `requestAnimationFrame` re-measure is asserted separately: it
- * must happen (so a stale entry converges) and it must NOT happen inside the
- * click task (so it cannot be traded back into the interaction).
+ *  - the reconciliation ran in a bare `requestAnimationFrame`, which is NOT
+ *    after paint — rAF callbacks run before the frame paints, and INP measures
+ *    input→next paint, so the read was still inside the interaction window.
+ *    The old test asserted only "not in the click task", which passed while the
+ *    defect stood. It now distinguishes the two.
+ *  - the rAF closure captured the popup TYPE but read `this.popup`, so a popup
+ *    opened in between was measured and filed under the previous type.
+ *  - the key is the type, but a `waterway` popup's height varies within that key
+ *    (transit chart + HS2 ring are entitlement-gated), so a materially wrong
+ *    cached height has to be corrected rather than merely clamped.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +39,6 @@ let offsetHeightReads = 0;
 let originalOffsetHeight: PropertyDescriptor | undefined;
 let rafCallbacks: FrameRequestCallback[] = [];
 
-/** The private static cache; cleared per test so cold/warm paths stay explicit. */
 function heightCache(): Map<string, number> {
   return (MapPopup as unknown as { heightByType: Map<string, number> }).heightByType;
 }
@@ -54,7 +57,41 @@ function quake(x = 100, y = 100) {
   } as unknown as Parameters<MapPopup['show']>[0];
 }
 
+/** A second, structurally different popup type for the replacement case. */
+function weather(x = 100, y = 100) {
+  return {
+    type: 'weather',
+    data: {
+      severity: 'Severe',
+      event: 'Test Storm',
+      headline: 'Test headline',
+      areaDesc: 'Test County',
+      description: 'Test description',
+      expires: new Date('2026-08-06T00:00:00.000Z').toISOString(),
+    },
+    x,
+    y,
+  } as unknown as Parameters<MapPopup['show']>[0];
+}
+
+function livePopup(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('.map-popup');
+}
+
+/** rAF fires, but the frame has not painted yet. */
+function runFrame(): void {
+  const queued = rafCallbacks;
+  rafCallbacks = [];
+  for (const cb of queued) cb(0);
+}
+
+/** The post-paint tasks queued by that frame. */
+function runAfterPaint(): void {
+  vi.advanceTimersByTime(1);
+}
+
 beforeEach(() => {
+  vi.useFakeTimers();
   // Desktop: isMobileDevice() is innerWidth <= 768, and the mobile sheet path
   // skips positioning entirely — a mobile viewport would make these vacuous.
   Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true });
@@ -89,6 +126,7 @@ afterEach(() => {
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
   }
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   document.body.innerHTML = '';
   heightCache().clear();
 });
@@ -108,7 +146,6 @@ describe('MapPopup desktop height cache', () => {
     offsetHeightReads = 0;
     popup.show(quake(200, 300));
 
-    // The whole point: the warm click path never touches offsetHeight.
     expect(offsetHeightReads).toBe(0);
   });
 
@@ -116,34 +153,68 @@ describe('MapPopup desktop height cache', () => {
     popup.show(quake());
     popup.show(quake(200, 300));
 
-    const el = document.querySelector<HTMLElement>('.map-popup');
+    const el = livePopup();
     expect(el).not.toBeNull();
     expect(el?.style.top).toMatch(/^-?\d+(\.\d+)?px$/);
     expect(el?.style.left).toMatch(/^-?\d+(\.\d+)?px$/);
-    // Never parked at the off-screen measuring position.
     expect(el?.style.left).not.toBe('-9999px');
     expect(el?.style.visibility).not.toBe('hidden');
   });
 
-  it('defers the re-measure to a frame callback, not the click task', () => {
+  it('defers the re-measure past PAINT, not merely past the click task', () => {
     popup.show(quake());
     offsetHeightReads = 0;
 
-    // A frame was scheduled, and nothing was read yet.
     expect(rafCallbacks.length).toBeGreaterThan(0);
     expect(offsetHeightReads).toBe(0);
 
-    for (const cb of rafCallbacks) cb(0);
+    // rAF runs BEFORE this frame paints — INP is still measuring here, so the
+    // layout read must not happen yet.
+    runFrame();
+    expect(offsetHeightReads).toBe(0);
 
-    // Now the correction runs — off the interaction critical path.
+    // Only once the frame has painted does the reconciliation read layout.
+    runAfterPaint();
     expect(offsetHeightReads).toBeGreaterThan(0);
+  });
+
+  it('does not file a replacement popup height under the previous type', () => {
+    // Open A, then replace it with B before A's reconciliation runs. show()
+    // builds a fresh element, so an element-blind callback would measure B and
+    // store it under A's type.
+    popup.show(quake());
+    heightCache().clear();
+
+    popup.show(weather(300, 300));
+    runFrame();
+    runAfterPaint();
+
+    // Only the live popup's own type may be written by the reconciliation.
+    expect(heightCache().has('earthquake')).toBe(false);
+  });
+
+  it('repositions when the measured height drifts from the cached one', () => {
+    // A wildly wrong cached height stands in for within-type layout variance
+    // (waterway popups gate a transit chart and HS2 ring on entitlement).
+    heightCache().set('earthquake', 860);
+
+    popup.show(quake(100, 100));
+    const positionedFromCache = livePopup()?.style.top;
+
+    runFrame();
+    runAfterPaint();
+
+    const afterReconciliation = livePopup()?.style.top;
+    expect(afterReconciliation).not.toBe(positionedFromCache);
+    expect(heightCache().get('earthquake')).toBe(MEASURED_HEIGHT);
   });
 
   it('converges a stale cache entry on the post-paint re-measure', () => {
     heightCache().set('earthquake', 9999);
 
     popup.show(quake());
-    for (const cb of rafCallbacks) cb(0);
+    runFrame();
+    runAfterPaint();
 
     expect(heightCache().get('earthquake')).toBe(MEASURED_HEIGHT);
   });

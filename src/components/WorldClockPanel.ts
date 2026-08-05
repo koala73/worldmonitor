@@ -33,9 +33,6 @@ interface ClockRefs {
     tz: string;
     isDay: boolean | null;
     isOpen: boolean | null;
-    /** `${dayOfWeek}|${hour}` the cached abbreviation was resolved for. */
-    abbrKey: string;
-    abbr: string;
   };
 }
 
@@ -122,36 +119,39 @@ function saveSelectedCities(ids: string[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
 }
 
-function getTimeInZone(tz: string): { h: number; m: number; s: number; dayOfWeek: string } {
+/**
+ * Local wall-clock parts for a zone, INCLUDING its short abbreviation.
+ *
+ * The abbreviation comes from this same `formatToParts` call rather than a
+ * second formatter, so it always describes the instant being displayed. Any
+ * scheme that caches it against a time-derived key is a heuristic that breaks at
+ * a DST fall-back, where the same weekday/hour/minute occurs twice under
+ * different zones (America/New_York 2026-11-01 01:30 is both EDT and EST).
+ * Reading it from the authoritative call is both cheaper — one formatter per
+ * city per tick instead of two — and correct by construction.
+ */
+function getTimeInZone(tz: string): {
+  h: number; m: number; s: number; dayOfWeek: string; abbr: string;
+} {
   try {
     const now = new Date();
     const parts = new Intl.DateTimeFormat(getLocale(), {
       timeZone: tz, hour: 'numeric', minute: 'numeric', second: 'numeric',
-      hour12: false, weekday: 'short',
+      hour12: false, weekday: 'short', timeZoneName: 'short',
       numberingSystem: 'latn',
     }).formatToParts(now);
-    let h = 0, m = 0, s = 0, dayOfWeek = '';
+    let h = 0, m = 0, s = 0, dayOfWeek = '', abbr = '';
     for (const p of parts) {
       if (p.type === 'hour') h = parseInt(p.value, 10);
       if (p.type === 'minute') m = parseInt(p.value, 10);
       if (p.type === 'second') s = parseInt(p.value, 10);
       if (p.type === 'weekday') dayOfWeek = p.value;
+      if (p.type === 'timeZoneName') abbr = p.value;
     }
     if (h === 24) h = 0;
-    return { h, m, s, dayOfWeek };
+    return { h, m, s, dayOfWeek, abbr };
   } catch {
-    return { h: 0, m: 0, s: 0, dayOfWeek: '' };
-  }
-}
-
-function getTzAbbr(tz: string): string {
-  try {
-    const fmt = new Intl.DateTimeFormat(getLocale(), { timeZone: tz, timeZoneName: 'short' });
-    const parts = fmt.formatToParts(new Date());
-    const tzPart = parts.find(p => p.type === 'timeZoneName');
-    return tzPart?.value ?? '';
-  } catch {
-    return '';
+    return { h: 0, m: 0, s: 0, dayOfWeek: '', abbr: '' };
   }
 }
 
@@ -334,10 +334,9 @@ export class WorldClockPanel extends Panel {
 
     let html = '<div class="wc-container" translate="no">';
     for (const city of sorted) {
-      const { h, m, s, dayOfWeek } = getTimeInZone(city.timezone);
+      const { h, m, s, dayOfWeek, abbr } = getTimeInZone(city.timezone);
       const isDay = h >= 6 && h < 20;
       const pct = ((h * 3600 + m * 60 + s) / 86400) * 100;
-      const abbr = getTzAbbr(city.timezone);
       const isHome = city.id === this.homeCityId;
       const isWeekday = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun';
 
@@ -391,8 +390,6 @@ export class WorldClockPanel extends Panel {
           tz: tz.textContent ?? '',
           isDay: null,
           isOpen: null,
-          abbrKey: '',
-          abbr: '',
         },
       });
     }
@@ -405,7 +402,7 @@ export class WorldClockPanel extends Panel {
   private tickClocks(): void {
     for (const refs of this.clockRefs.values()) {
       const { city, last } = refs;
-      const { h, m, s, dayOfWeek } = getTimeInZone(city.timezone);
+      const { h, m, s, dayOfWeek, abbr } = getTimeInZone(city.timezone);
 
       const time = `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
       if (last.time !== time) {
@@ -427,14 +424,7 @@ export class WorldClockPanel extends Panel {
         last.isDay = isDay;
       }
 
-      // `getTzAbbr` builds an Intl.DateTimeFormat, so resolve it only when the
-      // hour rolls over — a DST shift always lands on an hour boundary.
-      const abbrKey = `${dayOfWeek}|${h}`;
-      if (last.abbrKey !== abbrKey) {
-        last.abbrKey = abbrKey;
-        last.abbr = getTzAbbr(city.timezone);
-      }
-      const tz = `${dayOfWeek} ${last.abbr}`;
+      const tz = `${dayOfWeek} ${abbr}`;
       if (last.tz !== tz) {
         refs.tz.textContent = tz;
         last.tz = tz;

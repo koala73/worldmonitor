@@ -275,12 +275,24 @@ export class MapPopup {
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
 
-    // Reconcile the cached height against reality on the next frame. Deliberately
-    // after the click task has ended: this read forces layout, and keeping it out
-    // of the handler is the whole point of the cache.
+    // Reconcile the cached height against reality AFTER the frame has painted.
+    // rAF alone is not enough: rAF callbacks run before that frame's paint, and
+    // INP measures input→next paint, so an offsetHeight read there is still
+    // inside the interaction window. rAF + setTimeout(0) lands after it.
+    // The element is captured so a popup opened in the meantime (show() builds a
+    // fresh node) cannot be measured and filed under this popup's type.
     if (!this.isMobileSheet) {
       const popupType = data.type;
-      requestAnimationFrame(() => this.refreshHeightCache(popupType));
+      const openedPopup = this.popup;
+      // Captured now: positionDesktopPopup has already run, so this is the height
+      // THIS popup was placed with.
+      const positionedWith = this.lastPositionedHeight;
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (this.popup !== openedPopup) return;
+          this.refreshHeightCache(popupType, data, containerRect, positionedWith);
+        }, 0);
+      });
     }
 
     // Mount transit chart for waterway popups after DOM insertion
@@ -493,6 +505,12 @@ export class MapPopup {
    */
   private static readonly heightByType = new Map<string, number>();
 
+  /** Height delta worth a visible reposition after the post-paint re-measure. */
+  private static readonly HEIGHT_DRIFT_PX = 12;
+
+  /** Height `applyDesktopPosition` last used, so the re-measure can detect drift. */
+  private lastPositionedHeight: number | null = null;
+
   private positionDesktopPopup(data: PopupData, containerRect: DOMRect): void {
     if (!this.popup) return;
 
@@ -516,20 +534,37 @@ export class MapPopup {
   }
 
   /**
-   * Re-measure the open popup and update the type cache. Called after the popup
-   * has been appended and painted, so the `offsetHeight` read cannot land in the
-   * click task. Also clamps, since a too-small cached height is what would have
-   * pushed the popup past the viewport bottom.
+   * Re-measure the open popup, update the type cache, and correct the position
+   * if the height we positioned with was materially wrong.
+   *
+   * Repositioning matters because the cache key is the popup TYPE, and some
+   * types are not one layout: a `waterway` popup renders a transit chart and an
+   * HS2 ring only for entitled users, so its height genuinely varies within the
+   * key. Clamping alone only rescues downward overflow; an over-estimate would
+   * otherwise leave the popup flipped above the click for no reason.
    */
-  private refreshHeightCache(type: string): void {
+  private refreshHeightCache(
+    type: string,
+    data: PopupData,
+    containerRect: DOMRect,
+    positionedWith: number | null,
+  ): void {
     if (!this.popup || this.isMobileSheet) return;
     const measured = this.popup.offsetHeight;
-    if (measured > 0) MapPopup.heightByType.set(type, measured);
+    if (measured <= 0) return;
+    MapPopup.heightByType.set(type, measured);
+
+    // Sub-pixel and single-line differences are not worth a visible move.
+    if (positionedWith !== null && Math.abs(measured - positionedWith) > MapPopup.HEIGHT_DRIFT_PX) {
+      this.applyDesktopPosition(data, containerRect, measured);
+      return;
+    }
     this.clampPopupToViewport();
   }
 
   private applyDesktopPosition(data: PopupData, containerRect: DOMRect, popupHeight: number): void {
     if (!this.popup) return;
+    this.lastPositionedHeight = popupHeight;
 
     const popupWidth = 380;
     const bottomBuffer = 50; // Buffer from viewport bottom
