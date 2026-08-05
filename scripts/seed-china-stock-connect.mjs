@@ -44,8 +44,8 @@ export function validateChinaStockConnectSnapshot(snapshot) {
 // row when both exchanges of a pair agree on a trade date, so a history-derived
 // count is 0 whenever one exchange is down and there is no prior snapshot to
 // merge -- and with zeroIsValid:false that discards the working exchange's data
-// and never creates the key. SZSE being unreachable from Railway is the exact
-// failure the edge relay exists for, so that must degrade, not black-hole.
+// and never creates the key. SZSE is reachable from Railway only over the proxy
+// and that hop is flaky, so losing it has to degrade rather than black-hole.
 // Zero here means every source failed, which is the only thing worth failing on.
 export function chinaStockConnectRecordCount(snapshot) {
   return (Array.isArray(snapshot?.sources) ? snapshot.sources : [])

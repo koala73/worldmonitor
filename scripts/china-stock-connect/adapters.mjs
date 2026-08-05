@@ -3,8 +3,8 @@
 // the seeder fleet is Node ESM) nor EastMoney (undocumented private JSON with no
 // published terms). These are new endpoints on the two hosts we already hold a
 // terms contract for and already know how to reach from Railway, so this module
-// carries only the endpoint contracts and normalisation -- the direct -> proxy ->
-// edge ladder is the shared one in scripts/_china-exchange-transport.mjs.
+// carries only the endpoint contracts and normalisation -- the direct and proxy
+// hops are the shared ones in scripts/_china-exchange-transport.mjs.
 //
 // WHAT IS NOT HERE: northbound NET flow. Both exchanges stopped publishing the
 // northbound buy/sell split on 2024-08-16 (SZSE's own report footers link a
@@ -459,11 +459,11 @@ function requestInit(headers, contract, timeoutMs) {
   };
 }
 
-// One bounded direct -> proxy -> edge attempt for a single URL. Returns the
+// One bounded direct -> proxy attempt for a single URL. Returns the
 // parsed payload plus the routing metadata the decision log needs.
 //
 // `sticky` makes a multi-probe source pay the escalation once. Without it, a
-// source that only works over the edge hop would re-walk the whole ladder on
+// source that only works over the proxy would re-walk the whole ladder on
 // every date probe -- SZSE_MAX_DATE_PROBES times the full timeout budget, which
 // overruns the bundle's per-section allowance. The first hop that works is
 // remembered and subsequent probes start there.
@@ -567,10 +567,6 @@ function withRouting(error, routing) {
   failure.transportPath = routing.transportPath;
   if (routing.fallbackReason) failure.fallbackReason = routing.fallbackReason;
   if (routing.proxyFailureReason) failure.proxyFailureReason = routing.proxyFailureReason;
-  if (routing.edgeFailureReason) failure.edgeFailureReason = routing.edgeFailureReason;
-  if (routing.edgeFailureDiagnostic) {
-    failure.edgeFailureDiagnostic = routing.edgeFailureDiagnostic;
-  }
   if (routing.proxyExitPorts.length) failure.proxyExitPorts = [...routing.proxyExitPorts];
   return failure;
 }
@@ -879,9 +875,6 @@ function sourceState(contract, outcome, previousSource, generatedAt) {
     ...(outcome?.proxyFailureReason
       ? { proxyFailureReason: outcome.proxyFailureReason }
       : {}),
-    ...(outcome?.edgeFailureReason
-      ? { edgeFailureReason: outcome.edgeFailureReason }
-      : {}),
     ...(outcome?.proxyExitPorts?.length
       ? { proxyExitPorts: outcome.proxyExitPorts }
       : {}),
@@ -1108,12 +1101,6 @@ export async function fetchChinaStockConnectSnapshot({
         ...(error?.proxyFailureReason
           ? { proxyFailureReason: error.proxyFailureReason }
           : {}),
-        ...(error?.edgeFailureReason
-          ? { edgeFailureReason: error.edgeFailureReason }
-          : {}),
-        ...(error?.edgeFailureDiagnostic
-          ? { edgeFailureDiagnostic: error.edgeFailureDiagnostic }
-          : {}),
         ...(error?.proxyExitPorts?.length
           ? { proxyExitPorts: error.proxyExitPorts }
           : {}),
@@ -1168,12 +1155,6 @@ export async function fetchChinaStockConnectSnapshot({
       ...(source.fallbackReason ? { fallbackReason: source.fallbackReason } : {}),
       ...(source.proxyFailureReason
         ? { proxyFailureReason: source.proxyFailureReason }
-        : {}),
-      ...(source.edgeFailureReason
-        ? { edgeFailureReason: source.edgeFailureReason }
-        : {}),
-      ...(outcome?.edgeFailureDiagnostic
-        ? { edgeFailureDiagnostic: outcome.edgeFailureDiagnostic }
         : {}),
       ...(outcome?.proxyExitPorts?.length
         ? {
