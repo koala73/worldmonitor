@@ -180,7 +180,14 @@ export function toCreatedFilter(instantMs) {
   return `${new Date(instantMs).toISOString().replace(/\.\d{3}Z$/, 'Z')}`;
 }
 
-function readRunsSince({ repository, workflowFile, sinceMs, excludeRunId }) {
+/**
+ * Completed runs of this workflow created inside the window, newest first.
+ *
+ * `gh` is injected rather than imported so the I/O path is testable — this is
+ * the seam the current-run exclusion lives on, and getting that wrong is how a
+ * run reds itself.
+ */
+export function readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRunId }) {
   // `created:>=` is what makes the negative answer decidable: the returned set
   // IS the window, so "none of these reconciled" means the fleet went
   // un-reconciled for the whole window rather than "the page ran out".
@@ -189,7 +196,7 @@ function readRunsSince({ repository, workflowFile, sinceMs, excludeRunId }) {
     `created=%3E%3D${encodeURIComponent(toCreatedFilter(sinceMs))}`,
     `per_page=${RUN_PAGE_SIZE}`,
   ].join('&');
-  const payload = JSON.parse(runGh([
+  const payload = JSON.parse(gh([
     'api', '--paginate', '--slurp',
     `repos/${repository}/actions/workflows/${workflowFile}/runs?${query}`,
   ]));
@@ -205,8 +212,32 @@ function readRunsSince({ repository, workflowFile, sinceMs, excludeRunId }) {
     runs.push(...page.workflow_runs);
   }
   return runs
+    // The CURRENT run is excluded twice over — `status=completed` cannot return
+    // a run that is still executing, and this drops it by id as well. That is
+    // deliberate and it is why the workflow must not ask this question on a run
+    // whose own deploy just succeeded: such a run cannot see itself, so after a
+    // drought it would report the fleet stale seconds after fixing it.
     .filter((run) => String(run?.id) !== String(excludeRunId))
     .map((run) => ({ id: run?.id ?? null, completedAt: run?.updated_at ?? null }));
+}
+
+/**
+ * The window, with each run resolved to whether it reconciled.
+ *
+ * Newest-first, stopping at the first run that reconciled: everything older
+ * cannot change the answer, so the healthy case costs one extra call rather
+ * than one per run in the window.
+ */
+export function collectReconcileWindow({ gh, repository, workflowFile, sinceMs, excludeRunId }) {
+  const candidates = readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRunId });
+  const inspected = [];
+  for (const candidate of candidates) {
+    const jobs = JSON.parse(gh(['api', `repos/${repository}/actions/runs/${candidate.id}/jobs`]));
+    const reconciled = readRunReconciled(jobs);
+    inspected.push({ ...candidate, reconciled });
+    if (reconciled) break;
+  }
+  return inspected;
 }
 
 async function main() {
@@ -224,23 +255,13 @@ async function main() {
 
   const now = Date.now();
   const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
-  const candidates = readRunsSince({
+  const inspected = collectReconcileWindow({
+    gh: runGh,
     repository,
     workflowFile,
     sinceMs: now - maxAgeMs,
     excludeRunId: process.env.GITHUB_RUN_ID ?? null,
   });
-
-  // Newest-first, stopping at the first run that reconciled: everything older
-  // than it cannot change the answer, so the healthy case costs one extra API
-  // call rather than one per run in the window.
-  const inspected = [];
-  for (const candidate of candidates) {
-    const jobs = JSON.parse(runGh(['api', `repos/${repository}/actions/runs/${candidate.id}/jobs`]));
-    const reconciled = readRunReconciled(jobs);
-    inspected.push({ ...candidate, reconciled });
-    if (reconciled) break;
-  }
 
   const summary = summarizeReconcileHistory(inspected, { now, maxAgeMs });
   const message = describeReconcileSummary(summary);

@@ -244,12 +244,27 @@ jobs:
       # only fires on a pending gate and only when this workflow runs, which is
       # the precondition that failed in #6203.
       - name: Check how long the fleet has gone un-reconciled
-        if: always()
+        # NOT plain `always()`. The scan reads COMPLETED runs and excludes this
+        # one, so a run whose own deploy just succeeded cannot see the reconcile
+        # it performed seconds earlier. After a drought longer than the
+        # threshold — the exact recovery this workflow exists for — the run that
+        # FIXED the fleet would report it stale and go red.
+        #
+        # That is not merely a confusing badge. This workflow's runs carry a
+        # main commit as head_sha, so a red one lands in that commit's check
+        # suite, which is the `CI check suite failed` reason Railway uses to
+        # defer every service. The alarm would trigger the outage it detects.
+        #
+        # A successful deploy IS the freshest possible answer, so skip the
+        # history question entirely when we already have it.
+        id: age
+        if: always() && steps.deploy.outcome != 'success'
         # Bounded well under the job budget. The scan stops at the first run
-        # that reconciled, so the healthy path is two API calls — but the
-        # pathological "nothing in the last 30 runs" path is 30 of them, and
-        # this must surface as its own alarm rather than as the job hitting
-        # timeout-minutes with the reason buried.
+        # that reconciled, so the healthy path is two API calls — but a window
+        # in which NOTHING reconciled costs one call per run in it, and at this
+        # workflow's wake rate that is a three-figure number. It must surface as
+        # its own alarm rather than as the job hitting timeout-minutes with the
+        # reason buried.
         timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
@@ -283,6 +298,7 @@ jobs:
           HEAD_SHA: ${{ steps.head.outputs.sha }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
           PREVIEW_OUTCOME: ${{ steps.preview.outcome }}
+          AGE_OUTCOME: ${{ steps.age.outcome }}
         run: |
           short="${HEAD_SHA:0:9}"
           case "$DEPLOY_OUTCOME" in
@@ -318,3 +334,10 @@ jobs:
           esac
           echo "### Railway deploy trigger" >> "$GITHUB_STEP_SUMMARY"
           echo "$summary" >> "$GITHUB_STEP_SUMMARY"
+          # A failed age check reds the job. Without this line the summary could
+          # read as an ordinary decline while the run is red for a second,
+          # louder reason — the fleet has not been reconciled at all.
+          if [ "$AGE_OUTCOME" = "failure" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**The fleet has also gone un-reconciled past the backstop tolerance** — see the age check above." >> "$GITHUB_STEP_SUMMARY"
+          fi

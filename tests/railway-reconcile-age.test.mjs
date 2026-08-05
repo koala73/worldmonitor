@@ -27,8 +27,10 @@ import YAML from 'yaml';
 import {
   DEFAULT_MAX_RECONCILE_AGE_MS,
   RECONCILE_STEP_NAME,
+  collectReconcileWindow,
   describeReconcileSummary,
   readRunReconciled,
+  readRunsSince,
   summarizeReconcileHistory,
   toCreatedFilter,
 } from '../scripts/check-railway-reconcile-age.mjs';
@@ -139,6 +141,116 @@ describe('the API window the CLI asks for', () => {
   it('formats a second-granularity UTC instant, which is what `created` takes', () => {
     assert.equal(toCreatedFilter(Date.parse('2026-08-05T09:00:00.123Z')), '2026-08-05T09:00:00Z');
     assert.doesNotMatch(toCreatedFilter(NOW), /\.\d+Z$/);
+  });
+});
+
+describe('the I/O path that builds the window', () => {
+  const jobsFor = (conclusion) => JSON.stringify({
+    jobs: [{ steps: [{ name: RECONCILE_STEP_NAME, conclusion }] }],
+  });
+
+  // A fake `gh` that answers from a fixture and records what was asked.
+  function fakeGh({ pages, jobsByRunId }) {
+    const calls = [];
+    return {
+      calls,
+      gh(args) {
+        const url = args[args.length - 1];
+        calls.push(url);
+        if (url.includes('/runs?')) return JSON.stringify(pages);
+        const runId = /\/actions\/runs\/([^/]+)\/jobs/.exec(url)?.[1];
+        return jobsByRunId[runId] ?? jobsFor('skipped');
+      },
+    };
+  }
+
+  const listing = (...runs) => [{ workflow_runs: runs }];
+
+  it('asks for completed runs created inside the window only', () => {
+    const { gh, calls } = fakeGh({ pages: listing(), jobsByRunId: {} });
+    readRunsSince({
+      gh, repository: 'o/r', workflowFile: 'w.yml', sinceMs: Date.parse('2026-08-05T09:00:00Z'), excludeRunId: null,
+    });
+    assert.match(calls[0], /status=completed/);
+    assert.match(calls[0], /created=%3E%3D2026-08-05T09%3A00%3A00Z/);
+  });
+
+  it('drops the current run from the window', () => {
+    // Belt and braces with `status=completed`, and the reason the workflow must
+    // not ask this question on a run whose own deploy just succeeded.
+    const { gh } = fakeGh({
+      pages: listing(
+        { id: 111, updated_at: '2026-08-05T11:00:00Z' },
+        { id: 222, updated_at: '2026-08-05T10:00:00Z' },
+      ),
+      jobsByRunId: {},
+    });
+    const runs = readRunsSince({
+      gh, repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR, excludeRunId: '111',
+    });
+    assert.deepEqual(runs.map((run) => run.id), [222]);
+  });
+
+  it('reads every page of a paginated listing', () => {
+    const { gh } = fakeGh({
+      pages: [
+        { workflow_runs: [{ id: 1, updated_at: '2026-08-05T11:00:00Z' }] },
+        { workflow_runs: [{ id: 2, updated_at: '2026-08-05T10:00:00Z' }] },
+      ],
+      jobsByRunId: {},
+    });
+    const runs = readRunsSince({
+      gh, repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR, excludeRunId: null,
+    });
+    assert.deepEqual(runs.map((run) => run.id), [1, 2]);
+  });
+
+  it('throws on an unreadable listing rather than reporting an empty window', () => {
+    // Empty now means STALE, which is loud — but it would be loud for a false
+    // reason, and an operator would go looking at triggers instead of the API.
+    const { gh } = fakeGh({ pages: [{ message: 'Not Found' }], jobsByRunId: {} });
+    assert.throws(
+      () => readRunsSince({
+        gh, repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR, excludeRunId: null,
+      }),
+      /not an array of workflow runs/,
+    );
+  });
+
+  it('stops fetching jobs at the first run that reconciled', () => {
+    const { gh, calls } = fakeGh({
+      pages: listing(
+        { id: 'newest', updated_at: '2026-08-05T11:50:00Z' },
+        { id: 'reconciled', updated_at: '2026-08-05T11:40:00Z' },
+        { id: 'older', updated_at: '2026-08-05T11:30:00Z' },
+      ),
+      jobsByRunId: { newest: jobsFor('skipped'), reconciled: jobsFor('success') },
+    });
+    const window = collectReconcileWindow({
+      gh, repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR, excludeRunId: null,
+    });
+    assert.deepEqual(window.map((run) => run.reconciled), [false, true]);
+    assert.ok(
+      !calls.some((url) => url.includes('/runs/older/jobs')),
+      'must not keep paying for job reads past the answer',
+    );
+  });
+
+  it('yields a window that summarises STALE when nothing in it reconciled', () => {
+    const { gh } = fakeGh({
+      pages: listing(
+        { id: 'a', updated_at: new Date(NOW - 0.5 * HOUR).toISOString() },
+        { id: 'b', updated_at: new Date(NOW - 1.5 * HOUR).toISOString() },
+      ),
+      jobsByRunId: {},
+    });
+    const window = collectReconcileWindow({
+      gh, repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR, excludeRunId: null,
+    });
+    assert.equal(
+      summarizeReconcileHistory(window, { now: NOW, maxAgeMs: 3 * HOUR }).state,
+      'STALE',
+    );
   });
 });
 

@@ -317,6 +317,67 @@ describe('Railway deploy trigger workflow', () => {
     );
   });
 
+  it('never asks the age question on a run whose own deploy just succeeded', () => {
+    // The scan reads COMPLETED runs and excludes this one, so a run that just
+    // reconciled cannot see its own work. After a drought past the threshold —
+    // the exact recovery this workflow exists for — the run that FIXED the
+    // fleet would report it stale and go red.
+    //
+    // And a red run here is not cosmetic: this workflow's runs carry a main
+    // commit as head_sha, so the failure lands in that commit's check suite,
+    // which is the `CI check suite failed` reason Railway uses to defer every
+    // service. The alarm would cause the outage it detects.
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    const deploy = stepNamed('Trigger deploys for services this merge changed');
+    assert.match(
+      String(step.if),
+      /always\(\)/,
+      'the age check must still run on a declined run — that is the case it exists for',
+    );
+    assert.ok(
+      String(step.if).includes(`steps.${deploy.id}.outcome != 'success'`),
+      'the age check must be skipped when this run already reconciled the fleet',
+    );
+  });
+
+  it('reads its own run history, which needs the actions scope', () => {
+    assert.equal(
+      workflow.permissions?.actions,
+      'read',
+      'reading this workflow\'s own runs requires actions: read',
+    );
+  });
+
+  it('keeps the age check warn-only on a dry run, in two explicit arms', () => {
+    // One interpolated flag would have to agree with the env var forever; the
+    // day they diverge the arm that still runs is the one that stays quiet.
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    assert.match(String(step.env?.WARN_ONLY ?? ''), /inputs\.dryRun/);
+    assert.match(step.run, /--warn-only/, 'the dry-run arm must pass --warn-only');
+    assert.match(
+      step.run,
+      /check-railway-reconcile-age\.mjs\s*$/m,
+      'the non-dry-run arm must invoke the check without --warn-only',
+    );
+  });
+
+  it('surfaces a failed age check in the summary a human reads', () => {
+    // Otherwise a run can be red for "the fleet is un-reconciled" while its
+    // job summary reads as an ordinary decline.
+    const report = stepNamed('Report what this run did');
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    assert.ok(step.id, 'the age check must be addressable by the outcome report');
+    assert.ok(
+      Object.values(report.env ?? {}).some(
+        (value) => String(value).includes(`steps.${step.id}.outcome`),
+      ),
+      'the outcome report must read the age check\'s outcome',
+    );
+  });
+
   it('fails when the fleet has gone un-reconciled longer than the backstop tolerates', () => {
     // The existing escalation only fires on a PENDING gate, and only when this
     // workflow runs — which is the precondition that failed. This one asks the
