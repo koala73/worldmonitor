@@ -122,14 +122,33 @@ describe('fleet paging', () => {
     assert.deepEqual(result.unresolved, []);
   });
 
-  it('honours the page cap and reports what it did not reach', async () => {
+  it('honours the page cap and falls back every partial history', async () => {
     const api = pager(Array.from({ length: 20 }, () => page([node('a', 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa')], true)));
     const result = await readFleetDeployments({
       projectId: 'p', environmentId: 'e', serviceIds: ['a', 'b'], notBefore: HEAD_AT,
       maxPages: 3, api, accumulatorFactory: createFleetAccumulator,
     });
     assert.equal(result.pages, 3, 'must not page forever');
-    assert.deepEqual(result.unresolved, ['b'], 'the caller has to read b directly');
+    assert.deepEqual(result.unresolved, ['a', 'b'], 'the caller has to read every partial history directly');
+  });
+
+  it('treats a capped but non-exhausted stream as unresolved even when every service appeared', async () => {
+    const api = pager([
+      page([
+        node('a', 'SUCCESS', '2026-08-04T12:00:00Z', 'aaa'),
+        node('b', 'SUCCESS', '2026-08-04T12:00:00Z', 'bbb'),
+      ], true),
+    ]);
+    const result = await readFleetDeployments({
+      projectId: 'p', environmentId: 'e', serviceIds: ['a', 'b'],
+      notBefore: Date.parse('2026-08-04T11:00:00Z'),
+      maxPages: 1, api, accumulatorFactory: createFleetAccumulator,
+    });
+    assert.deepEqual(
+      result.unresolved,
+      ['a', 'b'],
+      'a capped stream is not proof that either service history is complete',
+    );
   });
 
   it('stops when the stream is exhausted', async () => {

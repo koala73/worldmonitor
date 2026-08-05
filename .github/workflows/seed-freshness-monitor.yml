@@ -111,6 +111,7 @@ jobs:
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: |
           set -o pipefail
           # Pick up commits merged since the checkout so a service that already

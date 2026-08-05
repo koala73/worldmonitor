@@ -247,6 +247,7 @@ describe('seed freshness workflow control plane', () => {
 
     const drift = monitorSteps[driftIndex];
     assert.equal(drift.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
+    assert.equal(drift.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
     assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
     assert.match(
       drift.run,

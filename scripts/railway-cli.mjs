@@ -210,10 +210,10 @@ export function runRailwayApi(query, variables) {
  * made a sweep take ~7 minutes collapse to ~6 pages and ~16 seconds. That is
  * what makes running the reconciler often affordable.
  *
- * Returns `unresolved` for services the budget did not reach; the caller reads
- * those directly. This is an optimisation with a proven fallback, never a new
- * hard dependency — a project id we cannot determine, or a query that fails,
- * degrades to the per-service path rather than to a wrong answer.
+ * Returns `unresolved` for histories the stream did not prove complete; the
+ * caller reads those directly. This is an optimisation with a proven fallback,
+ * never a new hard dependency — a project id we cannot determine, or a query
+ * that fails, degrades to the per-service path rather than to a wrong answer.
  */
 export async function readFleetDeployments({
   projectId,
@@ -247,7 +247,19 @@ export async function readFleetDeployments({
     if (accumulator.done) break;
     after = connection.pageInfo.endCursor;
   }
-  return { ...accumulator.result(), pages, records };
+  const result = accumulator.result();
+  const complete = accumulator.done;
+  return {
+    ...result,
+    // Reaching the page cap without satisfying the stopping rule proves
+    // nothing about ANY service, including one that appeared with a RUNNING
+    // record. A later page may still contain its head/refusal record or a
+    // newer running record, so the caller must use the proven direct path for
+    // every partial history rather than silently accepting an incomplete one.
+    unresolved: complete ? result.unresolved : [...serviceIds],
+    pages,
+    records,
+  };
 }
 
 /**
@@ -285,15 +297,22 @@ export async function readDeploymentsForFleet({
         notBefore,
         accumulatorFactory,
       });
-      for (const [serviceId, deployments] of fleet.byService) {
-        if (fleet.unresolved.includes(serviceId)) continue;
-        // Trim to the SAME per-service window the direct read uses. The fleet
-        // stream is bounded globally, not per service, so a busy service can
-        // arrive with hundreds of records where `readDeployments` would have
-        // returned `window`. Leaving them in silently changes what the
-        // classifier sees — and every extra SKIPPED record costs a `git show`,
-        // which is what actually dominates a sweep's wall clock.
-        results.set(serviceId, { deployments: deployments.slice(0, window), error: null });
+      if (fleet.unresolved.length === byId.size) {
+        // A capped, non-exhausted stream leaves every history partial. Release
+        // those records before the direct fallback fan-out; none is safe to
+        // classify or worth retaining while the proven path reads them again.
+        fleet.byService.clear();
+      } else {
+        for (const [serviceId, deployments] of fleet.byService) {
+          if (fleet.unresolved.includes(serviceId)) continue;
+          // Trim to the SAME per-service window the direct read uses. The fleet
+          // stream is bounded globally, not per service, so a busy service can
+          // arrive with hundreds of records where `readDeployments` would have
+          // returned `window`. Leaving them in silently changes what the
+          // classifier sees — and every extra SKIPPED record costs a `git show`,
+          // which is what actually dominates a sweep's wall clock.
+          results.set(serviceId, { deployments: deployments.slice(0, window), error: null });
+        }
       }
       needDirect = fleet.unresolved.map((serviceId) => byId.get(serviceId)).filter(Boolean);
       onRoute({ route: 'fleet', pages: fleet.pages, records: fleet.records, fellBack: needDirect.length });
