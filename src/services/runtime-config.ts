@@ -117,14 +117,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Ollama local summarization',
     description: 'Local LLM provider via OpenAI-compatible endpoint (Ollama or LM Studio, desktop-first).',
     requiredSecrets: ['OLLAMA_API_URL', 'OLLAMA_MODEL'],
-    fallback: 'Falls back to Groq, then OpenRouter, then local browser model.',
-  },
-  {
-    id: 'aiGroq',
-    name: 'Groq summarization',
-    description: 'Primary fast LLM provider used for AI summary generation.',
-    requiredSecrets: ['GROQ_API_KEY'],
-    fallback: 'Falls back to OpenRouter, then local browser model.',
+    fallback: 'Falls back to Atlas Cloud, OpenRouter, Groq, then local browser model.',
   },
   {
     id: 'aiAtlasCloud',
@@ -138,6 +131,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'OpenRouter summarization',
     description: 'Secondary LLM provider for AI summary fallback.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
+    fallback: 'Falls back to Groq, then local browser model.',
+  },
+  {
+    id: 'aiGroq',
+    name: 'Groq summarization',
+    description: 'Fast LLM provider used as a later fallback for AI summary generation.',
+    requiredSecrets: ['GROQ_API_KEY'],
     fallback: 'Falls back to local browser model only.',
   },
   {
