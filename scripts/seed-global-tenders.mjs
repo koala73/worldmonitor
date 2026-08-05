@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { get as httpsGet } from 'node:https';
+import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { XMLParser } from 'fast-xml-parser';
 import Papa from 'papaparse';
@@ -24,6 +26,39 @@ const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 
+function fetchResponseTransport(url, { timeoutMs, ...fetchOptions }) {
+  return fetch(url, {
+    ...fetchOptions,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
+  return (url, { headers, timeoutMs }) => new Promise((resolve, reject) => {
+    const request = httpsGetFn(url, {
+      family: 4,
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    }, (response) => {
+      try {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(response.headers || {})) {
+          for (const item of Array.isArray(value) ? value : [value]) {
+            if (item !== undefined) responseHeaders.append(name, String(item));
+          }
+        }
+        resolve(new Response(Readable.toWeb(response), {
+          status: response.statusCode || 500,
+          headers: responseHeaders,
+        }));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
 // Every tender source funnels through here, so this is the one place a transient
 // upstream blip can be absorbed. Without it a single failed fetch failed the whole
 // source and raised a health warn that self-healed on the next tick — noise the
@@ -34,13 +69,13 @@ const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/open
 // timeout, so maxRetries 2 would cost 60+1+60+2+60 = 183s and BREACH the section.
 // Callers with a long per-attempt timeout must lower maxRetries accordingly.
 // Sources run in parallel, so the section pays the slowest source, not the sum.
-async function fetchResponse(url, options = {}) {
+async function fetchResponse(url, options = {}, transport = fetchResponseTransport) {
   const { timeoutMs = 20_000, maxRetries = 2, retry429 = true, ...fetchOptions } = options;
   return withRetry(async () => {
-    const response = await fetch(url, {
+    const response = await transport(url, {
       ...fetchOptions,
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(fetchOptions.headers || {}) },
-      signal: AbortSignal.timeout(timeoutMs),
+      timeoutMs,
     });
     if (!response.ok) {
       // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
@@ -49,6 +84,7 @@ async function fetchResponse(url, options = {}) {
       // Quota-style rate limits (SAM.gov's small daily budget) do not clear in
       // seconds — in-run retries only burn more of the budget (#5444).
       if (!retry429 && response.status === 429) error.nonRetryable = true;
+      await response.body?.cancel().catch(() => {});
       throw error;
     }
     return response;
@@ -58,6 +94,15 @@ async function fetchResponse(url, options = {}) {
 async function fetchJson(url, options = {}) {
   return (await fetchResponse(url, options)).json();
 }
+
+function createSamFetchJson(httpsGetFn = httpsGet) {
+  const transport = samIpv4ResponseTransport(httpsGetFn);
+  return async (url, options = {}) => (await fetchResponse(url, options, transport)).json();
+}
+
+const fetchSamJson = createSamFetchJson();
+
+export const __testing__ = { createSamFetchJson };
 
 async function fetchText(url, options = {}) {
   return (await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } })).text();
@@ -104,7 +149,7 @@ function previousSamResult(previousSnapshot, now) {
   return { status, records, lastSuccessMs };
 }
 
-export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn = fetchJson, previousSnapshot = null } = {}) {
+export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn = fetchSamJson, previousSnapshot = null } = {}) {
   if (!apiKey) return { records: [], status: sourceStatus('sam', 'unavailable', [], 'SAM_GOV_API_KEY is not configured', now) };
   const prior = previousSamResult(previousSnapshot, now);
   if (prior && now - prior.lastSuccessMs < SAM_MIN_FETCH_INTERVAL_MS) {
@@ -126,7 +171,12 @@ export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Dat
   url.searchParams.set('postedFrom', utcDate(now - 14 * 86400_000));
   url.searchParams.set('postedTo', utcDate(now));
   url.searchParams.set('limit', String(MAX_PER_SOURCE));
-  const payload = await fetchJsonFn(url, { retry429: false });
+  // api.sam.gov publishes IPv6 addresses, but Railway's container network does
+  // not currently have a working IPv6 route. Force the source's official IPv4
+  // endpoints so native fetch does not repeatedly select a doomed address.
+  const payload = await fetchJsonFn(url, {
+    retry429: false,
+  });
   if (!Array.isArray(payload?.opportunitiesData)) throw new Error('SAM response is missing opportunitiesData');
   const records = payload.opportunitiesData.map(normalizeSamOpportunity).filter((tender) => isOpenOpportunity(tender, now));
   return { records, status: sourceStatus('sam', 'ok', records, '', now) };
