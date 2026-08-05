@@ -18,6 +18,7 @@ import {
   hasExactKeys,
   isEvidenceDigest,
   parseRfc3339Timestamp,
+  percentileOrderStatistic,
   stratifiedBootstrapUpperBound,
   thresholdDigest,
   validateProtocolFixture,
@@ -715,10 +716,12 @@ function computeBlindCorpusCandidateDigest(corpus: BlindCorpus): string {
 }
 
 export function computeGoldLabelSetDigest(gold: GoldLabelSet): string {
+  validateGoldLabelSetArtifact(gold);
   return sha256(canonicalJson(normalizedGoldLabelSet(gold)));
 }
 
 export function computePredictionSetDigest(predictions: PredictionSet): string {
+  validatePredictionSetArtifact(predictions);
   return sha256(canonicalJson(normalizedPredictionSet(predictions)));
 }
 
@@ -1245,11 +1248,6 @@ function validateContinuation(input: {
   return { labels: previousLabels, predictions: previousPredictions };
 }
 
-function percentileNearestRank(sorted: number[], percentile: number): number {
-  const index = Math.max(0, Math.ceil(percentile * sorted.length) - 1);
-  return sorted[index]!;
-}
-
 function emptyMaterialityMatrix(): Record<Materiality, Record<Materiality, number>> {
   return {
     material: { material: 0, immaterial: 0 },
@@ -1400,7 +1398,9 @@ function computeScoredAggregates(
       goldDirection: label.goldDirection,
     });
     latencies.push(prediction.latencyMs);
-    totalCost += prediction.costUsd;
+    const nextTotalCost = totalCost + prediction.costUsd;
+    if (!Number.isFinite(nextTotalCost)) fail('prediction_cost_total_overflow');
+    totalCost = nextTotalCost;
   }
 
   const directionOverallDenominator = DIRECTIONS.reduce(
@@ -1636,8 +1636,8 @@ export function scoreBlindEvaluation(input: {
     latency: {
       count: latencies.length,
       minMs: latencies[0]!,
-      p50Ms: percentileNearestRank(latencies, 0.5),
-      p95Ms: percentileNearestRank(latencies, 0.95),
+      p50Ms: percentileOrderStatistic(latencies, 0.5, latencies.length),
+      p95Ms: percentileOrderStatistic(latencies, 0.95, latencies.length),
       maxMs: latencies[latencies.length - 1]!,
     },
     cost: {

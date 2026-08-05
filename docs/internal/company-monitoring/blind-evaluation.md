@@ -51,14 +51,15 @@ applicable approval.
 
 1. Lock a pilot corpus and its prediction set to the approved protocol and the
    exact policy, model, and query versions.
-2. Build an untouched draft gate corpus. Before locking it, the curator runs the
-   forecast against the locked pilot and its independently retained digest. If
-   the draft precommits an expansion, the curator must supply those actual rows
-   to forecast too. The engine verifies their count and manifest, checks combined
-   occurrence/content/opaque-ID uniqueness, and rejects target-or-expansion
-   overlap with the pilot by occurrence, content fingerprint, corporate family,
-   or source origin. It rejects predictions for the candidate gate as forecast
-   input.
+2. Build an untouched draft gate corpus, seal its gold labels, and bind that
+   sealed-label digest to the draft. Before locking the corpus, the curator runs
+   the forecast against the locked pilot and its independently retained digest.
+   If the draft precommits an expansion, the curator must supply those actual
+   rows to forecast too. The engine verifies their count and manifest, checks
+   combined occurrence/content/opaque-ID uniqueness, and rejects
+   target-or-expansion overlap with the pilot by occurrence, content fingerprint,
+   corporate family, or source origin. It rejects predictions for the candidate
+   gate as forecast input.
 3. Inspect the aggregate candidate strata. The Stage 3 candidate should be
    roughly half publication-eligible with enough eligible positive, negative,
    and mixed rows to make all frozen denominator floors feasible. Because
@@ -67,8 +68,9 @@ applicable approval.
 4. A weak forecast is `forecast_warning`. It is non-gating and includes every
    simultaneous denominator gap plus deterministic untouched-growth guidance.
 5. Freeze 100 real blind examples for tracer development and at least 200 for
-   the Stage 3 gate. Bind the aggregate forecast digest, sealed-label digest,
-   versions, lock timestamp, and optional precommitted expansion manifest.
+   the Stage 3 gate. Retain the sealed-label digest already bound before forecast,
+   then bind the aggregate forecast digest, versions, lock timestamp, and optional
+   precommitted expansion manifest.
 6. Score every frozen example. The report includes discovery, materiality,
    attribution, direction, customer usefulness, exact rate bounds, adaptive
    calibration and its frozen bootstrap, confusion matrices, latency, cost, all
@@ -151,6 +153,14 @@ as success:
 | `1` | the engine refused to score: bad input, tampered evidence, or a usage error |
 | `2` | the engine scored and the outcome is `fail` or `incomplete` |
 
+Engine refusals are machine-readable: a `BlindEvaluationError` writes its exact
+`code` to stderr and exits `1`. Stable code families identify the rejected
+contract surface, including `protocol_*` and `approved_threshold_*`, `corpus_*`,
+`gold_*`, `prediction_*`, `forecast_*`, and `continuation_*` /
+`previous_*`. Callers should branch on the complete code, not a substring; the
+module's `fail(...)` sites and contract tests are the authoritative catalog.
+Usage and file/JSON I/O errors remain human-readable stderr with exit `1`.
+
 Digest-only commands first apply a closed-world syntactic schema: every object
 and nested row must have exactly the declared keys, required literal and
 primitive types must be valid, and corpus, gold, prediction, forecast, and
@@ -165,10 +175,13 @@ sealed. Each command maps to the corpus field that consumes its digest:
 | `digest-expansion` | the precommitted expansion manifest digest | `corpus.precommittedExpansion.manifestSha256` |
 | `digest-predictions` | the prediction-set digest | parent-evidence checks on a continuation |
 
-So locking a pilot needs `digest-gold`; locking a gate corpus additionally needs
-`digest-forecast`, and `digest-expansion` too when a continuation is to remain
-possible. A corpus frozen with `precommittedExpansion: null` cannot be continued
-even if it scores `incomplete`.
+So locking a pilot needs `digest-gold`. For a gate, first run `digest-gold` and
+place that digest on the still-draft corpus; forecast validates that binding and
+produces the aggregate artifact. Then run `digest-forecast`, place its digest on
+the corpus, set the lock timestamp and status, and finally run `digest-corpus` to
+retain the independent frozen-corpus anchor. Run `digest-expansion` before
+forecast too when a continuation is to remain possible. A corpus frozen with
+`precommittedExpansion: null` cannot be continued even if it scores `incomplete`.
 
 ## Stage 4 exclusion
 

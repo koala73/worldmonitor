@@ -687,6 +687,23 @@ describe('Company Monitoring deterministic blind scorer', () => {
     }), expectCode('corpus_mutated_after_lock'));
   });
 
+  it('binds predictions to every frozen evaluation version', () => {
+    const cases: Array<{
+      field: 'protocolVersion' | 'modelVersion' | 'queryVersion';
+      value: string;
+      code: string;
+    }> = [
+      { field: 'protocolVersion', value: 'cm_eval_v2', code: 'prediction_protocol_version_mismatch' },
+      { field: 'modelVersion', value: 'deepseek_v4_flash_2026_08_06', code: 'prediction_model_version_mismatch' },
+      { field: 'queryVersion', value: 'cm_query_v2', code: 'prediction_query_version_mismatch' },
+    ];
+    for (const [index, { field, value, code }] of cases.entries()) {
+      const bundle = lockedBundle({ namespace: `prediction-version-${index}` });
+      bundle.predictions[field] = value;
+      assert.throws(() => score(bundle), expectCode(code), field);
+    }
+  });
+
   it('binds a forecast to the exact pre-lock target candidate and sealed gold set', () => {
     const candidateA = lockedBundle({ namespace: 'forecast-candidate-a' });
     const candidateBCorpus: BlindCorpus = {
@@ -804,6 +821,32 @@ describe('Company Monitoring deterministic blind scorer', () => {
       gold: { ...bundle.gold, labels: [...bundle.gold.labels].reverse() },
     };
     assert.equal(canonicalReportJson(report), canonicalReportJson(score(reordered)));
+  });
+
+  it('rejects an aggregate prediction cost that overflows a finite report', () => {
+    const bundle = lockedBundle({ namespace: 'cost-overflow' });
+    for (const prediction of bundle.predictions.predictions) {
+      prediction.costUsd = Number.MAX_VALUE;
+    }
+    assert.throws(() => score(bundle), expectCode('prediction_cost_total_overflow'));
+  });
+
+  it('returns contract codes for malformed public digest inputs', () => {
+    const bundle = lockedBundle({ namespace: 'digest-shape' });
+    const malformedGold = { ...bundle.gold, labels: null } as unknown as GoldLabelSet;
+    assert.throws(
+      () => computeGoldLabelSetDigest(malformedGold),
+      expectCode('gold_labels_missing'),
+    );
+
+    const malformedPredictions = {
+      ...bundle.predictions,
+      predictions: [null],
+    } as unknown as PredictionSet;
+    assert.throws(
+      () => computePredictionSetDigest(malformedPredictions),
+      expectCode('prediction_field_forbidden'),
+    );
   });
 
   it('does not let published ineligible false positives inflate direction denominators', () => {
@@ -958,6 +1001,26 @@ describe('Company Monitoring deterministic blind scorer', () => {
     }), expectCode('admission_metric_duplicate_id'));
   });
 
+  it('rejects a frozen contract that omits a required admission metric', () => {
+    const missing = structuredClone(protocol);
+    const admission = missing.admissionQuality as JsonObject;
+    const metrics = admission.metrics as JsonObject[];
+    const missingId = 'published_material_impact_precision';
+    admission.metrics = metrics.filter((metric) => metric.id !== missingId);
+    const digest = thresholdDigest(missing);
+    (missing.approval as JsonObject).approvedThresholdsSha256 = digest;
+    const bundle = lockedBundle({ namespace: 'missing-metric' });
+    assert.throws(() => scoreBlindEvaluation({
+      protocol: missing,
+      anchors: { approvedThresholdDigest: digest },
+      corpus: bundle.corpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(bundle.corpus),
+      goldLabels: bundle.gold,
+      predictions: bundle.predictions,
+      forecast: bundle.forecast,
+    }), expectCode(`admission_metric_missing_${missingId}`));
+  });
+
   it('rejects a forecast carrying an unknown field or a violated literal', () => {
     const bundle = lockedBundle({ namespace: 'forecast-shape' });
     // Rebinding forecastSha256 changes the corpus digest, so the prediction set's recorded
@@ -1007,6 +1070,51 @@ describe('Company Monitoring deterministic blind scorer', () => {
       () => score(reseal(inconsistentStatus)),
       expectCode('forecast_status_inconsistent'),
     );
+  });
+
+  it('binds a forecast to every frozen corpus version', () => {
+    const cases: Array<{
+      mutate: (forecast: BlindForecast) => void;
+      code: string;
+    }> = [
+      {
+        mutate: (forecast) => { forecast.protocolVersion = 'cm_eval_v2'; },
+        code: 'forecast_protocol_version_mismatch',
+      },
+      {
+        mutate: (forecast) => { forecast.versions.policyVersion = 'cm_policy_v2'; },
+        code: 'forecast_policy_version_mismatch',
+      },
+      {
+        mutate: (forecast) => { forecast.versions.modelVersion = 'deepseek_v4_flash_2026_08_06'; },
+        code: 'forecast_model_version_mismatch',
+      },
+      {
+        mutate: (forecast) => { forecast.versions.queryVersion = 'cm_query_v2'; },
+        code: 'forecast_query_version_mismatch',
+      },
+      {
+        mutate: (forecast) => { forecast.versions.curatorAccessVersion = 'cm_curator_access_v2'; },
+        code: 'forecast_curator_access_version_mismatch',
+      },
+    ];
+    for (const [index, { mutate, code }] of cases.entries()) {
+      const bundle = lockedBundle({ namespace: `forecast-version-${index}` });
+      mutate(bundle.forecast);
+      assert.throws(() => score(bundle), expectCode(code), code);
+    }
+  });
+
+  it('rejects a published prediction missing direction or attribution', () => {
+    const cases: Array<(prediction: Prediction) => void> = [
+      (prediction) => { prediction.predictedDirection = null; },
+      (prediction) => { prediction.attributedCorporateFamilyDigest = null; },
+    ];
+    for (const [index, mutate] of cases.entries()) {
+      const bundle = lockedBundle({ namespace: `published-incomplete-${index}` });
+      mutate(bundle.predictions.predictions[0]!);
+      assert.throws(() => score(bundle), expectCode('published_prediction_incomplete'));
+    }
   });
 
   it('rejects Stage 4 corpora in this v1 lane', () => {
@@ -1226,6 +1334,23 @@ describe('Company Monitoring cumulative continuation', () => {
       () => score(rebound.childBundle, rebound.previous),
       expectCode('continuation_parent_lock_not_before_child'),
     );
+  });
+
+  it('rejects a parent report bound to a different corpus identity', () => {
+    const cases: Array<(report: ScoreReport) => void> = [
+      (report) => { report.corpus.version = 'cm_corpus_other_v1'; },
+      (report) => { report.corpus.sha256 = syntheticDigest('other-parent-corpus'); },
+    ];
+    for (const [index, mutate] of cases.entries()) {
+      const scenario = continuationScenario({ namespace: `parent-report-corpus-${index}` });
+      const previous = structuredClone(scenario.previous);
+      mutate(previous.report);
+      previous.report.reportSha256 = computeScoreReportDigest(previous.report);
+      assert.throws(
+        () => score(scenario.childBundle, previous),
+        expectCode('previous_report_corpus_mismatch'),
+      );
+    }
   });
 });
 
