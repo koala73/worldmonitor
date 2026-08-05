@@ -369,7 +369,8 @@ test('theater-posture OpenSky success is attributed to opensky, and /metrics sta
   const { child, ready } = spawnRelay({
     RELAY_SHARED_SECRET: 'test-relay-secret',
     I_UNDERSTAND_THIS_DISABLES_AUTH: '',
-    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200,200',
+    // One 200 is all a cycle should need — the seed issues a single global query.
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
     ...upstash.env,
   });
   const auth = { 'x-relay-key': 'test-relay-secret' };
@@ -395,6 +396,16 @@ test('theater-posture OpenSky success is attributed to opensky, and /metrics sta
     assert.equal(metrics.theaterPosture.lastRun.flightCount, 1);
     assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 1, adsbLol: 0, wingbits: 0, vesselOnly: 0 });
     assert.ok(metrics.opensky.success >= 1, 'a real OpenSky 200 must be recorded as opensky success');
+    // Credit budget (#6222): one seed cycle must debit exactly ONE upstream
+    // /states/all. Every bbox above 400 sq° costs the same 4 credits as a
+    // global query, so a per-region loop multiplies spend against the
+    // 4,000/day quota while seeing less. upstreamFetches is the credit
+    // counter — cache hits and dedup do not increment it.
+    assert.equal(
+      metrics.opensky.upstreamFetches, 1,
+      `theater-posture debited ${metrics.opensky.upstreamFetches} OpenSky upstream fetches in one ` +
+      'cycle; expected exactly 1 global query.',
+    );
   } finally {
     await stop(child);
     await upstash.close();

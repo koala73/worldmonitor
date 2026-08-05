@@ -6,9 +6,11 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
-import { CHROME_UA } from '../../../_shared/constants';
 
-// 120s for anonymous OpenSky tier (~10 req/min limit); TODO: reduce to 10s on commercial tier
+// 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
+// ceiling; that tier was removed in #6222, so the binding constraint is now the shared
+// authenticated credit pool the relay draws on — a shorter TTL multiplies bbox misses
+// straight into it. Revisit only alongside that budget, not on its own.
 const CACHE_TTL = 120;
 // Callsign searches hit the relay's in-memory index (5min TTL); cache positive hits 60s,
 // negative hits 10s so a retry after panning into view returns fresh data quickly.
@@ -45,26 +47,12 @@ function parseOpenSkyStates(states: unknown[][]): PositionSample[] {
 }
 
 
-const OPENSKY_PUBLIC_BASE = 'https://opensky-network.org/api';
-
-async function fetchOpenSkyAnonymous(req: TrackAircraftRequest): Promise<PositionSample[]> {
-    let url: string;
-    if (req.swLat != null && req.neLat != null) {
-        url = `${OPENSKY_PUBLIC_BASE}/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
-    } else if (req.icao24) {
-        url = `${OPENSKY_PUBLIC_BASE}/states/all?icao24=${req.icao24}`;
-    } else {
-        url = `${OPENSKY_PUBLIC_BASE}/states/all`;
-    }
-
-    const resp = await fetch(url, {
-        signal: AbortSignal.timeout(6_000),
-        headers: { 'Accept': 'application/json', 'User-Agent': CHROME_UA },
-    });
-    if (!resp.ok) throw new Error(`OpenSky anonymous HTTP ${resp.status}`);
-    const data = await resp.json() as OpenSkyResponse;
-    return parseOpenSkyStates(data.states ?? []);
-}
+// There is deliberately no anonymous OpenSky path here. The unauthenticated tier
+// is 400 credits/day PER IP, and these handlers run on Vercel's shared egress —
+// the quota is consumed by every other tenant on the same address, so the call
+// essentially always 429s while still costing a full 6s timeout on the very
+// request that was already failing over. Removing it also returns that 6s to
+// the response budget below (#6222).
 
 function buildCacheKey(req: TrackAircraftRequest): string {
     if (req.icao24) return `aviation:track:icao:${req.icao24}:v1`;
@@ -77,7 +65,6 @@ function buildCacheKey(req: TrackAircraftRequest): string {
 
 // Response-level source values (TrackAircraftResponse.source):
 //   'opensky'           — data from OpenSky via relay
-//   'opensky-anonymous' — data from OpenSky public API (no auth, rate-limited)
 //   'wingbits'          — data from Wingbits via relay
 //   'none'              — all real sources returned empty or failed; positions = []
 export async function trackAircraft(
@@ -148,23 +135,22 @@ export async function trackAircraft(
                             if (osPositions.length > 0) return { positions: osPositions, source: 'opensky' };
                         }
                     } catch (err) {
-                        // sentry-coverage-ok: authenticated relay failure intentionally falls through to anonymous recovery.
+                        // sentry-coverage-ok: relay failure degrades to an empty viewport by design;
+                        // there is no further provider tier that can succeed from shared egress.
                         console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
 
-                    // Both relay paths failed or OpenSky recovery was empty — try anonymous
-                    // OpenSky as a last resort. The 6s + 6s + 6s timeouts leave 7s of
-                    // headroom under the Vercel initial-response ceiling for cache I/O and
-                    // response serialization. Keep these sequential: parallel OpenSky
-                    // recovery would spend an authenticated credit even when anonymous wins.
-                    try {
-                        const directPositions = await fetchOpenSkyAnonymous(req);
-                        if (directPositions.length > 0) {
-                            return { positions: directPositions, source: 'opensky-anonymous' };
-                        }
-                    } catch (err) {
-                        console.warn(`[Aviation] OpenSky anonymous failed: ${err instanceof Error ? err.message : err}`);
-                    }
+                    // Both relay paths exhausted. Removing the anonymous tier returns 6s to
+                    // this branch: a bbox-only request now spends at most 6s + 6s here.
+                    //
+                    // That is NOT the worst case for the handler. The generated GET decoder
+                    // coerces missing bbox params to 0 rather than leaving them null, so an
+                    // icao24 lookup also satisfies the `req.swLat != null` guard above, runs
+                    // this block against a degenerate 0,0,0,0 bbox, and then falls through to
+                    // the 8s icao24 tier below — 20s total, measured. That ladder (and the
+                    // wasted authenticated relay call on a bbox nobody asked for) predates
+                    // #6222 and is tracked separately; do not read the 12s above as the
+                    // handler's ceiling.
                 }
 
                 // For icao24-only queries, try OpenSky relay then Wingbits

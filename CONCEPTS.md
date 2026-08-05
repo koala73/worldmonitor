@@ -334,13 +334,29 @@ Distinct from a *missing* translation, which has no value at all, and from an *o
 
 An aggregated military-activity assessment for a named geographic theater, derived from live military flights and tracked naval vessels inside the theater's bounds and published as a posture level per theater.
 
-Theater posture has two independent producers on different schedules — a loop inside the AIS relay and the military-flights seeder — and each acquires flights through its own ordered source chain, falling from its primary source to alternates when a tier fails or returns nothing. A cycle that publishes through an alternate source is still a healthy publication; what it must never be read as is recovery of the primary source. See also: Publication Source.
+Theater posture has two independent producers on different schedules — a loop inside the AIS relay and the military-flights seeder — and each acquires flights from its own ordered list of sources. Ordering a source list is not the same as gating it: only one producer treats its list as a true cascade, entering a lower tier solely when the tier above it failed; the other queries its lower tiers unconditionally and merges whatever they return, so a metered tier there is billed on every cycle regardless of whether the primary already succeeded (see Ungated Tier). A cycle that publishes through an alternate source is still a healthy publication; what it must never be read as is recovery of the primary source. See also: Publication Source, Ungated Tier.
 
 ### Publication Source
 
 The upstream that actually fed a published theater-posture cycle, recorded with the publication rather than inferred from which sources are configured.
 
 Each cycle attributes exactly one winning source (or a vessels-only outcome when no flight source contributed), and per-source cycle counts accumulate for the life of the producer process. The attribution answers "who fed this record", not "which sources are healthy" — a primary source that answered healthily with zero relevant traffic is a quiet primary, not a failed one, and its health is judged from its own request counters, never from the attribution. Because the two Theater Posture producers use different vocabularies for their sources, every attribution also names its producer. See also: Theater Posture.
+
+## Metered Upstreams
+
+### Credit Budget
+
+An upstream's allowance of request cost per refill period, spent down by every caller sharing the account rather than by each caller independently. Its defining property is that depletion and burst-throttling both surface as the same rejection status, while demanding opposite remediations: a depleted budget is fixed by spending less per period and is unaffected by waiting or by spacing requests, whereas a burst throttle is fixed by spacing alone and needs no reduction in total volume. The two are told apart by the wait the provider itself advertises on the rejection — a wait on the order of the refill period means the budget is gone, a wait on the order of seconds means the request rate is too high. Application-side counters cannot make this distinction, because they observe rejections rather than the balance; establishing which one is in play requires probing the provider directly with the production credentials and reading its own balance and retry headers. See also: Cost Tier, Ungated Tier.
+
+### Cost Tier
+
+The band a request falls into under an upstream's cost function, where cost is a step function of a request parameter rather than a smooth function of the data returned. The consequential case is the **flat top tier**: past some threshold the cost stops rising, so every request above that threshold — including the widest request the endpoint accepts — is billed identically. Where a top tier is flat, splitting one broad request into several narrower ones that each still exceed the threshold multiplies cost while reducing coverage, and the usual "ask for less to pay less" intuition inverts. Determining the tier boundaries before sizing a request is therefore a correctness step, not an optimization: a parameter tuned without reference to them can be adjusted at length with no effect on spend. See also: Credit Budget.
+
+### Ungated Tier
+
+A source in an ordered chain that is queried regardless of whether an earlier source already succeeded, as distinct from a fallback entered only on the failure of the tier above it. The condition is not observable from published data — the publication is fresh and correctly attributed to the primary either way — so it must be looked for in the call path rather than inferred from output.
+
+Whether it is a defect depends on what the tier does with its results. A tier whose results *replace* the primary's adds nothing when the primary succeeded, so on a metered upstream it spends budget for no marginal records and should be gated. A tier whose results *merge* into the primary's is contributing coverage, and gating it trades that coverage away — dangerously so, because a degraded-but-non-empty primary satisfies a success-gate and suppresses the merging tier precisely when its coverage matters most. For a merging tier the correct remedy is to reduce its cost rather than to stop calling it. See also: Credit Budget, Cost Tier, Theater Posture, Publication Source.
 
 ## Desktop Distribution
 

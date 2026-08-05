@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
-import { CHINA_COUNTRY_STOCK_INDEX_KEY, buildCountryStockIndexSnapshot } from './_country-stock-index.mjs';
+import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
+import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
 
@@ -14,6 +15,12 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'market:stocks-bootstrap:v1';
 const CACHE_TTL = 1800;
 const YAHOO_DELAY_MS = 200;
+
+// #6235: the RPC answers a bounded 45-country enum, so every country is
+// seedable. Previously only CN was seeded and the other 44 lazy-fetched Yahoo
+// at the edge, leaving a cold Vercel isolate with no fallback at all.
+const COUNTRY_STOCK_INDEXES = loadCountryStockIndexes();
+const COUNTRY_STOCK_INDEX_KEYS = COUNTRY_STOCK_INDEXES.map(index => countryStockIndexKey(index.code));
 
 const MARKET_SYMBOLS = stocksConfig.symbols.map(s => s.symbol);
 const RPC_KEY = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
@@ -139,9 +146,27 @@ export function declareRecords(data) {
 if (!isMultiMarketEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
-    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, CHINA_COUNTRY_STOCK_INDEX_KEY], CACHE_TTL);
+    // Gate the fast path on the canonical keys ONLY. Country-index keys are
+    // best-effort by design — several countries in the enum have no
+    // Yahoo-serviceable symbol, so their keys legitimately never exist, and
+    // requiring all 45 to extend would make this branch never confirm and
+    // force a full fetch on every closed day.
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY], CACHE_TTL);
     if (extended) {
+      const countryTtl = await extendExistingTtlDetailed(COUNTRY_STOCK_INDEX_KEYS, CACHE_TTL);
       await writeFreshnessMetadata('market', 'stocks', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
+      // The country-index caches were just TTL-extended alongside the canonical
+      // keys, so their freshness must be refreshed on this path too — otherwise
+      // seed-meta ages across a 60h+ weekend and alarms on data that is present
+      // and deliberately preserved. recordCount is the count actually extended,
+      // never the size of the work-list.
+      await writeFreshnessMetadataSafely(
+        'market',
+        'country-indexes',
+        countryTtl.extendedKeys.length,
+        'yahoo',
+        CACHE_TTL,
+      );
       console.log(`[seed-market-quotes] Tracked equity markets closed (US session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
       process.exit(0);
     }
@@ -154,32 +179,67 @@ if (!isMultiMarketEquityTradingDay()) {
 async function writeRequiredCompanionKeys(data) {
   if (!data) return;
   await writeExtraKey(RPC_KEY, data, CACHE_TTL);
-  try {
-    await writeChinaCountryStockIndex();
-  } catch (err) {
-    // A China-specific source failure must remain visible to its audit without
-    // turning an otherwise successful global market seed into a false outage.
-    // Preserve last-good long enough for the audit's content-age budget to
-    // distinguish a transient provider error from a missing cache.
-    const preserved = await extendExistingTtl([CHINA_COUNTRY_STOCK_INDEX_KEY], CACHE_TTL);
-    console.warn(
-      `[seed-market-quotes] China country index refresh failed: ${err.message}; `
-      + (preserved ? 'preserved last-good cache TTL' : 'no last-good cache TTL to preserve'),
-    );
-  }
+  await writeCountryStockIndexes();
 }
 
-async function writeChinaCountryStockIndex() {
-  // Keep the China deep-dive cache Railway-backed. The RPC may still refresh
-  // on demand, but audit health cannot depend on someone opening the panel.
-  await sleep(YAHOO_DELAY_MS);
-  const chart = await fetchYahooJson(
-    'https://query1.finance.yahoo.com/v8/finance/chart/000001.SS?range=1mo&interval=1d',
-    { label: 'China country index' },
+/**
+ * Seed every country in the public enum, best-effort and independently.
+ *
+ * One country's provider failure must not cost the other 44 their refresh, and
+ * must not turn an otherwise successful global market seed into a false
+ * outage — so each leg preserves its own last-good TTL and the pass reports a
+ * summary instead of throwing. Countries that fail here still answer via the
+ * RPC's own live fetch, which remains as a gap-filler.
+ *
+ * Because the pass never throws, it MUST publish its own freshness metadata:
+ * without it a run where every country failed would leave
+ * `seed-meta:market:stocks` fresh and health green while the country-index
+ * caches quietly expired — the RPC would silently revert to fetching Yahoo per
+ * request, which is the exact regression this seeding exists to prevent.
+ */
+async function writeCountryStockIndexes() {
+  const failures = [];
+
+  for (const index of COUNTRY_STOCK_INDEXES) {
+    const key = countryStockIndexKey(index.code);
+    try {
+      await sleep(YAHOO_DELAY_MS);
+      const chart = await fetchYahooJson(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(index.symbol)}?range=1mo&interval=1d`,
+        { label: `${index.code} country index` },
+      );
+      const snapshot = buildCountryStockIndexSnapshot(chart, undefined, index);
+      if (!snapshot) throw new Error('insufficient closes');
+      await writeExtraKey(key, snapshot, CACHE_TTL);
+    } catch (err) {
+      // Preserve last-good long enough for the audit's content-age budget to
+      // distinguish a transient provider error from a missing cache.
+      const preserved = await extendExistingTtl([key], CACHE_TTL);
+      failures.push(`${index.code} (${err.message}${preserved ? ', preserved last-good' : ', no last-good'})`);
+    }
+  }
+
+  const seeded = COUNTRY_STOCK_INDEXES.length - failures.length;
+  if (failures.length > 0) {
+    console.warn(
+      `[seed-market-quotes] Country index refresh: ${seeded}/${COUNTRY_STOCK_INDEXES.length} seeded; `
+      + `failed: ${failures.join(', ')}`,
+    );
+  } else {
+    console.log(`[seed-market-quotes] Country index refresh: ${seeded}/${COUNTRY_STOCK_INDEXES.length} seeded`);
+  }
+
+  // recordCount is what /api/health thresholds on, so it must be the count that
+  // actually landed in Redis, never the size of the work-list.
+  await writeFreshnessMetadataSafely(
+    'market',
+    'country-indexes',
+    seeded,
+    'yahoo',
+    CACHE_TTL,
   );
-  const snapshot = buildCountryStockIndexSnapshot(chart);
-  if (!snapshot) throw new Error('China country index returned insufficient closes');
-  await writeExtraKey(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, CACHE_TTL);
+
+  return seeded;
 }
 
 runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
@@ -192,7 +252,7 @@ runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
   // This companion payload is written after the global market publish because
   // it needs a different Yahoo chart shape. Preserve its last-good TTL across
   // every runSeed graceful path, just like normal extra keys.
-  preserveKeys: [CHINA_COUNTRY_STOCK_INDEX_KEY],
+  preserveKeys: COUNTRY_STOCK_INDEX_KEYS,
   afterPublish: async (data) => {
     // runSeed exits the process on success; required companion writes must be
     // awaited here so the RPC key is published before the terminal exit.
