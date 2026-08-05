@@ -50,6 +50,27 @@ test('the closed-market fast path is not gated on the best-effort country keys',
   );
 });
 
+test('the shared country-index module stays free of filesystem reads', () => {
+  // scripts/ais-relay.cjs imports this module for the CN key and the snapshot
+  // builder. Every file it touches joins the always-on relay's Railway
+  // runtime-dependency closure (tests/railway-watch-path-audit.test.mjs), so a
+  // readFileSync here forces a relay redeploy whenever an unrelated country
+  // entry changes — and fails the closure audit until someone widens the
+  // relay's watch patterns for a dependency it never uses.
+  const sharedSource = readFileSync(new URL('../scripts/_country-stock-index.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(sharedSource, /readFileSync|node:fs/, 'the work-list belongs in _country-stock-index-registry.mjs');
+
+  const registrySource = readFileSync(new URL('../scripts/_country-stock-index-registry.mjs', import.meta.url), 'utf8');
+  assert.match(registrySource, /openapi-filter-param-contracts\.json/, 'the registry module owns the enum read');
+
+  const relaySource = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(
+    relaySource,
+    /_country-stock-index-registry/,
+    'the relay must not pull in the seeder-only work-list',
+  );
+});
+
 test('health.js tracks the country-index seed with a floor below the measured success rate', () => {
   const entry = healthSource.match(
     /countryStockIndexes:\s*\{\s*key:\s*'seed-meta:market:country-indexes',\s*maxStaleMin:\s*(\d+),\s*minRecordCount:\s*(\d+)\s*\}/,

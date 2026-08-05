@@ -6,8 +6,8 @@ import {
   buildCountryStockIndexSnapshot,
   buildCountryStockIndexSnapshotFromCloses,
   countryStockIndexKey,
-  loadCountryStockIndexes,
 } from '../scripts/_country-stock-index.mjs';
+import { loadCountryStockIndexes } from '../scripts/_country-stock-index-registry.mjs';
 
 const FIXED_AT = '2026-07-14T12:00:00.000Z';
 

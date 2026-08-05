@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+// Deliberately free of filesystem reads. scripts/ais-relay.cjs imports this
+// module, and every file this module touches joins the relay's Railway
+// runtime-dependency closure. The whole-enum work-list lives in
+// ./_country-stock-index-registry.mjs for that reason.
 
 /** Redis key Railway owns for a country's audit-backed index snapshot. */
 export function countryStockIndexKey(code) {
@@ -17,25 +20,6 @@ export const CHINA_COUNTRY_STOCK_INDEX = Object.freeze({
 });
 export const CHINA_COUNTRY_STOCK_INDEX_KEY = countryStockIndexKey('CN');
 
-/**
- * The public country enum is the single source of truth for which countries
- * the RPC will answer, so the seeder derives its work-list from the same file
- * rather than keeping a parallel copy that could drift.
- *
- * @returns {Array<{ code: string, symbol: string, name: string }>}
- */
-export function loadCountryStockIndexes() {
-  const raw = JSON.parse(
-    readFileSync(new URL('../shared/openapi-filter-param-contracts.json', import.meta.url), 'utf8'),
-  );
-  const contracts = raw?.marketCountryStockIndexes;
-  if (!contracts || typeof contracts !== 'object') {
-    throw new Error('marketCountryStockIndexes missing from openapi-filter-param-contracts.json');
-  }
-  return Object.entries(contracts)
-    .filter(([, index]) => index?.symbol && index?.name)
-    .map(([code, index]) => ({ code, symbol: index.symbol, name: index.name }));
-}
 
 export function buildCountryStockIndexSnapshotFromCloses(
   closes,

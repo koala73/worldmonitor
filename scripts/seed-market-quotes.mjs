@@ -3,7 +3,8 @@
 import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
-import { buildCountryStockIndexSnapshot, countryStockIndexKey, loadCountryStockIndexes } from './_country-stock-index.mjs';
+import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
+import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
 
