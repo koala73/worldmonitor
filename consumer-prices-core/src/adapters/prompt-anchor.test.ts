@@ -79,6 +79,12 @@ describe('extraction prompt', () => {
   it('contains no numeric price example the model can emit verbatim', async () => {
     const prompt = await (capturePrompt('Full Fat Fresh Milk 1L') as unknown as Promise<string>);
 
+    // Anti-vacuity: an uncaptured prompt is the empty string, which trivially
+    // contains no decimal literal and would make the assertion below pass while
+    // proving nothing. Anchor on real content first.
+    expect(prompt).toContain('Extract the retail price');
+    expect(prompt.length).toBeGreaterThan(200);
+
     // Strip the canonical-name and size clauses: those legitimately carry the
     // ITEM's own numbers ("1L", "approx. 1000ml") and are not price anchors.
     const withoutItemNumbers = prompt
