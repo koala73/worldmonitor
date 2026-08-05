@@ -218,15 +218,15 @@ export function dedupeMarkets(markets) {
 // Returns the pools plus the pre-truncation classification counts, so the
 // seeder can log how many candidates each category actually had versus how many
 // survived the per-pool ranking cap.
-export function buildBootstrapPools(markets, { limit } = {}) {
+export function buildBootstrapPools(markets, { limit, now = Date.now() } = {}) {
   const source = Array.isArray(markets) ? markets : [];
   const deduped = dedupeMarkets(source);
   const partitioned = partitionMarkets(deduped);
   return {
     pools: {
-      geopolitical: filterAndScore(partitioned.geopolitical, null, limit),
-      tech: filterAndScore(partitioned.tech, null, limit),
-      finance: filterAndScore(partitioned.finance, null, limit),
+      geopolitical: filterAndScore(partitioned.geopolitical, null, limit, now),
+      tech: filterAndScore(partitioned.tech, null, limit, now),
+      finance: filterAndScore(partitioned.finance, null, limit, now),
     },
     classified: {
       geopolitical: partitioned.geopolitical.length,
