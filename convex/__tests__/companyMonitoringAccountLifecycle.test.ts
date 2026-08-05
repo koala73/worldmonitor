@@ -31,18 +31,63 @@ import {
 installCompanyMonitoringTestEnvironment();
 
 describe("Company Monitoring account lifecycle", () => {
-  test("authenticated entitlement and account-root provisioning fail atomically", async () => {
+  test.each([
+    ["missing fence secret", () => {
+      delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
+    }],
+    ["malformed fence keyring", () => {
+      process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = `${TEST_OWNER_FENCE_SECRET},`;
+    }],
+  ])(
+    "a %s degrades Company Monitoring instead of rolling back the entitlement write",
+    async (_caseName, breakConfig) => {
+      const t = convexTest(schema, modules);
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      breakConfig();
+
+      // The entitlement write must survive: this runs inside the Dodo webhook
+      // transaction, and a config fault fails every retry identically.
+      await expect(grant(t, OWNER_A)).resolves.not.toThrow();
+
+      const state = await t.run(async (ctx) => ({
+        entitlements: await ctx.db.query("entitlements").collect(),
+        accounts: await ctx.db.query("companyMonitoringAccounts").collect(),
+      }));
+      expect(state.entitlements).toHaveLength(1);
+      expect(state.accounts).toEqual([]);
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("owner fence unavailable"),
+      );
+    },
+  );
+
+  test("the account root converges on the next entitlement write once config is repaired", async () => {
     const t = convexTest(schema, modules);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
 
-    await expect(grant(t, OWNER_A)).rejects.toThrow(
-      /COMPANY_MONITORING_OWNER_FENCE_SECRET not set/,
-    );
-    const state = await t.run(async (ctx) => ({
-      entitlements: await ctx.db.query("entitlements").collect(),
-      accounts: await ctx.db.query("companyMonitoringAccounts").collect(),
-    }));
-    expect(state).toEqual({ entitlements: [], accounts: [] });
+    await grant(t, OWNER_A);
+    expect(await accountFor(t, OWNER_A)).toBeNull();
+
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = TEST_OWNER_FENCE_SECRET;
+    await t.mutation(CM.accounts.syncStoredEntitlement, { userId: OWNER_A });
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      ownerUserId: OWNER_A,
+      lifecycle: "entitled",
+      lifecycleSequence: 1,
+    });
+  });
+
+  test("explicit owner deletion still fails loudly on a misconfigured fence", async () => {
+    const t = convexTest(schema, modules);
+    await grant(t, OWNER_A);
+    delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
+
+    // terminalize keeps the throwing accessor: deletion is an explicit
+    // operation off the billing path, so a config fault must not be swallowed.
+    await expect(
+      t.mutation(CM.accounts.markOwnerDeleted, { ownerUserId: OWNER_A }),
+    ).rejects.toThrow(/COMPANY_MONITORING_OWNER_FENCE_SECRET not set/);
   });
 
   test("authenticated grants create one immutable root and semantic replays do not advance sequence", async () => {
